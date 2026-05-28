@@ -37,6 +37,7 @@
     "url": ""
   },
   "dependencies": {
+    "@huggingface/tokenizers": "^0.15.2",
     "boxen": "^8.0.1",
     "chalk": "^5.6.2",
     "cli-table3": "^0.6.5",
@@ -44,6 +45,7 @@
     "glob": "^11.0.0",
     "https-proxy-agent": "^9.0.0",
     "inquirer": "^13.4.3",
+    "onnxruntime-node": "^1.20.0",
     "openai": "^4.73.0",
     "ora": "^8.2.0"
   },
