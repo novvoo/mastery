@@ -1,7 +1,7 @@
 {
   "suite": "Integration Tests",
-  "startTime": "2026-05-28T13:20:30.772Z",
-  "passed": 45,
+  "startTime": "2026-05-28T15:59:45.847Z",
+  "passed": 60,
   "failed": 0,
   "skipped": 0,
   "tests": [
@@ -9,317 +9,422 @@
       "suite": "End-to-End Agent Execution",
       "description": "Agent processes simple query without tools",
       "status": "passed",
-      "duration": 7.751625000000004,
+      "duration": 13.447701999999992,
       "error": null
     },
     {
       "suite": "End-to-End Agent Execution",
       "description": "Agent executes single tool call",
       "status": "passed",
-      "duration": 0.9812500000000028,
+      "duration": 1.3793489999999906,
       "error": null
     },
     {
       "suite": "End-to-End Agent Execution",
       "description": "Agent handles tool execution error gracefully",
       "status": "passed",
-      "duration": 1.078667000000003,
+      "duration": 0.9538960000000145,
       "error": null
     },
     {
       "suite": "End-to-End Agent Execution",
       "description": "Agent respects max iterations limit",
       "status": "passed",
-      "duration": 0.9535410000000013,
+      "duration": 0.7317899999999895,
       "error": null
     },
     {
       "suite": "Concurrency & Stress Tests",
       "description": "Multiple tools execute concurrently",
       "status": "passed",
-      "duration": 101.363291,
+      "duration": 100.81911799999997,
       "error": null
     },
     {
       "suite": "Concurrency & Stress Tests",
       "description": "ProcessManager handles concurrent process execution",
       "status": "passed",
-      "duration": 10.041334000000006,
+      "duration": 18.946754,
       "error": null
     },
     {
       "suite": "Concurrency & Stress Tests",
       "description": "Port allocation prevents conflicts",
       "status": "passed",
-      "duration": 2.602291999999977,
+      "duration": 2.183080000000018,
       "error": null
     },
     {
       "suite": "Concurrency & Stress Tests",
       "description": "Lock mechanism prevents race conditions",
       "status": "passed",
-      "duration": 11.801249999999982,
+      "duration": 10.56917900000002,
       "error": null
     },
     {
       "suite": "Error Recovery & Resilience",
       "description": "ProcessManager retries failed commands",
       "status": "passed",
-      "duration": 0.16929200000001288,
+      "duration": 0.21843400000000202,
       "error": null
     },
     {
       "suite": "Error Recovery & Resilience",
       "description": "Agent recovers from LLM provider errors",
       "status": "passed",
-      "duration": 1782.561291,
+      "duration": 1258.405262,
       "error": null
     },
     {
       "suite": "Error Recovery & Resilience",
       "description": "Tool execution timeout configuration works",
       "status": "passed",
-      "duration": 11.128125000000182,
+      "duration": 6.201422000000093,
       "error": null
     },
     {
       "suite": "Cross-Platform Compatibility",
       "description": "ProcessManager detects platform correctly",
       "status": "passed",
-      "duration": 0.3558330000000751,
+      "duration": 0.18162200000006123,
       "error": null
     },
     {
       "suite": "Cross-Platform Compatibility",
       "description": "Command adaptation works for current platform",
       "status": "passed",
-      "duration": 8.372292000000016,
+      "duration": 3.896454000000176,
       "error": null
     },
     {
       "suite": "Cross-Platform Compatibility",
       "description": "File operations work cross-platform",
       "status": "passed",
-      "duration": 8.756750000000011,
+      "duration": 4.273052000000007,
       "error": null
     },
     {
       "suite": "Cross-Platform Compatibility",
       "description": "Path handling is platform-aware",
       "status": "passed",
-      "duration": 0.30237499999998363,
+      "duration": 0.20497399999999288,
       "error": null
     },
     {
       "suite": "Timeout & Interaction Tests",
       "description": "withTimeout function works correctly",
       "status": "passed",
-      "duration": 101.74866700000007,
+      "duration": 100.82567199999994,
       "error": null
     },
     {
       "suite": "Timeout & Interaction Tests",
       "description": "LLM call timeout is handled properly",
       "status": "passed",
-      "duration": 0.7484169999997903,
+      "duration": 0.3381050000000414,
       "error": null
     },
     {
       "suite": "Timeout & Interaction Tests",
       "description": "Tool execution timeout is handled properly",
       "status": "passed",
-      "duration": 5004.148292,
+      "duration": 5006.366865,
       "error": null
     },
     {
       "suite": "Timeout & Interaction Tests",
       "description": "RetryStrategy works correctly",
       "status": "passed",
-      "duration": 1301.1856670000006,
+      "duration": 1463.7530539999998,
       "error": null
     },
     {
       "suite": "Timeout & Interaction Tests",
       "description": "Complete interaction flow with tool calls",
       "status": "passed",
-      "duration": 4.220874999999069,
+      "duration": 1.5055499999998574,
       "error": null
     },
     {
       "suite": "Timeout & Interaction Tests",
       "description": "Agent handles mixed tool calls and text responses",
       "status": "passed",
-      "duration": 2.6457080000000133,
+      "duration": 1.1350529999999708,
       "error": null
     },
     {
       "suite": "Timeout & Interaction Tests",
       "description": "Simulate user submitting multiple tasks with response monitoring",
       "status": "passed",
-      "duration": 161.76683400000002,
+      "duration": 153.92428700000073,
       "error": null
     },
     {
       "suite": "Timeout & Interaction Tests",
       "description": "Concurrent interaction stress test",
       "status": "passed",
-      "duration": 4.266333000001396,
+      "duration": 2.363822999999684,
       "error": null
     },
     {
       "suite": "Multiple Conversation Execution",
       "description": "Agent handles multiple consecutive run() calls without getting stuck",
       "status": "passed",
-      "duration": 1.0577080000002752,
+      "duration": 1.1259840000002441,
       "error": null
     },
     {
       "suite": "Multiple Conversation Execution",
       "description": "System prompt is not duplicated across multiple run() calls",
       "status": "passed",
-      "duration": 0.9672499999996944,
+      "duration": 0.511873999999807,
       "error": null
     },
     {
       "suite": "Multiple Conversation Execution",
       "description": "Agent preserves conversation context across multiple run() calls",
       "status": "passed",
-      "duration": 0.6412920000002487,
+      "duration": 0.5456779999985883,
       "error": null
     },
     {
       "suite": "Multiple Conversation Execution",
       "description": "setModelProvider works correctly",
       "status": "passed",
-      "duration": 0.739000000001397,
+      "duration": 2.3226059999997233,
       "error": null
     },
     {
       "suite": "Multiple Conversation Execution",
       "description": "Context window management works during long conversations",
       "status": "passed",
-      "duration": 1.7499580000003334,
+      "duration": 1.3451779999995779,
       "error": null
     },
     {
       "suite": "Conversation Protocol Regression",
       "description": "Text CALL tool results do not leak as native tool messages on next run",
       "status": "passed",
-      "duration": 1.2480419999992591,
+      "duration": 1.0293820000006235,
       "error": null
     },
     {
       "suite": "Conversation Protocol Regression",
       "description": "Native tool calls preserve assistant tool_calls and matching tool result ids",
       "status": "passed",
-      "duration": 0.5864579999997659,
+      "duration": 0.6126699999986158,
       "error": null
     },
     {
       "suite": "Conversation Protocol Regression",
       "description": "Native tool call response with CALL-looking text executes only once",
       "status": "passed",
-      "duration": 1.6179159999992407,
+      "duration": 0.48297900000034133,
       "error": null
     },
     {
       "suite": "Conversation Protocol Regression",
       "description": "Text CALL tool errors are observable and do not poison later requests",
       "status": "passed",
-      "duration": 1.22479199999907,
+      "duration": 0.7728799999986222,
       "error": null
     },
     {
       "suite": "Conversation Protocol Regression",
       "description": "Context trimming preserves the active user request during continuation prompts",
       "status": "passed",
-      "duration": 12.194166999999652,
+      "duration": 2.1189660000000003,
       "error": null
     },
     {
       "suite": "Conversation Protocol Regression",
       "description": "OpenAI-compatible provider recognizes qwen long-context models",
       "status": "passed",
-      "duration": 54.45024999999987,
+      "duration": 0.868666000000303,
       "error": null
     },
     {
       "suite": "Conversation Protocol Regression",
       "description": "Provider stop response without FINAL_ANSWER is surfaced without hidden continuation",
       "status": "passed",
-      "duration": 0.3259589999997843,
+      "duration": 0.3421349999989616,
       "error": null
     },
     {
       "suite": "Debug Logging Regression",
       "description": "Debug mode records agent lifecycle, LLM request, tool purpose, and shell command details",
       "status": "passed",
-      "duration": 6.739208999999391,
+      "duration": 8.151583999999275,
       "error": null
     },
     {
       "suite": "Debug Logging Regression",
       "description": "Debug mode can be toggled off and back on without leaking debug events",
       "status": "passed",
-      "duration": 0.2842079999991256,
+      "duration": 0.4054120000000694,
       "error": null
     },
     {
       "suite": "Debug Logging Regression",
       "description": "Debug logging captures blocked shell commands without executing them",
       "status": "passed",
-      "duration": 0.404499999998734,
+      "duration": 0.5720280000005005,
       "error": null
     },
     {
       "suite": "CLI Input Loop Regression",
       "description": "CLI processes two consecutive stdin lines and preserves conversation context",
       "status": "passed",
-      "duration": 409.1563750000005,
+      "duration": 525.4788559999997,
       "error": null
     },
     {
       "suite": "Long-Running Stability",
       "description": "Memory usage remains stable during repeated operations",
       "status": "passed",
-      "duration": 1.3250840000000608,
+      "duration": 0.7220519999991666,
       "error": null
     },
     {
       "suite": "Long-Running Stability",
       "description": "ProcessManager handles many sequential operations",
       "status": "passed",
-      "duration": 96.765625,
+      "duration": 80.13719900000069,
       "error": null
     },
     {
       "suite": "Long-Running Stability",
       "description": "Automation engine runs background tasks reliably",
       "status": "passed",
-      "duration": 1002.4411249999994,
+      "duration": 1001.3340909999988,
       "error": null
     },
     {
       "suite": "Exit Flow & Cleanup",
       "description": "Agent can be properly reset after multiple tasks",
       "status": "passed",
-      "duration": 1.5705829999988055,
+      "duration": 0.8177529999993567,
       "error": null
     },
     {
       "suite": "Exit Flow & Cleanup",
       "description": "Cleanup sequence works properly",
       "status": "passed",
-      "duration": 0.5287920000009763,
+      "duration": 0.3172389999999723,
       "error": null
     },
     {
       "suite": "Exit Flow & Cleanup",
       "description": "Multiple task sequence - no deadlock",
       "status": "passed",
-      "duration": 3.8208749999994325,
+      "duration": 1.1324540000005072,
+      "error": null
+    },
+    {
+      "suite": "New Features Integration",
+      "description": "TokenScope - basic token tracking and cost calculation",
+      "status": "passed",
+      "duration": 1.271002999999837,
+      "error": null
+    },
+    {
+      "suite": "New Features Integration",
+      "description": "TokenScope - multiple requests and cost calculation",
+      "status": "passed",
+      "duration": 0.17743499999960477,
+      "error": null
+    },
+    {
+      "suite": "New Features Integration",
+      "description": "TokenScope - report generation",
+      "status": "passed",
+      "duration": 0.5749629999991157,
+      "error": null
+    },
+    {
+      "suite": "New Features Integration",
+      "description": "DynamicContextPruning - basic context pruning",
+      "status": "passed",
+      "duration": 1.0058869999993476,
+      "error": null
+    },
+    {
+      "suite": "New Features Integration",
+      "description": "DynamicContextPruning - importance analysis",
+      "status": "passed",
+      "duration": 0.6887549999992189,
+      "error": null
+    },
+    {
+      "suite": "New Features Integration",
+      "description": "DynamicContextPruning - optimization suggestions",
+      "status": "passed",
+      "duration": 0.36670799999956216,
+      "error": null
+    },
+    {
+      "suite": "New Features Integration",
+      "description": "Embedder - basic embedding generation",
+      "status": "passed",
+      "duration": 1.342055999999502,
+      "error": null
+    },
+    {
+      "suite": "New Features Integration",
+      "description": "Embedder - batch embedding",
+      "status": "passed",
+      "duration": 0.72582599999987,
+      "error": null
+    },
+    {
+      "suite": "New Features Integration",
+      "description": "Embedder - similarity calculation",
+      "status": "passed",
+      "duration": 0.4652060000007623,
+      "error": null
+    },
+    {
+      "suite": "New Features Integration",
+      "description": "Embedder - find most similar",
+      "status": "passed",
+      "duration": 0.7229820000011387,
+      "error": null
+    },
+    {
+      "suite": "New Features Integration",
+      "description": "Tokenizer - basic token counting",
+      "status": "passed",
+      "duration": 0.9539329999988695,
+      "error": null
+    },
+    {
+      "suite": "New Features Integration",
+      "description": "Tokenizer - encode and decode",
+      "status": "passed",
+      "duration": 0.10811000000103377,
+      "error": null
+    },
+    {
+      "suite": "New Features Integration",
+      "description": "Tokenizer - batch token counting",
+      "status": "passed",
+      "duration": 0.11684999999852153,
+      "error": null
+    },
+    {
+      "suite": "New Features Integration",
+      "description": "Tokenizer - model info",
+      "status": "passed",
+      "duration": 0.07505700000001525,
+      "error": null
+    },
+    {
+      "suite": "New Features Integration",
+      "description": "Tokenizer - available models",
+      "status": "passed",
+      "duration": 0.05526000000099884,
       "error": null
     }
   ],
-  "duration": 10129.503541
+  "duration": 9792.886631
 }

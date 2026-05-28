@@ -2,7 +2,7 @@ node_modules/
 .env
 logs/
 *.gguf
-models/
+/models/
 CONTEXT.md
 HANDOFF.md
 .sandboxes/
