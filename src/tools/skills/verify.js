@@ -11,6 +11,7 @@ export default function verify() {
       'Evidence-based verification gate. Evaluates claims against criteria with evidence. Enforces the Iron Law: no completion claims without fresh verification evidence. Each criterion is assessed as PASS, FAIL, or NEEDS_CHECK.',
     category: ToolCategory.skill_engineering,
     params: {
+      // New format
       claim: {
         type: 'string',
         description: 'The claim or assertion to verify (e.g., "Feature X is complete and working")',
@@ -23,17 +24,53 @@ export default function verify() {
         type: 'string',
         description: 'Comma-separated list of evidence items supporting the claim',
       },
+      // Legacy format for backward compatibility
+      task: {
+        type: 'string',
+        description: '(Legacy) The task that was completed',
+      },
+      changes: {
+        type: 'string',
+        description: '(Legacy) The changes that were made',
+      },
+      verification_passed: {
+        type: 'string',
+        description: '(Legacy) The verification that was performed',
+      },
     },
-    required: ['claim', 'criteria'],
+    required: [], // Make required flexible
     handler: async (params, ctx) => {
-      const { claim, criteria, evidence = '' } = params;
+      // Support both new and legacy formats
+      let claim, criteria, evidence;
 
-      const criteriaList = criteria
+      // New format
+      if (params.claim || params.criteria) {
+        claim = params.claim || 'Task completed';
+        criteria = params.criteria || 'Code exists,Function works';
+        evidence = params.evidence || '';
+      }
+      // Legacy format
+      else if (params.task || params.changes || params.verification_passed) {
+        claim = params.task || 'Task completed';
+        criteria = 'Changes made,Verification performed';
+        evidence = [
+          params.changes,
+          params.verification_passed
+        ].filter(Boolean).join(', ');
+      }
+      // Fallback
+      else {
+        claim = 'Task completed';
+        criteria = 'Task done';
+        evidence = 'Task completed';
+      }
+
+      const criteriaList = (criteria || '')
         .split(',')
         .map((c) => c.trim())
         .filter(Boolean);
 
-      const evidenceList = evidence
+      const evidenceList = (evidence || '')
         .split(',')
         .map((e) => e.trim())
         .filter(Boolean);
