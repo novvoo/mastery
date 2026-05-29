@@ -143,15 +143,22 @@ export class Embedder {
   }
 
   async #processWithFallback(texts) {
-    return texts.map(() => this.#generatePseudoEmbedding(texts[0]));
+    return texts.map((text) => this.#generatePseudoEmbedding(text));
   }
 
   #generatePseudoEmbedding(text) {
-    const seed = this.#hashString(text);
-    const embedding = new Array(this.#dimension);
+    const embedding = new Array(this.#dimension).fill(0);
+    const normalized = this.#preprocessText(text).toLowerCase();
+    const terms = normalized.match(/[\p{L}\p{N}_-]+/gu) || [];
 
-    for (let i = 0; i < this.#dimension; i++) {
-      embedding[i] = this.#pseudoRandom(seed + i);
+    for (const term of terms) {
+      const weight = 1 / Math.sqrt(Math.max(term.length, 1));
+      embedding[this.#hashString(term) % this.#dimension] += weight;
+
+      for (let i = 0; i < term.length - 2; i++) {
+        const gram = term.slice(i, i + 3);
+        embedding[this.#hashString(gram) % this.#dimension] += 0.25;
+      }
     }
 
     return embedding;
@@ -165,11 +172,6 @@ export class Embedder {
       hash = hash & hash;
     }
     return Math.abs(hash);
-  }
-
-  #pseudoRandom(seed) {
-    const x = Math.sin(seed) * 10000;
-    return x - Math.floor(x);
   }
 
   #preprocessText(text) {

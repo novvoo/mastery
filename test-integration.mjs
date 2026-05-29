@@ -2636,6 +2636,121 @@ newFeaturesTests.test('TokenScope - basic token tracking and cost calculation', 
   console.log('     TokenScope basic tracking works');
 });
 
+newFeaturesTests.test('Autonomous tools - prompt advertises PTY and semantic search triggers', async () => {
+  const { ToolRegistry } = await import('./src/core/tool-registry.js');
+  const { MemoryManager } = await import('./src/memory/memory-manager.js');
+  const { buildSystemPrompt } = await import('./src/prompts/system-prompt.js');
+  const { createShellTool } = await import('./src/tools/system/shell.js');
+  const { createPtyTools } = await import('./src/tools/system/pty.js');
+  const { createSemanticSearchTool } = await import('./src/tools/memory/semantic-search.js');
+
+  const registry = new ToolRegistry();
+  registry.register(createShellTool());
+  for (const tool of createPtyTools()) {
+    registry.register(tool);
+  }
+  registry.register(createSemanticSearchTool());
+
+  const prompt = buildSystemPrompt(
+    new MemoryManager(TEST_CONFIG.testDir),
+    registry,
+    TEST_CONFIG.testDir
+  );
+
+  for (const expected of ['pty_start', 'pty_write', 'pty_read', 'pty_stop', 'semantic_search']) {
+    if (!prompt.includes(expected)) {
+      throw new Error(`Expected system prompt to include ${expected}`);
+    }
+  }
+  if (!prompt.includes('interactive') || !prompt.includes('concept')) {
+    throw new Error('Expected prompt to explain PTY and semantic-search auto-trigger scenarios');
+  }
+
+  console.log('     PTY and semantic search are exposed in the agent prompt');
+});
+
+newFeaturesTests.test('PTY tools - interactive stdin/stdout round trip', async () => {
+  const { createPtyTools } = await import('./src/tools/system/pty.js');
+
+  const tools = Object.fromEntries(createPtyTools().map(tool => [tool.name, tool]));
+  mkdirSync(TEST_CONFIG.testDir, { recursive: true });
+  const context = {
+    workingDirectory: TEST_CONFIG.testDir,
+    debug: false,
+  };
+  const command = `${process.execPath} -e "process.stdout.write('ready>'); process.stdin.on('data', d => { console.log('echo:' + d.toString().trim()); process.exit(0); });"`;
+  const startResult = JSON.parse(await tools.pty_start.handler({
+    command,
+    wait_ms: 500,
+  }, context));
+
+  try {
+    if (!startResult.session_id || startResult.status !== 'running') {
+      throw new Error(`Expected running PTY session, got ${JSON.stringify(startResult)}`);
+    }
+    if (!startResult.output.includes('ready>')) {
+      throw new Error(`Expected initial PTY prompt, got ${startResult.output}`);
+    }
+
+    const writeResult = JSON.parse(await tools.pty_write.handler({
+      session_id: startResult.session_id,
+      input: 'ping\n',
+      wait_ms: 800,
+    }, context));
+
+    if (!writeResult.output.includes('echo:ping')) {
+      throw new Error(`Expected PTY echo output, got ${writeResult.output}`);
+    }
+  } finally {
+    try {
+      await tools.pty_stop.handler({ session_id: startResult.session_id }, context);
+    } catch {
+      // The command may already have exited on its own.
+    }
+  }
+
+  console.log('     PTY session accepts input and returns incremental output');
+});
+
+newFeaturesTests.test('Semantic search tool - indexes workspace files with embeddings', async () => {
+  const { createSemanticSearchTool } = await import('./src/tools/memory/semantic-search.js');
+
+  const semanticDir = join(TEST_CONFIG.testDir, 'semantic-search');
+  mkdirSync(semanticDir, { recursive: true });
+  writeFileSync(
+    join(semanticDir, 'terminal.js'),
+    [
+      'export function startInteractiveTerminal() {',
+      '  return "persistent PTY session for interactive commands and dev servers";',
+      '}',
+    ].join('\n')
+  );
+  writeFileSync(
+    join(semanticDir, 'billing.js'),
+    'export const invoice = "payment checkout billing";\n'
+  );
+
+  const tool = createSemanticSearchTool();
+  const result = await tool.handler({
+    query: 'interactive terminal pty session',
+    path: 'semantic-search',
+    limit: 2,
+  }, {
+    workingDirectory: TEST_CONFIG.testDir,
+    debug: true,
+    ui: createRecordingUI(true),
+  });
+
+  if (!result.includes('semantic-search/terminal.js')) {
+    throw new Error(`Expected semantic search to find terminal.js, got:\n${result}`);
+  }
+  if (!result.includes('persistent PTY session')) {
+    throw new Error(`Expected semantic search result preview, got:\n${result}`);
+  }
+
+  console.log('     Semantic search indexes files and returns relevant chunks');
+});
+
 newFeaturesTests.test('TokenScope - multiple requests and cost calculation', async () => {
   const { TokenScope } = await import('./src/core/token-scope.js');
 

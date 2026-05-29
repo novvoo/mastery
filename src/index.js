@@ -34,6 +34,8 @@ import { SchedulerEngine } from './scheduler/SchedulerEngine.js';
 // Tool imports
 import { createFileSystemTools } from './tools/filesystem/filesystem-tools.js';
 import { createShellTool } from './tools/system/shell.js';
+import { createPtyTools, stopAllPtySessions } from './tools/system/pty.js';
+import { createSemanticSearchTool } from './tools/memory/semantic-search.js';
 import { createTaskTools } from './tools/scheduler/task-tools.js';
 import { createScheduleTools } from './tools/scheduler/schedule-tools.js';
 import { createSubAgentTools } from './tools/scheduler/subagent-tools.js';
@@ -219,6 +221,12 @@ class AIEngineeringAgent {
 
     // Register shell tool
     toolRegistry.register(createShellTool());
+
+    // Register interactive terminal and semantic workspace search tools
+    for (const tool of createPtyTools()) {
+      toolRegistry.register(tool);
+    }
+    toolRegistry.register(createSemanticSearchTool());
 
     // Register skill tools
     const skillTools = [
@@ -1064,6 +1072,8 @@ class AIEngineeringAgent {
     if (this.mcpClient) {
       await this.mcpClient.dispose();
     }
+
+    stopAllPtySessions();
 
     enhancedUI.success('Goodbye!');
     process.exit(0);
