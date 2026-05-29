@@ -1836,6 +1836,149 @@ conversationProtocolTests.test('OpenAI-compatible provider recognizes qwen long-
   }
 });
 
+conversationProtocolTests.test('Text parser accepts action tag and raw JSON action tool calls', async () => {
+  const { TextToolParser } = await import('./src/core/text-tool-parser.js');
+  const { ToolRegistry } = await import('./src/core/tool-registry.js');
+
+  const registry = new ToolRegistry();
+  registry.register({
+    name: 'glob',
+    description: 'Find files',
+    parameters: { pattern: { type: 'string' } },
+    async handler() {},
+  });
+  registry.register({
+    name: 'list_dir',
+    description: 'List directory',
+    parameters: { path: { type: 'string' } },
+    async handler() {},
+  });
+
+  const parser = new TextToolParser(registry);
+  const actionTagCalls = parser.parse('<action>\n{"glob": {"pattern": "*.js"}}\n</action>');
+  const rawJSONCalls = parser.parse(JSON.stringify({
+    memory: 'User wants files',
+    next_goal: 'List directory',
+    action: {
+      list_dir: { path: '.' },
+    },
+  }, null, 2));
+  const naturalLanguageCalls = parser.parse('List the JavaScript files in the current directory.');
+
+  if (actionTagCalls.length !== 1 || actionTagCalls[0].name !== 'glob' || actionTagCalls[0].arguments.pattern !== '*.js') {
+    throw new Error(`Expected action tag glob call, got ${JSON.stringify(actionTagCalls)}`);
+  }
+  if (rawJSONCalls.length !== 1 || rawJSONCalls[0].name !== 'list_dir' || rawJSONCalls[0].arguments.path !== '.') {
+    throw new Error(`Expected raw JSON list_dir call, got ${JSON.stringify(rawJSONCalls)}`);
+  }
+  if (!naturalLanguageCalls.some(call => call.name === 'glob' && call.arguments.pattern === '*.js')) {
+    throw new Error(`Expected natural language JavaScript request to produce glob *.js, got ${JSON.stringify(naturalLanguageCalls)}`);
+  }
+});
+
+conversationProtocolTests.test('Local task refusal is corrected into a tool-using turn', async () => {
+  const { ReActAgent } = await import('./src/core/agent.js');
+  const { ToolRegistry } = await import('./src/core/tool-registry.js');
+  const { MemoryManager } = await import('./src/memory/memory-manager.js');
+
+  let chatCount = 0;
+  let toolExecutions = 0;
+  let secondRequestMessages = null;
+  const finalAnswers = [];
+  const debugEvents = [];
+  const recordingUI = {
+    iteration() {},
+    toolCall() {},
+    toolResult() {},
+    toolError() {},
+    warn() {},
+    error() {},
+    info() {},
+    debug() {},
+    debugEvent(label, details) {
+      debugEvents.push({ label, details });
+    },
+    finalAnswer(text) {
+      finalAnswers.push(text);
+    },
+  };
+
+  const mockProvider = {
+    async chat(messages) {
+      chatCount++;
+      if (chatCount === 2) {
+        secondRequestMessages = messages.map(message => ({
+          role: message.role,
+          content: message.content,
+        }));
+      }
+
+      if (chatCount === 1) {
+        return {
+          text: '抱歉，我无法查看你本地目录中的文件。我是一个网页浏览器助手，只能操作当前打开的网页内容。',
+          toolCalls: [],
+          finishReason: 'stop',
+        };
+      }
+
+      if (chatCount === 2) {
+        return {
+          text: 'Thought: I should inspect the local workspace.\n<action>\n{"count_js_files": {}}\n</action>',
+          toolCalls: [],
+          finishReason: 'tool_calls',
+        };
+      }
+
+      return {
+        text: 'FINAL_ANSWER: 当前目录有 0 个 js 文件。',
+        toolCalls: [],
+        finishReason: 'stop',
+      };
+    },
+    getMaxContextTokens() {
+      return 4000;
+    },
+    dispose() {},
+  };
+
+  const registry = new ToolRegistry();
+  registry.register({
+    name: 'count_js_files',
+    description: 'Count JavaScript files in the current directory',
+    parameters: {},
+    async handler() {
+      toolExecutions++;
+      return { count: 0 };
+    },
+  });
+
+  const agent = new ReActAgent(mockProvider, registry, new MemoryManager(TEST_CONFIG.testDir), {
+    maxIterations: 5,
+    workingDirectory: TEST_CONFIG.testDir,
+  }, recordingUI);
+
+  await agent.run('帮我看下当前目录有几个js文件');
+
+  if (chatCount !== 3) {
+    throw new Error(`Expected refusal correction, tool turn, and final answer, got ${chatCount} LLM calls`);
+  }
+  if (toolExecutions !== 1) {
+    throw new Error(`Expected count_js_files to execute once, got ${toolExecutions}`);
+  }
+  const correctionMessage = secondRequestMessages.find(message =>
+    message.role === 'user' && message.content.includes('previous response incorrectly refused')
+  );
+  if (!correctionMessage) {
+    throw new Error(`Expected correction prompt in second request: ${JSON.stringify(secondRequestMessages, null, 2)}`);
+  }
+  if (!debugEvents.some(event => event.label === 'Tool use correction requested')) {
+    throw new Error(`Expected debug event for tool use correction: ${JSON.stringify(debugEvents, null, 2)}`);
+  }
+  if (finalAnswers[0] !== '当前目录有 0 个 js 文件。') {
+    throw new Error(`Expected corrected final answer, got ${JSON.stringify(finalAnswers)}`);
+  }
+});
+
 conversationProtocolTests.test('Provider stop response without FINAL_ANSWER is surfaced without hidden continuation', async () => {
   const { ReActAgent } = await import('./src/core/agent.js');
   const { ToolRegistry } = await import('./src/core/tool-registry.js');

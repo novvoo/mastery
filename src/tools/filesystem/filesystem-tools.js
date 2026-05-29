@@ -139,6 +139,10 @@ export function createFileSystemTools() {
       },
       required: ['pattern'],
       handler: async ({ pattern }, ctx) => {
+        if (!pattern || typeof pattern !== 'string') {
+          return 'Error: Missing required glob pattern.';
+        }
+
         try {
           const { glob } = await import('glob');
           const files = await glob(pattern, {

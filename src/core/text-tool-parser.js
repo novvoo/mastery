@@ -5,8 +5,10 @@
  * 支持多种格式：
  * 1. CALL tool_name({"param": "value"})
  * 2. ```tool\n{"name": "tool_name", "arguments": {...}}\n```
- * 3. <tool>tool_name</tool><arg>value</arg>
- * 4. 自然语言描述（通过关键词匹配）
+ * 3. <action>{"tool_name": {"param": "value"}}</action>
+ * 4. {"action": {"tool_name": {"param": "value"}}}
+ * 5. <tool>tool_name</tool><arg>value</arg>
+ * 6. 自然语言描述（通过关键词匹配）
  */
 
 export class TextToolParser {
@@ -31,6 +33,8 @@ export class TextToolParser {
     // 尝试多种解析策略
     toolCalls.push(...this.#parseCALLFormat(text));
     toolCalls.push(...this.#parseJSONBlockFormat(text));
+    toolCalls.push(...this.#parseActionTagFormat(text));
+    toolCalls.push(...this.#parseRawJSONActionFormat(text));
     toolCalls.push(...this.#parseXMLFormat(text));
     toolCalls.push(...this.#parseNaturalLanguage(text));
 
@@ -80,14 +84,7 @@ export class TextToolParser {
     while ((match = blockRegex.exec(text)) !== null) {
       try {
         const json = this.#safeJSONParse(match[1]);
-        if (json && (json.name || json.tool)) {
-          toolCalls.push({
-            id: `call_${Date.now()}_${toolCalls.length}`,
-            name: json.name || json.tool,
-            arguments: json.arguments || json.args || json.params || {},
-            source: 'JSON_block',
-          });
-        }
+        toolCalls.push(...this.#toolCallsFromJSON(json, 'JSON_block', toolCalls.length));
       } catch (e) {
         // 不是有效的工具调用 JSON
       }
@@ -97,7 +94,36 @@ export class TextToolParser {
   }
   
   /**
-   * 格式 3: <tool>tool_name</tool><arg>value</arg>
+   * 格式 3: <action>{"tool_name": {"param": "value"}}</action>
+   * Some models emit XML-wrapped JSON even when instructed to use CALL.
+   */
+  #parseActionTagFormat(text) {
+    const toolCalls = [];
+    const actionRegex = /<action>\s*([\s\S]*?)\s*<\/action>/gi;
+    let match;
+
+    while ((match = actionRegex.exec(text)) !== null) {
+      const json = this.#safeJSONParse(match[1].trim());
+      toolCalls.push(...this.#toolCallsFromJSON(json, 'action_tag', toolCalls.length));
+    }
+
+    return toolCalls;
+  }
+
+  /**
+   * 格式 4: {"action": {"tool_name": {"param": "value"}}}
+   */
+  #parseRawJSONActionFormat(text) {
+    const trimmed = text.trim();
+    if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+      return [];
+    }
+
+    return this.#toolCallsFromJSON(this.#safeJSONParse(trimmed), 'raw_JSON_action', 0);
+  }
+
+  /**
+   * 格式 5: <tool>tool_name</tool><arg>value</arg>
    */
   #parseXMLFormat(text) {
     const toolCalls = [];
@@ -130,7 +156,7 @@ export class TextToolParser {
   }
 
   /**
-   * 格式 4: 自然语言关键词匹配（fallback）
+   * 格式 6: 自然语言关键词匹配（fallback）
    */
   #parseNaturalLanguage(text) {
     const toolCalls = [];
@@ -143,6 +169,11 @@ export class TextToolParser {
         const args = {};
         if (pattern.paramExtractor) {
           Object.assign(args, pattern.paramExtractor(match, text));
+        }
+
+        const required = pattern.required || [];
+        if (required.some(paramName => args[paramName] === undefined || args[paramName] === '')) {
+          continue;
         }
 
         toolCalls.push({
@@ -195,7 +226,17 @@ export class TextToolParser {
         toolName: tool.name,
         regex: new RegExp(`\\b(${keywordPattern})\\b.*\\b(${name.replace(/_/g, '[_ ]')}|[${name.split('_').join('|')}])\\b`, 'i'),
         paramExtractor: (match, fullText) => this.#extractParamsFromContext(tool, fullText),
+        required: tool.required || (tool.parameters && tool.parameters.required ? tool.parameters.required : []),
       });
+
+      if (name === 'glob') {
+        patterns.push({
+          toolName: tool.name,
+          regex: /\b(list|find|show|get|count)\b.*\b(javascript|js)\b.*\b(files?|目录|文件)\b/i,
+          paramExtractor: (match, fullText) => this.#extractParamsFromContext(tool, fullText),
+          required: tool.required || (tool.parameters && tool.parameters.required ? tool.parameters.required : []),
+        });
+      }
     }
 
     return patterns;
@@ -206,9 +247,23 @@ export class TextToolParser {
    */
   #extractParamsFromContext(tool, text) {
     const args = {};
-    const params = tool.parameters || {};
+    const params = tool.params || (tool.parameters && tool.parameters.properties ? tool.parameters.properties : tool.parameters) || {};
 
     for (const [paramName, paramSchema] of Object.entries(params)) {
+      const lowerText = text.toLowerCase();
+      if (tool.name === 'glob' && paramName === 'pattern') {
+        const explicitGlob = text.match(/["'`]((?:\*\*\/)?[^"'`\s]*\.(?:js|mjs|cjs|ts|tsx|jsx))["'`]/i)
+          || text.match(/(?:^|\s)((?:\*\*\/)?\*\.js)\b/i);
+        if (explicitGlob) {
+          args[paramName] = explicitGlob[1];
+          continue;
+        }
+        if (/\b(javascript|js)\b/i.test(text) || /js\s*文件|javascript\s*文件/i.test(lowerText)) {
+          args[paramName] = '*.js';
+          continue;
+        }
+      }
+
       // 尝试从文本中提取参数值
       const patterns = [
         new RegExp(`${paramName}[:=]\\s*["']?([^"'\\s,]+)["']?`, 'i'),
@@ -271,6 +326,42 @@ export class TextToolParser {
     }
   }
 
+  #toolCallsFromJSON(json, source, startIndex = 0) {
+    if (!json || typeof json !== 'object' || Array.isArray(json)) {
+      return [];
+    }
+
+    const directName = json.name || json.tool;
+    if (directName) {
+      return [{
+        id: `call_${Date.now()}_${startIndex}`,
+        name: directName,
+        arguments: json.arguments || json.args || json.params || {},
+        source,
+      }];
+    }
+
+    const action = json.action && typeof json.action === 'object' && !Array.isArray(json.action)
+      ? json.action
+      : json;
+    const entries = Object.entries(action);
+    if (entries.length !== 1) {
+      return [];
+    }
+
+    const [name, args] = entries[0];
+    if (!this.#toolRegistry?.has?.(name)) {
+      return [];
+    }
+
+    return [{
+      id: `call_${Date.now()}_${startIndex}`,
+      name,
+      arguments: args && typeof args === 'object' && !Array.isArray(args) ? args : {},
+      source,
+    }];
+  }
+
   /**
    * 去重
    */
@@ -304,6 +395,8 @@ export class TextToolParser {
       'To use a tool, output in one of these formats:',
       '1. CALL tool_name({"param": "value"})',
       '2. ```tool\n{"name": "tool_name", "arguments": {"param": "value"}}\n```',
+      '3. <action>{"tool_name": {"param": "value"}}</action>',
+      '4. {"action": {"tool_name": {"param": "value"}}}',
       '',
       'After receiving tool results, continue reasoning or output FINAL_ANSWER: followed by your final response.',
     ];

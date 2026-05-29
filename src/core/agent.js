@@ -35,6 +35,8 @@ export class ReActAgent {
   #repeatCount = 0;
   /** @type {string[]} */
   #toolCallHistory = [];
+  /** @type {Map<string, string>} */
+  #toolResultCache = new Map();
   /** @type {TextToolParser} */
   #textToolParser;
 
@@ -95,6 +97,7 @@ export class ReActAgent {
 
     let iteration = 0;
     const maxIterations = this.#config.maxIterations || MAX_ITERATIONS_DEFAULT;
+    let toolUseCorrections = 0;
 
     while (iteration < maxIterations) {
       iteration++;
@@ -159,6 +162,24 @@ export class ReActAgent {
             native: nativeToolCalls.map(call => ({ name: call.name, arguments: call.arguments })),
             parsed: parsedToolCalls.map(call => ({ name: call.name, arguments: call.arguments, source: call.source })),
           });
+        }
+
+        if (
+          allToolCalls.length === 0 &&
+          response.text?.trim() &&
+          toolUseCorrections < 2 &&
+          this.#shouldCorrectToolRefusal(userInput, response.text)
+        ) {
+          toolUseCorrections++;
+          this.#debugEvent('Tool use correction requested', {
+            iteration,
+            correction: toolUseCorrections,
+            responsePreview: this.#preview(response.text, 300),
+            userInputPreview: this.#preview(userInput, 160),
+          });
+          this.#sessionManager.addAssistantMessage(response.text);
+          this.#sessionManager.addUserMessage(this.#buildToolUseCorrectionPrompt(userInput));
+          continue;
         }
 
         // Check for termination
@@ -266,13 +287,22 @@ export class ReActAgent {
     const callSignature = `${name}:${JSON.stringify(args)}`;
     if (this.#toolCallHistory.includes(callSignature)) {
       this.#ui.warn(`Duplicate tool call detected: ${name}. Skipping.`);
+      const cachedResult = this.#toolResultCache.get(callSignature);
       this.#debugEvent('Tool call skipped', {
         reason: 'duplicate',
         tool: name,
         arguments: args,
         resultMode,
+        cachedResult: Boolean(cachedResult),
       });
-      this.#addToolObservation(id, name, `Warning: Duplicate call to ${name} skipped.`, resultMode);
+      this.#addToolObservation(
+        id,
+        name,
+        cachedResult
+          ? `Duplicate call to ${name} skipped. Previous result:\n${cachedResult}\n\nUse this observation to provide the final answer.`
+          : `Warning: Duplicate call to ${name} skipped. Use the existing observations to provide the final answer.`,
+        resultMode
+      );
       return;
     }
     this.#toolCallHistory.push(callSignature);
@@ -330,6 +360,7 @@ export class ReActAgent {
         resultPreview: this.#preview(typeof result === 'string' ? result : JSON.stringify(result), 300),
       });
       this.#ui.toolResult(name, result);
+      this.#toolResultCache.set(callSignature, typeof result === 'string' ? result : JSON.stringify(result));
       this.#addToolObservation(id, name, result, resultMode);
 
     } catch (error) {
@@ -340,6 +371,7 @@ export class ReActAgent {
         error: errorMsg,
       });
       this.#ui.toolError(name, errorMsg);
+      this.#toolResultCache.set(callSignature, `Error: ${errorMsg}`);
       this.#addToolObservation(id, name, `Error: ${errorMsg}`, resultMode);
     }
   }
@@ -380,7 +412,7 @@ export class ReActAgent {
     if (this.#lastResponse === response) {
       this.#repeatCount++;
       if (this.#repeatCount >= 3) {
-        ui.warn('Detected repeated response loop. Terminating.');
+        this.#ui.warn?.('Detected repeated response loop. Terminating.');
         return true;
       }
     } else {
@@ -436,7 +468,7 @@ export class ReActAgent {
     this.#lastResponse = '';
     this.#repeatCount = 0;
     this.#toolCallHistory = [];
-    ui.info('Session cleared. Memory preserved.');
+    this.#ui.info?.('Session cleared. Memory preserved.');
   }
 
   /**
@@ -497,6 +529,41 @@ export class ReActAgent {
     } catch {
       return 0;
     }
+  }
+
+  #shouldCorrectToolRefusal(userInput, responseText) {
+    if (this.#toolRegistry.size === 0) {
+      return false;
+    }
+
+    const input = String(userInput || '').toLowerCase();
+    const response = String(responseText || '').toLowerCase();
+
+    const asksForLocalOperation = [
+      /当前目录|本地|文件|目录|路径|文件夹|几个|多少|数量|统计|列出|查看|运行|执行|终端|命令/,
+      /\b(current directory|working directory|local|filesystem|file system|files?|folders?|directories|path|count|how many|list|show|run|execute|shell|terminal|pwd|ls|find|grep|rg)\b/,
+    ].some(pattern => pattern.test(input));
+
+    if (!asksForLocalOperation) {
+      return false;
+    }
+
+    return [
+      /无法|不能|没法|无权|没有权限|无法访问|不能访问|不能查看|不能读取|不能操作/,
+      /浏览器助手|网页浏览器|网页.*助手|只能操作.*网页|只能.*浏览器/,
+      /cannot|can't|unable|do not have|don't have|no access|not able/,
+      /browser assistant|web browser|only.*browser|only.*web/,
+    ].some(pattern => pattern.test(response));
+  }
+
+  #buildToolUseCorrectionPrompt(userInput) {
+    const toolNames = this.#toolRegistry.getAll().map(tool => tool.name).slice(0, 24).join(', ');
+    return (
+      `Your previous response incorrectly refused a local/system task. You do have tools available in this agent runtime.\n` +
+      `Original user request: ${userInput}\n\n` +
+      `Use an appropriate tool now instead of answering from assumptions. Available tools include: ${toolNames}. ` +
+      `For filesystem, terminal, PTY, embedding, memory, or browser tasks, choose the matching tool and continue from the observation.`
+    );
   }
 
   /**
