@@ -10,3 +10,4 @@ HANDOFF.md
 .github/
 workspace
 logs
+test*.json
