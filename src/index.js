@@ -98,11 +98,11 @@ class AIEngineeringAgent {
       provider,
       model,
       apiKey: process.env.OPENAI_API_KEY,
-      apiUrl: process.env.OPENAI_BASE_URL || process.env.OPENAI_API_URL,
+      apiUrl: process.env.OPENAI_BASE_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1',
       maxIterations: parseInt(process.env.MAX_ITERATIONS || '10'),
       maxTokens: parseInt(process.env.MAX_TOKENS || '2048'),
       temperature: parseFloat(process.env.TEMPERATURE || '0.7'),
-      workingDir: process.env.WORKING_DIRECTORY || this.workingDir,
+      workingDir: resolve(process.env.WORKING_DIRECTORY || process.cwd()),
       debug: process.env.DEBUG === 'true',
       logDir: process.env.LOG_DIR || './logs',
     };
@@ -253,20 +253,20 @@ class AIEngineeringAgent {
     } else if (this.config.provider === 'zhipu') {
       modelProvider = new ZhipuModelProvider(
         process.env.ZHIPU_API_KEY,
-        this.config.model,
-        this.debugMode
+        process.env.ZHIPU_BASE_URL,
+        this.config.model
       );
     } else if (this.config.provider === 'deepseek') {
       modelProvider = new DeepSeekModelProvider(
         process.env.DEEPSEEK_API_KEY,
-        this.config.model,
-        this.debugMode
+        process.env.DEEPSEEK_BASE_URL,
+        this.config.model
       );
     } else if (this.config.provider === 'openrouter') {
       modelProvider = new OpenRouterModelProvider(
         process.env.OPENROUTER_API_KEY,
-        this.config.model,
-        this.debugMode
+        process.env.OPENROUTER_BASE_URL,
+        this.config.model
       );
     } else {
       throw new Error(`Unknown provider: ${this.config.provider}`);
@@ -805,7 +805,7 @@ class AIEngineeringAgent {
       if (provider === 'openai') {
         newProvider = new OpenAIModelProvider(
           process.env.OPENAI_API_KEY,
-          process.env.OPENAI_BASE_URL || process.env.OPENAI_API_URL,
+          process.env.OPENAI_BASE_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1',
           model,
           this.debugMode
         );
@@ -817,20 +817,20 @@ class AIEngineeringAgent {
       } else if (provider === 'zhipu') {
         newProvider = new ZhipuModelProvider(
           process.env.ZHIPU_API_KEY,
-          model,
-          this.debugMode
+          process.env.ZHIPU_BASE_URL,
+          model
         );
       } else if (provider === 'deepseek') {
         newProvider = new DeepSeekModelProvider(
           process.env.DEEPSEEK_API_KEY,
-          model,
-          this.debugMode
+          process.env.DEEPSEEK_BASE_URL,
+          model
         );
       } else if (provider === 'openrouter') {
         newProvider = new OpenRouterModelProvider(
           process.env.OPENROUTER_API_KEY,
-          model,
-          this.debugMode
+          process.env.OPENROUTER_BASE_URL,
+          model
         );
       }
 

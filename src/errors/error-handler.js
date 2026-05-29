@@ -13,17 +13,26 @@ import { ErrorCategory, ErrorSeverity } from '../core/types.js';
 export function classifyError(error) {
   const err = error instanceof Error ? error : new Error(String(error));
   const message = err.message;
+  const normalizedMessage = message.toLowerCase();
 
   // Model errors
-  if (message.includes('API key') || message.includes('authentication') ||
-      message.includes('rate limit') || message.includes('model') ||
-      message.includes('context_length') || message.includes('token')) {
+  if (normalizedMessage.includes('api key') || normalizedMessage.includes('api_key') ||
+      normalizedMessage.includes('authentication') ||
+      normalizedMessage.includes('unauthorized') || normalizedMessage.includes('401') ||
+      normalizedMessage.includes('rate limit') || normalizedMessage.includes('model') ||
+      normalizedMessage.includes('context_length') || normalizedMessage.includes('token')) {
+    const isAuthError = normalizedMessage.includes('api key') ||
+      normalizedMessage.includes('api_key') ||
+      normalizedMessage.includes('authentication') ||
+      normalizedMessage.includes('unauthorized') ||
+      normalizedMessage.includes('401');
+
     return {
       category: ErrorCategory.MODEL_ERROR,
-      severity: message.includes('rate limit') ? ErrorSeverity.RECOVERABLE : ErrorSeverity.DEGRADED,
+      severity: isAuthError ? ErrorSeverity.FATAL : (normalizedMessage.includes('rate limit') ? ErrorSeverity.RECOVERABLE : ErrorSeverity.DEGRADED),
       message,
       originalError: err,
-      retryable: true,
+      retryable: !isAuthError,
     };
   }
 

@@ -228,10 +228,29 @@ export const enhancedUI = {
 
   // 快捷方法
   brand: (text) => theme.primaryBold(text),
-  success: (text) => theme.success('✅ ' + text),
-  error: (text) => theme.error('❌ ' + text),
-  warning: (text) => theme.warning('⚠️  ' + text),
-  info: (text) => theme.info('ℹ️  ' + text),
+  success(text) {
+    const line = theme.success('✅ ' + text);
+    console.log(line);
+    return line;
+  },
+  error(text) {
+    const line = theme.error('❌ ' + text);
+    console.log(line);
+    return line;
+  },
+  warning(text) {
+    const line = theme.warning('⚠️  ' + text);
+    console.log(line);
+    return line;
+  },
+  warn(text) {
+    return this.warning(text);
+  },
+  info(text) {
+    const line = theme.info('ℹ️  ' + text);
+    console.log(line);
+    return line;
+  },
   setDebugMode(enabled) {
     debugEnabled = Boolean(enabled);
   },

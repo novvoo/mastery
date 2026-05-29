@@ -82,6 +82,10 @@ export class OpenAIModelProvider {
   }
 
   async chat(messages, options = {}) {
+    if (!this.#apiKey) {
+      throw new Error('OPENAI_API_KEY not set in environment');
+    }
+
     const response = await fetch(`${this.#baseURL}/chat/completions`, {
       method: 'POST',
       headers: {
