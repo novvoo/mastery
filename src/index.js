@@ -85,6 +85,9 @@ class AIEngineeringAgent {
     this.debugMode = this.config.debug;
     this.modelProvider = null;
     this.rlClosed = false;
+    this.inputQueue = [];
+    this.isProcessingInput = false;
+    this.shutdownStarted = false;
   }
 
   /**
@@ -946,10 +949,70 @@ class AIEngineeringAgent {
       // We'll just handle spinner start/stop
       spinner.stop();
       await this.agent.run(input);
+      enhancedUI.debugEvent('Agent input completed', {
+        inputChars: input.length,
+      });
     } catch (error) {
       spinner.stop();
       enhancedUI.error(`Agent error: ${error.message}`);
       console.error(error);
+    }
+  }
+
+  /**
+   * Queue readline input and process it sequentially.
+   *
+   * The readline async iterator can behave poorly when the loop body awaits
+   * long-running model calls. A small explicit queue keeps interactive input
+   * handling deterministic across Terminal.app, VS Code terminals, and watch
+   * mode.
+   */
+  enqueueInput(rawInput) {
+    this.inputQueue.push(rawInput);
+    this.#drainInputQueue();
+  }
+
+  async #drainInputQueue() {
+    if (this.isProcessingInput || !this.isRunning || this.rlClosed) {
+      return;
+    }
+
+    this.isProcessingInput = true;
+
+    try {
+      while (this.inputQueue.length > 0 && this.isRunning && !this.rlClosed) {
+        const rawInput = this.inputQueue.shift();
+        const input = rawInput.trim();
+
+        enhancedUI.debugEvent('CLI line received', {
+          rawChars: rawInput.length,
+          trimmedChars: input.length,
+          preview: input.length > 240 ? input.substring(0, 240) + '... (truncated)' : input,
+          queuedInputs: this.inputQueue.length,
+        });
+
+        this.rl.pause();
+        const shouldContinue = await this.processCommand(input);
+
+        if (!shouldContinue) {
+          await this.shutdown();
+          return;
+        }
+
+        if (this.isRunning && !this.rlClosed) {
+          this.rl.resume();
+          this.rl.prompt();
+        }
+      }
+    } catch (error) {
+      enhancedUI.error(`Input loop error: ${error.message}`);
+      console.error(error);
+    } finally {
+      this.isProcessingInput = false;
+
+      if (this.inputQueue.length > 0 && this.isRunning && !this.rlClosed) {
+        this.#drainInputQueue();
+      }
     }
   }
 
@@ -962,31 +1025,14 @@ class AIEngineeringAgent {
       this.showWelcome();
 
       this.rl.setPrompt(enhancedUI.prompt());
+      this.rl.on('line', (rawInput) => {
+        this.enqueueInput(rawInput);
+      });
       this.rl.prompt();
 
-      for await (const rawInput of this.rl) {
-        if (!this.isRunning) {
-          break;
-        }
-
-        const input = rawInput.trim();
-        enhancedUI.debugEvent('CLI line received', {
-          rawChars: rawInput.length,
-          trimmedChars: input.length,
-          preview: input.length > 240 ? input.substring(0, 240) + '... (truncated)' : input,
-        });
-        const shouldContinue = await this.processCommand(input);
-        
-        if (!shouldContinue) {
-          break;
-        }
-
-        if (this.isRunning && !this.rlClosed) {
-          this.rl.prompt();
-        }
-      }
-
-      await this.shutdown();
+      await new Promise((resolve) => {
+        this.rl.once('close', resolve);
+      });
     } catch (error) {
       console.error('Fatal error:', error);
       process.exit(1);
@@ -997,6 +1043,11 @@ class AIEngineeringAgent {
    * Shutdown the application
    */
   async shutdown() {
+    if (this.shutdownStarted) {
+      return;
+    }
+    this.shutdownStarted = true;
+
     console.log('');
     enhancedUI.info('Shutting down...');
 

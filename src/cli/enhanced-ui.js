@@ -256,7 +256,7 @@ export const enhancedUI = {
   },
 
   isDebugEnabled() {
-    return debugEnabled || process.env.DEBUG === 'true';
+    return debugEnabled || process.env.DEBUG === 'true' || process.env.AGENT_TRACE === 'true';
   },
 
   debug(text) {

@@ -9,9 +9,11 @@
   },
   "scripts": {
     "start": "node src/index.js",
-    "start:debug": "node --inspect-brk src/index.js",
+    "start:debug": "DEBUG=true AGENT_TRACE=true node src/index.js",
+    "start:inspect": "node --inspect src/index.js",
     "dev": "node --watch src/index.js",
-    "dev:debug": "node --watch --inspect-brk src/index.js",
+    "dev:debug": "DEBUG=true AGENT_TRACE=true node --watch src/index.js",
+    "dev:inspect": "node --watch --inspect src/index.js",
     "test": "node test-integration.mjs",
     "test:debug": "node --inspect-brk test-integration.mjs",
     "test:integration": "node test-integration.mjs",

@@ -86,30 +86,60 @@ export class OpenAIModelProvider {
       throw new Error('OPENAI_API_KEY not set in environment');
     }
 
-    const response = await fetch(`${this.#baseURL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.#apiKey}`,
-      },
-      body: JSON.stringify({
-        model: this.#model,
-        messages,
-        ...options,
-      }),
-    });
+    const url = `${this.#baseURL}/chat/completions`;
+    const traceEnabled = process.env.AGENT_TRACE === 'true' || process.env.DEBUG === 'true';
+    const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const startedAt = Date.now();
+    let heartbeat;
 
-    if (!response.ok) {
-      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+    if (traceEnabled) {
+      console.log(`🔍 [model:${requestId}] request start url=${url} model=${this.#model} messages=${messages.length} maxTokens=${options.maxTokens ?? 'default'}`);
+      heartbeat = setInterval(() => {
+        const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
+        console.log(`🔍 [model:${requestId}] waiting for response ${elapsedSeconds}s`);
+      }, 5000);
     }
 
-    const data = await response.json();
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.#apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.#model,
+          messages,
+          ...options,
+        }),
+      });
 
-    return {
-      text: data.choices[0]?.message?.content || '',
-      toolCalls: data.choices[0]?.message?.tool_calls || [],
-      finishReason: data.choices[0]?.finish_reason,
-    };
+      if (traceEnabled) {
+        const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
+        console.log(`🔍 [model:${requestId}] response status=${response.status} ${response.statusText} after=${elapsedSeconds}s`);
+      }
+
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (traceEnabled) {
+        const choice = data.choices?.[0];
+        console.log(`🔍 [model:${requestId}] parsed finishReason=${choice?.finish_reason ?? 'none'} contentChars=${choice?.message?.content?.length ?? 0} toolCalls=${choice?.message?.tool_calls?.length ?? 0}`);
+      }
+
+      return {
+        text: data.choices[0]?.message?.content || '',
+        toolCalls: data.choices[0]?.message?.tool_calls || [],
+        finishReason: data.choices[0]?.finish_reason,
+      };
+    } finally {
+      if (heartbeat) {
+        clearInterval(heartbeat);
+      }
+    }
   }
 
   getMaxContextTokens() {

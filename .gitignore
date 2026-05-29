@@ -8,3 +8,5 @@ HANDOFF.md
 .sandboxes/
 .test-temp/
 .github/
+workspace
+logs
