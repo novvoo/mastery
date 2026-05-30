@@ -10,6 +10,7 @@ import { buildSystemPrompt } from '../prompts/system-prompt.js';
 import { classifyError, RetryStrategy, withTimeout } from '../errors/error-handler.js';
 import { ui } from '../cli/ui.js';
 import { TextToolParser } from './text-tool-parser.js';
+import { ExecutionPlan, TaskStatus } from '../planner/graph-planner.js';
 
 const TERMINATION_KEYWORDS = ['FINAL_ANSWER:', 'Answer:', 'TASK_COMPLETE'];
 const MAX_ITERATIONS_DEFAULT = 30;
@@ -78,6 +79,12 @@ export class ReActAgent {
   #runToolEvents = [];
   /** @type {object} */
   #activeTaskProfile = null;
+  /** @type {ExecutionPlan|null} */
+  #activeExecutionPlan = null;
+  /** @type {Set<string>} */
+  #requiredMutationPaths = new Set();
+  /** @type {Set<string>} */
+  #completedMutationPaths = new Set();
 
   constructor(modelProvider, toolRegistry, memoryManager, config = {}, customUI = ui) {
     this.#modelProvider = modelProvider;
@@ -135,6 +142,9 @@ export class ReActAgent {
     this.#toolCallHistory = [];
     this.#runToolEvents = [];
     this.#activeTaskProfile = this.#classifyTask(userInput);
+    this.#requiredMutationPaths = this.#extractRequestedFilePaths(userInput);
+    this.#completedMutationPaths = new Set();
+    this.#activeExecutionPlan = this.#createAutomaticExecutionPlan(userInput, this.#activeTaskProfile);
 
     let iteration = 0;
     const maxIterations = this.#config.maxIterations || MAX_ITERATIONS_DEFAULT;
@@ -144,6 +154,13 @@ export class ReActAgent {
     if (this.#activeTaskProfile.isCodingTask) {
       this.#debugEvent('Coding task mode enabled', this.#activeTaskProfile);
       this.#sessionManager.addUserMessage(this.#buildCodingTaskOperatingPrompt(userInput));
+    }
+
+    if (this.#activeExecutionPlan) {
+      this.#debugEvent('Automatic task orchestration enabled', {
+        plan: this.#activeExecutionPlan.toJSON(),
+      });
+      this.#sessionManager.addUserMessage(this.#buildExecutionPlanPrompt(userInput));
     }
 
     while (iteration < maxIterations) {
@@ -209,6 +226,26 @@ export class ReActAgent {
             native: nativeToolCalls.map(call => ({ name: call.name, arguments: call.arguments })),
             parsed: parsedToolCalls.map(call => ({ name: call.name, arguments: call.arguments, source: call.source })),
           });
+        }
+
+        if (
+          allToolCalls.length === 0 &&
+          response.finishReason === 'stop' &&
+          response.text?.trim() &&
+          this.#activeExecutionPlan?.status === TaskStatus.COMPLETED
+        ) {
+          const answer = this.#isTermination(response.text)
+            ? this.#extractFinalAnswer(response.text)
+            : response.text.trim();
+          this.#debugEvent('Final answer emitted', {
+            iteration,
+            totalDurationMs: Date.now() - runStartedAt,
+            reason: 'completed_plan_provider_stop_without_marker',
+            answerPreview: this.#preview(answer, 300),
+          });
+          this.#ui.finalAnswer(answer);
+          this.#sessionManager.addAssistantMessage(response.text);
+          return;
         }
 
         if (
@@ -430,6 +467,7 @@ export class ReActAgent {
       this.#recordToolEvent(name, args, true, result);
       this.#toolResultCache.set(callSignature, typeof result === 'string' ? result : JSON.stringify(result));
       this.#addToolObservation(id, name, result, resultMode);
+      this.#advanceAutomaticPlan(name, args, result);
 
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -454,6 +492,258 @@ export class ReActAgent {
     });
   }
 
+  #createAutomaticExecutionPlan(userInput, profile) {
+    if (!profile?.requiresAutomaticPlanning) {
+      return null;
+    }
+
+    const plan = new ExecutionPlan({
+      name: 'Automatic coding task plan',
+      description: userInput,
+      context: {
+        source: 'react-agent',
+        generatedAt: new Date().toISOString(),
+      },
+    });
+
+    plan.addTask({
+      id: 'inspect_workspace',
+      name: 'Inspect workspace',
+      description: 'Discover the relevant project structure and existing files before reading or writing.',
+      dependencies: [],
+    });
+    plan.addTask({
+      id: 'plan_solution',
+      name: 'Plan solution',
+      description: 'Choose the implementation approach and file split for the requested change.',
+      dependencies: ['inspect_workspace'],
+    });
+    plan.addTask({
+      id: 'implement_changes',
+      name: 'Implement changes',
+      description: 'Create or edit the required files using the smallest necessary changes.',
+      dependencies: ['plan_solution'],
+    });
+    plan.addTask({
+      id: 'inspect_changes',
+      name: 'Inspect changes',
+      description: 'Read back or otherwise inspect the files that were created or edited.',
+      dependencies: ['implement_changes'],
+    });
+    plan.addTask({
+      id: 'verify_result',
+      name: 'Verify result',
+      description: 'Run an appropriate command/tool to verify the requested behavior.',
+      dependencies: ['inspect_changes'],
+    });
+
+    plan.status = TaskStatus.RUNNING;
+    plan.startedAt = Date.now();
+    plan.getTask('inspect_workspace')?.updateStatus(TaskStatus.RUNNING);
+    return plan;
+  }
+
+  #buildExecutionPlanPrompt(userInput) {
+    const plan = this.#activeExecutionPlan;
+    const tasks = plan.toJSON().tasks
+      .map(task => `- ${task.id}: ${task.name} [${task.status}] - ${task.description}`)
+      .join('\n');
+
+    return (
+      `Automatic task orchestration is active for this request:\n${userInput}\n\n` +
+      `Execute this DAG in dependency order. Do not skip ahead, and do not provide FINAL_ANSWER until every task is completed.\n` +
+      `${tasks}\n\n` +
+      `The DAG task ids are status labels, not tool names. Use real available tools such as list_dir, read_file, write_file, shell, and methodology tools.\n` +
+      `Current task: inspect_workspace. Call list_dir or another filesystem discovery tool first, then continue through the plan.`
+    );
+  }
+
+  #advanceAutomaticPlan(toolName, args, result) {
+    const plan = this.#activeExecutionPlan;
+    if (!plan || plan.status !== TaskStatus.RUNNING) {
+      return;
+    }
+    if (!this.#isSuccessfulToolResult(result)) {
+      return;
+    }
+
+    const before = this.#summarizePlanProgress(plan);
+    this.#completePlanTaskIf('inspect_workspace', () => this.#isWorkspaceInspectionTool(toolName, args));
+    this.#startReadyTasks(plan);
+    this.#completePlanTaskIf('plan_solution', () => this.#isPlanningTool(toolName));
+    this.#startReadyTasks(plan);
+    this.#completePlanTaskIf('plan_solution', () => this.#isMutationTool(toolName, args));
+    this.#startReadyTasks(plan);
+    this.#recordMutationPath(toolName, args);
+    this.#completePlanTaskIf('implement_changes', () => this.#isMutationTool(toolName, args) && this.#hasCompletedRequiredMutationPaths());
+    this.#startReadyTasks(plan);
+    this.#completePlanTaskIf('inspect_changes', () => this.#isChangeInspectionTool(toolName, args));
+    this.#startReadyTasks(plan);
+    this.#completePlanTaskIf('verify_result', () => this.#isVerificationTool(toolName, args));
+    this.#startReadyTasks(plan);
+
+    if (Array.from(plan.tasks.values()).every(task => task.status === TaskStatus.COMPLETED)) {
+      plan.status = TaskStatus.COMPLETED;
+      plan.completedAt = Date.now();
+    }
+
+    const after = this.#summarizePlanProgress(plan);
+    if (after !== before) {
+      this.#debugEvent('Automatic task orchestration advanced', {
+        tool: toolName,
+        before,
+        after,
+      });
+      this.#sessionManager.addUserMessage(
+        `Automatic task orchestration update:\n${after}\n\n` +
+        `${plan.status === TaskStatus.COMPLETED
+          ? 'All orchestrated tasks are complete. You may now provide FINAL_ANSWER with the change and verification summary.'
+          : `Continue with the current ready task: ${this.#currentPlanTaskLabel(plan)}.`}`
+      );
+    }
+  }
+
+  #completePlanTaskIf(taskId, predicate) {
+    const task = this.#activeExecutionPlan?.getTask(taskId);
+    if (!task || task.status === TaskStatus.COMPLETED || !task.checkDependencies(this.#activeExecutionPlan.tasks)) {
+      return;
+    }
+    if (predicate()) {
+      task.updateStatus(TaskStatus.COMPLETED, { result: { completedBy: 'tool-observation' } });
+    }
+  }
+
+  #isSuccessfulToolResult(result) {
+    const text = typeof result === 'string' ? result : JSON.stringify(result);
+    return !/^(Error|Command failed|BLOCKED):/i.test(text.trim());
+  }
+
+  #extractRequestedFilePaths(text) {
+    const paths = new Set();
+    const regex = /\b((?:[\w.-]+\/)*[\w.-]+\.(?:html|js|css|ts|tsx|jsx|json|md|py|java|go|rs|c|cpp|h|hpp))\b/g;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      paths.add(match[1]);
+    }
+    const basenamesWithDirectory = new Set(
+      Array.from(paths)
+        .filter(path => path.includes('/'))
+        .map(path => path.split('/').pop())
+    );
+    for (const path of Array.from(paths)) {
+      if (!path.includes('/') && basenamesWithDirectory.has(path)) {
+        paths.delete(path);
+      }
+    }
+    return paths;
+  }
+
+  #recordMutationPath(toolName, args) {
+    if (!['write_file', 'edit_file'].includes(toolName)) {
+      return;
+    }
+    const path = args?.path || args?.file_path || args?.file;
+    if (path) {
+      this.#completedMutationPaths.add(String(path));
+    }
+  }
+
+  #hasCompletedRequiredMutationPaths() {
+    if (this.#requiredMutationPaths.size === 0) {
+      return true;
+    }
+    for (const path of this.#requiredMutationPaths) {
+      if (!this.#completedMutationPaths.has(path)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  #startReadyTasks(plan) {
+    for (const task of plan.getReadyTasks()) {
+      if (task.status === TaskStatus.PENDING || task.status === TaskStatus.BLOCKED) {
+        task.updateStatus(TaskStatus.RUNNING);
+        return;
+      }
+    }
+  }
+
+  #summarizePlanProgress(plan) {
+    return plan.toJSON().tasks
+      .map(task => `- ${task.id}: ${task.status}`)
+      .join('\n');
+  }
+
+  #currentPlanTaskLabel(plan) {
+    const active = Array.from(plan.tasks.values())
+      .find(task => task.status === TaskStatus.RUNNING || task.status === TaskStatus.PENDING || task.status === TaskStatus.BLOCKED);
+    return active ? `${active.id} (${active.name})` : 'none';
+  }
+
+  #isWorkspaceInspectionTool(toolName, args) {
+    if (['list_dir', 'glob', 'search', 'semantic_search'].includes(toolName)) {
+      return true;
+    }
+    if (toolName === 'read_file') {
+      return true;
+    }
+    if (toolName === 'shell') {
+      const command = String(args?.command || '');
+      return /\b(pwd|ls|find|rg|grep|tree)\b/.test(command);
+    }
+    return false;
+  }
+
+  #isPlanningTool(toolName) {
+    return ['brainstorm', 'grill', 'zoom_out', 'tdd', 'to_prd', 'to_issues', 'architect'].includes(toolName);
+  }
+
+  #isMutationTool(toolName, args) {
+    if (['write_file', 'edit_file', 'git_apply_patch', 'git_commit', 'git_push'].includes(toolName)) {
+      return true;
+    }
+    if (toolName === 'shell') {
+      return this.#isShellMutationCommand(args);
+    }
+    return false;
+  }
+
+  #isChangeInspectionTool(toolName, args) {
+    if (['read_file', 'list_dir', 'glob', 'search'].includes(toolName)) {
+      return true;
+    }
+    if (toolName === 'shell') {
+      const command = String(args?.command || '');
+      return /\b(cat|sed|awk|ls|find|rg|grep|git\s+diff|git\s+status)\b/.test(command);
+    }
+    return false;
+  }
+
+  #isVerificationTool(toolName, args) {
+    if (['verify', 'review'].includes(toolName)) {
+      return true;
+    }
+    if (toolName === 'shell') {
+      const command = String(args?.command || '');
+      return this.#isShellVerificationCommand(args) || /\b(test|lint|build|check|typecheck|tsc|node)\b/.test(command);
+    }
+    return false;
+  }
+
+  #isShellMutationCommand(args) {
+    const command = String(args?.command || args?.input || args?.text || '').toLowerCase();
+    if (/\bmkdir\b/.test(command) && !/(^|\s)(touch|cp|mv|rm|sed|perl|cat|tee)\b|>|>>|apply_patch/.test(command)) {
+      return false;
+    }
+    return /(^|\s)(npm|pnpm|yarn|npx|node|python|pytest|vitest|jest|eslint|tsc|git|touch|cp|mv|rm|sed|perl|tee)\b|>|>>|apply_patch/.test(command);
+  }
+
+  #isShellVerificationCommand(args) {
+    const command = String(args?.command || args?.input || args?.text || '').toLowerCase();
+    return /\b(test|lint|check|verify|build|typecheck|tsc|jest|vitest|pytest|node|npm|pnpm|yarn)\b/.test(command);
+  }
+
   /**
    * Add tool output back to the conversation in the format expected by the call source.
    */
@@ -474,7 +764,9 @@ export class ReActAgent {
    * Check if the response indicates termination
    */
   #isTermination(response) {
-    if (!response) return false;
+    if (!response) {
+      return false;
+    }
 
     // Explicit termination keywords
     if (TERMINATION_KEYWORDS.some(kw => response.includes(kw))) {
@@ -647,13 +939,15 @@ export class ReActAgent {
   #classifyTask(userInput) {
     const input = String(userInput || '').toLowerCase();
     const isCodingTask = [
-      /写.*代码|写.*html|写.*js|写.*css|创建.*文件|新建.*文件|修改.*代码|改.*代码|修复|实现|重构|跑.*测试|运行.*测试|集成测试|单元测试|提交|push/,
+      /写.*代码|写.*html|写.*js|写.*css|创建.*文件|新建.*文件|修改.*代码|改.*代码|修复|实现|创建|新建|开发|生成|重构|跑.*测试|运行.*测试|集成测试|单元测试|提交|push/,
+      /2048|游戏|浏览器.*应用|网页.*应用/,
       /\b(code|coding|implement|fix|bug|refactor|unit test|integration test|test suite|npm test|run tests?|write tests?|add tests?|html|css|javascript|typescript|commit|push)\b/,
       /\b(create|write|edit|modify|update|change)\b.*\b(file|code|html|css|js|javascript|ts|typescript|component|function|class|module|test)\b/,
     ].some(pattern => pattern.test(input));
 
     const isModificationTask = [
-      /写.*代码|写.*html|写.*js|写.*css|创建.*文件|新建.*文件|修改.*代码|改.*代码|修复|实现|重构|提交|push/,
+      /写.*代码|写.*html|写.*js|写.*css|创建.*文件|新建.*文件|修改.*代码|改.*代码|修复|实现|创建|新建|开发|生成|写一个|做一个|放在|中创建|重构|提交|push/,
+      /2048.*\.(html|js)\b|\.(html|js)\b.*2048|index\.html|game\.js/,
       /\b(implement|fix|refactor|commit|push)\b/,
       /\b(create|write|edit|modify|update|change)\b.*\b(file|code|html|css|js|javascript|ts|typescript|component|function|class|module|test)\b/,
     ].some(pattern => pattern.test(input));
@@ -669,7 +963,20 @@ export class ReActAgent {
       /\.html\b.*\b(write[_ -]?file|writefile|read[_ -]?file|readfile)\b/,
     ].some(pattern => pattern.test(input));
 
-    return { isCodingTask, isModificationTask, isBugTask, isLikelyTrivial };
+    const mentionsMultipleArtifacts = [
+      /多个|拆分|分离|html.*js|js.*html|和.*中创建|目录|文件|css|测试|文档|接口|controller|route|schema|resolver/,
+      /\b(multiple|separate|split|html.*js|js.*html|css|tests?|docs?|route|controller|schema|resolver|endpoint|component|service)\b/,
+    ].some(pattern => pattern.test(input));
+    const likelyFeatureWork = [
+      /实现|创建|新建|写一个|做一个|开发|生成/,
+      /\b(implement|create|build|write|develop|generate|add)\b/,
+    ].some(pattern => pattern.test(input));
+    const requiresAutomaticPlanning = isCodingTask &&
+      isModificationTask &&
+      !isLikelyTrivial &&
+      (mentionsMultipleArtifacts || likelyFeatureWork || isBugTask);
+
+    return { isCodingTask, isModificationTask, isBugTask, isLikelyTrivial, requiresAutomaticPlanning };
   }
 
   #buildCodingTaskOperatingPrompt(userInput) {
@@ -711,6 +1018,17 @@ export class ReActAgent {
       verificationTools: verificationEvents.map(event => event.name),
     };
 
+    if (this.#activeExecutionPlan && this.#activeExecutionPlan.status !== TaskStatus.COMPLETED) {
+      return {
+        block: true,
+        reason: 'automatic_plan_incomplete',
+        evidence: {
+          ...evidence,
+          automaticPlan: this.#summarizePlanProgress(this.#activeExecutionPlan),
+        },
+      };
+    }
+
     if (successfulEvents.length === 0) {
       return { block: true, reason: 'no_tool_evidence', evidence };
     }
@@ -743,6 +1061,7 @@ export class ReActAgent {
       missing_code_change: 'You have not produced a successful code/file change yet.',
       missing_verification: 'You changed code/files but have not verified the result with fresh evidence.',
       final_answer_missing_verification_summary: 'Your final answer claims completion but does not summarize verification.',
+      automatic_plan_incomplete: 'The automatic task orchestration plan is not complete yet.',
     }[gate.reason] || gate.reason;
 
     return (

@@ -7,10 +7,9 @@
  * 2. ```tool\n{"name": "tool_name", "arguments": {...}}\n```
  * 3. <action>{"tool_name": {"param": "value"}}</action>
  * 4. {"action": {"tool_name": {"param": "value"}}}
- * 5. Mixed text containing {"action": {"tool_name": {"param": "value"}}}
- * 6. <tool>tool_name</tool><arg>value</arg>
- * 7. <function_call><function_name>tool</function_name>...</function_call>
- * 8. 自然语言描述（通过关键词匹配）
+ * 5. <tool>tool_name</tool><arg>value</arg>
+ * 6. <tool_code>print(ls("path"))</tool_code> style code emitted by some models
+ * 7. 自然语言描述（通过关键词匹配）
  */
 
 export class TextToolParser {
@@ -38,9 +37,15 @@ export class TextToolParser {
     toolCalls.push(...this.#parseActionTagFormat(text));
     toolCalls.push(...this.#parseRawJSONActionFormat(text));
     toolCalls.push(...this.#parseEmbeddedJSONActionFormat(text));
-    toolCalls.push(...this.#parseXMLFormat(text));
+    toolCalls.push(...this.#parseFunctionCallsFormat(text));
     toolCalls.push(...this.#parseFunctionCallTagFormat(text));
-    toolCalls.push(...this.#parseNaturalLanguage(text));
+    toolCalls.push(...this.#parseToolCallTagFormat(text));
+    toolCalls.push(...this.#parseXMLFormat(text));
+    toolCalls.push(...this.#parseNamedToolXMLFormat(text));
+    toolCalls.push(...this.#parseToolCodeFormat(text));
+    if (toolCalls.length === 0) {
+      toolCalls.push(...this.#parseNaturalLanguage(text));
+    }
 
     // 去重
     return this.#deduplicate(toolCalls);
@@ -123,12 +128,33 @@ export class TextToolParser {
       return [];
     }
 
-    return this.#toolCallsFromJSON(this.#safeJSONParse(trimmed), 'raw_JSON_action', 0);
+    const parsedCalls = this.#toolCallsFromJSON(this.#safeJSONParse(trimmed), 'raw_JSON_action', 0);
+    if (parsedCalls.length > 0) {
+      return parsedCalls;
+    }
+    return this.#parseLooseRawJSONAction(trimmed);
   }
 
-  /**
-   * 格式 5: mixed prose/final text with an embedded JSON action object.
-   */
+  #parseLooseRawJSONAction(text) {
+    const actionMatch = text.match(/"action"\s*:\s*\{\s*"([^"]+)"\s*:\s*\{([\s\S]*)\}\s*\}\s*$/);
+    if (!actionMatch) {
+      return [];
+    }
+
+    const rawArgs = this.#parseLooseJSONStringObject(actionMatch[2]);
+    const { name, args } = this.#normalizeJSONToolCall(actionMatch[1], rawArgs);
+    if (!this.#toolRegistry?.has?.(name)) {
+      return [];
+    }
+
+    return [{
+      id: `call_${Date.now()}_0`,
+      name,
+      arguments: args && typeof args === 'object' && !Array.isArray(args) ? args : {},
+      source: 'raw_JSON_action_loose',
+    }];
+  }
+
   #parseEmbeddedJSONActionFormat(text) {
     if (!text.includes('"action"') && !text.includes("'action'")) {
       return [];
@@ -180,8 +206,103 @@ export class TextToolParser {
     return candidates;
   }
 
+  #parseLooseJSONStringObject(body) {
+    const args = {};
+    let index = 0;
+    const text = String(body || '');
+
+    while (index < text.length) {
+      const keyStart = text.indexOf('"', index);
+      if (keyStart === -1) {
+        break;
+      }
+      const keyEnd = this.#findJSONStringEnd(text, keyStart);
+      if (keyEnd === -1) {
+        break;
+      }
+      const key = this.#decodeStringLiteral(text.slice(keyStart + 1, keyEnd));
+      const colon = text.indexOf(':', keyEnd + 1);
+      if (colon === -1) {
+        break;
+      }
+      let valueStart = colon + 1;
+      while (/\s/.test(text[valueStart] || '')) {
+        valueStart++;
+      }
+
+      if (text[valueStart] !== '"') {
+        const valueEnd = this.#findLooseScalarEnd(text, valueStart);
+        args[key] = text.slice(valueStart, valueEnd).trim();
+        index = valueEnd + 1;
+        continue;
+      }
+
+      const valueEnd = this.#findLooseStringEnd(text, valueStart);
+      if (valueEnd === -1) {
+        break;
+      }
+      args[key] = this.#decodeStringLiteral(text.slice(valueStart + 1, valueEnd));
+      index = valueEnd + 1;
+    }
+
+    return args;
+  }
+
+  #findLooseStringEnd(text, start) {
+    let escaped = false;
+    for (let i = start + 1; i < text.length; i++) {
+      const char = text[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char !== '"') {
+        continue;
+      }
+      let next = i + 1;
+      while (/\s/.test(text[next] || '')) {
+        next++;
+      }
+      if (text[next] === ',' || text[next] === '}' || next >= text.length) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  #findJSONStringEnd(text, start) {
+    let escaped = false;
+    for (let i = start + 1; i < text.length; i++) {
+      const char = text[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char === '"') {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  #findLooseScalarEnd(text, start) {
+    let index = start;
+    while (index < text.length && text[index] !== ',' && text[index] !== '}') {
+      index++;
+    }
+    return index;
+  }
+
   /**
-   * 格式 6: <tool>tool_name</tool><arg>value</arg>
+   * 格式 5: <tool>tool_name</tool><arg>value</arg>
    */
   #parseXMLFormat(text) {
     const toolCalls = [];
@@ -214,31 +335,153 @@ export class TextToolParser {
   }
 
   /**
-   * 格式 7: <function_call><function_name>tool</function_name><parameters>...</parameters></function_call>
-   * Some OpenAI-compatible models emit this XML-ish shape for tool calls.
+   * 格式 6: <tool_call><name>tool</name><parameter>key</parameter><parameter>value</parameter></tool_call>
    */
+  #parseToolCallTagFormat(text) {
+    const toolCalls = [];
+    const callRegex = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
+    let match;
+
+    while ((match = callRegex.exec(text)) !== null) {
+      const block = match[1];
+      const nameMatch = block.match(/<(?:name|function|function_name)>\s*([^<]+?)\s*<\/(?:name|function|function_name)>/i);
+      if (!nameMatch) {
+        continue;
+      }
+
+      let rawArgs = {};
+      const argumentsMatch = block.match(/<(?:arguments|parameters)>\s*([\s\S]*?)\s*<\/(?:arguments|parameters)>/i);
+      if (argumentsMatch) {
+        rawArgs = this.#safeJSONParse(argumentsMatch[1].trim()) || {};
+      }
+      const parameterValues = Array.from(block.matchAll(/<parameter(?:\s+name="([^"]+)")?>\s*([\s\S]*?)\s*<\/parameter>/gi))
+        .map(parameterMatch => ({
+          name: parameterMatch[1],
+          value: parameterMatch[2].trim(),
+        }));
+      const malformedParameterValues = Array.from(block.matchAll(/<parameter=([A-Za-z_][\w-]*)>\s*<\/parameter>\s*<parameter>\s*([\s\S]*?)\s*<\/parameter>/gi))
+        .map(parameterMatch => ({
+          name: parameterMatch[1],
+          value: parameterMatch[2].trim(),
+        }));
+
+      if (Object.keys(rawArgs).length > 0) {
+        // Prefer explicit JSON arguments when provided.
+      } else if (malformedParameterValues.length > 0) {
+        for (const parameter of malformedParameterValues) {
+          rawArgs[parameter.name] = parameter.value;
+        }
+        for (let i = 0; i < parameterValues.length; i += 2) {
+          const current = parameterValues[i];
+          const next = parameterValues[i + 1];
+          if (current && next) {
+            rawArgs[current.value] = next.value;
+          }
+        }
+      } else if (parameterValues.length === 1) {
+        rawArgs.value = parameterValues[0].value;
+      } else {
+        for (let i = 0; i < parameterValues.length; i += 2) {
+          const current = parameterValues[i];
+          const next = parameterValues[i + 1];
+          if (current?.name) {
+            rawArgs[current.name] = current.value;
+          } else if (current && next) {
+            rawArgs[current.value] = next.value;
+          }
+        }
+      }
+
+      const { name, args } = this.#normalizeJSONToolCall(nameMatch[1], rawArgs);
+      if (!this.#toolRegistry?.has?.(name)) {
+        continue;
+      }
+
+      toolCalls.push({
+        id: `call_${Date.now()}_${toolCalls.length}`,
+        name,
+        arguments: this.#normalizeLooseArgs(name, args),
+        source: 'tool_call_tag',
+      });
+    }
+
+    return toolCalls;
+  }
+
+  #parseFunctionCallsFormat(text) {
+    const toolCalls = [];
+    const functionRegex = /<function>\s*([\s\S]*?)\s*<\/function>/gi;
+    let match;
+
+    while ((match = functionRegex.exec(text)) !== null) {
+      const block = match[1];
+      const nameMatch = block.match(/<name>\s*([^<]+?)\s*<\/name>/i);
+      if (!nameMatch) {
+        continue;
+      }
+
+      const rawArgs = {};
+      for (const parameterMatch of block.matchAll(/<parameter<([A-Za-z_][\w-]*)>\s*([\s\S]*?)\s*<\/parameter>/gi)) {
+        rawArgs[parameterMatch[1]] = parameterMatch[2].trim();
+      }
+      for (const parameterMatch of block.matchAll(/<parameter=([A-Za-z_][\w-]*)>\s*([\s\S]*?)(?=<\/function>|<parameter[=>]|$)/gi)) {
+        rawArgs[parameterMatch[1]] = parameterMatch[2].trim();
+      }
+
+      const parameterValues = Array.from(block.matchAll(/<parameter(?:\s+name="([^"]+)")?>\s*([\s\S]*?)\s*<\/parameter>/gi))
+        .map(parameterMatch => ({
+          name: parameterMatch[1],
+          value: parameterMatch[2].trim(),
+        }));
+      for (let i = 0; i < parameterValues.length; i += 2) {
+        const current = parameterValues[i];
+        const next = parameterValues[i + 1];
+        if (current?.name) {
+          rawArgs[current.name] = current.value;
+        } else if (current && next) {
+          rawArgs[current.value] = next.value;
+        }
+      }
+
+      const { name, args } = this.#normalizeJSONToolCall(nameMatch[1], rawArgs);
+      if (!this.#toolRegistry?.has?.(name)) {
+        continue;
+      }
+
+      toolCalls.push({
+        id: `call_${Date.now()}_${toolCalls.length}`,
+        name,
+        arguments: this.#normalizeLooseArgs(name, args),
+        source: 'function_calls',
+      });
+    }
+
+    return toolCalls;
+  }
+
   #parseFunctionCallTagFormat(text) {
     const toolCalls = [];
     const callRegex = /<function_call>\s*([\s\S]*?)\s*<\/function_call>/gi;
     let match;
 
     while ((match = callRegex.exec(text)) !== null) {
-      const body = match[1];
-      const nameMatch = body.match(/<function_name>\s*([^<]+?)\s*<\/function_name>/i)
-        || body.match(/<name>\s*([^<]+?)\s*<\/name>/i);
-      if (!nameMatch) continue;
-
-      const rawName = nameMatch[1].trim();
-      const resolved = this.#resolveFunctionTagToolName(rawName);
-      if (!this.#toolRegistry?.has?.(resolved)) {
+      const block = match[1];
+      const nameMatch = block.match(/<(?:name|function|function_name)>\s*([^<]+?)\s*<\/(?:name|function|function_name)>/i);
+      if (!nameMatch) {
         continue;
       }
 
-      const args = this.#extractFunctionTagArgs(body, resolved);
+      const { name } = this.#normalizeJSONToolCall(nameMatch[1], {});
+      if (!this.#toolRegistry?.has?.(name)) {
+        continue;
+      }
+
+      const rawArgs = this.#extractFunctionCallTagArgs(block);
+      const normalized = this.#normalizeJSONToolCall(nameMatch[1], rawArgs);
       toolCalls.push({
         id: `call_${Date.now()}_${toolCalls.length}`,
-        name: resolved,
-        arguments: args,
+        name: normalized.name,
+        arguments: this.#normalizeLooseArgs(normalized.name, normalized.args),
         source: 'function_call_tag',
       });
     }
@@ -246,54 +489,220 @@ export class TextToolParser {
     return toolCalls;
   }
 
-  #resolveFunctionTagToolName(name) {
-    const normalized = String(name || '').trim().replace(/^\//, '').toLowerCase();
-    if (['bash', 'terminal', 'exec', 'execute_command', 'run_command', 'run_in_terminal'].includes(normalized)) {
-      return 'shell';
-    }
-    return this.#resolveToolName(normalized);
-  }
-
-  #extractFunctionTagArgs(body, toolName) {
-    const parametersMatch = body.match(/<parameters>\s*([\s\S]*?)\s*<\/parameters>/i);
-    const parameters = parametersMatch ? parametersMatch[1].trim() : body;
-
+  #extractFunctionCallTagArgs(block) {
+    const parametersMatch = block.match(/<parameters>\s*([\s\S]*?)\s*<\/parameters>/i);
+    const parameters = parametersMatch ? parametersMatch[1].trim() : block;
     const json = this.#safeJSONParse(parameters);
     if (json && typeof json === 'object' && !Array.isArray(json)) {
-      return this.#normalizeFunctionTagArgs(json, toolName);
+      return json;
     }
 
     const args = {};
-    const parameterRegex = /<parameter(?:\s+name="([^"]+)")?>\s*([\s\S]*?)\s*<\/parameter>/gi;
-    let parameterMatch;
+    const parameterValues = Array.from(parameters.matchAll(/<parameter(?:\s+name="([^"]+)")?>\s*([\s\S]*?)\s*<\/parameter>/gi))
+      .map(parameterMatch => ({
+        name: parameterMatch[1],
+        value: parameterMatch[2].trim(),
+      }));
+
     let index = 0;
-
-    while ((parameterMatch = parameterRegex.exec(parameters)) !== null) {
-      let key = parameterMatch[1]?.trim();
-      let value = parameterMatch[2].trim();
+    for (const parameter of parameterValues) {
+      let key = parameter.name;
+      let value = parameter.value;
       const inlineName = value.match(/^([A-Za-z_][\w-]*)\s*\n([\s\S]*)$/);
-
       if (!key && inlineName) {
         key = inlineName[1];
         value = inlineName[2].trim();
       }
-
       args[key || `arg${index++}`] = value;
     }
 
-    return this.#normalizeFunctionTagArgs(args, toolName);
-  }
-
-  #normalizeFunctionTagArgs(args, toolName) {
-    if (toolName === 'shell') {
-      const command = args.command || args.commands || args.cmd || args.code || args.arg0;
-      return command ? { command } : args;
-    }
     return args;
   }
 
+  #parseNamedToolXMLFormat(text) {
+    const toolCalls = [];
+    const tools = this.#toolRegistry ? this.#toolRegistry.getAll() : [];
+    const tagToToolName = new Map();
+
+    for (const tool of tools) {
+      tagToToolName.set(tool.name, tool.name);
+    }
+    for (const [alias, runtimeName] of Object.entries(this.#namedXMLToolAliases())) {
+      if (this.#toolRegistry?.has?.(runtimeName)) {
+        tagToToolName.set(alias, runtimeName);
+      }
+    }
+
+    for (const [tagName, name] of tagToToolName) {
+      const escapedName = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const blockRegex = new RegExp(`<${escapedName}>\\s*([\\s\\S]*?)\\s*<\\/${escapedName}>`, 'gi');
+      let match;
+
+      while ((match = blockRegex.exec(text)) !== null) {
+        const args = {};
+        const argRegex = /<([A-Za-z_][\w-]*)>\s*([\s\S]*?)\s*<\/\1>/g;
+        let argMatch;
+
+        while ((argMatch = argRegex.exec(match[1])) !== null) {
+          args[argMatch[1]] = argMatch[2].trim();
+        }
+
+        toolCalls.push({
+          id: `call_${Date.now()}_${toolCalls.length}`,
+          name,
+          arguments: this.#normalizeLooseArgs(name, this.#normalizeToolArgumentAliases(name, args)),
+          source: 'named_tool_xml',
+        });
+      }
+    }
+
+    return toolCalls;
+  }
+
   /**
-   * 格式 8: 自然语言关键词匹配（fallback）
+   * 格式 6: <tool_code>print(ls("path"))</tool_code>
+   * Some upstream prompts teach Python-like helper names. Translate the common
+   * aliases into the runtime's registered tools so orchestration can continue.
+   */
+  #parseToolCodeFormat(text) {
+    const toolCalls = [];
+    const blocks = [];
+    const blockRegex = /<tool_code>\s*([\s\S]*?)\s*<\/tool_code>/gi;
+    let blockMatch;
+
+    while ((blockMatch = blockRegex.exec(text)) !== null) {
+      blocks.push(blockMatch[1]);
+    }
+
+    for (const block of blocks) {
+      toolCalls.push(...this.#parsePythonToolCodeBlock(block, toolCalls.length));
+
+      for (const call of this.#extractToolCodeCalls(block)) {
+        const rawName = call.name;
+        const mapped = this.#mapToolCodeName(rawName);
+        if (!mapped || !this.#toolRegistry?.has?.(mapped)) {
+          continue;
+        }
+
+        const parsedArgs = this.#parseToolCodeArgs(call.argsText);
+        const args = this.#normalizeToolCodeArgs(mapped, parsedArgs);
+        if (!args) {
+          continue;
+        }
+
+        toolCalls.push({
+          id: `call_${Date.now()}_${toolCalls.length}`,
+          name: mapped,
+          arguments: args,
+          source: 'tool_code',
+        });
+      }
+    }
+
+    return toolCalls;
+  }
+
+  #parsePythonToolCodeBlock(block, startIndex = 0) {
+    const text = String(block || '');
+    if (!this.#toolRegistry?.has?.('list_dir')) {
+      return [];
+    }
+
+    const walksWorkspace = /\bos\.walk\(\s*(['"])(.*?)\1\s*\)/.exec(text);
+    const listsWorkspace = /\bos\.listdir\(\s*(['"])(.*?)\1\s*\)/.exec(text);
+    const printsPaths = /print\s*\(\s*os\.path\.join\s*\(|print\s*\(\s*f\b|print\s*\(\s*path\b|print\s*\(\s*f\s*\)/.test(text);
+
+    if ((walksWorkspace || listsWorkspace) && printsPaths) {
+      return [{
+        id: `call_${Date.now()}_${startIndex}`,
+        name: 'list_dir',
+        arguments: { path: walksWorkspace?.[2] || listsWorkspace?.[2] || '.' },
+        source: 'tool_code_python',
+      }];
+    }
+
+    return [];
+  }
+
+  #extractToolCodeCalls(block) {
+    const calls = [];
+    const names = ['ls', 'list', 'list_dir', 'list_directory', 'inspect_workspace', 'cat', 'read', 'read_file', 'write', 'write_file', 'shell', 'bash', 'run', 'run_command', 'plan_solution'];
+    const namePattern = new RegExp(`\\b(${names.join('|')})\\s*\\(`, 'g');
+    let match;
+
+    while ((match = namePattern.exec(block)) !== null) {
+      const argsStart = namePattern.lastIndex;
+      const argsEnd = this.#findMatchingParen(block, argsStart - 1);
+      if (argsEnd === -1) {
+        continue;
+      }
+      calls.push({
+        name: match[1],
+        argsText: block.slice(argsStart, argsEnd),
+      });
+      namePattern.lastIndex = argsEnd + 1;
+    }
+
+    return calls;
+  }
+
+  #findMatchingParen(text, openIndex) {
+    let depth = 0;
+    let quote = null;
+    let tripleQuote = false;
+    let escaped = false;
+
+    for (let i = openIndex; i < text.length; i++) {
+      const char = text[i];
+      const nextTwo = text.slice(i, i + 3);
+
+      if (quote) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (char === '\\') {
+          escaped = true;
+          continue;
+        }
+        if (tripleQuote && nextTwo === quote.repeat(3)) {
+          i += 2;
+          quote = null;
+          tripleQuote = false;
+          continue;
+        }
+        if (!tripleQuote && char === quote) {
+          quote = null;
+        }
+        continue;
+      }
+
+      if (char === '"' || char === "'") {
+        quote = char;
+        tripleQuote = nextTwo === char.repeat(3);
+        if (tripleQuote) {
+          i += 2;
+        }
+        continue;
+      }
+
+      if (char === '(') {
+        depth++;
+        continue;
+      }
+      if (char === ')') {
+        depth--;
+        if (depth === 0) {
+          return i;
+        }
+      }
+    }
+
+    return -1;
+  }
+
+  /**
+   * 格式 6: 自然语言关键词匹配（fallback）
    */
   #parseNaturalLanguage(text) {
     const toolCalls = [];
@@ -441,6 +850,105 @@ export class TextToolParser {
     return value;
   }
 
+  #mapToolCodeName(rawName) {
+    const name = String(rawName || '').replace(/^\//, '');
+    const aliases = {
+      ls: 'list_dir',
+      list: 'list_dir',
+      list_dir: 'list_dir',
+      list_directory: 'list_dir',
+      inspect_workspace: 'list_dir',
+      cat: 'read_file',
+      read: 'read_file',
+      read_file: 'read_file',
+      write: 'write_file',
+      write_file: 'write_file',
+      shell: 'shell',
+      bash: 'shell',
+      run: 'shell',
+      run_command: 'shell',
+      execute_command: 'shell',
+      run_in_terminal: 'shell',
+      terminal: 'shell',
+      exec: 'shell',
+      plan_solution: 'brainstorm',
+    };
+    return aliases[name] || this.#resolveToolName(name);
+  }
+
+  #namedXMLToolAliases() {
+    return {
+      list_files: 'list_dir',
+      list_directory: 'list_dir',
+      ls: 'list_dir',
+      inspect_workspace: 'list_dir',
+      read: 'read_file',
+      cat: 'read_file',
+      write: 'write_file',
+      save_file: 'write_file',
+      run_command: 'shell',
+      execute_command: 'shell',
+      run_in_terminal: 'shell',
+      terminal: 'shell',
+      exec: 'shell',
+      bash: 'shell',
+      plan: 'brainstorm',
+      plan_solution: 'brainstorm',
+    };
+  }
+
+  #parseToolCodeArgs(argsText) {
+    const args = { positional: [] };
+    const text = String(argsText || '');
+    const stringRegex = /(?:([A-Za-z_][\w]*)\s*=\s*)?(?:"""([\s\S]*?)"""|'''([\s\S]*?)'''|"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')/g;
+    let match;
+
+    while ((match = stringRegex.exec(text)) !== null) {
+      const key = match[1];
+      const value = this.#decodeStringLiteral(match[2] ?? match[3] ?? match[4] ?? match[5] ?? '');
+      if (key) {
+        args[key] = value;
+      } else {
+        args.positional.push(value);
+      }
+    }
+
+    return args;
+  }
+
+  #decodeStringLiteral(value) {
+    return String(value)
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '\t')
+      .replace(/\\"/g, '"')
+      .replace(/\\'/g, "'")
+      .replace(/\\\\/g, '\\');
+  }
+
+  #normalizeToolCodeArgs(toolName, parsedArgs) {
+    if (toolName === 'list_dir') {
+      return { path: parsedArgs.path ?? parsedArgs.positional[0] ?? '.' };
+    }
+    if (toolName === 'read_file') {
+      const path = parsedArgs.path ?? parsedArgs.file ?? parsedArgs.file_path ?? parsedArgs.positional[0];
+      return path ? { path } : null;
+    }
+    if (toolName === 'write_file') {
+      const path = parsedArgs.path ?? parsedArgs.file ?? parsedArgs.file_path ?? parsedArgs.positional[0];
+      const content = parsedArgs.content ?? parsedArgs.text ?? parsedArgs.positional[1];
+      return path && content !== undefined ? { path, content } : null;
+    }
+    if (toolName === 'shell') {
+      const command = parsedArgs.command ?? parsedArgs.cmd ?? parsedArgs.positional[0];
+      return command ? { command } : null;
+    }
+    if (toolName === 'brainstorm') {
+      const problem = parsedArgs.problem ?? parsedArgs.positional[0] ?? 'Plan the requested implementation before editing files.';
+      return { problem };
+    }
+    return {};
+  }
+
   /**
    * 安全的 JSON 解析
    */
@@ -470,14 +978,15 @@ export class TextToolParser {
 
     const directName = json.name || json.tool;
     if (directName) {
-      const name = this.#resolveToolName(directName);
+      const originalArgs = json.arguments || json.args || json.params || {};
+      const { name, args } = this.#normalizeJSONToolCall(directName, originalArgs);
       if (!this.#toolRegistry?.has?.(name)) {
         return [];
       }
       return [{
         id: `call_${Date.now()}_${startIndex}`,
         name,
-        arguments: json.arguments || json.args || json.params || {},
+        arguments: args,
         source,
       }];
     }
@@ -490,8 +999,8 @@ export class TextToolParser {
       return [];
     }
 
-    const [rawName, args] = entries[0];
-    const name = this.#resolveFunctionTagToolName(rawName);
+    const [rawName, originalArgs] = entries[0];
+    const { name, args } = this.#normalizeJSONToolCall(rawName, originalArgs);
     if (!this.#toolRegistry?.has?.(name)) {
       return [];
     }
@@ -499,10 +1008,7 @@ export class TextToolParser {
     return [{
       id: `call_${Date.now()}_${startIndex}`,
       name,
-      arguments: this.#normalizeFunctionTagArgs(
-        args && typeof args === 'object' && !Array.isArray(args) ? args : {},
-        name
-      ),
+      arguments: args && typeof args === 'object' && !Array.isArray(args) ? args : {},
       source,
     }];
   }
@@ -518,7 +1024,97 @@ export class TextToolParser {
       return underscored;
     }
 
+    const snakeCase = rawName
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .replace(/-/g, '_')
+      .toLowerCase();
+    if (this.#toolRegistry?.has?.(snakeCase)) {
+      return snakeCase;
+    }
+
     return rawName;
+  }
+
+  #normalizeJSONToolCall(rawName, originalArgs) {
+    const args = originalArgs && typeof originalArgs === 'object' && !Array.isArray(originalArgs)
+      ? originalArgs
+      : {};
+    const name = String(rawName || '').replace(/^\//, '');
+    const snakeName = name
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .replace(/-/g, '_')
+      .toLowerCase();
+
+    const aliases = {
+      list_directory: 'list_dir',
+      list_files: 'list_dir',
+      ls: 'list_dir',
+      read: 'read_file',
+      cat: 'read_file',
+      write: 'write_file',
+      save_file: 'write_file',
+      run_command: 'shell',
+      execute_command: 'shell',
+      run_in_terminal: 'shell',
+      terminal: 'shell',
+      exec: 'shell',
+      bash: 'shell',
+      plan: 'brainstorm',
+      plan_solution: 'brainstorm',
+    };
+
+    if (snakeName === 'create_directory' || snakeName === 'mkdir') {
+      const path = args.path || args.dir || args.directory || '.';
+      return {
+        name: 'shell',
+        args: { command: `mkdir -p ${this.#shellQuote(path)}` },
+      };
+    }
+
+    const resolvedName = aliases[snakeName] || this.#resolveToolName(name);
+    if (resolvedName === 'shell' && !args.command && (args.cmd || args.path || args.commands || args.code || args.arg0 || args.value)) {
+      return {
+        name: resolvedName,
+        args: { ...args, command: args.cmd || args.path || args.commands || args.code || args.arg0 || args.value },
+      };
+    }
+    if (resolvedName === 'brainstorm') {
+      return {
+        name: resolvedName,
+        args: { problem: args.problem || args.steps || args.plan || args.value || 'Plan the requested implementation before editing files.' },
+      };
+    }
+
+    return { name: resolvedName, args: this.#normalizeToolArgumentAliases(resolvedName, args) };
+  }
+
+  #normalizeLooseArgs(toolName, args) {
+    if (toolName === 'list_dir' && args.value && !args.path) {
+      return { ...args, path: args.value };
+    }
+    if (toolName === 'list_dir' && !args.path) {
+      return { ...args, path: '.' };
+    }
+    if (toolName === 'read_file' && args.value && !args.path) {
+      return { ...args, path: args.value };
+    }
+    if (toolName === 'shell' && args.value && !args.command) {
+      return { ...args, command: args.value };
+    }
+    return args;
+  }
+
+  #normalizeToolArgumentAliases(toolName, args) {
+    if ((toolName === 'read_file' || toolName === 'write_file' || toolName === 'edit_file' || toolName === 'list_dir')
+      && !args.path
+      && (args.file_path || args.file || args.filename)) {
+      return { ...args, path: args.file_path || args.file || args.filename };
+    }
+    return args;
+  }
+
+  #shellQuote(value) {
+    return `'${String(value).replace(/'/g, `'\\''`)}'`;
   }
 
   /**
