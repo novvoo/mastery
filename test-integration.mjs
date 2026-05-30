@@ -1888,6 +1888,7 @@ conversationProtocolTests.test('Text parser accepts action tag and raw JSON acti
   const functionCalls = parser.parse('<function_calls>\n<function>\n<name>list_dir</name>\n<parameter<path>.</parameter>\n</function>\n</function_calls>');
   const functionPlanCalls = parser.parse('<function_calls>\n<function>\n<name>plan_solution</name>\n<parameter=plan>\nCreate 2048 files\n</function>\n</function_calls>');
   const emptyListFilesAliasCalls = parser.parse('<list_files>\n</list_files>');
+  const shellFenceCalls = parser.parse('```bash\nls -la\n```');
   const rawJSONCalls = parser.parse(JSON.stringify({
     memory: 'User wants files',
     next_goal: 'List directory',
@@ -1941,6 +1942,9 @@ conversationProtocolTests.test('Text parser accepts action tag and raw JSON acti
   }
   if (emptyListFilesAliasCalls.length !== 1 || emptyListFilesAliasCalls[0].name !== 'list_dir' || emptyListFilesAliasCalls[0].arguments.path !== '.') {
     throw new Error(`Expected empty list_files XML alias to map to list_dir '.', got ${JSON.stringify(emptyListFilesAliasCalls)}`);
+  }
+  if (shellFenceCalls.length !== 1 || shellFenceCalls[0].name !== 'shell' || shellFenceCalls[0].arguments.command !== 'ls -la') {
+    throw new Error(`Expected bash code fence to map to shell command, got ${JSON.stringify(shellFenceCalls)}`);
   }
   if (rawJSONCalls.length !== 1 || rawJSONCalls[0].name !== 'list_dir' || rawJSONCalls[0].arguments.path !== '.') {
     throw new Error(`Expected raw JSON list_dir call, got ${JSON.stringify(rawJSONCalls)}`);

@@ -9,7 +9,8 @@
  * 4. {"action": {"tool_name": {"param": "value"}}}
  * 5. <tool>tool_name</tool><arg>value</arg>
  * 6. <tool_code>print(ls("path"))</tool_code> style code emitted by some models
- * 7. 自然语言描述（通过关键词匹配）
+ * 7. ```bash\ncommand\n``` shell code fences emitted by some models
+ * 8. 自然语言描述（通过关键词匹配）
  */
 
 export class TextToolParser {
@@ -43,6 +44,7 @@ export class TextToolParser {
     toolCalls.push(...this.#parseXMLFormat(text));
     toolCalls.push(...this.#parseNamedToolXMLFormat(text));
     toolCalls.push(...this.#parseToolCodeFormat(text));
+    toolCalls.push(...this.#parseShellCodeBlockFormat(text));
     if (toolCalls.length === 0) {
       toolCalls.push(...this.#parseNaturalLanguage(text));
     }
@@ -97,6 +99,42 @@ export class TextToolParser {
       } catch (e) {
         // 不是有效的工具调用 JSON
       }
+    }
+
+    return toolCalls;
+  }
+
+  #parseShellCodeBlockFormat(text) {
+    if (!this.#toolRegistry?.has?.('shell')) {
+      return [];
+    }
+
+    const toolCalls = [];
+    const blockRegex = /```(?:bash|sh|zsh|shell|terminal|console)\s*\n([\s\S]*?)```/gi;
+    let match;
+
+    while ((match = blockRegex.exec(text)) !== null) {
+      const command = match[1].trim();
+      if (!command || command.startsWith('$')) {
+        const normalized = command.replace(/^\$\s*/, '').trim();
+        if (!normalized) {
+          continue;
+        }
+        toolCalls.push({
+          id: `call_${Date.now()}_${toolCalls.length}`,
+          name: 'shell',
+          arguments: { command: normalized },
+          source: 'shell_code_block',
+        });
+        continue;
+      }
+
+      toolCalls.push({
+        id: `call_${Date.now()}_${toolCalls.length}`,
+        name: 'shell',
+        arguments: { command },
+        source: 'shell_code_block',
+      });
     }
 
     return toolCalls;
