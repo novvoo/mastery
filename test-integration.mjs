@@ -1887,6 +1887,7 @@ conversationProtocolTests.test('Text parser accepts action tag and raw JSON acti
   const namedXmlCalls = parser.parse('<list_dir>\n<path>.</path>\n</list_dir>');
   const functionCalls = parser.parse('<function_calls>\n<function>\n<name>list_dir</name>\n<parameter<path>.</parameter>\n</function>\n</function_calls>');
   const functionPlanCalls = parser.parse('<function_calls>\n<function>\n<name>plan_solution</name>\n<parameter=plan>\nCreate 2048 files\n</function>\n</function_calls>');
+  const emptyListFilesAliasCalls = parser.parse('<list_files>\n</list_files>');
   const rawJSONCalls = parser.parse(JSON.stringify({
     memory: 'User wants files',
     next_goal: 'List directory',
@@ -1938,6 +1939,9 @@ conversationProtocolTests.test('Text parser accepts action tag and raw JSON acti
   if (functionPlanCalls.length !== 1 || functionPlanCalls[0].name !== 'brainstorm' || !functionPlanCalls[0].arguments.problem.includes('2048')) {
     throw new Error(`Expected function_calls plan_solution to map to brainstorm, got ${JSON.stringify(functionPlanCalls)}`);
   }
+  if (emptyListFilesAliasCalls.length !== 1 || emptyListFilesAliasCalls[0].name !== 'list_dir' || emptyListFilesAliasCalls[0].arguments.path !== '.') {
+    throw new Error(`Expected empty list_files XML alias to map to list_dir '.', got ${JSON.stringify(emptyListFilesAliasCalls)}`);
+  }
   if (rawJSONCalls.length !== 1 || rawJSONCalls[0].name !== 'list_dir' || rawJSONCalls[0].arguments.path !== '.') {
     throw new Error(`Expected raw JSON list_dir call, got ${JSON.stringify(rawJSONCalls)}`);
   }
@@ -1974,6 +1978,14 @@ conversationProtocolTests.test('Text parser translates upstream tool_code helper
     ...parser.parse('<tool_code>\nprint(write_file("viewport.html", "<meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0\\">\\n<script>Array.from({ length: 4 }, () => 0)</script>"))\n</tool_code>'),
     ...parser.parse('<tool_code>\ninspect_workspace()\n</tool_code>'),
     ...parser.parse('<tool_code>\nplan_solution()\n</tool_code>'),
+    ...parser.parse(`<tool_code>
+import os
+for root, dirs, files in os.walk('.'):
+    if '.git' in root or '__pycache__' in root or 'node_modules' in root:
+        continue
+    for f in files:
+        print(os.path.join(root, f))
+</tool_code>`),
   ];
 
   const listCall = calls.find(call => call.name === 'list_dir');
@@ -1983,6 +1995,7 @@ conversationProtocolTests.test('Text parser translates upstream tool_code helper
   const escapedWriteCall = calls.find(call => call.name === 'write_file' && call.arguments.path === 'escaped.html');
   const viewportWriteCall = calls.find(call => call.name === 'write_file' && call.arguments.path === 'viewport.html');
   const inspectCall = calls.find(call => call.name === 'list_dir' && call.source === 'tool_code' && call.arguments.path === '.');
+  const pythonInspectCall = calls.find(call => call.name === 'list_dir' && call.source === 'tool_code_python' && call.arguments.path === '.');
   const planCall = calls.find(call => call.name === 'brainstorm');
   if (listCall?.arguments.path !== 'real-2048-test') {
     throw new Error(`Expected ls helper to map to list_dir path, got ${JSON.stringify(calls)}`);
@@ -2004,6 +2017,9 @@ conversationProtocolTests.test('Text parser translates upstream tool_code helper
   }
   if (!inspectCall) {
     throw new Error(`Expected inspect_workspace helper to map to list_dir '.', got ${JSON.stringify(calls)}`);
+  }
+  if (!pythonInspectCall) {
+    throw new Error(`Expected Python os.walk tool_code to map to list_dir '.', got ${JSON.stringify(calls)}`);
   }
   if (planCall?.arguments.problem !== 'Plan the requested implementation before editing files.') {
     throw new Error(`Expected plan_solution helper to map to brainstorm, got ${JSON.stringify(calls)}`);

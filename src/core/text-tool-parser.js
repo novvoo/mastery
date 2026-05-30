@@ -409,10 +409,19 @@ export class TextToolParser {
   #parseNamedToolXMLFormat(text) {
     const toolCalls = [];
     const tools = this.#toolRegistry ? this.#toolRegistry.getAll() : [];
+    const tagToToolName = new Map();
 
     for (const tool of tools) {
-      const name = tool.name;
-      const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      tagToToolName.set(tool.name, tool.name);
+    }
+    for (const [alias, runtimeName] of Object.entries(this.#namedXMLToolAliases())) {
+      if (this.#toolRegistry?.has?.(runtimeName)) {
+        tagToToolName.set(alias, runtimeName);
+      }
+    }
+
+    for (const [tagName, name] of tagToToolName) {
+      const escapedName = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const blockRegex = new RegExp(`<${escapedName}>\\s*([\\s\\S]*?)\\s*<\\/${escapedName}>`, 'gi');
       let match;
 
@@ -428,7 +437,7 @@ export class TextToolParser {
         toolCalls.push({
           id: `call_${Date.now()}_${toolCalls.length}`,
           name,
-          arguments: this.#normalizeToolArgumentAliases(name, args),
+          arguments: this.#normalizeLooseArgs(name, this.#normalizeToolArgumentAliases(name, args)),
           source: 'named_tool_xml',
         });
       }
@@ -453,6 +462,8 @@ export class TextToolParser {
     }
 
     for (const block of blocks) {
+      toolCalls.push(...this.#parsePythonToolCodeBlock(block, toolCalls.length));
+
       for (const call of this.#extractToolCodeCalls(block)) {
         const rawName = call.name;
         const mapped = this.#mapToolCodeName(rawName);
@@ -476,6 +487,28 @@ export class TextToolParser {
     }
 
     return toolCalls;
+  }
+
+  #parsePythonToolCodeBlock(block, startIndex = 0) {
+    const text = String(block || '');
+    if (!this.#toolRegistry?.has?.('list_dir')) {
+      return [];
+    }
+
+    const walksWorkspace = /\bos\.walk\(\s*(['"])(.*?)\1\s*\)/.exec(text);
+    const listsWorkspace = /\bos\.listdir\(\s*(['"])(.*?)\1\s*\)/.exec(text);
+    const printsPaths = /print\s*\(\s*os\.path\.join\s*\(|print\s*\(\s*f\b|print\s*\(\s*path\b|print\s*\(\s*f\s*\)/.test(text);
+
+    if ((walksWorkspace || listsWorkspace) && printsPaths) {
+      return [{
+        id: `call_${Date.now()}_${startIndex}`,
+        name: 'list_dir',
+        arguments: { path: walksWorkspace?.[2] || listsWorkspace?.[2] || '.' },
+        source: 'tool_code_python',
+      }];
+    }
+
+    return [];
   }
 
   #extractToolCodeCalls(block) {
@@ -726,6 +759,24 @@ export class TextToolParser {
     return aliases[name] || this.#resolveToolName(name);
   }
 
+  #namedXMLToolAliases() {
+    return {
+      list_files: 'list_dir',
+      list_directory: 'list_dir',
+      ls: 'list_dir',
+      inspect_workspace: 'list_dir',
+      read: 'read_file',
+      cat: 'read_file',
+      write: 'write_file',
+      save_file: 'write_file',
+      run_command: 'shell',
+      execute_command: 'shell',
+      bash: 'shell',
+      plan: 'brainstorm',
+      plan_solution: 'brainstorm',
+    };
+  }
+
   #parseToolCodeArgs(argsText) {
     const args = { positional: [] };
     const text = String(argsText || '');
@@ -917,6 +968,9 @@ export class TextToolParser {
   #normalizeLooseArgs(toolName, args) {
     if (toolName === 'list_dir' && args.value && !args.path) {
       return { ...args, path: args.value };
+    }
+    if (toolName === 'list_dir' && !args.path) {
+      return { ...args, path: '.' };
     }
     if (toolName === 'read_file' && args.value && !args.path) {
       return { ...args, path: args.value };
