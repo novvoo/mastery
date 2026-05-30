@@ -36,6 +36,7 @@ import { createFileSystemTools } from './tools/filesystem/filesystem-tools.js';
 import { createShellTool } from './tools/system/shell.js';
 import { createPtyTools, stopAllPtySessions } from './tools/system/pty.js';
 import { createSemanticSearchTool } from './tools/memory/semantic-search.js';
+import { createWebTools } from './tools/web/web-tools.js';
 import { createTaskTools } from './tools/scheduler/task-tools.js';
 import { createScheduleTools } from './tools/scheduler/schedule-tools.js';
 import { createSubAgentTools } from './tools/scheduler/subagent-tools.js';
@@ -235,6 +236,11 @@ class AIEngineeringAgent {
       toolRegistry.register(tool);
     }
     toolRegistry.register(createSemanticSearchTool());
+
+    // Register browser-like web search and fetch tools
+    for (const tool of createWebTools()) {
+      toolRegistry.register(tool);
+    }
 
     // Register skill tools
     const skillTools = [

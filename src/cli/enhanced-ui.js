@@ -209,6 +209,49 @@ function formatDebugValue(value, maxLength = 800) {
   return text.length > maxLength ? text.substring(0, maxLength) + '... (truncated)' : text;
 }
 
+function tryParseJSON(value) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    return null;
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function formatToolResultPreview(name, result) {
+  const parsed = tryParseJSON(result);
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    if (name === 'web_search') {
+      const count = Array.isArray(parsed.results) ? parsed.results.length : 0;
+      const provider = parsed.provider ? ` via ${parsed.provider}` : '';
+      const query = parsed.query ? ` for "${truncate(parsed.query, 60)}"` : '';
+      return `${count} result${count === 1 ? '' : 's'}${provider}${query}`;
+    }
+    if (name === 'web_fetch') {
+      const status = parsed.status ? `HTTP ${parsed.status}` : 'fetched';
+      const chars = typeof parsed.text === 'string' ? `, ${parsed.text.length} chars` : '';
+      const url = parsed.url ? ` ${truncate(parsed.url, 90)}` : '';
+      return `${status}${chars}${url}`;
+    }
+    if (name === 'browser_open') {
+      const state = parsed.opened ? 'opened' : 'ready';
+      const target = parsed.target ? ` ${truncate(parsed.target, 90)}` : '';
+      return `${state}${target}`;
+    }
+  }
+
+  const text = typeof result === 'string'
+    ? result
+    : JSON.stringify(result);
+  return truncate(String(text || '').replace(/\n/g, ' '), 180);
+}
+
 /**
  * 增强版 UI 对象
  */
@@ -304,10 +347,8 @@ export const enhancedUI = {
 
   // 工具结果显示
   toolResult(name, result) {
-    const preview = typeof result === 'string' 
-      ? (result.length > 100 ? result.substring(0, 100) + '...' : result)
-      : JSON.stringify(result).substring(0, 100);
-    console.log(theme.success(`  ✅ ${name}: ${theme.dim(preview.replace(/\n/g, ' '))}`));
+    const preview = formatToolResultPreview(name, result);
+    console.log(theme.success(`  ✅ ${name}: ${theme.dim(preview)}`));
   },
 
   // 工具错误显示

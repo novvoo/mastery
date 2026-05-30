@@ -8,12 +8,14 @@
 export const ToolCategory = Object.freeze({
   FILESYSTEM: 'filesystem',
   SYSTEM: 'system',
+  WEB: 'web',
   SKILL_ENGINEERING: 'skill_engineering',
   SKILL_PRODUCTIVITY: 'skill_productivity',
   SKILL_OUTPUT: 'skill_output',
   // Lowercase aliases for convenience
   filesystem: 'filesystem',
   system: 'system',
+  web: 'web',
   skill_engineering: 'skill_engineering',
   skill_productivity: 'skill_productivity',
   skill_output: 'skill_output',

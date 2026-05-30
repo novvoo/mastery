@@ -63,16 +63,19 @@ export class TextToolParser {
     let match;
 
     while ((match = callRegex.exec(text)) !== null) {
-      const name = this.#resolveToolName(match[1]);
       const argsStr = match[2];
       
       try {
         const args = this.#safeJSONParse(argsStr);
         if (args) {
+          const { name, args: normalizedArgs } = this.#normalizeJSONToolCall(match[1], args);
+          if (this.#toolRegistry?.has && !this.#toolRegistry.has(name)) {
+            continue;
+          }
           toolCalls.push({
             id: `call_${Date.now()}_${toolCalls.length}`,
             name,
-            arguments: args,
+            arguments: args && typeof args === 'object' && !Array.isArray(args) ? normalizedArgs : args,
             source: 'CALL_format',
           });
         }
@@ -195,6 +198,10 @@ export class TextToolParser {
 
   #parseEmbeddedJSONActionFormat(text) {
     if (!text.includes('"action"') && !text.includes("'action'")) {
+      return [];
+    }
+    const trimmed = text.trim();
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
       return [];
     }
 
@@ -664,7 +671,7 @@ export class TextToolParser {
 
   #extractToolCodeCalls(block) {
     const calls = [];
-    const names = ['ls', 'list', 'list_dir', 'list_directory', 'inspect_workspace', 'cat', 'read', 'read_file', 'write', 'write_file', 'shell', 'bash', 'run', 'run_command', 'plan_solution'];
+    const names = ['ls', 'list', 'list_dir', 'list_directory', 'inspect_workspace', 'cat', 'read', 'read_file', 'write', 'write_file', 'shell', 'bash', 'run', 'run_command', 'web_search', 'search_web', 'browser_search', 'web_fetch', 'fetch_url', 'plan_solution'];
     const namePattern = new RegExp(`\\b(${names.join('|')})\\s*\\(`, 'g');
     let match;
 
@@ -909,6 +916,14 @@ export class TextToolParser {
       run_in_terminal: 'shell',
       terminal: 'shell',
       exec: 'shell',
+      search_web: 'web_search',
+      browser_search: 'web_search',
+      web_search: 'web_search',
+      google: 'web_search',
+      internet_search: 'web_search',
+      fetch_url: 'web_fetch',
+      browser_fetch: 'web_fetch',
+      web_fetch: 'web_fetch',
       plan_solution: 'brainstorm',
     };
     return aliases[name] || this.#resolveToolName(name);
@@ -930,6 +945,12 @@ export class TextToolParser {
       terminal: 'shell',
       exec: 'shell',
       bash: 'shell',
+      search_web: 'web_search',
+      browser_search: 'web_search',
+      google: 'web_search',
+      internet_search: 'web_search',
+      fetch_url: 'web_fetch',
+      browser_fetch: 'web_fetch',
       plan: 'brainstorm',
       plan_solution: 'brainstorm',
     };
@@ -980,6 +1001,14 @@ export class TextToolParser {
       const command = parsedArgs.command ?? parsedArgs.cmd ?? parsedArgs.positional[0];
       return command ? { command } : null;
     }
+    if (toolName === 'web_search') {
+      const query = parsedArgs.query ?? parsedArgs.q ?? parsedArgs.text ?? parsedArgs.positional[0];
+      return query ? { query } : null;
+    }
+    if (toolName === 'web_fetch') {
+      const url = parsedArgs.url ?? parsedArgs.href ?? parsedArgs.link ?? parsedArgs.positional[0];
+      return url ? { url } : null;
+    }
     if (toolName === 'brainstorm') {
       const problem = parsedArgs.problem ?? parsedArgs.positional[0] ?? 'Plan the requested implementation before editing files.';
       return { problem };
@@ -1012,6 +1041,11 @@ export class TextToolParser {
   #toolCallsFromJSON(json, source, startIndex = 0) {
     if (!json || typeof json !== 'object' || Array.isArray(json)) {
       return [];
+    }
+
+    const browserActionCall = this.#browserActionCallFromJSON(json, source, startIndex);
+    if (browserActionCall) {
+      return [browserActionCall];
     }
 
     const directName = json.name || json.tool;
@@ -1049,6 +1083,118 @@ export class TextToolParser {
       arguments: args && typeof args === 'object' && !Array.isArray(args) ? args : {},
       source,
     }];
+  }
+
+  #browserActionCallFromJSON(json, source, startIndex) {
+    const browserActions = new Set(['navigate', 'go_to', 'goto', 'open_url', 'open_page', 'browse', 'browser']);
+    const action = json.action && typeof json.action === 'object' && !Array.isArray(json.action)
+      ? json.action
+      : json;
+    const entries = Object.entries(action);
+    if (entries.length !== 1) {
+      return null;
+    }
+
+    const [rawName, rawArgs] = entries[0];
+    const actionName = String(rawName || '')
+      .replace(/^\//, '')
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .replace(/-/g, '_')
+      .toLowerCase();
+    if (!browserActions.has(actionName)) {
+      return null;
+    }
+
+    const args = rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? rawArgs : {};
+    const url = args.url || args.href || args.link || args.value;
+    const explicitQuery = args.query || args.q || args.search || args.text || args.keywords;
+    const searchQuery = explicitQuery || this.#queryFromSearchURL(url) || this.#inferSearchQuery(json);
+
+    if (searchQuery && this.#toolRegistry?.has?.('web_search') && this.#isSearchNavigation(url)) {
+      return {
+        id: `call_${Date.now()}_${startIndex}`,
+        name: 'web_search',
+        arguments: { query: searchQuery },
+        source: `${source}_browser_action`,
+      };
+    }
+
+    if (url && this.#toolRegistry?.has?.('web_fetch')) {
+      return {
+        id: `call_${Date.now()}_${startIndex}`,
+        name: 'web_fetch',
+        arguments: { url },
+        source: `${source}_browser_action`,
+      };
+    }
+
+    if (searchQuery && this.#toolRegistry?.has?.('web_search')) {
+      return {
+        id: `call_${Date.now()}_${startIndex}`,
+        name: 'web_search',
+        arguments: { query: searchQuery },
+        source: `${source}_browser_action`,
+      };
+    }
+
+    return null;
+  }
+
+  #isSearchNavigation(url) {
+    if (!url) {
+      return true;
+    }
+    try {
+      const parsed = new globalThis.URL(String(url));
+      const host = parsed.hostname.toLowerCase();
+      return host.includes('google.')
+        || host.includes('bing.')
+        || host.includes('duckduckgo.')
+        || host.includes('baidu.')
+        || host.includes('search.yahoo.');
+    } catch {
+      return false;
+    }
+  }
+
+  #queryFromSearchURL(url) {
+    if (!url) {
+      return '';
+    }
+    try {
+      const parsed = new globalThis.URL(String(url));
+      return parsed.searchParams.get('q')
+        || parsed.searchParams.get('query')
+        || parsed.searchParams.get('wd')
+        || parsed.searchParams.get('p')
+        || '';
+    } catch {
+      return '';
+    }
+  }
+
+  #inferSearchQuery(json) {
+    const fields = [
+      json.query,
+      json.q,
+      json.search,
+      json.user_request,
+      json.input,
+      json.task,
+      json.next_goal,
+      json.memory,
+      json.evaluation_previous_goal,
+    ];
+    const text = fields.find(value => typeof value === 'string' && value.trim());
+    if (!text) {
+      return '';
+    }
+    return text
+      .replace(/^Beginning task to\s+/i, '')
+      .replace(/\bNeed to navigate\b[\s\S]*$/i, '')
+      .replace(/\bNeed to search\b[\s\S]*$/i, '')
+      .trim()
+      .replace(/\s+/g, ' ');
   }
 
   #resolveToolName(name) {
@@ -1097,6 +1243,12 @@ export class TextToolParser {
       terminal: 'shell',
       exec: 'shell',
       bash: 'shell',
+      search_web: 'web_search',
+      browser_search: 'web_search',
+      google: 'web_search',
+      internet_search: 'web_search',
+      fetch_url: 'web_fetch',
+      browser_fetch: 'web_fetch',
       plan: 'brainstorm',
       plan_solution: 'brainstorm',
     };
@@ -1122,6 +1274,24 @@ export class TextToolParser {
         args: { problem: args.problem || args.steps || args.plan || args.value || 'Plan the requested implementation before editing files.' },
       };
     }
+    if (resolvedName === 'web_search') {
+      return {
+        name: resolvedName,
+        args: {
+          ...args,
+          query: args.query || args.q || args.text || args.value || args.question,
+        },
+      };
+    }
+    if (resolvedName === 'web_fetch') {
+      return {
+        name: resolvedName,
+        args: {
+          ...args,
+          url: args.url || args.href || args.link || args.value,
+        },
+      };
+    }
 
     return { name: resolvedName, args: this.#normalizeToolArgumentAliases(resolvedName, args) };
   }
@@ -1138,6 +1308,12 @@ export class TextToolParser {
     }
     if (toolName === 'shell' && args.value && !args.command) {
       return { ...args, command: args.value };
+    }
+    if (toolName === 'web_search' && args.value && !args.query) {
+      return { ...args, query: args.value };
+    }
+    if (toolName === 'web_fetch' && args.value && !args.url) {
+      return { ...args, url: args.value };
     }
     return args;
   }

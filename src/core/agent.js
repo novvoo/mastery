@@ -288,7 +288,7 @@ export class ReActAgent {
 
         // Check for termination
         if (this.#isTermination(response.text)) {
-          const answer = this.#extractFinalAnswer(response.text);
+          const answer = this.#normalizeFinalAnswer(this.#extractFinalAnswer(response.text));
           this.#debugEvent('Final answer emitted', {
             iteration,
             totalDurationMs: Date.now() - runStartedAt,
@@ -304,13 +304,14 @@ export class ReActAgent {
         // complete and no tool call is present, surface it instead of making a
         // hidden continuation request that looks like a hang in the terminal.
         if (allToolCalls.length === 0 && response.finishReason === 'stop' && response.text?.trim()) {
+          const answer = this.#normalizeFinalAnswer(response.text);
           this.#debugEvent('Final answer emitted', {
             iteration,
             totalDurationMs: Date.now() - runStartedAt,
             reason: 'provider_stop_without_tool_calls',
-            answerPreview: this.#preview(response.text, 300),
+            answerPreview: this.#preview(answer, 300),
           });
-          this.#ui.finalAnswer(response.text.trim());
+          this.#ui.finalAnswer(answer);
           this.#sessionManager.addAssistantMessage(response.text);
           return;
         }
@@ -804,6 +805,43 @@ export class ReActAgent {
       }
     }
     return response;
+  }
+
+  #normalizeFinalAnswer(response) {
+    const text = String(response || '').trim();
+    if (!text) {
+      return text;
+    }
+
+    const parsed = this.#parseJSONAnswer(text);
+    const doneText = parsed?.action?.done?.text || parsed?.done?.text;
+    if (typeof doneText === 'string' && doneText.trim()) {
+      return doneText.trim();
+    }
+
+    const directText = parsed?.text || parsed?.answer || parsed?.final_answer;
+    if (typeof directText === 'string' && directText.trim()) {
+      return directText.trim();
+    }
+
+    return text;
+  }
+
+  #parseJSONAnswer(text) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      const firstBrace = text.indexOf('{');
+      const lastBrace = text.lastIndexOf('}');
+      if (firstBrace === -1 || lastBrace <= firstBrace) {
+        return null;
+      }
+      try {
+        return JSON.parse(text.slice(firstBrace, lastBrace + 1));
+      } catch {
+        return null;
+      }
+    }
   }
 
   /**

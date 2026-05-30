@@ -1871,6 +1871,18 @@ conversationProtocolTests.test('Text parser accepts action tag and raw JSON acti
     parameters: { problem: { type: 'string' } },
     async handler() {},
   });
+  registry.register({
+    name: 'web_search',
+    description: 'Search the web',
+    parameters: { query: { type: 'string' }, max_results: { type: 'number' } },
+    async handler() {},
+  });
+  registry.register({
+    name: 'web_fetch',
+    description: 'Fetch a web page',
+    parameters: { url: { type: 'string' } },
+    async handler() {},
+  });
 
   const parser = new TextToolParser(registry);
   const actionTagCalls = parser.parse('<action>\n{"glob": {"pattern": "*.js"}}\n</action>');
@@ -1889,6 +1901,20 @@ conversationProtocolTests.test('Text parser accepts action tag and raw JSON acti
   const functionPlanCalls = parser.parse('<function_calls>\n<function>\n<name>plan_solution</name>\n<parameter=plan>\nCreate 2048 files\n</function>\n</function_calls>');
   const emptyListFilesAliasCalls = parser.parse('<list_files>\n</list_files>');
   const shellFenceCalls = parser.parse('```bash\nls -la\n```');
+  const webSearchAliasCalls = parser.parse('<search_web>\n<query>上海 当前天气</query>\n</search_web>');
+  const webSearchCallAliasCalls = parser.parse('CALL browser_search({"q":"Shanghai current weather"})');
+  const webFetchAliasCalls = parser.parse('<fetch_url>\n<url>https://example.com/weather</url>\n</fetch_url>');
+  const browserNavigateSearchCalls = parser.parse(JSON.stringify({
+    memory: 'Beginning task to find current weather in Shanghai. Need to navigate to a weather service or search engine.',
+    action: {
+      navigate: { url: 'https://www.google.com' },
+    },
+  }, null, 2));
+  const browserNavigateFetchCalls = parser.parse(JSON.stringify({
+    action: {
+      open_url: { url: 'https://example.com/weather' },
+    },
+  }));
   const rawJSONCalls = parser.parse(JSON.stringify({
     memory: 'User wants files',
     next_goal: 'List directory',
@@ -1945,6 +1971,21 @@ conversationProtocolTests.test('Text parser accepts action tag and raw JSON acti
   }
   if (shellFenceCalls.length !== 1 || shellFenceCalls[0].name !== 'shell' || shellFenceCalls[0].arguments.command !== 'ls -la') {
     throw new Error(`Expected bash code fence to map to shell command, got ${JSON.stringify(shellFenceCalls)}`);
+  }
+  if (webSearchAliasCalls.length !== 1 || webSearchAliasCalls[0].name !== 'web_search' || webSearchAliasCalls[0].arguments.query !== '上海 当前天气') {
+    throw new Error(`Expected search_web XML alias to map to web_search, got ${JSON.stringify(webSearchAliasCalls)}`);
+  }
+  if (webSearchCallAliasCalls.length !== 1 || webSearchCallAliasCalls[0].name !== 'web_search' || webSearchCallAliasCalls[0].arguments.query !== 'Shanghai current weather') {
+    throw new Error(`Expected browser_search CALL alias to map q to web_search query, got ${JSON.stringify(webSearchCallAliasCalls)}`);
+  }
+  if (webFetchAliasCalls.length !== 1 || webFetchAliasCalls[0].name !== 'web_fetch' || webFetchAliasCalls[0].arguments.url !== 'https://example.com/weather') {
+    throw new Error(`Expected fetch_url XML alias to map to web_fetch url, got ${JSON.stringify(webFetchAliasCalls)}`);
+  }
+  if (browserNavigateSearchCalls.length !== 1 || browserNavigateSearchCalls[0].name !== 'web_search' || !browserNavigateSearchCalls[0].arguments.query.includes('current weather in Shanghai')) {
+    throw new Error(`Expected browser navigate to search engine to map to web_search, got ${JSON.stringify(browserNavigateSearchCalls)}`);
+  }
+  if (browserNavigateFetchCalls.length !== 1 || browserNavigateFetchCalls[0].name !== 'web_fetch' || browserNavigateFetchCalls[0].arguments.url !== 'https://example.com/weather') {
+    throw new Error(`Expected browser open_url to normal page to map to web_fetch, got ${JSON.stringify(browserNavigateFetchCalls)}`);
   }
   if (rawJSONCalls.length !== 1 || rawJSONCalls[0].name !== 'list_dir' || rawJSONCalls[0].arguments.path !== '.') {
     throw new Error(`Expected raw JSON list_dir call, got ${JSON.stringify(rawJSONCalls)}`);
@@ -2027,6 +2068,64 @@ for root, dirs, files in os.walk('.'):
   }
   if (planCall?.arguments.problem !== 'Plan the requested implementation before editing files.') {
     throw new Error(`Expected plan_solution helper to map to brainstorm, got ${JSON.stringify(calls)}`);
+  }
+});
+
+conversationProtocolTests.test('Web tools parse browser-like search results and fetch cleaned page text', async () => {
+  const { createWebTools } = await import('./src/tools/web/web-tools.js');
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    if (String(url).includes('duckduckgo.com')) {
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return `
+            <a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fweather.example%2Ftoday" class='result-link'>Weather Now</a>
+            <td class="result-snippet">Current weather summary &amp; temperature.</td>
+          `;
+        },
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      async text() {
+        return '<html><head><script>ignore()</script></head><body><h1>Weather Now</h1><p>22°C and cloudy.</p></body></html>';
+      },
+    };
+  };
+
+  try {
+    const tools = createWebTools();
+    const webSearch = tools.find(tool => tool.name === 'web_search');
+    const webFetch = tools.find(tool => tool.name === 'web_fetch');
+    const browserOpen = tools.find(tool => tool.name === 'browser_open');
+    const searchResult = JSON.parse(await webSearch.handler({ query: 'Shanghai current weather', max_results: 1 }, {}));
+    if (searchResult.results[0]?.url !== 'https://weather.example/today' || !searchResult.results[0]?.snippet.includes('Current weather')) {
+      throw new Error(`Expected parsed web search result, got ${JSON.stringify(searchResult)}`);
+    }
+
+    const fetchResult = JSON.parse(await webFetch.handler({ url: searchResult.results[0].url }, {}));
+    if (!fetchResult.text.includes('22°C and cloudy') || fetchResult.text.includes('ignore()')) {
+      throw new Error(`Expected cleaned fetched page text, got ${JSON.stringify(fetchResult)}`);
+    }
+    if (calls.length < 2) {
+      throw new Error(`Expected search and fetch calls, got ${JSON.stringify(calls)}`);
+    }
+
+    const openResult = JSON.parse(await browserOpen.handler({
+      target: 'weather-card.html',
+      dry_run: true,
+    }, { workingDirectory: TEST_CONFIG.testDir }));
+    if (openResult.opened !== false || !openResult.target.startsWith('file://') || !openResult.command) {
+      throw new Error(`Expected browser_open dry-run for local file target, got ${JSON.stringify(openResult)}`);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 
@@ -2693,6 +2792,86 @@ conversationProtocolTests.test('Provider stop response without FINAL_ANSWER is s
   }
   if (finalAnswers[0] !== 'Plain completed response without explicit marker.') {
     throw new Error(`Expected plain response to be surfaced, got ${JSON.stringify(finalAnswers)}`);
+  }
+});
+
+conversationProtocolTests.test('Provider stop JSON done action is unwrapped as final answer text', async () => {
+  const { ReActAgent } = await import('./src/core/agent.js');
+  const { ToolRegistry } = await import('./src/core/tool-registry.js');
+  const { MemoryManager } = await import('./src/memory/memory-manager.js');
+
+  const finalAnswers = [];
+  const recordingUI = {
+    iteration() {},
+    toolCall() {},
+    toolResult() {},
+    toolError() {},
+    warn() {},
+    error() {},
+    info() {},
+    debug() {},
+    debugEvent() {},
+    finalAnswer(text) {
+      finalAnswers.push(text);
+    },
+  };
+
+  const mockProvider = {
+    async chat() {
+      return {
+        text: JSON.stringify({
+          evaluation_previous_goal: 'Fetched weather page. Verdict: Success',
+          action: {
+            done: {
+              success: true,
+              text: 'Current Weather in Shanghai: 30°C and cloudy.',
+            },
+          },
+        }, null, 2),
+        toolCalls: [],
+        finishReason: 'stop',
+      };
+    },
+    getMaxContextTokens() {
+      return 4000;
+    },
+    dispose() {},
+  };
+
+  const agent = new ReActAgent(mockProvider, new ToolRegistry(), new MemoryManager(TEST_CONFIG.testDir), {
+    maxIterations: 5,
+    workingDirectory: TEST_CONFIG.testDir,
+  }, recordingUI);
+
+  await agent.run('answer weather');
+
+  if (finalAnswers[0] !== 'Current Weather in Shanghai: 30°C and cloudy.') {
+    throw new Error(`Expected JSON done text to be unwrapped, got ${JSON.stringify(finalAnswers)}`);
+  }
+});
+
+conversationProtocolTests.test('Enhanced UI summarizes web tool JSON results in one line', async () => {
+  const { enhancedUI } = await import('./src/cli/enhanced-ui.js');
+  const originalLog = console.log;
+  const lines = [];
+  console.log = (...args) => {
+    lines.push(args.join(' '));
+  };
+
+  try {
+    enhancedUI.toolResult('web_fetch', JSON.stringify({
+      url: 'https://www.accuweather.com/en/cn/shanghai/106577/weather-forecast/106577',
+      status: 200,
+      fetched_at: '2026-05-30T05:06:39.638Z',
+      text: 'x'.repeat(4814),
+    }, null, 2));
+  } finally {
+    console.log = originalLog;
+  }
+
+  const rendered = lines.join('\n');
+  if (!rendered.includes('HTTP 200') || !rendered.includes('4814 chars') || rendered.includes('"fetched_at"')) {
+    throw new Error(`Expected concise web_fetch preview, got ${JSON.stringify(rendered)}`);
   }
 });
 
