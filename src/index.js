@@ -649,83 +649,84 @@ class AIEngineeringAgent {
     if (!input) return true;
 
     const command = input.toLowerCase();
+    const commandName = command.split(/\s+/, 1)[0];
+    const argsText = input.slice(input.match(/^\S+/)?.[0]?.length || 0).trim();
 
     // Exit commands
-    if (['exit', 'quit', '/exit', '/quit'].includes(command)) {
+    if (['exit', 'quit', '/exit', '/quit'].includes(commandName)) {
       return false;
     }
 
     // Help
-    if (['/help', '/?', 'help'].includes(command)) {
+    if (['/help', '/?', 'help'].includes(commandName)) {
       this.commands.showHelp();
       return true;
     }
 
     // Clear/reset
-    if (['/clear', '/reset', 'clear'].includes(command)) {
+    if (['/clear', '/reset', 'clear'].includes(commandName)) {
       console.clear();
       this.showWelcome();
       return true;
     }
 
     // Interactive menu
-    if (['/menu', 'menu'].includes(command)) {
+    if (['/menu', 'menu'].includes(commandName)) {
       await this.showInteractiveMenu();
       return true;
     }
 
     // Task commands
-    if (command.startsWith('/task')) {
-      const args = input.slice(5).trim();
-      await this.commands.handleTaskCommand(args);
+    if (['/task', '/tasks'].includes(commandName)) {
+      await this.commands.handleTaskCommand(argsText || 'list');
       return true;
     }
 
     // Schedule commands
-    if (command.startsWith('/schedule')) {
-      const args = input.slice(9).trim();
-      await this.commands.handleScheduleCommand(args);
+    if (['/schedule', '/schedules'].includes(commandName)) {
+      await this.commands.handleScheduleCommand(argsText || 'list');
       return true;
     }
 
     // SubAgent commands
-    if (command.startsWith('/subagent')) {
-      const args = input.slice(9).trim();
-      await this.commands.handleSubAgentCommand(args);
+    if (['/subagent', '/subagents'].includes(commandName)) {
+      await this.commands.handleSubAgentCommand(argsText || 'list');
       return true;
     }
 
     // Git commands
-    if (command.startsWith('/git')) {
-      const args = input.slice(4).trim();
-      await this.commands.handleGitCommand(args);
+    if (commandName === '/git') {
+      await this.commands.handleGitCommand(argsText);
       return true;
     }
 
     // MCP commands
-    if (command.startsWith('/mcp')) {
-      const args = input.slice(4).trim();
-      await this.commands.handleMcpCommand(args);
+    if (commandName === '/mcp') {
+      await this.commands.handleMcpCommand(argsText);
       return true;
     }
 
     // Security commands
-    if (command.startsWith('/security')) {
-      const args = input.slice(9).trim();
-      await this.commands.handleSecurityCommand(args);
+    if (commandName === '/security') {
+      await this.commands.handleSecurityCommand(argsText);
       return true;
     }
 
     // Experience commands
-    if (command.startsWith('/experience')) {
-      const args = input.slice(11).trim();
-      await this.commands.handleExperienceCommand(args);
+    if (commandName === '/experience') {
+      await this.commands.handleExperienceCommand(argsText);
+      return true;
+    }
+
+    // Project memory/context commands
+    if (['/memory', '/context'].includes(commandName)) {
+      this.showMemoryContext(argsText);
       return true;
     }
 
     // Compress command
-    if (command.startsWith('/compress')) {
-      const text = input.slice(9).trim();
+    if (commandName === '/compress') {
+      const text = argsText;
       if (text) {
         const compressed = this.tokenJuice.compress(text);
         const stats = this.tokenJuice.getStats(text, compressed);
@@ -742,34 +743,32 @@ class AIEngineeringAgent {
     }
 
     // Reasoning commands
-    if (command.startsWith('/reason')) {
-      const args = input.slice(7).trim();
-      await this.commands.handleReasonCommand(args);
+    if (commandName === '/reason') {
+      await this.commands.handleReasonCommand(argsText);
       return true;
     }
 
     // Automation commands
-    if (command.startsWith('/auto')) {
-      const args = input.slice(5).trim();
-      await this.commands.handleAutoCommand(args);
+    if (commandName === '/auto') {
+      await this.commands.handleAutoCommand(argsText);
       return true;
     }
 
     // Statistics
-    if (['/stats', '/status', 'stats'].includes(command)) {
+    if (['/stats', '/status', 'stats'].includes(commandName)) {
       await this.commands.showStatistics();
       return true;
     }
 
     // Tools list
-    if (['/tools', '/list'].includes(command)) {
+    if (['/tools', '/list'].includes(commandName)) {
       this.showTools();
       return true;
     }
 
     // Debug command
-    if (command.startsWith('/debug')) {
-      const args = input.slice(6).trim();
+    if (commandName === '/debug') {
+      const args = argsText.toLowerCase();
       
       // 如果有具体参数，处理它
       if (args === 'on' || args === 'enable') {
@@ -825,9 +824,8 @@ class AIEngineeringAgent {
     }
 
     // Model commands
-    if (command.startsWith('/model')) {
-      const args = input.slice(6).trim();
-      await this.handleModelCommand(args);
+    if (commandName === '/model') {
+      await this.handleModelCommand(argsText);
       return true;
     }
 
@@ -838,6 +836,75 @@ class AIEngineeringAgent {
     // Regular input - process through agent
     await this.processAgentInput(input);
     return true;
+  }
+
+  showMemoryContext(argsText = '') {
+    const mode = String(argsText || '').trim().toLowerCase();
+    const memoryManager = this.agent?.memoryManager;
+    if (!memoryManager) {
+      enhancedUI.error('Project memory is not initialized');
+      return;
+    }
+
+    const context = memoryManager.getContext();
+    console.log(enhancedUI.createHeader('Project Memory Context'));
+    console.log(`Path: ${memoryManager.getContextPath()}`);
+    console.log(`Project: ${context.projectInfo?.name || '(unknown)'}`);
+    console.log(`Working directory: ${context.projectInfo?.path || this.workingDir}`);
+    console.log('');
+    console.log('Current Task');
+    console.log(`  Status: ${context.currentTask?.status || '(none)'}`);
+    console.log(`  Phase: ${context.currentTask?.phase || '(none)'}`);
+    console.log(`  Description: ${context.currentTask?.description || '(none)'}`);
+
+    if (mode === 'full') {
+      console.log('');
+      console.log(memoryManager.toMarkdown());
+      return;
+    }
+
+    const decisions = context.keyDecisions || [];
+    const constraints = context.constraints || [];
+    const files = context.fileMap || [];
+    const sessions = context.sessionHistory || [];
+    const notes = context.notes || [];
+
+    if (decisions.length > 0) {
+      console.log('');
+      console.log('Recent Decisions');
+      for (const decision of decisions.slice(-5)) {
+        console.log(`  - ${decision.decision}: ${decision.reason}`);
+      }
+    }
+
+    if (constraints.length > 0) {
+      console.log('');
+      console.log('Constraints');
+      for (const constraint of constraints.slice(-8)) {
+        console.log(`  - ${constraint}`);
+      }
+    }
+
+    if (files.length > 0) {
+      console.log('');
+      console.log('Recent File Map');
+      for (const file of files.slice(-8)) {
+        console.log(`  - ${file.file}: ${file.purpose}`);
+      }
+    }
+
+    if (notes.length > 0) {
+      console.log('');
+      console.log('Notes');
+      for (const note of notes.slice(-5)) {
+        console.log(`  - ${note}`);
+      }
+    }
+
+    console.log('');
+    console.log(`Sessions: ${sessions.length}`);
+    console.log(enhancedUI.theme.dim('Use /memory full to print the full CONTEXT.md representation.'));
+    console.log('');
   }
 
   async #processSlashToolCommand(input) {

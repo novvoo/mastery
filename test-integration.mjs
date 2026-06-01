@@ -4028,6 +4028,93 @@ cliInputLoopTests.test('CLI slash skill command executes local tool without LLM 
   }
 });
 
+cliInputLoopTests.test('CLI built-in aliases show memory and list resources without LLM requests', async () => {
+  const cliTestDir = join(TEST_CONFIG.testDir, 'cli-command-aliases');
+  mkdirSync(cliTestDir, { recursive: true });
+
+  let output = '';
+  const child = spawn(process.execPath, ['src/index.js'], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      DEBUG: 'false',
+      MODEL_PROVIDER: 'openai',
+      OPENAI_API_KEY: 'test-key',
+      OPENAI_MODEL: 'qwen3.5-plus',
+      WORKING_DIRECTORY: cliTestDir,
+      MCP_BROWSER_ENABLED: 'false',
+      MODEL_CAPABILITY_LOOKUP: 'false',
+    },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  child.stdout.on('data', chunk => {
+    output += chunk.toString();
+  });
+  child.stderr.on('data', chunk => {
+    output += chunk.toString();
+  });
+
+  try {
+    await waitForOutput(
+      () => output,
+      text => text.includes('[You]') || text.includes('❯'),
+      10000,
+      'initial CLI prompt'
+    );
+
+    child.stdin.write('/memory\n');
+    await waitForOutput(
+      () => output,
+      text => text.includes('Project Memory Context') && text.includes('Current Task'),
+      10000,
+      'memory context command output'
+    );
+
+    child.stdin.write('/tasks\n');
+    await waitForOutput(
+      () => output,
+      text => text.includes('No tasks found'),
+      10000,
+      'tasks alias output'
+    );
+
+    child.stdin.write('/schedules\n');
+    await waitForOutput(
+      () => output,
+      text => text.includes('No schedules found'),
+      10000,
+      'schedules alias output'
+    );
+
+    child.stdin.write('/subagents\n');
+    await waitForOutput(
+      () => output,
+      text => text.includes('No active subagents'),
+      10000,
+      'subagents alias output'
+    );
+
+    child.stdin.write('/task\n');
+    child.stdin.write('/schedule\n');
+    child.stdin.write('/subagent\n');
+    await waitForOutput(
+      () => output,
+      text => (text.match(/No tasks found/g) || []).length >= 2 &&
+        (text.match(/No schedules found/g) || []).length >= 2 &&
+        (text.match(/No active subagents/g) || []).length >= 2,
+      10000,
+      'singular default list output'
+    );
+
+    child.stdin.write('exit\n');
+  } finally {
+    if (!child.killed) {
+      child.kill('SIGTERM');
+    }
+  }
+});
+
 // ============ 8. 长时间运行测试 ============
 const longevityTests = new TestRunner('Long-Running Stability');
 
