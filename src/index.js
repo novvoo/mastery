@@ -946,6 +946,8 @@ class AIEngineeringAgent {
     }
 
     try {
+      const displayCommand = `/${rawName}${argsText ? ` ${argsText}` : ''}`;
+      console.log(`${enhancedUI.theme.dim('Running slash command:')} ${displayCommand}`);
       enhancedUI.toolCall(toolName, parsed.args);
       const result = await toolRegistry.execute(toolName, parsed.args, {
         workingDirectory: this.workingDir,

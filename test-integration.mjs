@@ -4010,10 +4010,17 @@ cliInputLoopTests.test('CLI slash skill command executes local tool without LLM 
     child.stdin.write('/tdd phase=red component=SlashCommand spec="direct slash input executes a local skill tool"\n');
     await waitForOutput(
       () => output,
-      text => text.includes('TDD: RED Phase') && text.includes('SlashCommand'),
+      text => text.includes('Running slash command:') &&
+        text.includes('/tdd phase=red') &&
+        text.includes('TDD: RED Phase') &&
+        text.includes('SlashCommand'),
       15000,
       'slash skill command output'
     );
+
+    if (output.includes('/tddphase=red')) {
+      throw new Error(`Slash command echo lost the command/argument space. Output:\n${output.slice(-4000)}`);
+    }
 
     if (requests.length !== 0) {
       throw new Error(`Expected slash skill command to avoid LLM requests, got ${requests.length}`);
