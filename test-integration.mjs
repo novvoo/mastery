@@ -4007,6 +4007,37 @@ cliInputLoopTests.test('CLI slash skill command executes local tool without LLM 
       'initial CLI prompt'
     );
 
+    child.stdin.write('/git --help\n');
+    await waitForOutput(
+      () => output,
+      text => text.includes('Command Help: /git') &&
+        text.includes('Convenience Git commands') &&
+        text.includes('/git diff [--staged] [--stat] [file...]'),
+      15000,
+      'builtin direct help output'
+    );
+
+    child.stdin.write('/help auto\n');
+    await waitForOutput(
+      () => output,
+      text => text.includes('Command Help: /auto') &&
+        text.includes('Inspect and control the automation engine') &&
+        text.includes('/auto start'),
+      15000,
+      'builtin named help output'
+    );
+
+    child.stdin.write('/help skills\n');
+    await waitForOutput(
+      () => output,
+      text => text.includes('Slash Skill Commands') &&
+        text.includes('/tdd') &&
+        text.includes('/review') &&
+        text.includes('Natural language also works'),
+      15000,
+      'slash skill list help output'
+    );
+
     child.stdin.write('/tdd\n');
     await waitForOutput(
       () => output,
