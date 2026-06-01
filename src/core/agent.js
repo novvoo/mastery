@@ -3,15 +3,14 @@
  * Core reasoning loop: Thought -> Action -> Observation -> repeat
  */
 
-import { ToolRegistry } from './tool-registry.js';
 import { SessionManager } from './session-manager.js';
-import { MemoryManager } from '../memory/memory-manager.js';
 import { buildSystemPrompt } from '../prompts/system-prompt.js';
 import { classifyError, RetryStrategy, withTimeout } from '../errors/error-handler.js';
 import { ui } from '../cli/ui.js';
 import { TextToolParser } from './text-tool-parser.js';
 import { IntentClassifier } from './intent-classifier.js';
 import { ExecutionPlan, TaskStatus } from '../planner/graph-planner.js';
+import { DynamicContextPruning } from './dynamic-context-pruning.js';
 
 const TERMINATION_KEYWORDS = ['FINAL_ANSWER:', 'Answer:', 'TASK_COMPLETE'];
 const MAX_ITERATIONS_DEFAULT = 30;
@@ -88,6 +87,8 @@ export class ReActAgent {
   #requiredMutationPaths = new Set();
   /** @type {Set<string>} */
   #completedMutationPaths = new Set();
+  #lastRunResult = null;
+  #contextPruner = null;
 
   constructor(modelProvider, toolRegistry, memoryManager, config = {}, customUI = ui) {
     this.#modelProvider = modelProvider;
@@ -98,13 +99,14 @@ export class ReActAgent {
       workingDirectory: config.workingDirectory || process.cwd(),
       ...config,
     };
-    this.#sessionManager = new SessionManager();
+    this.#sessionManager = new SessionManager(config.session || {});
     this.#retryStrategy = new RetryStrategy();
     this.#textToolParser = new TextToolParser(toolRegistry);
     this.#intentClassifier = config.intentClassification
       ? new IntentClassifier(modelProvider, toolRegistry, config.intentClassifier || {})
       : null;
     this.#ui = customUI;
+    this.#contextPruner = config.contextPruner || new DynamicContextPruning();
   }
 
   /**
@@ -112,6 +114,15 @@ export class ReActAgent {
    */
   async run(userInput) {
     const runStartedAt = Date.now();
+    this.#lastRunResult = {
+      success: false,
+      status: 'running',
+      answer: '',
+      reason: null,
+      iterations: 0,
+      durationMs: 0,
+      toolEvents: [],
+    };
     this.#debugEvent('Agent run started', {
       inputPreview: this.#preview(userInput, 240),
       workingDirectory: this.#config.workingDirectory,
@@ -271,7 +282,14 @@ export class ReActAgent {
           });
           this.#ui.finalAnswer(answer);
           this.#sessionManager.addAssistantMessage(response.text);
-          return;
+          return this.#completeRun({
+            success: true,
+            status: 'completed',
+            answer,
+            reason: 'completed_plan_provider_stop_without_marker',
+            iterations: iteration,
+            startedAt: runStartedAt,
+          });
         }
 
         if (
@@ -339,7 +357,14 @@ export class ReActAgent {
           });
           this.#ui.finalAnswer(answer);
           this.#sessionManager.addAssistantMessage(response.text);
-          return;
+          return this.#completeRun({
+            success: true,
+            status: 'completed',
+            answer,
+            reason: 'final_answer_marker',
+            iterations: iteration,
+            startedAt: runStartedAt,
+          });
         }
 
         // OpenAI-compatible models often finish naturally without following the
@@ -356,7 +381,14 @@ export class ReActAgent {
           });
           this.#ui.finalAnswer(answer);
           this.#sessionManager.addAssistantMessage(response.text);
-          return;
+          return this.#completeRun({
+            success: true,
+            status: 'completed',
+            answer,
+            reason: 'provider_stop_without_tool_calls',
+            iterations: iteration,
+            startedAt: runStartedAt,
+          });
         }
 
         // If no tool calls and no termination, prompt to continue
@@ -405,7 +437,15 @@ export class ReActAgent {
 
         if (agentError.severity === 'fatal') {
           this.#ui.error('Fatal error. Stopping agent.');
-          return;
+          return this.#completeRun({
+            success: false,
+            status: 'failed',
+            answer: '',
+            reason: 'fatal_error',
+            iterations: iteration,
+            startedAt: runStartedAt,
+            error: agentError.message,
+          });
         }
 
         // Add error as observation and continue
@@ -420,6 +460,14 @@ export class ReActAgent {
     this.#debugEvent('Agent run stopped at max iterations', {
       maxIterations,
       totalDurationMs: Date.now() - runStartedAt,
+    });
+    return this.#completeRun({
+      success: false,
+      status: 'max_iterations',
+      answer: '',
+      reason: 'max_iterations',
+      iterations: maxIterations,
+      startedAt: runStartedAt,
     });
   }
 
@@ -474,6 +522,19 @@ export class ReActAgent {
       return;
     }
 
+    const securityBlock = this.#enforceToolSecurity(name, args);
+    if (securityBlock) {
+      this.#debugEvent('Tool call blocked by security policy', {
+        tool: name,
+        arguments: args,
+        reason: securityBlock,
+      });
+      this.#ui.toolError(name, securityBlock);
+      this.#recordToolEvent(name, args, false, `Security policy blocked tool call: ${securityBlock}`);
+      this.#addToolObservation(id, name, `Error: Security policy blocked ${name}: ${securityBlock}`, resultMode);
+      return;
+    }
+
     this.#debugEvent('Tool call started', {
       id,
       tool: name,
@@ -501,17 +562,19 @@ export class ReActAgent {
         `Tool ${name}`
       );
 
+      const finalResult = this.#applyToolSecurityResultPolicy(name, result);
+
       this.#debugEvent('Tool call completed', {
         tool: name,
         durationMs: Date.now() - startedAt,
-        resultChars: this.#contentLength(result),
-        resultPreview: this.#preview(typeof result === 'string' ? result : JSON.stringify(result), 300),
+        resultChars: this.#contentLength(finalResult),
+        resultPreview: this.#preview(typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult), 300),
       });
-      this.#ui.toolResult(name, result);
-      this.#recordToolEvent(name, args, true, result);
-      this.#toolResultCache.set(callSignature, typeof result === 'string' ? result : JSON.stringify(result));
-      this.#addToolObservation(id, name, result, resultMode);
-      this.#advanceAutomaticPlan(name, args, result);
+      this.#ui.toolResult(name, finalResult);
+      this.#recordToolEvent(name, args, true, finalResult);
+      this.#toolResultCache.set(callSignature, typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult));
+      this.#addToolObservation(id, name, finalResult, resultMode);
+      this.#advanceAutomaticPlan(name, args, finalResult);
 
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -534,6 +597,37 @@ export class ReActAgent {
       success,
       resultPreview: this.#preview(typeof result === 'string' ? result : JSON.stringify(result), 300),
     });
+  }
+
+  #enforceToolSecurity(name, args) {
+    const policy = this.#config.securityPolicy;
+    if (!policy) {
+      return null;
+    }
+
+    if (typeof policy.requiresApproval === 'function' && policy.requiresApproval(name)) {
+      return 'approval_required';
+    }
+
+    if (typeof policy.validateToolCall === 'function') {
+      const result = policy.validateToolCall(name, args);
+      if (result === false) {
+        return 'denied';
+      }
+      if (result && result.allowed === false) {
+        return result.reason || 'denied';
+      }
+    }
+
+    return null;
+  }
+
+  #applyToolSecurityResultPolicy(name, result) {
+    const policy = this.#config.securityPolicy;
+    if (policy && typeof policy.truncateResult === 'function') {
+      return policy.truncateResult(name, result);
+    }
+    return result;
   }
 
   #createAutomaticExecutionPlan(userInput, profile) {
@@ -903,10 +997,26 @@ export class ReActAgent {
         threshold,
         messagesBefore: this.#sessionManager.getHistory().length,
       });
-      this.#sessionManager.trimToContextWindow(maxTokens * 0.6, { minRecentMessages: 6 });
+      let stats = null;
+      if (this.#contextPruner) {
+        this.#contextPruner.updateConfig?.({
+          maxTokens,
+          targetTokens: Math.floor(maxTokens * 0.6),
+          preserveRecentMessages: 6,
+        });
+        stats = this.#sessionManager.trimWithPruner(this.#contextPruner, {
+          maxTokens,
+          targetTokens: Math.floor(maxTokens * 0.6),
+          preserveRecentMessages: 6,
+          minMessages: 6,
+        });
+      } else {
+        this.#sessionManager.trimToContextWindow(maxTokens * 0.6, { minRecentMessages: 6 });
+      }
       this.#debugEvent('Context window trimmed', {
         estimatedTokens: this.#sessionManager.getTokenCount(),
         messagesAfter: this.#sessionManager.getHistory().length,
+        stats,
       });
     }
   }
@@ -941,6 +1051,35 @@ export class ReActAgent {
     if (typeof this.#ui.setDebugMode === 'function') {
       this.#ui.setDebugMode(enabled);
     }
+  }
+
+  get memoryManager() {
+    return this.#memoryManager;
+  }
+
+  get sessionManager() {
+    return this.#sessionManager;
+  }
+
+  getLastRunResult() {
+    return this.#lastRunResult ? { ...this.#lastRunResult } : null;
+  }
+
+  #completeRun({ success, status, answer, reason, iterations, startedAt, error }) {
+    const result = {
+      success,
+      status,
+      answer,
+      reason,
+      iterations,
+      durationMs: Date.now() - startedAt,
+      toolEvents: this.#runToolEvents.map(event => ({ ...event })),
+    };
+    if (error) {
+      result.error = error;
+    }
+    this.#lastRunResult = result;
+    return result;
   }
 
   #isDebugEnabled() {

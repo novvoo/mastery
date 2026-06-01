@@ -18,7 +18,7 @@
     "test:debug": "node --inspect-brk test-integration.mjs",
     "test:integration": "node test-integration.mjs",
     "test:watch": "node --watch test-integration.mjs",
-    "lint": "eslint src/ --ext .js",
+    "lint": "eslint src test-integration.mjs",
     "format": "prettier --write \"src/**/*.js\"",
     "format:check": "prettier --check \"src/**/*.js\""
   },

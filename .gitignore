@@ -7,7 +7,9 @@ CONTEXT.md
 HANDOFF.md
 .sandboxes/
 .test-temp/
-.github/
+.github/*
+!.github/workflows/
+!.github/workflows/*.yml
 workspace
 logs
 test*.json

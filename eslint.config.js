@@ -17,6 +17,8 @@ export default [
         Math: "readonly",
         JSON: "readonly",
         Date: "readonly",
+        Intl: "readonly",
+        global: "readonly",
         encodeURIComponent: "readonly",
         decodeURIComponent: "readonly",
         fetch: "readonly",

@@ -301,7 +301,8 @@ export class SubAgent {
       // 设置成功结果
       this.#result = {
         taskId: task.id,
-        output: agentResult,
+        output: agentResult?.answer || '',
+        agentResult,
         completedAt: Date.now()
       };
       this.#status = SubAgentStatus.COMPLETED;
@@ -456,27 +457,22 @@ export class SubAgent {
    */
   receiveMessage(message) {
     // 处理来自父代理或其他代理的消息
-    console.log(`SubAgent ${this.#id} received message:`, message.event);
 
     switch (message.event) {
       case 'command:stop':
         this.stop();
         break;
       case 'command:pause':
-        // 暂停逻辑（如果需要）
-        console.log(`SubAgent ${this.#id} received pause command`);
+        this.#notifyParent('task:pause_requested', { agentId: this.#id });
         break;
       case 'data:update':
-        // 处理数据更新
-        console.log(`SubAgent ${this.#id} received data update`);
         // 更新共享上下文
         if (message.data?.sharedContext) {
           this.#sharedContext = { ...this.#sharedContext, ...message.data.sharedContext };
         }
         break;
       default:
-        // 未知事件类型
-        console.log(`SubAgent ${this.#id} received unknown event: ${message.event}`);
+        this.#notifyParent('message:ignored', { agentId: this.#id, event: message.event });
     }
   }
 

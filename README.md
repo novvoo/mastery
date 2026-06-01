@@ -13,7 +13,7 @@
 - **Web 查询链路**：`web_search` 默认优先 Bing，失败或无结果时 fallback 到 DuckDuckGo；需要详情时继续 `web_fetch`。
 - **本地系统工具**：文件读写、目录列表、shell、PTY、语义搜索、浏览器打开等工具统一通过 tool registry 暴露。
 - **默认安静运行**：`DEBUG=false` 为默认模式；需要排障时可用 `/debug on` 或 `npm run start:debug` 打开详细事件日志。
-- **集成测试覆盖**：`test-integration.mjs` 覆盖 Agent 循环、工具解析、Web 搜索、CLI 输入、调试开关、编码守门和稳定性。
+- **集成测试覆盖**：`test-integration.mjs` 覆盖 Agent 循环、工具解析、Web 搜索、CLI 输入、编码守门和稳定性。
 
 ## 运行链路
 
@@ -55,6 +55,13 @@ Agent 的工程方法论可以概括为六步：
 5. **证据验证**：运行测试、lint、构建、`node --check` 或 `verify/review`，失败则继续修复。
 6. **收口清楚**：最终答案说明改了什么、验证了什么、还有什么风险或限制。
 
+实际运行时采用“证据型守门”，而不是固定死板的流程编排：
+
+- 系统提示会鼓励新功能先 `brainstorm`、实现时用 `tdd`、完成前 `verify`。
+- Agent completion gate 的强制条件更宽松：非平凡编码任务需要至少一个成功的方法论工具证据，但不强制必须是 `brainstorm` 或 `tdd`。
+- 变更后的验证可以是 `verify` / `review`，也可以是等价的 fresh verification command，例如 `npm test`、`node --check`、`tsc`、`pytest`、`lint` 等。
+- 小型、显然的单文件任务可以跳过部分方法论工具，但仍应读回结果并给出验证证据。
+
 方法论工具的推荐用法：
 
 - `setup`：项目缺少上下文文档时初始化。
@@ -75,6 +82,19 @@ Agent 的工程方法论可以概括为六步：
 3. DuckDuckGo HTML
 
 搜索结果只提供标题、摘要和 URL。遇到天气、新闻、价格、汇率、文档变更等时效信息，Agent 应先 `web_search`，再对最相关结果调用 `web_fetch` 获取可引用内容。
+
+如果 Bing 请求成功但解析不到结果，会记录 provider no-results 事件并继续 fallback。这个 fallback 是可接受行为，不代表没有优先尝试 Bing。
+
+## 上下文管理
+
+当前 Agent 自动上下文管理由 `SessionManager` 保存会话，并在接近上下文窗口时调用 `DynamicContextPruning`：
+
+- token 数量使用 CJK-aware fallback 估算
+- 超过模型上下文窗口 80% 时触发裁剪
+- 裁剪目标约为窗口 60%，并保留 system prompt、重要消息和最近消息
+- `SessionManager` 会在动态裁剪后再次确保至少保留最近 6 条消息，避免 continuation prompt 或当前用户请求被剪掉
+
+`DynamicContextPruning` 支持重要性评分、recent/system message 保留、压缩建议和更细的 token counter。`Tokenizer` 仍是独立能力和测试对象，目前没有作为 `SessionManager` 的默认精确 tokenizer。
 
 ## 调试策略
 
@@ -136,7 +156,7 @@ npm start              # 运行 CLI Agent
 npm run start:debug    # 带详细调试日志运行
 npm run dev            # node --watch 开发模式
 npm test               # 运行完整集成测试
-npm run lint           # 当前脚本依赖旧 ESLint 参数，建议临时使用 npx eslint src
+npm run lint           # 运行 ESLint
 npx eslint src/tools/web/web-tools.js
 ```
 
@@ -186,6 +206,14 @@ ai-engineering-mastery-agent/
 - 如果模型输出未能解析的工具语法，Agent 会要求重发合法工具调用，而不是直接结束。
 - 默认关闭 debug，避免正常使用时被 `🔍` 日志刷屏。
 
+## 当前限制和 TODO
+
+- **精确 token 计算**：项目有 `Tokenizer` 模块和相关测试，但 `SessionManager` 默认仍使用同步 fallback counter，没有接入 provider-specific 精确 tokenizer。
+- **方法论强制程度**：运行时守门验证“是否有方法论/改动/验证证据”，不保证严格按照 `brainstorm -> tdd -> review -> verify` 的固定顺序执行。
+- **SubAgent / Multi-Agent**：已有 `spawn -> execute -> get_result -> cleanup` 集成测试；下一步可继续补并发、失败恢复、嵌套 SubAgent 的 E2E。
+- **Lint 清洁度**：`npm run lint` 已可通过，但仓库仍有较多历史 warning，后续可逐步清理到 warning-free。
+- **CI 覆盖**：已添加 GitHub Actions 跑 `npm ci`、`npm run lint`、`npm test`；如果仓库策略需要更严格质量门，可继续加覆盖率、eval 和 release checks。
+
 ## 测试状态
 
 当前主要回归入口：
@@ -199,8 +227,11 @@ npm test
 - Web 搜索 Bing 优先和中文 Bing 解析
 - 意图分类和天气查询 routing hint
 - `<tool_code>` 工具调用解析
-- CLI 默认 debug 关闭
 - 编码任务守门和自动任务编排
+- `DynamicContextPruning` 接入 Agent 自动上下文裁剪
+- Tokenizer / TokenScope 独立模块能力
+- SecurityPolicy 工具审批拦截和结果截断
+- SubAgent 同步执行、结果返回和清理链路
 
 ## License
 

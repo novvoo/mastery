@@ -8,6 +8,12 @@ export class SessionManager {
   /** @type {string} */
   #systemPrompt = '';
 
+  #tokenCounter;
+
+  constructor(options = {}) {
+    this.#tokenCounter = options.tokenCounter || defaultTokenCounter;
+  }
+
   /** @param {string} prompt */
   setSystemPrompt(prompt) {
     this.#systemPrompt = prompt;
@@ -67,18 +73,18 @@ export class SessionManager {
     return [...this.#messages];
   }
 
-  /** Rough token estimation (1 token ~ 4 chars for English, 2 chars for Chinese) */
+  /** Token estimation with a CJK-aware fallback counter. */
   getTokenCount() {
     let total = 0;
     for (const msg of this.getMessages()) {
-      total += msg.content.length / 3; // rough estimate
+      total += this.#countTokens(msg.content);
     }
     return Math.ceil(total);
   }
 
   /** Trim old messages to fit within context window, keeping system prompt */
   trimToContextWindow(maxTokens, options = {}) {
-    const systemTokens = this.#systemPrompt.length / 3;
+    const systemTokens = this.#countTokens(this.#systemPrompt);
     const targetTokens = maxTokens * 0.7;
     const availableTokens = targetTokens - systemTokens;
     const minRecentMessages = Math.max(0, options.minRecentMessages || 0);
@@ -89,7 +95,7 @@ export class SessionManager {
 
     // Keep messages from the end (most recent)
     for (let i = this.#messages.length - 1; i >= 0; i--) {
-      const msgTokens = this.#messages[i].content.length / 3;
+      const msgTokens = this.#countTokens(this.#messages[i].content);
       if (usedTokens + msgTokens > availableTokens) {
         break;
       }
@@ -107,6 +113,36 @@ export class SessionManager {
     }
 
     this.#messages = kept;
+  }
+
+  /**
+   * Trim with a richer pruning strategy while preserving this class' split
+   * system-prompt/session-message storage model.
+   */
+  trimWithPruner(pruner, options = {}) {
+    const originalMessages = [...this.#messages];
+    const pruned = pruner.prune(this.getMessages(), options);
+    const messages = pruned.messages || [];
+    const system = messages.find(message => message.role === 'system');
+    if (system) {
+      this.#systemPrompt = system.content || '';
+    }
+    const keptMessages = messages.filter(message => message.role !== 'system');
+    const minRecentMessages = Math.max(
+      0,
+      options.minRecentMessages || options.preserveRecentMessages || 0
+    );
+
+    if (minRecentMessages > 0) {
+      for (const msg of originalMessages.slice(-minRecentMessages)) {
+        if (!keptMessages.includes(msg)) {
+          keptMessages.push(msg);
+        }
+      }
+    }
+
+    this.#messages = keptMessages;
+    return pruned.stats;
   }
 
   /** Get the last N user-assistant exchange pairs */
@@ -128,4 +164,15 @@ export class SessionManager {
   get length() {
     return this.#messages.length;
   }
+
+  #countTokens(content) {
+    return this.#tokenCounter(String(content || ''));
+  }
+}
+
+function defaultTokenCounter(text) {
+  if (!text) return 0;
+  const chineseChars = (text.match(/[\u4e00-\u9fff]/g) || []).length;
+  const otherChars = text.length - chineseChars;
+  return Math.ceil(chineseChars * 0.67 + otherChars / 4);
 }

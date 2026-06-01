@@ -302,6 +302,12 @@ class AIEngineeringAgent {
 
     this.modelProvider = modelProvider;
 
+    // Initialize Security Policy before scheduler/subagents so every agent
+    // receives the same enforcement object.
+    this.securityPolicy = new SecurityPolicy({
+      requireApproval: process.env.REQUIRE_APPROVAL === 'true',
+    });
+
     // Create scheduler engine
     this.schedulerEngine = new SchedulerEngine(
       {
@@ -309,6 +315,7 @@ class AIEngineeringAgent {
         dataDir: resolve(this.workingDir, '.agent-data'),
         checkIntervalMs: 60000,
         maxAgents: 10,
+        securityPolicy: this.securityPolicy,
       },
       modelProvider,
       toolRegistry,
@@ -362,10 +369,7 @@ class AIEngineeringAgent {
       maxExperiences: 500,
     });
 
-    // Initialize Security Policy (inspired by OpenHuman's security model)
-    this.securityPolicy = new SecurityPolicy({
-      requireApproval: process.env.REQUIRE_APPROVAL === 'true',
-    });
+    // Register policies after all built-in/MCP tools have been registered.
     this.securityPolicy.registerDefaultPolicies(toolRegistry.getAll());
 
     // Initialize Intelligent Reasoning Engine
@@ -400,6 +404,7 @@ class AIEngineeringAgent {
         workingDirectory: this.workingDir,
         debug: this.debugMode,
         intentClassification: this.config.intentClassification,
+        securityPolicy: this.securityPolicy,
       },
       enhancedUI
     );

@@ -84,7 +84,10 @@ export class SchedulerEngine {
       this.#config,
       {
         maxAgents: this.#config.maxAgents || 10,
-        messageBus: this.#messageBus
+        messageBus: this.#messageBus,
+        autoCleanup: this.#config.autoCleanup,
+        autoCleanupIntervalMs: this.#config.autoCleanupIntervalMs,
+        enableMemoryShare: this.#config.enableMemoryShare,
       }
     );
 

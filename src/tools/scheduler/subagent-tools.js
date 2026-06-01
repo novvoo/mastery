@@ -151,14 +151,15 @@ export function createSubAgentTools(schedulerEngine) {
                   // 运行任务
                   const result = await subAgent.run(task, { maxIterations, timeout });
 
+                  // 清理子代理 before publishing completion so synchronous
+                  // waiters observe a settled task and an already-clean pool.
+                  await subAgentPool.remove(subAgent.id);
+
                   // 更新任务状态为完成
                   await taskQueue.update(task.id, {
                     status: 'completed',
                     result: result
                   });
-
-                  // 清理子代理
-                  await subAgentPool.remove(subAgent.id);
                 } catch (error) {
                   // 更新任务状态为失败
                   await taskQueue.update(task.id, {
@@ -185,14 +186,15 @@ export function createSubAgentTools(schedulerEngine) {
               // 运行任务
               const result = await subAgent.run(task, { maxIterations, timeout });
 
+              // 清理子代理 before publishing completion so get_result waiters
+              // observe a settled task and an already-clean pool.
+              await subAgentPool.remove(subAgent.id);
+
               // 更新任务状态为完成
               await taskQueue.update(task.id, {
                 status: 'completed',
                 result: result
               });
-
-              // 清理子代理
-              await subAgentPool.remove(subAgent.id);
 
               // 发送消息通知（如果有消息总线）
               if (messageBus) {

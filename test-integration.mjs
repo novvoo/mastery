@@ -4767,6 +4767,196 @@ webSearchTests.test('search functions prioritize weather sites', async () => {
   console.log('     Search result prioritization logic in place');
 });
 
+// ============ 生产级加固回归测试 ============
+const productionReadinessTests = new TestRunner('Production Readiness Hardening');
+
+productionReadinessTests.test('Agent.run returns structured final result', async () => {
+  const { ReActAgent } = await import('./src/core/agent.js');
+  const { ToolRegistry } = await import('./src/core/tool-registry.js');
+  const { MemoryManager } = await import('./src/memory/memory-manager.js');
+
+  const provider = {
+    async chat() {
+      return { text: 'FINAL_ANSWER: structured ok', toolCalls: [], finishReason: 'stop' };
+    },
+    getMaxContextTokens() { return 4000; },
+    dispose() {},
+  };
+  const agent = new ReActAgent(
+    provider,
+    new ToolRegistry(),
+    new MemoryManager(TEST_CONFIG.testDir),
+    { maxIterations: 2, workingDirectory: TEST_CONFIG.testDir }
+  );
+
+  const result = await agent.run('hello');
+  if (!result?.success || result.answer !== 'structured ok' || result.status !== 'completed') {
+    throw new Error(`Expected structured run result, got ${JSON.stringify(result)}`);
+  }
+  if (agent.getLastRunResult()?.answer !== 'structured ok') {
+    throw new Error('Expected last run result to be recorded');
+  }
+});
+
+productionReadinessTests.test('Agent context management uses dynamic pruner when over threshold', async () => {
+  const { ReActAgent } = await import('./src/core/agent.js');
+  const { ToolRegistry } = await import('./src/core/tool-registry.js');
+  const { MemoryManager } = await import('./src/memory/memory-manager.js');
+
+  let sawPrunedHistory = false;
+  const provider = {
+    async chat(messages) {
+      const nonSystem = messages.filter(message => message.role !== 'system');
+      if (nonSystem.length < 15) {
+        sawPrunedHistory = true;
+      }
+      return { text: 'FINAL_ANSWER: pruned', toolCalls: [], finishReason: 'stop' };
+    },
+    getMaxContextTokens() { return 200; },
+    dispose() {},
+  };
+  const agent = new ReActAgent(
+    provider,
+    new ToolRegistry(),
+    new MemoryManager(TEST_CONFIG.testDir),
+    { maxIterations: 2, workingDirectory: TEST_CONFIG.testDir }
+  );
+
+  for (let i = 0; i < 20; i++) {
+    agent.sessionManager.addUserMessage(`old message ${i} ${'x'.repeat(120)}`);
+  }
+
+  const result = await agent.run('trigger pruning');
+  if (!result.success || !sawPrunedHistory) {
+    throw new Error(`Expected dynamic pruning before LLM request, result=${JSON.stringify(result)}`);
+  }
+});
+
+productionReadinessTests.test('Security policy blocks approval-required tool calls and truncates results', async () => {
+  const { ReActAgent } = await import('./src/core/agent.js');
+  const { ToolRegistry } = await import('./src/core/tool-registry.js');
+  const { MemoryManager } = await import('./src/memory/memory-manager.js');
+  const { SecurityPolicy } = await import('./src/core/security-policy.js');
+
+  let dangerousExecuted = false;
+  let chatCount = 0;
+  const provider = {
+    async chat() {
+      chatCount++;
+      if (chatCount === 1) {
+        return {
+          text: 'CALL dangerous_tool({})',
+          toolCalls: [{ id: 'call_danger', name: 'dangerous_tool', arguments: {} }],
+          finishReason: 'tool_calls',
+        };
+      }
+      if (chatCount === 2) {
+        return {
+          text: 'CALL large_result({})',
+          toolCalls: [{ id: 'call_large', name: 'large_result', arguments: {} }],
+          finishReason: 'tool_calls',
+        };
+      }
+      return { text: 'FINAL_ANSWER: security ok', toolCalls: [], finishReason: 'stop' };
+    },
+    getMaxContextTokens() { return 4000; },
+    dispose() {},
+  };
+
+  const registry = new ToolRegistry();
+  registry.register({
+    name: 'dangerous_tool',
+    description: 'Dangerous write operation',
+    params: {},
+    async handler() {
+      dangerousExecuted = true;
+      return 'should not run';
+    },
+  });
+  registry.register({
+    name: 'large_result',
+    description: 'Returns large result',
+    params: {},
+    async handler() {
+      return 'x'.repeat(100);
+    },
+  });
+
+  const securityPolicy = new SecurityPolicy();
+  securityPolicy.registerPolicy('dangerous_tool', { requiresApproval: true });
+  securityPolicy.registerPolicy('large_result', { maxResultChars: 20 });
+
+  const agent = new ReActAgent(
+    provider,
+    registry,
+    new MemoryManager(TEST_CONFIG.testDir),
+    { maxIterations: 5, workingDirectory: TEST_CONFIG.testDir, securityPolicy }
+  );
+
+  const result = await agent.run('exercise security');
+  const events = result.toolEvents;
+  if (dangerousExecuted) {
+    throw new Error('Approval-required tool executed');
+  }
+  if (!events.some(event => event.name === 'dangerous_tool' && !event.success)) {
+    throw new Error(`Expected blocked dangerous tool event, got ${JSON.stringify(events)}`);
+  }
+  const large = events.find(event => event.name === 'large_result');
+  if (!large?.resultPreview.includes('truncated by security policy')) {
+    throw new Error(`Expected truncated result preview, got ${JSON.stringify(large)}`);
+  }
+});
+
+productionReadinessTests.test('SubAgent spawn executes, returns answer, and cleans up', async () => {
+  const { SchedulerEngine } = await import('./src/scheduler/SchedulerEngine.js');
+  const { createSubAgentTools } = await import('./src/tools/scheduler/subagent-tools.js');
+  const { ToolRegistry } = await import('./src/core/tool-registry.js');
+
+  const provider = {
+    async chat() {
+      return { text: 'FINAL_ANSWER: subagent completed work', toolCalls: [], finishReason: 'stop' };
+    },
+    getMaxContextTokens() { return 4000; },
+    dispose() {},
+  };
+  const registry = new ToolRegistry();
+  const scheduler = new SchedulerEngine(
+    {
+      workingDirectory: TEST_CONFIG.testDir,
+      dataDir: join(TEST_CONFIG.testDir, 'subagent-e2e'),
+      checkIntervalMs: 60000,
+      maxAgents: 2,
+      autoCleanup: false,
+    },
+    provider,
+    registry,
+    null
+  );
+  await scheduler.initialize();
+
+  const tools = createSubAgentTools(scheduler);
+  const spawnTool = tools.find(tool => tool.name === 'subagent_spawn');
+  const listTool = tools.find(tool => tool.name === 'subagent_list');
+
+  const result = await spawnTool.handler({
+    taskType: 'summarize',
+    taskPayload: { goal: 'return a summary' },
+    waitForCompletion: true,
+    timeout: 5000,
+  });
+
+  if (!result.success || result.result?.output !== 'subagent completed work') {
+    throw new Error(`Expected SubAgent result output, got ${JSON.stringify(result)}`);
+  }
+
+  const list = await listTool.handler({ includeStats: false });
+  if (list.count !== 0) {
+    throw new Error(`Expected SubAgent cleanup after completion, got ${JSON.stringify(list)}`);
+  }
+
+  await scheduler.stop();
+});
+
 // ============ 运行所有测试 ============
 async function runAllTests() {
   console.log('╔════════════════════════════════════════════════════════════╗');
@@ -4791,6 +4981,7 @@ async function runAllTests() {
     await exitFlowTests.run();
     await newFeaturesTests.run();
     await webSearchTests.run();
+    await productionReadinessTests.run();
   } catch (error) {
     console.error('\nTest suite failed:', error.message);
   }
