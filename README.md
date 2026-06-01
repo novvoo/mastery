@@ -168,20 +168,23 @@ CI 用于验证代码质量，不负责发布：
 - `.github/workflows/ci.yml` 在 push 和 pull request 时运行 `npm ci`、`npm run lint`、`npm test`。
 - 分支和 PR 都可以跑 CI；这能在合并前发现回归。
 
-CD / Release 用于生成分发包：
+CD / Release 用于生成系统安装包：
 
 - `.github/workflows/release.yml` 只在 `main` 相关发布场景生效。
-- 手动触发 `workflow_dispatch` 时必须从 `main` 分支启动，只生成可下载 artifacts。
-- 推送 `v*` tag 时，tag 指向的 commit 必须已经包含在 `origin/main`，然后会在 Linux、macOS、Windows runner 上分别生成系统包并发布到 GitHub Release。
-- 分发包包含源码、生产依赖、`README.md`、`.env.example` 和 `bin/agent` / `bin/agent.cmd` 启动脚本。
+- 手动触发 `workflow_dispatch` 时必须从 `main` 分支启动，只生成可下载 artifacts，不创建 GitHub Release。
+- 推送 `v*` tag 时，tag 指向的 commit 必须已经包含在 `origin/main`，然后会在 Linux、macOS、Windows runner 上分别生成系统安装包并发布到 GitHub Release。
+- Linux 产物是 `.deb`，安装到 `/usr/lib/ai-engineering-mastery-agent`，并提供 `/usr/bin/agent` 命令。
+- macOS 产物是 `.pkg`，安装到 `/usr/local/lib/ai-engineering-mastery-agent`，并提供 `/usr/local/bin/agent` 命令。
+- Windows 产物是 `.msi`，安装到 `Program Files`，并将安装目录下的 `bin` 加入系统 `PATH`。
+- 安装包内包含源码、生产依赖、`README.md`、`.env.example` 和对应平台启动脚本；运行机器仍需安装 Node.js 18+。
 
 发布流程示例：
 
 ```bash
 git checkout main
 git pull origin main
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.0.1
+git push origin v1.0.1
 ```
 
 ## 配置项
