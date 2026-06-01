@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release source
+        shell: bash
+        run: |
+          git fetch origin main --tags
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "Manual releases must be started from main."
+            exit 1
+          fi
+          if [ "${{ github.event_name }}" = "push" ]; then
+            git merge-base --is-ancestor "${{ github.sha }}" origin/main || {
+              echo "Release tags must point to a commit already contained in origin/main."
+              exit 1
+            }
+          fi
+
+  package:
+    needs: validate-source
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            archive_ext: tar.gz
+          - os: macos-latest
+            platform: darwin
+            archive_ext: tar.gz
+          - os: windows-latest
+            platform: win32
+            archive_ext: zip
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install production dependencies
+        run: npm ci --omit=dev --omit=optional
+
+      - name: Prepare release package
+        run: npm run package:release
+        env:
+          RELEASE_PLATFORM: ${{ matrix.platform }}
+
+      - name: Read package metadata
+        id: meta
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          NAME="$(node -p "require('./package.json').name")"
+          ARCH="$(node -p "process.arch")"
+          PACKAGE_NAME="${NAME}-${VERSION}-${{ matrix.platform }}-${ARCH}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "package_name=${PACKAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Create tar archive
+        if: matrix.archive_ext == 'tar.gz'
+        shell: bash
+        run: |
+          cd dist
+          tar -czf "${{ steps.meta.outputs.package_name }}.tar.gz" "${{ steps.meta.outputs.package_name }}"
+
+      - name: Create zip archive
+        if: matrix.archive_ext == 'zip'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/${{ steps.meta.outputs.package_name }}" -DestinationPath "dist/${{ steps.meta.outputs.package_name }}.zip"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.package_name }}
+          path: dist/${{ steps.meta.outputs.package_name }}.${{ matrix.archive_ext }}
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/*
+          generate_release_notes: true

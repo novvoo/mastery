@@ -157,7 +157,31 @@ npm run start:debug    # 带详细调试日志运行
 npm run dev            # node --watch 开发模式
 npm test               # 运行完整集成测试
 npm run lint           # 运行 ESLint
+npm run package:release # 生成当前系统的 dist 分发目录
 npx eslint src/tools/web/web-tools.js
+```
+
+## CI / CD
+
+CI 用于验证代码质量，不负责发布：
+
+- `.github/workflows/ci.yml` 在 push 和 pull request 时运行 `npm ci`、`npm run lint`、`npm test`。
+- 分支和 PR 都可以跑 CI；这能在合并前发现回归。
+
+CD / Release 用于生成分发包：
+
+- `.github/workflows/release.yml` 只在 `main` 相关发布场景生效。
+- 手动触发 `workflow_dispatch` 时必须从 `main` 分支启动，只生成可下载 artifacts。
+- 推送 `v*` tag 时，tag 指向的 commit 必须已经包含在 `origin/main`，然后会在 Linux、macOS、Windows runner 上分别生成系统包并发布到 GitHub Release。
+- 分发包包含源码、生产依赖、`README.md`、`.env.example` 和 `bin/agent` / `bin/agent.cmd` 启动脚本。
+
+发布流程示例：
+
+```bash
+git checkout main
+git pull origin main
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 ## 配置项
@@ -212,7 +236,7 @@ ai-engineering-mastery-agent/
 - **方法论强制程度**：运行时守门验证“是否有方法论/改动/验证证据”，不保证严格按照 `brainstorm -> tdd -> review -> verify` 的固定顺序执行。
 - **SubAgent / Multi-Agent**：已有 `spawn -> execute -> get_result -> cleanup` 集成测试；下一步可继续补并发、失败恢复、嵌套 SubAgent 的 E2E。
 - **Lint 清洁度**：`npm run lint` 已可通过，但仓库仍有较多历史 warning，后续可逐步清理到 warning-free。
-- **CI 覆盖**：已添加 GitHub Actions 跑 `npm ci`、`npm run lint`、`npm test`；如果仓库策略需要更严格质量门，可继续加覆盖率、eval 和 release checks。
+- **CI/CD 覆盖**：已添加 GitHub Actions 跑 CI 和跨系统 release packaging；如果仓库策略需要更严格质量门，可继续加覆盖率、eval 和签名/校验和。
 
 ## 测试状态
 
