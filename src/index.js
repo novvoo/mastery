@@ -45,6 +45,7 @@ import { SchedulerEngine } from './scheduler/SchedulerEngine.js';
 import { createFileSystemTools } from './tools/filesystem/filesystem-tools.js';
 import { createShellTool } from './tools/system/shell.js';
 import { createPtyTools, stopAllPtySessions } from './tools/system/pty.js';
+import { shellSandboxConfigFromEnv } from './sandbox/shell-sandbox.js';
 import { createSemanticSearchTool } from './tools/memory/semantic-search.js';
 import { createWebTools } from './tools/web/web-tools.js';
 import { createTaskTools } from './tools/scheduler/task-tools.js';
@@ -130,6 +131,7 @@ class AIEngineeringAgent {
       debug: process.env.DEBUG === 'true',
       logDir: process.env.LOG_DIR || './logs',
       intentClassification: process.env.INTENT_CLASSIFICATION !== 'false',
+      shellSandbox: shellSandboxConfigFromEnv(),
     };
   }
 
@@ -244,7 +246,7 @@ class AIEngineeringAgent {
     }
 
     // Register shell tool
-    toolRegistry.register(createShellTool());
+    toolRegistry.register(createShellTool({ sandbox: this.config.shellSandbox }));
 
     // Register interactive terminal and semantic workspace search tools
     for (const tool of createPtyTools()) {

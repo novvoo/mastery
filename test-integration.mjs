@@ -3513,6 +3513,148 @@ debugLoggingTests.test('Debug logging captures blocked shell commands without ex
   }
 });
 
+debugLoggingTests.test('Shell sandbox policy backend allows safe workspace commands', async () => {
+  const { createShellTool } = await import('./src/tools/system/shell.js');
+
+  const recordingUI = createRecordingUI(true);
+  const shell = createShellTool({
+    sandbox: {
+      enabled: true,
+      backend: 'policy',
+      network: { enabled: false },
+      filesystem: {
+        allowWrite: ['.'],
+        denyRead: ['~/.ssh'],
+        denyWrite: ['~', '/etc', '/usr'],
+      },
+    },
+  });
+
+  const result = await shell.handler(
+    { command: 'printf sandbox-ok', timeout: 5000 },
+    {
+      workingDirectory: TEST_CONFIG.testDir,
+      debug: true,
+      ui: recordingUI,
+      toolName: 'shell',
+    }
+  );
+
+  if (result !== 'sandbox-ok') {
+    throw new Error(`Expected sandboxed safe command output, got ${result}`);
+  }
+  const sandboxEvent = requireDebugEvent(recordingUI.events, 'Shell sandbox resolved');
+  if (!sandboxEvent.details.sandboxed || sandboxEvent.details.backend !== 'policy') {
+    throw new Error(`Expected policy sandbox resolution, got ${JSON.stringify(sandboxEvent.details)}`);
+  }
+});
+
+debugLoggingTests.test('Shell sandbox blocks network-like commands by default', async () => {
+  const { createShellTool } = await import('./src/tools/system/shell.js');
+
+  const shell = createShellTool({
+    sandbox: {
+      enabled: true,
+      backend: 'policy',
+      network: { enabled: false },
+    },
+  });
+
+  const result = await shell.handler(
+    { command: 'curl https://example.com', timeout: 5000 },
+    {
+      workingDirectory: TEST_CONFIG.testDir,
+      debug: false,
+      ui: createRecordingUI(false),
+      toolName: 'shell',
+    }
+  );
+
+  if (!String(result).includes('BLOCKED: Network-like command blocked by shell sandbox policy')) {
+    throw new Error(`Expected sandbox network block, got ${result}`);
+  }
+});
+
+debugLoggingTests.test('Shell sandbox blocks write-like commands outside workspace allowlist', async () => {
+  const { createShellTool } = await import('./src/tools/system/shell.js');
+
+  const shell = createShellTool({
+    sandbox: {
+      enabled: true,
+      backend: 'policy',
+      filesystem: {
+        allowWrite: ['.'],
+        denyRead: [],
+        denyWrite: [],
+      },
+    },
+  });
+
+  const result = await shell.handler(
+    { command: 'touch /tmp/agent-sandbox-outside-test', timeout: 5000 },
+    {
+      workingDirectory: TEST_CONFIG.testDir,
+      debug: false,
+      ui: createRecordingUI(false),
+      toolName: 'shell',
+    }
+  );
+
+  if (!String(result).includes('BLOCKED: Write-like command targets path outside sandbox write allowlist')) {
+    throw new Error(`Expected sandbox write allowlist block, got ${result}`);
+  }
+});
+
+debugLoggingTests.test('Shell sandbox unavailable backend can fail closed or fall back explicitly', async () => {
+  const { createShellTool } = await import('./src/tools/system/shell.js');
+
+  const strictShell = createShellTool({
+    sandbox: {
+      enabled: true,
+      backend: 'missing-test-backend',
+      failIfUnavailable: true,
+    },
+  });
+  const strictResult = await strictShell.handler(
+    { command: 'printf should-not-run', timeout: 5000 },
+    {
+      workingDirectory: TEST_CONFIG.testDir,
+      debug: false,
+      ui: createRecordingUI(false),
+      toolName: 'shell',
+    }
+  );
+  if (!String(strictResult).includes('BLOCKED: Shell sandbox is enabled but no sandbox backend is available')) {
+    throw new Error(`Expected strict unavailable sandbox block, got ${strictResult}`);
+  }
+
+  const fallbackUI = createRecordingUI(true);
+  const fallbackShell = createShellTool({
+    sandbox: {
+      enabled: true,
+      backend: 'missing-test-backend',
+      failIfUnavailable: false,
+      allowUnsandboxedCommands: true,
+    },
+  });
+  const fallbackResult = await fallbackShell.handler(
+    { command: 'printf fallback-ok', timeout: 5000 },
+    {
+      workingDirectory: TEST_CONFIG.testDir,
+      debug: true,
+      ui: fallbackUI,
+      toolName: 'shell',
+    }
+  );
+  if (fallbackResult !== 'fallback-ok') {
+    throw new Error(`Expected explicit fallback command output, got ${fallbackResult}`);
+  }
+  const sandboxEvent = requireDebugEvent(fallbackUI.events, 'Shell sandbox resolved');
+  if (sandboxEvent.details.sandboxed || sandboxEvent.details.reason !== 'sandbox_unavailable_fallback') {
+    throw new Error(`Expected sandbox unavailable fallback event, got ${JSON.stringify(sandboxEvent.details)}`);
+  }
+});
+
 // ============ 9. CLI 输入循环回归测试 ============
 const cliInputLoopTests = new TestRunner('CLI Input Loop Regression');
 

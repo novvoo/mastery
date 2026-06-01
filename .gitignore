@@ -6,6 +6,7 @@ logs/
 /models/
 CONTEXT.md
 HANDOFF.md
+.DS_Store
 .sandboxes/
 .test-temp/
 .github/*

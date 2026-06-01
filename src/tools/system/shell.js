@@ -2,8 +2,9 @@
  * Shell Command Tool
  */
 
-import { execSync, spawn } from 'child_process';
+import { spawn } from 'child_process';
 import { ToolCategory } from '../../core/types.js';
+import { createShellSandbox, shellSandboxConfigFromEnv } from '../../sandbox/shell-sandbox.js';
 
 const DANGEROUS_PATTERNS = [
   /rm\s+-rf\s+\//,
@@ -22,11 +23,15 @@ const DANGEROUS_PATTERNS = [
  */
 function executeAsync(command, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, [], {
+    const child = spawn(options.executable || command, options.args || [], {
       cwd: options.cwd,
-      shell: true,
+      shell: options.shell !== false,
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: options.timeout || 30000,
+      env: {
+        ...process.env,
+        ...(options.env || {}),
+      },
     });
 
     let stdout = '';
@@ -65,10 +70,12 @@ function executeAsync(command, options = {}) {
   });
 }
 
-export function createShellTool() {
+export function createShellTool(options = {}) {
+  const sandbox = createShellSandbox(options.sandbox || shellSandboxConfigFromEnv());
+
   return {
     name: 'shell',
-    description: 'Execute a shell command in the working directory. Returns stdout and stderr. Use for running tests, builds, git commands, etc.',
+    description: 'Execute a shell command in the working directory. Returns stdout and stderr. Supports optional sandboxed execution for filesystem/network isolation.',
     category: ToolCategory.SYSTEM,
     params: {
       command: { type: 'string', description: 'The shell command to execute' },
@@ -103,9 +110,38 @@ export function createShellTool() {
       }
 
       try {
+        const sandboxPlan = sandbox.prepare(cmd, {
+          cwd: ctx.workingDirectory,
+        });
+
+        if (sandboxPlan.blocked) {
+          if (ctx.debug && ctx.ui?.debugEvent) {
+            ctx.ui.debugEvent('Shell command blocked by sandbox', {
+              command: cmd,
+              cwd: ctx.workingDirectory,
+              reason: sandboxPlan.message,
+            });
+          }
+          return sandboxPlan.message;
+        }
+
+        if (ctx.debug && ctx.ui?.debugEvent) {
+          ctx.ui.debugEvent('Shell sandbox resolved', {
+            enabled: sandbox.config.enabled,
+            sandboxed: sandboxPlan.sandboxed,
+            backend: sandboxPlan.backend || null,
+            reason: sandboxPlan.reason || null,
+            warning: sandboxPlan.warning || null,
+          });
+        }
+
         const result = await executeAsync(cmd, {
           cwd: ctx.workingDirectory,
           timeout: ms,
+          executable: sandboxPlan.executable,
+          args: sandboxPlan.args,
+          shell: sandboxPlan.shell,
+          env: sandboxPlan.env,
         });
 
         if (ctx.debug && ctx.ui?.debugEvent) {

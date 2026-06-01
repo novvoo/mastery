@@ -133,6 +133,32 @@ bun run start:debug       # 启动时打开 DEBUG 和 AGENT_TRACE
 - `DEBUG=true` 会显示 Agent 生命周期、LLM request/response、工具调用、Web provider 等 `🔍` 日志。
 - `AGENT_TRACE=true` 用于 provider 层 trace；UI debug 不会再仅因 `AGENT_TRACE=true` 自动刷屏。
 
+## Shell 沙箱
+
+Shell 工具支持可选沙箱模式，默认关闭以保持本地开发兼容性。开启后，命令会先经过统一策略检查，再按平台选择后端：
+
+1. macOS：优先使用系统 `sandbox-exec` Seatbelt profile。
+2. Linux：优先使用 `bubblewrap`。
+3. 其他环境或后端不可用：使用 `policy` 后端，只做命令预检和路径/网络拦截，不提供 OS 级隔离。
+
+推荐本地安全模式：
+
+```env
+AGENT_SHELL_SANDBOX=true
+AGENT_SHELL_SANDBOX_BACKEND=auto
+AGENT_SHELL_SANDBOX_FAIL_IF_UNAVAILABLE=true
+AGENT_SANDBOX_ALLOW_WRITE=.
+AGENT_SANDBOX_NETWORK=false
+```
+
+默认策略会阻止常见网络命令和工作区外的写操作，并拒绝引用 `~/.ssh`、`~/.aws`、`~/.config/gh`、`~/.netrc` 等敏感路径。需要联网安装依赖或拉取代码时，应临时显式打开网络或把命令移到人工确认流程。
+
+边界说明：
+
+- `policy` 后端不是完整沙箱，只是安全预检；真正隔离依赖 Seatbelt、bubblewrap、容器或 VM。
+- 当前只覆盖 `shell` 工具，不覆盖文件工具、Web 工具、PTY helper 或模型 provider 自身。
+- `AGENT_SANDBOX_ALLOWED_DOMAINS` 目前作为配置保留，命令级域名精确放行还未实现。
+
 ## 快速开始
 
 开发环境可以在项目目录使用 `.env`：
@@ -230,6 +256,17 @@ git push origin v1.0.4
 | `WORKING_DIRECTORY` | 当前目录 | Agent 工具工作的目录 |
 | `DEBUG` | `false` | UI debug 日志开关 |
 | `INTENT_CLASSIFICATION` | `true` | 是否启用意图识别层 |
+| `AGENT_SHELL_SANDBOX` | `false` | 是否开启 shell 沙箱 |
+| `AGENT_SHELL_SANDBOX_BACKEND` | `auto` | 沙箱后端：`auto`、`seatbelt`、`bubblewrap`、`policy` |
+| `AGENT_SHELL_SANDBOX_FAIL_IF_UNAVAILABLE` | `false` | 后端不可用时是否失败关闭 |
+| `AGENT_SHELL_SANDBOX_ALLOW_UNSANDBOXED` | `true` | 后端不可用或命令被排除时是否允许无沙箱执行 |
+| `AGENT_SHELL_SANDBOX_EXCLUDED_COMMANDS` | 无 | 按系统 path delimiter 分隔的排除命令模式，支持 `*` |
+| `AGENT_SANDBOX_ALLOW_READ` | 无 | 预留读路径 allowlist，按系统 path delimiter 分隔 |
+| `AGENT_SANDBOX_DENY_READ` | `~/.ssh`、`~/.aws`、`~/.config/gh`、`~/.netrc` | shell 沙箱拒绝读取/引用的敏感路径 |
+| `AGENT_SANDBOX_ALLOW_WRITE` | `.` | 允许 shell 写入的路径 |
+| `AGENT_SANDBOX_DENY_WRITE` | `~`、`/etc`、`/usr`、`/bin`、`/sbin`、`/System` | 拒绝 shell 写入/引用的路径 |
+| `AGENT_SANDBOX_NETWORK` | `false` | 是否允许 shell 网络访问 |
+| `AGENT_SANDBOX_ALLOWED_DOMAINS` | 无 | 预留域名 allowlist，当前不做精确命令级放行 |
 
 ## 项目结构
 
@@ -263,6 +300,7 @@ ai-engineering-mastery-agent/
 - `<tool_code>print(list_files("."))</tool_code>` 等上游工具代码会被解析成真实工具调用，不会再泄漏成 Final Answer。
 - 如果模型输出未能解析的工具语法，Agent 会要求重发合法工具调用，而不是直接结束。
 - 默认关闭 debug，避免正常使用时被 `🔍` 日志刷屏。
+- Shell 沙箱默认关闭；开启 `AGENT_SHELL_SANDBOX=true` 后会优先使用 macOS Seatbelt 或 Linux bubblewrap，后端不可用时可按配置失败关闭或降级为 policy 预检。
 
 ## 当前限制和 TODO
 
@@ -271,6 +309,7 @@ ai-engineering-mastery-agent/
 - **SubAgent / Multi-Agent**：已有 `spawn -> execute -> get_result -> cleanup` 集成测试；下一步可继续补并发、失败恢复、嵌套 SubAgent 的 E2E。
 - **Lint 清洁度**：`bun run lint` 已可通过，但仓库仍有较多历史 warning，后续可逐步清理到 warning-free。
 - **CI/CD 覆盖**：已添加 GitHub Actions 跑 CI 和跨系统 release packaging；如果仓库策略需要更严格质量门，可继续加覆盖率、eval 和签名/校验和。
+- **沙箱范围**：Shell 已支持可选沙箱和策略预检，但完整生产级隔离仍建议叠加容器、VM 或远端 microVM；文件工具和 PTY 还没有统一纳入同一沙箱边界。
 
 ## 测试状态
 
@@ -289,6 +328,7 @@ bun test-integration.mjs
 - `DynamicContextPruning` 接入 Agent 自动上下文裁剪
 - Tokenizer / TokenScope 独立模块能力
 - SecurityPolicy 工具审批拦截和结果截断
+- Shell sandbox policy、网络拦截、写入 allowlist、后端不可用 fail-closed/fallback
 - SubAgent 同步执行、结果返回和清理链路
 
 ## License
