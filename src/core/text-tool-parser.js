@@ -671,7 +671,7 @@ export class TextToolParser {
 
   #extractToolCodeCalls(block) {
     const calls = [];
-    const names = ['ls', 'list', 'list_dir', 'list_directory', 'inspect_workspace', 'cat', 'read', 'read_file', 'write', 'write_file', 'shell', 'bash', 'run', 'run_command', 'web_search', 'search_web', 'browser_search', 'web_fetch', 'fetch_url', 'plan_solution'];
+    const names = ['ls', 'list', 'list_files', 'list_dir', 'list_directory', 'inspect_workspace', 'cat', 'read', 'read_file', 'write', 'write_file', 'shell', 'bash', 'run', 'run_command', 'web_search', 'search_web', 'browser_search', 'web_fetch', 'fetch_url', 'plan_solution'];
     const namePattern = new RegExp(`\\b(${names.join('|')})\\s*\\(`, 'g');
     let match;
 
@@ -900,6 +900,7 @@ export class TextToolParser {
     const aliases = {
       ls: 'list_dir',
       list: 'list_dir',
+      list_files: 'list_dir',
       list_dir: 'list_dir',
       list_directory: 'list_dir',
       inspect_workspace: 'list_dir',

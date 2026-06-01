@@ -278,6 +278,23 @@ export class ReActAgent {
           allToolCalls.length === 0 &&
           response.text?.trim() &&
           toolUseCorrections < 2 &&
+          this.#containsUnparsedToolSyntax(response.text)
+        ) {
+          toolUseCorrections++;
+          this.#debugEvent('Tool syntax correction requested', {
+            iteration,
+            correction: toolUseCorrections,
+            responsePreview: this.#preview(response.text, 300),
+          });
+          this.#sessionManager.addAssistantMessage(response.text);
+          this.#sessionManager.addUserMessage(this.#buildToolSyntaxCorrectionPrompt(response.text));
+          continue;
+        }
+
+        if (
+          allToolCalls.length === 0 &&
+          response.text?.trim() &&
+          toolUseCorrections < 2 &&
           this.#shouldCorrectToolRefusal(userInput, response.text)
         ) {
           toolUseCorrections++;
@@ -988,6 +1005,27 @@ export class ReActAgent {
       /cannot|can't|unable|do not have|don't have|no access|not able/,
       /browser assistant|web browser|only.*browser|only.*web/,
     ].some(pattern => pattern.test(response));
+  }
+
+  #containsUnparsedToolSyntax(responseText) {
+    const response = String(responseText || '');
+    return [
+      /<tool_code>[\s\S]*?<\/tool_code>/i,
+      /<tool_call>[\s\S]*?<\/tool_call>/i,
+      /<function_call>[\s\S]*?<\/function_call>/i,
+      /```(?:tool|json)?\s*\n\s*\{[\s\S]*?(?:"name"|"action"|"tool")[\s\S]*?\}\s*```/i,
+      /\bCALL\s+\/?[A-Za-z_][\w-]*\s*\(/,
+    ].some(pattern => pattern.test(response));
+  }
+
+  #buildToolSyntaxCorrectionPrompt(responseText) {
+    const toolNames = this.#toolRegistry.getAll().map(tool => tool.name).slice(0, 24).join(', ');
+    return (
+      `Your previous response looked like a tool call, but this runtime could not parse it, so it must not be treated as a final answer.\n` +
+      `Previous response:\n${responseText}\n\n` +
+      `Use one valid tool-call format now. Prefer: CALL tool_name({"param":"value"}). ` +
+      `Available tools include: ${toolNames}. If you are actually finished, respond with FINAL_ANSWER: and summarize the completed work for the user.`
+    );
   }
 
   #buildToolUseCorrectionPrompt(userInput) {

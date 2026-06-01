@@ -2199,6 +2199,7 @@ conversationProtocolTests.test('Text parser translates upstream tool_code helper
     ...parser.parse('<tool_code>\nwrite_file(path="escaped.html", content="<!DOCTYPE html>\\n<html lang=\\"en\\"></html>")\n</tool_code>'),
     ...parser.parse('<tool_code>\nprint(write_file("viewport.html", "<meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0\\">\\n<script>Array.from({ length: 4 }, () => 0)</script>"))\n</tool_code>'),
     ...parser.parse('<tool_code>\ninspect_workspace()\n</tool_code>'),
+    ...parser.parse('<tool_code>\nprint(list_files("."))\n</tool_code>'),
     ...parser.parse('<tool_code>\nplan_solution()\n</tool_code>'),
     ...parser.parse(`<tool_code>
 import os
@@ -2216,7 +2217,8 @@ for root, dirs, files in os.walk('.'):
   const writeCall = calls.find(call => call.name === 'write_file');
   const escapedWriteCall = calls.find(call => call.name === 'write_file' && call.arguments.path === 'escaped.html');
   const viewportWriteCall = calls.find(call => call.name === 'write_file' && call.arguments.path === 'viewport.html');
-  const inspectCall = calls.find(call => call.name === 'list_dir' && call.source === 'tool_code' && call.arguments.path === '.');
+  const dotListToolCodeCalls = calls.filter(call => call.name === 'list_dir' && call.source === 'tool_code' && call.arguments.path === '.');
+  const inspectCall = dotListToolCodeCalls[0];
   const pythonInspectCall = calls.find(call => call.name === 'list_dir' && call.source === 'tool_code_python' && call.arguments.path === '.');
   const planCall = calls.find(call => call.name === 'brainstorm');
   if (listCall?.arguments.path !== 'real-2048-test') {
@@ -2240,11 +2242,71 @@ for root, dirs, files in os.walk('.'):
   if (!inspectCall) {
     throw new Error(`Expected inspect_workspace helper to map to list_dir '.', got ${JSON.stringify(calls)}`);
   }
+  if (dotListToolCodeCalls.length < 2) {
+    throw new Error(`Expected inspect_workspace and list_files helpers to map to list_dir '.', got ${JSON.stringify(calls)}`);
+  }
   if (!pythonInspectCall) {
     throw new Error(`Expected Python os.walk tool_code to map to list_dir '.', got ${JSON.stringify(calls)}`);
   }
   if (planCall?.arguments.problem !== 'Plan the requested implementation before editing files.') {
     throw new Error(`Expected plan_solution helper to map to brainstorm, got ${JSON.stringify(calls)}`);
+  }
+});
+
+conversationProtocolTests.test('Agent executes tool_code list_files instead of emitting it as final answer', async () => {
+  const { ReActAgent } = await import('./src/core/agent.js');
+  const { ToolRegistry } = await import('./src/core/tool-registry.js');
+  const { MemoryManager } = await import('./src/memory/memory-manager.js');
+
+  let chatCount = 0;
+  let listedPath = null;
+  const mockProvider = {
+    async chat() {
+      chatCount++;
+      if (chatCount === 1) {
+        return {
+          text: '<tool_code>\nprint(list_files("."))\n</tool_code>',
+          toolCalls: [],
+          finishReason: 'stop',
+        };
+      }
+      return {
+        text: 'FINAL_ANSWER: 游戏已经实现完成，文件列表也检查过了。',
+        toolCalls: [],
+        finishReason: 'stop',
+      };
+    },
+    getMaxContextTokens() {
+      return 4000;
+    },
+    dispose() {},
+  };
+
+  const registry = new ToolRegistry();
+  registry.register({
+    name: 'list_dir',
+    description: 'List files',
+    parameters: { path: { type: 'string' } },
+    async handler(args) {
+      listedPath = args.path;
+      return JSON.stringify({ files: ['index.html', 'game.js', 'style.css'] });
+    },
+  });
+
+  const recordingUI = createRecordingUI(true);
+  const agent = new ReActAgent(mockProvider, registry, new MemoryManager(TEST_CONFIG.testDir), {
+    maxIterations: 4,
+    workingDirectory: TEST_CONFIG.testDir,
+    debug: true,
+  }, recordingUI);
+
+  await agent.run('写一个浏览器游戏');
+
+  if (listedPath !== '.') {
+    throw new Error(`Expected tool_code list_files to execute list_dir '.', got ${listedPath}`);
+  }
+  if (recordingUI.calls.finalAnswers.some(answer => answer.includes('<tool_code>'))) {
+    throw new Error(`Tool code leaked into final answer: ${JSON.stringify(recordingUI.calls.finalAnswers)}`);
   }
 });
 
