@@ -60,7 +60,16 @@ Agent 的工程方法论可以概括为六步：
 - 系统提示会鼓励新功能先 `brainstorm`、实现时用 `tdd`、完成前 `verify`。
 - Agent completion gate 的强制条件更宽松：非平凡编码任务需要至少一个成功的方法论工具证据，但不强制必须是 `brainstorm` 或 `tdd`。
 - 变更后的验证可以是 `verify` / `review`，也可以是等价的 fresh verification command，例如 `bun test`、`bun run lint`、`tsc`、`pytest`、`lint` 等。
+- 对涉及时间、速度、动画、游戏循环、第三方 API、状态转换、并发 I/O 或安全边界的编码任务，Agent 会自动插入 `semantic_risk_review` 编排节点，并要求 `review` / `verify` 覆盖单位、API 参数语义、状态不变量和用户可感知行为。
 - 小型、显然的单文件任务可以跳过部分方法论工具，但仍应读回结果并给出验证证据。
+
+语义风险审查不是硬编码某个库的 API 规则。例如不会写死“pygame 的 `clock.tick()` 参数是 FPS”。它做的是通用检查：
+
+- 变量名和数值是否暴露单位，例如 `move_interval_ms`、`target_fps`、`elapsed_ms`
+- API 参数语义是否被确认，例如 FPS、毫秒、秒、像素、格子、弧度、角度、超时和重试次数
+- 渲染频率是否和业务/模拟更新频率分离
+- 状态转换、边界条件和重复操作是否保持不变量
+- 验证是否覆盖用户可感知行为，而不只是“代码能运行”
 
 方法论工具的推荐用法：
 

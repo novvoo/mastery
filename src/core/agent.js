@@ -49,6 +49,38 @@ const VERIFICATION_TOOLS = new Set([
   'pty_read',
   'semantic_search',
 ]);
+const SEMANTIC_RISK_DOMAINS = [
+  {
+    id: 'units_timing',
+    label: 'units/time/animation semantics',
+    pattern: /时间|速度|帧|毫秒|秒|定时|计时|循环|动画|游戏|物理|实时|fps|frame|clock|tick|speed|interval|timeout|timer|animation|game|physics|realtime|real-time/i,
+    checklist: 'track units in variable names and API arguments; separate render FPS from simulation/update intervals; verify user-visible timing or movement behavior',
+  },
+  {
+    id: 'api_semantics',
+    label: 'third-party API semantics',
+    pattern: /api|sdk|库|框架|pygame|three\.js|react|vue|express|fastapi|requestanimationframe|setinterval|settimeout|websocket|http|fetch/i,
+    checklist: 'confirm parameter meanings, return values, lifecycle constraints, and error behavior before treating a call as correct',
+  },
+  {
+    id: 'state_transitions',
+    label: 'state transition invariants',
+    pattern: /状态|状态机|胜负|分数|移动|碰撞|合并|撤销|重试|缓存|session|state|fsm|transition|score|collision|merge|retry|cache/i,
+    checklist: 'verify state invariants, edge transitions, reset behavior, and repeated-action behavior',
+  },
+  {
+    id: 'concurrency_io',
+    label: 'async/concurrency/io semantics',
+    pattern: /并发|异步|队列|锁|流|文件|网络|超时|重试|async|await|promise|concurrent|parallel|queue|lock|stream|file|network|timeout|retry/i,
+    checklist: 'check ordering, cancellation, timeout/retry behavior, idempotency, and partial failure handling',
+  },
+  {
+    id: 'security_boundary',
+    label: 'security/input boundary semantics',
+    pattern: /安全|权限|认证|登录|密钥|token|注入|沙箱|secret|password|auth|permission|sanitize|injection|sandbox|xss|csrf/i,
+    checklist: 'validate trust boundaries, secrets handling, escaping/sanitization, and permission checks',
+  },
+];
 
 export class ReActAgent {
   /** @type {import('./tool-registry.js').ToolRegistry} */
@@ -668,11 +700,19 @@ export class ReActAgent {
       description: 'Read back or otherwise inspect the files that were created or edited.',
       dependencies: ['implement_changes'],
     });
+    if (profile.requiresSemanticRiskReview) {
+      plan.addTask({
+        id: 'semantic_risk_review',
+        name: 'Semantic/API risk review',
+        description: `Review the changed code against semantic risk domains: ${profile.semanticRiskDomains.map(domain => domain.label).join('; ')}.`,
+        dependencies: ['inspect_changes'],
+      });
+    }
     plan.addTask({
       id: 'verify_result',
       name: 'Verify result',
       description: 'Run an appropriate command/tool to verify the requested behavior.',
-      dependencies: ['inspect_changes'],
+      dependencies: profile.requiresSemanticRiskReview ? ['semantic_risk_review'] : ['inspect_changes'],
     });
 
     plan.status = TaskStatus.RUNNING;
@@ -692,6 +732,7 @@ export class ReActAgent {
       `Execute this DAG in dependency order. Do not skip ahead, and do not provide FINAL_ANSWER until every task is completed.\n` +
       `${tasks}\n\n` +
       `The DAG task ids are status labels, not tool names. Use real available tools such as list_dir, read_file, write_file, shell, and methodology tools.\n` +
+      `${this.#activeTaskProfile?.requiresSemanticRiskReview ? `${this.#buildSemanticRiskGuidance()}\n` : ''}` +
       `Current task: inspect_workspace. Call list_dir or another filesystem discovery tool first, then continue through the plan.`
     );
   }
@@ -716,6 +757,8 @@ export class ReActAgent {
     this.#completePlanTaskIf('implement_changes', () => this.#isMutationTool(toolName, args) && this.#hasCompletedRequiredMutationPaths());
     this.#startReadyTasks(plan);
     this.#completePlanTaskIf('inspect_changes', () => this.#isChangeInspectionTool(toolName, args));
+    this.#startReadyTasks(plan);
+    this.#completePlanTaskIf('semantic_risk_review', () => this.#isSemanticRiskReviewTool(toolName, args));
     this.#startReadyTasks(plan);
     this.#completePlanTaskIf('verify_result', () => this.#isVerificationTool(toolName, args));
     this.#startReadyTasks(plan);
@@ -865,6 +908,35 @@ export class ReActAgent {
     if (toolName === 'shell') {
       const command = String(args?.command || '');
       return this.#isShellVerificationCommand(args) || /\b(test|lint|build|check|typecheck|tsc|node)\b/.test(command);
+    }
+    return false;
+  }
+
+  #isSemanticRiskReviewTool(toolName, args) {
+    if (!this.#activeTaskProfile?.requiresSemanticRiskReview) {
+      return false;
+    }
+
+    const focusText = String(
+      args?.focus_areas ||
+      args?.criteria ||
+      args?.claim ||
+      args?.evidence ||
+      args?.command ||
+      args?.input ||
+      args?.text ||
+      ''
+    ).toLowerCase();
+    const mentionsSemanticReview = /semantic|api|unit|timing|time|fps|frame|state|behavior|behaviour|invariant|boundary|语义|单位|时间|速度|状态|行为|边界/.test(focusText);
+
+    if (toolName === 'review') {
+      return mentionsSemanticReview || !focusText;
+    }
+    if (toolName === 'verify') {
+      return mentionsSemanticReview;
+    }
+    if (toolName === 'shell') {
+      return mentionsSemanticReview && this.#isShellVerificationCommand(args);
     }
     return false;
   }
@@ -1217,7 +1289,46 @@ export class ReActAgent {
       !isLikelyTrivial &&
       (mentionsMultipleArtifacts || likelyFeatureWork || isBugTask);
 
-    return { isCodingTask, isModificationTask, isBugTask, isLikelyTrivial, requiresAutomaticPlanning };
+    const semanticRiskDomains = this.#inferSemanticRiskDomains(userInput);
+    const requiresSemanticRiskReview = isCodingTask &&
+      isModificationTask &&
+      semanticRiskDomains.length > 0 &&
+      !isLikelyTrivial;
+
+    return {
+      isCodingTask,
+      isModificationTask,
+      isBugTask,
+      isLikelyTrivial,
+      requiresAutomaticPlanning,
+      requiresSemanticRiskReview,
+      semanticRiskDomains,
+    };
+  }
+
+  #inferSemanticRiskDomains(userInput) {
+    const text = String(userInput || '');
+    return SEMANTIC_RISK_DOMAINS
+      .filter(domain => domain.pattern.test(text))
+      .map(({ id, label, checklist }) => ({ id, label, checklist }));
+  }
+
+  #buildSemanticRiskGuidance() {
+    const domains = this.#activeTaskProfile?.semanticRiskDomains || [];
+    if (domains.length === 0) {
+      return '';
+    }
+
+    const checklist = domains
+      .map(domain => `- ${domain.label}: ${domain.checklist}`)
+      .join('\n');
+
+    return (
+      `Semantic/API risk review is required before completion because this task touches high-risk behavior semantics.\n` +
+      `Risk domains:\n${checklist}\n` +
+      `Do not hardcode isolated API trivia. Instead, inspect the changed code and verify whether variable units, API parameter meanings, state transitions, and user-visible behavior match the requested intent. ` +
+      `Prefer CALL review({"file_path":"...","focus_areas":"semantic API semantics, units, timing, state invariants, behavior verification"}) on changed files, then run behavior-level verification.`
+    );
   }
 
   #buildCodingTaskOperatingPrompt(userInput) {
@@ -1230,6 +1341,7 @@ export class ReActAgent {
       `Coding task mode is active for the previous user request:\n${userInput}\n\n` +
       `Act like a responsible coding agent. First understand the repo with tools, then make the smallest necessary change, then verify with fresh evidence.\n` +
       `${methodologyLine}\n` +
+      `${this.#activeTaskProfile?.requiresSemanticRiskReview ? `${this.#buildSemanticRiskGuidance()}\n` : ''}` +
       `For file creation or file edits, prefer write_file/edit_file directly when available; shell is for inspection, commands, and verification, not a substitute for editing files. ` +
       `If you write or edit files, you must inspect the result and run an appropriate verification command or verify tool before FINAL_ANSWER. ` +
       `Final answers must mention what changed and what verification passed.`
@@ -1250,6 +1362,7 @@ export class ReActAgent {
     const methodologyEvents = successfulEvents.filter(event => METHODOLOGY_TOOLS.has(event.name));
     const mutationEvents = successfulEvents.filter(event => this.#isMutationEvent(event));
     const verificationEvents = successfulEvents.filter(event => this.#isVerificationEvent(event));
+    const semanticRiskReviewEvents = successfulEvents.filter(event => this.#isSemanticRiskReviewEvent(event));
     const hasMethodologyTools = this.#hasAnyTool(METHODOLOGY_TOOLS);
     const hasFileWriteTool = this.#toolRegistry.has('write_file') || this.#toolRegistry.has('edit_file');
 
@@ -1257,6 +1370,7 @@ export class ReActAgent {
       methodologyTools: methodologyEvents.map(event => event.name),
       mutationTools: mutationEvents.map(event => event.name),
       verificationTools: verificationEvents.map(event => event.name),
+      semanticRiskReviewTools: semanticRiskReviewEvents.map(event => event.name),
     };
 
     if (this.#activeExecutionPlan && this.#activeExecutionPlan.status !== TaskStatus.COMPLETED) {
@@ -1286,6 +1400,14 @@ export class ReActAgent {
       return { block: true, reason: 'missing_verification', evidence };
     }
 
+    if (
+      this.#activeTaskProfile.requiresSemanticRiskReview &&
+      mutationEvents.length > 0 &&
+      semanticRiskReviewEvents.length === 0
+    ) {
+      return { block: true, reason: 'missing_semantic_risk_review', evidence };
+    }
+
     const claimsDone = /done|completed|successfully|created|updated|fixed|implemented|完成|已完成|成功|创建|修改|修复|实现/.test(text.toLowerCase());
     const mentionsVerification = /test|verify|verified|check|passed|validation|验证|测试|检查|通过/.test(text.toLowerCase());
     if (mutationEvents.length > 0 && claimsDone && !mentionsVerification) {
@@ -1301,6 +1423,7 @@ export class ReActAgent {
       missing_methodology_step: 'You have not used the built-in coding methodology yet.',
       missing_code_change: 'You have not produced a successful code/file change yet.',
       missing_verification: 'You changed code/files but have not verified the result with fresh evidence.',
+      missing_semantic_risk_review: 'This task touches high-risk behavior semantics but has no semantic/API risk review evidence yet.',
       final_answer_missing_verification_summary: 'Your final answer claims completion but does not summarize verification.',
       automatic_plan_incomplete: 'The automatic task orchestration plan is not complete yet.',
     }[gate.reason] || gate.reason;
@@ -1310,6 +1433,7 @@ export class ReActAgent {
       `Original user request: ${userInput}\n` +
       `Reason: ${reasonText}\n` +
       `Evidence so far: ${JSON.stringify(gate.evidence)}\n\n` +
+      `${this.#activeTaskProfile?.requiresSemanticRiskReview ? `${this.#buildSemanticRiskGuidance()}\n` : ''}` +
       `Continue working now. If this task creates or modifies a file and write_file/edit_file is available, call write_file or edit_file next to make the change. Inspect your own changes, run a relevant verification command or verify tool, and only then answer with FINAL_ANSWER including what changed and what passed.`
     );
   }
@@ -1347,6 +1471,10 @@ export class ReActAgent {
     }
 
     return true;
+  }
+
+  #isSemanticRiskReviewEvent(event) {
+    return this.#isSemanticRiskReviewTool(event.name, event.args);
   }
 
   /**

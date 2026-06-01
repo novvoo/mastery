@@ -2832,6 +2832,7 @@ conversationProtocolTests.test('Automatic orchestration drives a realistic 2048 
       )?.content || '';
       const hasReadIndex = toolExecutions.some(call => call.name === 'read_file' && call.args.path === 'real-2048-test/index.html');
       const hasReadGame = toolExecutions.some(call => call.name === 'read_file' && call.args.path === 'real-2048-test/game.js');
+      const hasSemanticReview = toolExecutions.some(call => call.name === 'review');
       const hasShellVerify = toolExecutions.some(call => call.name === 'shell');
 
       let text;
@@ -2845,7 +2846,9 @@ conversationProtocolTests.test('Automatic orchestration drives a realistic 2048 
         text = 'Thought: I need to inspect the generated HTML.\nAction: CALL read_file({"path":"real-2048-test/index.html"})';
       } else if (files.has('real-2048-test/index.html') && files.has('real-2048-test/game.js') && !hasReadGame) {
         text = 'Thought: I should inspect the generated JavaScript too.\nAction: CALL read_file({"path":"real-2048-test/game.js"})';
-      } else if (hasReadIndex && hasReadGame && !hasShellVerify) {
+      } else if (hasReadIndex && hasReadGame && !hasSemanticReview) {
+        text = 'Thought: I need to review semantic risks around state transitions and behavior.\nAction: CALL review({"file_path":"real-2048-test/game.js","focus_areas":"semantic API semantics, units, timing, state invariants, behavior verification"})';
+      } else if (hasReadIndex && hasReadGame && hasSemanticReview && !hasShellVerify) {
         text = 'Thought: I need fresh verification from the JS runtime.\nAction: CALL shell({"command":"bun build real-2048-test/game.js --outfile /tmp/real-2048-test-game.js"})';
       } else if (latestProgress.includes('verify_result: running') && !hasShellVerify) {
         text = 'Thought: I need fresh verification from the JS runtime.\nAction: CALL shell({"command":"bun build real-2048-test/game.js --outfile /tmp/real-2048-test-game.js"})';
@@ -2876,7 +2879,7 @@ conversationProtocolTests.test('Automatic orchestration drives a realistic 2048 
   };
 
   const registry = new ToolRegistry();
-  for (const name of ['list_dir', 'brainstorm', 'write_file', 'read_file', 'shell']) {
+  for (const name of ['list_dir', 'brainstorm', 'write_file', 'read_file', 'review', 'shell']) {
     registry.register({
       name,
       description: `${name} test tool`,
@@ -2886,6 +2889,7 @@ conversationProtocolTests.test('Automatic orchestration drives a realistic 2048 
         topic: { type: 'string' },
         constraints: { type: 'array' },
         command: { type: 'string' },
+        focus_areas: { type: 'string' },
       },
       async handler(args) {
         toolExecutions.push({ name, args });
@@ -2901,6 +2905,9 @@ conversationProtocolTests.test('Automatic orchestration drives a realistic 2048 
         }
         if (name === 'shell') {
           return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (name === 'review') {
+          return '# Code Review\n\nNo semantic/API risks found. Units, timing, state invariants, and behavior verification look aligned.';
         }
         return { ok: true };
       },
@@ -2926,13 +2933,17 @@ conversationProtocolTests.test('Automatic orchestration drives a realistic 2048 
   }
 
   const executedNames = toolExecutions.map(call => call.name);
-  const expectedOrder = ['list_dir', 'brainstorm', 'write_file', 'write_file', 'read_file', 'read_file', 'shell'];
+  const expectedOrder = ['list_dir', 'brainstorm', 'write_file', 'write_file', 'read_file', 'read_file', 'review', 'shell'];
   if (executedNames.join(',') !== expectedOrder.join(',')) {
     throw new Error(`Expected orchestrated tool order ${expectedOrder.join(',')}, got ${executedNames.join(',')}`);
   }
   const shellCall = toolExecutions.find(call => call.name === 'shell');
   if (shellCall?.args.command !== 'bun build real-2048-test/game.js --outfile /tmp/real-2048-test-game.js') {
     throw new Error(`Expected Bun syntax verification, got ${JSON.stringify(shellCall)}`);
+  }
+  const reviewCall = toolExecutions.find(call => call.name === 'review');
+  if (!/semantic API semantics.*units.*timing.*state invariants.*behavior verification/.test(reviewCall?.args.focus_areas || '')) {
+    throw new Error(`Expected semantic/API risk review focus areas, got ${JSON.stringify(reviewCall)}`);
   }
 
   const gateReasons = debugEvents
@@ -3000,6 +3011,86 @@ conversationProtocolTests.test('Automatic orchestration recognizes terminal-comp
   );
   if (!orchestrationPrompt) {
     throw new Error(`Expected compressed 2048 file task to enable automatic orchestration, got ${JSON.stringify(requestMessages[0], null, 2)}`);
+  }
+  if (!orchestrationPrompt.content.includes('semantic_risk_review') || !orchestrationPrompt.content.includes('Semantic/API risk review is required')) {
+    throw new Error(`Expected compressed 2048 task to include semantic risk review guidance, got ${orchestrationPrompt.content}`);
+  }
+});
+
+conversationProtocolTests.test('Realtime game tasks require semantic/API risk review without hardcoded API rules', async () => {
+  const { ReActAgent } = await import('./src/core/agent.js');
+  const { ToolRegistry } = await import('./src/core/tool-registry.js');
+  const { MemoryManager } = await import('./src/memory/memory-manager.js');
+
+  const requestMessages = [];
+  const debugEvents = [];
+  const mockProvider = {
+    async chat(messages) {
+      requestMessages.push(messages.map(message => ({
+        role: message.role,
+        content: message.content,
+      })));
+      return {
+        text: 'FINAL_ANSWER: snake game done.',
+        toolCalls: [],
+        finishReason: 'stop',
+      };
+    },
+    getMaxContextTokens() {
+      return 12000;
+    },
+    dispose() {},
+  };
+
+  const registry = new ToolRegistry();
+  for (const name of ['list_dir', 'brainstorm', 'write_file', 'read_file', 'review', 'verify', 'shell']) {
+    registry.register({
+      name,
+      description: `${name} test tool`,
+      parameters: {},
+      async handler() {
+        return { ok: true };
+      },
+    });
+  }
+
+  const recordingUI = {
+    iteration() {},
+    toolCall() {},
+    toolResult() {},
+    toolError() {},
+    warn() {},
+    error() {},
+    info() {},
+    debug() {},
+    debugEvent(label, details) {
+      debugEvents.push({ label, details });
+    },
+    finalAnswer() {},
+  };
+
+  const agent = new ReActAgent(mockProvider, registry, new MemoryManager(TEST_CONFIG.testDir), {
+    maxIterations: 1,
+    workingDirectory: TEST_CONFIG.testDir,
+  }, recordingUI);
+
+  await agent.run('实现一个 pygame 贪吃蛇游戏，包含速度、clock tick、键盘移动、分数和胜负状态');
+
+  const firstRequest = requestMessages[0] || [];
+  const promptText = firstRequest.map(message => message.content).join('\n');
+  if (!promptText.includes('semantic_risk_review')) {
+    throw new Error(`Expected automatic plan to include semantic_risk_review, got ${promptText}`);
+  }
+  if (!promptText.includes('Semantic/API risk review is required')) {
+    throw new Error(`Expected semantic risk guidance, got ${promptText}`);
+  }
+  if (!promptText.includes('units/time/animation semantics') || !promptText.includes('third-party API semantics')) {
+    throw new Error(`Expected timing and API semantic risk domains, got ${promptText}`);
+  }
+
+  const profileEvent = debugEvents.find(event => event.label === 'Coding task mode enabled');
+  if (!profileEvent?.details?.requiresSemanticRiskReview) {
+    throw new Error(`Expected task profile to require semantic risk review, got ${JSON.stringify(profileEvent)}`);
   }
 });
 
