@@ -4957,6 +4957,71 @@ productionReadinessTests.test('SubAgent spawn executes, returns answer, and clea
   await scheduler.stop();
 });
 
+productionReadinessTests.test('Runtime config loads user .env, cwd .env, and environment variables in priority order', async () => {
+  const { loadRuntimeEnv } = await import('./src/core/runtime-config.js');
+  const configDir = join(TEST_CONFIG.testDir, 'runtime-config-priority');
+  const userEnvPath = join(configDir, 'user.env');
+  const cwdEnvPath = join(configDir, 'cwd.env');
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(userEnvPath, [
+    'MODEL_PROVIDER=openai',
+    'OPENAI_API_KEY=user-key',
+    'OPENAI_MODEL=user-model',
+    'WORKING_DIRECTORY=/from-user',
+  ].join('\n'));
+  writeFileSync(cwdEnvPath, [
+    'OPENAI_MODEL=cwd-model',
+    'WORKING_DIRECTORY=/from-cwd',
+    'MAX_ITERATIONS=12',
+  ].join('\n'));
+
+  const env = { OPENAI_API_KEY: 'shell-key' };
+  loadRuntimeEnv({ env, userEnvPath, cwdEnvPath, cwd: configDir });
+
+  if (env.OPENAI_API_KEY !== 'shell-key') {
+    throw new Error('Expected shell environment to keep highest priority');
+  }
+  if (env.OPENAI_MODEL !== 'cwd-model' || env.WORKING_DIRECTORY !== '/from-cwd') {
+    throw new Error(`Expected cwd .env to override user .env, got ${JSON.stringify(env)}`);
+  }
+  if (env.MODEL_PROVIDER !== 'openai' || env.MAX_ITERATIONS !== '12') {
+    throw new Error(`Expected merged user and cwd config, got ${JSON.stringify(env)}`);
+  }
+});
+
+productionReadinessTests.test('Runtime config reports missing provider secrets for non-interactive startup', async () => {
+  const {
+    buildMissingConfigMessage,
+    getMissingRequiredConfig,
+    writeUserEnv,
+  } = await import('./src/core/runtime-config.js');
+
+  const missing = getMissingRequiredConfig({ MODEL_PROVIDER: 'deepseek' });
+  if (missing.length !== 1 || missing[0] !== 'DEEPSEEK_API_KEY') {
+    throw new Error(`Expected missing DeepSeek API key, got ${JSON.stringify(missing)}`);
+  }
+
+  const message = buildMissingConfigMessage(missing, '/tmp/agent.env');
+  if (!message.includes('DEEPSEEK_API_KEY') || !message.includes('/tmp/agent.env')) {
+    throw new Error(`Expected actionable missing config message, got ${message}`);
+  }
+
+  const envPath = join(TEST_CONFIG.testDir, 'runtime-config-write', '.env');
+  mkdirSync(join(TEST_CONFIG.testDir, 'runtime-config-write'), { recursive: true });
+  writeFileSync(envPath, 'MCP_CUSTOM_ENABLED=true\n');
+  writeUserEnv({
+    MODEL_PROVIDER: 'deepseek',
+    DEEPSEEK_API_KEY: 'sk-test',
+    DEEPSEEK_MODEL: 'deepseek-chat',
+    WORKING_DIRECTORY: '/tmp/workspace with spaces',
+  }, { envPath });
+
+  const written = readFileSync(envPath, 'utf8');
+  if (!written.includes('MCP_CUSTOM_ENABLED=true') || !written.includes('DEEPSEEK_API_KEY=sk-test') || !written.includes('WORKING_DIRECTORY="/tmp/workspace with spaces"')) {
+    throw new Error(`Expected user config file to be written safely, got ${written}`);
+  }
+});
+
 // ============ 运行所有测试 ============
 async function runAllTests() {
   console.log('╔════════════════════════════════════════════════════════════╗');

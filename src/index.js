@@ -4,11 +4,10 @@
  * Main entry point with enhanced CLI
  */
 
-import { config } from 'dotenv';
 import { clearLine, createInterface, cursorTo, emitKeypressEvents } from 'readline';
 import { resolve } from 'path';
 import { existsSync, mkdirSync } from 'fs';
-import { input, select } from '@inquirer/prompts';
+import { input, password, select } from '@inquirer/prompts';
 
 // Core imports
 import { ToolRegistry } from './core/tool-registry.js';
@@ -20,6 +19,17 @@ import { ExperienceMemory } from './core/experience-memory.js';
 import { SecurityPolicy } from './core/security-policy.js';
 import { IntelligentReasoning } from './core/intelligent-reasoning.js';
 import { AutomationEngine, TriggerType, WorkflowStatus } from './core/automation-engine.js';
+import {
+  applyRuntimeValues,
+  buildMissingConfigMessage,
+  getMissingRequiredConfig,
+  getProviderBaseUrl,
+  getProviderModel,
+  getProviderRequirement,
+  getUserEnvPath,
+  loadRuntimeEnv,
+  writeUserEnv,
+} from './core/runtime-config.js';
 
 // Model imports
 import { OpenAIModelProvider } from './models/openai-provider.js';
@@ -70,8 +80,8 @@ import {
   filterSlashCommandSuggestions,
 } from './cli/slash-command-suggestions.js';
 
-// Load environment variables
-config();
+// Load environment variables from the user config and the current workspace.
+loadRuntimeEnv();
 
 /**
  * Main application class
@@ -106,13 +116,13 @@ class AIEngineeringAgent {
    */
   #loadConfig() {
     const provider = process.env.MODEL_PROVIDER || 'openai';
-    const model = process.env.OPENAI_MODEL || process.env.MODEL || 'gpt-4';
+    const model = getProviderModel(provider);
     
     return {
       provider,
       model,
       apiKey: process.env.OPENAI_API_KEY,
-      apiUrl: process.env.OPENAI_BASE_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1',
+      apiUrl: getProviderBaseUrl(provider) || 'https://api.openai.com/v1',
       maxIterations: parseInt(process.env.MAX_ITERATIONS || '10'),
       maxTokens: parseInt(process.env.MAX_TOKENS || '2048'),
       temperature: parseFloat(process.env.TEMPERATURE || '0.7'),
@@ -213,6 +223,10 @@ class AIEngineeringAgent {
    * Initialize the application
    */
   async initialize() {
+    await this.#ensureRuntimeConfig();
+    this.config = this.#loadConfig();
+    this.workingDir = this.config.workingDir;
+    this.debugMode = this.config.debug;
     enhancedUI.setDebugMode(this.debugMode);
 
     // Ensure working directory exists
@@ -431,6 +445,70 @@ class AIEngineeringAgent {
     this.#installSlashCommandSuggestions();
 
     this.isRunning = true;
+  }
+
+  async #ensureRuntimeConfig() {
+    const missingVars = getMissingRequiredConfig();
+    if (missingVars.length === 0) {
+      return;
+    }
+
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      throw new Error(buildMissingConfigMessage(missingVars, getUserEnvPath()));
+    }
+
+    const values = await this.#promptForRuntimeConfig();
+    const envPath = writeUserEnv(values);
+    applyRuntimeValues(values);
+    enhancedUI.success(`Configuration saved to ${envPath}`);
+  }
+
+  async #promptForRuntimeConfig() {
+    enhancedUI.info('First-time setup: model configuration is required before starting.');
+
+    const provider = await select({
+      message: 'Choose model provider:',
+      choices: [
+        { name: 'OpenAI compatible', value: 'openai' },
+        { name: 'DeepSeek', value: 'deepseek' },
+        { name: 'Zhipu AI', value: 'zhipu' },
+        { name: 'OpenRouter', value: 'openrouter' },
+      ],
+      default: process.env.MODEL_PROVIDER || 'openai',
+    });
+    const requirement = getProviderRequirement(provider);
+
+    const apiKey = await password({
+      message: `Enter ${requirement.keyVar}:`,
+      mask: '*',
+      validate: value => value.trim() !== '' || `${requirement.keyVar} is required`,
+    });
+    const baseUrl = await input({
+      message: `Enter ${requirement.baseUrlVar}:`,
+      default: getProviderBaseUrl(provider),
+      validate: value => value.trim() !== '' || `${requirement.baseUrlVar} is required`,
+    });
+    const model = await input({
+      message: `Enter ${requirement.modelVar}:`,
+      default: getProviderModel(provider),
+      validate: value => value.trim() !== '' || `${requirement.modelVar} is required`,
+    });
+    const workingDirectory = await input({
+      message: 'Enter working directory:',
+      default: process.env.WORKING_DIRECTORY || resolve(process.cwd(), 'workspace'),
+      validate: value => value.trim() !== '' || 'WORKING_DIRECTORY is required',
+    });
+
+    return {
+      MODEL_PROVIDER: provider,
+      [requirement.keyVar]: apiKey.trim(),
+      [requirement.baseUrlVar]: baseUrl.trim(),
+      [requirement.modelVar]: model.trim(),
+      WORKING_DIRECTORY: workingDirectory.trim(),
+      MAX_ITERATIONS: process.env.MAX_ITERATIONS || '30',
+      MAX_TOKENS: process.env.MAX_TOKENS || '4096',
+      DEBUG: process.env.DEBUG || 'false',
+    };
   }
 
   #installSlashCommandSuggestions() {

@@ -126,6 +126,8 @@ npm run start:debug       # 启动时打开 DEBUG 和 AGENT_TRACE
 
 ## 快速开始
 
+开发环境可以在项目目录使用 `.env`：
+
 ```bash
 git clone <repository-url>
 cd ai-engineering-mastery-agent
@@ -148,6 +150,21 @@ DEBUG=false
 ```bash
 npm start
 ```
+
+通过 `.deb`、`.pkg`、`.msi` 安装后，也可以直接运行 `agent`。如果没有配置 `.env` 或环境变量，交互式终端会进入首次启动向导，选择 provider、填写 API Key、Base URL、模型和工作目录，并写入用户配置文件。
+
+配置加载优先级：
+
+1. 系统环境变量
+2. 当前运行目录的 `.env`
+3. 用户配置目录的 `.env`
+
+用户配置目录默认位置：
+
+- macOS / Linux: `~/.config/ai-engineering-mastery-agent/.env`
+- Windows: `%APPDATA%\ai-engineering-mastery-agent\.env`
+
+可以用 `AGENT_CONFIG_DIR=/path/to/config-dir` 改写用户配置目录。
 
 ## 常用命令
 
@@ -183,17 +200,20 @@ CD / Release 用于生成系统安装包：
 ```bash
 git checkout main
 git pull origin main
-git tag v1.0.1
-git push origin v1.0.1
+git tag v1.0.2
+git push origin v1.0.2
 ```
 
 ## 配置项
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
+| `AGENT_CONFIG_DIR` | 系统配置目录 | 用户级 `.env` 所在目录 |
 | `MODEL_PROVIDER` | `openai` | 模型提供者：`openai`、`llama`、`zhipu`、`deepseek`、`openrouter` |
-| `OPENAI_MODEL` / `MODEL` | `gpt-4` | 模型名 |
+| `OPENAI_API_KEY` / `ZHIPU_API_KEY` / `DEEPSEEK_API_KEY` / `OPENROUTER_API_KEY` | 无 | 对应 provider 的必要密钥 |
+| `OPENAI_MODEL` / `ZHIPU_MODEL` / `DEEPSEEK_MODEL` / `OPENROUTER_MODEL` / `MODEL` | provider 默认值 | 模型名 |
 | `OPENAI_BASE_URL` / `OPENAI_API_URL` | `https://api.openai.com/v1` | OpenAI-compatible API 地址 |
+| `ZHIPU_BASE_URL` / `DEEPSEEK_BASE_URL` / `OPENROUTER_BASE_URL` | provider 默认值 | 对应 provider API 地址 |
 | `MAX_ITERATIONS` | `10` | 每次任务最大 ReAct 轮数 |
 | `MAX_TOKENS` | `2048` | 单次模型输出 token 上限 |
 | `TEMPERATURE` | `0.7` | 采样温度 |
