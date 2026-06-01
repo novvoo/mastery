@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * AI Engineering Mastery Agent
  * Main entry point with enhanced CLI

@@ -1,6 +1,6 @@
 {
   "name": "ai-engineering-mastery-agent",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "AI Engineering Mastery Agent - A standalone ReAct agent with 12 professional coding skills, sandbox execution, graph planning, 3-layer memory, and MCP protocol support",
   "type": "module",
   "main": "src/index.js",
@@ -8,23 +8,20 @@
     "agent": "src/index.js"
   },
   "scripts": {
-    "start": "node src/index.js",
-    "start:debug": "DEBUG=true AGENT_TRACE=true node src/index.js",
-    "start:inspect": "node --inspect src/index.js",
-    "dev": "node --watch src/index.js",
-    "dev:debug": "DEBUG=true AGENT_TRACE=true node --watch src/index.js",
-    "dev:inspect": "node --watch --inspect src/index.js",
-    "test": "node test-integration.mjs",
-    "test:debug": "node --inspect-brk test-integration.mjs",
-    "test:integration": "node test-integration.mjs",
-    "test:watch": "node --watch test-integration.mjs",
+    "start": "bun src/index.js",
+    "start:debug": "DEBUG=true AGENT_TRACE=true bun src/index.js",
+    "start:inspect": "bun --inspect src/index.js",
+    "dev": "bun --watch src/index.js",
+    "dev:debug": "DEBUG=true AGENT_TRACE=true bun --watch src/index.js",
+    "dev:inspect": "bun --inspect --watch src/index.js",
+    "test": "bun test-integration.mjs",
+    "test:debug": "bun --inspect-brk test-integration.mjs",
+    "test:integration": "bun test-integration.mjs",
+    "test:watch": "bun --watch test-integration.mjs",
     "lint": "eslint src test-integration.mjs",
-    "package:release": "node scripts/prepare-release-package.mjs",
+    "package:release": "bun scripts/prepare-release-package.mjs",
     "format": "prettier --write \"src/**/*.js\"",
     "format:check": "prettier --check \"src/**/*.js\""
-  },
-  "engines": {
-    "node": ">=18.0.0"
   },
   "keywords": [
     "ai-agent",
@@ -50,12 +47,8 @@
     "glob": "^11.0.0",
     "https-proxy-agent": "^9.0.0",
     "inquirer": "^13.4.3",
-    "node-pty": "^1.1.0",
     "openai": "^4.73.0",
     "ora": "^8.2.0"
-  },
-  "optionalDependencies": {
-    "node-llama-cpp": "^3.14.0"
   },
   "devDependencies": {
     "eslint": "^8.57.1"

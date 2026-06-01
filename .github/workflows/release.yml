@@ -54,22 +54,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
 
       - name: Install production dependencies
-        run: npm ci --omit=dev --omit=optional
+        run: bun install --frozen-lockfile --production
 
       - name: Prepare release package
-        run: npm run package:release
+        run: bun run package:release
         env:
           RELEASE_PLATFORM: ${{ matrix.platform }}
           RELEASE_STANDALONE: bun
@@ -78,9 +72,9 @@ jobs:
         id: meta
         shell: bash
         run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          NAME="$(node -p "require('./package.json').name")"
-          ARCH="$(node -p "process.arch")"
+          VERSION="$(bun -e "const pkg = await import('./package.json'); console.log(pkg.default.version)")"
+          NAME="$(bun -e "const pkg = await import('./package.json'); console.log(pkg.default.name)")"
+          ARCH="$(bun -e "console.log(process.arch)")"
           PACKAGE_NAME="${NAME}-${VERSION}-${{ matrix.platform }}-${ARCH}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "name=${NAME}" >> "$GITHUB_OUTPUT"
@@ -172,7 +166,7 @@ jobs:
         if: matrix.package_ext == 'msi'
         shell: pwsh
         run: |
-          node scripts/create-wix-manifest.mjs "dist/${{ steps.meta.outputs.package_name }}" "dist/${{ steps.meta.outputs.package_name }}.wxs"
+          bun scripts/create-wix-manifest.mjs "dist/${{ steps.meta.outputs.package_name }}" "dist/${{ steps.meta.outputs.package_name }}.wxs"
           wix build "dist/${{ steps.meta.outputs.package_name }}.wxs" -o "dist/${{ steps.meta.outputs.package_name }}.msi"
 
       - name: Upload package artifact

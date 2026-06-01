@@ -75,7 +75,7 @@ async function buildIndex(workingDirectory, scopePath, pattern) {
       '**/dist/**',
       '**/build/**',
       '**/coverage/**',
-      '**/package-lock.json',
+      '**/bun.lock',
     ],
   });
 

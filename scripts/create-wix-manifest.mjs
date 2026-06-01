@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 import { readFileSync, readdirSync, writeFileSync } from 'fs';
 import { join, relative, resolve, sep } from 'path';
@@ -6,7 +6,7 @@ import { join, relative, resolve, sep } from 'path';
 const [stageDirArg, outputArg] = process.argv.slice(2);
 
 if (!stageDirArg || !outputArg) {
-  console.error('Usage: node scripts/create-wix-manifest.mjs <stage-dir> <output.wxs>');
+  console.error('Usage: bun scripts/create-wix-manifest.mjs <stage-dir> <output.wxs>');
   process.exit(1);
 }
 

@@ -90,7 +90,7 @@ export const ui = {
   welcome(config) {
     console.log('');
     console.log(chalk.cyan('╭──────────────────────────────────────────────────╮'));
-    console.log(chalk.cyan('│') + chalk.cyan.bold('  AI Engineering Mastery Agent v1.0.3') + '              │');
+    console.log(chalk.cyan('│') + chalk.cyan.bold('  AI Engineering Mastery Agent v1.0.4') + '              │');
     console.log(chalk.cyan('│') + chalk.dim(`  Model: ${config.model} (${config.provider})`) + ' '.repeat(Math.max(0, 33 - config.model.length - config.provider.length - 3)) + '│');
     console.log(chalk.cyan('│') + chalk.dim(`  Working Dir: ${config.workingDir}`) + ' '.repeat(Math.max(0, 31 - config.workingDir.length)) + '│');
     console.log(chalk.cyan('╰──────────────────────────────────────────────────╯'));

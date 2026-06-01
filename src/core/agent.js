@@ -874,12 +874,12 @@ export class ReActAgent {
     if (/\bmkdir\b/.test(command) && !/(^|\s)(touch|cp|mv|rm|sed|perl|cat|tee)\b|>|>>|apply_patch/.test(command)) {
       return false;
     }
-    return /(^|\s)(npm|pnpm|yarn|npx|node|python|pytest|vitest|jest|eslint|tsc|git|touch|cp|mv|rm|sed|perl|tee)\b|>|>>|apply_patch/.test(command);
+    return /(^|\s)(bun|npm|pnpm|yarn|npx|node|python|pytest|vitest|jest|eslint|tsc|git|touch|cp|mv|rm|sed|perl|tee)\b|>|>>|apply_patch/.test(command);
   }
 
   #isShellVerificationCommand(args) {
     const command = String(args?.command || args?.input || args?.text || '').toLowerCase();
-    return /\b(test|lint|check|verify|build|typecheck|tsc|jest|vitest|pytest|node|npm|pnpm|yarn)\b/.test(command);
+    return /\b(test|lint|check|verify|build|typecheck|tsc|jest|vitest|pytest|bun|node|npm|pnpm|yarn)\b/.test(command);
   }
 
   /**
@@ -1182,7 +1182,7 @@ export class ReActAgent {
     const isCodingTask = [
       /写.*代码|写.*html|写.*js|写.*css|创建.*文件|新建.*文件|修改.*代码|改.*代码|修复|实现|创建|新建|开发|生成|重构|跑.*测试|运行.*测试|集成测试|单元测试|提交|push/,
       /2048|游戏|浏览器.*应用|网页.*应用/,
-      /\b(code|coding|implement|fix|bug|refactor|unit test|integration test|test suite|npm test|run tests?|write tests?|add tests?|html|css|javascript|typescript|commit|push)\b/,
+      /\b(code|coding|implement|fix|bug|refactor|unit test|integration test|test suite|bun test|run tests?|write tests?|add tests?|html|css|javascript|typescript|commit|push)\b/,
       /\b(create|write|edit|modify|update|change)\b.*\b(file|code|html|css|js|javascript|ts|typescript|component|function|class|module|test)\b/,
     ].some(pattern => pattern.test(input));
 
@@ -1330,7 +1330,7 @@ export class ReActAgent {
 
     if (event.name === 'shell' || event.name === 'pty_start' || event.name === 'pty_write') {
       const command = String(event.args?.command || event.args?.input || event.args?.text || '').toLowerCase();
-      return /(^|\s)(npm|pnpm|yarn|npx|node|python|pytest|vitest|jest|eslint|tsc|git|mkdir|touch|cp|mv|rm|sed|perl)\b|>|>>|apply_patch/.test(command);
+      return /(^|\s)(bun|npm|pnpm|yarn|npx|node|python|pytest|vitest|jest|eslint|tsc|git|mkdir|touch|cp|mv|rm|sed|perl)\b|>|>>|apply_patch/.test(command);
     }
 
     return true;
@@ -1343,7 +1343,7 @@ export class ReActAgent {
 
     if (event.name === 'shell' || event.name === 'pty_start' || event.name === 'pty_read') {
       const command = String(event.args?.command || event.args?.input || event.args?.text || '').toLowerCase();
-      return /\b(test|lint|check|verify|build|typecheck|tsc|jest|vitest|pytest|node|npm|pnpm|yarn|cat|sed|ls|find|rg)\b/.test(command);
+      return /\b(test|lint|check|verify|build|typecheck|tsc|jest|vitest|pytest|bun|node|npm|pnpm|yarn|cat|sed|ls|find|rg)\b/.test(command);
     }
 
     return true;

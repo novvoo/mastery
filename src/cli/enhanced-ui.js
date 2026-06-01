@@ -381,7 +381,7 @@ export const enhancedUI = {
   // 欢迎界面
   welcome(config) {
     const content = [
-      theme.primaryBold('AI Engineering Mastery Agent v1.0.3'),
+      theme.primaryBold('AI Engineering Mastery Agent v1.0.4'),
       '',
       `${theme.muted('Model:')} ${theme.white(config.model)}`,
       `${theme.muted('Provider:')} ${theme.white(config.provider)}`,

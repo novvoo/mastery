@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { basename, join, resolve } from 'path';
@@ -25,7 +25,7 @@ const entries = [
 ];
 
 if (!standaloneRuntime) {
-  entries.unshift('src', 'package.json', 'package-lock.json');
+  entries.unshift('src', 'package.json', 'bun.lock');
 }
 
 for (const entry of entries) {
@@ -42,7 +42,7 @@ for (const entry of entries) {
 if (!standaloneRuntime && !skipNodeModules) {
   const nodeModules = join(root, 'node_modules');
   if (!existsSync(nodeModules)) {
-    throw new Error('node_modules not found. Run npm ci --omit=dev --omit=optional before packaging.');
+    throw new Error('node_modules not found. Run bun install --production before packaging.');
   }
   cpSync(nodeModules, join(stageDir, 'node_modules'), {
     recursive: true,
@@ -85,12 +85,12 @@ setlocal
   const unixLauncher = `#!/usr/bin/env sh
 set -e
 DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-exec node "$DIR/src/index.js" "$@"
+exec bun "$DIR/src/index.js" "$@"
 `;
   const windowsLauncher = `@echo off
 setlocal
 set "DIR=%~dp0.."
-node "%DIR%\\src\\index.js" %*
+bun "%DIR%\\src\\index.js" %*
 `;
 
   const unixLauncherPath = join(binDir, 'agent');

@@ -100,7 +100,7 @@ FINAL_ANSWER: The current directory is /workspace/project.
 **Example 4 - Interactive command:**
 User: Start the dev server and check its output
 Thought: This is long-running and needs incremental output, so I should use a PTY session.
-Action: CALL pty_start({"command": "npm run dev", "wait_ms": 1000})
+Action: CALL pty_start({"command": "bun run dev", "wait_ms": 1000})
 Observation: {"session_id":"pty_...","status":"running","output":"..."}
 Thought: The server is still running. I can read more output later or stop it when finished.
 

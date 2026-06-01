@@ -344,7 +344,7 @@ export class WebSocketMCPClient extends MCPClient {
     return new Promise((resolve, reject) => {
       const WebSocketCtor = globalThis.WebSocket;
       if (!WebSocketCtor) {
-        reject(new Error('WebSocket is not available in this Node.js runtime'));
+        reject(new Error('WebSocket is not available in this JavaScript runtime'));
         return;
       }
 

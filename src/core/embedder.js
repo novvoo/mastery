@@ -45,7 +45,7 @@ export class Embedder {
       const ort = await import('onnxruntime-node');
       return ort;
     } catch (error) {
-      throw new Error('ONNX Runtime not available. Please ensure onnxruntime-node is installed.');
+      throw new Error('ONNX Runtime not available. Install a compatible ONNX runtime package or use the fallback embedder.');
     }
   }
 

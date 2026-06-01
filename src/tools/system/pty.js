@@ -24,7 +24,6 @@ const DANGEROUS_PATTERNS = [
 ];
 
 const sessions = new Map();
-let ptyModulePromise = null;
 
 function delay(ms) {
   return new Promise(resolveDelay => setTimeout(resolveDelay, ms));
@@ -86,9 +85,31 @@ function requireSession(sessionId) {
   return session;
 }
 
-async function loadPtyModule() {
-  ptyModulePromise ||= import('node-pty');
-  return ptyModulePromise;
+function spawnHelperSession(command, workingDirectory, cols, rows) {
+  const helperCommand = process.env.AGENT_PTY_HELPER;
+  if (!helperCommand) {
+    return null;
+  }
+
+  return spawn(helperCommand, [], {
+    cwd: workingDirectory,
+    env: {
+      ...process.env,
+      AGENT_PTY_COMMAND: command,
+      AGENT_PTY_CWD: workingDirectory,
+      AGENT_PTY_COLS: String(cols || 120),
+      AGENT_PTY_ROWS: String(rows || 30),
+    },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+}
+
+function spawnPipeSession(command, workingDirectory) {
+  return spawn(getShell(), getShellArgs(command), {
+    cwd: workingDirectory,
+    env: process.env,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
 }
 
 export function createPtyTools() {
@@ -130,49 +151,27 @@ export function createPtyTools() {
           startedAt: Date.now(),
         };
 
-        try {
-          const pty = await loadPtyModule();
-          const processHandle = pty.spawn(getShell(), getShellArgs(command), {
-            name: 'xterm-256color',
-            cols: cols || 120,
-            rows: rows || 30,
-            cwd: workingDirectory,
-            env: process.env,
-          });
+        const helper = spawnHelperSession(command, workingDirectory, cols, rows);
+        const child = helper || spawnPipeSession(command, workingDirectory);
 
-          session.process = {
-            write: input => processHandle.write(input),
-            kill: signal => processHandle.kill(signal),
-          };
-          processHandle.onData(data => appendOutput(session, data));
-          processHandle.onExit(({ exitCode, signal }) => {
-            session.exitCode = exitCode;
-            session.signal = signal;
-          });
-        } catch (error) {
-          const child = spawn(getShell(), getShellArgs(command), {
-            cwd: workingDirectory,
-            env: process.env,
-            stdio: ['pipe', 'pipe', 'pipe'],
-          });
-
-          session.mode = 'pipe_fallback';
-          appendOutput(session, `[PTY unavailable: ${error.message}. Using interactive pipe fallback.]\n`);
-          session.process = {
-            write: input => child.stdin.write(input),
-            kill: signal => child.kill(signal),
-          };
-          child.stdout.on('data', data => appendOutput(session, data.toString()));
-          child.stderr.on('data', data => appendOutput(session, data.toString()));
-          child.on('close', (exitCode, signal) => {
-            session.exitCode = exitCode;
-            session.signal = signal;
-          });
-          child.on('error', childError => {
-            appendOutput(session, `[process error: ${childError.message}]\n`);
-            session.exitCode = 1;
-          });
+        session.mode = helper ? 'pty_helper' : 'pipe_fallback';
+        if (!helper) {
+          appendOutput(session, '[PTY helper unavailable. Using interactive pipe fallback.]\n');
         }
+        session.process = {
+          write: input => child.stdin.write(input),
+          kill: signal => child.kill(signal),
+        };
+        child.stdout.on('data', data => appendOutput(session, data.toString()));
+        child.stderr.on('data', data => appendOutput(session, data.toString()));
+        child.on('close', (exitCode, signal) => {
+          session.exitCode = exitCode;
+          session.signal = signal;
+        });
+        child.on('error', childError => {
+          appendOutput(session, `[process error: ${childError.message}]\n`);
+          session.exitCode = 1;
+        });
 
         sessions.set(id, session);
 

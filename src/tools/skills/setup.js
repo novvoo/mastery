@@ -46,7 +46,7 @@ export default function setup() {
       },
       test_framework: {
         type: 'string',
-        description: 'Detected or selected test framework such as npm test, jest, vitest, pytest, go test, or cargo test.',
+        description: 'Detected or selected test framework such as bun test, jest, vitest, pytest, go test, or cargo test.',
       },
       code_style: {
         type: 'string',
@@ -63,7 +63,7 @@ export default function setup() {
         project_name = 'AI Engineering Mastery Project',
         issue_tracker = 'GitHub Issues',
         docs_path = 'docs',
-        test_framework = 'npm test',
+        test_framework = 'bun test',
         code_style = '',
         overwrite = false,
       } = params;

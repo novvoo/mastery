@@ -12,7 +12,7 @@
 - **方法论工具**：内置 `setup`、`diagnose`、`grill`、`zoom_out`、`brainstorm`、`tdd`、`review`、`verify`、`architect`、`to_prd`、`to_issues` 等工程流程工具。
 - **Web 查询链路**：`web_search` 默认优先 Bing，失败或无结果时 fallback 到 DuckDuckGo；需要详情时继续 `web_fetch`。
 - **本地系统工具**：文件读写、目录列表、shell、PTY、语义搜索、浏览器打开等工具统一通过 tool registry 暴露。
-- **默认安静运行**：`DEBUG=false` 为默认模式；需要排障时可用 `/debug on` 或 `npm run start:debug` 打开详细事件日志。
+- **默认安静运行**：`DEBUG=false` 为默认模式；需要排障时可用 `/debug on` 或 `bun run start:debug` 打开详细事件日志。
 - **集成测试覆盖**：`test-integration.mjs` 覆盖 Agent 循环、工具解析、Web 搜索、CLI 输入、编码守门和稳定性。
 
 ## 运行链路
@@ -52,14 +52,14 @@ Agent 的工程方法论可以概括为六步：
 2. **选择最小工具路径**：能用结构化工具就不用猜；实时信息走 `web_search -> web_fetch`，本地信息走文件/终端工具。
 3. **先理解再修改**：编码任务先读相关文件和上下文，避免凭空生成。
 4. **小步修改**：只改完成任务需要的文件，不做无关重构。
-5. **证据验证**：运行测试、lint、构建、`node --check` 或 `verify/review`，失败则继续修复。
+5. **证据验证**：运行测试、lint、构建、Bun 语法/打包检查或 `verify/review`，失败则继续修复。
 6. **收口清楚**：最终答案说明改了什么、验证了什么、还有什么风险或限制。
 
 实际运行时采用“证据型守门”，而不是固定死板的流程编排：
 
 - 系统提示会鼓励新功能先 `brainstorm`、实现时用 `tdd`、完成前 `verify`。
 - Agent completion gate 的强制条件更宽松：非平凡编码任务需要至少一个成功的方法论工具证据，但不强制必须是 `brainstorm` 或 `tdd`。
-- 变更后的验证可以是 `verify` / `review`，也可以是等价的 fresh verification command，例如 `npm test`、`node --check`、`tsc`、`pytest`、`lint` 等。
+- 变更后的验证可以是 `verify` / `review`，也可以是等价的 fresh verification command，例如 `bun test`、`bun run lint`、`tsc`、`pytest`、`lint` 等。
 - 小型、显然的单文件任务可以跳过部分方法论工具，但仍应读回结果并给出验证证据。
 
 方法论工具的推荐用法：
@@ -107,8 +107,8 @@ DEBUG=false
 常用方式：
 
 ```bash
-npm start                 # 默认安静运行
-npm run start:debug       # 启动时打开 DEBUG 和 AGENT_TRACE
+bun start                 # 默认安静运行
+bun run start:debug       # 启动时打开 DEBUG 和 AGENT_TRACE
 ```
 
 运行中：
@@ -131,7 +131,7 @@ npm run start:debug       # 启动时打开 DEBUG 和 AGENT_TRACE
 ```bash
 git clone <repository-url>
 cd ai-engineering-mastery-agent
-npm install
+bun install
 cp .env.example .env
 ```
 
@@ -148,7 +148,7 @@ DEBUG=false
 启动：
 
 ```bash
-npm start
+bun start
 ```
 
 通过 `.deb`、`.pkg`、`.msi` 安装后，也可以直接运行 `agent`。如果没有配置 `.env` 或环境变量，交互式终端会进入首次启动向导，选择 provider、填写 API Key、Base URL、模型和工作目录，并写入用户配置文件。
@@ -169,20 +169,20 @@ npm start
 ## 常用命令
 
 ```bash
-npm start              # 运行 CLI Agent
-npm run start:debug    # 带详细调试日志运行
-npm run dev            # node --watch 开发模式
-npm test               # 运行完整集成测试
-npm run lint           # 运行 ESLint
-npm run package:release # 生成当前系统的 dist 分发目录
-npx eslint src/tools/web/web-tools.js
+bun start               # 运行 CLI Agent
+bun run start:debug     # 带详细调试日志运行
+bun run dev             # Bun watch 开发模式
+bun test-integration.mjs # 运行完整集成测试
+bun run lint            # 运行 ESLint
+bun run package:release # 生成当前系统的 dist 分发目录
+bunx eslint src/tools/web/web-tools.js
 ```
 
 ## CI / CD
 
 CI 用于验证代码质量，不负责发布：
 
-- `.github/workflows/ci.yml` 在 push 和 pull request 时运行 `npm ci`、`npm run lint`、`npm test`。
+- `.github/workflows/ci.yml` 在 push 和 pull request 时运行 `bun install --frozen-lockfile`、`bun run lint`、`bun test-integration.mjs`。
 - 分支和 PR 都可以跑 CI；这能在合并前发现回归。
 
 CD / Release 用于生成系统安装包：
@@ -193,16 +193,16 @@ CD / Release 用于生成系统安装包：
 - Linux 产物是 `.deb`，安装到 `/usr/lib/ai-engineering-mastery-agent`，并提供 `/usr/bin/agent` 命令。
 - macOS 产物是 `.pkg`，安装到 `/usr/local/lib/ai-engineering-mastery-agent`，并提供 `/usr/local/bin/agent` 命令。
 - Windows 产物是 `.msi`，安装到 `Program Files`，并将安装目录下的 `bin` 加入系统 `PATH`。
-- 安装包内包含 Bun standalone binary、`README.md`、`.env.example` 和 License，不包含 `src/`、`package.json`、`package-lock.json` 或 `node_modules`；运行机器不需要额外安装 Node.js 或 Bun。
-- `node-pty` 等原生 PTY 能力在 standalone binary 中不可用时会自动降级到 pipe fallback，不影响 CLI 启动和普通命令执行。
+- 安装包内包含 Bun standalone binary、`README.md`、`.env.example` 和 License，不包含 `src/`、`package.json`、lockfile 或 `node_modules`；运行机器不需要额外安装 Node.js 或 Bun。
+- PTY 工具不再依赖 `node-pty`。如果配置 `AGENT_PTY_HELPER` 会优先走外部 PTY helper，否则自动使用 pipe fallback，不影响 CLI 启动和普通命令执行。
 
 发布流程示例：
 
 ```bash
 git checkout main
 git pull origin main
-git tag v1.0.3
-git push origin v1.0.3
+git tag v1.0.4
+git push origin v1.0.4
 ```
 
 ## 配置项
@@ -243,6 +243,7 @@ ai-engineering-mastery-agent/
 ├── workspace/               # 默认工作区
 ├── test-integration.mjs     # 集成测试入口
 ├── package.json
+├── bun.lock
 └── README.md
 ```
 
@@ -259,7 +260,7 @@ ai-engineering-mastery-agent/
 - **精确 token 计算**：项目有 `Tokenizer` 模块和相关测试，但 `SessionManager` 默认仍使用同步 fallback counter，没有接入 provider-specific 精确 tokenizer。
 - **方法论强制程度**：运行时守门验证“是否有方法论/改动/验证证据”，不保证严格按照 `brainstorm -> tdd -> review -> verify` 的固定顺序执行。
 - **SubAgent / Multi-Agent**：已有 `spawn -> execute -> get_result -> cleanup` 集成测试；下一步可继续补并发、失败恢复、嵌套 SubAgent 的 E2E。
-- **Lint 清洁度**：`npm run lint` 已可通过，但仓库仍有较多历史 warning，后续可逐步清理到 warning-free。
+- **Lint 清洁度**：`bun run lint` 已可通过，但仓库仍有较多历史 warning，后续可逐步清理到 warning-free。
 - **CI/CD 覆盖**：已添加 GitHub Actions 跑 CI 和跨系统 release packaging；如果仓库策略需要更严格质量门，可继续加覆盖率、eval 和签名/校验和。
 
 ## 测试状态
@@ -267,7 +268,7 @@ ai-engineering-mastery-agent/
 当前主要回归入口：
 
 ```bash
-npm test
+bun test-integration.mjs
 ```
 
 最近一次相关验证覆盖：
