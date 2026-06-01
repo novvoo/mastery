@@ -24,7 +24,7 @@ export function createWebTools() {
 export function createWebSearchTool() {
   return {
     name: 'web_search',
-    description: 'Search the public web using browser-like search pages. Use for current weather, news, prices, exchange rates, recent facts, and other time-sensitive information. Returns titles, snippets, and URLs; call web_fetch on the most relevant result when you need detailed page content.',
+    description: 'Search the public web using browser-like search pages, preferring Bing by default with fallback providers when needed. Use for current weather, news, prices, exchange rates, recent facts, and other time-sensitive information. Returns titles, snippets, and URLs; call web_fetch on the most relevant result when you need detailed page content.',
     category: ToolCategory.WEB,
     params: {
       query: { type: 'string', description: 'Search query (be specific, e.g., "Shanghai current weather 2025" instead of just "weather")' },
@@ -39,9 +39,9 @@ export function createWebSearchTool() {
       const maxResults = Math.max(1, Math.min(Number(max_results) || 5, 10));
       const startedAt = Date.now();
       const attempts = [
+        () => searchBing(query, maxResults),
         () => searchDuckDuckGoLite(query, maxResults),
         () => searchDuckDuckGoHTML(query, maxResults),
-        () => searchBing(query, maxResults),
       ];
 
       for (const attempt of attempts) {
@@ -66,6 +66,11 @@ export function createWebSearchTool() {
             
             return JSON.stringify(enhancedResults, null, 2);
           }
+          debugWebEvent(ctx, 'Web search provider returned no results', {
+            query,
+            provider: result.provider,
+            durationMs: Date.now() - startedAt,
+          });
         } catch (error) {
           debugWebEvent(ctx, 'Web search provider failed', {
             query,
@@ -215,16 +220,24 @@ async function searchDuckDuckGoHTML(query, maxResults) {
 }
 
 async function searchBing(query, maxResults) {
-  const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}`;
+  const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&mkt=zh-CN&setlang=zh-CN`;
   const html = await fetchText(url);
   const results = [];
-  const regex = /<li class="b_algo"[\s\S]*?<h2[^>]*>\s*<a href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/g;
-  let match;
-  while ((match = regex.exec(html)) !== null && results.length < maxResults) {
+  const chunks = html.split(/<li[^>]*class=["'][^"']*\bb_algo\b[^"']*["'][^>]*>/i).slice(1);
+
+  for (const chunk of chunks) {
+    if (results.length >= maxResults) {
+      break;
+    }
+    const linkMatch = chunk.match(/<h2[^>]*>[\s\S]*?<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/h2>/i);
+    if (!linkMatch) {
+      continue;
+    }
+    const snippetMatch = chunk.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
     const result = {
-      title: cleanHTML(match[2]),
-      url: decodeHTMLEntities(match[1]),
-      snippet: cleanHTML(match[3]),
+      title: cleanHTML(linkMatch[2]),
+      url: decodeHTMLEntities(linkMatch[1]),
+      snippet: snippetMatch ? cleanHTML(snippetMatch[1]) : '',
     };
     // Add priority hint for weather/official sites
     result.priority = (
@@ -257,6 +270,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
       headers: {
         'user-agent': USER_AGENT,
         accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
         ...(options.headers || {}),
       },
     });

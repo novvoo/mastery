@@ -2355,6 +2355,9 @@ conversationProtocolTests.test('Web tools parse browser-like search results and 
     if (calls.length < 2) {
       throw new Error(`Expected search and fetch calls, got ${JSON.stringify(calls)}`);
     }
+    if (!calls[0].includes('bing.com/search')) {
+      throw new Error(`Expected web_search to try Bing before fallback providers, got ${JSON.stringify(calls)}`);
+    }
 
     const openResult = JSON.parse(await browserOpen.handler({
       target: 'weather-card.html',
@@ -4529,6 +4532,86 @@ webSearchTests.test('web_search tool includes guidance field in results', async 
   }
 
   console.log('     web_search tool has updated description');
+});
+
+webSearchTests.test('web_search prefers Bing results by default', async () => {
+  const { createWebSearchTool } = await import('./src/tools/web/web-tools.js');
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return {
+      ok: true,
+      status: 200,
+      async text() {
+        return `
+          <li class="b_algo">
+            <h2><a href="https://bing.example/weather">Bing Weather</a></h2>
+            <p>Bing weather snippet.</p>
+          </li>
+        `;
+      },
+    };
+  };
+
+  try {
+    const webSearchTool = createWebSearchTool();
+    const result = JSON.parse(await webSearchTool.handler({ query: 'Shanghai weather', max_results: 1 }, {}));
+
+    if (result.provider !== 'bing' || result.results[0]?.url !== 'https://bing.example/weather') {
+      throw new Error(`Expected Bing provider result by default, got ${JSON.stringify(result)}`);
+    }
+    if (calls.length !== 1 || !calls[0].includes('bing.com/search')) {
+      throw new Error(`Expected only Bing to be called when it returns results, got ${JSON.stringify(calls)}`);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  console.log('     web_search prefers Bing by default');
+});
+
+webSearchTests.test('web_search parses Bing result blocks with inserted assets', async () => {
+  const { createWebSearchTool } = await import('./src/tools/web/web-tools.js');
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async (url) => {
+    if (!String(url).includes('bing.com/search') || !String(url).includes('mkt=zh-CN')) {
+      throw new Error(`Expected localized Bing search URL, got ${url}`);
+    }
+    return {
+      ok: true,
+      status: 200,
+      async text() {
+        return `
+          <ol id="b_results">
+            <li class="b_algo" data-id iid=SERP.123>
+              <link rel="stylesheet" href="https://r.bing.com/asset.css" type="text/css"/>
+              <h2><a href="https://www.weather.com.cn/weather/101230201.shtml">厦门天气 预报</a></h2>
+              <div class="b_caption"><p>厦门今日天气，未来一周天气预报。</p></div>
+            </li>
+          </ol>
+        `;
+      },
+    };
+  };
+
+  try {
+    const webSearchTool = createWebSearchTool();
+    const result = JSON.parse(await webSearchTool.handler({ query: '厦门天气', max_results: 1 }, {}));
+
+    if (result.provider !== 'bing' || result.results[0]?.url !== 'https://www.weather.com.cn/weather/101230201.shtml') {
+      throw new Error(`Expected localized Bing result to parse, got ${JSON.stringify(result)}`);
+    }
+    if (!result.results[0]?.snippet.includes('未来一周')) {
+      throw new Error(`Expected Bing snippet to parse, got ${JSON.stringify(result.results[0])}`);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  console.log('     web_search parses localized Bing result blocks');
 });
 
 webSearchTests.test('search result includes guidance to use web_fetch', async () => {
