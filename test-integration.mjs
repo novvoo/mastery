@@ -1836,6 +1836,125 @@ conversationProtocolTests.test('OpenAI-compatible provider recognizes qwen long-
   }
 });
 
+conversationProtocolTests.test('Model capabilities can be resolved from OpenRouter model API', async () => {
+  const { clearModelCapabilityCache, resolveModelCapabilities } = await import('./src/models/model-capabilities.js');
+  clearModelCapabilityCache();
+
+  const capabilities = await resolveModelCapabilities({
+    provider: 'openrouter',
+    model: 'google/gemini-2.5-pro',
+    baseURL: 'https://openrouter.ai/api/v1',
+    env: { MODEL_CAPABILITY_REFRESH: 'true' },
+    fetchImpl: async (url) => {
+      if (url !== 'https://openrouter.ai/api/v1/models') {
+        throw new Error(`Unexpected model capability URL: ${url}`);
+      }
+      return {
+        ok: true,
+        async json() {
+          return {
+            data: [
+              {
+                id: 'google/gemini-2.5-pro',
+                context_length: 1048576,
+                top_provider: { max_completion_tokens: 65536 },
+                pricing: { prompt: '0.00000125', completion: '0.00001' },
+                supported_parameters: ['tools', 'tool_choice'],
+              },
+            ],
+          };
+        },
+      };
+    },
+  });
+
+  if (capabilities.contextWindow !== 1048576 || capabilities.maxOutputTokens !== 65536) {
+    throw new Error(`Expected OpenRouter remote context metadata, got ${JSON.stringify(capabilities)}`);
+  }
+  if (capabilities.source !== 'openrouter-models-api' || capabilities.toolCalling !== true) {
+    throw new Error(`Expected OpenRouter source and tool support, got ${JSON.stringify(capabilities)}`);
+  }
+});
+
+conversationProtocolTests.test('Model capabilities fall back to LiteLLM catalog for unknown provider models', async () => {
+  const { clearModelCapabilityCache, resolveModelCapabilities } = await import('./src/models/model-capabilities.js');
+  clearModelCapabilityCache();
+
+  const capabilities = await resolveModelCapabilities({
+    provider: 'openai',
+    model: 'future-1m-coder',
+    env: { MODEL_CAPABILITY_REFRESH: 'true' },
+    fetchImpl: async (url) => {
+      if (!String(url).includes('model_prices_and_context_window.json')) {
+        throw new Error(`Expected LiteLLM catalog URL, got ${url}`);
+      }
+      return {
+        ok: true,
+        async json() {
+          return {
+            'future-1m-coder': {
+              litellm_provider: 'openai',
+              max_input_tokens: 1048576,
+              max_output_tokens: 32768,
+              input_cost_per_token: 0.000001,
+              output_cost_per_token: 0.000004,
+              supports_function_calling: true,
+            },
+          };
+        },
+      };
+    },
+  });
+
+  if (capabilities.contextWindow !== 1048576 || capabilities.source !== 'litellm-model-catalog') {
+    throw new Error(`Expected LiteLLM remote context metadata, got ${JSON.stringify(capabilities)}`);
+  }
+});
+
+conversationProtocolTests.test('Model context window environment override wins over remote lookup', async () => {
+  const { resolveModelCapabilities } = await import('./src/models/model-capabilities.js');
+
+  const capabilities = await resolveModelCapabilities({
+    provider: 'openai',
+    model: 'unknown-model',
+    env: {
+      MODEL_CONTEXT_WINDOW: '1048576',
+      MODEL_MAX_OUTPUT_TOKENS: '65536',
+    },
+    fetchImpl: async () => {
+      throw new Error('Fetch should not be called when MODEL_CONTEXT_WINDOW is set');
+    },
+  });
+
+  if (capabilities.contextWindow !== 1048576 || capabilities.maxOutputTokens !== 65536 || capabilities.source !== 'env-override') {
+    throw new Error(`Expected env override capabilities, got ${JSON.stringify(capabilities)}`);
+  }
+});
+
+conversationProtocolTests.test('Provider uses resolved capability metadata for 1M context models', async () => {
+  const { OpenAIModelProvider } = await import('./src/models/openai-provider.js');
+
+  const provider = new OpenAIModelProvider(
+    'test-key',
+    'https://example.invalid/v1',
+    'future-1m-coder',
+    false,
+    {
+      capabilities: {
+        provider: 'openai',
+        model: 'future-1m-coder',
+        contextWindow: 1048576,
+        maxOutputTokens: 32768,
+        source: 'test',
+      },
+    }
+  );
+
+  if (provider.getMaxContextTokens() !== 1048576 || !provider.isLongContext()) {
+    throw new Error(`Expected provider to use resolved 1M context metadata, got ${provider.getMaxContextTokens()}`);
+  }
+});
+
 conversationProtocolTests.test('Intent classifier parses implicit weather intent from short input', async () => {
   const { IntentClassifier } = await import('./src/core/intent-classifier.js');
   const { ToolRegistry } = await import('./src/core/tool-registry.js');

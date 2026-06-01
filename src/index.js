@@ -37,6 +37,7 @@ import { LlamaModelProvider } from './models/llama-provider.js';
 import { ZhipuModelProvider } from './models/zhipu-provider.js';
 import { DeepSeekModelProvider } from './models/deepseek-provider.js';
 import { OpenRouterModelProvider } from './models/openrouter-provider.js';
+import { resolveModelCapabilities } from './models/model-capabilities.js';
 
 // Scheduler imports
 import { SchedulerEngine } from './scheduler/SchedulerEngine.js';
@@ -281,36 +282,57 @@ class AIEngineeringAgent {
     this.slashCommandSuggestions = buildSlashCommandSuggestions(skillTools);
 
     // Create model provider
+    const modelCapabilities = await resolveModelCapabilities({
+      provider: this.config.provider,
+      model: this.config.model,
+      baseURL: this.config.apiUrl,
+      apiKey: this.#getProviderApiKey(this.config.provider),
+    });
+    if (this.debugMode) {
+      enhancedUI.debugEvent?.('Model capabilities resolved', {
+        provider: modelCapabilities.provider,
+        model: modelCapabilities.model,
+        contextWindow: modelCapabilities.contextWindow,
+        maxOutputTokens: modelCapabilities.maxOutputTokens,
+        source: modelCapabilities.source,
+      });
+    }
+
     let modelProvider;
     if (this.config.provider === 'openai') {
       modelProvider = new OpenAIModelProvider(
         this.config.apiKey,
         this.config.apiUrl,
         this.config.model,
-        this.debugMode
+        false,
+        { capabilities: modelCapabilities }
       );
     } else if (this.config.provider === 'llama') {
       modelProvider = new LlamaModelProvider(this.config.model, {
         temperature: this.config.temperature,
-        debug: this.debugMode
+        debug: this.debugMode,
+        capabilities: modelCapabilities,
       });
     } else if (this.config.provider === 'zhipu') {
       modelProvider = new ZhipuModelProvider(
         process.env.ZHIPU_API_KEY,
         process.env.ZHIPU_BASE_URL,
-        this.config.model
+        this.config.model,
+        { capabilities: modelCapabilities }
       );
     } else if (this.config.provider === 'deepseek') {
       modelProvider = new DeepSeekModelProvider(
         process.env.DEEPSEEK_API_KEY,
         process.env.DEEPSEEK_BASE_URL,
-        this.config.model
+        this.config.model,
+        { capabilities: modelCapabilities }
       );
     } else if (this.config.provider === 'openrouter') {
       modelProvider = new OpenRouterModelProvider(
         process.env.OPENROUTER_API_KEY,
         process.env.OPENROUTER_BASE_URL,
-        this.config.model
+        this.config.model,
+        { capabilities: modelCapabilities }
       );
     } else {
       throw new Error(`Unknown provider: ${this.config.provider}`);
@@ -463,6 +485,19 @@ class AIEngineeringAgent {
     const envPath = writeUserEnv(values);
     applyRuntimeValues(values);
     enhancedUI.success(`Configuration saved to ${envPath}`);
+  }
+
+  #getProviderApiKey(provider) {
+    if (provider === 'zhipu') {
+      return process.env.ZHIPU_API_KEY;
+    }
+    if (provider === 'deepseek') {
+      return process.env.DEEPSEEK_API_KEY;
+    }
+    if (provider === 'openrouter') {
+      return process.env.OPENROUTER_API_KEY;
+    }
+    return process.env.OPENAI_API_KEY;
   }
 
   async #promptForRuntimeConfig() {

@@ -3,24 +3,21 @@
  * 提供 DeepSeek 模型支持
  */
 
-const MODEL_CONTEXT_SIZES = {
-  'deepseek-chat': 64000,
-  'deepseek-coder': 64000,
-  'deepseek-chat-v2': 64000,
-  'deepseek-coder-v2': 64000,
-};
+import { getLocalModelCapabilities, isLongContextCapabilities } from './model-capabilities.js';
 
 export class DeepSeekModelProvider {
   #apiKey;
   #baseURL;
   #model;
   #contextSize;
+  #capabilities;
 
-  constructor(apiKey, baseURL = 'https://api.deepseek.com/v1', model = 'deepseek-chat') {
+  constructor(apiKey, baseURL = 'https://api.deepseek.com/v1', model = 'deepseek-chat', options = {}) {
     this.#apiKey = apiKey;
     this.#baseURL = baseURL;
     this.#model = model;
-    this.#contextSize = MODEL_CONTEXT_SIZES[model] || 64000;
+    this.#capabilities = options.capabilities || getLocalModelCapabilities('deepseek', model);
+    this.#contextSize = this.#capabilities.contextWindow;
   }
 
   async chat(messages, options = {}) {
@@ -59,7 +56,11 @@ export class DeepSeekModelProvider {
   }
 
   isLongContext() {
-    return this.#contextSize >= 32000;
+    return isLongContextCapabilities(this.#capabilities, 32000);
+  }
+
+  getCapabilities() {
+    return { ...this.#capabilities };
   }
 
   dispose() {

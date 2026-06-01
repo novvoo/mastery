@@ -96,8 +96,11 @@ Agent 的工程方法论可以概括为六步：
 
 ## 上下文管理
 
-当前 Agent 自动上下文管理由 `SessionManager` 保存会话，并在接近上下文窗口时调用 `DynamicContextPruning`：
+当前 Agent 自动上下文管理由 `SessionManager` 保存会话，并在接近上下文窗口时调用 `DynamicContextPruning`。模型上下文窗口由统一的 model capabilities registry 提供：
 
+- 已知模型先使用本地能力表，保证离线启动
+- 未知模型默认尝试查询 OpenRouter Models API 和 LiteLLM 公共模型 catalog，获取 `context_length` / `max_input_tokens` 等实时能力信息
+- 可用 `MODEL_CONTEXT_WINDOW` / `MODEL_MAX_CONTEXT_TOKENS` 对未知或私有模型强制覆盖上下文窗口
 - token 数量使用 CJK-aware fallback 估算
 - 超过模型上下文窗口 80% 时触发裁剪
 - 裁剪目标约为窗口 60%，并保留 system prompt、重要消息和最近消息
@@ -252,6 +255,11 @@ git push origin v1.0.4
 | `ZHIPU_BASE_URL` / `DEEPSEEK_BASE_URL` / `OPENROUTER_BASE_URL` | provider 默认值 | 对应 provider API 地址 |
 | `MAX_ITERATIONS` | `10` | 每次任务最大 ReAct 轮数 |
 | `MAX_TOKENS` | `2048` | 单次模型输出 token 上限 |
+| `MODEL_CONTEXT_WINDOW` / `MODEL_MAX_CONTEXT_TOKENS` | 自动识别 | 强制指定当前模型上下文窗口 |
+| `MODEL_MAX_OUTPUT_TOKENS` | 自动识别或 `8192` | 强制指定当前模型最大输出 token |
+| `MODEL_CAPABILITY_LOOKUP` | `true` | 是否允许启动时通过网络查询未知模型能力 |
+| `MODEL_CAPABILITY_REFRESH` | `false` | 是否跳过本地已知模型并强制刷新网络能力信息 |
+| `MODEL_CAPABILITY_LOOKUP_TIMEOUT_MS` | `3000` | 模型能力网络查询超时时间 |
 | `TEMPERATURE` | `0.7` | 采样温度 |
 | `WORKING_DIRECTORY` | 当前目录 | Agent 工具工作的目录 |
 | `DEBUG` | `false` | UI debug 日志开关 |
@@ -297,6 +305,7 @@ ai-engineering-mastery-agent/
 
 - 短中文天气输入会被识别成 `weather_query`，并推荐 `web_search`。
 - `web_search` 默认优先 Bing，中文查询使用本地化 Bing 参数。
+- 未知模型的上下文窗口会优先联网查询 OpenRouter / LiteLLM catalog；需要离线或固定配置时可设置 `MODEL_CAPABILITY_LOOKUP=false` 或 `MODEL_CONTEXT_WINDOW`。
 - `<tool_code>print(list_files("."))</tool_code>` 等上游工具代码会被解析成真实工具调用，不会再泄漏成 Final Answer。
 - 如果模型输出未能解析的工具语法，Agent 会要求重发合法工具调用，而不是直接结束。
 - 默认关闭 debug，避免正常使用时被 `🔍` 日志刷屏。
@@ -304,7 +313,7 @@ ai-engineering-mastery-agent/
 
 ## 当前限制和 TODO
 
-- **精确 token 计算**：项目有 `Tokenizer` 模块和相关测试，但 `SessionManager` 默认仍使用同步 fallback counter，没有接入 provider-specific 精确 tokenizer。
+- **精确 token 计算**：项目有 `Tokenizer` 模块和相关测试；模型上下文窗口已支持能力表和网络查询，但 `SessionManager` 默认仍使用同步 fallback counter，没有接入 provider-specific 精确 tokenizer。
 - **方法论强制程度**：运行时守门验证“是否有方法论/改动/验证证据”，不保证严格按照 `brainstorm -> tdd -> review -> verify` 的固定顺序执行。
 - **SubAgent / Multi-Agent**：已有 `spawn -> execute -> get_result -> cleanup` 集成测试；下一步可继续补并发、失败恢复、嵌套 SubAgent 的 E2E。
 - **Lint 清洁度**：`bun run lint` 已可通过，但仓库仍有较多历史 warning，后续可逐步清理到 warning-free。
@@ -324,6 +333,7 @@ bun test-integration.mjs
 - Web 搜索 Bing 优先和中文 Bing 解析
 - 意图分类和天气查询 routing hint
 - `<tool_code>` 工具调用解析
+- 模型能力识别、OpenRouter / LiteLLM 上下文窗口查询、`MODEL_CONTEXT_WINDOW` 覆盖
 - 编码任务守门和自动任务编排
 - `DynamicContextPruning` 接入 Agent 自动上下文裁剪
 - Tokenizer / TokenScope 独立模块能力

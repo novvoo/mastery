@@ -21,18 +21,20 @@ export class LlamaModelProvider {
   #model;
   #contextSize;
   #initialized;
+  #capabilities;
 
   constructor(modelPath, options = {}) {
     this.#modelPath = modelPath;
     this.#model = options.model || 'default';
-    this.#contextSize = options.contextSize || 4096;
+    this.#capabilities = options.capabilities || null;
+    this.#contextSize = this.#capabilities?.contextWindow || options.contextSize || 4096;
     this.#initialized = false;
   }
 
   async initialize() {
     if (this.#initialized) return;
 
-    const contextSize = MODEL_CONTEXT_SIZES[this.#model] || this.#contextSize;
+    const contextSize = this.#capabilities?.contextWindow || MODEL_CONTEXT_SIZES[this.#model] || this.#contextSize;
     this.#contextSize = contextSize;
 
     this.#initialized = true;
@@ -71,6 +73,15 @@ export class LlamaModelProvider {
 
   isLongContext() {
     return this.#contextSize >= 32768;
+  }
+
+  getCapabilities() {
+    return this.#capabilities ? { ...this.#capabilities } : {
+      provider: 'llama',
+      model: this.#model,
+      contextWindow: this.#contextSize,
+      source: 'local',
+    };
   }
 
   dispose() {

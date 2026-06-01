@@ -3,36 +3,21 @@
  * 提供 OpenRouter 统一接入支持
  */
 
-const MODEL_CONTEXT_SIZES = {
-  'anthropic/claude-3.5-sonnet': 200000,
-  'anthropic/claude-3-opus': 200000,
-  'openai/gpt-4o': 128000,
-  'openai/gpt-4-turbo': 128000,
-  'google/gemini-pro-1.5': 1048576,
-  'meta-llama/llama-3-70b': 8192,
-  'mistralai/mistral-7b': 32768,
-};
+import { getLocalModelCapabilities, isLongContextCapabilities } from './model-capabilities.js';
 
 export class OpenRouterModelProvider {
   #apiKey;
   #baseURL;
   #model;
   #contextSize;
+  #capabilities;
 
-  constructor(apiKey, baseURL = 'https://openrouter.ai/api/v1', model = 'anthropic/claude-3.5-sonnet') {
+  constructor(apiKey, baseURL = 'https://openrouter.ai/api/v1', model = 'anthropic/claude-3.5-sonnet', options = {}) {
     this.#apiKey = apiKey;
     this.#baseURL = baseURL;
     this.#model = model;
-    this.#contextSize = this.#getContextSize(model);
-  }
-
-  #getContextSize(model) {
-    for (const [key, size] of Object.entries(MODEL_CONTEXT_SIZES)) {
-      if (model.toLowerCase().includes(key.toLowerCase())) {
-        return size;
-      }
-    }
-    return 32000;
+    this.#capabilities = options.capabilities || getLocalModelCapabilities('openrouter', model);
+    this.#contextSize = this.#capabilities.contextWindow;
   }
 
   async chat(messages, options = {}) {
@@ -73,7 +58,11 @@ export class OpenRouterModelProvider {
   }
 
   isLongContext() {
-    return this.#contextSize >= 128000;
+    return isLongContextCapabilities(this.#capabilities);
+  }
+
+  getCapabilities() {
+    return { ...this.#capabilities };
   }
 
   dispose() {

@@ -3,25 +3,21 @@
  * 提供智谱 AI 模型支持
  */
 
-const MODEL_CONTEXT_SIZES = {
-  'glm-4': 128000,
-  'glm-4-flash': 128000,
-  'glm-4-plus': 128000,
-  'glm-3-turbo': 128000,
-  'glm-3': 128000,
-};
+import { getLocalModelCapabilities, isLongContextCapabilities } from './model-capabilities.js';
 
 export class ZhipuModelProvider {
   #apiKey;
   #baseURL;
   #model;
   #contextSize;
+  #capabilities;
 
-  constructor(apiKey, baseURL = 'https://open.bigmodel.cn/api/paas/v4', model = 'glm-4') {
+  constructor(apiKey, baseURL = 'https://open.bigmodel.cn/api/paas/v4', model = 'glm-4', options = {}) {
     this.#apiKey = apiKey;
     this.#baseURL = baseURL;
     this.#model = model;
-    this.#contextSize = MODEL_CONTEXT_SIZES[model] || 128000;
+    this.#capabilities = options.capabilities || getLocalModelCapabilities('zhipu', model);
+    this.#contextSize = this.#capabilities.contextWindow;
   }
 
   async chat(messages, options = {}) {
@@ -60,7 +56,11 @@ export class ZhipuModelProvider {
   }
 
   isLongContext() {
-    return true;
+    return isLongContextCapabilities(this.#capabilities);
+  }
+
+  getCapabilities() {
+    return { ...this.#capabilities };
   }
 
   dispose() {
