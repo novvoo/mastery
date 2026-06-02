@@ -3,9 +3,6 @@
  * Assembles the layered system prompt for the agent
  */
 
-import { MemoryManager } from '../memory/memory-manager.js';
-import { ToolRegistry } from '../core/tool-registry.js';
-
 const ROLE_DEFINITION = `You are an AI Engineering Mastery Agent — a coding assistant that helps with software engineering tasks.
 
 IMPORTANT: You have access to file system tools (read_file, write_file, list_dir, shell, semantic_search, etc.), terminal tools (shell plus persistent PTY tools), and public web tools (web_search, web_fetch, browser_open). You ARE NOT a browser-only agent. You CAN and SHOULD use these tools when the user asks about files, code, system operations, or current public information.
@@ -201,23 +198,16 @@ export function buildSystemPrompt(memoryManager, toolRegistry, workingDirectory)
 }
 
 function formatToolList(registry) {
-  const tools = registry.getAll();
-  const lines = [];
+  const summary = registry.getToolSummary();
+  const lines = [
+    'The runtime advertises the task-relevant tool subset in each LLM request.',
+    'Use only tools that are available in the current request. Tool schemas are provided via function definitions when supported.',
+    '',
+    'Registered tool groups:',
+  ];
 
-  for (const tool of tools) {
-    // Support both `params` and `parameters` formats
-    const toolParams = tool.params || (tool.parameters && tool.parameters.properties ? tool.parameters.properties : {}) || {};
-    const toolRequired = tool.required || (tool.parameters && tool.parameters.required ? tool.parameters.required : []) || [];
-    
-    const params = Object.entries(toolParams)
-      .map(([key, p]) => `  - ${key} (${p.type}): ${p.description}${p.enum ? ` [${p.enum.join('|')}]` : ''}`)
-      .join('\n');
-    const required = toolRequired.length > 0 ? `  Required: [${toolRequired.join(', ')}]` : '';
-    lines.push(`### ${tool.name}`);
-    lines.push(tool.description);
-    if (params) lines.push(params);
-    if (required) lines.push(required);
-    lines.push('');
+  for (const [category, names] of Object.entries(summary)) {
+    lines.push(`- ${category}: ${names.join(', ')}`);
   }
 
   return lines.join('\n');

@@ -1404,16 +1404,18 @@ export class TextToolParser {
    */
   generateToolPrompt() {
     const tools = this.#toolRegistry ? this.#toolRegistry.getAll() : [];
+    const grouped = new Map();
+    for (const tool of tools) {
+      const category = tool.category || 'general';
+      if (!grouped.has(category)) grouped.set(category, []);
+      grouped.get(category).push(tool.name);
+    }
     
     const lines = [
-      'You have access to the following tools:',
+      'You can call tools exposed for the current request. Tool availability is intentionally task-scoped to keep reasoning fast.',
       '',
-      ...tools.map(t => {
-        const params = Object.entries(t.parameters || {})
-          .map(([k, v]) => `${k}: ${v.type}`)
-          .join(', ');
-        return `- ${t.name}(${params}): ${t.description}`;
-      }),
+      'Registered tool groups:',
+      ...Array.from(grouped.entries()).map(([category, names]) => `- ${category}: ${names.join(', ')}`),
       '',
       'To use a tool, output in one of these formats:',
       '1. CALL tool_name({"param": "value"})',

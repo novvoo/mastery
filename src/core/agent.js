@@ -11,6 +11,7 @@ import { TextToolParser } from './text-tool-parser.js';
 import { IntentClassifier } from './intent-classifier.js';
 import { ExecutionPlan, TaskStatus } from '../planner/graph-planner.js';
 import { DynamicContextPruning } from './dynamic-context-pruning.js';
+import { selectToolsForRequest, shouldUseIntentClassifier } from './tool-router.js';
 
 const TERMINATION_KEYWORDS = ['FINAL_ANSWER:', 'Answer:', 'TASK_COMPLETE'];
 const MAX_ITERATIONS_DEFAULT = 30;
@@ -182,11 +183,18 @@ export class ReActAgent {
       });
     }
 
-    const intent = this.#intentClassifier
+    const taskProfile = this.#classifyTask(userInput);
+    const intent = this.#intentClassifier && shouldUseIntentClassifier(userInput)
       ? await this.#intentClassifier.classify(userInput, {
         recentMessages: this.#sessionManager.getRecentExchanges(3),
       })
       : null;
+    if (this.#intentClassifier && !intent) {
+      this.#debugEvent('Intent classifier skipped', {
+        reason: 'local_task_router',
+        isCodingTask: taskProfile.isCodingTask,
+      });
+    }
     if (intent) {
       this.#debugEvent('Intent classified', {
         intent: intent.intent,
@@ -210,7 +218,7 @@ export class ReActAgent {
     this.#repeatCount = 0;
     this.#toolCallHistory = [];
     this.#runToolEvents = [];
-    this.#activeTaskProfile = this.#classifyTask(userInput);
+    this.#activeTaskProfile = taskProfile;
     this.#requiredMutationPaths = this.#extractRequestedFilePaths(userInput);
     this.#completedMutationPaths = new Set();
     this.#activeExecutionPlan = this.#createAutomaticExecutionPlan(userInput, this.#activeTaskProfile);
@@ -249,7 +257,12 @@ export class ReActAgent {
         // Get messages for LLM after context trimming so the request reflects
         // the actual session state that will continue into later iterations.
         const messages = this.#sessionManager.getMessages();
-        const functions = this.#toolRegistry.toFunctionDefinitions();
+        const routedTools = selectToolsForRequest(this.#toolRegistry.getAll(), {
+          userInput,
+          taskProfile: this.#activeTaskProfile,
+          intent,
+        });
+        const functions = this.#toolRegistry.toFunctionDefinitions(routedTools);
 
         // Call LLM with retry
         const llmStartedAt = Date.now();
@@ -257,6 +270,8 @@ export class ReActAgent {
           modelProvider: this.#modelProvider.constructor?.name || 'unknown',
           messageCount: messages.length,
           toolDefinitions: functions.length,
+          registeredToolDefinitions: this.#toolRegistry.size,
+          routedToolNames: functions.map(tool => tool.name),
           maxTokens: this.#config.maxTokens,
           lastUserMessage: this.#preview(
             [...messages].reverse().find(message => message.role === 'user')?.content || '',
@@ -1254,6 +1269,7 @@ export class ReActAgent {
     const input = String(userInput || '').toLowerCase();
     const isCodingTask = [
       /写.*代码|写.*html|写.*js|写.*css|创建.*文件|新建.*文件|修改.*代码|改.*代码|修复|实现|创建|新建|开发|生成|重构|跑.*测试|运行.*测试|集成测试|单元测试|提交|push/,
+      /(写一个|做一个|创建|新建|实现|开发).*(工程化|程序|应用|工具|脚本|项目|游戏|网站|页面|系统)/,
       /2048|游戏|浏览器.*应用|网页.*应用/,
       /\b(code|coding|implement|fix|bug|refactor|unit test|integration test|test suite|bun test|run tests?|write tests?|add tests?|html|css|javascript|typescript|commit|push)\b/,
       /\b(create|write|edit|modify|update|change)\b.*\b(file|code|html|css|js|javascript|ts|typescript|component|function|class|module|test)\b/,

@@ -2132,6 +2132,171 @@ conversationProtocolTests.test('Agent injects intent routing hint before ReAct t
   }
 });
 
+conversationProtocolTests.test('Agent routes coding tasks to a compact engineering tool set by default', async () => {
+  const { ReActAgent } = await import('./src/core/agent.js');
+  const { ToolRegistry } = await import('./src/core/tool-registry.js');
+  const { MemoryManager } = await import('./src/memory/memory-manager.js');
+
+  const registry = new ToolRegistry();
+  for (const name of [
+    'read_file', 'write_file', 'edit_file', 'list_dir', 'search', 'glob', 'semantic_search',
+    'shell', 'pty_start', 'pty_write', 'pty_read', 'pty_stop',
+    'setup', 'grill', 'brainstorm', 'zoom_out', 'architect', 'diagnose', 'tdd', 'review', 'verify', 'to_prd', 'to_issues',
+    'git_status', 'git_diff', 'git_log', 'git_branch',
+    'web_search', 'web_fetch', 'browser_open',
+    'mcp_connect', 'mcp_status', 'task_create', 'schedule_create', 'subagent_spawn',
+  ]) {
+    registry.register({
+      name,
+      category: name.startsWith('web_') || name === 'browser_open' ? 'web' : 'test',
+      description: `Test tool ${name}`,
+      parameters: {},
+      async handler() {
+        return 'ok';
+      },
+    });
+  }
+
+  const functionSnapshots = [];
+  let chatCount = 0;
+  const mockProvider = {
+    async chat(messages, options) {
+      chatCount++;
+      functionSnapshots.push(options.functions.map(tool => tool.name));
+      return {
+        text: 'FINAL_ANSWER: done',
+        toolCalls: [],
+        finishReason: 'stop',
+      };
+    },
+    getMaxContextTokens() {
+      return 4000;
+    },
+    dispose() {},
+  };
+
+  const agent = new ReActAgent(mockProvider, registry, new MemoryManager(TEST_CONFIG.testDir), {
+    maxIterations: 1,
+    workingDirectory: TEST_CONFIG.testDir,
+    intentClassification: true,
+  });
+
+  await agent.run('写一个工程化的贪吃蛇程序');
+
+  if (chatCount !== 1) {
+    throw new Error(`Expected coding task to skip preflight intent classification, got ${chatCount} provider calls`);
+  }
+
+  const firstTools = functionSnapshots[0] || [];
+  for (const expected of ['read_file', 'write_file', 'shell', 'pty_start', 'brainstorm', 'tdd', 'review', 'verify']) {
+    if (!firstTools.includes(expected)) {
+      throw new Error(`Expected routed coding tools to include ${expected}, got ${firstTools.join(', ')}`);
+    }
+  }
+  for (const excluded of ['web_search', 'web_fetch', 'mcp_connect', 'task_create', 'schedule_create', 'subagent_spawn']) {
+    if (firstTools.includes(excluded)) {
+      throw new Error(`Expected routed coding tools to exclude ${excluded}, got ${firstTools.join(', ')}`);
+    }
+  }
+});
+
+conversationProtocolTests.test('Agent adds specialized tool groups when engineering tasks need them', async () => {
+  const { selectToolsForRequest } = await import('./src/core/tool-router.js');
+
+  const allTools = [
+    'read_file', 'write_file', 'shell', 'brainstorm', 'tdd', 'review', 'verify',
+    'web_search', 'web_fetch', 'browser_open',
+    'mcp_connect', 'mcp_status',
+    'task_create', 'schedule_create', 'subagent_spawn',
+  ].map(name => ({ name, description: `Test tool ${name}`, parameters: {} }));
+
+  const routed = selectToolsForRequest(allTools, {
+    userInput: '实现一个需要查询最新文档、连接 MCP，并创建后台任务的工程化程序',
+    taskProfile: { isCodingTask: true },
+  }).map(tool => tool.name);
+
+  for (const expected of ['write_file', 'shell', 'web_search', 'web_fetch', 'mcp_connect', 'task_create', 'schedule_create', 'subagent_spawn']) {
+    if (!routed.includes(expected)) {
+      throw new Error(`Expected need-based engineering routing to include ${expected}, got ${routed.join(', ')}`);
+    }
+  }
+});
+
+conversationProtocolTests.test('Agent routes weather tasks to web tools', async () => {
+  const { ReActAgent } = await import('./src/core/agent.js');
+  const { ToolRegistry } = await import('./src/core/tool-registry.js');
+  const { MemoryManager } = await import('./src/memory/memory-manager.js');
+
+  const registry = new ToolRegistry();
+  for (const name of ['web_search', 'web_fetch', 'browser_open', 'read_file', 'write_file', 'shell', 'tdd']) {
+    registry.register({
+      name,
+      category: name.startsWith('web_') || name === 'browser_open' ? 'web' : 'test',
+      description: `Test tool ${name}`,
+      parameters: {},
+      async handler() {
+        return 'ok';
+      },
+    });
+  }
+
+  const functionSnapshots = [];
+  let chatCount = 0;
+  const mockProvider = {
+    async chat(messages, options) {
+      chatCount++;
+      if (chatCount === 1) {
+        return {
+          text: JSON.stringify({
+            intent: 'weather_query',
+            confidence: 0.98,
+            normalizedTask: '查询上海天气',
+            slots: { location: '上海' },
+            requiresFreshData: true,
+            recommendedTools: ['web_search', 'web_fetch'],
+            firstActionHint: {
+              tool: 'web_search',
+              arguments: { query: '上海天气', max_results: 5 },
+            },
+          }),
+          toolCalls: [],
+        };
+      }
+
+      functionSnapshots.push(options.functions.map(tool => tool.name));
+      return {
+        text: 'FINAL_ANSWER: 上海天气已查询。',
+        toolCalls: [],
+        finishReason: 'stop',
+      };
+    },
+    getMaxContextTokens() {
+      return 4000;
+    },
+    dispose() {},
+  };
+
+  const agent = new ReActAgent(mockProvider, registry, new MemoryManager(TEST_CONFIG.testDir), {
+    maxIterations: 1,
+    workingDirectory: TEST_CONFIG.testDir,
+    intentClassification: true,
+  });
+
+  await agent.run('上海天气');
+
+  const firstTools = functionSnapshots[0] || [];
+  for (const expected of ['web_search', 'web_fetch', 'browser_open']) {
+    if (!firstTools.includes(expected)) {
+      throw new Error(`Expected routed weather tools to include ${expected}, got ${firstTools.join(', ')}`);
+    }
+  }
+  for (const excluded of ['write_file', 'shell', 'tdd']) {
+    if (firstTools.includes(excluded)) {
+      throw new Error(`Expected routed weather tools to exclude ${excluded}, got ${firstTools.join(', ')}`);
+    }
+  }
+});
+
 conversationProtocolTests.test('Text parser accepts action tag and raw JSON action tool calls', async () => {
   const { TextToolParser } = await import('./src/core/text-tool-parser.js');
   const { ToolRegistry } = await import('./src/core/tool-registry.js');

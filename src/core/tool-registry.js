@@ -34,34 +34,39 @@ export class ToolRegistry {
     return this.getAll().filter(t => t.category === category);
   }
 
-  /** Convert all tools to OpenAI function calling format */
-  toFunctionDefinitions() {
-    return this.getAll().map(tool => {
-      // Support both `params` (skill tools) and `parameters` (scheduler tools) formats
-      const toolParams = tool.params || (tool.parameters && tool.parameters.properties ? tool.parameters.properties : {});
-      const toolRequired = tool.required || (tool.parameters && tool.parameters.required ? tool.parameters.required : []);
-      return {
-        name: tool.name,
-        description: tool.description,
-        parameters: {
-          type: 'object',
-          properties: Object.fromEntries(
-            Object.entries(toolParams).map(([key, param]) => {
-              /** @type {Record<string, unknown>} */
-              const entry = {
-                type: param.type,
-                description: param.description,
-              };
-              if (param.enum) entry.enum = param.enum;
-              if (param.items) entry.items = { type: param.items.type, description: param.items.description };
-              if (param.default !== undefined) entry.default = param.default;
-              return [key, entry];
-            })
-          ),
-          required: toolRequired,
-        },
-      };
-    });
+  /** Convert selected tools to OpenAI function calling format */
+  toFunctionDefinitions(tools = this.getAll()) {
+    return tools
+      .map(tool => typeof tool === 'string' ? this.get(tool) : tool)
+      .filter(Boolean)
+      .map(tool => this.#toFunctionDefinition(tool));
+  }
+
+  #toFunctionDefinition(tool) {
+    // Support both `params` (skill tools) and `parameters` (scheduler tools) formats
+    const toolParams = tool.params || (tool.parameters && tool.parameters.properties ? tool.parameters.properties : {});
+    const toolRequired = tool.required || (tool.parameters && tool.parameters.required ? tool.parameters.required : []);
+    return {
+      name: tool.name,
+      description: tool.description,
+      parameters: {
+        type: 'object',
+        properties: Object.fromEntries(
+          Object.entries(toolParams).map(([key, param]) => {
+            /** @type {Record<string, unknown>} */
+            const entry = {
+              type: param.type,
+              description: param.description,
+            };
+            if (param.enum) entry.enum = param.enum;
+            if (param.items) entry.items = { type: param.items.type, description: param.items.description };
+            if (param.default !== undefined) entry.default = param.default;
+            return [key, entry];
+          })
+        ),
+        required: toolRequired,
+      },
+    };
   }
 
   /** Get tool names grouped by category for display */
