@@ -1,6 +1,6 @@
 {
   "name": "ai-engineering-mastery-agent",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "AI Engineering Mastery Agent - A standalone ReAct agent with 12 professional coding skills, sandbox execution, graph planning, 3-layer memory, and MCP protocol support",
   "type": "module",
   "main": "src/index.js",
