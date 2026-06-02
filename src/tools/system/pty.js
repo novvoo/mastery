@@ -112,6 +112,67 @@ function spawnPipeSession(command, workingDirectory) {
   });
 }
 
+export async function startPtyCommand({ command, cwd, cols, rows, wait_ms, max_chars }, ctx = {}) {
+  const blocked = blockIfDangerous(command);
+  if (blocked) return blocked;
+
+  const id = createSessionId();
+  const workingDirectory = cwd
+    ? resolve(ctx.workingDirectory, cwd)
+    : ctx.workingDirectory;
+  if (!existsSync(workingDirectory)) {
+    mkdirSync(workingDirectory, { recursive: true });
+  }
+
+  const session = {
+    id,
+    command,
+    cwd: workingDirectory,
+    mode: 'pty',
+    process: null,
+    output: '',
+    exitCode: null,
+    signal: null,
+    startedAt: Date.now(),
+  };
+
+  const helper = spawnHelperSession(command, workingDirectory, cols, rows);
+  const child = helper || spawnPipeSession(command, workingDirectory);
+
+  session.mode = helper ? 'pty_helper' : 'pipe_fallback';
+  if (!helper) {
+    appendOutput(session, '[PTY helper unavailable. Using interactive pipe fallback.]\n');
+  }
+  session.process = {
+    write: input => child.stdin.write(input),
+    kill: signal => child.kill(signal),
+  };
+  child.stdout.on('data', data => appendOutput(session, data.toString()));
+  child.stderr.on('data', data => appendOutput(session, data.toString()));
+  child.on('close', (exitCode, signal) => {
+    session.exitCode = exitCode;
+    session.signal = signal;
+  });
+  child.on('error', childError => {
+    appendOutput(session, `[process error: ${childError.message}]\n`);
+    session.exitCode = 1;
+  });
+
+  sessions.set(id, session);
+
+  if (ctx.debug && ctx.ui?.debugEvent) {
+    ctx.ui.debugEvent('PTY session started', {
+      sessionId: id,
+      command,
+      cwd: workingDirectory,
+      mode: session.mode,
+    });
+  }
+
+  await delay(wait_ms || DEFAULT_SETTLE_MS);
+  return serializeSession(session, max_chars || 6000, 0);
+}
+
 export function createPtyTools() {
   return [
     {
@@ -128,64 +189,7 @@ export function createPtyTools() {
       },
       required: ['command'],
       handler: async ({ command, cwd, cols, rows, wait_ms, max_chars }, ctx) => {
-        const blocked = blockIfDangerous(command);
-        if (blocked) return blocked;
-
-        const id = createSessionId();
-        const workingDirectory = cwd
-          ? resolve(ctx.workingDirectory, cwd)
-          : ctx.workingDirectory;
-        if (!existsSync(workingDirectory)) {
-          mkdirSync(workingDirectory, { recursive: true });
-        }
-
-        const session = {
-          id,
-          command,
-          cwd: workingDirectory,
-          mode: 'pty',
-          process: null,
-          output: '',
-          exitCode: null,
-          signal: null,
-          startedAt: Date.now(),
-        };
-
-        const helper = spawnHelperSession(command, workingDirectory, cols, rows);
-        const child = helper || spawnPipeSession(command, workingDirectory);
-
-        session.mode = helper ? 'pty_helper' : 'pipe_fallback';
-        if (!helper) {
-          appendOutput(session, '[PTY helper unavailable. Using interactive pipe fallback.]\n');
-        }
-        session.process = {
-          write: input => child.stdin.write(input),
-          kill: signal => child.kill(signal),
-        };
-        child.stdout.on('data', data => appendOutput(session, data.toString()));
-        child.stderr.on('data', data => appendOutput(session, data.toString()));
-        child.on('close', (exitCode, signal) => {
-          session.exitCode = exitCode;
-          session.signal = signal;
-        });
-        child.on('error', childError => {
-          appendOutput(session, `[process error: ${childError.message}]\n`);
-          session.exitCode = 1;
-        });
-
-        sessions.set(id, session);
-
-        if (ctx.debug && ctx.ui?.debugEvent) {
-          ctx.ui.debugEvent('PTY session started', {
-            sessionId: id,
-            command,
-            cwd: workingDirectory,
-            mode: session.mode,
-          });
-        }
-
-        await delay(wait_ms || DEFAULT_SETTLE_MS);
-        return serializeSession(session, max_chars || 6000, 0);
+        return startPtyCommand({ command, cwd, cols, rows, wait_ms, max_chars }, ctx);
       },
     },
     {

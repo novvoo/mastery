@@ -4803,6 +4803,56 @@ newFeaturesTests.test('PTY tools - interactive stdin/stdout round trip', async (
   console.log('     PTY session accepts input and returns incremental output');
 });
 
+newFeaturesTests.test('Shell auto-routes pygame-style long-running commands to stoppable PTY sessions', async () => {
+  const { classifyLongRunningCommand } = await import('./src/core/long-running-command.js');
+  const { createShellTool } = await import('./src/tools/system/shell.js');
+  const { createPtyTools } = await import('./src/tools/system/pty.js');
+
+  const gameDir = join(TEST_CONFIG.testDir, 'pygame-long-running');
+  mkdirSync(gameDir, { recursive: true });
+  writeFileSync(join(gameDir, 'game.py'), [
+    'import pygame',
+    'print("pygame window ready", flush=True)',
+    'import time',
+    'while True:',
+    '    time.sleep(0.1)',
+  ].join('\n'));
+
+  const command = 'python3 game.py';
+  const classification = classifyLongRunningCommand(command, {
+    cwd: gameDir,
+  });
+  if (!classification.isLongRunning || !classification.reason.includes('pygame')) {
+    throw new Error(`Expected pygame command to be classified as long-running, got ${JSON.stringify(classification)}`);
+  }
+
+  const shellTool = createShellTool();
+  const context = {
+    workingDirectory: gameDir,
+    debug: false,
+  };
+  const result = await shellTool.handler({
+    command,
+    timeout: 5000,
+  }, context);
+
+  const match = result.match(/"session_id":\s*"(pty_[^"]+)"/);
+  if (!result.includes('Long-running command detected') || !match) {
+    throw new Error(`Expected shell to start a stoppable PTY session for pygame command, got ${result}`);
+  }
+  if (!result.includes('pty_stop') || !result.includes('Do not retry this command with shell')) {
+    throw new Error(`Expected shell result to guide the agent to stop instead of retrying, got ${result}`);
+  }
+
+  const ptyStop = createPtyTools().find(tool => tool.name === 'pty_stop');
+  const stopResult = await ptyStop.handler({ session_id: match[1] }, context);
+  if (!stopResult.includes(match[1])) {
+    throw new Error(`Expected pty_stop to stop shell-started PTY session, got ${stopResult}`);
+  }
+
+  console.log('     Shell long-running fallback starts a PTY session that can be stopped');
+});
+
 newFeaturesTests.test('Semantic search tool - indexes workspace files with embeddings', async () => {
   const { createSemanticSearchTool } = await import('./src/tools/memory/semantic-search.js');
 

@@ -4,7 +4,9 @@
 
 import { spawn } from 'child_process';
 import { ToolCategory } from '../../core/types.js';
+import { classifyLongRunningCommand } from '../../core/long-running-command.js';
 import { createShellSandbox, shellSandboxConfigFromEnv } from '../../sandbox/shell-sandbox.js';
+import { startPtyCommand } from './pty.js';
 
 const DANGEROUS_PATTERNS = [
   /rm\s+-rf\s+\//,
@@ -80,9 +82,10 @@ export function createShellTool(options = {}) {
     params: {
       command: { type: 'string', description: 'The shell command to execute' },
       timeout: { type: 'number', description: 'Timeout in milliseconds (default 30000)' },
+      foreground: { type: 'boolean', description: 'Force foreground shell execution even if the command looks long-running (default false)' },
     },
     required: ['command'],
-    handler: async ({ command, timeout }, ctx) => {
+    handler: async ({ command, timeout, foreground }, ctx) => {
       const cmd = command;
       const ms = timeout || 30000;
       const startedAt = Date.now();
@@ -107,6 +110,21 @@ export function createShellTool(options = {}) {
           }
           return `BLOCKED: Command matches dangerous pattern. If you really need to run this, ask the user for confirmation.\nPattern: ${pattern.toString()}`;
         }
+      }
+
+      const longRunning = classifyLongRunningCommand(cmd, { cwd: ctx.workingDirectory });
+      if (longRunning.isLongRunning && !foreground) {
+        const sessionJson = await startPtyCommand({
+          command: cmd,
+          wait_ms: Math.min(ms, 1500),
+          max_chars: 6000,
+        }, ctx);
+        return [
+          `Long-running command detected: ${longRunning.reason}.`,
+          'Started it as a PTY session instead of waiting for shell completion.',
+          'Use pty_read with the returned output_cursor to observe progress, and call pty_stop when verification is done. Do not retry this command with shell just because it is still running.',
+          sessionJson,
+        ].join('\n');
       }
 
       try {
@@ -157,7 +175,11 @@ export function createShellTool(options = {}) {
         }
 
         if (result.killed) {
-          return `Command timed out after ${ms}ms and was killed.`;
+          return [
+            `Command timed out after ${ms}ms and was killed.`,
+            'If this command was expected to keep running (pygame window, game loop, dev server, watcher, REPL, or TUI), do not retry it with shell.',
+            'Run it with pty_start, inspect with pty_read, then stop it with pty_stop when finished.',
+          ].join('\n');
         }
 
         if (result.exitCode !== 0) {

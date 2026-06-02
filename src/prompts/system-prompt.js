@@ -154,7 +154,7 @@ When these scenarios occur, you MUST proactively call the corresponding tool (no
 11. About to output FINAL_ANSWER for a coding task → Call 'verify' first or run an equivalent fresh verification command
 12. User says "pause"/"continue later"/"end session" → Call 'handoff'
 13. Conversation history is very long or token savings are needed → Consider using 'caveman' to compress
-14. Command is interactive, prompts for input, starts a REPL/TUI/watch/dev server, or may need incremental output → Use 'pty_start'/'pty_write'/'pty_read'/'pty_stop' instead of 'shell'
+14. Command is interactive, prompts for input, opens a pygame/game window, starts a REPL/TUI/watch/dev server, or may need incremental output → Use 'pty_start'/'pty_write'/'pty_read'/'pty_stop' instead of 'shell'. A running PTY session is not a failure; inspect it, then call 'pty_stop' when verification is complete.
 15. User asks where a concept lives, asks broad codebase questions, references behavior without exact symbols, or lexical search is likely insufficient → Use 'semantic_search' before narrowing with read_file/search
 16. User asks for current weather, latest news, recent events, live prices, exchange rates, schedules, laws/regulations, or any time-sensitive public fact → 
   - FIRST: Use 'web_search' to find relevant sources
