@@ -60,6 +60,7 @@ export class Embedder {
   #onnxRuntime;
   #autoDownload;
   #downloadTimeoutMs;
+  #fallbackReason;
 
   constructor(options = {}) {
     this.#modelPath = options.modelPath || process.env.EMBEDDING_MODEL_PATH || getDefaultEmbeddingModelPath();
@@ -71,6 +72,7 @@ export class Embedder {
     this.#tokenizer = null;
     this.#autoDownload = options.autoDownload ?? process.env.EMBEDDING_MODEL_AUTO_DOWNLOAD !== 'false';
     this.#downloadTimeoutMs = Number(options.downloadTimeoutMs || process.env.EMBEDDING_MODEL_DOWNLOAD_TIMEOUT_MS || 120000);
+    this.#fallbackReason = null;
   }
 
   async initialize() {
@@ -81,9 +83,45 @@ export class Embedder {
       this.#tokenizer = await this.#loadTokenizer();
       this.#model = await this.#loadModel();
       this.#initialized = true;
+      this.#fallbackReason = null;
     } catch (error) {
       console.warn('ONNX Runtime initialization failed, using fallback:', error.message);
+      this.#fallbackReason = error.message;
       this.#initialized = true;
+    }
+  }
+
+  async inspect() {
+    const modelFile = await this.#getModelFileStatus();
+    return {
+      initialized: this.#initialized,
+      usingONNX: !!(this.#onnxRuntime && this.#tokenizer && this.#model),
+      usingFallback: !(this.#onnxRuntime && this.#tokenizer && this.#model),
+      fallbackReason: this.#fallbackReason,
+      modelPath: this.#modelPath,
+      modelFile,
+      autoDownload: this.#autoDownload,
+      downloadTimeoutMs: this.#downloadTimeoutMs,
+      downloadCandidates: resolveEmbeddingModelDownloadCandidates(),
+      dimension: this.#dimension,
+      batchSize: this.#batchSize,
+    };
+  }
+
+  async #getModelFileStatus() {
+    try {
+      const fileStat = await stat(this.#modelPath);
+      return {
+        exists: true,
+        bytes: fileStat.size,
+        modifiedAt: fileStat.mtime.toISOString(),
+      };
+    } catch {
+      return {
+        exists: false,
+        bytes: 0,
+        modifiedAt: null,
+      };
     }
   }
 
@@ -102,7 +140,7 @@ export class Embedder {
       const tokenizer = await Tokenizer.frompretrained(process.env.EMBEDDING_MODEL_REPO || DEFAULT_EMBEDDING_REPO);
       return tokenizer;
     } catch (error) {
-      throw new Error('Failed to load tokenizer:', error.message);
+      throw new Error(`Failed to load tokenizer: ${error.message}`);
     }
   }
 
@@ -112,7 +150,7 @@ export class Embedder {
       const session = await this.#onnxRuntime.InferenceSession.create(this.#modelPath);
       return session;
     } catch (error) {
-      throw new Error('Failed to load ONNX model:', error.message);
+      throw new Error(`Failed to load ONNX model: ${error.message}`);
     }
   }
 

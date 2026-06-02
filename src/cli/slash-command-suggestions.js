@@ -19,6 +19,7 @@ const BUILTIN_COMMANDS = [
   { name: '/document', description: 'Manage document RAG context', source: 'builtin' },
   { name: '/documents', description: 'Manage document RAG context', source: 'builtin' },
   { name: '/doc add', description: 'Index a local document or URL', source: 'builtin_subcommand' },
+  { name: '/doc init', description: 'Initialize and diagnose document RAG runtime', source: 'builtin_subcommand' },
   { name: '/doc search', description: 'Search indexed documents', source: 'builtin_subcommand' },
   { name: '/doc list', description: 'List indexed documents', source: 'builtin_subcommand' },
   { name: '/doc clear', description: 'Clear indexed document context', source: 'builtin_subcommand' },

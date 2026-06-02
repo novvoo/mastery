@@ -22,6 +22,7 @@ import { ExperienceMemory } from './core/experience-memory.js';
 import { SecurityPolicy } from './core/security-policy.js';
 import { IntelligentReasoning } from './core/intelligent-reasoning.js';
 import { AutomationEngine, TriggerType, WorkflowStatus } from './core/automation-engine.js';
+import { Embedder } from './core/embedder.js';
 import {
   applyRuntimeValues,
   buildMissingConfigMessage,
@@ -171,13 +172,14 @@ const COMMAND_HELP = {
   doc: {
     title: '/doc',
     description: 'Manage user-provided document RAG context for local files, PDFs, DOCX files, URLs, and pasted text.',
-    usage: ['/doc', '/doc add [path-or-url]', '/doc search <query>', '/doc list', '/doc clear [document-id]', 'Ask naturally with @path or @"path with spaces.pdf"'],
+    usage: ['/doc', '/doc init', '/doc add [path-or-url]', '/doc search <query>', '/doc list', '/doc clear [document-id]', 'Ask naturally with @path or @"path with spaces.pdf"'],
     effects: [
+      'init preflights the embedding runtime and shows model/download status.',
       'add indexes a document in the current in-memory RAG index.',
       'search retrieves relevant chunks without calling the LLM.',
       'clear removes indexed document context for this CLI session.',
     ],
-    examples: ['/doc add ./docs/spec.pdf', '/doc add https://example.com/runbook', '根据 @./docs/spec.pdf 总结风险', '/doc search "rollback policy"', '/doc clear'],
+    examples: ['/doc init', '/doc add ./docs/spec.pdf', '/doc add https://example.com/runbook', '根据 @./docs/spec.pdf 总结风险', '/doc search "rollback policy"', '/doc clear'],
   },
   compress: {
     title: '/compress',
@@ -1115,6 +1117,11 @@ class AIEngineeringAgent {
       return;
     }
 
+    if (['init', 'status', 'doctor'].includes(subcommand)) {
+      await this.#handleDocumentInitCommand();
+      return;
+    }
+
     const toolRegistry = this.agent?.getTools?.();
     if (!toolRegistry) {
       enhancedUI.error('Document tools are not initialized.');
@@ -1213,6 +1220,55 @@ class AIEngineeringAgent {
 
     enhancedUI.warning(`Unknown /doc command: ${subcommand}`);
     this.#showBuiltInCommandHelp('doc');
+  }
+
+  async #handleDocumentInitCommand() {
+    const embedder = new Embedder();
+    const before = await embedder.inspect();
+
+    console.log(enhancedUI.createHeader('Document RAG Runtime'));
+    console.log('Embedding Model');
+    console.log(`  path: ${before.modelPath}`);
+    console.log(`  exists: ${before.modelFile.exists ? 'yes' : 'no'}`);
+    if (before.modelFile.exists) {
+      console.log(`  size: ${this.#formatBytes(before.modelFile.bytes)}`);
+      console.log(`  modified: ${before.modelFile.modifiedAt}`);
+    }
+    console.log(`  auto download: ${before.autoDownload ? 'enabled' : 'disabled'}`);
+    console.log(`  download timeout: ${before.downloadTimeoutMs}ms`);
+    console.log('');
+    console.log('Download Candidates');
+    for (const [index, url] of before.downloadCandidates.entries()) {
+      console.log(`  ${index + 1}. ${url}`);
+    }
+    console.log('');
+
+    const spinner = enhancedUI.spinner('Initializing embedding runtime...');
+    try {
+      spinner.start();
+      await embedder.initialize();
+      spinner.stop();
+    } catch (error) {
+      spinner.stop();
+      enhancedUI.error(`Embedding initialization failed: ${error.message}`);
+    }
+
+    const after = await embedder.inspect();
+    console.log(enhancedUI.createHeader('Document RAG Init Result'));
+    console.log(`Runtime: ${after.usingONNX ? 'ONNX' : 'fallback'}`);
+    console.log(`Initialized: ${after.initialized ? 'yes' : 'no'}`);
+    if (after.fallbackReason) {
+      console.log(`Fallback reason: ${after.fallbackReason}`);
+    }
+    console.log('');
+
+    if (after.usingONNX) {
+      enhancedUI.success('Document RAG will use ONNX embeddings.');
+    } else {
+      enhancedUI.warning('Document RAG will use the local fallback embedder.');
+      enhancedUI.info('This is usable, but semantic ranking may be less precise than ONNX embeddings.');
+    }
+    console.log('');
   }
 
   async #processSlashToolCommand(input) {
@@ -1875,6 +1931,21 @@ class AIEngineeringAgent {
       return text.slice(1, -1);
     }
     return text;
+  }
+
+  #formatBytes(bytes) {
+    const value = Number(bytes) || 0;
+    if (value < 1024) {
+      return `${value} B`;
+    }
+    const units = ['KB', 'MB', 'GB'];
+    let size = value / 1024;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex++;
+    }
+    return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unitIndex]}`;
   }
 
   #stripTrailingReferencePunctuation(value) {

@@ -4321,6 +4321,7 @@ cliInputLoopTests.test('CLI slash skill command executes local tool without LLM 
       () => output,
       text => text.includes('Command Help: /doc') &&
         text.includes('Manage user-provided document RAG context') &&
+        text.includes('/doc init') &&
         text.includes('/doc add [path-or-url]') &&
         text.includes('/doc search <query>'),
       15000,
@@ -4964,6 +4965,7 @@ newFeaturesTests.test('Slash command suggestions include skill commands while ty
   const tdSuggestions = filterSlashCommandSuggestions(commands, '/td').map(command => command.name);
   const toSuggestions = filterSlashCommandSuggestions(commands, '/to').map(command => command.name);
   const docSuggestions = filterSlashCommandSuggestions(commands, '/do').map(command => command.name);
+  const docInitSuggestions = filterSlashCommandSuggestions(commands, '/doc i').map(command => command.name);
   const docSubSuggestions = filterSlashCommandSuggestions(commands, '/doc s').map(command => command.name);
   const afterSpaceSuggestions = filterSlashCommandSuggestions(commands, '/tdd ');
   const rendered = formatSlashCommandSuggestions(filterSlashCommandSuggestions(commands, '/t'));
@@ -4987,6 +4989,9 @@ newFeaturesTests.test('Slash command suggestions include skill commands while ty
   }
   if (!docSuggestions.includes('/doc') || !docSuggestions.includes('/docs') || !docSuggestions.includes('/document')) {
     throw new Error(`Expected /do to suggest document RAG commands, got ${JSON.stringify(docSuggestions)}`);
+  }
+  if (!docInitSuggestions.includes('/doc init')) {
+    throw new Error(`Expected /doc i to suggest /doc init, got ${JSON.stringify(docInitSuggestions)}`);
   }
   if (!docSubSuggestions.includes('/doc search')) {
     throw new Error(`Expected /doc s to suggest /doc search, got ${JSON.stringify(docSubSuggestions)}`);
@@ -5448,6 +5453,33 @@ newFeaturesTests.test('Embedder - basic embedding generation', async () => {
   }
 
   console.log('     Embedder basic embedding works');
+});
+
+newFeaturesTests.test('Embedder - inspect reports runtime and model status', async () => {
+  const { Embedder } = await import('./src/core/embedder.js');
+  const embedder = new Embedder({
+    modelPath: join(TEST_CONFIG.testDir, 'missing-model.onnx'),
+    autoDownload: false,
+  });
+
+  const before = await embedder.inspect();
+  if (before.initialized || before.modelFile.exists || before.autoDownload) {
+    throw new Error(`Expected missing model before init with auto download disabled, got ${JSON.stringify(before)}`);
+  }
+  if (!before.modelPath.endsWith('missing-model.onnx') || before.downloadCandidates.length === 0) {
+    throw new Error(`Expected inspect to include model path and download candidates, got ${JSON.stringify(before)}`);
+  }
+
+  await embedder.initialize();
+  const after = await embedder.inspect();
+  if (!after.initialized || !after.usingFallback) {
+    throw new Error(`Expected initialized fallback status after init, got ${JSON.stringify(after)}`);
+  }
+  if (!after.fallbackReason) {
+    throw new Error(`Expected fallback reason after failed ONNX init, got ${JSON.stringify(after)}`);
+  }
+
+  console.log('     Embedder inspect reports runtime and model status');
 });
 
 newFeaturesTests.test('Embedder - model download candidates prefer official then mirrors', async () => {
