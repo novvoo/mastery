@@ -7,6 +7,8 @@
 ## 核心能力
 
 - **智能意图识别**：短输入如“上海天气”会先经过 LLM intent classifier，生成结构化 routing hint，再进入 ReAct 循环。明显天气查询有窄兜底，避免模型漏判。
+- **按需工具路由**：每轮 LLM request 只暴露当前任务需要的工具子集。工程任务默认使用文件、终端、PTY、方法论和只读 Git 工具；如果任务提到最新资料、浏览器、MCP、后台任务或发布操作，会按需加入 Web、Browser、MCP、调度或 Git 写入工具。
+- **轻量任务画像**：明显工程任务会先用本地画像识别，跳过无收益的 intent 预请求，避免首轮在工具很多时等待额外 LLM 调用。
 - **ReAct 工具执行**：支持原生 function calling，也支持文本模型输出的 `CALL tool({...})`、JSON action、XML、`<tool_code>`、bash code fence 等工具格式。
 - **编码任务守门**：编码类请求会自动进入 coding task mode，要求理解仓库、做最小必要修改、检查变更、运行验证，再给最终答案。
 - **方法论工具**：内置 `setup`、`diagnose`、`grill`、`zoom_out`、`brainstorm`、`tdd`、`review`、`verify`、`architect`、`to_prd`、`to_issues` 等工程流程工具。
@@ -19,11 +21,14 @@
 
 ```text
 User Input
-  -> IntentClassifier
-     -> structured intent / routing hint
+  -> Local Task Profile
+     -> coding / fresh-data / browser / git / mcp / scheduler signals
+  -> Optional IntentClassifier
+     -> structured intent / routing hint for ambiguous fresh-data tasks
   -> SessionManager
-     -> system prompt + tool instructions + recent context
+     -> compact system prompt + compact tool instructions + recent context
   -> ReActAgent loop
+     -> ToolRouter selects current tool subset
      -> LLM request
      -> native tool calls or TextToolParser parsed calls
      -> ToolRegistry executes tools
@@ -37,6 +42,7 @@ User Input
 - `src/index.js`：CLI 入口、配置加载、工具注册、模型 provider 初始化、slash command、debug 开关。
 - `src/core/agent.js`：ReAct 主循环、意图路由注入、工具执行、编码任务守门、自动任务编排、最终答案处理。
 - `src/core/intent-classifier.js`：LLM-backed intent classifier，把短输入转换成结构化任务意图。
+- `src/core/tool-router.js`：本地任务画像和按需工具路由，避免每轮向模型暴露全量工具。
 - `src/core/text-tool-parser.js`：兼容非 function calling 模型的文本工具调用解析。
 - `src/core/tool-registry.js`：工具注册、查找、执行和 function definitions 输出。
 - `src/prompts/system-prompt.js`：系统提示、工具使用规范、Web 查询和编码方法论约束。
@@ -58,6 +64,8 @@ Agent 的工程方法论可以概括为六步：
 实际运行时采用“证据型守门”，而不是固定死板的流程编排：
 
 - 系统提示会鼓励新功能先 `brainstorm`、实现时用 `tdd`、完成前 `verify`。
+- 工具暴露采用“按需裁剪”而不是“永久隐藏”。例如普通工程任务不会默认暴露 Web/MCP/调度工具，但如果需求里出现“查最新文档”“连接 MCP”“创建后台任务”等信号，对应工具组会加入本轮 function definitions。
+- 明显工程任务会跳过 LLM intent classifier 的预请求；天气、新闻、汇率、实时价格等时效性任务仍会使用 intent classifier 或窄兜底生成 routing hint。
 - Agent completion gate 的强制条件更宽松：非平凡编码任务需要至少一个成功的方法论工具证据，但不强制必须是 `brainstorm` 或 `tdd`。
 - 变更后的验证可以是 `verify` / `review`，也可以是等价的 fresh verification command，例如 `bun test`、`bun run lint`、`tsc`、`pytest`、`lint` 等。
 - 对涉及时间、速度、动画、游戏循环、第三方 API、状态转换、并发 I/O 或安全边界的编码任务，Agent 会自动插入 `semantic_risk_review` 编排节点，并要求 `review` / `verify` 覆盖单位、API 参数语义、状态不变量和用户可感知行为。
@@ -315,6 +323,22 @@ git pull origin main
 VERSION="$(bun -e "const pkg = await import('./package.json'); console.log(pkg.default.version)")"
 git tag "v$VERSION"
 git push origin "v$VERSION"
+```
+
+不切换当前开发分支时，可以用临时 worktree 完成 main 发布：
+
+```bash
+git fetch origin
+git worktree add /tmp/ai-engineering-mastery-agent-main origin/main
+cd /tmp/ai-engineering-mastery-agent-main
+git switch -c main-release origin/main
+git merge --ff-only origin/<feature-branch>
+git push origin HEAD:main
+VERSION="$(bun -e "const pkg = await import('./package.json'); console.log(pkg.default.version)")"
+git tag "v$VERSION"
+git push origin "v$VERSION"
+cd -
+git worktree remove /tmp/ai-engineering-mastery-agent-main
 ```
 
 ## 配置项
