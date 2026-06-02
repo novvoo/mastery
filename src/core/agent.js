@@ -583,6 +583,7 @@ export class ReActAgent {
         workingDirectory: this.#config.workingDirectory,
         memoryManager: this.#memoryManager,
         sessionManager: this.#sessionManager,
+        modelProvider: this.#modelProvider,
         debug: this.#isDebugEnabled(),
         ui: this.#ui,
         toolName: name,

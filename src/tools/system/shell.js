@@ -112,7 +112,10 @@ export function createShellTool(options = {}) {
         }
       }
 
-      const longRunning = classifyLongRunningCommand(cmd, { cwd: ctx.workingDirectory });
+      const longRunning = await classifyLongRunningCommand(cmd, {
+        cwd: ctx.workingDirectory,
+        modelProvider: ctx.modelProvider,
+      });
       if (longRunning.isLongRunning && !foreground) {
         const sessionJson = await startPtyCommand({
           command: cmd,

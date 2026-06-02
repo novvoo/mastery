@@ -254,7 +254,7 @@ CD / Release 用于生成系统安装包：
 - 新版本安装包按升级替换旧版本设计：Linux 依赖稳定包名和递增版本升级；macOS 使用稳定 package identifier，并在安装前清理旧安装目录；Windows MSI 使用稳定 `UpgradeCode` 和 `MajorUpgrade`，阻止降级并允许同版本重装。
 - 安装包内包含 Bun standalone binary、`README.md`、`.env.example` 和 License，不包含 `src/`、`package.json`、lockfile 或 `node_modules`；运行机器不需要额外安装 Node.js 或 Bun。
 - PTY 工具不再依赖 `node-pty`。如果配置 `AGENT_PTY_HELPER` 会优先走外部 PTY helper，否则自动使用 pipe fallback，不影响 CLI 启动和普通命令执行。
-- 游戏窗口、pygame、dev server、watcher、REPL/TUI 等长驻命令会优先进入可观察、可停止的 PTY session；普通 `shell` 误调用这类命令时也会自动转成 PTY，并提示用 `pty_read` 查看、`pty_stop` 停止，避免等待-超时-重试循环。
+- 游戏窗口、dev server、watcher、REPL/TUI 等长驻命令会优先进入可观察、可停止的 PTY session；普通 `shell` 误调用这类命令时，会先由 LLM 基于命令和入口文件内容判断是否应转成 PTY，并提示用 `pty_read` 查看、`pty_stop` 停止，避免等待-超时-重试循环。
 
 发布流程示例：
 

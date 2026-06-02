@@ -3424,9 +3424,24 @@ debugLoggingTests.test('Debug mode records agent lifecycle, LLM request, tool pu
   const { createShellTool } = await import('./src/tools/system/shell.js');
 
   let chatCount = 0;
+  let classifierCount = 0;
   const secondRequestMessages = [];
   const mockProvider = {
     async chat(messages, options) {
+      if (messages.some(message => message.content?.includes('Decide whether this command should be started as a persistent PTY session'))) {
+        classifierCount++;
+        return {
+          text: JSON.stringify({
+            isLongRunning: false,
+            confidence: 0.94,
+            reason: 'This diagnostic command prints a short string and exits.',
+            recommendedTool: 'shell',
+          }),
+          toolCalls: [],
+          finishReason: 'stop',
+        };
+      }
+
       chatCount++;
       if (chatCount === 2) {
         secondRequestMessages.push(...messages.map(m => ({
@@ -3512,6 +3527,9 @@ debugLoggingTests.test('Debug mode records agent lifecycle, LLM request, tool pu
   const shellFinished = requireDebugEvent(events, 'Shell command finished');
   if (shellFinished.details.exitCode !== 0 || !shellFinished.details.stdoutPreview.includes('debug-ok')) {
     throw new Error(`Expected successful shell output preview, got ${JSON.stringify(shellFinished.details)}`);
+  }
+  if (classifierCount !== 1) {
+    throw new Error(`Expected one LLM long-running classification before shell execution, got ${classifierCount}`);
   }
 
   const toolResult = secondRequestMessages.find(m => m.role === 'tool' && m.toolCallId === 'shell_call_1');
@@ -4819,8 +4837,25 @@ newFeaturesTests.test('Shell auto-routes pygame-style long-running commands to s
   ].join('\n'));
 
   const command = 'python3 game.py';
-  const classification = classifyLongRunningCommand(command, {
+  const classifierCalls = [];
+  const modelProvider = {
+    async chat(messages) {
+      classifierCalls.push(messages);
+      const prompt = messages.map(message => message.content).join('\n');
+      return {
+        text: JSON.stringify({
+          isLongRunning: prompt.includes('import pygame') && prompt.includes('while True'),
+          confidence: 0.96,
+          reason: 'Entrypoint opens a pygame-style event loop and should be stopped explicitly.',
+          recommendedTool: 'pty_start',
+        }),
+      };
+    },
+  };
+
+  const classification = await classifyLongRunningCommand(command, {
     cwd: gameDir,
+    modelProvider,
   });
   if (!classification.isLongRunning || !classification.reason.includes('pygame')) {
     throw new Error(`Expected pygame command to be classified as long-running, got ${JSON.stringify(classification)}`);
@@ -4829,6 +4864,7 @@ newFeaturesTests.test('Shell auto-routes pygame-style long-running commands to s
   const shellTool = createShellTool();
   const context = {
     workingDirectory: gameDir,
+    modelProvider,
     debug: false,
   };
   const result = await shellTool.handler({
@@ -4842,6 +4878,9 @@ newFeaturesTests.test('Shell auto-routes pygame-style long-running commands to s
   }
   if (!result.includes('pty_stop') || !result.includes('Do not retry this command with shell')) {
     throw new Error(`Expected shell result to guide the agent to stop instead of retrying, got ${result}`);
+  }
+  if (classifierCalls.length < 2) {
+    throw new Error(`Expected LLM classifier to be used by direct classification and shell fallback, got ${classifierCalls.length} calls`);
   }
 
   const ptyStop = createPtyTools().find(tool => tool.name === 'pty_stop');
