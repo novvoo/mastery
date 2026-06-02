@@ -522,7 +522,8 @@ export class ReActAgent {
    * Execute a single tool call
    */
   async #executeToolCall(toolCall, options = {}) {
-    const { id, name, arguments: args } = toolCall;
+    const rewrittenToolCall = this.#rewriteShellRuntimeToolCall(toolCall) || toolCall;
+    const { id, name, arguments: args } = rewrittenToolCall;
     const resultMode = options.resultMode || 'tool';
     const startedAt = Date.now();
 
@@ -586,7 +587,7 @@ export class ReActAgent {
       id,
       tool: name,
       category: tool.category,
-      source: toolCall.source || 'native',
+      source: rewrittenToolCall.source || toolCall.source || 'native',
       resultMode,
       workingDirectory: this.#config.workingDirectory,
       arguments: args,
@@ -864,6 +865,37 @@ export class ReActAgent {
         return;
       }
     }
+  }
+
+  #rewriteShellRuntimeToolCall(toolCall) {
+    if (toolCall?.name !== 'shell') {
+      return null;
+    }
+
+    const command = String(toolCall.arguments?.command || '').trim();
+    if (!command) {
+      return null;
+    }
+
+    const parsed = this.#textToolParser
+      .parse(`\`\`\`bash\n${command}\n\`\`\``)
+      .filter(call => call.name !== 'shell');
+    if (parsed.length === 0) {
+      return null;
+    }
+
+    const replacement = parsed[0];
+    this.#debugEvent('Shell tool call rewritten to runtime tool', {
+      originalCommand: command,
+      replacementTool: replacement.name,
+      replacementArguments: replacement.arguments,
+    });
+
+    return {
+      ...replacement,
+      id: toolCall.id,
+      source: 'shell_runtime_tool_redirect',
+    };
   }
 
   #summarizePlanProgress(plan) {

@@ -118,9 +118,20 @@ export class TextToolParser {
 
     while ((match = blockRegex.exec(text)) !== null) {
       const command = match[1].trim();
+      const runtimeToolCalls = this.#parseRuntimeToolInvocations(command, toolCalls.length);
+      if (runtimeToolCalls.length > 0) {
+        toolCalls.push(...runtimeToolCalls);
+        continue;
+      }
+
       if (!command || command.startsWith('$')) {
         const normalized = command.replace(/^\$\s*/, '').trim();
         if (!normalized) {
+          continue;
+        }
+        const normalizedRuntimeToolCalls = this.#parseRuntimeToolInvocations(normalized, toolCalls.length);
+        if (normalizedRuntimeToolCalls.length > 0) {
+          toolCalls.push(...normalizedRuntimeToolCalls);
           continue;
         }
         toolCalls.push({
@@ -141,6 +152,114 @@ export class TextToolParser {
     }
 
     return toolCalls;
+  }
+
+  #parseRuntimeToolInvocations(text, startIndex = 0) {
+    const toolCalls = [];
+    const source = 'shell_code_block_runtime_tool';
+
+    for (const call of this.#extractToolCodeCalls(text)) {
+      const mapped = this.#mapRuntimeToolCommandName(call.name);
+      if (!mapped || mapped === 'shell' || !this.#toolRegistry?.has?.(mapped)) {
+        continue;
+      }
+
+      const jsonArgs = this.#safeJSONParse(call.argsText.trim());
+      const args = jsonArgs && typeof jsonArgs === 'object' && !Array.isArray(jsonArgs)
+        ? this.#normalizeJSONToolCall(mapped, jsonArgs).args
+        : this.#normalizeToolCodeArgs(mapped, this.#parseToolCodeArgs(call.argsText));
+      if (!args) {
+        continue;
+      }
+
+      toolCalls.push({
+        id: `call_${Date.now()}_${startIndex + toolCalls.length}`,
+        name: mapped,
+        arguments: args,
+        source,
+      });
+    }
+
+    for (const line of this.#runtimeToolCommandLines(text)) {
+      const call = this.#runtimeToolCallFromBareCommand(line, startIndex + toolCalls.length);
+      if (call) {
+        toolCalls.push(call);
+      }
+    }
+
+    return toolCalls;
+  }
+
+  #runtimeToolCommandLines(text) {
+    return String(text || '')
+      .split('\n')
+      .map(line => line.trim().replace(/^\$\s*/, ''))
+      .filter(line => line && !line.startsWith('#'));
+  }
+
+  #runtimeToolCallFromBareCommand(line, index) {
+    const match = line.match(/^([A-Za-z_][\w-]*)(?:\s+(.+))?$/);
+    if (!match) {
+      return null;
+    }
+
+    const mapped = this.#mapRuntimeToolCommandName(match[1]);
+    if (!mapped || mapped === 'shell' || !this.#toolRegistry?.has?.(mapped)) {
+      return null;
+    }
+
+    const rest = String(match[2] || '').trim();
+    let args = {};
+    if (rest.startsWith('{') && rest.endsWith('}')) {
+      const jsonArgs = this.#safeJSONParse(rest);
+      if (!jsonArgs || typeof jsonArgs !== 'object' || Array.isArray(jsonArgs)) {
+        return null;
+      }
+      args = this.#normalizeJSONToolCall(mapped, jsonArgs).args;
+    } else if (mapped === 'list_dir') {
+      args = { path: this.#stripShellTokenQuotes(rest || '.') };
+    } else if (mapped === 'read_file') {
+      if (!rest) {
+        return null;
+      }
+      args = { path: this.#stripShellTokenQuotes(rest) };
+    } else {
+      return null;
+    }
+
+    return {
+      id: `call_${Date.now()}_${index}`,
+      name: mapped,
+      arguments: args,
+      source: 'shell_code_block_runtime_tool',
+    };
+  }
+
+  #stripShellTokenQuotes(value) {
+    return String(value || '').replace(/^['"]|['"]$/g, '');
+  }
+
+  #mapRuntimeToolCommandName(rawName) {
+    const name = String(rawName || '').replace(/^\//, '');
+    const snakeName = name
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .replace(/-/g, '_')
+      .toLowerCase();
+
+    const aliases = {
+      list_files: 'list_dir',
+      list_directory: 'list_dir',
+      inspect_workspace: 'list_dir',
+      save_file: 'write_file',
+      search_web: 'web_search',
+      browser_search: 'web_search',
+      internet_search: 'web_search',
+      fetch_url: 'web_fetch',
+      browser_fetch: 'web_fetch',
+      plan_solution: 'brainstorm',
+    };
+
+    return aliases[snakeName] || this.#resolveToolName(snakeName);
   }
   
   /**

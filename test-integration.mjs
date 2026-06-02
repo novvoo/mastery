@@ -2537,6 +2537,112 @@ for root, dirs, files in os.walk('.'):
   }
 });
 
+conversationProtocolTests.test('Text parser does not route runtime tool names inside shell fences to shell', async () => {
+  const { TextToolParser } = await import('./src/core/text-tool-parser.js');
+  const { ToolRegistry } = await import('./src/core/tool-registry.js');
+
+  const registry = new ToolRegistry();
+  for (const name of ['list_dir', 'read_file', 'write_file', 'shell']) {
+    registry.register({
+      name,
+      description: `${name} tool`,
+      parameters: {
+        path: { type: 'string' },
+        content: { type: 'string' },
+        command: { type: 'string' },
+      },
+      async handler() {},
+    });
+  }
+
+  const parser = new TextToolParser(registry);
+  const calls = [
+    ...parser.parse('```bash\nlist_dir .\n```'),
+    ...parser.parse('```bash\nwrite_file(path="hello.txt", content="hello")\n```'),
+    ...parser.parse('```bash\nwrite_file({"path":"json.txt","content":"json body"})\n```'),
+  ];
+
+  if (calls.some(call => call.name === 'shell')) {
+    throw new Error(`Expected runtime tool commands in shell fences to avoid shell, got ${JSON.stringify(calls)}`);
+  }
+  if (!calls.some(call => call.name === 'list_dir' && call.arguments.path === '.')) {
+    throw new Error(`Expected bare list_dir shell fence to map to list_dir '.', got ${JSON.stringify(calls)}`);
+  }
+  if (!calls.some(call => call.name === 'write_file' && call.arguments.path === 'hello.txt' && call.arguments.content === 'hello')) {
+    throw new Error(`Expected function-style write_file shell fence to map to write_file, got ${JSON.stringify(calls)}`);
+  }
+  if (!calls.some(call => call.name === 'write_file' && call.arguments.path === 'json.txt' && call.arguments.content === 'json body')) {
+    throw new Error(`Expected JSON-style write_file shell fence to map to write_file, got ${JSON.stringify(calls)}`);
+  }
+});
+
+conversationProtocolTests.test('Agent rewrites native shell calls that contain runtime tool commands', async () => {
+  const { ReActAgent } = await import('./src/core/agent.js');
+  const { ToolRegistry } = await import('./src/core/tool-registry.js');
+  const { MemoryManager } = await import('./src/memory/memory-manager.js');
+
+  const registry = new ToolRegistry();
+  let listedPath = null;
+  let shellCalled = false;
+  registry.register({
+    name: 'list_dir',
+    description: 'List directory',
+    parameters: { path: { type: 'string' } },
+    async handler(args) {
+      listedPath = args.path;
+      return 'listed';
+    },
+  });
+  registry.register({
+    name: 'shell',
+    description: 'Run shell command',
+    parameters: { command: { type: 'string' } },
+    async handler() {
+      shellCalled = true;
+      return 'shell should not run';
+    },
+  });
+
+  let chatCount = 0;
+  const mockProvider = {
+    async chat() {
+      chatCount++;
+      if (chatCount === 1) {
+        return {
+          text: 'I will list files.',
+          toolCalls: [{
+            id: 'call_shell_1',
+            name: 'shell',
+            arguments: { command: 'list_dir .' },
+          }],
+        };
+      }
+      return {
+        text: 'FINAL_ANSWER: listed',
+        toolCalls: [],
+      };
+    },
+    getMaxContextTokens() {
+      return 4000;
+    },
+    dispose() {},
+  };
+
+  const agent = new ReActAgent(mockProvider, registry, new MemoryManager(TEST_CONFIG.testDir), {
+    maxIterations: 3,
+    workingDirectory: TEST_CONFIG.testDir,
+  });
+
+  await agent.run('列出当前目录');
+
+  if (shellCalled) {
+    throw new Error('Expected shell runtime-tool command to be rewritten before shell execution');
+  }
+  if (listedPath !== '.') {
+    throw new Error(`Expected rewritten shell call to execute list_dir '.', got ${listedPath}`);
+  }
+});
+
 conversationProtocolTests.test('Agent executes tool_code list_files instead of emitting it as final answer', async () => {
   const { ReActAgent } = await import('./src/core/agent.js');
   const { ToolRegistry } = await import('./src/core/tool-registry.js');
