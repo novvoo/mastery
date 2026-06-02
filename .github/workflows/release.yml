@@ -134,6 +134,14 @@ jobs:
           SCRIPTS_DIR="dist/pkg-scripts"
           mkdir -p "$SCRIPTS_DIR"
 
+          cat > "$SCRIPTS_DIR/preinstall" <<EOF
+          #!/bin/sh
+          set -e
+          rm -rf "/usr/local/lib/$NAME"
+          exit 0
+          EOF
+          chmod 755 "$SCRIPTS_DIR/preinstall"
+
           cat > "$SCRIPTS_DIR/postinstall" <<EOF
           #!/bin/sh
           set -e

@@ -15,7 +15,7 @@ import { config } from 'dotenv';
 import { resolve, join } from 'path';
 import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync, readdirSync } from 'fs';
 import { performance } from 'perf_hooks';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { createServer } from 'http';
 
 config();
@@ -5662,6 +5662,67 @@ productionReadinessTests.test('CLI onboarding commands expose help, config path,
   });
   if (doctor.code !== 1 || !doctor.output.includes('Missing required configuration: DEEPSEEK_API_KEY') || !doctor.output.includes('agent setup')) {
     throw new Error(`Expected CLI doctor to report missing setup, got code=${doctor.code}, output=${doctor.output}`);
+  }
+});
+
+productionReadinessTests.test('Release packages declare stable upgrade and replacement behavior', async () => {
+  const workflow = readFileSync(resolve(process.cwd(), '.github/workflows/release.yml'), 'utf8');
+
+  for (const expected of [
+    'Package: $NAME',
+    'Version: $VERSION',
+    'INSTALL_ROOT="$PACKAGE_ROOT/usr/lib/$NAME"',
+    'exec "/usr/lib/$NAME/bin/agent"',
+  ]) {
+    if (!workflow.includes(expected)) {
+      throw new Error(`Expected Linux package upgrade anchor in release workflow: ${expected}`);
+    }
+  }
+
+  for (const expected of [
+    'cat > "$SCRIPTS_DIR/preinstall"',
+    'rm -rf "/usr/local/lib/$NAME"',
+    '--identifier "com.novvoo.$NAME"',
+    '--version "$VERSION"',
+  ]) {
+    if (!workflow.includes(expected)) {
+      throw new Error(`Expected macOS package replacement anchor in release workflow: ${expected}`);
+    }
+  }
+
+  const stageDir = join(TEST_CONFIG.testDir, 'wix-upgrade-stage');
+  const binDir = join(stageDir, 'bin');
+  const wxsPath = join(TEST_CONFIG.testDir, 'upgrade-test.wxs');
+  mkdirSync(binDir, { recursive: true });
+  writeFileSync(join(binDir, 'agent.exe'), 'placeholder');
+  writeFileSync(join(binDir, 'agent.cmd'), '@echo off\r\n');
+  writeFileSync(join(stageDir, 'README.md'), 'placeholder');
+
+  const result = spawnSync(process.execPath, [
+    'scripts/create-wix-manifest.mjs',
+    stageDir,
+    wxsPath,
+  ], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+  });
+
+  if (result.status !== 0) {
+    throw new Error(`WiX manifest generation failed: ${result.stderr || result.stdout}`);
+  }
+
+  const wxs = readFileSync(wxsPath, 'utf8');
+  for (const expected of [
+    'UpgradeCode="5E892847-5AD4-4E84-B7D6-5F34C8DB62E0"',
+    '<MajorUpgrade',
+    'AllowSameVersionUpgrades="yes"',
+    'DowngradeErrorMessage="A newer version of ai-engineering-mastery-agent is already installed."',
+    'Name="PATH"',
+    'Value="[INSTALLFOLDER]bin"',
+  ]) {
+    if (!wxs.includes(expected)) {
+      throw new Error(`Expected Windows MSI upgrade behavior in WiX manifest: ${expected}\n${wxs}`);
+    }
   }
 });
 

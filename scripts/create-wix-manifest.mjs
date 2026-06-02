@@ -96,7 +96,9 @@ const wxs = `<?xml version="1.0" encoding="UTF-8"?>
     Version="${xml(packageJson.version)}"
     UpgradeCode="${upgradeCode}"
     Scope="perMachine">
-    <MajorUpgrade DowngradeErrorMessage="A newer version of ${xml(packageJson.name)} is already installed." />
+    <MajorUpgrade
+      AllowSameVersionUpgrades="yes"
+      DowngradeErrorMessage="A newer version of ${xml(packageJson.name)} is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
     <StandardDirectory Id="ProgramFilesFolder">
