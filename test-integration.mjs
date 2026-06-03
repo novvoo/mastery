@@ -4110,8 +4110,8 @@ function runCliOnce(args, env = {}) {
   });
 }
 
-function startMockOpenAIServer(handler) {
-  const server = createServer((req, res) => {
+function createMockOpenAIServer(handler) {
+  return createServer((req, res) => {
     if (req.method !== 'POST' || !req.url.endsWith('/chat/completions')) {
       res.writeHead(404);
       res.end('not found');
@@ -4134,17 +4134,34 @@ function startMockOpenAIServer(handler) {
       }
     });
   });
+}
 
-  return new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-      resolve({
-        server,
-        baseURL: `http://127.0.0.1:${address.port}/v1`,
+async function startMockOpenAIServer(handler) {
+  let lastError;
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const server = createMockOpenAIServer(handler);
+    try {
+      return await new Promise((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(0, '127.0.0.1', () => {
+          const address = server.address();
+          resolve({
+            server,
+            baseURL: `http://127.0.0.1:${address.port}/v1`,
+          });
+        });
       });
-    });
-  });
+    } catch (error) {
+      lastError = error;
+      if (server.listening) {
+        await new Promise(resolve => server.close(resolve));
+      }
+      await new Promise(resolve => setTimeout(resolve, 25 * (attempt + 1)));
+    }
+  }
+
+  throw lastError || new Error('Failed to start mock OpenAI server');
 }
 
 cliInputLoopTests.test('CLI processes two consecutive stdin lines and preserves conversation context', async () => {

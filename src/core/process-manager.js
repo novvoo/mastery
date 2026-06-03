@@ -31,11 +31,13 @@ export class ProcessManager extends EventEmitter {
   #portLocks;
   #healthCheckInterval;
   #config;
+  #portAllocationQueue;
 
   constructor(options = {}) {
     super();
     this.#activeProcesses = new Map();
     this.#portLocks = new Map();
+    this.#portAllocationQueue = Promise.resolve();
     this.#config = {
       healthCheckInterval: options.healthCheckInterval || 30000, // 30秒
       maxRestartAttempts: options.maxRestartAttempts || 3,
@@ -278,34 +280,48 @@ export class ProcessManager extends EventEmitter {
    * @returns {Promise<number>} 可用端口
    */
   async getAvailablePort(preferredPort = 0) {
+    const allocation = this.#portAllocationQueue.then(() => this.#allocateAvailablePort(preferredPort));
+    this.#portAllocationQueue = allocation.catch(() => {});
+    return allocation;
+  }
+
+  async #allocateAvailablePort(preferredPort = 0) {
     const net = await import('net');
-    
-    return new Promise((resolve, reject) => {
-      const server = net.createServer();
-      
-      server.on('error', (err) => {
-        if (preferredPort && err.code === 'EADDRINUSE') {
-          // 首选端口被占用，尝试随机端口
-          server.listen(0);
-        } else {
-          reject(err);
-        }
-      });
+    const host = '127.0.0.1';
 
-      server.on('listening', () => {
-        const port = server.address().port;
-        server.close(() => {
-          // 记录端口锁定
-          this.#portLocks.set(port, {
-            lockedAt: Date.now(),
-            pid: process.pid,
-          });
-          resolve(port);
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const port = await new Promise((resolve, reject) => {
+        const server = net.createServer();
+
+        server.on('error', (err) => {
+          if (preferredPort && err.code === 'EADDRINUSE') {
+            server.listen(0, host);
+          } else {
+            reject(err);
+          }
         });
+
+        server.on('listening', () => {
+          const address = server.address();
+          const resolvedPort = typeof address === 'object' ? address.port : 0;
+          server.close(() => resolve(resolvedPort));
+        });
+
+        server.listen(preferredPort, host);
       });
 
-      server.listen(preferredPort);
-    });
+      if (!this.#portLocks.has(port)) {
+        this.#portLocks.set(port, {
+          lockedAt: Date.now(),
+          pid: process.pid,
+        });
+        return port;
+      }
+
+      preferredPort = 0;
+    }
+
+    throw new Error('Could not allocate a unique local port');
   }
 
   /**
@@ -326,7 +342,7 @@ export class ProcessManager extends EventEmitter {
         resolve(true);
       });
       
-      server.listen(port);
+      server.listen(port, '127.0.0.1');
     });
   }
 

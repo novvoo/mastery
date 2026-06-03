@@ -279,6 +279,7 @@ class AIEngineeringAgent {
     this.shutdownStarted = false;
     this.slashCommandSuggestions = [];
     this.lastSlashSuggestionKey = '';
+    this.slashSuggestionsInstalled = false;
   }
 
   /**
@@ -742,8 +743,13 @@ class AIEngineeringAgent {
     if (!process.stdin.isTTY || !process.stdout.isTTY || process.env.SLASH_SUGGESTIONS === 'false') {
       return;
     }
+    if (this.slashSuggestionsInstalled) {
+      return;
+    }
 
     emitKeypressEvents(process.stdin, this.rl);
+    this.slashSuggestionsInstalled = true;
+    this.#armSlashCommandSuggestions();
     process.stdin.on('keypress', (_str, key = {}) => {
       if (this.rlClosed || this.isProcessingInput || key.name === 'return' || key.name === 'enter') {
         return;
@@ -751,6 +757,35 @@ class AIEngineeringAgent {
 
       setImmediate(() => this.#renderSlashCommandSuggestions());
     });
+  }
+
+  #armSlashCommandSuggestions() {
+    if (!process.stdin.isTTY || !process.stdin.setRawMode || this.rlClosed || process.env.SLASH_SUGGESTIONS === 'false') {
+      return;
+    }
+
+    try {
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+    } catch (error) {
+      enhancedUI.debugEvent('Slash command suggestions could not enable raw input mode', {
+        error: error.message,
+      });
+    }
+  }
+
+  #disarmSlashCommandSuggestions() {
+    if (!process.stdin.isTTY || !process.stdin.setRawMode) {
+      return;
+    }
+
+    try {
+      process.stdin.setRawMode(false);
+    } catch (error) {
+      enhancedUI.debugEvent('Slash command suggestions could not restore cooked input mode', {
+        error: error.message,
+      });
+    }
   }
 
   #renderSlashCommandSuggestions() {
@@ -2171,6 +2206,7 @@ class AIEngineeringAgent {
         if (this.isRunning && !this.rlClosed) {
           this.rl.resume();
           this.lastSlashSuggestionKey = '';
+          this.#armSlashCommandSuggestions();
           this.rl.prompt();
         }
       }
@@ -2182,6 +2218,8 @@ class AIEngineeringAgent {
 
       if (this.inputQueue.length > 0 && this.isRunning && !this.rlClosed) {
         this.#drainInputQueue();
+      } else if (this.isRunning && !this.rlClosed) {
+        this.#armSlashCommandSuggestions();
       }
     }
   }
@@ -2197,8 +2235,10 @@ class AIEngineeringAgent {
       this.rl.setPrompt(enhancedUI.prompt());
       this.rl.on('line', (rawInput) => {
         this.lastSlashSuggestionKey = '';
+        this.#armSlashCommandSuggestions();
         this.enqueueInput(rawInput);
       });
+      this.#armSlashCommandSuggestions();
       this.rl.prompt();
 
       await new Promise((resolve) => {
@@ -2223,6 +2263,8 @@ class AIEngineeringAgent {
     enhancedUI.info('Shutting down...');
 
     this.isRunning = false;
+
+    this.#disarmSlashCommandSuggestions();
 
     if (this.rl) {
       this.rl.close();
