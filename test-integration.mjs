@@ -370,8 +370,17 @@ concurrencyTests.test('ProcessManager handles concurrent process execution', asy
 
 concurrencyTests.test('Port allocation prevents conflicts', async () => {
   // Skip when sandbox blocks port binding (EPERM on CI/sandboxed envs)
-  if (!(await probePortBind())) {
-    console.log('     ⏭  (skipped - sandboxed environment cannot bind ports)');
+  const bindCheck = await probePortBind();
+  if (!bindCheck.ok && bindCheck.code === 'EPERM') {
+    console.log('     ⏭  (skipped - sandbox cannot create TCP server: EPERM)');
+    return;
+  }
+  if (!bindCheck.ok && bindCheck.code === 'EADDRINUSE') {
+    const owner = await grabPortOwner(bindCheck.port);
+    throw new Error('Port ' + bindCheck.port + ' in use' + (owner ? ' by ' + owner : ''));
+  }
+  if (!bindCheck.ok) {
+    console.log('     ⏭  (skipped - cannot bind port: ' + bindCheck.code + ' ' + bindCheck.detail + ')');
     return;
   }
 
@@ -4146,13 +4155,27 @@ async function probePortBind() {
     const net = await import('net');
     return await new Promise((resolve) => {
       const s = net.createServer();
-      s.on('error', () => resolve(false));
+      s.on('error', (err) => resolve({ ok: false, code: err.code, detail: err.message }));
       s.listen(0, '127.0.0.1', () => {
-        s.close(() => resolve(true));
+        const addr = s.address();
+        const port = typeof addr === 'object' ? addr.port : 0;
+        s.close(() => resolve({ ok: true, code: null, detail: null, port }));
       });
-      setTimeout(() => resolve(false), 500);
+      setTimeout(() => resolve({ ok: false, code: 'ETIMEOUT', detail: 'probe timed out after 500ms' }), 500);
     });
-  } catch { return false; }
+  } catch (e) { return { ok: false, code: 'EUNKNOWN', detail: e.message }; }
+}
+
+async function grabPortOwner(port) {
+  try {
+    const { spawnSync } = await import('child_process');
+    const r = spawnSync('lsof', ['-i', 'TCP:' + port, '-nP', '-sTCP:LISTEN', '-F', 'pcn'], { encoding: 'utf-8', timeout: 2000 });
+    if (r.status !== 0 || !r.stdout) return null;
+    const pidMatch = r.stdout.match(/^p(\d+)/m);
+    const nameMatch = r.stdout.match(/^n(.*)/m);
+    if (!pidMatch) return null;
+    return 'PID=' + pidMatch[1] + (nameMatch ? ' (' + nameMatch[1] + ')' : '');
+  } catch { return null; }
 }
 
 async function startMockOpenAIServer(handler) {
@@ -4196,8 +4219,17 @@ async function startMockOpenAIServer(handler) {
 }
 
 cliInputLoopTests.test('CLI processes two consecutive stdin lines and preserves conversation context', async () => {
-  if (!(await probePortBind())) {
-    console.log('     ⏭  (skipped - sandboxed environment cannot bind ports)');
+  const bindCheck = await probePortBind();
+  if (!bindCheck.ok && bindCheck.code === 'EPERM') {
+    console.log('     ⏭  (skipped - sandbox cannot create TCP server: EPERM)');
+    return;
+  }
+  if (!bindCheck.ok && bindCheck.code === 'EADDRINUSE') {
+    const owner = await grabPortOwner(bindCheck.port);
+    throw new Error('Port ' + bindCheck.port + ' in use' + (owner ? ' by ' + owner : ''));
+  }
+  if (!bindCheck.ok) {
+    console.log('     ⏭  (skipped - cannot bind port: ' + bindCheck.code + ' ' + bindCheck.detail + ')');
     return;
   }
   const requests = [];
@@ -4296,8 +4328,17 @@ cliInputLoopTests.test('CLI processes two consecutive stdin lines and preserves 
 });
 
 cliInputLoopTests.test('CLI slash skill command executes local tool without LLM request', async () => {
-  if (!(await probePortBind())) {
-    console.log('     ⏭  (skipped - sandboxed environment cannot bind ports)');
+  const bindCheck = await probePortBind();
+  if (!bindCheck.ok && bindCheck.code === 'EPERM') {
+    console.log('     ⏭  (skipped - sandbox cannot create TCP server: EPERM)');
+    return;
+  }
+  if (!bindCheck.ok && bindCheck.code === 'EADDRINUSE') {
+    const owner = await grabPortOwner(bindCheck.port);
+    throw new Error('Port ' + bindCheck.port + ' in use' + (owner ? ' by ' + owner : ''));
+  }
+  if (!bindCheck.ok) {
+    console.log('     ⏭  (skipped - cannot bind port: ' + bindCheck.code + ' ' + bindCheck.detail + ')');
     return;
   }
   const requests = [];
