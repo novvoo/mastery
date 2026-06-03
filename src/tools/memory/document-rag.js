@@ -2,8 +2,8 @@
  * Document RAG tools for user-provided files, URLs, and raw text.
  */
 
-import { readFile, stat } from 'fs/promises';
-import { basename, extname, isAbsolute, resolve } from 'path';
+import { readFile, stat, mkdir, writeFile } from 'fs/promises';
+import { basename, extname, isAbsolute, resolve, join } from 'path';
 import { Buffer } from 'buffer';
 import { URL } from 'url';
 import { Embedder } from '../../core/embedder.js';
@@ -18,6 +18,40 @@ const LEXICAL_SCORE_BOOST = 0.25;
 const documents = new Map();
 const chunks = [];
 let embedderPromise = null;
+
+// Document RAG persistence: survives agent restart
+let stateLoaded = false;
+let persistDir = null;
+
+function getPersistDir(workingDir) {
+  if (!persistDir) {
+    persistDir = join(workingDir || process.cwd(), '.agent-data', 'doc-rag');
+  }
+  return persistDir;
+}
+
+async function ensureState(workingDir) {
+  if (stateLoaded) return;
+  stateLoaded = true;
+  const dir = getPersistDir(workingDir);
+  try {
+    const docJson = await readFile(join(dir, 'documents.json'), 'utf-8');
+    const chunkJson = await readFile(join(dir, 'chunks.json'), 'utf-8');
+    const loadedDocs = JSON.parse(docJson);
+    const loadedChunks = JSON.parse(chunkJson);
+    documents.clear();
+    chunks.length = 0;
+    for (const [key, val] of Object.entries(loadedDocs)) documents.set(key, val);
+    chunks.push(...loadedChunks);
+  } catch {}
+}
+
+async function saveState(workingDir) {
+  const dir = getPersistDir(workingDir);
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'documents.json'), JSON.stringify(Object.fromEntries(documents)), 'utf-8');
+  await writeFile(join(dir, 'chunks.json'), JSON.stringify(chunks), 'utf-8');
+}
 
 async function getEmbedder() {
   if (!embedderPromise) {
@@ -51,6 +85,7 @@ function createDocumentAddTool() {
       id: { type: 'string', description: 'Optional stable document id. Defaults to a generated id.' },
     },
     handler: async ({ source, content, title, id }, ctx) => {
+      await ensureState(ctx?.workingDirectory);
       const startedAt = Date.now();
       const parsed = await loadDocument({ source, content, title }, ctx);
       const documentId = sanitizeId(id) || createDocumentId(parsed.title, parsed.source);
@@ -80,6 +115,7 @@ function createDocumentAddTool() {
         addedAt: new Date().toISOString(),
       });
       chunks.push(...documentChunks);
+      await saveState(ctx?.workingDirectory);
 
       ctx?.ui?.debugEvent?.('Document added to RAG index', {
         id: documentId,
@@ -115,6 +151,7 @@ function createDocumentSearchTool() {
     },
     required: ['query'],
     handler: async ({ query, limit, document_id }, ctx) => {
+      await ensureState(ctx?.workingDirectory);
       const scopedChunks = document_id
         ? chunks.filter(chunk => chunk.metadata.documentId === document_id)
         : chunks;
@@ -149,11 +186,14 @@ function createDocumentListTool() {
     description: 'List user documents currently loaded into the document RAG index.',
     category: ToolCategory.FILESYSTEM,
     params: {},
-    handler: async () => ({
-      success: true,
-      count: documents.size,
-      documents: Array.from(documents.values()),
-    }),
+    handler: async (args, ctx) => {
+      await ensureState(ctx?.workingDirectory);
+      return {
+        success: true,
+        count: documents.size,
+        documents: Array.from(documents.values()),
+      };
+    },
   };
 }
 
@@ -165,14 +205,17 @@ function createDocumentClearTool() {
     params: {
       document_id: { type: 'string', description: 'Optional document id to remove. If omitted, clears all documents.' },
     },
-    handler: async ({ document_id }) => {
+    handler: async ({ document_id }, ctx) => {
+      await ensureState(ctx?.workingDirectory);
       if (document_id) {
         const removed = removeDocument(document_id);
+        await saveState(ctx?.workingDirectory);
         return { success: removed, removed: removed ? 1 : 0 };
       }
       const count = documents.size;
       documents.clear();
       chunks.length = 0;
+      await saveState(ctx?.workingDirectory);
       return { success: true, removed: count };
     },
   };
