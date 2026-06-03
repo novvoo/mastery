@@ -5443,6 +5443,60 @@ newFeaturesTests.test('Document RAG tools - hybrid ranking boosts Chinese resume
   console.log('     Document RAG hybrid ranking boosts Chinese resume queries');
 });
 
+
+
+newFeaturesTests.test('Document RAG tools - persistence survives separate tool instances (agent restart)', async () => {
+  const { createDocumentRagTools } = await import('./src/tools/memory/document-rag.js');
+
+  const docsDir = join(TEST_CONFIG.testDir, 'doc-rag-persist');
+  mkdirSync(docsDir, { recursive: true });
+  writeFileSync(join(docsDir, 'restore-test.md'),
+    '# Persistence Test\nThis document should survive across tool instance restarts.\nKey data: API keys must use environment variables, never config files.', 'utf-8');
+
+  // ── First instance: add document ──
+  const ctx1 = { workingDirectory: TEST_CONFIG.testDir, debug: true, ui: createRecordingUI(true) };
+  const tools1 = Object.fromEntries(createDocumentRagTools().map(t => [t.name, t]));
+  await tools1.document_clear.handler({}, ctx1);
+
+  const add1 = await tools1.document_add.handler({
+    source: 'doc-rag-persist/restore-test.md',
+    title: 'Persistence test',
+  }, ctx1);
+  if (!add1.success || add1.chunks < 1) {
+    throw new Error(`Expected document to be indexed by first instance, got ${JSON.stringify(add1)}`);
+  }
+
+  const search1 = await tools1.document_search.handler({ query: 'API keys environment variables', limit: 2 }, ctx1);
+  if (!search1.includes('Persistence test') || !search1.includes('API keys')) {
+    throw new Error(`Expected first instance search to find document, got:\n${search1}`);
+  }
+
+  // ── Second instance: simulate agent restart, should auto-load ──
+  const tools2 = Object.fromEntries(createDocumentRagTools().map(t => [t.name, t]));
+  const ctx2 = { workingDirectory: TEST_CONFIG.testDir, debug: true, ui: createRecordingUI(true) };
+
+  // List should show persisted documents without any add call
+  const list2 = await tools2.document_list.handler({}, ctx2);
+  if (!list2.success || list2.count === 0) {
+    throw new Error(`Expected second instance to auto-load persisted documents (count=0), got ${JSON.stringify(list2)}`);
+  }
+  const foundTitle = list2.documents.find(d => d.title === 'Persistence test');
+  if (!foundTitle) {
+    throw new Error(`Expected second instance to have \"Persistence test\" document, got ${JSON.stringify(list2.documents)}`);
+  }
+
+  const search2 = await tools2.document_search.handler({ query: 'API keys environment variables', limit: 2 }, ctx2);
+  if (!search2.includes('Persistence test') || !search2.includes('API keys')) {
+    throw new Error(`Expected second instance search to find persisted document, got:\n${search2}`);
+  }
+
+  // Clean up
+  await tools2.document_clear.handler({}, ctx2);
+
+  console.log('     Document RAG persistence survives separate tool instances');
+});
+
+
 newFeaturesTests.test('TokenScope - multiple requests and cost calculation', async () => {
   const { TokenScope } = await import('./src/core/token-scope.js');
 
