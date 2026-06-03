@@ -115,6 +115,22 @@ function createDocumentAddTool() {
         addedAt: new Date().toISOString(),
       });
       chunks.push(...documentChunks);
+
+      // Pre-compute embeddings so search doesn't re-embed all chunks every time
+      try {
+        const embedder = await getEmbedder();
+        const texts = documentChunks.map(c => c.text);
+        const embeddings = await embedder.embed(texts);
+        for (let i = 0; i < documentChunks.length; i++) {
+          documentChunks[i].embedding = embeddings[i] || null;
+        }
+      } catch (e) {
+        // Embedding failure is non-fatal: search falls back to batch embedding
+        if (typeof process !== 'undefined' && process.emitWarning) {
+          process.emitWarning('Document RAG embedding failed: ' + e.message);
+        }
+      }
+
       await saveState(ctx?.workingDirectory);
 
       ctx?.ui?.debugEvent?.('Document added to RAG index', {
@@ -160,14 +176,28 @@ function createDocumentSearchTool() {
         return 'No documents are indexed yet. Use document_add with a local path, URL, or content first.';
       }
 
-      const embedder = await getEmbedder();
-      const semanticResults = await embedder.batchFindSimilar(query, scopedChunks, {
-        limit: normalizeLimit(limit),
-        threshold: 0,
-        includeAll: true,
-      });
-      const results = rerankWithLexicalSignals(query, semanticResults)
-        .slice(0, normalizeLimit(limit));
+      const maxResults = normalizeLimit(limit);
+
+      // Prefer pre-computed embeddings when available (avoids re-embedding all chunks)
+      const hasPrecomputed = scopedChunks.some(c => Array.isArray(c.embedding) && c.embedding.length > 100);
+      let results;
+
+      if (hasPrecomputed) {
+        const embedder = await getEmbedder();
+        const qEmb = await embedder.embed(query);
+        results = searchWithEmbeddings(qEmb, query, scopedChunks, maxResults);
+      }
+
+      // Fallback: batch-embed all chunks (for legacy data or embedding failures)
+      if (!results || results.length === 0) {
+        const embedder = await getEmbedder();
+        const semanticResults = await embedder.batchFindSimilar(query, scopedChunks, {
+          limit: maxResults,
+          threshold: 0,
+          includeAll: true,
+        });
+        results = rerankWithLexicalSignals(query, semanticResults).slice(0, maxResults);
+      }
 
       ctx?.ui?.debugEvent?.('Document search completed', {
         query,
@@ -311,19 +341,65 @@ async function parseBuffer(buffer, kind) {
 
 function chunkText(text) {
   const normalized = normalizeText(text);
-  const result = [];
 
-  for (let start = 0; start < normalized.length; start += CHUNK_CHARS - OVERLAP_CHARS) {
-    const end = Math.min(normalized.length, start + CHUNK_CHARS);
-    const chunk = normalized.slice(start, end).trim();
-    if (chunk) {
-      result.push(chunk);
+  // Strategy: split by blank lines (paragraphs), merge small ones, split large ones.
+  // Only fall back to character split when there are no structural boundaries.
+
+  const paragraphs = normalized.split(/\n{2,}/).filter(Boolean).map(p => p.trim());
+  if (paragraphs.length <= 1 && paragraphs[0] && paragraphs[0].length > CHUNK_CHARS) {
+    // Single wall of text: try line-by-line, then character split
+    const lines = paragraphs[0].split('\n').filter(Boolean).map(l => l.trim());
+    if (lines.length > 1) {
+      return mergeParagraphs(lines, CHUNK_CHARS);
     }
-    if (end === normalized.length) {
-      break;
-    }
+    // Completely unstructured text — use legacy character split
+    return legacyChunkText(normalized);
   }
 
+  return mergeParagraphs(paragraphs, CHUNK_CHARS);
+}
+
+/**
+ * Merge small paragraphs into CHUNK_CHARS-sized blocks, split oversized ones.
+ */
+function mergeParagraphs(paragraphs, maxChars) {
+  const result = [];
+  let buffer = '';
+  for (const para of paragraphs) {
+    if (!para) continue;
+    if (para.length > maxChars) {
+      // Oversized paragraph: flush buffer first
+      if (buffer) { result.push(buffer); buffer = ''; }
+      // Split oversized paragraph by semantic boundary closest to midpoint
+      const midpoint = Math.floor(para.length / 2);
+      const breakAt = para.lastIndexOf('\n', midpoint);
+      const first = breakAt > maxChars * 0.3 ? para.slice(0, breakAt).trim() : para.slice(0, maxChars).trim();
+      const second = (breakAt > maxChars * 0.3 ? para.slice(breakAt) : para.slice(maxChars)).trim();
+      if (first) result.push(first);
+      if (second) result.push(second);
+      continue;
+    }
+    // Merge small paragraphs up to maxChars
+    if (buffer.length + para.length + 1 > maxChars) {
+      result.push(buffer);
+      buffer = para;
+    } else {
+      buffer = buffer ? buffer + '\n\n' + para : para;
+    }
+  }
+  if (buffer) result.push(buffer);
+  return result;
+}
+
+/** Legacy character-split fallback for completely unstructured text. */
+function legacyChunkText(text) {
+  const result = [];
+  for (let start = 0; start < text.length; start += CHUNK_CHARS - OVERLAP_CHARS) {
+    const end = Math.min(text.length, start + CHUNK_CHARS);
+    const chunk = text.slice(start, end).trim();
+    if (chunk) result.push(chunk);
+    if (end === text.length) break;
+  }
   return result;
 }
 
@@ -385,6 +461,32 @@ async function fetchWithTimeout(url, timeoutMs = 15000) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function searchWithEmbeddings(queryEmbedding, queryText, scopedChunks, limit) {
+  // Direct cosine similarity against pre-computed chunk embeddings
+  const scored = [];
+  for (let i = 0; i < scopedChunks.length; i++) {
+    const chunk = scopedChunks[i];
+    if (!chunk.embedding || !Array.isArray(chunk.embedding) || chunk.embedding.length < 100) continue;
+    let dot = 0;
+    for (let j = 0; j < queryEmbedding.length; j++) dot += queryEmbedding[j] * chunk.embedding[j];
+    const lexicalScore = computeLexicalScore(queryText, chunk.text);
+    scored.push({
+      index: i,
+      text: chunk.text,
+      score: dot,
+      metadata: chunk.metadata,
+      semanticScore: dot,
+      lexicalScore,
+    });
+  }
+  // Fallback if no chunks had embeddings
+  if (scored.length === 0) return [];
+
+  // Rerank with lexical signals
+  scored.sort((a, b) => (b.score + b.lexicalScore * LEXICAL_SCORE_BOOST) - (a.score + a.lexicalScore * LEXICAL_SCORE_BOOST));
+  return scored.slice(0, limit);
 }
 
 function formatSearchResults(results) {
