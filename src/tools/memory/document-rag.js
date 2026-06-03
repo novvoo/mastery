@@ -13,6 +13,7 @@ const MAX_DOCUMENT_BYTES = 15 * 1024 * 1024;
 const CHUNK_CHARS = 2400;
 const OVERLAP_CHARS = 300;
 const USER_AGENT = 'AI-Engineering-Agent/1.0 (+document-rag)';
+const LEXICAL_SCORE_BOOST = 0.25;
 
 const documents = new Map();
 const chunks = [];
@@ -123,10 +124,13 @@ function createDocumentSearchTool() {
       }
 
       const embedder = await getEmbedder();
-      const results = await embedder.batchFindSimilar(query, scopedChunks, {
+      const semanticResults = await embedder.batchFindSimilar(query, scopedChunks, {
         limit: normalizeLimit(limit),
         threshold: 0,
+        includeAll: true,
       });
+      const results = rerankWithLexicalSignals(query, semanticResults)
+        .slice(0, normalizeLimit(limit));
 
       ctx?.ui?.debugEvent?.('Document search completed', {
         query,
@@ -348,13 +352,119 @@ function formatSearchResults(results) {
   return results.map((result, index) => {
     const metadata = result.metadata || {};
     const preview = result.text.slice(0, 1200);
+    const scoreDetails = Number.isFinite(result.semanticScore) && Number.isFinite(result.lexicalScore)
+      ? ` semantic=${result.semanticScore.toFixed(3)} lexical=${result.lexicalScore.toFixed(3)}`
+      : '';
     return [
-      `${index + 1}. ${metadata.title} (${metadata.documentId}#${metadata.chunkIndex}) score=${result.score.toFixed(3)}`,
+      `${index + 1}. ${metadata.title} (${metadata.documentId}#${metadata.chunkIndex}) score=${result.score.toFixed(3)}${scoreDetails}`,
       `Source: ${metadata.source}`,
       preview,
     ].join('\n');
   }).join('\n\n');
 }
+
+function rerankWithLexicalSignals(query, semanticResults) {
+  return semanticResults
+    .map(result => {
+      const semanticScore = Number(result.score) || 0;
+      const lexicalScore = computeLexicalScore(query, result.text || '');
+      const score = Math.min(1, semanticScore + (lexicalScore * LEXICAL_SCORE_BOOST));
+
+      return {
+        ...result,
+        score,
+        semanticScore,
+        lexicalScore,
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
+function computeLexicalScore(query, text) {
+  const queryTerms = extractSearchTerms(query);
+  if (queryTerms.length === 0) {
+    return 0;
+  }
+
+  const normalizedText = normalizeSearchText(text);
+  const matchedWeight = queryTerms.reduce((sum, term) => {
+    if (!normalizedText.includes(term.value)) {
+      return sum;
+    }
+    return sum + term.weight;
+  }, 0);
+  const totalWeight = queryTerms.reduce((sum, term) => sum + term.weight, 0);
+  return totalWeight > 0 ? Math.min(1, matchedWeight / totalWeight) : 0;
+}
+
+function extractSearchTerms(query) {
+  const normalized = normalizeSearchText(query);
+  const terms = new Map();
+
+  for (const token of normalized.match(/[\p{L}\p{N}_-]{2,}/gu) || []) {
+    addSearchTerm(terms, token, token.length >= 4 ? 1.4 : 1);
+  }
+
+  for (const gram of createCjkGrams(normalized, 2)) {
+    addSearchTerm(terms, gram, 0.45);
+  }
+
+  for (const term of expandChineseQueryIntent(normalized)) {
+    addSearchTerm(terms, term, 0.9);
+  }
+
+  return Array.from(terms.entries()).map(([value, weight]) => ({ value, weight }));
+}
+
+function addSearchTerm(terms, value, weight) {
+  const normalized = normalizeSearchText(value);
+  if (normalized.length < 2 || CHINESE_STOP_TERMS.has(normalized)) {
+    return;
+  }
+  terms.set(normalized, Math.max(terms.get(normalized) || 0, weight));
+}
+
+function createCjkGrams(text, size) {
+  const chars = Array.from(text).filter(char => /[\p{Script=Han}]/u.test(char));
+  const grams = [];
+  for (let i = 0; i <= chars.length - size; i++) {
+    grams.push(chars.slice(i, i + size).join(''));
+  }
+  return grams;
+}
+
+function expandChineseQueryIntent(query) {
+  const expansions = [];
+
+  if (/(学校|毕业|学历|学位|本科|硕士|博士|教育)/u.test(query)) {
+    expansions.push('教育背景', '本科', '硕士', '博士', '大学', '学院', '计算机科学');
+  }
+
+  if (/(工作|做过|经历|岗位|职位|负责|项目|公司|任职)/u.test(query)) {
+    expansions.push('工作经历', '工程师', '负责', '项目', '架构', '实现', '公司');
+  }
+
+  if (/(邮箱|邮件|email|联系方式|电话|手机)/iu.test(query)) {
+    expansions.push('email', 'mail', '电话', '手机', '联系方式');
+  }
+
+  return expansions;
+}
+
+function normalizeSearchText(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .trim();
+}
+
+const CHINESE_STOP_TERMS = new Set([
+  '哪个',
+  '什么',
+  '的是',
+  '是哪个',
+  '做过',
+]);
 
 function normalizeLimit(limit) {
   return Math.max(1, Math.min(Number(limit) || 5, 20));

@@ -2,7 +2,7 @@
  * Embedder - 专业向量嵌入模块 (RAG 能力核心)
  * 核心功能：
  * - 基于 ONNX Runtime 的本地推理
- * - gte-modernbert-base 模型支持
+ * - gte-multilingual-base 模型支持
  * - 批量嵌入处理
  * - 语义相似度计算
  */
@@ -14,11 +14,12 @@ import { Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
 import { homedir } from 'os';
 
-const DEFAULT_EMBEDDING_REPO = 'Alibaba-NLP/gte-modernbert-base';
+const DEFAULT_EMBEDDING_REPO = 'onnx-community/gte-multilingual-base';
 const DEFAULT_EMBEDDING_REVISION = 'main';
 const DEFAULT_EMBEDDING_FILE = 'onnx/model.onnx';
 const DEFAULT_TOKENIZER_FILE = 'tokenizer.json';
 const DEFAULT_TOKENIZER_CONFIG_FILE = 'tokenizer_config.json';
+const DEFAULT_POOLING = 'cls';
 const DEFAULT_HF_ENDPOINT = 'https://huggingface.co';
 const DEFAULT_HF_MIRROR = 'https://hf-mirror.com';
 const DEFAULT_DOWNLOAD_TIMEOUT_MS = 600000;
@@ -76,6 +77,7 @@ export class Embedder {
   #downloadTimeoutMs;
   #probeTimeoutMs;
   #fallbackReason;
+  #pooling;
 
   constructor(options = {}) {
     this.#modelPath = options.modelPath || process.env.EMBEDDING_MODEL_PATH || getDefaultEmbeddingModelPath();
@@ -85,6 +87,7 @@ export class Embedder {
     this.#tokenizerConfigPath = options.tokenizerConfigPath || process.env.EMBEDDING_TOKENIZER_CONFIG_PATH || join(modelRoot, DEFAULT_TOKENIZER_CONFIG_FILE);
     this.#dimension = options.dimension || 768;
     this.#batchSize = options.batchSize || 32;
+    this.#pooling = normalizePooling(options.pooling || process.env.EMBEDDING_POOLING || DEFAULT_POOLING);
     this.#initialized = false;
     this.#onnxRuntime = null;
     this.#model = null;
@@ -134,6 +137,7 @@ export class Embedder {
       downloadCandidates: resolveEmbeddingModelDownloadCandidates(),
       dimension: this.#dimension,
       batchSize: this.#batchSize,
+      pooling: this.#pooling,
     };
   }
 
@@ -436,10 +440,10 @@ export class Embedder {
     const outputs = await this.#model.run(feeds);
     const outputName = this.#model.outputNames?.[0] || Object.keys(outputs)[0];
     const output = outputs[outputName];
-    return this.#poolTokenEmbeddings(output, attentionMask, texts.length, maxLength);
+    return this.#poolTokenEmbeddings(output, attentionMask, texts.length, maxLength, this.#pooling);
   }
 
-  #poolTokenEmbeddings(output, attentionMask, batchSize, sequenceLength) {
+  #poolTokenEmbeddings(output, attentionMask, batchSize, sequenceLength, pooling) {
     const data = output.data;
     const dims = output.dims || [];
     const hiddenSize = dims.length >= 3 ? dims[2] : this.#dimension;
@@ -448,6 +452,13 @@ export class Embedder {
     if (dims.length === 2) {
       return Array.from({ length: batchSize }, (_, index) => {
         const start = index * hiddenSize;
+        return Array.from(data.slice(start, start + hiddenSize));
+      });
+    }
+
+    if (pooling === 'cls') {
+      return Array.from({ length: batchSize }, (_, batchIndex) => {
+        const start = batchIndex * sequenceLength * hiddenSize;
         return Array.from(data.slice(start, start + hiddenSize));
       });
     }
@@ -569,6 +580,7 @@ export class Embedder {
   async batchFindSimilar(query, candidates, options = {}) {
     const limit = options.limit || 5;
     const batchSize = options.batchSize || 100;
+    const includeAll = options.includeAll === true;
 
     const queryEmbedding = await this.embed(query);
     const results = [];
@@ -590,7 +602,7 @@ export class Embedder {
 
     results.sort((a, b) => b.score - a.score);
 
-    return results.slice(0, limit);
+    return includeAll ? results : results.slice(0, limit);
   }
 
   getDimension() {
@@ -630,6 +642,14 @@ function uniqueStrings(values) {
     unique.push(value);
   }
   return unique;
+}
+
+function normalizePooling(value) {
+  const normalized = String(value || DEFAULT_POOLING).toLowerCase();
+  if (normalized === 'mean' || normalized === 'cls') {
+    return normalized;
+  }
+  return DEFAULT_POOLING;
 }
 
 export default Embedder;

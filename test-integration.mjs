@@ -5306,6 +5306,46 @@ newFeaturesTests.test('Document RAG tools - index local documents and URLs', asy
   console.log('     Document RAG indexes local files and URL documents');
 });
 
+newFeaturesTests.test('Document RAG tools - hybrid ranking boosts Chinese resume queries', async () => {
+  const { createDocumentRagTools } = await import('./src/tools/memory/document-rag.js');
+
+  const tools = Object.fromEntries(createDocumentRagTools().map(tool => [tool.name, tool]));
+  await tools.document_clear.handler({});
+
+  await tools.document_add.handler({
+    id: 'resume-li-si',
+    title: '李四简历',
+    content: [
+      '高级 Golang 工程师（金融科技领域）李四 A@mail.com',
+      '教育背景',
+      '2010 - 2014 北京大学计算机科学与技术，本科',
+      '2014 - 2016 耶鲁大学计算机科学与技术，硕士',
+      '工作经历',
+      '字节跳动 高级 Golang 工程师，负责分布式消息中间件的架构设计和实现。',
+    ].join('\n'),
+  });
+
+  const educationSearch = await tools.document_search.handler({
+    query: '李四是哪个学校毕业的',
+    limit: 1,
+  });
+
+  if (!educationSearch.includes('李四简历') || !educationSearch.includes('北京大学') || !educationSearch.includes('lexical=')) {
+    throw new Error(`Expected hybrid Chinese education search to find resume with score details, got:\n${educationSearch}`);
+  }
+
+  const workSearch = await tools.document_search.handler({
+    query: '李四做过什么工作',
+    limit: 1,
+  });
+
+  if (!workSearch.includes('字节跳动') || !workSearch.includes('Golang 工程师') || !workSearch.includes('lexical=')) {
+    throw new Error(`Expected hybrid Chinese work search to find resume work history, got:\n${workSearch}`);
+  }
+
+  console.log('     Document RAG hybrid ranking boosts Chinese resume queries');
+});
+
 newFeaturesTests.test('TokenScope - multiple requests and cost calculation', async () => {
   const { TokenScope } = await import('./src/core/token-scope.js');
 
@@ -5533,12 +5573,12 @@ newFeaturesTests.test('Embedder - model download candidates prefer official then
     delete process.env.EMBEDDING_MODEL_URL;
 
     const defaultPath = getDefaultEmbeddingModelPath();
-    if (!defaultPath.includes(join('model-cache', 'models', 'Alibaba-NLP', 'gte-modernbert-base'))) {
+    if (!defaultPath.includes(join('model-cache', 'models', 'onnx-community', 'gte-multilingual-base'))) {
       throw new Error(`Expected production cache directory, got ${defaultPath}`);
     }
 
     const candidates = resolveEmbeddingModelDownloadCandidates();
-    if (!candidates[0].startsWith('https://huggingface.co/Alibaba-NLP/gte-modernbert-base/resolve/main/onnx/model.onnx')) {
+    if (!candidates[0].startsWith('https://huggingface.co/onnx-community/gte-multilingual-base/resolve/main/onnx/model.onnx')) {
       throw new Error(`Expected official HuggingFace URL first, got ${candidates[0]}`);
     }
     if (!candidates.some(url => url.startsWith('https://hf.example-mirror.test/'))) {

@@ -2151,6 +2151,7 @@ class AIEngineeringAgent {
       while (this.inputQueue.length > 0 && this.isRunning && !this.rlClosed) {
         const rawInput = this.inputQueue.shift();
         const input = rawInput.trim();
+        this.lastSlashSuggestionKey = '';
 
         enhancedUI.debugEvent('CLI line received', {
           rawChars: rawInput.length,
@@ -2169,6 +2170,7 @@ class AIEngineeringAgent {
 
         if (this.isRunning && !this.rlClosed) {
           this.rl.resume();
+          this.lastSlashSuggestionKey = '';
           this.rl.prompt();
         }
       }
@@ -2194,6 +2196,7 @@ class AIEngineeringAgent {
 
       this.rl.setPrompt(enhancedUI.prompt());
       this.rl.on('line', (rawInput) => {
+        this.lastSlashSuggestionKey = '';
         this.enqueueInput(rawInput);
       });
       this.rl.prompt();
