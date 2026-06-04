@@ -499,35 +499,28 @@ function extractRelevantSnippet(text, query, maxLen) {
 
   const lines = text.split('\n').filter(Boolean);
 
-  // Score each line, track original index for window-aware extraction
-  const scored = lines.map((line, idx) => {
+  // Score each line; penalise long lines at tie-break level to prefer specific matches
+  const scored = lines.map((line) => {
     const lower = line.toLowerCase();
     let score = 0;
     for (const term of terms) {
       const count = lower.split(term.value).length - 1;
       score += count * term.weight * 10;
     }
-    return { text: line, score, index: idx };
+    // Tiny length penalty to break ties: prefer short specific lines over long incidental ones
+    return { text: line, score: score - Math.min(line.length / 100, 1), index: lines.indexOf(line) };
   });
 
-  // Include a window around each high-scoring line (1 before, 2 after) to preserve context
-  const included = new Set();
-  for (const match of scored) {
-    if (match.score <= 0.5) continue;
-    for (let j = Math.max(0, match.index - 1); j <= Math.min(lines.length - 1, match.index + 2); j++) {
-      included.add(j);
-    }
-  }
+  // Find best match (highest effective score); start snippet from its position
+  scored.sort((a, b) => b.score - a.score);
+  const best = scored.find(m => m.score > 0.5);
+  if (!best) return (text || '').slice(0, 150);
 
-  // Add included lines in original order, up to maxLen
-  const sorted = Array.from(included).sort((a, b) => a - b);
-  let result = '';
-  for (const idx of sorted) {
-    const nextLen = result.length + (result ? 1 : 0) + lines[idx].length;
-    if (nextLen > maxLen) break;
-    result += (result ? '\n' : '') + lines[idx];
+  let startPos = 0;
+  for (let i = 0; i < best.index; i++) {
+    startPos += lines[i].length + 1;
   }
-  return result.trim() || (text || '').slice(0, 150);
+  return text.substring(startPos, startPos + maxLen).trim();
 }
 
 function formatSearchResults(results) {
