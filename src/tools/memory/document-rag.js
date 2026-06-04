@@ -497,26 +497,35 @@ function extractRelevantSnippet(text, query, maxLen) {
   const terms = extractSearchTerms(query || '');
   if (terms.length === 0 || !text) return (text || '').slice(0, 150);
 
-  // Always split by individual lines for granular scoring (avoids blank-line merging bug)
   const lines = text.split('\n').filter(Boolean);
 
-  const scored = lines.map((line) => {
+  // Score each line, track original index for window-aware extraction
+  const scored = lines.map((line, idx) => {
     const lower = line.toLowerCase();
     let score = 0;
     for (const term of terms) {
       const count = lower.split(term.value).length - 1;
       score += count * term.weight * 10;
     }
-    return { text: line, score };
+    return { text: line, score, index: idx };
   });
 
-  scored.sort((a, b) => b.score - a.score);
-  let result = '';
+  // Include a window around each high-scoring line (1 before, 2 after) to preserve context
+  const included = new Set();
   for (const match of scored) {
     if (match.score <= 0.5) continue;
-    const nextLen = result.length + (result ? 1 : 0) + match.text.length;
-    if (nextLen > maxLen) continue;
-    result += (result ? '\n' : '') + match.text;
+    for (let j = Math.max(0, match.index - 1); j <= Math.min(lines.length - 1, match.index + 2); j++) {
+      included.add(j);
+    }
+  }
+
+  // Add included lines in original order, up to maxLen
+  const sorted = Array.from(included).sort((a, b) => a - b);
+  let result = '';
+  for (const idx of sorted) {
+    const nextLen = result.length + (result ? 1 : 0) + lines[idx].length;
+    if (nextLen > maxLen) break;
+    result += (result ? '\n' : '') + lines[idx];
   }
   return result.trim() || (text || '').slice(0, 150);
 }
