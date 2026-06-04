@@ -501,15 +501,13 @@ function extractRelevantSnippet(text, query, maxLen) {
   const lines = text.split('\n').filter(Boolean);
 
   const scored = lines.map((line) => {
-    const cleanLine = line.replace(EMAIL_G, "").trim();
-    if (!cleanLine) return { text: line, score: -1 };
-    const lower = cleanLine.toLowerCase();
+    const lower = line.toLowerCase();
     let score = 0;
     for (const term of terms) {
       const count = lower.split(term.value).length - 1;
       score += count * term.weight * 10;
     }
-    return { text: cleanLine, score };
+    return { text: line, score };
   });
 
   scored.sort((a, b) => b.score - a.score);
