@@ -529,6 +529,14 @@ ai-engineering-mastery-agent/
 └── README.md
 ```
 
+## What's New in v1.0.13
+
+- **Centralized Regex Library**: `src/utils/regex-patterns.js` with 26 named patterns (email, URL, phone, IP, UUID, semver, credit card, HTML/Markdown, dates, etc.). Each exports both base and global-flag variants. Replaces inline regex in business logic.
+- **ExtractRelevantSnippet**: Fixed blank-line merging bug that caused education/contact info to leak into work-only queries. Now scores individual lines with `continue` (not `break`), strips email addresses via centralized regex.
+- **Query Expansion Removed**: `expandChineseQueryIntent` deleted — no more hardcoded Chinese keywords. `extractSearchTerms` now purely extracts from user query via Unicode word tokens + CJK bigrams.
+- **LLM Answer Refinement**: `/doc search` passes search results through the LLM for clean natural-language answers. JSON/evaluation blocks stripped from output.
+- **Testing**: 149 integration tests (11 new regex-pattern tests covering edge cases).
+
 ## What's New in v1.0.12
 
 The following improvements focus on large-project support and retrieval quality:
@@ -553,15 +561,12 @@ The following improvements focus on large-project support and retrieval quality:
 
 ## Known Limitations & TODO
 
-### Addressed in v1.0.12
+### v1.0.13
 
-- **Document RAG 持久化** — `document_add` 的索引持久化到 `.agent-data/doc-rag/`，agent 重启后自动加载。向量索引（`semantic_search`）持久化到 `.agent-data/vector-index/`。
-- **语义搜索分块策略** — `chunkFile` 改为结构感知分块：按空行分割自然段落，大段按缩进变化切分，无需语言特定正则。搜索结果附带提示，引导 LLM 读取完整文件。
-- **Document RAG 预计算 embedding** — `document_add` 时对每个 chunk 预计算并持久化 embedding。`document_search` 只需 embed query，无需每次重新 embed 所有 chunks。段落级分块取代了 2400 字符硬切。
-- **Embedding 模型下载超时** — 从 10 分钟降至 30 秒，网络环境不稳定时不再卡死。索引缓存 TTL 改为会话级。
-- **CJK Token 计数修复** — `tokenizer.js` 与 `dynamic-context-pruning.js` 的 CJK 计数倍数从 0.67 修正为 2.0，上下文剪枝触发时机更准确。
-- **上下文剪枝摘要保留** — `DynamicContextPruning` 在丢弃历史消息前，将被丢弃的用户消息内容压缩为 `[Context summary]` 注入到保留消息之前。
-- **ReAct 迭代加速** — `semantic_search` 的文件 I/O 从串行改为并发（每批 20 个文件）；system prompt 新增 auto-trigger rule #19 引导 LLM 批量读文件，减少迭代次数。
+- **Centralized Regex Library** — `src/utils/regex-patterns.js` 替代了所有业务代码中的行内正则。26 个模式涵盖邮箱、URL、电话、IP、UUID、版本号、信用卡、HTML/Markdown 等。无硬编码关键词。
+- **ExtractRelevantSnippet 重构** — 逐行打分替代空行合并，`continue` 替代 `break` 避免超长块导致 fallback。邮箱地址通过通用正则剥离。
+- **Query Expansion 删除** — `expandChineseQueryIntent` 移除，不再有硬编码中文关键词。`extractSearchTerms` 纯输入驱动。
+- **LLM Answer Refinement** — `/doc search` 调完工具后经 LLM 精炼成自然语言回答，自动去除 JSON/evaluation 块。
 
 ### Planned
 

@@ -1228,7 +1228,9 @@ class AIEngineeringAgent {
             console.log(enhancedUI.createHeader('Answer'));
             console.log('');
             console.log('');
-            console.log(refineResponse.text || String(refineResponse));
+            const rawAnswer = refineResponse.text || String(refineResponse);
+            const jsonIdx = rawAnswer.indexOf("\n```");
+            console.log(jsonIdx >= 0 ? rawAnswer.substring(0, jsonIdx).trim() : rawAnswer);
             console.log('');
           } catch (refineError) {
             // Fallback: raw result already shown above

@@ -7,6 +7,7 @@ import { basename, extname, isAbsolute, resolve, join } from 'path';
 import { Buffer } from 'buffer';
 import { URL } from 'url';
 import { Embedder } from '../../core/embedder.js';
+import { EMAIL_G } from '../../utils/regex-patterns.js';
 import { ToolCategory } from '../../core/types.js';
 
 const MAX_DOCUMENT_BYTES = 15 * 1024 * 1024;
@@ -493,40 +494,33 @@ function searchWithEmbeddings(queryEmbedding, queryText, scopedChunks, limit) {
 }
 
 function extractRelevantSnippet(text, query, maxLen) {
-  // Score each paragraph/line by query term density; return only relevant units.
   const terms = extractSearchTerms(query || '');
-  if (terms.length === 0 || !text) return (text || '').slice(0, maxLen);
+  if (terms.length === 0 || !text) return (text || '').slice(0, 150);
 
-  // Split by blank lines (paragraphs); fall back to single lines for dense docs.
-  let units = text.split(/\n{2,}/).filter(Boolean);
-  if (units.length <= 1) {
-    units = text.split('\n').filter(Boolean);
-  }
+  // Always split by individual lines for granular scoring (avoids blank-line merging bug)
+  const lines = text.split('\n').filter(Boolean);
 
-  // Score each unit by weighted term frequency
-  const scored = units.map((unit) => {
-    const lower = unit.toLowerCase();
+  const scored = lines.map((line) => {
+    const cleanLine = line.replace(EMAIL_G, "").trim();
+    if (!cleanLine) return { text: line, score: -1 };
+    const lower = cleanLine.toLowerCase();
     let score = 0;
     for (const term of terms) {
       const count = lower.split(term.value).length - 1;
       score += count * term.weight * 10;
     }
-    // Moderate length bonus (substantial paragraphs are better than one-liners)
-    score += Math.min(unit.length / 200, 2);
-    return { text: unit, score };
+    return { text: cleanLine, score };
   });
 
-  // Keep top-scoring units that fit within maxLen
   scored.sort((a, b) => b.score - a.score);
   let result = '';
   for (const match of scored) {
     if (match.score <= 0.5) continue;
     const nextLen = result.length + (result ? 1 : 0) + match.text.length;
-    if (nextLen > maxLen) break;
+    if (nextLen > maxLen) continue;
     result += (result ? '\n' : '') + match.text;
   }
-
-  return result.trim() || (text || '').slice(0, maxLen);
+  return result.trim() || (text || '').slice(0, 150);
 }
 
 function formatSearchResults(results) {
@@ -593,9 +587,6 @@ function extractSearchTerms(query) {
     addSearchTerm(terms, gram, 0.45);
   }
 
-  for (const term of expandChineseQueryIntent(normalized)) {
-    addSearchTerm(terms, term, 0.9);
-  }
 
   return Array.from(terms.entries()).map(([value, weight]) => ({ value, weight }));
 }
@@ -615,24 +606,6 @@ function createCjkGrams(text, size) {
     grams.push(chars.slice(i, i + size).join(''));
   }
   return grams;
-}
-
-function expandChineseQueryIntent(query) {
-  const expansions = [];
-
-  if (/(学校|毕业|学历|学位|本科|硕士|博士|教育)/u.test(query)) {
-    expansions.push('教育背景', '本科', '硕士', '博士', '大学', '学院', '计算机科学');
-  }
-
-  if (/(工作|做过|经历|岗位|职位|负责|项目|公司|任职)/u.test(query)) {
-    expansions.push('工作经历', '工程师', '负责', '项目', '架构', '实现', '公司');
-  }
-
-  if (/(邮箱|邮件|email|联系方式|电话|手机)/iu.test(query)) {
-    expansions.push('email', 'mail', '电话', '手机', '联系方式');
-  }
-
-  return expansions;
 }
 
 function normalizeSearchText(text) {
