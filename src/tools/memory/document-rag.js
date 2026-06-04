@@ -492,6 +492,38 @@ function searchWithEmbeddings(queryEmbedding, queryText, scopedChunks, limit) {
   return scored.slice(0, limit);
 }
 
+function extractRelevantSnippet(text, query, maxLen) {
+  // Find the region closest to where query terms appear in the text
+  const terms = (query || '').toLowerCase().split(/\s+/).filter(t => t.length > 1);
+  if (terms.length === 0 || !text) return (text || '').slice(0, maxLen);
+
+  let bestIdx = 0;
+  let bestScore = 0;
+  const step = Math.max(1, Math.floor(text.length / 20));
+
+  for (let i = 0; i < text.length; i += step) {
+    const window = text.substring(i, i + 200).toLowerCase();
+    let score = 0;
+    for (const term of terms) {
+      if (window.includes(term)) score += term.length;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = Math.max(0, Math.min(i, text.length - 1));
+    }
+  }
+
+  const half = Math.floor(maxLen / 2);
+  const start = Math.max(0, bestIdx - half);
+  const end = Math.min(text.length, start + maxLen);
+  let snippet = text.substring(start, end);
+
+  if (start > 0) snippet = '...' + snippet;
+  if (end < text.length) snippet = snippet + '...';
+
+  return snippet.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function formatSearchResults(results) {
   if (results.length === 0) {
     return 'No document matches found.';
@@ -499,7 +531,7 @@ function formatSearchResults(results) {
 
   return results.map((result, index) => {
     const metadata = result.metadata || {};
-    const preview = result.text.slice(0, 1200);
+    const preview = extractRelevantSnippet(result.text, result.query || '', 500);
     const scoreDetails = Number.isFinite(result.semanticScore) && Number.isFinite(result.lexicalScore)
       ? ` semantic=${result.semanticScore.toFixed(3)} lexical=${result.lexicalScore.toFixed(3)}`
       : '';
