@@ -1206,8 +1206,33 @@ class AIEngineeringAgent {
         spinner.start();
         const result = await toolRegistry.execute('document_search', { query, limit: 5 }, this.#documentToolContext());
         spinner.stop();
-        console.log(enhancedUI.createHeader('Document Search'));
-        console.log(result);
+
+        // Show raw search result as source
+        const firstResultLine = (result || '').split('\n')[0];
+        console.log(enhancedUI.theme.dim(firstResultLine));
+
+        // If a model provider is available, refine the answer via LLM
+        if (this.modelProvider && result && !result.startsWith('No document')) {
+          try {
+            const refineSpinner = enhancedUI.spinner('Refining answer...');
+            refineSpinner.start();
+            const refineMessages = [
+              { role: 'system', content: 'You are a precise document analyst. Based on the user question and search results, extract a concise answer. Use the user\'s language. If insufficient info, say so.' },
+              { role: 'user', content: 'Question: ' + query + '\n\nSearch results:\n' + result }
+            ];
+            const refineResponse = await this.modelProvider.chat(refineMessages, { maxTokens: 500 });
+            refineSpinner.stop();
+
+            console.log('');
+            console.log(enhancedUI.createHeader('Answer'));
+            console.log('');
+            console.log('');
+            console.log(refineResponse.text || String(refineResponse));
+            console.log('');
+          } catch (refineError) {
+            // Fallback: raw result already shown above
+          }
+        }
       } catch (error) {
         spinner.stop();
         enhancedUI.error(`Document search failed: ${error.message}`);
