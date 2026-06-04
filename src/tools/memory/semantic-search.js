@@ -174,7 +174,7 @@ async function buildIndex(workingDirectory, scopePath, pattern) {
   // Try persistent on-disk index (survives agent restarts)
   const vIndex = new VectorIndex(workingDirectory);
   const persisted = await vIndex.load(cacheKey);
-  if (persisted) {
+  if (persisted && !persisted.stale && persisted.chunks) {
     indexCache.set(cacheKey, { chunks: persisted.chunks });
     return persisted.chunks;
   }

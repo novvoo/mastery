@@ -344,14 +344,50 @@ export class DynamicContextPruning {
     const prunedIndices = new Set(prunedMessages.map(m => m.originalIndex));
     const removed = allMessages.filter(m => !prunedIndices.has(m.originalIndex));
 
-    const userTopics = removed
-      .filter(m => m.role === 'user')
-      .map(m => String(m.content || '').substring(0, 120).split('\n').join(' ').trim())
-      .filter(Boolean);
+    // 构建更智能的摘要
+    const summaryParts = [];
+    
+    // 提取用户消息的关键内容（更长的截取）
+    const userMessages = removed.filter(m => m.role === 'user');
+    if (userMessages.length > 0) {
+      const userTopics = userMessages
+        .map(m => {
+          const content = String(m.content || '');
+          // 提取第一个句子或前200个字符
+          const firstSentence = content.split(/[.!?。！？\n]/)[0] || '';
+          return (firstSentence.length > 200 ? firstSentence.substring(0, 200) + '...' : firstSentence).trim();
+        })
+        .filter(Boolean);
+      
+      if (userTopics.length > 0) {
+        summaryParts.push(`User topics (${userTopics.length}): ${userTopics.join(' | ')}`);
+      }
+    }
 
-    if (userTopics.length === 0) return prunedMessages;
+    // 提取关键的工具执行结果
+    const toolResults = removed.filter(m => m.role === 'tool' || m.role === 'tool_result');
+    if (toolResults.length > 0) {
+      summaryParts.push(`Tool results: ${toolResults.length} operations`);
+    }
 
-    const summaryText = '[Context summary: earlier discussion topics include: ' + userTopics.join('; ') + ']';
+    // 提取助手的关键回应
+    const assistantMessages = removed.filter(m => m.role === 'assistant');
+    if (assistantMessages.length > 0) {
+      // 检查是否有最终答案相关的关键词
+      const hasCompletion = assistantMessages.some(m => 
+        String(m.content || '').toLowerCase().includes('final') ||
+        String(m.content || '').toLowerCase().includes('complete') ||
+        String(m.content || '').toLowerCase().includes('done')
+      );
+      if (hasCompletion) {
+        summaryParts.push('Note: Prior assistant responses included task completion');
+      }
+      summaryParts.push(`Assistant responses: ${assistantMessages.length}`);
+    }
+
+    if (summaryParts.length === 0) return prunedMessages;
+
+    const summaryText = '[Context summary: ' + summaryParts.join('. ') + ']';
     const summary = {
       role: 'system',
       content: summaryText,
