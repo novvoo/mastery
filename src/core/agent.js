@@ -14,7 +14,7 @@ import { DynamicContextPruning } from './dynamic-context-pruning.js';
 import { selectToolsForRequest, shouldUseIntentClassifier } from './tool-router.js';
 
 const TERMINATION_KEYWORDS = ['FINAL_ANSWER:', 'Answer:', 'TASK_COMPLETE'];
-const MAX_ITERATIONS_DEFAULT = 30;
+const MAX_ITERATIONS_DEFAULT = 180;
 const METHODOLOGY_TOOLS = new Set([
   'brainstorm',
   'grill',

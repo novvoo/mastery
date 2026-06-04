@@ -734,7 +734,7 @@ class AIEngineeringAgent {
       [requirement.baseUrlVar]: baseUrl.trim(),
       [requirement.modelVar]: model.trim(),
       WORKING_DIRECTORY: workingDirectory.trim(),
-      MAX_ITERATIONS: process.env.MAX_ITERATIONS || '30',
+      MAX_ITERATIONS: process.env.MAX_ITERATIONS || '180',
       MAX_TOKENS: process.env.MAX_TOKENS || '4096',
       DEBUG: process.env.DEBUG || 'false',
     };
