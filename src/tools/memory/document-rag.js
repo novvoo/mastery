@@ -493,8 +493,8 @@ function searchWithEmbeddings(queryEmbedding, queryText, scopedChunks, limit) {
 }
 
 function extractRelevantSnippet(text, query, maxLen) {
-  // Find the region closest to where query terms appear in the text
-  const terms = (query || '').toLowerCase().split(/\s+/).filter(t => t.length > 1);
+  // Use the same CJK-aware term extraction as the lexical ranker
+  const terms = extractSearchTerms(query || '');
   if (terms.length === 0 || !text) return (text || '').slice(0, maxLen);
 
   let bestIdx = 0;
@@ -502,10 +502,10 @@ function extractRelevantSnippet(text, query, maxLen) {
   const step = Math.max(1, Math.floor(text.length / 20));
 
   for (let i = 0; i < text.length; i += step) {
-    const window = text.substring(i, i + 200).toLowerCase();
+    const window = text.substring(i, Math.min(i + 200, text.length));
     let score = 0;
     for (const term of terms) {
-      if (window.includes(term)) score += term.length;
+      if (window.includes(term.value)) score += term.weight * 10;
     }
     if (score > bestScore) {
       bestScore = score;
@@ -519,7 +519,7 @@ function extractRelevantSnippet(text, query, maxLen) {
   let snippet = text.substring(start, end);
 
   if (start > 0) snippet = '...' + snippet;
-  if (end < text.length) snippet = snippet + '...';
+  if (end < text.length) snippet += '...';
 
   return snippet.replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -531,14 +531,12 @@ function formatSearchResults(results) {
 
   return results.map((result, index) => {
     const metadata = result.metadata || {};
-    const preview = extractRelevantSnippet(result.text, result.query || '', 500);
-    const scoreDetails = Number.isFinite(result.semanticScore) && Number.isFinite(result.lexicalScore)
-      ? ` semantic=${result.semanticScore.toFixed(3)} lexical=${result.lexicalScore.toFixed(3)}`
-      : '';
+    const preview = extractRelevantSnippet(result.text, result.query || '', 300);
+    const pct = Math.round((result.score + 1) / 2 * 100);
     return [
-      `${index + 1}. ${metadata.title} (${metadata.documentId}#${metadata.chunkIndex}) score=${result.score.toFixed(3)}${scoreDetails}`,
-      `Source: ${metadata.source}`,
+      `[${metadata.title || 'Untitled'}] \u2192 ${pct}% match`,
       preview,
+      `Source: ${metadata.source}`,
     ].join('\n');
   }).join('\n\n');
 }
