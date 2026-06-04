@@ -186,6 +186,7 @@ function createDocumentSearchTool() {
         const embedder = await getEmbedder();
         const qEmb = await embedder.embed(query);
         results = searchWithEmbeddings(qEmb, query, scopedChunks, maxResults);
+      for (const r of results) r.query = query;
       }
 
       // Fallback: batch-embed all chunks (for legacy data or embedding failures)
@@ -197,6 +198,8 @@ function createDocumentSearchTool() {
           includeAll: true,
         });
         results = rerankWithLexicalSignals(query, semanticResults).slice(0, maxResults);
+        // Attach query for snippet extraction
+        for (const r of results) r.query = query;
       }
 
       ctx?.ui?.debugEvent?.('Document search completed', {
