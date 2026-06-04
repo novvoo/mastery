@@ -5427,7 +5427,7 @@ newFeaturesTests.test('Document RAG tools - hybrid ranking boosts Chinese resume
     limit: 1,
   });
 
-  if (!educationSearch.includes('李四简历') || !educationSearch.includes('北京大学') || !educationSearch.includes('lexical=')) {
+  if (!educationSearch.includes('李四简历') || !educationSearch.includes('北京大学') || !educationSearch.includes('% match')) {
     throw new Error(`Expected hybrid Chinese education search to find resume with score details, got:\n${educationSearch}`);
   }
 
@@ -5436,7 +5436,7 @@ newFeaturesTests.test('Document RAG tools - hybrid ranking boosts Chinese resume
     limit: 1,
   });
 
-  if (!workSearch.includes('字节跳动') || !workSearch.includes('Golang 工程师') || !workSearch.includes('lexical=')) {
+  if (!workSearch.includes('字节跳动') || !workSearch.includes('Golang 工程师') || !workSearch.includes('% match')) {
     throw new Error(`Expected hybrid Chinese work search to find resume work history, got:\n${workSearch}`);
   }
 

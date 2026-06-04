@@ -536,7 +536,7 @@ function formatSearchResults(results) {
 
   return results.map((result, index) => {
     const metadata = result.metadata || {};
-    const preview = extractRelevantSnippet(result.text, result.query || '', 300);
+    const preview = extractRelevantSnippet(result.text, result.query || '', 400);
     const display = preview.length > 400 ? preview.slice(0, 397) + '...' : preview;
     const pct = Math.round((result.score + 1) / 2 * 100);
     return [
