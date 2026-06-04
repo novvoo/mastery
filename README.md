@@ -529,6 +529,16 @@ ai-engineering-mastery-agent/
 └── README.md
 ```
 
+## What's New in v1.0.12
+
+The following improvements focus on large-project support and retrieval quality:
+
+- **Document RAG**: Paragraph-level chunking replaces 2400-char hard cut. Embeddings are pre-computed at index time, making subsequent searches near-instant. Index persists across agent restarts.
+- **Semantic Search**: Structure-aware file chunking (blank lines + indentation). File I/O parallelized (20 files per batch). Index persists to disk.
+- **Context Management**: CJK token counting corrected (2.0× instead of 0.67×). Pruned messages are summarized as `[Context summary]` before discard.
+- **Embedder**: Download timeout reduced from 10 minutes to 30 seconds. Index cache survives the session.
+- **Testing**: 139 integration tests covering tokenizer, context pruning, vector index persistence, document RAG persistence, and chunking correctness.
+
 ## 近期重要行为
 
 - 短中文天气输入会被识别成 `weather_query`，并推荐 `web_search`。
@@ -541,28 +551,27 @@ ai-engineering-mastery-agent/
 - 默认关闭 debug，避免正常使用时被 `🔍` 日志刷屏。
 - Shell 沙箱默认关闭；开启 `AGENT_SHELL_SANDBOX=true` 后会优先使用 macOS Seatbelt 或 Linux bubblewrap，后端不可用时可按配置失败关闭或降级为 policy 预检。
 
-## 当前限制和 TODO
+## Known Limitations & TODO
 
-- **文档索引持久化**：（已解决）document_add/add 的索引现在自动持久化到 `.agent-data/doc-rag/`，agent 重启后自动加载，无需重新添加。向量索引（semantic_search）持久化到 `.agent-data/vector-index/`。
-- **方法论强制程度**：运行时守门验证“是否有方法论/改动/验证证据”，不保证严格按照 `brainstorm -> tdd -> review -> verify` 的固定顺序执行。
-- **SubAgent / Multi-Agent**：已有 `spawn -> execute -> get_result -> cleanup`、并发、失败恢复、嵌套 SubAgent 的 E2E；下一步可继续补更复杂的跨 agent 共享上下文和权限边界。
-- **Lint 清洁度**：`bun run lint` 已可通过，但仓库仍有较多历史 warning，后续可逐步清理到 warning-free。
-- **CI/CD 覆盖**：已添加 GitHub Actions 跑 CI 和跨系统 release packaging；如果仓库策略需要更严格质量门，可继续加覆盖率、eval 和签名/校验和。
-- **沙箱范围**：Shell 已支持可选沙箱和策略预检，但完整生产级隔离仍建议叠加容器、VM 或远端 microVM；文件工具和 PTY 还没有统一纳入同一沙箱边界。
+### Addressed in v1.0.12
 
+- **Document RAG 持久化** — `document_add` 的索引持久化到 `.agent-data/doc-rag/`，agent 重启后自动加载。向量索引（`semantic_search`）持久化到 `.agent-data/vector-index/`。
+- **语义搜索分块策略** — `chunkFile` 改为结构感知分块：按空行分割自然段落，大段按缩进变化切分，无需语言特定正则。搜索结果附带提示，引导 LLM 读取完整文件。
+- **Document RAG 预计算 embedding** — `document_add` 时对每个 chunk 预计算并持久化 embedding。`document_search` 只需 embed query，无需每次重新 embed 所有 chunks。段落级分块取代了 2400 字符硬切。
+- **Embedding 模型下载超时** — 从 10 分钟降至 30 秒，网络环境不稳定时不再卡死。索引缓存 TTL 改为会话级。
+- **CJK Token 计数修复** — `tokenizer.js` 与 `dynamic-context-pruning.js` 的 CJK 计数倍数从 0.67 修正为 2.0，上下文剪枝触发时机更准确。
+- **上下文剪枝摘要保留** — `DynamicContextPruning` 在丢弃历史消息前，将被丢弃的用户消息内容压缩为 `[Context summary]` 注入到保留消息之前。
+- **ReAct 迭代加速** — `semantic_search` 的文件 I/O 从串行改为并发（每批 20 个文件）；system prompt 新增 auto-trigger rule #19 引导 LLM 批量读文件，减少迭代次数。
 
-### 大规模项目支持
+### Planned
 
-- **语义搜索分块策略**：（已改进）chunkFile 已替换为结构感知分块：按空行分割自然代码段（函数/类/import 块），大段再按顶层缩进变化切分（无需语言特定正则），最后以滑动窗口兜底。返回搜索结果时会附带提示，引导 LLM 自行读取完整文件来理解截断的上下文。剩余短板：结构启发式对某些代码风格可能不够精确，未来可接入 LLM 辅助的边界判断（索引时对超大文件调 LLM 识别函数签名范围）。
-- **持久化索引过期检测**：当前磁盘缓存（.agent-data/vector-index/）只写不验——项目文件变更后索引不会自动失效。需要加增量校验机制：启动时采样检查部分文件 mtime 是否变化，或监听 git diff 来决定哪些文件需要重新索引。
-- **Embedder 容错与模型分发**：ONNX 模型（~440MB）下载依赖 HuggingFace，国内环境不稳定。fallback 伪 embedding 本质是哈希散列，语义匹配质量接近随机。建议：1) 捆绑一个轻量 onnx 模型到 release 包；2) 或提供纯词袋 + BM25 的离线检索兜底，确保无网络环境仍有可用检索质量。
-- **Token 计数精度**：tokenizer.js 的 fallback 计数对 CJK 和中英文混排仍是估算（CJK 每字 2 token，英文每 3.5 字符 1 token），与真实 tokenizer 有偏差。需要真实 tokenizer（tiktoken 等）来确保上下文剪枝时机准确。
-
-### Agent 运行时
-
-- **ReAct 串行循环**：agent.js 的 run() 是 Think -> Act -> Observe 的单线程串行循环，每次迭代需要一次完整的 LLM 调用。对于需要反复检索的大项目，10+ 迭代是常见的，每轮都携带完整的上下文做一次 LLM 调用。改进方向：1) DAG 任务执行引擎（并行执行独立子任务）；2) 中间步骤的结果流式返回，不阻塞主循环；3) 探索阶段自动批量化文件读取（已通过 auto-trigger rule #19 引导）。
-- **上下文剪枝丢失早期信息**：DynamicContextPruning 已支持丢弃前生成摘要（Phase 1.2），但摘要仅保留用户消息的前 120 个字符，信息损失依然显著。需要 LLM 驱动的上下文压缩：在剪枝触发时，调用模型对即将丢弃的对话做摘要，将摘要作为 system 消息保留。
-- **LLM 调用无流式/进度**：modelProvider.chat() 阻塞等待完整响应，大上下文时可能几十秒无反馈。需要流式输出 token，配合进度指示，避免用户误以为卡死。
+- **持久化索引过期检测** — `.agent-data/vector-index/` 只写不验，项目文件变更后索引不会自动失效。需加增量校验机制：启动时采样检查文件 mtime 或监听 git diff，只对变更文件重新索引。
+- **Embedder 容错与模型分发** — ONNX 模型（~440MB）依赖 HuggingFace 下载，国内环境不稳定。fallback 伪 embedding 语义质量接近随机。需提供轻量捆绑模型或 BM25 离线兜底。
+- **Token 计数精度** — fallback 计数对中英文混排仍是估算，需要接入真实 tokenizer（如 `tiktoken`）确保上下文剪枝时机准确。
+- **ReAct 串行循环** — `agent.js` 的 `run()` 是 Think→Act→Observe 串行循环，每轮需要完整 LLM 调用。改进方向：DAG 任务执行引擎、中间结果流式返回、探索阶段自动批量化读文件。
+- **上下文剪枝摘要增强** — 当前摘要只保留用户消息前 120 字符，信息损失显著。需要 LLM 驱动的上下文压缩：在剪枝时调用模型对丢弃的对话做摘要。
+- **LLM 调用流式输出** — `modelProvider.chat()` 阻塞等待完整响应，大上下文时可能数十秒无反馈。需流式输出 token 配合进度指示。
+- **沙箱扩展** — Shell 已支持可选沙箱和策略预检，但文件工具和 PTY 尚未纳入同一沙箱边界。需叠加容器/VM 做完整生产级隔离。
 
 
 ## 测试状态
