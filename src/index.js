@@ -1210,13 +1210,6 @@ class AIEngineeringAgent {
         // Show raw search result as source
         const firstResultLine = (result || '').split('\n')[0];
         const firstResultBlock = result ? result.split('\n\n')[0] : '';
-        // Strip non-relevant lines: only keep job-related content
-        const relevantBlock = firstResultBlock.split('\n').filter(l => {
-          if (l.startsWith('[') || l.startsWith('Source:')) return true;
-          if (/教育背景|毕业|学校|大学|邮箱|@.*\.com|兴趣|爱好|荣誉|奖项|获奖|论文|发表|证书|技能/i.test(l)) return false;
-          if (/^XeLaTeX|^Last updated|^个人/i.test(l)) return false;
-          return l.trim().length > 0;
-        }).join('\n');
         console.log(enhancedUI.theme.dim(firstResultLine));
 
         // If a model provider is available, refine the answer via LLM
@@ -1226,7 +1219,7 @@ class AIEngineeringAgent {
             refineSpinner.start();
             const refineMessages = [
               { role: 'system', content: 'You are a precise document analyst. Based on the user question and search results, extract a concise answer. Use the user\'s language. If insufficient info, say so.' },
-              { role: 'user', content: 'Question: ' + query + '\n\nSearch results:\n' + relevantBlock }
+              { role: 'user', content: 'Question: ' + query + '\n\nSearch results:\n' + firstResultBlock }
             ];
             const refineResponse = await this.modelProvider.chat(refineMessages, { maxTokens: 500 });
             refineSpinner.stop();
