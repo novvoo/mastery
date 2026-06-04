@@ -1,6 +1,6 @@
 /**
  * TokenJuice - 智能上下文压缩引擎
- * 灵感来自 vincentkoc/tokenjuice 的复杂 JSON 规则引擎架构
+ * 参考 vincentkoc/tokenjuice 的复杂 JSON 规则引擎架构
  *
  * 核心功能：
  * - 可扩展的 JSON 规则引擎
@@ -197,6 +197,54 @@ export class TokenJuice {
       priority: 40,
       match: { commandIncludes: ['json', '--json', 'echo $'] },
       transforms: { prettyPrintJson: true },
+    });
+
+    // 添加 npm ls/package 规则 - 提取依赖信息
+    this.addRule({
+      id: 'npm_ls',
+      family: 'npm',
+      description: 'Summarize npm ls output',
+      priority: 35,
+      match: { commandIncludes: ['npm ls', 'npm list', 'pnpm ls', 'pnpm list'] },
+      transforms: { trimEmptyEdges: true },
+      counters: [
+        { name: 'packages', pattern: /├──|└──/g },
+        { name: 'totalDeps', pattern: /\d+\s+packages?/g },
+      ],
+    });
+
+    // Docker 规则 - 提取容器/镜像信息
+    this.addRule({
+      id: 'docker_ps',
+      family: 'docker',
+      description: 'Compact docker ps output',
+      priority: 35,
+      match: { commandIncludes: ['docker ps', 'docker images', 'docker container ls'] },
+      transforms: { trimEmptyEdges: true },
+    });
+
+    // Git status 规则
+    this.addRule({
+      id: 'git_status',
+      family: 'git',
+      description: 'Extract git status changes',
+      priority: 35,
+      match: { commandIncludes: ['git status'] },
+      counters: [
+        { name: 'changed', pattern: /modified:/g },
+        { name: 'added', pattern: /new file:/g },
+        { name: 'deleted', pattern: /deleted:/g },
+      ],
+    });
+
+    // Git log 规则 - 限制显示条目
+    this.addRule({
+      id: 'git_log',
+      family: 'git',
+      description: 'Limit git log output',
+      priority: 35,
+      match: { commandIncludes: ['git log', 'git log --oneline'] },
+      summarize: { head: 20 },
     });
   }
 
@@ -429,12 +477,15 @@ export class TokenJuice {
     }
 
     for (const { rule, compiled } of this.#compiledRules) {
+      // 构建 cmdStr（与 classify 方法一致）
+      const cmdStr = input.command || input.argv?.join(' ') || input.toolName || '';
+
       // 检查是否匹配
       const match = this.#matchRule(
         rule.match,
         input.toolName,
         input.argv,
-        input.command
+        cmdStr
       );
 
       if (match.matched) {
@@ -540,6 +591,7 @@ export class TokenJuice {
    */
   #extractFacts(text, input) {
     const facts = {};
+    const cmdStr = input.command || input.argv?.join(' ') || input.toolName || '';
 
     // 查找匹配的规则计数器
     for (const { rule, compiled } of this.#compiledRules) {
@@ -547,7 +599,7 @@ export class TokenJuice {
         rule.match,
         input.toolName,
         input.argv,
-        input.command
+        cmdStr
       );
 
       if (match.matched && rule.counters?.length) {

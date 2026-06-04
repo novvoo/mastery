@@ -1,6 +1,6 @@
 /**
  * Agent Experience Memory
- * Agent 经验记忆系统 - 灵感来自 OpenHuman 的 agent_experience 模块
+ * Agent 经验记忆系统
  *
  * 核心理念：Agent 从成功/失败中学习，在后续对话中复用经验
  * 类似于 Hermes 风格的程序化经验记忆

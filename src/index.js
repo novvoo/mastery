@@ -572,12 +572,12 @@ class AIEngineeringAgent {
     // Auto-connect to configured MCP servers
     await this.#initializeMCPServers(toolRegistry);
 
-    // Initialize TokenJuice (inspired by OpenHuman)
+    // Initialize TokenJuice for output compression
     this.tokenJuice = new TokenJuice({
       maxChars: parseInt(process.env.MAX_RESULT_CHARS || '8000'),
     });
 
-    // Initialize Experience Memory (inspired by OpenHuman's agent_experience)
+    // Initialize Experience Memory
     const experienceDir = resolve(this.workingDir, '.agent-data');
     if (!existsSync(experienceDir)) mkdirSync(experienceDir, { recursive: true });
     this.experienceMemory = new ExperienceMemory({
@@ -622,6 +622,7 @@ class AIEngineeringAgent {
         debug: this.debugMode,
         intentClassification: this.config.intentClassification,
         securityPolicy: this.securityPolicy,
+        tokenJuice: this.tokenJuice,
       },
       enhancedUI
     );

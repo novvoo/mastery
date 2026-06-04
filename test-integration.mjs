@@ -5167,6 +5167,111 @@ newFeaturesTests.test('Handoff skill saves session documents outside the workspa
   console.log('     Handoff skill writes to OS temp directory');
 });
 
+newFeaturesTests.test('TokenJuice - compressToolResult with command classification', async () => {
+  const { TokenJuice } = await import('./src/core/token-juice.js');
+
+  const tj = new TokenJuice({ maxChars: 500 });
+
+  // 测试 HTML 标签剥离
+  const htmlResult = tj.compressToolResult('<p>Hello</p><p>World</p>', {
+    input: { toolName: 'read_file' },
+  });
+  if (htmlResult.inlineText.includes('<')) {
+    throw new Error('HTML tags should be stripped');
+  }
+
+  // 测试空行压缩
+  const blankLinesResult = tj.compressToolResult('line1\n\n\n\n\nline2', {
+    input: { toolName: 'shell' },
+  });
+  if (blankLinesResult.inlineText.match(/\n{3,}/)) {
+    throw new Error('Multiple blank lines should be collapsed');
+  }
+
+  // 测试分类功能
+  const gitResult = tj.compressToolResult('modified: src/index.js', {
+    input: { toolName: 'shell', command: 'git status' },
+  });
+  if (gitResult.classification?.family !== 'git') {
+    throw new Error(`Expected git classification, got ${gitResult.classification?.family}`);
+  }
+
+  // 测试统计信息
+  const statsResult = tj.compressToolResult('A'.repeat(1000), {
+    input: { toolName: 'shell' },
+  });
+  if (!statsResult.stats || typeof statsResult.stats.rawChars !== 'number') {
+    throw new Error('Expected stats in result');
+  }
+  if (statsResult.stats.rawChars !== 1000) {
+    throw new Error(`Expected rawChars 1000, got ${statsResult.stats.rawChars}`);
+  }
+
+  console.log('     TokenJuice compressToolResult with classification works');
+});
+
+newFeaturesTests.test('TokenJuice - JSON rule engine with custom rules', async () => {
+  const { TokenJuice } = await import('./src/core/token-juice.js');
+
+  const tj = new TokenJuice();
+
+  // 添加自定义 JSON 规则
+  tj.addRule({
+    id: 'test_rule',
+    family: 'test',
+    description: 'Custom test rule',
+    priority: 50,
+    match: { toolNames: ['custom_tool'] },
+    transforms: { trimEmptyEdges: true },
+    counters: [
+      { name: 'matches', pattern: /test/g },
+    ],
+  });
+
+  const rules = tj.getRules();
+  if (!rules.compiled.find(r => r.id === 'test_rule')) {
+    throw new Error('Custom rule should be registered');
+  }
+
+  // 测试自定义规则匹配
+  const matched = tj.compressToolResult('test content here', {
+    input: { toolName: 'custom_tool' },
+  });
+  if (!matched.facts?.matches) {
+    throw new Error('Counter should extract matches');
+  }
+
+  console.log('     TokenJuice JSON rule engine with custom rules works');
+});
+
+newFeaturesTests.test('TokenJuice - summarize transforms for long output', async () => {
+  const { TokenJuice } = await import('./src/core/token-juice.js');
+
+  const tj = new TokenJuice();
+
+  // 添加带 summarize 的规则
+  tj.addRule({
+    id: 'long_output',
+    family: 'test',
+    description: 'Limit long output',
+    priority: 50,
+    match: { toolNames: ['log_reader'] },
+    summarize: { head: 5, tail: 3 },
+  });
+
+  const lines = Array.from({ length: 20 }, (_, i) => `Line ${i + 1}`).join('\n');
+  const result = tj.compressToolResult(lines, {
+    input: { toolName: 'log_reader' },
+  });
+
+  const resultLines = result.inlineText.split('\n');
+  if (resultLines.length > 10) {
+    throw new Error(`Expected summarized output, got ${resultLines.length} lines`);
+  }
+
+  console.log('     TokenJuice summarize transforms work');
+});
+
 newFeaturesTests.test('PTY tools - interactive stdin/stdout round trip', async () => {
   const { createPtyTools } = await import('./src/tools/system/pty.js');
 

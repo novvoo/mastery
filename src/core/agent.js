@@ -122,6 +122,8 @@ export class ReActAgent {
   #completedMutationPaths = new Set();
   #lastRunResult = null;
   #contextPruner = null;
+  /** @type {object|null} */
+  #tokenJuice = null;
 
   constructor(modelProvider, toolRegistry, memoryManager, config = {}, customUI = ui) {
     this.#modelProvider = modelProvider;
@@ -143,6 +145,7 @@ export class ReActAgent {
       : null;
     this.#ui = customUI;
     this.#contextPruner = config.contextPruner || new DynamicContextPruning();
+    this.#tokenJuice = config.tokenJuice || null;
   }
 
   /**
@@ -1012,13 +1015,22 @@ export class ReActAgent {
   #addToolObservation(toolCallId, toolName, result, mode) {
     const content = typeof result === 'string' ? result : JSON.stringify(result);
 
+    // Apply TokenJuice compression if available
+    let processedContent = content;
+    if (this.#tokenJuice) {
+      const compressed = this.#tokenJuice.compressToolResult(content, {
+        input: { toolName },
+      });
+      processedContent = compressed.inlineText || content;
+    }
+
     if (mode === 'tool') {
-      this.#sessionManager.addToolResult(toolCallId, toolName, content);
+      this.#sessionManager.addToolResult(toolCallId, toolName, processedContent);
       return;
     }
 
     this.#sessionManager.addUserMessage(
-      `Observation from ${toolName}:\n${content}`
+      `Observation from ${toolName}:\n${processedContent}`
     );
   }
 

@@ -39,7 +39,7 @@ export const ErrorSeverity = Object.freeze({
   FATAL: 'fatal',
 });
 
-// ============ Permission Types (inspired by OpenHuman) ============
+// ============ Permission Types ============
 
 export const PermissionLevel = Object.freeze({
   NONE: 'none',           // 无需权限（如 current_time）
