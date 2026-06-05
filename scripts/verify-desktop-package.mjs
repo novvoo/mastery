@@ -21,6 +21,11 @@ const requiredAsarEntries = [
   '/src/models/openai-provider.js'
 ];
 
+function normalizeAsarEntry(entry) {
+  const normalized = String(entry).replace(/\\/g, '/');
+  return normalized.startsWith('/') ? normalized : `/${normalized}`;
+}
+
 function findAppAsars(dir, results = []) {
   if (!existsSync(dir)) {
     return results;
@@ -56,7 +61,7 @@ if (appAsars.length === 0) {
 let hasFailure = false;
 
 for (const appAsar of appAsars) {
-  const entries = new Set(asar.listPackage(appAsar));
+  const entries = new Set(asar.listPackage(appAsar).map(normalizeAsarEntry));
   const missing = requiredAsarEntries.filter(entry => !entries.has(entry));
 
   if (missing.length > 0) {
