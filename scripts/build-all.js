@@ -100,6 +100,12 @@ async function buildDesktop() {
       cwd: rootDir, 
       stdio: 'inherit' 
     });
+
+    info('Verifying Desktop package contents...');
+    execSync('node scripts/verify-desktop-package.mjs', {
+      cwd: rootDir,
+      stdio: 'inherit'
+    });
     
     success('Desktop application built successfully');
     return true;
