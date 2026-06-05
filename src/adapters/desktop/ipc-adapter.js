@@ -125,7 +125,11 @@ export class IPCMessage {
 /**
  * IPC 消息队列
  */
-class MessageQueue {
+/**
+ * IPC 消息队列类
+ * 用于缓存待处理的消息
+ */
+export class MessageQueue {
   constructor(maxSize = 100) {
     this.queue = [];
     this.maxSize = maxSize;
@@ -1000,15 +1004,3 @@ export class DesktopIPCAdapter extends MainProcessIPCAdapter {
     console.warn('[DEPRECATED] DesktopIPCAdapter 已弃用，请使用 MainProcessIPCAdapter');
   }
 }
-
-export default {
-  IPCMessage,
-  IPCMessageType,
-  IPCMessageStatus,
-  IPCAdapterBase,
-  MainProcessIPCAdapter,
-  RendererProcessIPCAdapter,
-  DesktopIPCAdapter,
-  createMainProcessIPCAdapter,
-  createRendererProcessIPCAdapter
-};
