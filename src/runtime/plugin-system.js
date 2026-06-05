@@ -12,65 +12,51 @@ export class PluginManager {
     this.#eventBus = eventBus;
   }
 
-  /**
-   * Register a plugin
-   * 注册插件
-   */
   register(plugin) {
     if (!plugin || !plugin.name) {
       throw new Error('Plugin must have a name');
     }
     
     if (this.#plugins.has(plugin.name)) {
-      console.warn(`⚠️  Plugin "${plugin.name}" already registered`);
+      console.warn('Plugin "' + plugin.name + '" already registered');
       return;
     }
     
     this.#plugins.set(plugin.name, plugin);
     
-    // Initialize plugin
     if (typeof plugin.initialize === 'function') {
       plugin.initialize({
         eventBus: this.#eventBus,
-        getEngine: () => null // Will be available after engine initialization
+        getEngine: () => null
       });
     }
     
-    // Register hooks
     if (plugin.hooks) {
       for (const [hookName, hookFn] of Object.entries(plugin.hooks)) {
-        this.registerHook(hookName, hookFn);
+        const boundHook = hookFn.bind(plugin);
+        this.registerHook(hookName, boundHook);
       }
     }
     
-    console.log(`✅ Plugin "${plugin.name}" registered`);
+    console.log('Plugin "' + plugin.name + '" registered');
     return true;
   }
 
-  /**
-   * Unregister a plugin
-   * 注销插件
-   */
   unregister(pluginName) {
     const plugin = this.#plugins.get(pluginName);
     if (!plugin) {
       return false;
     }
     
-    // Cleanup
     if (typeof plugin.cleanup === 'function') {
       plugin.cleanup();
     }
     
     this.#plugins.delete(pluginName);
-    console.log(`🗑️  Plugin "${pluginName}" unregistered`);
+    console.log('Plugin "' + pluginName + '" unregistered');
     return true;
   }
 
-  /**
-   * Register a hook
-   * 注册钩子
-   */
   registerHook(hookName, hookFn) {
     if (!this.#hooks.has(hookName)) {
       this.#hooks.set(hookName, []);
@@ -78,10 +64,6 @@ export class PluginManager {
     this.#hooks.get(hookName).push(hookFn);
   }
 
-  /**
-   * Trigger a hook
-   * 触发钩子
-   */
   async triggerHook(hookName, ...args) {
     const hooks = this.#hooks.get(hookName) || [];
     const results = [];
@@ -91,42 +73,26 @@ export class PluginManager {
         const result = await hook(...args);
         results.push(result);
       } catch (error) {
-        console.error(`Error in hook "${hookName}":`, error);
+        console.error('Error in hook "' + hookName + '":', error);
       }
     }
     
     return results;
   }
 
-  /**
-   * Get a plugin by name
-   * 获取插件
-   */
   getPlugin(name) {
     return this.#plugins.get(name);
   }
 
-  /**
-   * Get all plugins
-   * 获取所有插件
-   */
   getAllPlugins() {
     return Array.from(this.#plugins.values());
   }
 
-  /**
-   * Get plugin count
-   * 获取插件数量
-   */
   getPluginCount() {
     return this.#plugins.size;
   }
 }
 
-/**
- * Hook constants
- * 钩子常量
- */
 export const HOOKS = {
   BEFORE_AGENT_START: 'before_agent_start',
   AFTER_AGENT_START: 'after_agent_start',
@@ -149,10 +115,6 @@ export const HOOKS = {
   AFTER_DISPOSE: 'after_dispose'
 };
 
-/**
- * Create a plugin
- * 创建插件的辅助函数
- */
 export function createPlugin(config) {
   return {
     name: config.name,
@@ -164,28 +126,23 @@ export function createPlugin(config) {
   };
 }
 
-/**
- * Example plugins
- * 示例插件
- */
-
 export const LoggerPlugin = createPlugin({
   name: 'logger',
   version: '1.0.0',
   description: 'Log all events to console',
   
   hooks: {
-    [HOOKS.BEFORE_AGENT_START]: async (input) => {
+    'before_agent_start': async (input) => {
       console.log('[Logger] Starting agent with input:', input);
     },
-    [HOOKS.AFTER_AGENT_COMPLETE]: async (result) => {
+    'after_agent_complete': async (result) => {
       console.log('[Logger] Agent completed with result:', result);
     },
-    [HOOKS.BEFORE_TOOL_CALL]: async (toolName, args) => {
-      console.log(`[Logger] Calling tool: ${toolName}`, args);
+    'before_tool_call': async (toolName, args) => {
+      console.log('[Logger] Calling tool: ' + toolName, args);
     },
-    [HOOKS.ON_TOOL_ERROR]: async (toolName, error) => {
-      console.error(`[Logger] Tool ${toolName} failed:`, error);
+    'on_tool_error': async (toolName, error) => {
+      console.error('[Logger] Tool ' + toolName + ' failed:', error);
     }
   }
 });
@@ -210,15 +167,15 @@ export const PerformancePlugin = createPlugin({
   },
   
   cleanup() {
-    console.log(`[Performance] Plugin processed ${this.calls} events in ${Date.now() - this.startTime}ms`);
+    console.log('[Performance] Plugin processed ' + this.calls + ' events in ' + (Date.now() - this.startTime) + 'ms');
   },
   
   hooks: {
-    [HOOKS.BEFORE_AGENT_START]: async () => {
+    'before_agent_start': async () => {
       this.agentStartTime = Date.now();
     },
-    [HOOKS.AFTER_AGENT_COMPLETE]: async () => {
-      console.log(`[Performance] Agent took ${Date.now() - this.agentStartTime}ms`);
+    'after_agent_complete': async () => {
+      console.log('[Performance] Agent took ' + (Date.now() - this.agentStartTime) + 'ms');
     }
   }
 });
