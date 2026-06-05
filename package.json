@@ -89,6 +89,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
+    "dmg-license": "^1.0.11",
     "electron": "^28.3.3",
     "electron-builder": "^24.9.1",
     "eslint": "^8.57.1",
@@ -146,8 +147,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "AI Agent",
-      "license": "LICENSE"
+      "shortcutName": "AI Agent"
     },
     "mac": {
       "target": [
