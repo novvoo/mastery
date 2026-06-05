@@ -4,6 +4,10 @@
 
 当前设计目标不是“让模型自由发挥”，而是让模型在本地运行时里被可靠地引导：先识别任务，选择工具，执行变更，验证结果，最后输出对用户有用的结论。
 
+### 双平台支持
+- **CLI（命令行界面）**：快速启动，轻量级，适合终端用户
+- **Desktop（桌面应用）**：Electron 构建，带图形化界面，适合日常使用
+
 ## 核心能力
 
 - **智能意图识别**：短输入如"上海天气"会先经过 LLM intent classifier，生成结构化 routing hint，再进入 ReAct 循环。明显天气查询有窄兜底，避免模型漏判。
@@ -69,6 +73,73 @@ User Input
 - `src/mcp/`：MCP 客户端、协议适配、工具桥接。
 - `src/models/`：多 provider 适配（OpenAI, Llama, Zhipu, DeepSeek, OpenRouter）。
 - `test-integration.mjs`：端到端集成测试套件。
+- `desktop/`：Electron 桌面应用源代码和配置
+
+## 安装与运行
+
+### CLI
+
+```bash
+# 克隆项目
+git clone <repo-url>
+cd ai-engineering-mastery-agent
+
+# 安装依赖（使用 bun）
+bun install
+
+# 配置环境变量（可选，复制模板）
+cp .env.example .env
+# 编辑 .env，填入 API 密钥等配置
+
+# 运行 CLI 模式
+bun run start
+# 或开发模式
+bun run dev
+```
+
+### Desktop
+
+```bash
+# 开发模式
+npm run desktop:dev
+
+# 构建桌面应用（平台相关）
+npm run desktop:build:all   # 所有平台
+npm run desktop:build:win   # Windows
+npm run desktop:build:mac   # macOS
+npm run desktop:build:linux # Linux
+```
+
+## 测试
+
+```bash
+# 运行完整集成测试
+npm run test
+
+# 运行指定测试
+npm run test:runtime
+npm run test:adapters
+
+# 查看所有测试脚本
+cat package.json
+```
+
+### 测试覆盖范围
+
+- ✅ Agent Engine 核心流程
+- ✅ 插件系统（注册、卸载、钩子调用）
+- ✅ 事件总线
+- ✅ 工具组和工具中间件
+- ✅ Runtime 配置
+- ✅ Agent 状态管理
+- ✅ 记忆钩子和配置钩子
+- ✅ CLI 和 Desktop 适配器
+- ✅ 端到端执行流程
+- ✅ 错误恢复和重试
+- ✅ 并发压力测试
+- ✅ 多轮对话上下文
+- ✅ 工具调用协议
+- ✅ 等等（共 158 条测试）
 
 ## 方法论
 
