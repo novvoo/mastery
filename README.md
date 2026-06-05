@@ -1,245 +1,173 @@
 # AI Engineering Mastery Agent
 
-一个面向真实工程任务的本地 ReAct Agent。它把 LLM、意图识别、工具路由、方法论工具、文件/终端/Web 工具、记忆和集成测试组织成一条可验证的执行链路。
+AI Engineering Mastery Agent 是一个本地运行的 AI 工程助手，面向真实项目里的代码阅读、修改、验证、文档检索和日常排障。它同时提供 CLI 和 Desktop 两种入口：终端里足够快，桌面端更适合持续对话、浏览项目文件和管理文档知识库。
 
-当前设计目标不是“让模型自由发挥”，而是让模型在本地运行时里被可靠地引导：先识别任务，选择工具，执行变更，验证结果，最后输出对用户有用的结论。
+它的核心体验不是“问模型一个答案”，而是让 Agent 在你的工作目录里读代码、调用工具、运行命令、检索文档、验证结果，并把过程和结论尽量清楚地交还给你。
 
-### 双平台支持
-- **CLI（命令行界面）**：快速启动，轻量级，适合终端用户
-- **Desktop（桌面应用）**：Electron 构建，带图形化界面、项目文件树、RAG 面板和对话内 Agent/工具事件流，适合日常使用
-![](./images/demo_001.png)
+![Desktop demo](./images/demo_001.png)
 
-## 核心能力
+## 你可以用它做什么
 
-- **智能意图识别**：短输入如"上海天气"会先经过 LLM intent classifier，生成结构化 routing hint，再进入 ReAct 循环。明显天气查询有窄兜底，避免模型漏判。
-- **按需工具路由**：每轮 LLM request 只暴露当前任务需要的工具子集。工程任务默认使用文件、终端、PTY、方法论和只读 Git 工具；如果任务提到最新资料、浏览器、MCP、后台任务或发布操作，会按需加入 Web、Browser、MCP、调度或 Git 写入工具。
-- **轻量任务画像**：明显工程任务会先用本地画像识别，跳过无收益的 intent 预请求，避免首轮在工具很多时等待额外 LLM 调用。
-- **ReAct 工具执行**：支持原生 function calling，也支持文本模型输出的 `CALL tool({...})`、JSON action、XML、`&lt;tool_code&gt;`、bash code fence 等工具格式。
-- **编码任务守门**：编码类请求会自动进入 coding task mode，要求理解仓库、做最小必要修改、检查变更、运行验证，再给最终答案。
-- **方法论工具**：内置 `setup`、`diagnose`、`grill`、`zoom_out`、`brainstorm`、`tdd`、`review`、`verify`、`architect`、`to_prd`、`to_issues`、`caveman`、`handoff` 等 12+ 工程流程工具。
-- **Web 查询链路**：`web_search` 默认优先 Bing（中文本地化），失败或无结果时 fallback 到 DuckDuckGo；需要详情时继续 `web_fetch`。
-- **用户文档 RAG**：支持用 `/doc add`、Finder 文件选择器、自然语言 `@路径` 或网络文档 URL 索引 `.txt`、`.md`、`.json`、`.html`、`.pdf`、`.docx`，再用 `document_search` 或自然语言问题检索回答。
-- **本地系统工具**：文件读写、目录列表、shell、PTY、语义搜索、浏览器打开等工具统一通过 tool registry 暴露。
-- **会话与上下文管理**：SessionManager + DynamicContextPruning，支持动态裁剪、智能摘要、会话记忆。
-- **Document RAG**：文档索引、检索和问答。
-- **语义搜索**：项目文件语义检索。
-- **自动任务编排**：SchedulerEngine + TaskGroup + ConcurrencyCoordinator，支持工作流触发、条件分支、并发执行、失败恢复。
-- **安全审批层**：SecurityPolicy 工具审批、结果截断、敏感路径保护、沙箱执行。
-- **多 Provider 支持**：OpenAI、Llama、Zhipu、DeepSeek、OpenRouter，支持模型能力自动识别和在线查询。
-- **MCP 协议支持**：MCP client/adapter，支持扩展工具集成，兼容第三方 MCP 服务。
-- **Shell 沙箱**：macOS Seatbelt、Linux bubblewrap、Policy 策略检查，支持可选隔离执行。
-- **默认安静运行**：`DEBUG=false` 为默认模式；需要排障时可用 `/debug on` 或 `bun run start:debug` 打开详细事件日志。
-- **集成测试覆盖**：`test-integration.mjs` 覆盖 Agent 循环、工具解析、Web 搜索、CLI 输入、编码守门、记忆系统、安全策略和稳定性。
+- 让 Agent 阅读项目代码，定位问题，修改文件，并运行测试或构建命令验证结果。
+- 把 PDF、DOCX、Markdown、HTML、JSON、文本文件或网页加入文档知识库，再按自然语言检索和提问。
+- 在 Desktop 里查看工作目录文件树，上传文档，跟随文件变更自动刷新，并在对话里看到 Agent 和工具事件。
+- 在 CLI 里用 `/doc`、`/debug` 等命令快速完成文档检索、诊断和终端协作。
+- 连接不同模型 Provider，包括 OpenAI、DeepSeek、Zhipu、Llama、OpenRouter 等。
+- 按需使用 Web 搜索、Shell、PTY、文件读写、语义搜索、Git 只读/写入、MCP 等工具。
 
-## 运行链路
-
-```text
-User Input
-  -> Local Task Profile
-     -> coding / fresh-data / browser / git / mcp / scheduler signals
-  -> Optional IntentClassifier
-     -> structured intent / routing hint for ambiguous fresh-data tasks
-  -> SessionManager
-     -> compact system prompt + compact tool instructions + recent context
-  -> ReActAgent loop
-     -> ToolRouter selects current tool subset
-     -> LLM request
-     -> native tool calls or TextToolParser parsed calls
-     -> ToolRegistry executes tools
-     -> observations added back to session
-     -> completion gates
-  -> Final Answer
-```
-
-关键文件：
-
-- `src/index.js`：CLI 入口、配置加载、工具注册、模型 provider 初始化、slash command、debug 开关、SchedulerEngine 启动。
-- `src/core/agent.js`：ReAct 主循环、意图路由注入、工具执行、编码任务守门、自动任务编排、最终答案处理。
-- `src/core/intent-classifier.js`：LLM-backed intent classifier，把短输入转换成结构化任务意图。
-- `src/core/tool-router.js`：本地任务画像和按需工具路由，避免每轮向模型暴露全量工具。
-- `src/core/text-tool-parser.js`：兼容非 function calling 模型的文本工具调用解析。
-- `src/core/tool-registry.js`：工具注册、查找、执行和 function definitions 输出。
-- `src/core/session-manager.js`：会话管理、上下文裁剪、消息历史维护。
-- `src/core/security-policy.js`：工具审批、结果截断、敏感信息保护。
-- `src/core/dynamic-context-pruning.js`：动态上下文裁剪、智能摘要生成。
-- `src/memory/memory-manager.js`：记忆管理、项目上下文存储。
-- `src/core/token-juice.js`：Token 计数、上下文压缩、JSON 规则引擎。
-- `src/prompts/system-prompt.js`：系统提示、工具使用规范、Web 查询和编码方法论约束。
-- `src/tools/web/web-tools.js`：`web_search`、`web_fetch`、`browser_open`。
-- `src/tools/memory/document-rag.js`：用户文档 RAG，负责本地文件/URL 加载、PDF/DOCX 提取、chunk 和语义检索。
-- `src/tools/skills/*.js`：AI Engineering Mastery 方法论工具（12+ 个）。
-- `src/sandbox/shell-sandbox.js`：Shell 沙箱、策略检查、隔离执行。
-- `src/scheduler/SchedulerEngine.js`：任务调度、工作流自动化、并发协调。
-- `src/scheduler/concurrency/`：TaskGroup、ConcurrencyCoordinator 任务并发管理。
-- `src/mcp/`：MCP 客户端、协议适配、工具桥接。
-- `src/models/`：多 provider 适配（OpenAI, Llama, Zhipu, DeepSeek, OpenRouter）。
-- `test-integration.mjs`：端到端集成测试套件。
-- `desktop/`：Electron 桌面应用源代码和配置
-
-## 安装与运行
-
-### CLI
-
-```bash
-# 克隆项目
-git clone <repo-url>
-cd ai-engineering-mastery-agent
-
-# 安装依赖（使用 bun）
-bun install
-
-# 配置环境变量（可选，复制模板）
-cp .env.example .env
-# 编辑 .env，填入 API 密钥等配置
-
-# 运行 CLI 模式
-bun run start
-# 或开发模式
-bun run dev
-```
+## 使用体验
 
 ### Desktop
 
-```bash
-# 开发模式
-npm run desktop:dev
+Desktop 适合日常连续使用。你可以打开一个工作目录，然后在同一个窗口里完成对话、浏览项目文件、上传文档、观察工具执行结果。
 
-# 构建桌面应用（平台相关，产物输出到 release/desktop/）
-npm run desktop:build:all   # 所有平台
-npm run desktop:build:win   # Windows
-npm run desktop:build:mac   # macOS
-npm run desktop:build:linux # Linux
+- 工作目录文件树支持展开、折叠、手动刷新和系统文件变更自动刷新。
+- RAG 面板使用和 CLI 相同的文档索引，上传后会持久化，重启应用后仍可继续检索。
+- Agent 消息、工具调用和关键事件会进入对话流，长内容可以滚动查看。
+- 对话窗口和文件区域独立滚动，适合边看项目结构边让 Agent 处理任务。
 
-# 构建 CLI npm tarball（产物输出到 release/cli/）
-npm run build:cli
+### CLI
 
-# 同时构建 CLI 和 Desktop，产物分别输出到 release/cli/ 与 release/desktop/
-npm run build:all
+CLI 适合习惯终端的工程任务。它启动轻、响应快，可以直接在当前目录里让 Agent 读文件、跑命令、改代码和搜索文档。
+
+常用入口：
+
+```text
+/doc init
+/doc add ./docs/spec.pdf
+/doc search "回滚策略"
+/doc list
+/debug on
 ```
 
-## 测试
+自然语言也可以直接触发文档索引：
 
-```bash
-# 运行完整集成测试
-npm run test
-
-# 运行指定测试
-npm run test:runtime
-npm run test:adapters
-
-# 查看所有测试脚本
-cat package.json
+```text
+根据 @./docs/spec.pdf 总结上线风险
+对比 @"./docs/Product Requirements.docx" 和当前实现
+读一下 @https://example.com/runbook.html，告诉我部署失败怎么恢复
 ```
 
-### 测试覆盖范围
+## 典型工作流
 
-- ✅ Agent Engine 核心流程
-- ✅ 插件系统（注册、卸载、钩子调用）
-- ✅ 事件总线
-- ✅ 工具组和工具中间件
-- ✅ Runtime 配置
-- ✅ Agent 状态管理
-- ✅ 记忆钩子和配置钩子
-- ✅ CLI 和 Desktop 适配器
-- ✅ 端到端执行流程
-- ✅ 错误恢复和重试
-- ✅ 并发压力测试
-- ✅ 多轮对话上下文
-- ✅ 工具调用协议
-- ✅ 等等（共 159 条测试）
+### 修复代码问题
 
-## 方法论
+```text
+帮我审计这个项目里可能严重影响性能的部分，修复后跑测试验证。
+```
 
-Agent 的工程方法论可以概括为六步：
+Agent 会先理解仓库上下文，再选择需要的文件、终端、语义搜索或方法论工具。完成后会说明改了什么、验证了什么，以及仍然存在的风险。
 
-1. **识别意图**：先判断用户是在问实时信息、做本地文件任务、运行终端、写代码、解释概念，还是普通聊天。
-2. **选择最小工具路径**：能用结构化工具就不用猜；实时信息走 `web_search -&gt; web_fetch`，本地信息走文件/终端工具。
-3. **先理解再修改**：编码任务先读相关文件和上下文，避免凭空生成。
-4. **小步修改**：只改完成任务需要的文件，不做无关重构。
-5. **证据验证**：运行测试、lint、构建、Bun 语法/打包检查或 `verify/review`，失败则继续修复。
-6. **收口清楚**：最终答案说明改了什么、验证了什么、还有什么风险或限制。
+### 用文档辅助开发
 
-实际运行时采用"证据型守门"，而不是固定死板的流程编排：
+```text
+/doc add ./docs/api-design.pdf
+/doc search "鉴权失败时的错误码"
+```
 
-- 系统提示会鼓励新功能先 `brainstorm`、实现时用 `tdd`、完成前 `verify`。
-- 工具暴露采用"按需裁剪"而不是"永久隐藏"。例如普通工程任务不会默认暴露 Web/MCP/调度工具，但如果需求里出现"查最新文档""连接 MCP""创建后台任务"等信号，对应工具组会加入本轮 function definitions。
-- 明显工程任务会跳过 LLM intent classifier 的预请求；天气、新闻、汇率、实时价格等时效性任务仍会使用 intent classifier 或窄兜底生成 routing hint。
-- Agent completion gate 的强制条件更宽松：非平凡编码任务需要至少一个成功的方法论工具证据，但不强制必须是 `brainstorm` 或 `tdd`。
-- 变更后的验证可以是 `verify` / `review`，也可以是等价的 fresh verification command，例如 `bun test`、`bun run lint`、`tsc`、`pytest`、`lint` 等。
-- 对涉及时间、速度、动画、游戏循环、第三方 API、状态转换、并发 I/O 或安全边界的编码任务，Agent 会自动插入 `semantic_risk_review` 编排节点，并要求 `review` / `verify` 覆盖单位、API 参数语义、状态不变量和用户可感知行为。
-- 小型、显然的单文件任务可以跳过部分方法论工具，但仍应读回结果并给出验证证据。
+文档会被切分、索引并保存到当前项目的本地知识库。之后你可以继续追问，或者让 Agent 将文档要求和代码实现对照起来。
 
-## Web 搜索策略
+### 桌面端持续协作
 
-`web_search` 默认顺序：
+打开 Desktop 后选择项目目录，文件树会显示当前项目。你可以在 Finder 或资源管理器里新增、删除、移动文件，桌面端会自动刷新；也可以在对话中让 Agent 修改项目并观察相关事件。
 
-1. Bing localized search：`mkt=zh-CN&amp;setlang=zh-CN`
-2. DuckDuckGo Lite
-3. DuckDuckGo HTML
+## 文档知识库
 
-搜索结果只提供标题、摘要和 URL。遇到天气、新闻、价格、汇率、文档变更等时效信息，Agent 应先 `web_search`，再对最相关结果调用 `web_fetch` 获取可引用内容。
+文档 RAG 是 CLI 和 Desktop 共享的能力。它会按工作目录隔离索引，避免不同项目的知识混在一起。
 
-如果 Bing 请求成功但解析不到结果，会记录 provider no-results 事件并继续 fallback。这个 fallback 是可接受行为，不代表没有优先尝试 Bing。
+支持来源：
 
-## 用户文档 RAG
+- 本地文件：`.txt`、`.md`、`.json`、`.html`、`.pdf`、`.docx`
+- 网络文档：`http(s)` URL
+- 对话中的 `@路径` 或显式 `/doc add`
 
-CLI 里的"上传文档"不是浏览器表单上传，而是把用户提供的文件路径、macOS 文件选择器结果、网络文档链接或粘贴文本加入当前工作目录的文档索引。索引会持久化到 `<working-directory>/.agent-data/doc-rag/`，重启 CLI 或 Desktop 后会自动加载；切换工作目录时会加载对应目录自己的 RAG 索引，避免不同项目串库。
-
-Desktop 的 RAG 面板使用同一套 `/doc` 后端：上传文件并初始化后会写入同一个持久化目录，重开应用后通过 `/doc list` 自动回填"已加载文档"列表。项目文件树也会监听工作目录变化并自动刷新。
-
-显式命令：
+常用命令：
 
 ```text
 /doc init
 /doc add ./docs/spec.pdf
 /doc add "docs/Product Requirements.docx"
 /doc add https://example.com/runbook.html
-/doc search "回滚策略和审批人"
+/doc search "审批流程"
 /doc list
 /doc clear
-/doc clear &lt;document-id&gt;
+/doc clear <document-id>
 ```
 
-自然入口：
+说明：
 
-```text
-根据 @./docs/spec.pdf 总结主要风险
-对比 @"./docs/Product Requirements.docx" 和当前实现
-读一下 @https://example.com/runbook.html，告诉我部署失败怎么恢复
+- `/doc add` 不带参数时，macOS 会弹出 Finder 文件选择器；其他环境会提示输入路径或 URL。
+- 路径包含空格时，建议使用引号，例如 `/doc add "docs/Product Requirements.docx"`。
+- 单个文档默认限制 15MB。
+- 文档索引会保存在当前工作目录下，重启 CLI 或 Desktop 后自动加载。
+
+## 工程守门
+
+Agent 会尽量按照工程任务的节奏工作：
+
+1. 先理解目标和上下文。
+2. 选择必要工具，不把无关工具暴露给模型。
+3. 小步修改，只改完成任务需要的内容。
+4. 对代码变更运行测试、lint、构建或等价验证。
+5. 最后说明变更、验证结果和残留风险。
+
+它也内置了一组工程方法论工具，例如诊断、头脑风暴、TDD、审查、验证、架构分析、PRD/Issue 拆分和交接总结。你不需要记住这些工具名，直接描述任务即可。
+
+## 安装与启动
+
+```bash
+git clone <repo-url>
+cd ai-engineering-mastery-agent
+bun install
+cp .env.example .env
 ```
 
-交互体验：
+编辑 `.env` 后填入需要的模型 Provider 配置。
 
-- `/doc add` 不带参数时，macOS 会弹 Finder 选择文件；非 macOS 会提示输入路径或 URL。
-- `/doc init` 会预热并诊断文档 RAG embedding runtime；模型文件缺失且自动下载开启时，会先轻量探测官方源和镜像源，选择当前可用的下载源，再逐行显示下载 URL、超时、文件大小和下载进度，最后显示模型路径、文件状态、ONNX 初始化结果和 fallback 原因。
-- `@路径` 只会索引真实存在的本地文件或 `http(s)` URL，不存在的 `@mention` 会被忽略。
-- 路径里有空格时，推荐写成 `@"path with spaces.pdf"` 或 `/doc add "path with spaces.pdf"`。
-- 常见句尾标点会被自动剥离，例如 `@./docs/spec.pdf。`。
-- 当前支持 `.txt`、`.md`、`.json`、`.html`、`.pdf`、`.docx`；单个文档默认限制 15MB。
+启动 CLI：
 
-## 上下文管理
+```bash
+bun run start
+```
 
-当前 Agent 自动上下文管理由 `SessionManager` 保存会话，并在接近上下文窗口时调用 `DynamicContextPruning`。模型上下文窗口由统一的 model capabilities registry 提供：
+启动 Desktop 开发模式：
 
-- 已知模型先使用本地能力表，保证离线启动
-- 未知模型默认尝试查询 OpenRouter Models API 和 LiteLLM 公共模型 catalog，获取 `context_length` / `max_input_tokens` 等实时能力信息
-- 可用 `MODEL_CONTEXT_WINDOW` / `MODEL_MAX_CONTEXT_TOKENS` 对未知或私有模型强制覆盖上下文窗口
-- token 数量默认使用 `Tokenizer` 的同步 provider-specific counter；在 tokenizer 不可用或未知模型时回退到 CJK-aware 估算
-- 超过模型上下文窗口 80% 时触发裁剪
-- 裁剪目标约为窗口 60%，并保留 system prompt、重要消息和最近消息
-- 裁剪时会生成智能摘要，保持上下文连续性
+```bash
+npm run desktop:dev
+```
 
-`DynamicContextPruning` 支持重要性评分、recent/system message 保留、压缩建议和更细的 token counter。`SessionManager` 默认使用 `Tokenizer` 的同步 provider-specific counter，并在 tokenizer 不可用或未知模型时回退到 CJK-aware 估算。
+构建发布产物：
 
-## Shell 沙箱
+```bash
+npm run build:cli
+npm run desktop:build:all
+npm run build:all
+```
 
-Shell 工具支持可选沙箱模式，默认关闭以保持本地开发兼容性。开启后，命令会先经过统一策略检查，再按平台选择后端：
+CLI 和 Desktop 的 release 产物会分别输出到独立目录，方便按平台分发。
 
-1. macOS：优先使用系统 `sandbox-exec` Seatbelt profile。
-2. Linux：优先使用 `bubblewrap`。
-3. 其他环境或后端不可用：使用 `policy` 后端，只做命令预检和路径/网络拦截，不提供 OS 级隔离。
+## 模型配置
 
-推荐本地安全模式：
+项目支持多 Provider。你可以在 `.env` 中配置不同模型和 API Key，按自己的成本、上下文窗口和响应速度偏好选择。
+
+常见配置项包括：
+
+```env
+OPENAI_API_KEY=
+DEEPSEEK_API_KEY=
+ZHIPU_API_KEY=
+OPENROUTER_API_KEY=
+MODEL=
+DEBUG=false
+```
+
+如果使用未知或私有模型，可以通过环境变量覆盖上下文窗口大小，避免长会话时过早或过晚裁剪上下文。
+
+## 本地安全
+
+Agent 默认在你的本地工作目录里运行。它可以读写文件、运行命令和调用模型 Provider，所以建议只在你信任的项目目录中使用。
+
+可选 Shell 沙箱：
 
 ```env
 AGENT_SHELL_SANDBOX=true
@@ -249,53 +177,32 @@ AGENT_SANDBOX_ALLOW_WRITE=.
 AGENT_SANDBOX_NETWORK=false
 ```
 
-默认策略会阻止常见网络命令和工作区外的写操作，并拒绝引用 `~/.ssh`、`~/.aws`、`~/.config/gh`、`~/.netrc` 等敏感路径。需要联网安装依赖或拉取代码时，应临时显式打开网络或把命令移到人工确认流程。
+沙箱会尽量限制工作区外写入、敏感路径访问和不必要的网络命令。不同系统可用能力不同：macOS 优先 Seatbelt，Linux 优先 bubblewrap，其他环境会退化为策略预检。
 
-边界说明：
+## 给开发者
 
-- `policy` 后端不是完整沙箱，只是安全预检；真正隔离依赖 Seatbelt、bubblewrap、容器或 VM。
-- 当前只覆盖 `shell` 工具，不覆盖文件工具、PTY helper 或模型 provider 自身。
-
-## 项目结构
-
-```text
-ai-engineering-mastery-agent/
-├── src/
-│   ├── cli/             # CLI UI、slash command、增强命令
-│   ├── core/            # ReActAgent、Session、ToolRegistry、IntentClassifier、TextToolParser
-│   ├── errors/          # 错误分类、重试、timeout
-│   ├── eval/            # Agent eval runner
-│   ├── mcp/             # MCP client / adapter
-│   ├── memory/          # 记忆和语义搜索支持
-│   ├── models/          # OpenAI / Llama / Zhipu / DeepSeek / OpenRouter provider
-│   ├── planner/         # 图任务规划器
-│   ├── prompts/         # 系统提示
-│   ├── sandbox/         # 安全执行层
-│   ├── scheduler/       # 自动化与任务调度
-│   └── tools/           # 文件、系统、Web、MCP、方法论工具
-├── eval/golden_cases/   # 黄金用例
-├── workspace/           # 默认工作区
-├── test-integration.mjs # 集成测试入口
-├── package.json
-├── bun.lock
-└── README.md
-```
-
-## 已知限制与待办
-
-- **Embedder 容错与模型分发**：ONNX 模型依赖 HuggingFace 下载，国内环境不稳定。fallback 伪 embedding 语义质量有限。
-- **Token 计数精度**：fallback 计数对中英文混排仍是估算，需要接入真实 tokenizer 确保上下文剪枝时机准确。
-- **ReAct 串行循环**：`agent.js` 的 `run()` 是 Think→Act→Observe 串行循环，每轮需要完整 LLM 调用。
-- **LLM 调用流式输出**：`modelProvider.chat()` 阻塞等待完整响应，大上下文时可能耗时较长。
-- **沙箱扩展**：Shell 已支持可选沙箱和策略预检，但文件工具和 PTY 尚未纳入同一沙箱边界。
-
-## 测试
-
-当前主要回归入口：
+日常验证命令：
 
 ```bash
+bun run lint
 bun test-integration.mjs
+bun test tests/e2e/desktop-integration.test.js
+npm run desktop:renderer:build
 ```
+
+代码主要分为两个入口：
+
+- `src/`：CLI、Agent 核心、工具、模型、RAG、调度和安全策略。
+- `desktop/`：Electron 主进程、预加载脚本、渲染层和桌面集成。
+
+这里保留的是开发入口，而不是完整源码目录说明。更细的模块关系建议直接从测试和对应功能入口读起。
+
+## 已知限制
+
+- 文档解析依赖本地运行环境，PDF 渲染相关原生依赖缺失时可能需要安装或使用 fallback。
+- Shell 沙箱不是所有平台都能提供同等级隔离，生产级隔离建议配合容器或 VM。
+- Web 搜索结果受搜索服务和网络环境影响，实时信息应优先查看来源链接。
+- 大型仓库、超大文档或大量文件变更会消耗更多索引和刷新时间。
 
 ## License
 
