@@ -1,6 +1,6 @@
 {
   "name": "ai-agent-desktop",
-  "version": "1.0.13",
+  "version": "1.0.15",
   "type": "module",
   "description": "AI Agent Desktop Application (Electron) - Part of ai-engineering-mastery-agent",
   "main": "main.js",

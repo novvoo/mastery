@@ -3,12 +3,14 @@
  */
 
 import { execSync } from 'child_process';
+import { mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = join(__dirname, '..');
+const cliReleaseDir = join(rootDir, 'release', 'cli');
 
 // 颜色输出
 const colors = {
@@ -48,7 +50,8 @@ async function buildCLI() {
     
     // 创建 tarball
     info('Creating npm package...');
-    execSync('npm pack', { 
+    mkdirSync(cliReleaseDir, { recursive: true });
+    execSync(`npm pack --pack-destination ${JSON.stringify(cliReleaseDir)}`, {
       cwd: rootDir, 
       stdio: 'inherit' 
     });
@@ -71,7 +74,8 @@ async function main() {
   if (success) {
     log('\n==============================================');
     log(`📦 CLI package built!`);
-    log(`   Usage: npm install -g ./ai-engineering-mastery-agent-*.tgz`);
+    log(`   Output: ${cliReleaseDir}/`);
+    log(`   Usage: npm install -g ./release/cli/ai-engineering-mastery-agent-*.tgz`);
   } else {
     process.exit(1);
   }

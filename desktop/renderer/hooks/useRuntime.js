@@ -293,25 +293,18 @@ export function useRuntime() {
       const eventName = data?.metadata?.eventName || data?.payload?.event || data?.payload?.name || 'ipc:event';
       const payload = data?.payload ?? data;
 
-      // 简要摘要，便于在消息流中直接显示
-      const payloadSummary = typeof payload === 'object'
-        ? JSON.stringify(payload).slice(0, 500)
-        : String(payload);
-
       console.debug('[useRuntime] 收到 ipc:event ->', { eventName, payload });
 
-      addMessage({
-        type: 'event',
-        content: `IPC 事件: ${eventName}`,
-        // store raw payload for details view
-        raw: payload,
-        details: typeof payload === 'object' ? JSON.stringify(payload, null, 2) : String(payload),
-        event: eventName,
-        payload,
-        payloadSummary,
-        // 标记这是一个需要触发滚动的事件消息
-        eventMessage: true
-      });
+      const normalized = normalizeRuntimeEventMessage(eventName, payload);
+      if (normalized.stats?.toolCall) {
+        setStats(prev => ({
+          ...prev,
+          toolCalls: prev.toolCalls + 1
+        }));
+      }
+      if (normalized.message) {
+        addMessage(normalized.message);
+      }
     });
     
     // 清理订阅
@@ -344,6 +337,99 @@ export function useRuntime() {
   };
 }
 
+export function normalizeRuntimeEventMessage(eventName, payload = {}) {
+  const payloadSummary = typeof payload === 'object'
+    ? JSON.stringify(payload).slice(0, 500)
+    : String(payload);
+  const base = {
+    raw: payload,
+    details: typeof payload === 'object' ? JSON.stringify(payload, null, 2) : String(payload),
+    event: eventName,
+    payload,
+    payloadSummary,
+    eventMessage: true
+  };
+
+  switch (eventName) {
+    case 'agent:start':
+      return {
+        message: {
+          ...base,
+          type: 'agent',
+          content: `Agent 启动${payload?.task ? `: ${payload.task}` : ''}`,
+        },
+      };
+    case 'agent:complete': {
+      const answer = extractAgentAnswer(payload);
+      return {
+        message: {
+          ...base,
+          type: answer ? 'result' : 'success',
+          content: answer || 'Agent 执行完成',
+        },
+      };
+    }
+    case 'agent:error':
+      return {
+        message: {
+          ...base,
+          type: 'error',
+          content: `Agent 错误: ${payload?.error || payload?.message || '未知错误'}`,
+        },
+      };
+    case 'tool:call':
+      return {
+        stats: { toolCall: true },
+        message: {
+          ...base,
+          type: 'tool',
+          content: `调用工具: ${payload?.toolName || payload?.name || 'unknown'}`,
+          toolName: payload?.toolName || payload?.name,
+          args: payload?.args,
+        },
+      };
+    case 'tool:result':
+      return {
+        message: {
+          ...base,
+          type: 'tool_result',
+          content: `工具结果: ${payload?.toolName || payload?.name || 'unknown'}`,
+          toolName: payload?.toolName || payload?.name,
+          result: payload?.result,
+        },
+      };
+    case 'tool:error':
+      return {
+        message: {
+          ...base,
+          type: 'error',
+          content: `工具错误: ${payload?.toolName || payload?.name || 'unknown'} ${payload?.error || ''}`.trim(),
+          toolName: payload?.toolName || payload?.name,
+        },
+      };
+    case 'status:update':
+      return {
+        message: {
+          ...base,
+          type: payload?.level || 'info',
+          content: payload?.message || '状态更新',
+        },
+      };
+    case 'workspace:changed':
+      return {
+        message: null,
+      };
+    default:
+      return {
+        message: {
+          ...base,
+          type: 'event',
+          content: `事件: ${eventName}`,
+        },
+      };
+  }
+}
+
 function extractAgentAnswer(data) {
   if (!data) return '';
 
@@ -355,12 +441,20 @@ function extractAgentAnswer(data) {
     return data.answer;
   }
 
+  if (data.localCommand && typeof data.content === 'string' && data.content.trim()) {
+    return data.content;
+  }
+
   if (typeof data.result === 'string' && data.result.trim()) {
     return data.result;
   }
 
   if (typeof data.result?.answer === 'string' && data.result.answer.trim()) {
     return data.result.answer;
+  }
+
+  if (typeof data.result?.response === 'string' && data.result.response.trim()) {
+    return data.result.response;
   }
 
   if (typeof data.result?.text === 'string' && data.result.text.trim()) {

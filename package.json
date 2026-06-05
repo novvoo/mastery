@@ -1,6 +1,6 @@
 {
   "name": "ai-engineering-mastery-agent",
-  "version": "1.0.13",
+  "version": "1.0.15",
   "description": "AI Engineering Mastery Agent - A standalone ReAct agent with 12 professional coding skills, sandbox execution, graph planning, 3-layer memory, and MCP protocol support",
   "author": "novvoo",
   "type": "module",
@@ -64,7 +64,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git+https://github.com/novvoo/ai-engineering-mastery-agent.git"
   },
   "files": [
     "src/",
@@ -101,7 +101,7 @@
     "productName": "AI Engineering Mastery Agent",
     "copyright": "Copyright © 2024 AI Engineering Mastery Agent",
     "directories": {
-      "output": "release",
+      "output": "release/desktop",
       "buildResources": "build"
     },
     "extraMetadata": {
@@ -140,7 +140,7 @@
         }
       ],
       "icon": "build/icon.ico",
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "desktop-${productName}-${version}-${arch}-setup.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -173,7 +173,7 @@
       "icon": "build/icon.icns",
       "category": "public.app-category.developer-tools",
       "hardenedRuntime": true,
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "desktop-${productName}-${version}-${arch}.${ext}"
     },
     "dmg": {
       "contents": [
@@ -217,10 +217,13 @@
         "Categories": "Development;IDE;AI",
         "StartupWMClass": "ai-engineering-mastery-agent"
       },
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "desktop-${productName}-${version}-${arch}.${ext}"
     },
     "publish": {
       "provider": "github"
+    },
+    "portable": {
+      "artifactName": "desktop-${productName}-${version}-${arch}-portable.${ext}"
     }
   }
 }

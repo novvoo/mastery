@@ -13,6 +13,7 @@
 import { EventEmitter } from 'events';
 import { RuntimeEvent } from '../../runtime/types.js';
 import { buildSlashCommandSuggestions } from '../../cli/slash-command-suggestions.js';
+import { handleDocumentBatchAdd, handleDocumentCommand, parseDocumentCommand } from '../../runtime/document-command.js';
 
 /**
  * IPC 消息类型定义
@@ -506,7 +507,9 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
       'notification:show',
       'app:getInfo',
       'app:getPath',
+      'app:openExternal',
       'workspace:setWorkingDirectory',
+      'workspace:listDirectory',
       'llm:getConfigStatus',
       'llm:saveConfig'
     ];
@@ -583,7 +586,12 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
         if (!this.#engine) {
           throw new Error('引擎未初始化');
         }
-        const result = await this.#engine.processInput(message.payload.input, message.payload.options);
+        const input = message.payload.input;
+        const result = input === 'init_rag' && Array.isArray(message.payload.options?.docs)
+          ? await handleDocumentBatchAdd(message.payload.options.docs, { engine: this.#engine })
+          : parseDocumentCommand(input)
+          ? await handleDocumentCommand(input, { engine: this.#engine })
+          : await this.#engine.processInput(input, message.payload.options);
         return this.createResponse(message, result);
 
       case 'agent:stop':

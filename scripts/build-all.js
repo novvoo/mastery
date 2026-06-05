@@ -11,6 +11,8 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = join(__dirname, '..');
+const cliReleaseDir = join(rootDir, 'release', 'cli');
+const desktopReleaseDir = join(rootDir, 'release', 'desktop');
 
 // 颜色输出
 const colors = {
@@ -62,7 +64,8 @@ async function buildCLI() {
   
   try {
     // 使用 npm pack 创建 tarball
-    execSync('npm pack', { 
+    mkdirSync(cliReleaseDir, { recursive: true });
+    execSync(`npm pack --pack-destination ${JSON.stringify(cliReleaseDir)}`, {
       cwd: rootDir, 
       stdio: 'inherit' 
     });
@@ -115,6 +118,8 @@ async function main() {
   if (!existsSync(releaseDir)) {
     mkdirSync(releaseDir, { recursive: true });
   }
+  mkdirSync(cliReleaseDir, { recursive: true });
+  mkdirSync(desktopReleaseDir, { recursive: true });
   
   // 构建 CLI
   const cliSuccess = await buildCLI();
@@ -127,8 +132,8 @@ async function main() {
   if (cliSuccess && desktopSuccess) {
     success('All builds completed successfully!');
     log('\n📦 Build artifacts:');
-    log(`   - CLI: ${rootDir}/ai-engineering-mastery-agent-*.tgz`);
-    log(`   - Desktop: ${rootDir}/release/`);
+    log(`   - CLI: ${cliReleaseDir}/`);
+    log(`   - Desktop: ${desktopReleaseDir}/`);
   } else {
     logError('Some builds failed');
     process.exit(1);

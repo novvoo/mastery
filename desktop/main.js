@@ -3,7 +3,7 @@
  * 负责初始化 Runtime、IPC 通信、窗口管理等
  */
 
-import { app, BrowserWindow, ipcMain, dialog, Notification, Menu, Tray } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Notification, Menu, Tray, shell } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -39,6 +39,7 @@ import { ZhipuModelProvider } from '../src/models/zhipu-provider.js';
 import { DeepSeekModelProvider } from '../src/models/deepseek-provider.js';
 import { OpenRouterModelProvider } from '../src/models/openrouter-provider.js';
 import { resolveModelCapabilities } from '../src/models/model-capabilities.js';
+import { createWorkspaceWatcher, listWorkspaceDirectory } from './workspace.js';
 
 /**
  * Electron 主进程应用类
@@ -51,6 +52,7 @@ class ElectronMainApp {
   #config = null;
   #isQuitting = false;
   #userEnvPath = null;
+  #workspaceWatcher = null;
 
   constructor(config = {}) {
     this.#userEnvPath = config.userEnvPath || getUserEnvPath();
@@ -202,12 +204,12 @@ class ElectronMainApp {
         label: '文件',
         submenu: [
           {
-            label: '新建项目',
+            label: '新建工作区',
             accelerator: 'CmdOrCtrl+N',
             click: () => this.#handleNewProject()
           },
           {
-            label: '打开项目',
+            label: '打开工作区',
             accelerator: 'CmdOrCtrl+O',
             click: () => this.#handleOpenProject()
           },
@@ -278,15 +280,13 @@ class ElectronMainApp {
           {
             label: '文档',
             click: async () => {
-              const { shell } = require('electron');
-              await shell.openExternal('https://github.com/ai-agent/docs');
+              await shell.openExternal('https://github.com/novvoo/ai-engineering-mastery-agent#readme');
             }
           },
           {
             label: '报告问题',
             click: async () => {
-              const { shell } = require('electron');
-              await shell.openExternal('https://github.com/ai-agent/issues');
+              await shell.openExternal('https://github.com/novvoo/ai-engineering-mastery-agent/issues');
             }
           },
           { type: 'separator' },
@@ -616,6 +616,8 @@ class ElectronMainApp {
     // 监听 IPC 事件
     this.#setupIPCListeners();
 
+    this.#startWorkspaceWatcher();
+
     console.log('✅ IPC 适配器初始化完成');
   }
 
@@ -741,28 +743,23 @@ class ElectronMainApp {
       return app.getPath(name || 'userData');
     });
 
+    this.#ipcAdapter.registerHandler('app:openExternal', async (url) => {
+      const href = String(url || '');
+      if (!/^https?:\/\//i.test(href)) {
+        return { success: false, error: '只允许打开 http(s) 链接' };
+      }
+
+      await shell.openExternal(href);
+      return { success: true };
+    });
+
     // 工作目录处理器
     this.#ipcAdapter.registerHandler('workspace:setWorkingDirectory', async (directory) => {
-      if (fs.existsSync(directory)) {
-        this.#config.workingDirectory = directory;
-        
-        // 重新初始化 Desktop Core
-        if (this.#desktopCore) {
-          await this.#desktopCore.dispose();
-        }
-        
-        this.#desktopCore = createDesktopCore({
-          workingDirectory: directory,
-          debug: this.#config.debug,
-          ...this.#config.runtime
-        });
-        
-        await this.#desktopCore.initialize();
-        
-        return { success: true, workingDirectory: directory };
-      }
-      
-      return { success: false, error: '目录不存在' };
+      return this.#setWorkingDirectory(directory);
+    });
+
+    this.#ipcAdapter.registerHandler('workspace:listDirectory', async (options = {}) => {
+      return listWorkspaceDirectory(this.#config.workingDirectory, options);
     });
 
     // LLM 配置处理器
@@ -806,6 +803,42 @@ class ElectronMainApp {
         }).show();
       }
     });
+  }
+
+  #startWorkspaceWatcher() {
+    this.#workspaceWatcher?.close();
+    this.#workspaceWatcher = null;
+
+    try {
+      this.#workspaceWatcher = createWorkspaceWatcher(this.#config.workingDirectory, (change) => {
+        this.#ipcAdapter?.broadcast('workspace:changed', change);
+      });
+    } catch (error) {
+      console.warn(`⚠️  工作目录监听失败: ${error.message}`);
+    }
+  }
+
+  async #setWorkingDirectory(directory) {
+    if (!directory || !fs.existsSync(directory)) {
+      return { success: false, error: '目录不存在' };
+    }
+
+    this.#config.workingDirectory = directory;
+
+    if (this.#desktopCore) {
+      await this.#desktopCore.dispose();
+    }
+
+    this.#desktopCore = createDesktopCore({
+      workingDirectory: directory,
+      debug: this.#config.debug,
+      ...this.#config.runtime
+    });
+
+    await this.#desktopCore.initialize();
+    this.#startWorkspaceWatcher();
+
+    return { success: true, workingDirectory: directory };
   }
 
   /**
@@ -971,7 +1004,7 @@ class ElectronMainApp {
       }
 
       // 更新工作目录
-      await this.#ipcAdapter.invoke('workspace:setWorkingDirectory', newProjectPath);
+      await this.#setWorkingDirectory(newProjectPath);
       
       // 通知渲染进程
       this.#ipcAdapter.broadcast('app:projectCreated', { path: newProjectPath });
@@ -992,7 +1025,7 @@ class ElectronMainApp {
       const projectPath = result.filePaths[0];
       
       // 更新工作目录
-      await this.#ipcAdapter.invoke('workspace:setWorkingDirectory', projectPath);
+      await this.#setWorkingDirectory(projectPath);
       
       // 通知渲染进程
       this.#ipcAdapter.broadcast('app:projectOpened', { path: projectPath });
@@ -1041,8 +1074,7 @@ class ElectronMainApp {
       buttons: ['确定', '查看文档']
     }).then(result => {
       if (result.response === 1) {
-        const { shell } = require('electron');
-        shell.openExternal('https://github.com/ai-agent/docs');
+        shell.openExternal('https://github.com/novvoo/ai-engineering-mastery-agent#readme');
       }
     });
   }
@@ -1096,6 +1128,11 @@ class ElectronMainApp {
    */
   async #cleanup() {
     console.log('🧹 清理资源...');
+
+    if (this.#workspaceWatcher) {
+      this.#workspaceWatcher.close();
+      this.#workspaceWatcher = null;
+    }
 
     if (this.#desktopCore) {
       await this.#desktopCore.dispose();

@@ -3,12 +3,14 @@
  */
 
 import { execSync } from 'child_process';
+import { mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = join(__dirname, '..');
+const desktopReleaseDir = join(rootDir, 'release', 'desktop');
 
 // 颜色输出
 const colors = {
@@ -56,6 +58,8 @@ async function buildDesktop() {
   info('Building Desktop application...');
   
   try {
+    mkdirSync(desktopReleaseDir, { recursive: true });
+
     info('Building Desktop renderer...');
     execSync('npm run desktop:renderer:build', {
       cwd: rootDir,
@@ -95,7 +99,7 @@ async function main() {
   if (success) {
     log('\n==================================================');
     log(`📦 Desktop build complete!`);
-    log(`   Output: ${rootDir}/release/`);
+    log(`   Output: ${desktopReleaseDir}/`);
   } else {
     process.exit(1);
   }

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = join(__dirname, '..');
+const desktopReleaseDir = join(rootDir, 'release', 'desktop');
 
 const colors = {
   reset: '\x1b[0m',
@@ -68,6 +69,7 @@ async function main() {
   if (success) {
     log('\n===========================');
     success('Desktop app published to GitHub Releases!');
+    log(`   Local artifacts: ${desktopReleaseDir}/`);
   } else {
     process.exit(1);
   }

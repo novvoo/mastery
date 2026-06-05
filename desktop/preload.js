@@ -35,7 +35,9 @@ const ALLOWED_CHANNELS = {
     'notification:show',
     'app:getInfo',
     'app:getPath',
+    'app:openExternal',
     'workspace:setWorkingDirectory',
+    'workspace:listDirectory',
     'llm:getConfigStatus',
     'llm:saveConfig'
   ],
@@ -58,6 +60,7 @@ const ALLOWED_CHANNELS = {
     'app:newTask',
     'app:projectCreated',
     'app:projectOpened',
+    'workspace:changed',
     'agent:start',
     'agent:complete',
     'agent:error',
@@ -337,6 +340,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const listener = (event, data) => callback(data);
     ipcRenderer.on('window:state', listener);
     return () => ipcRenderer.removeListener('window:state', listener);
+  },
+
+  onWorkspaceChanged: (callback) => {
+    const listener = (event, data) => {
+      const eventName = data?.metadata?.eventName || data?.payload?.event || data?.payload?.name;
+      if (eventName === 'workspace:changed') {
+        callback(data?.payload ?? data);
+      }
+    };
+    ipcRenderer.on('ipc:event', listener);
+    return () => ipcRenderer.removeListener('ipc:event', listener);
   },
   
   // ==================== 文件对话框 ====================

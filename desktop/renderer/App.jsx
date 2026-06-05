@@ -27,6 +27,39 @@ const LAYOUT = {
   inputAreaHeight: 140,
 };
 
+const REPOSITORY_URL = 'https://github.com/novvoo/ai-engineering-mastery-agent';
+
+function getDocumentDisplayName(pathOrTitle = '') {
+  const text = String(pathOrTitle || '').trim();
+  if (!text) return '未命名文档';
+  return text.split(/[\\/]/).filter(Boolean).pop() || text;
+}
+
+function normalizeRagDocuments(documents = []) {
+  return (documents || []).map(doc => ({
+    id: doc.id,
+    name: doc.title || getDocumentDisplayName(doc.source),
+    path: doc.source || '',
+    kind: doc.kind,
+    chunks: doc.chunks,
+    chars: doc.chars,
+    indexed: true,
+  }));
+}
+
+function mergeRagDocuments(currentDocs = [], nextDocs = []) {
+  const merged = new Map();
+  for (const doc of currentDocs) {
+    const key = doc.id || doc.path || doc.name;
+    if (key) merged.set(key, doc);
+  }
+  for (const doc of nextDocs) {
+    const key = doc.id || doc.path || doc.name;
+    if (key) merged.set(key, doc);
+  }
+  return Array.from(merged.values());
+}
+
 // 样式定义
 const styles = {
   container: {
@@ -291,7 +324,7 @@ const styles = {
   messageContainer: {
     flex: 1,
     minHeight: 0,
-    overflowY: 'auto',
+    overflow: 'hidden',
     padding: '0 20px'
   },
   
@@ -548,86 +581,66 @@ const MENU_ITEMS = [
   {
     label: '文件',
     items: [
-      { label: '新建任务', shortcut: 'Ctrl+N' },
-      { label: '打开任务...', shortcut: 'Ctrl+O' },
-      { label: '保存任务', shortcut: 'Ctrl+S' },
+      { label: '新建任务', shortcut: 'Ctrl+N', command: 'newTask' },
+      { label: '切换工作目录...', shortcut: 'Ctrl+O', command: 'changeWorkspace' },
       { type: 'divider' },
-      { label: '导出对话...', shortcut: 'Ctrl+E' },
+      { label: '保存会话快照', shortcut: 'Ctrl+S', command: 'saveSession' },
+      { label: '导出对话 Markdown', shortcut: 'Ctrl+E', command: 'exportConversation' },
       { type: 'divider' },
-      { label: '退出', shortcut: 'Ctrl+Q' }
-    ]
-  },
-  {
-    label: '编辑',
-    items: [
-      { label: '撤销', shortcut: 'Ctrl+Z' },
-      { label: '重做', shortcut: 'Ctrl+Y' },
-      { type: 'divider' },
-      { label: '剪切', shortcut: 'Ctrl+X' },
-      { label: '复制', shortcut: 'Ctrl+C' },
-      { label: '粘贴', shortcut: 'Ctrl+V' },
-      { type: 'divider' },
-      { label: '全选', shortcut: 'Ctrl+A' }
+      { label: '退出', shortcut: 'Ctrl+Q', command: 'quit' }
     ]
   },
   {
     label: '视图',
     items: [
-      { label: '切换侧边栏', shortcut: 'Ctrl+B' },
-      { label: '切换摘要面板', shortcut: 'Ctrl+Shift+S' },
+      { label: '切换侧边栏', shortcut: 'Ctrl+B', command: 'toggleSidebar' },
+      { label: '切换 RAG 面板', shortcut: 'Ctrl+Shift+S', command: 'toggleSummary' },
       { type: 'divider' },
-      { label: '放大', shortcut: 'Ctrl++' },
-      { label: '缩小', shortcut: 'Ctrl+-' },
-      { label: '重置缩放', shortcut: 'Ctrl+0' },
-      { type: 'divider' },
-      { label: '全屏', shortcut: 'F11' }
+      { label: 'Agent 面板', command: 'showAgent' },
+      { label: '工具面板', shortcut: 'Ctrl+T', command: 'showTools' }
     ]
   },
   {
     label: 'Agent',
     items: [
-      { label: '开始执行', shortcut: 'Ctrl+Enter' },
-      { label: '停止执行', shortcut: 'Ctrl+.' },
+      { label: '聚焦输入', shortcut: 'Ctrl+Enter', command: 'focusInput' },
+      { label: '停止执行', shortcut: 'Ctrl+.', command: 'stopAgent' },
       { type: 'divider' },
-      { label: '清除对话' },
-      { label: '清除历史记录' },
+      { label: '清除对话', command: 'clearConversation' },
+      { label: '文档搜索', command: 'insertDocSearch' },
       { type: 'divider' },
-      { label: '执行选项...', shortcut: 'Ctrl+,' }
+      { label: '模型配置...', shortcut: 'Ctrl+,', command: 'openModelConfig' }
     ]
   },
   {
     label: '技能',
     items: [
-      { label: '💡 诊断 (diagnose)', desc: '诊断问题根因' },
-      { label: '🔍 审查 (review)', desc: '代码审查' },
-      { label: '📝 TDD 测试驱动', desc: 'TDD 开发流程' },
-      { label: '🏗️ 架构 (architect)', desc: '系统架构设计' },
-      { label: '🎯 汇总 (handoff)', desc: '任务交接' },
-      { type: 'divider' },
-      { label: '查看所有技能...' }
+      { label: '诊断', command: 'insertCommand', value: '/diagnose symptom=' },
+      { label: '代码审查', command: 'insertCommand', value: '/review scope=' },
+      { label: 'TDD', command: 'insertCommand', value: '/tdd phase=red component=' },
+      { label: '架构设计', command: 'insertCommand', value: '/architect goal=' },
+      { label: '交接总结', command: 'insertCommand', value: '/handoff session_summary=' }
     ]
   },
   {
     label: '工具',
     items: [
-      { label: '🔧 文件系统工具' },
-      { label: '🌐 Web 搜索工具' },
-      { label: '🔗 Web 获取工具' },
-      { label: '🐚 Shell 工具' },
-      { label: '📊 代码搜索工具' },
+      { label: '查看工具面板', shortcut: 'Ctrl+T', command: 'showTools' },
+      { label: '刷新项目文件', command: 'refreshProjectTree' },
+      { label: '刷新 RAG 文档', command: 'refreshRagDocs' },
       { type: 'divider' },
-      { label: '查看所有工具...', shortcut: 'Ctrl+T' }
+      { label: '插入 Shell 命令', command: 'insertCommand', value: '请运行命令：' },
+      { label: '插入 Web 搜索', command: 'insertCommand', value: '请搜索最新资料：' }
     ]
   },
   {
     label: '帮助',
     items: [
-      { label: '📖 文档' },
-      { label: '⌨️ 快捷键' },
-      { label: '🐛 报告问题' },
+      { label: '文档', command: 'openDocs' },
+      { label: '快捷键', command: 'showShortcuts' },
+      { label: '报告问题', command: 'openIssues' },
       { type: 'divider' },
-      { label: '🔄 检查更新' },
-      { label: 'ℹ️ 关于' }
+      { label: '关于', command: 'showAbout' }
     ]
   }
 ];
@@ -656,7 +669,6 @@ function App() {
   // 状态管理
   const [activeTab, setActiveTab] = useState('agent');
   const [workingDirectory, setWorkingDirectory] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
   const [llmConfigStatus, setLLMConfigStatus] = useState(null);
   const [showLLMSetup, setShowLLMSetup] = useState(false);
   const [llmForm, setLLMForm] = useState({
@@ -703,16 +715,60 @@ function App() {
   const [ragDocs, setRagDocs] = useState([]); // { name, path }
   const [ragStatus, setRagStatus] = useState('idle'); // idle | indexing | ready | error
   const [ragIndexProgress, setRagIndexProgress] = useState(0);
+  const [directoryChildren, setDirectoryChildren] = useState({});
+  const [expandedDirectories, setExpandedDirectories] = useState(() => new Set(['']));
+  const [loadingDirectories, setLoadingDirectories] = useState(() => new Set());
+  const [projectTreeStatus, setProjectTreeStatus] = useState('idle');
+  const [projectTreeError, setProjectTreeError] = useState('');
   
   // 使用自定义 Hooks
   const runtime = useRuntime();
   const ipc = useIPC();
   const chatInputRef = useRef(null);
+  const workspaceRefreshTimerRef = useRef(null);
+
+  const refreshRagDocuments = useCallback(async () => {
+    if (!ipc.isConnected || !ipc.processInput) {
+      return null;
+    }
+
+    try {
+      const result = await ipc.processInput('/doc list');
+      const persistedDocs = normalizeRagDocuments(result?.data?.documents || result?.documents || []);
+      setRagDocs(persistedDocs);
+      setRagStatus(persistedDocs.length > 0 ? 'ready' : 'idle');
+      setRagIndexProgress(persistedDocs.length > 0 ? 100 : 0);
+      return persistedDocs;
+    } catch (error) {
+      console.error('[App] 加载持久化 RAG 文档失败:', error);
+      setRagStatus('error');
+      return null;
+    }
+  }, [ipc.isConnected, ipc.processInput]);
   
   // 初始化
   useEffect(() => {
     let isMounted = true;
     let unsubscribeWindowState = null;
+    let unsubscribeProjectCreated = null;
+    let unsubscribeProjectOpened = null;
+
+    const syncWorkingDirectoryFromEvent = (payload = {}) => {
+      const nextDirectory = payload?.path || payload?.workingDirectory || payload;
+      if (!isMounted || !nextDirectory) {
+        return;
+      }
+
+      setWorkingDirectory(nextDirectory);
+      setDirectoryChildren({});
+      setExpandedDirectories(new Set(['']));
+      setProjectTreeError('');
+      setRagDocs([]);
+      setRagStatus('idle');
+      setRagIndexProgress(0);
+      runtime.loadTools();
+      runtime.refreshState();
+    };
 
     // 连接到主进程
     ipc.connect().then((connection) => {
@@ -738,6 +794,9 @@ function App() {
         }
         setWindowState(state);
       });
+
+      unsubscribeProjectCreated = ipc.subscribe('app:projectCreated', syncWorkingDirectoryFromEvent);
+      unsubscribeProjectOpened = ipc.subscribe('app:projectOpened', syncWorkingDirectoryFromEvent);
       
       // 获取应用信息
       ipc.getAppInfo().then(info => {
@@ -781,6 +840,12 @@ function App() {
       if (typeof unsubscribeWindowState === 'function') {
         unsubscribeWindowState();
       }
+      if (typeof unsubscribeProjectCreated === 'function') {
+        unsubscribeProjectCreated();
+      }
+      if (typeof unsubscribeProjectOpened === 'function') {
+        unsubscribeProjectOpened();
+      }
       ipc.disconnect();
     };
   }, []);
@@ -795,11 +860,177 @@ function App() {
       const newDir = result.filePaths[0];
       await ipc.setWorkingDirectory(newDir);
       setWorkingDirectory(newDir);
+      setDirectoryChildren({});
+      setExpandedDirectories(new Set(['']));
+      setProjectTreeError('');
+      setRagDocs([]);
+      setRagStatus('idle');
+      setRagIndexProgress(0);
       
       // 重新加载工具
       runtime.loadTools();
     }
   }, [ipc, runtime]);
+
+  useEffect(() => {
+    if (!workingDirectory || !ipc.isConnected) {
+      return;
+    }
+
+    refreshRagDocuments();
+  }, [workingDirectory, ipc.isConnected, refreshRagDocuments]);
+
+  useEffect(() => {
+    if (!workingDirectory || !ipc.isConnected || !ipc.listDirectory) {
+      return;
+    }
+
+    let cancelled = false;
+    setProjectTreeStatus('loading');
+    setProjectTreeError('');
+    setDirectoryChildren({});
+    setExpandedDirectories(new Set(['']));
+    setLoadingDirectories(new Set(['']));
+
+    ipc.listDirectory('')
+      .then(result => {
+        if (cancelled) return;
+        if (!result?.success) {
+          setProjectTreeStatus('error');
+          setProjectTreeError(result?.error || '无法读取工作目录');
+          return;
+        }
+        setDirectoryChildren({ '': result.entries || [] });
+        setProjectTreeStatus('ready');
+      })
+      .catch(error => {
+        if (cancelled) return;
+        setProjectTreeStatus('error');
+        setProjectTreeError(error.message || '无法读取工作目录');
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoadingDirectories(new Set());
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workingDirectory, ipc.isConnected]);
+
+  const loadProjectDirectory = useCallback(async (directoryPath = '') => {
+    if (!ipc.listDirectory) {
+      return null;
+    }
+
+    setLoadingDirectories(prev => new Set(prev).add(directoryPath));
+    setProjectTreeError('');
+
+    try {
+      const result = await ipc.listDirectory(directoryPath);
+      if (!result?.success) {
+        setProjectTreeError(result?.error || '无法读取目录');
+        return null;
+      }
+
+      setDirectoryChildren(prev => ({
+        ...prev,
+        [directoryPath]: result.entries || []
+      }));
+      setProjectTreeStatus('ready');
+      return result;
+    } catch (error) {
+      setProjectTreeError(error.message || '无法读取目录');
+      return null;
+    } finally {
+      setLoadingDirectories(prev => {
+        const next = new Set(prev);
+        next.delete(directoryPath);
+        return next;
+      });
+    }
+  }, [ipc]);
+
+  const handleProjectDirectoryToggle = useCallback(async (directoryPath) => {
+    const isExpanded = expandedDirectories.has(directoryPath);
+    if (isExpanded) {
+      setExpandedDirectories(prev => {
+        const next = new Set(prev);
+        next.delete(directoryPath);
+        return next;
+      });
+      return;
+    }
+
+    setExpandedDirectories(prev => new Set(prev).add(directoryPath));
+    if (!directoryChildren[directoryPath]) {
+      await loadProjectDirectory(directoryPath);
+    }
+  }, [directoryChildren, expandedDirectories, loadProjectDirectory]);
+
+  const handleProjectTreeRefresh = useCallback(async () => {
+    setDirectoryChildren({});
+    setExpandedDirectories(new Set(['']));
+    setProjectTreeStatus('loading');
+    await loadProjectDirectory('');
+  }, [loadProjectDirectory]);
+
+  const refreshLoadedProjectDirectories = useCallback(async () => {
+    if (!ipc.listDirectory) {
+      return;
+    }
+
+    const loadedPaths = Object.keys(directoryChildren);
+    const pathsToRefresh = loadedPaths.length > 0 ? loadedPaths : [''];
+    setProjectTreeError('');
+
+    try {
+      const results = await Promise.all(pathsToRefresh.map(async (directoryPath) => {
+        const result = await ipc.listDirectory(directoryPath);
+        return { directoryPath, result };
+      }));
+
+      const nextChildren = {};
+      let hasError = false;
+      for (const { directoryPath, result } of results) {
+        if (result?.success) {
+          nextChildren[directoryPath] = result.entries || [];
+        } else {
+          hasError = true;
+        }
+      }
+
+      setDirectoryChildren(prev => ({
+        ...prev,
+        ...nextChildren
+      }));
+      setProjectTreeStatus(hasError ? 'error' : 'ready');
+      if (hasError) {
+        setProjectTreeError('部分目录无法刷新');
+      }
+    } catch (error) {
+      setProjectTreeStatus('error');
+      setProjectTreeError(error.message || '无法刷新项目文件');
+    }
+  }, [directoryChildren, ipc.listDirectory]);
+
+  useEffect(() => {
+    if (!ipc.isConnected || !ipc.onWorkspaceChanged) {
+      return undefined;
+    }
+
+    const unsubscribe = ipc.onWorkspaceChanged(() => {
+      clearTimeout(workspaceRefreshTimerRef.current);
+      workspaceRefreshTimerRef.current = setTimeout(() => {
+        refreshLoadedProjectDirectories();
+      }, 120);
+    });
+
+    return () => {
+      clearTimeout(workspaceRefreshTimerRef.current);
+      unsubscribe?.();
+    };
+  }, [ipc.isConnected, ipc.onWorkspaceChanged, refreshLoadedProjectDirectories]);
   
   // 处理新建任务
   const handleNewTask = useCallback(() => {
@@ -820,20 +1051,46 @@ function App() {
     ipc.closeWindow();
   }, [ipc]);
   
-  // 处理加载任务
-  const handleLoadTask = useCallback(() => {
-    console.log('[App] 加载任务');
-  }, []);
-  
   // 处理保存任务
   const handleSaveTask = useCallback(() => {
-    console.log('[App] 保存任务');
-  }, []);
+    const snapshot = {
+      savedAt: new Date().toISOString(),
+      workingDirectory,
+      messages: runtime.messages,
+      ragDocs,
+    };
+    localStorage.setItem('ai-agent-session-snapshot', JSON.stringify(snapshot));
+    ipc.showNotification?.({
+      title: '会话已保存',
+      body: '已保存到本地浏览器存储，可在当前设备恢复参考。'
+    });
+  }, [ipc, ragDocs, runtime.messages, workingDirectory]);
   
   // 处理导出
   const handleExport = useCallback(() => {
-    console.log('[App] 导出');
-  }, []);
+    const lines = [
+      '# AI Agent Conversation',
+      '',
+      `- Exported: ${new Date().toISOString()}`,
+      `- Working directory: ${workingDirectory || '未设置'}`,
+      '',
+      ...runtime.messages.map((message, index) => [
+        `## ${index + 1}. ${message.type || 'message'}`,
+        '',
+        String(message.content || message.result || message.details || '').trim() || '(empty)',
+        ''
+      ].join('\n'))
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ai-agent-conversation-${new Date().toISOString().slice(0, 10)}.md`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, [runtime.messages, workingDirectory]);
 
   const handleLLMProviderChange = useCallback((provider) => {
     const option = LLM_PROVIDER_OPTIONS[provider] || LLM_PROVIDER_OPTIONS.openai;
@@ -893,6 +1150,12 @@ function App() {
     if (!path) return '~/.config/ai-engineering-mastery-agent/.env';
     return path.replace(/^\/Users\/[^/]+/, '~');
   }, []);
+
+  const handleInsertText = useCallback((text) => {
+    setChatInput(text);
+    setShowSuggestions(text.trimStart().startsWith('/'));
+    chatInputRef.current?.focus();
+  }, []);
   
   // ================== Codex 风格菜单处理 ==================
   
@@ -900,39 +1163,91 @@ function App() {
     setActiveMenu(activeMenu === label ? null : label);
   }, [activeMenu]);
   
-  const handleMenuItemClick = useCallback((item) => {
-    console.log('[App] 菜单项点击:', item.label);
+  const handleMenuItemClick = useCallback(async (item) => {
     setActiveMenu(null);
-    
-    // 根据菜单项执行相应操作
-    switch (item.label) {
-      case '新建任务':
+
+    switch (item.command) {
+      case 'newTask':
         handleNewTask();
         break;
-      case '保存任务':
+      case 'changeWorkspace':
+        await handleWorkingDirectoryChange();
+        break;
+      case 'saveSession':
         handleSaveTask();
         break;
-      case '导出对话...':
+      case 'exportConversation':
         handleExport();
         break;
-      case '清除对话':
-        runtime.clearMessages();
+      case 'quit':
+        ipc.closeWindow();
         break;
-      case '切换侧边栏':
+      case 'toggleSidebar':
         setSidebarCollapsed(prev => !prev);
         break;
-      case '切换摘要面板':
+      case 'toggleSummary':
         setSummaryPanelVisible(prev => !prev);
         break;
-      case '开始执行':
-        if (chatInputRef.current) {
-          chatInputRef.current.focus();
-        }
+      case 'showAgent':
+        setSidebarCollapsed(false);
+        setActiveTab('agent');
+        break;
+      case 'showTools':
+        setSidebarCollapsed(false);
+        setActiveTab('tools');
+        break;
+      case 'focusInput':
+        chatInputRef.current?.focus();
+        break;
+      case 'stopAgent':
+        await runtime.stop();
+        break;
+      case 'clearConversation':
+        runtime.clearMessages();
+        break;
+      case 'insertDocSearch':
+        handleInsertText('/doc search ');
+        break;
+      case 'openModelConfig':
+        setShowLLMSetup(true);
+        break;
+      case 'insertCommand':
+        handleInsertText(item.value || '');
+        break;
+      case 'refreshProjectTree':
+        await handleProjectTreeRefresh();
+        break;
+      case 'refreshRagDocs':
+        await refreshRagDocuments();
+        break;
+      case 'openDocs':
+        await ipc.openExternal?.(`${REPOSITORY_URL}#readme`);
+        break;
+      case 'openIssues':
+        await ipc.openExternal?.(`${REPOSITORY_URL}/issues`);
+        break;
+      case 'showShortcuts':
+        window.alert('快捷键\n\nCtrl+Enter: 发送/聚焦输入\nCtrl+B: 切换侧边栏\nCtrl+Shift+S: 切换 RAG 面板\nCtrl+T: 工具面板\nCtrl+.: 停止执行');
+        break;
+      case 'showAbout':
+        window.alert(`AI Agent Desktop\n\nVersion: ${platformInfo?.version || '1.0.15'}\nWorkspace: ${workingDirectory || '未设置'}`);
         break;
       default:
         break;
     }
-  }, [handleNewTask, handleSaveTask, handleExport, runtime]);
+  }, [
+    handleExport,
+    handleInsertText,
+    handleNewTask,
+    handleProjectTreeRefresh,
+    handleSaveTask,
+    handleWorkingDirectoryChange,
+    ipc,
+    platformInfo,
+    refreshRagDocuments,
+    runtime,
+    workingDirectory
+  ]);
   
   // 点击菜单外部关闭菜单
   useEffect(() => {
@@ -973,12 +1288,6 @@ function App() {
     chatInputRef.current?.focus();
   }, []);
 
-  const handleInsertText = useCallback((text) => {
-    setChatInput(text);
-    setShowSuggestions(text.trimStart().startsWith('/'));
-    chatInputRef.current?.focus();
-  }, []);
-  
   const handleSuggestionsClose = useCallback(() => {
     setShowSuggestions(false);
   }, []);
@@ -1007,6 +1316,15 @@ function App() {
             agentOptions={agentOptions}
             onOptionsChange={setAgentOptions}
             onInsertText={handleInsertText}
+            projectTree={{
+              directoryChildren,
+              expandedDirectories,
+              loadingDirectories,
+              status: projectTreeStatus,
+              error: projectTreeError,
+              onToggleDirectory: handleProjectDirectoryToggle,
+              onRefresh: handleProjectTreeRefresh
+            }}
           />
         );
       
@@ -1023,7 +1341,7 @@ function App() {
         return null;
     }
   };
-  
+
   // ================== 渲染摘要面板 (Codex Style) ==================
   const renderSummaryPanel = () => {
     if (!summaryPanelVisible) return null;
@@ -1045,8 +1363,12 @@ function App() {
                   if (!window.electronAPI) return;
                   const result = await window.electronAPI.openFileDialog({ properties: ['openFile', 'multiSelections'] });
                   const paths = result?.filePaths || result || [];
-                  const files = (paths || []).map(p => ({ name: p.split('/').pop(), path: p }));
-                  setRagDocs(prev => [...prev, ...files]);
+                  const files = (paths || []).map(p => ({
+                    name: getDocumentDisplayName(p),
+                    path: p,
+                    indexed: false,
+                  }));
+                  setRagDocs(prev => mergeRagDocuments(prev, files));
                 } catch (err) {
                   console.error('选择文件失败', err);
                 }
@@ -1061,9 +1383,13 @@ function App() {
                 setRagIndexProgress(0);
                 try {
                   const paths = ragDocs.map(d => d.path);
-                  // 使用 agent:processInput 传递 init_rag 指令到主进程处理索引（主进程需支持）
-                  if (window.electronAPI) {
-                    await window.electronAPI.processInput('init_rag', { docs: paths });
+                  if (ipc.processInput) {
+                    const result = await ipc.processInput('init_rag', { docs: paths });
+                    const indexedDocs = normalizeRagDocuments(result?.documents || []);
+                    if (indexedDocs.length > 0) {
+                      setRagDocs(prev => mergeRagDocuments(prev, indexedDocs));
+                    }
+                    await refreshRagDocuments();
                   }
                   setRagStatus('ready');
                   setRagIndexProgress(100);
@@ -1095,7 +1421,14 @@ function App() {
                 </div>
                 <button
                   style={styles.button}
-                  onClick={() => setRagDocs(prev => prev.filter((_, idx) => idx !== i))}
+                  onClick={async () => {
+                    if (doc.indexed && doc.id && ipc.processInput) {
+                      await ipc.processInput(`/doc clear ${doc.id}`);
+                      await refreshRagDocuments();
+                      return;
+                    }
+                    setRagDocs(prev => prev.filter((_, idx) => idx !== i));
+                  }}
                 >移除</button>
               </div>
             ))
@@ -1115,10 +1448,18 @@ function App() {
             >快速创建文档搜索命令</button>
             <button
               style={styles.button}
-              onClick={() => {
-                setRagDocs([]);
-                setRagStatus('idle');
-                setRagIndexProgress(0);
+              onClick={async () => {
+                try {
+                  if (ipc.processInput) {
+                    await ipc.processInput('/doc clear');
+                  }
+                } catch (error) {
+                  console.error('清空 RAG 索引失败', error);
+                } finally {
+                  setRagDocs([]);
+                  setRagStatus('idle');
+                  setRagIndexProgress(0);
+                }
               }}
             >重置 RAG</button>
           </div>

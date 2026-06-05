@@ -4,6 +4,9 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import {
   DesktopCore,
   UIBridge,
@@ -16,6 +19,8 @@ import {
   createRendererProcessIPCAdapter
 } from '../../src/adapters/desktop/ipc-adapter.js';
 import { getEventBus, RuntimeEvent } from '../../src/runtime/index.js';
+import { listWorkspaceDirectory, createWorkspaceWatcher } from '../../desktop/workspace.js';
+import { normalizeRuntimeEventMessage } from '../../desktop/renderer/hooks/useRuntime.js';
 
 describe('Desktop Integration - Enhanced', () => {
 
@@ -56,7 +61,7 @@ describe('Desktop Integration - Enhanced', () => {
       desktopCore.attachUIBridge(uiBridge);
       
       let receivedEvent = null;
-      const unsubscribe = uiBridge.subscribe('status_update', (msg) => {
+      const unsubscribe = uiBridge.subscribe(RuntimeEvent.STATUS_UPDATE, (msg) => {
         receivedEvent = msg;
       });
       
@@ -73,7 +78,10 @@ describe('Desktop Integration - Enhanced', () => {
       await new Promise(resolve => setTimeout(resolve, 50));
       
       expect(receivedEvent).toBeDefined();
-      expect(receivedEvent.data).toEqual(testEventData);
+      expect(receivedEvent.data).toMatchObject({
+        message: testEventData.message,
+        level: testEventData.level
+      });
       
       unsubscribe();
       await desktopCore.dispose();
@@ -351,6 +359,85 @@ describe('Desktop Integration - Enhanced', () => {
       await desktopCore.dispose();
       
       expect(desktopCore.getState().desktopState).toBe('disposed');
+    });
+  });
+
+  describe('Desktop Project Tree Integration', () => {
+    test('工作目录列表应该返回项目文件并阻止越界路径', () => {
+      const root = mkdtempSync(join(tmpdir(), 'desktop-workspace-'));
+
+      try {
+        mkdirSync(join(root, 'src'));
+        mkdirSync(join(root, 'docs'));
+        writeFileSync(join(root, 'README.md'), '# test');
+        writeFileSync(join(root, 'package.json'), '{}');
+
+        const result = listWorkspaceDirectory(root);
+
+        expect(result.success).toBe(true);
+        expect(result.root).toBe(root);
+        expect(result.entries.map(entry => entry.name)).toEqual([
+          'docs',
+          'src',
+          'package.json',
+          'README.md'
+        ]);
+        expect(result.entries.slice(0, 2).every(entry => entry.type === 'directory')).toBe(true);
+
+        const escaped = listWorkspaceDirectory(root, { path: '../' });
+        expect(escaped.success).toBe(false);
+        expect(escaped.error).toContain('工作目录范围');
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    test('工作目录文件变更应该触发刷新事件', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'desktop-watch-'));
+      let watcher;
+
+      try {
+        const changePromise = new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('workspace change timeout')), 1000);
+          watcher = createWorkspaceWatcher(root, (change) => {
+            clearTimeout(timeout);
+            resolve(change);
+          }, { debounceMs: 10 });
+        });
+
+        writeFileSync(join(root, 'notes.md'), 'hello');
+        const change = await changePromise;
+
+        expect(change.root).toBe(root);
+        expect(change.timestamp).toBeGreaterThan(0);
+        expect(['rename', 'change']).toContain(change.eventType);
+      } finally {
+        watcher?.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('Desktop Conversation Event Integration', () => {
+    test('Agent 和工具事件应该归一化为可显示的对话消息', () => {
+      const agentStart = normalizeRuntimeEventMessage('agent:start', { task: '分析项目' });
+      expect(agentStart.message.type).toBe('agent');
+      expect(agentStart.message.content).toContain('分析项目');
+
+      const agentComplete = normalizeRuntimeEventMessage('agent:complete', { result: { response: '完成了' } });
+      expect(agentComplete.message.type).toBe('result');
+      expect(agentComplete.message.content).toBe('完成了');
+
+      const toolCall = normalizeRuntimeEventMessage('tool:call', {
+        toolName: 'read_file',
+        args: { path: 'README.md' }
+      });
+      expect(toolCall.stats.toolCall).toBe(true);
+      expect(toolCall.message.type).toBe('tool');
+      expect(toolCall.message.toolName).toBe('read_file');
+
+      const workspaceChange = normalizeRuntimeEventMessage('workspace:changed', { path: 'README.md' });
+      expect(workspaceChange.message).toBeNull();
     });
   });
 

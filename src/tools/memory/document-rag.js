@@ -21,27 +21,25 @@ const chunks = [];
 let embedderPromise = null;
 
 // Document RAG persistence: survives agent restart
-let stateLoaded = false;
-let persistDir = null;
+let loadedPersistDir = null;
 
 function getPersistDir(workingDir) {
-  if (!persistDir) {
-    persistDir = join(workingDir || process.cwd(), '.agent-data', 'doc-rag');
-  }
-  return persistDir;
+  return join(resolve(workingDir || process.cwd()), '.agent-data', 'doc-rag');
 }
 
 async function ensureState(workingDir) {
-  if (stateLoaded) return;
-  stateLoaded = true;
   const dir = getPersistDir(workingDir);
+  if (loadedPersistDir === dir) return;
+
+  loadedPersistDir = dir;
+  documents.clear();
+  chunks.length = 0;
+
   try {
     const docJson = await readFile(join(dir, 'documents.json'), 'utf-8');
     const chunkJson = await readFile(join(dir, 'chunks.json'), 'utf-8');
     const loadedDocs = JSON.parse(docJson);
     const loadedChunks = JSON.parse(chunkJson);
-    documents.clear();
-    chunks.length = 0;
     for (const [key, val] of Object.entries(loadedDocs)) documents.set(key, val);
     chunks.push(...loadedChunks);
   } catch {}
@@ -320,14 +318,17 @@ async function loadURL(url, title) {
 
 async function parseBuffer(buffer, kind) {
   if (kind === 'pdf') {
-    const { PDFParse } = await import('pdf-parse');
-    const parser = new PDFParse({ data: buffer });
-    try {
-      const result = await parser.getText();
-      return normalizeText(result.text || '');
-    } finally {
-      await parser.destroy();
-    }
+    ensurePdfJsNodeGlobals();
+    return await withSuppressedPdfJsCanvasWarnings(async () => {
+      const { PDFParse } = await import('pdf-parse');
+      const parser = new PDFParse({ data: buffer });
+      try {
+        const result = await parser.getText();
+        return normalizeText(result.text || '');
+      } finally {
+        await parser.destroy();
+      }
+    });
   }
 
   if (kind === 'docx') {
@@ -341,6 +342,40 @@ async function parseBuffer(buffer, kind) {
     return cleanHTML(text);
   }
   return normalizeText(text);
+}
+
+function ensurePdfJsNodeGlobals() {
+  if (typeof globalThis.DOMMatrix === 'undefined') {
+    globalThis.DOMMatrix = class DOMMatrix {};
+  }
+  if (typeof globalThis.ImageData === 'undefined') {
+    globalThis.ImageData = class ImageData {};
+  }
+  if (typeof globalThis.Path2D === 'undefined') {
+    globalThis.Path2D = class Path2D {};
+  }
+}
+
+async function withSuppressedPdfJsCanvasWarnings(fn) {
+  const originalWarn = console.warn;
+  console.warn = (...args) => {
+    const message = args.map(arg => String(arg)).join(' ');
+    if (
+      message.includes('Cannot load "@napi-rs/canvas"') ||
+      message.includes('Cannot polyfill `DOMMatrix`') ||
+      message.includes('Cannot polyfill `ImageData`') ||
+      message.includes('Cannot polyfill `Path2D`')
+    ) {
+      return;
+    }
+    originalWarn(...args);
+  };
+
+  try {
+    return await fn();
+  } finally {
+    console.warn = originalWarn;
+  }
 }
 
 function chunkText(text) {

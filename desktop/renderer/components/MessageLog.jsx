@@ -246,6 +246,12 @@ const styles = {
     color: '#6f42c1',
     border: '1px solid #6f42c1'
   },
+
+  typeAgent: {
+    backgroundColor: 'rgba(76, 201, 240, 0.12)',
+    color: 'var(--primary-color)',
+    border: '1px solid rgba(76, 201, 240, 0.5)'
+  },
   
   messageTime: {
     fontSize: '11px',
@@ -681,12 +687,16 @@ function MessageLog({ messages, status, onClear }) {
         return { ...styles.messageType, ...styles.typeDebug };
       case 'tool':
         return { ...styles.messageType, ...styles.typeTool };
+      case 'tool_result':
+        return { ...styles.messageType, ...styles.typeResult };
       case 'event':
         return { ...styles.messageType, ...styles.typeEvent };
       case 'result':
         return { ...styles.messageType, ...styles.typeResult };
       case 'user':
         return { ...styles.messageType, ...styles.typeUser };
+      case 'agent':
+        return { ...styles.messageType, ...styles.typeAgent };
       default:
         return styles.messageType;
     }
@@ -707,12 +717,16 @@ function MessageLog({ messages, status, onClear }) {
         return { icon: '🔍', text: '调试' };
       case 'tool':
         return { icon: '🔧', text: '工具' };
+      case 'tool_result':
+        return { icon: '📦', text: '工具结果' };
       case 'event':
         return { icon: '✨', text: '事件' };
       case 'result':
         return { icon: '📊', text: '结果' };
       case 'user':
         return { icon: '👤', text: '用户' };
+      case 'agent':
+        return { icon: 'AI', text: 'Agent' };
       default:
         return { icon: '📄', text: '消息' };
     }

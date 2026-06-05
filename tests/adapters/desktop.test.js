@@ -234,10 +234,10 @@ describe('MainProcessIPCAdapter', () => {
       },
       
       // 模拟处理请求
-      simulateHandle: async (channel, event) => {
+      simulateHandle: async (channel, event, ...args) => {
         const handler = mockIpcMain.handlers.get(channel);
         if (handler) {
-          return await handler(event);
+          return await handler(event, ...args);
         }
         return null;
       }
@@ -299,6 +299,93 @@ describe('MainProcessIPCAdapter', () => {
     adapter.attachEngine(mockEngine);
     
     expect(adapter.getStats()).toBeDefined();
+  });
+
+  test('应该在 Desktop IPC 中本地处理 /doc search 命令', async () => {
+    await adapter.initialize();
+
+    let processInputCalled = false;
+    let documentSearchArgs = null;
+    const mockEngine = {
+      processInput: async () => {
+        processInputCalled = true;
+        return { result: 'agent path' };
+      },
+      getToolRegistry: () => ({
+        execute: async (name, args) => {
+          if (name !== 'document_search') {
+            throw new Error(`unexpected tool: ${name}`);
+          }
+          documentSearchArgs = args;
+          return '1. Policy\n\nThe refund window is 14 days.';
+        }
+      }),
+      getModelProvider: () => null,
+      getConfig: () => ({ workingDirectory: process.cwd(), debug: false }),
+      stop: () => {},
+      getState: () => ({ status: 'idle' }),
+      getTools: () => []
+    };
+    adapter.attachEngine(mockEngine);
+
+    const result = await mockIpcMain.simulateHandle(
+      'agent:processInput',
+      { sender: { id: 123 } },
+      { input: '/doc search refund window', options: {} }
+    );
+
+    expect(processInputCalled).toBe(false);
+    expect(documentSearchArgs).toEqual({ query: 'refund window', limit: 5 });
+    expect(result.localCommand).toBe(true);
+    expect(result.kind).toBe('document_command');
+    expect(result.content).toContain('refund window');
+  });
+
+  test('应该在 Desktop IPC 中持久化处理 init_rag 文档初始化', async () => {
+    await adapter.initialize();
+
+    let processInputCalled = false;
+    const addedSources = [];
+    const mockEngine = {
+      processInput: async () => {
+        processInputCalled = true;
+        return { result: 'agent path' };
+      },
+      getToolRegistry: () => ({
+        execute: async (name, args) => {
+          if (name !== 'document_add') {
+            throw new Error(`unexpected tool: ${name}`);
+          }
+          addedSources.push(args.source);
+          return {
+            success: true,
+            id: args.source.split('/').pop(),
+            title: args.source.split('/').pop(),
+            source: args.source,
+            kind: 'text',
+            chunks: 1,
+          };
+        }
+      }),
+      getConfig: () => ({ workingDirectory: process.cwd(), debug: false }),
+      stop: () => {},
+      getState: () => ({ status: 'idle' }),
+      getTools: () => []
+    };
+    adapter.attachEngine(mockEngine);
+
+    const result = await mockIpcMain.simulateHandle(
+      'agent:processInput',
+      { sender: { id: 123 } },
+      { input: 'init_rag', options: { docs: ['/tmp/a.md', '/tmp/b.md'] } }
+    );
+
+    expect(processInputCalled).toBe(false);
+    expect(addedSources).toEqual(['/tmp/a.md', '/tmp/b.md']);
+    expect(result.localCommand).toBe(true);
+    expect(result.kind).toBe('document_command');
+    expect(result.documents.length).toBe(2);
+    expect(result.content).toContain('Indexed documents: 2/2');
   });
 
   test('应该正确广播消息', async () => {

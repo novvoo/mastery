@@ -229,10 +229,20 @@ export function useIPC() {
   const getAppPath = useCallback(async (name) => {
     return invoke('app:getPath', name);
   }, [invoke]);
+
+  // 打开外部链接
+  const openExternal = useCallback(async (url) => {
+    return invoke('app:openExternal', url);
+  }, [invoke]);
   
   // 设置工作目录
   const setWorkingDirectory = useCallback(async (directory) => {
     return invoke('workspace:setWorkingDirectory', directory);
+  }, [invoke]);
+
+  // 列出工作目录内容
+  const listDirectory = useCallback(async (path = '') => {
+    return invoke('workspace:listDirectory', { path });
   }, [invoke]);
 
   // 获取 LLM 配置状态
@@ -284,6 +294,16 @@ export function useIPC() {
     }
 
     const unsub = window.electronAPI.onWindowStateChange(callback);
+    subscriptionsRef.current.push(unsub);
+    return unsub;
+  }, [hasElectronAPI, subscribe]);
+
+  const onWorkspaceChanged = useCallback((callback) => {
+    if (!hasElectronAPI() || !window.electronAPI.onWorkspaceChanged) {
+      return subscribe('workspace:changed', callback);
+    }
+
+    const unsub = window.electronAPI.onWorkspaceChanged(callback);
     subscriptionsRef.current.push(unsub);
     return unsub;
   }, [hasElectronAPI, subscribe]);
@@ -371,9 +391,11 @@ export function useIPC() {
     // 应用信息
     getAppInfo,
     getAppPath,
+    openExternal,
     
     // 工作空间
     setWorkingDirectory,
+    listDirectory,
 
     // LLM 配置
     getLLMConfigStatus,
@@ -387,6 +409,7 @@ export function useIPC() {
     onToolResult,
     onStatusUpdate,
     onWindowStateChange,
+    onWorkspaceChanged,
     
     // 平台信息
     getPlatform,
