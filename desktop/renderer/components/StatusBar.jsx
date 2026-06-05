@@ -11,56 +11,57 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '8px 16px',
-    backgroundColor: '#16213e',
-    borderTop: '1px solid #0f3460'
+    minHeight: '32px',
+    padding: '0 14px',
+    backgroundColor: '#11161e',
+    borderTop: '1px solid var(--border-subtle)'
   },
   
   leftSection: {
     display: 'flex',
     alignItems: 'center',
-    gap: '16px'
+    gap: '12px'
   },
   
   rightSection: {
     display: 'flex',
     alignItems: 'center',
-    gap: '16px'
+    gap: '12px'
   },
   
   statusItem: {
     display: 'flex',
     alignItems: 'center',
-    gap: '4px',
-    fontSize: '12px',
-    color: '#888888'
+    gap: '6px',
+    fontSize: '11px',
+    color: 'var(--text-muted)'
   },
   
   statusDot: {
-    width: '8px',
-    height: '8px',
+    width: '7px',
+    height: '7px',
     borderRadius: '50%'
   },
   
   dotConnected: {
-    backgroundColor: '#28a745'
+    backgroundColor: 'var(--success-color)'
   },
   
   dotDisconnected: {
-    backgroundColor: '#dc3545'
+    backgroundColor: 'var(--error-color)'
   },
   
   dotRunning: {
-    backgroundColor: '#ffc107',
+    backgroundColor: 'var(--warning-color)',
     animation: 'pulse 1s infinite'
   },
   
   dotIdle: {
-    backgroundColor: '#17a2b8'
+    backgroundColor: 'var(--info-color)'
   },
   
   dotError: {
-    backgroundColor: '#dc3545'
+    backgroundColor: 'var(--error-color)'
   },
   
   statusText: {
@@ -70,12 +71,12 @@ const styles = {
   separator: {
     width: '1px',
     height: '16px',
-    backgroundColor: '#0f3460'
+    backgroundColor: 'var(--border-subtle)'
   },
   
   versionText: {
     fontSize: '11px',
-    color: '#666666'
+    color: 'var(--text-dark)'
   }
 };
 
@@ -163,7 +164,7 @@ function StatusBar({ status, workingDirectory, toolCount, isConnected, stats }) 
         {/* 工作目录 */}
         <div style={styles.statusItem}>
           <span style={styles.statusText}>
-            📁 {formatWorkingDirectory()}
+            {formatWorkingDirectory()}
           </span>
         </div>
         
@@ -172,7 +173,7 @@ function StatusBar({ status, workingDirectory, toolCount, isConnected, stats }) 
         {/* 工具数量 */}
         <div style={styles.statusItem}>
           <span style={styles.statusText}>
-            🔧 {toolCount} 工具
+            {toolCount} 工具
           </span>
         </div>
       </div>

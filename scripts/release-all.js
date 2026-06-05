@@ -36,7 +36,7 @@ function warn(message) {
   log(`⚠️  ${message}`, 'yellow');
 }
 
-function error(message) {
+function logError(message) {
   log(`❌ ${message}`, 'red');
 }
 
@@ -52,8 +52,9 @@ async function publishCLI() {
     
     success('CLI package published successfully!');
     return true;
-  } catch (error) {
-    error('Failed to publish CLI package');
+  } catch (err) {
+    logError('Failed to publish CLI package');
+    console.error(err);
     return false;
   }
 }
@@ -62,6 +63,12 @@ async function publishDesktop() {
   info('Publishing Desktop application to GitHub Releases...');
   
   try {
+    info('Building Desktop renderer...');
+    execSync('npm run desktop:renderer:build', {
+      cwd: rootDir,
+      stdio: 'inherit'
+    });
+
     // 发布 Desktop 到 GitHub
     execSync('npx electron-builder --publish always', { 
       cwd: rootDir, 
@@ -70,8 +77,9 @@ async function publishDesktop() {
     
     success('Desktop application published successfully!');
     return true;
-  } catch (error) {
-    error('Failed to publish Desktop application');
+  } catch (err) {
+    logError('Failed to publish Desktop application');
+    console.error(err);
     return false;
   }
 }
@@ -101,7 +109,7 @@ async function main() {
     log('   - npm: https://www.npmjs.com/package/ai-engineering-mastery-agent');
     log('   - GitHub Releases: Check your repository');
   } else {
-    error('Some releases failed');
+    logError('Some releases failed');
     process.exit(1);
   }
 }

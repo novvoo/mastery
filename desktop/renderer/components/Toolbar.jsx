@@ -11,15 +11,16 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '8px 12px',
-    backgroundColor: '#16213e',
-    borderBottom: '1px solid #0f3460'
+    minHeight: '44px',
+    padding: '6px 14px',
+    backgroundColor: '#141922',
+    borderBottom: '1px solid var(--border-subtle)'
   },
   
   leftSection: {
     display: 'flex',
     alignItems: 'center',
-    gap: '4px'
+    gap: '6px'
   },
   
   rightSection: {
@@ -31,30 +32,34 @@ const styles = {
   toolbarButton: {
     display: 'flex',
     alignItems: 'center',
-    gap: '4px',
-    padding: '6px 10px',
-    borderRadius: '4px',
-    border: 'none',
+    gap: '6px',
+    height: '30px',
+    padding: '0 10px',
+    borderRadius: '6px',
+    border: '1px solid transparent',
     backgroundColor: 'transparent',
-    color: '#888888',
+    color: 'var(--text-muted)',
     cursor: 'pointer',
-    fontSize: '13px',
+    fontSize: '12px',
+    fontWeight: '600',
     transition: 'all 0.2s',
     position: 'relative'
   },
   
   toolbarButtonHover: {
-    backgroundColor: '#0f3460',
-    color: '#eaeaea'
+    backgroundColor: 'var(--surface-hover)',
+    color: 'var(--text-color)'
   },
   
   toolbarButtonActive: {
-    backgroundColor: '#e94560',
-    color: '#ffffff'
+    backgroundColor: 'var(--primary-soft)',
+    border: '1px solid rgba(76, 201, 240, 0.32)',
+    color: 'var(--primary-color)'
   },
   
   icon: {
-    fontSize: '14px'
+    fontSize: '12px',
+    color: 'var(--text-dark)'
   },
   
   badge: {
@@ -65,8 +70,8 @@ const styles = {
     height: '16px',
     padding: '0 4px',
     borderRadius: '8px',
-    backgroundColor: '#e94560',
-    color: '#ffffff',
+    backgroundColor: 'var(--primary-soft)',
+    color: 'var(--primary-color)',
     fontSize: '11px',
     display: 'flex',
     alignItems: 'center',
@@ -76,32 +81,38 @@ const styles = {
   separator: {
     width: '1px',
     height: '20px',
-    backgroundColor: '#0f3460',
-    margin: '0 4px'
+    backgroundColor: 'var(--border-subtle)',
+    margin: '0 6px'
   },
   
   statusIndicator: {
     display: 'flex',
     alignItems: 'center',
-    gap: '4px',
-    padding: '4px 8px',
-    borderRadius: '4px',
-    fontSize: '12px'
+    gap: '6px',
+    height: '26px',
+    padding: '0 10px',
+    borderRadius: '999px',
+    fontSize: '12px',
+    fontWeight: '600',
+    border: '1px solid transparent'
   },
   
   statusReady: {
-    backgroundColor: 'rgba(40, 167, 69, 0.2)',
-    color: '#28a745'
+    backgroundColor: 'rgba(93, 211, 158, 0.12)',
+    border: '1px solid rgba(93, 211, 158, 0.28)',
+    color: 'var(--success-color)'
   },
   
   statusRunning: {
-    backgroundColor: 'rgba(255, 193, 7, 0.2)',
-    color: '#ffc107'
+    backgroundColor: 'rgba(246, 200, 95, 0.12)',
+    border: '1px solid rgba(246, 200, 95, 0.28)',
+    color: 'var(--warning-color)'
   },
   
   statusError: {
-    backgroundColor: 'rgba(220, 53, 69, 0.2)',
-    color: '#dc3545'
+    backgroundColor: 'rgba(255, 107, 122, 0.12)',
+    border: '1px solid rgba(255, 107, 122, 0.28)',
+    color: 'var(--error-color)'
   }
 };
 
@@ -143,11 +154,11 @@ function Toolbar({
   const getStatusText = () => {
     switch (status) {
       case 'running':
-        return '🔄 运行中';
+        return '运行中';
       case 'error':
-        return '❌ 错误';
+        return '错误';
       default:
-        return '✅ 就绪';
+        return '就绪';
     }
   };
   
@@ -161,15 +172,15 @@ function Toolbar({
       onClick={onClick}
       title={label}
       onMouseEnter={(e) => {
-        e.currentTarget.style.backgroundColor = active ? '#e94560' : '#0f3460';
-        e.currentTarget.style.color = active ? '#ffffff' : '#eaeaea';
+        e.currentTarget.style.backgroundColor = active ? 'var(--primary-soft)' : 'var(--surface-hover)';
+        e.currentTarget.style.color = active ? 'var(--primary-color)' : 'var(--text-color)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = active ? '#e94560' : 'transparent';
-        e.currentTarget.style.color = active ? '#ffffff' : '#888888';
+        e.currentTarget.style.backgroundColor = active ? 'var(--primary-soft)' : 'transparent';
+        e.currentTarget.style.color = active ? 'var(--primary-color)' : 'var(--text-muted)';
       }}
     >
-      <span style={styles.icon}>{icon}</span>
+      {icon && <span style={styles.icon}>{icon}</span>}
       <span>{label}</span>
       {badge > 0 && (
         <span style={styles.badge}>{badge}</span>
@@ -182,19 +193,19 @@ function Toolbar({
       {/* 左侧按钮 */}
       <div style={styles.leftSection}>
         {renderButton({
-          icon: '📝',
+          icon: '+',
           label: '新建',
           onClick: onNewTask
         })}
         
         {renderButton({
-          icon: '📂',
+          icon: '⌘',
           label: '打开',
           onClick: onLoadTask
         })}
         
         {renderButton({
-          icon: '💾',
+          icon: 'S',
           label: '保存',
           onClick: onSaveTask
         })}
@@ -202,7 +213,7 @@ function Toolbar({
         <div style={styles.separator}></div>
         
         {renderButton({
-          icon: '📤',
+          icon: '↗',
           label: '导出',
           onClick: onExport
         })}
@@ -210,13 +221,13 @@ function Toolbar({
         <div style={styles.separator}></div>
         
         {renderButton({
-          icon: '⚙️',
+          icon: '',
           label: '设置',
           onClick: onSettings
         })}
         
         {renderButton({
-          icon: '❓',
+          icon: '',
           label: '帮助',
           onClick: onHelp
         })}
@@ -231,9 +242,8 @@ function Toolbar({
             alignItems: 'center',
             gap: '4px',
             fontSize: '12px',
-            color: '#888888'
+            color: 'var(--text-muted)'
           }}>
-            <span>📋</span>
             <span>{taskCount} 任务</span>
           </div>
         )}

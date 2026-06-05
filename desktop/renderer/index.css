@@ -5,22 +5,26 @@
 
 :root {
   /* 颜色主题 */
-  --primary-color: #e94560;
-  --primary-dark: #c73e54;
-  --secondary-color: #0f3460;
-  --accent-color: #16213e;
-  --background-color: #1a1a2e;
-  --surface-color: #16213e;
-  --border-color: #0f3460;
-  --text-color: #eaeaea;
-  --text-muted: #888888;
-  --text-dark: #666666;
+  --primary-color: #4cc9f0;
+  --primary-dark: #2aa7cf;
+  --primary-soft: rgba(76, 201, 240, 0.14);
+  --secondary-color: #242b36;
+  --accent-color: #171c25;
+  --background-color: #0f1218;
+  --surface-color: #171c25;
+  --surface-raised: #1d2430;
+  --surface-hover: #242b36;
+  --border-color: #2c3544;
+  --border-subtle: #222a36;
+  --text-color: #eef3f8;
+  --text-muted: #9aa6b2;
+  --text-dark: #6f7a86;
   
   /* 状态颜色 */
-  --success-color: #28a745;
-  --warning-color: #ffc107;
-  --error-color: #dc3545;
-  --info-color: #17a2b8;
+  --success-color: #5dd39e;
+  --warning-color: #f6c85f;
+  --error-color: #ff6b7a;
+  --info-color: #7dd3fc;
   
   /* 字体 */
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -42,9 +46,9 @@
   --radius-lg: 8px;
   
   /* 阴影 */
-  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.2);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.26);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.36);
   
   /* 过渡 */
   --transition-fast: 0.15s ease;
@@ -74,6 +78,13 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+button,
+input,
+textarea,
+select {
+  letter-spacing: 0;
+}
+
 /* 自定义滚动条 */
 ::-webkit-scrollbar {
   width: 8px;
@@ -81,11 +92,11 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--accent-color);
+  background: var(--background-color);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-color);
+  background: #354052;
   border-radius: var(--radius-sm);
 }
 
@@ -103,7 +114,7 @@ body {
 input, textarea, select {
   font-family: inherit;
   font-size: inherit;
-  background-color: var(--background-color);
+  background-color: #10151d;
   color: var(--text-color);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -114,6 +125,7 @@ input, textarea, select {
 input:focus, textarea:focus, select:focus {
   outline: none;
   border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
 input:disabled, textarea:disabled, select:disabled {
@@ -130,12 +142,12 @@ button {
   border-radius: var(--radius-md);
   padding: var(--spacing-sm) var(--spacing-lg);
   transition: all var(--transition-fast);
-  background-color: var(--secondary-color);
+  background-color: var(--surface-hover);
   color: var(--text-color);
 }
 
 button:hover:not(:disabled) {
-  background-color: var(--primary-color);
+  background-color: #2c3544;
 }
 
 button:disabled {

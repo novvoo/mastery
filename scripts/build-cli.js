@@ -31,7 +31,7 @@ function info(message) {
   log(`ℹ️  ${message}`, 'blue');
 }
 
-function error(message) {
+function logError(message) {
   log(`❌ ${message}`, 'red');
 }
 
@@ -55,8 +55,9 @@ async function buildCLI() {
     
     success('CLI package built successfully!');
     return true;
-  } catch (error) {
-    error('Failed to build CLI package');
+  } catch (err) {
+    logError('Failed to build CLI package');
+    console.error(err);
     return false;
   }
 }

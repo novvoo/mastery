@@ -484,6 +484,44 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
       }
     });
 
+    // 兼容 preload 中直接使用 ipcRenderer.invoke(channel, ...args) 的旧接口。
+    const directInvokeChannels = [
+      'agent:processInput',
+      'agent:stop',
+      'agent:getState',
+      'agent:getTools',
+      'agent:getStats',
+      'system:getStats',
+      'window:minimize',
+      'window:maximize',
+      'window:close',
+      'window:show',
+      'window:hide',
+      'window:getState',
+      'dialog:openFile',
+      'dialog:saveFile',
+      'dialog:openDirectory',
+      'notification:show',
+      'app:getInfo',
+      'app:getPath',
+      'workspace:setWorkingDirectory',
+      'llm:getConfigStatus',
+      'llm:saveConfig'
+    ];
+
+    for (const channel of directInvokeChannels) {
+      this.#ipcMain.handle(channel, async (event, ...args) => {
+        const payload = args.length <= 1 ? args[0] : args;
+        const message = new IPCMessage(IPCMessageType.REQUEST, payload, {
+          metadata: { channel },
+          source: 'renderer',
+          target: 'main'
+        });
+        const response = await this.#handleRequest(message, event.sender);
+        return response.payload;
+      });
+    }
+
     // 处理心跳响应
     this.#ipcMain.on(IPCMessageType.HEARTBEAT, (event, data) => {
       this.lastHeartbeat = Date.now();
@@ -562,8 +600,9 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
         if (!this.#engine) {
           return this.createResponse(message, []);
         }
-        return this.createResponse(message, this.#engine.getTools());
+        return this.createResponse(message, this.#serializeTools(this.#engine.getTools()));
 
+      case 'agent:getStats':
       case 'system:getStats':
         return this.createResponse(message, this.getStats());
 
@@ -577,6 +616,14 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
         
         throw new Error(`未知的频道: ${channel}`);
     }
+  }
+
+  #serializeTools(tools) {
+    if (!Array.isArray(tools)) {
+      return [];
+    }
+
+    return tools.map(({ handler, execute, fn, ...tool }) => tool);
   }
 
   /**

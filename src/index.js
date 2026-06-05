@@ -2131,6 +2131,11 @@ class AIEngineeringAgent {
         inputChars: preparedInput.length,
         result: result?.answer ? 'completed' : 'unknown',
       });
+      if (result?.answer) {
+        enhancedUI.finalAnswer(result.answer);
+      } else if (result?.status === 'max_iterations') {
+        enhancedUI.warning('Agent stopped after reaching the maximum iteration limit without a final answer.');
+      }
     } catch (error) {
       spinner.stop();
       enhancedUI.error(`Agent error: ${error.message}`);

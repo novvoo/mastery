@@ -23,7 +23,22 @@ import {
   createMainProcessIPCAdapter,
   IPCMessageType
 } from '../src/adapters/desktop/ipc-adapter.js';
-import { RuntimeEvent, getEventBus } from '../src/runtime/index.js';
+import {
+  getMissingRequiredConfig,
+  getProviderBaseUrl,
+  getProviderModel,
+  getProviderRequirement,
+  getUserEnvPath,
+  loadRuntimeEnv,
+  writeUserEnv,
+  applyRuntimeValues
+} from '../src/core/runtime-config.js';
+import { OpenAIModelProvider } from '../src/models/openai-provider.js';
+import { LlamaModelProvider } from '../src/models/llama-provider.js';
+import { ZhipuModelProvider } from '../src/models/zhipu-provider.js';
+import { DeepSeekModelProvider } from '../src/models/deepseek-provider.js';
+import { OpenRouterModelProvider } from '../src/models/openrouter-provider.js';
+import { resolveModelCapabilities } from '../src/models/model-capabilities.js';
 
 /**
  * Electron 主进程应用类
@@ -35,11 +50,13 @@ class ElectronMainApp {
   #tray = null;
   #config = null;
   #isQuitting = false;
+  #userEnvPath = null;
 
   constructor(config = {}) {
+    this.#userEnvPath = config.userEnvPath || getUserEnvPath();
     this.#config = {
       workingDirectory: config.workingDirectory || this.#getDefaultWorkingDirectory(),
-      debug: config.debug || process.env.NODE_ENV === 'development',
+      debug: config.debug || process.env.NODE_ENV === 'development' || process.argv.includes('--dev'),
       
       // 窗口配置
       window: {
@@ -84,6 +101,14 @@ class ElectronMainApp {
    * 获取默认工作目录
    */
   #getDefaultWorkingDirectory() {
+    if (process.env.WORKING_DIRECTORY) {
+      const envWorkingDirectory = path.resolve(process.env.WORKING_DIRECTORY);
+      if (!fs.existsSync(envWorkingDirectory)) {
+        fs.mkdirSync(envWorkingDirectory, { recursive: true });
+      }
+      return envWorkingDirectory;
+    }
+
     // 在打包后的应用中，工作目录应该是用户数据目录
     const userDataPath = app.getPath('userData');
     const projectsPath = path.join(userDataPath, 'projects');
@@ -116,9 +141,10 @@ class ElectronMainApp {
 
     // 初始化 Desktop Core
     await this.#initializeDesktopCore();
+    await this.#attachConfiguredModelProvider();
 
     // 初始化 IPC 适配器
-    this.#initializeIPCAdapter();
+    await this.#initializeIPCAdapter();
 
     // 创建托盘图标（如果启用）
     if (this.#config.tray) {
@@ -320,15 +346,17 @@ class ElectronMainApp {
   #loadPage() {
     if (this.#config.debug) {
       // 开发模式：加载本地开发服务器
-      const devServerUrl = process.env.DEV_SERVER_URL || 'http://localhost:5173';
+      const devServerUrl = process.env.DEV_SERVER_URL || 'http://127.0.0.1:5173';
       this.#mainWindow.loadURL(devServerUrl).catch(err => {
         console.error('加载开发服务器失败:', err);
-        // 回退到加载本地文件
-        this.#mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
       });
     } else {
       // 生产模式：加载打包后的文件
-      this.#mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+      const rendererEntry = path.join(__dirname, 'renderer', 'dist', 'index.html');
+      if (!fs.existsSync(rendererEntry)) {
+        throw new Error(`找不到渲染进程入口文件: ${rendererEntry}。请先运行 npm run desktop:renderer:build。`);
+      }
+      this.#mainWindow.loadFile(rendererEntry);
     }
   }
 
@@ -336,6 +364,10 @@ class ElectronMainApp {
    * 设置窗口事件
    */
   #setupWindowEvents() {
+    const broadcastWindowState = () => {
+      this.#broadcastWindowState();
+    };
+
     // 窗口关闭处理
     this.#mainWindow.on('close', (event) => {
       if (!this.#isQuitting) {
@@ -358,6 +390,29 @@ class ElectronMainApp {
     this.#mainWindow.on('blur', () => {
       // 可以在这里处理窗口失去焦点时的逻辑
     });
+
+    this.#mainWindow.on('maximize', broadcastWindowState);
+    this.#mainWindow.on('unmaximize', broadcastWindowState);
+    this.#mainWindow.on('enter-full-screen', broadcastWindowState);
+    this.#mainWindow.on('leave-full-screen', broadcastWindowState);
+    this.#mainWindow.on('restore', broadcastWindowState);
+    this.#mainWindow.once('ready-to-show', broadcastWindowState);
+  }
+
+  #getWindowState() {
+    return {
+      isFullScreen: Boolean(this.#mainWindow?.isFullScreen()),
+      isMaximized: Boolean(this.#mainWindow?.isMaximized()),
+      platform: process.platform
+    };
+  }
+
+  #broadcastWindowState() {
+    if (!this.#mainWindow || this.#mainWindow.isDestroyed()) {
+      return;
+    }
+
+    this.#mainWindow.webContents.send('window:state', this.#getWindowState());
   }
 
   /**
@@ -403,14 +458,157 @@ class ElectronMainApp {
     console.log('✅ Desktop Core 初始化完成');
   }
 
+  async #attachConfiguredModelProvider() {
+    const missingVars = getMissingRequiredConfig();
+    if (missingVars.length > 0) {
+      console.warn(`⚠️  未配置 LLM: 缺少 ${missingVars.join(', ')}。可在 ${this.#userEnvPath || getUserEnvPath()} 或项目 .env 中配置。`);
+      return this.#getLLMConfigStatus();
+    }
+
+    const provider = process.env.MODEL_PROVIDER || 'openai';
+    const model = getProviderModel(provider);
+    const baseURL = getProviderBaseUrl(provider);
+
+    const capabilities = await resolveModelCapabilities({
+      provider,
+      model,
+      baseURL,
+      apiKey: this.#getProviderApiKey(provider)
+    });
+
+    let modelProvider;
+    if (provider === 'openai') {
+      modelProvider = new OpenAIModelProvider(
+        process.env.OPENAI_API_KEY,
+        baseURL,
+        model,
+        false,
+        { capabilities }
+      );
+    } else if (provider === 'llama') {
+      modelProvider = new LlamaModelProvider(model, {
+        capabilities,
+        debug: this.#config.debug
+      });
+    } else if (provider === 'zhipu') {
+      modelProvider = new ZhipuModelProvider(
+        process.env.ZHIPU_API_KEY,
+        baseURL,
+        model,
+        { capabilities }
+      );
+    } else if (provider === 'deepseek') {
+      modelProvider = new DeepSeekModelProvider(
+        process.env.DEEPSEEK_API_KEY,
+        baseURL,
+        model,
+        { capabilities }
+      );
+    } else if (provider === 'openrouter') {
+      modelProvider = new OpenRouterModelProvider(
+        process.env.OPENROUTER_API_KEY,
+        baseURL,
+        model,
+        { capabilities }
+      );
+    } else {
+      console.warn(`⚠️  未知 LLM provider: ${provider}`);
+      return;
+    }
+
+    this.attachModelProvider(modelProvider);
+    console.log(`✅ LLM 已配置: ${provider}:${model}`);
+    return this.#getLLMConfigStatus();
+  }
+
+  #getProviderApiKey(provider) {
+    if (provider === 'zhipu') return process.env.ZHIPU_API_KEY;
+    if (provider === 'deepseek') return process.env.DEEPSEEK_API_KEY;
+    if (provider === 'openrouter') return process.env.OPENROUTER_API_KEY;
+    return process.env.OPENAI_API_KEY;
+  }
+
+  #getLLMConfigStatus() {
+    const provider = process.env.MODEL_PROVIDER || 'openai';
+    const requirement = getProviderRequirement(provider);
+    const missingVars = getMissingRequiredConfig();
+
+    return {
+      configured: missingVars.length === 0,
+      provider,
+      model: getProviderModel(provider),
+      baseUrl: getProviderBaseUrl(provider),
+      missingVars,
+      userEnvPath: this.#userEnvPath || getUserEnvPath(),
+      keyVar: requirement?.keyVar || 'OPENAI_API_KEY',
+      modelVar: requirement?.modelVar || 'OPENAI_MODEL',
+      baseUrlVar: requirement?.baseUrlVar || 'OPENAI_BASE_URL'
+    };
+  }
+
+  async #saveLLMConfig(config = {}) {
+    const provider = config.provider || 'openai';
+    const requirement = getProviderRequirement(provider);
+    if (!requirement) {
+      return {
+        success: false,
+        error: `不支持的模型提供商: ${provider}`,
+        status: this.#getLLMConfigStatus()
+      };
+    }
+
+    const apiKey = String(config.apiKey || '').trim();
+    const model = String(config.model || requirement.defaultModel || '').trim();
+    const baseUrl = String(config.baseUrl || requirement.defaultBaseUrl || '').trim();
+
+    if (!apiKey) {
+      return {
+        success: false,
+        error: `${requirement.keyVar} 不能为空`,
+        status: this.#getLLMConfigStatus()
+      };
+    }
+
+    if (!model) {
+      return {
+        success: false,
+        error: `${requirement.modelVar} 不能为空`,
+        status: this.#getLLMConfigStatus()
+      };
+    }
+
+    const values = {
+      MODEL_PROVIDER: provider,
+      [requirement.keyVar]: apiKey,
+      [requirement.modelVar]: model
+    };
+
+    if (baseUrl) {
+      values[requirement.baseUrlVar] = baseUrl;
+    }
+
+    const envPath = writeUserEnv(values, {
+      envPath: this.#userEnvPath || getUserEnvPath()
+    });
+    applyRuntimeValues(values);
+    const status = await this.#attachConfiguredModelProvider();
+
+    return {
+      success: true,
+      envPath,
+      status
+    };
+  }
+
   /**
    * 初始化 IPC 适配器
    */
-  #initializeIPCAdapter() {
+  async #initializeIPCAdapter() {
     console.log('🔗 初始化 IPC 适配器...');
 
     // 附加 IPC 适配器到 Desktop Core
     this.#ipcAdapter = this.#desktopCore.attachIPCAdapter(ipcMain);
+    await this.#ipcAdapter.initialize();
 
     // 注册自定义 IPC 处理器
     this.#registerCustomHandlers();
@@ -440,8 +638,13 @@ class ElectronMainApp {
         } else {
           this.#mainWindow.maximize();
         }
+        this.#broadcastWindowState();
       }
       return { success: true };
+    });
+
+    this.#ipcAdapter.registerHandler('window:getState', async () => {
+      return this.#getWindowState();
     });
 
     this.#ipcAdapter.registerHandler('window:close', async () => {
@@ -560,6 +763,15 @@ class ElectronMainApp {
       }
       
       return { success: false, error: '目录不存在' };
+    });
+
+    // LLM 配置处理器
+    this.#ipcAdapter.registerHandler('llm:getConfigStatus', async () => {
+      return this.#getLLMConfigStatus();
+    });
+
+    this.#ipcAdapter.registerHandler('llm:saveConfig', async (config) => {
+      return this.#saveLLMConfig(config);
     });
 
     if (this.#config.debug) {
@@ -713,7 +925,12 @@ class ElectronMainApp {
     app.on('web-contents-created', (event, contents) => {
       contents.on('will-navigate', (event, navigationUrl) => {
         const parsedUrl = new URL(navigationUrl);
-        if (parsedUrl.origin !== 'http://localhost:5173' && parsedUrl.protocol !== 'file:') {
+        const allowedDevOrigins = new Set([
+          'http://localhost:5173',
+          'http://127.0.0.1:5173'
+        ]);
+
+        if (!allowedDevOrigins.has(parsedUrl.origin) && parsedUrl.protocol !== 'file:') {
           event.preventDefault();
         }
       });
@@ -917,6 +1134,15 @@ async function main() {
   console.log('╚═══════════════════════════════════════════════════════════════╝\n');
 
   try {
+    const desktopEnv = { ...process.env };
+    delete desktopEnv.AGENT_CONFIG_DIR;
+    const desktopUserEnvPath = getUserEnvPath({ env: desktopEnv });
+    const { userEnvPath, cwdEnvPath } = loadRuntimeEnv({
+      cwd: process.cwd(),
+      userEnvPath: desktopUserEnvPath
+    });
+    console.log(`🔐 已加载运行配置: ${userEnvPath}, ${cwdEnvPath}`);
+
     // 加载保存的配置（如果有）
     let savedConfig = {};
     try {
@@ -931,7 +1157,11 @@ async function main() {
     // 创建应用实例
     const electronApp = new ElectronMainApp({
       ...savedConfig,
-      debug: process.env.NODE_ENV === 'development'
+      ...(process.env.WORKING_DIRECTORY ? {
+        workingDirectory: path.resolve(process.env.WORKING_DIRECTORY)
+      } : {}),
+      userEnvPath,
+      debug: process.env.NODE_ENV === 'development' || process.argv.includes('--dev')
     });
 
     // 初始化应用

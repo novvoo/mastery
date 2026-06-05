@@ -23,15 +23,16 @@ const styles = {
   },
   
   section: {
-    padding: '12px',
-    borderBottom: '1px solid #0f3460'
+    padding: '14px',
+    borderBottom: '1px solid var(--border-subtle)'
   },
   
   sectionTitle: {
-    fontSize: '14px',
-    fontWeight: '600',
-    color: '#e94560',
-    marginBottom: '8px',
+    fontSize: '12px',
+    fontWeight: '700',
+    color: 'var(--text-muted)',
+    marginBottom: '10px',
+    textTransform: 'uppercase',
     display: 'flex',
     alignItems: 'center',
     gap: '8px'
@@ -48,35 +49,35 @@ const styles = {
   statusBadge: {
     display: 'inline-flex',
     alignItems: 'center',
-    padding: '4px 12px',
-    borderRadius: '12px',
+    padding: '4px 10px',
+    borderRadius: '999px',
     fontSize: '12px',
     fontWeight: '500',
     gap: '4px'
   },
   
   statusRunning: {
-    backgroundColor: 'rgba(255, 193, 7, 0.2)',
-    color: '#ffc107',
-    border: '1px solid #ffc107'
+    backgroundColor: 'rgba(246, 200, 95, 0.12)',
+    color: 'var(--warning-color)',
+    border: '1px solid var(--warning-color)'
   },
   
   statusIdle: {
-    backgroundColor: 'rgba(40, 167, 69, 0.2)',
-    color: '#28a745',
-    border: '1px solid #28a745'
+    backgroundColor: 'rgba(93, 211, 158, 0.12)',
+    color: 'var(--success-color)',
+    border: '1px solid var(--success-color)'
   },
   
   statusError: {
-    backgroundColor: 'rgba(220, 53, 69, 0.2)',
-    color: '#dc3545',
-    border: '1px solid #dc3545'
+    backgroundColor: 'rgba(255, 107, 122, 0.12)',
+    color: 'var(--error-color)',
+    border: '1px solid var(--error-color)'
   },
   
   statusCompleted: {
-    backgroundColor: 'rgba(23, 162, 184, 0.2)',
-    color: '#17a2b8',
-    border: '1px solid #17a2b8'
+    backgroundColor: 'rgba(125, 211, 252, 0.12)',
+    color: 'var(--info-color)',
+    border: '1px solid var(--info-color)'
   },
   
   // 工作目录
@@ -84,21 +85,23 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    padding: '8px',
+    padding: '9px 10px',
     borderRadius: '6px',
-    backgroundColor: '#1a1a2e',
-    border: '1px solid #0f3460'
+    backgroundColor: '#11161e',
+    border: '1px solid var(--border-subtle)'
   },
   
   directoryIcon: {
-    fontSize: '16px',
-    color: '#888888'
+    fontSize: '10px',
+    color: 'var(--text-dark)',
+    fontWeight: '800',
+    letterSpacing: '0'
   },
   
   directoryText: {
     flex: 1,
     fontSize: '12px',
-    color: '#eaeaea',
+    color: 'var(--text-color)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap'
@@ -108,8 +111,8 @@ const styles = {
     padding: '4px 8px',
     borderRadius: '4px',
     border: 'none',
-    backgroundColor: '#0f3460',
-    color: '#eaeaea',
+    backgroundColor: 'var(--surface-hover)',
+    color: 'var(--text-color)',
     cursor: 'pointer',
     fontSize: '11px',
     transition: 'all 0.2s'
@@ -125,26 +128,28 @@ const styles = {
   textareaWrapper: {
     position: 'relative',
     borderRadius: '8px',
-    border: '1px solid #0f3460',
-    backgroundColor: '#1a1a2e',
-    transition: 'border-color 0.2s'
+    border: '1px solid var(--border-color)',
+    backgroundColor: '#11161e',
+    boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.025)',
+    transition: 'border-color 0.2s, box-shadow 0.2s'
   },
   
   textareaWrapperFocused: {
-    borderColor: '#e94560'
+    border: '1px solid var(--primary-color)',
+    boxShadow: '0 0 0 3px var(--primary-soft)'
   },
   
   textarea: {
     width: '100%',
-    minHeight: '100px',
+    minHeight: '118px',
     maxHeight: '300px',
     padding: '12px',
     paddingRight: '80px',
     borderRadius: '8px',
     border: 'none',
     backgroundColor: 'transparent',
-    color: '#eaeaea',
-    fontSize: '14px',
+    color: 'var(--text-color)',
+    fontSize: '13px',
     resize: 'vertical',
     fontFamily: 'inherit',
     lineHeight: '1.5',
@@ -162,12 +167,12 @@ const styles = {
   
   charCount: {
     fontSize: '11px',
-    color: '#888888',
+    color: 'var(--text-muted)',
     padding: '2px 4px'
   },
   
   charCountWarning: {
-    color: '#ffc107'
+    color: 'var(--warning-color)'
   },
   
   clearButton: {
@@ -175,7 +180,7 @@ const styles = {
     borderRadius: '3px',
     border: 'none',
     backgroundColor: 'transparent',
-    color: '#888888',
+    color: 'var(--text-muted)',
     cursor: 'pointer',
     fontSize: '11px',
     transition: 'all 0.15s'
@@ -187,8 +192,8 @@ const styles = {
     bottom: '100%',
     left: '0',
     right: '0',
-    backgroundColor: '#16213e',
-    border: '1px solid #0f3460',
+    backgroundColor: 'var(--surface-color)',
+    border: '1px solid var(--border-color)',
     borderRadius: '6px',
     maxHeight: '150px',
     overflowY: 'auto',
@@ -200,7 +205,7 @@ const styles = {
     padding: '8px 12px',
     cursor: 'pointer',
     fontSize: '13px',
-    color: '#eaeaea',
+    color: 'var(--text-color)',
     transition: 'background-color 0.15s',
     display: 'flex',
     alignItems: 'center',
@@ -208,12 +213,12 @@ const styles = {
   },
   
   suggestionItemActive: {
-    backgroundColor: '#0f3460'
+    backgroundColor: 'var(--border-color)'
   },
   
   suggestionIcon: {
     fontSize: '12px',
-    color: '#888888'
+    color: 'var(--text-muted)'
   },
   
   suggestionText: {
@@ -222,10 +227,10 @@ const styles = {
   
   suggestionType: {
     fontSize: '11px',
-    color: '#666666',
+    color: 'var(--text-dark)',
     padding: '2px 6px',
     borderRadius: '3px',
-    backgroundColor: '#1a1a2e'
+    backgroundColor: 'var(--background-color)'
   },
   
   // 按钮组
@@ -237,11 +242,12 @@ const styles = {
   
   button: {
     flex: 1,
-    padding: '10px',
+    height: '36px',
+    padding: '0 12px',
     borderRadius: '6px',
-    border: 'none',
-    backgroundColor: '#0f3460',
-    color: '#eaeaea',
+    border: '1px solid var(--border-color)',
+    backgroundColor: 'var(--surface-hover)',
+    color: 'var(--text-color)',
     cursor: 'pointer',
     fontSize: '14px',
     fontWeight: '500',
@@ -254,22 +260,25 @@ const styles = {
   },
   
   primaryButton: {
-    backgroundColor: '#e94560',
-    color: '#ffffff'
+    backgroundColor: 'var(--primary-color)',
+    border: '1px solid var(--primary-color)',
+    color: '#061018'
   },
   
   disabledButton: {
-    backgroundColor: '#0f3460',
-    color: '#666666',
+    backgroundColor: '#151a23',
+    border: '1px solid var(--border-subtle)',
+    color: 'var(--text-dark)',
     cursor: 'not-allowed'
   },
   
   // 快捷命令面板
   quickCommandsPanel: {
-    backgroundColor: '#16213e',
-    borderRadius: '6px',
-    padding: '8px',
-    marginBottom: '8px'
+    backgroundColor: '#11161e',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '8px',
+    padding: '10px',
+    marginBottom: '10px'
   },
   
   quickCommandsHeader: {
@@ -281,22 +290,24 @@ const styles = {
   
   quickCommandsTitle: {
     fontSize: '12px',
-    color: '#888888',
-    fontWeight: '500'
+    color: 'var(--text-muted)',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: '0'
   },
   
   quickCommandsList: {
     display: 'flex',
-    gap: '4px',
+    gap: '6px',
     flexWrap: 'wrap'
   },
   
   quickCommandButton: {
-    padding: '4px 8px',
-    borderRadius: '4px',
-    border: 'none',
-    backgroundColor: '#1a1a2e',
-    color: '#888888',
+    padding: '5px 8px',
+    borderRadius: '999px',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-color)',
+    color: 'var(--text-muted)',
     cursor: 'pointer',
     fontSize: '11px',
     transition: 'all 0.15s',
@@ -315,9 +326,9 @@ const styles = {
     width: '100%',
     padding: '6px 10px',
     borderRadius: '4px',
-    border: '1px solid #0f3460',
-    backgroundColor: '#1a1a2e',
-    color: '#eaeaea',
+    border: '1px solid var(--border-color)',
+    backgroundColor: 'var(--background-color)',
+    color: 'var(--text-color)',
     fontSize: '12px',
     marginBottom: '8px'
   },
@@ -331,18 +342,18 @@ const styles = {
   historyItem: {
     padding: '8px',
     borderRadius: '4px',
-    backgroundColor: '#1a1a2e',
+    backgroundColor: 'var(--background-color)',
     cursor: 'pointer',
     fontSize: '13px',
-    color: '#eaeaea',
+    color: 'var(--text-color)',
     transition: 'background-color 0.2s',
     border: '1px solid transparent',
     position: 'relative'
   },
   
   historyItemHover: {
-    backgroundColor: '#16213e',
-    border: '1px solid #0f3460'
+    backgroundColor: 'var(--surface-color)',
+    border: '1px solid var(--border-color)'
   },
   
   historyItemContent: {
@@ -354,7 +365,7 @@ const styles = {
   
   historyItemTime: {
     fontSize: '11px',
-    color: '#888888',
+    color: 'var(--text-muted)',
     marginTop: '4px'
   },
   
@@ -367,7 +378,7 @@ const styles = {
     borderRadius: '3px',
     border: 'none',
     backgroundColor: 'transparent',
-    color: '#888888',
+    color: 'var(--text-muted)',
     cursor: 'pointer',
     fontSize: '11px',
     opacity: '0',
@@ -380,7 +391,7 @@ const styles = {
   
   // 模板面板
   templatesPanel: {
-    backgroundColor: '#16213e',
+    backgroundColor: 'var(--surface-color)',
     borderRadius: '6px',
     padding: '8px',
     marginTop: '8px'
@@ -395,7 +406,7 @@ const styles = {
   
   templatesTitle: {
     fontSize: '12px',
-    color: '#888888',
+    color: 'var(--text-muted)',
     fontWeight: '500'
   },
   
@@ -408,10 +419,10 @@ const styles = {
   templateItem: {
     padding: '8px',
     borderRadius: '4px',
-    backgroundColor: '#1a1a2e',
+    backgroundColor: 'var(--background-color)',
     cursor: 'pointer',
     fontSize: '12px',
-    color: '#eaeaea',
+    color: 'var(--text-color)',
     transition: 'background-color 0.15s',
     display: 'flex',
     alignItems: 'center',
@@ -428,7 +439,7 @@ const styles = {
   
   templateDesc: {
     fontSize: '11px',
-    color: '#888888',
+    color: 'var(--text-muted)',
     marginLeft: '4px'
   },
   
@@ -449,12 +460,12 @@ const styles = {
     width: '16px',
     height: '16px',
     cursor: 'pointer',
-    accentColor: '#e94560'
+    accentColor: 'var(--primary-color)'
   },
   
   label: {
     fontSize: '13px',
-    color: '#eaeaea',
+    color: 'var(--text-color)',
     cursor: 'pointer'
   },
   
@@ -462,9 +473,9 @@ const styles = {
     width: '60px',
     padding: '4px',
     borderRadius: '4px',
-    border: '1px solid #0f3460',
-    backgroundColor: '#1a1a2e',
-    color: '#eaeaea',
+    border: '1px solid var(--border-color)',
+    backgroundColor: 'var(--background-color)',
+    color: 'var(--text-color)',
     fontSize: '12px'
   },
   
@@ -472,52 +483,52 @@ const styles = {
   emptyHistory: {
     textAlign: 'center',
     padding: '16px',
-    color: '#888888',
+    color: 'var(--text-muted)',
     fontSize: '12px'
   }
 };
 
 // 快捷命令定义
 const QUICK_COMMANDS = [
-  { icon: '📁', label: '读取文件', template: '读取文件 {path}' },
-  { icon: '📝', label: '写入文件', template: '写入文件 {path} 内容: {content}' },
-  { icon: '🔍', label: '搜索代码', template: '在代码中搜索 {pattern}' },
-  { icon: '🔧', label: '修复bug', template: '修复bug: {description}' },
-  { icon: '🚀', label: '优化代码', template: '优化代码: {description}' },
-  { icon: '📊', label: '分析项目', template: '分析项目结构和依赖' },
-  { icon: '🧪', label: '运行测试', template: '运行测试并分析结果' },
-  { icon: '📖', label: '生成文档', template: '为代码生成文档' }
+  { icon: 'R', label: '读取文件', template: '读取文件 {path}' },
+  { icon: 'W', label: '写入文件', template: '写入文件 {path} 内容: {content}' },
+  { icon: '/', label: '搜索代码', template: '在代码中搜索 {pattern}' },
+  { icon: 'F', label: '修复bug', template: '修复bug: {description}' },
+  { icon: 'O', label: '优化代码', template: '优化代码: {description}' },
+  { icon: 'A', label: '分析项目', template: '分析项目结构和依赖' },
+  { icon: 'T', label: '运行测试', template: '运行测试并分析结果' },
+  { icon: 'D', label: '生成文档', template: '为代码生成文档' }
 ];
 
 // 输入模板定义
 const INPUT_TEMPLATES = [
-  { 
-    icon: '🐛', 
-    name: 'Bug修复', 
+  {
+    icon: 'BUG',
+    name: 'Bug修复',
     desc: '描述并修复bug',
     template: '发现一个bug:\n位置: {file}\n描述: {description}\n预期行为: {expected}\n请帮我修复这个问题'
   },
-  { 
-    icon: '✨', 
-    name: '功能开发', 
+  {
+    icon: 'NEW',
+    name: '功能开发',
     desc: '开发新功能',
     template: '开发新功能:\n功能名称: {name}\n需求: {requirements}\n请帮我实现这个功能'
   },
-  { 
-    icon: '🔄', 
-    name: '代码重构', 
+  {
+    icon: 'REF',
+    name: '代码重构',
     desc: '重构现有代码',
     template: '重构代码:\n目标文件: {file}\n重构目标: {goal}\n请帮我重构这段代码'
   },
-  { 
-    icon: '📝', 
-    name: '代码审查', 
+  {
+    icon: 'REV',
+    name: '代码审查',
     desc: '审查代码质量',
     template: '审查代码:\n文件: {file}\n请检查代码质量、潜在问题和改进建议'
   },
-  { 
-    icon: '🧪', 
-    name: '测试编写', 
+  {
+    icon: 'TST',
+    name: '测试编写',
     desc: '编写单元测试',
     template: '编写测试:\n目标: {target}\n请为这个功能编写单元测试'
   }
@@ -578,7 +589,7 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
       .slice(0, 3)
       .map(item => ({
         type: 'history',
-        icon: '📜',
+        icon: 'H',
         text: item.input.slice(0, 50) + (item.input.length > 50 ? '...' : ''),
         fullText: item.input
       }));
@@ -773,13 +784,13 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
   const getStatusText = () => {
     switch (runtime.status) {
       case 'running':
-        return '🔄 运行中';
+        return '运行中';
       case 'idle':
-        return '✅ 就绪';
+        return '就绪';
       case 'error':
-        return '❌ 错误';
+        return '错误';
       case 'completed':
-        return '✨ 完成';
+        return '完成';
       default:
         return '⚪ 未知';
     }
@@ -808,7 +819,7 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
           {runtime.status === 'running' && runtime.stats?.startTime && (
             <div style={{
               fontSize: '11px',
-              color: '#888888'
+              color: 'var(--text-muted)'
             }}>
               已运行: {Math.floor((Date.now() - runtime.stats.startTime) / 1000)}秒
             </div>
@@ -817,7 +828,7 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
         
         {/* 工作目录 */}
         <div style={styles.workingDirectory}>
-          <span style={styles.directoryIcon}>📁</span>
+          <span style={styles.directoryIcon}>DIR</span>
           <span style={styles.directoryText}>
             {workingDirectory || '未设置'}
           </span>
@@ -825,8 +836,8 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
             style={styles.changeButton}
             onClick={onWorkingDirectoryChange}
             title="更改工作目录"
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e94560'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#0f3460'}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
           >
             更改
           </button>
@@ -839,14 +850,14 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
           <div style={styles.quickCommandsPanel}>
             <div style={styles.quickCommandsHeader}>
               <span style={styles.quickCommandsTitle}>
-                ⚡ 快捷命令
+                快捷命令
               </span>
               <button
                 style={styles.clearButton}
                 onClick={() => setShowQuickCommands(false)}
                 title="隐藏快捷命令"
               >
-                ✖️
+                ×
               </button>
             </div>
             <div style={styles.quickCommandsList}>
@@ -857,12 +868,12 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
                   onClick={() => handleQuickCommandClick(cmd)}
                   title={cmd.template}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#0f3460';
-                    e.currentTarget.style.color = '#eaeaea';
+                    e.currentTarget.style.backgroundColor = 'var(--surface-hover)';
+                    e.currentTarget.style.color = 'var(--text-color)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = '#1a1a2e';
-                    e.currentTarget.style.color = '#888888';
+                    e.currentTarget.style.backgroundColor = 'var(--surface-color)';
+                    e.currentTarget.style.color = 'var(--text-muted)';
                   }}
                 >
                   <span>{cmd.icon}</span>
@@ -877,14 +888,13 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
       {/* 输入区域 */}
       <div style={styles.section}>
         <div style={styles.sectionTitle}>
-          <span>📝</span>
           <span>输入任务</span>
           <button
             style={styles.clearButton}
             onClick={() => setShowTemplates(!showTemplates)}
             title="显示输入模板"
           >
-            {showTemplates ? '📖 隐藏模板' : '📖 模板'}
+            {showTemplates ? '隐藏模板' : '模板'}
           </button>
         </div>
         
@@ -893,7 +903,7 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
           <div style={styles.templatesPanel}>
             <div style={styles.templatesHeader}>
               <span style={styles.templatesTitle}>
-                📋 输入模板
+                输入模板
               </span>
             </div>
             <div style={styles.templatesList}>
@@ -902,8 +912,8 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
                   key={index}
                   style={styles.templateItem}
                   onClick={() => handleTemplateClick(template)}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0f3460'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#1a1a2e'}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--background-color)'}
                 >
                   <span style={styles.templateIcon}>{template.icon}</span>
                   <span style={styles.templateName}>{template.name}</span>
@@ -932,11 +942,11 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
                     }}
                     onClick={() => handleSuggestionClick(suggestion)}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#0f3460';
+                      e.currentTarget.style.backgroundColor = 'var(--border-color)';
                       setActiveSuggestion(index);
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = index === activeSuggestion ? '#0f3460' : 'transparent';
+                      e.currentTarget.style.backgroundColor = index === activeSuggestion ? 'var(--border-color)' : 'transparent';
                     }}
                   >
                     <span style={styles.suggestionIcon}>{suggestion.icon}</span>
@@ -969,10 +979,10 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
                   style={styles.clearButton}
                   onClick={handleClearInput}
                   title="清空输入"
-                  onMouseEnter={(e) => e.currentTarget.style.color = '#e94560'}
-                  onMouseLeave={(e) => e.currentTarget.style.color = '#888888'}
+                  onMouseEnter={(e) => e.currentTarget.style.color = 'var(--primary-color)'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
                 >
-                  ✖️
+                  ×
                 </button>
               )}
             </div>
@@ -988,13 +998,13 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
               onClick={handleExecute}
               disabled={!canExecute}
               onMouseEnter={(e) => {
-                if (canExecute) e.currentTarget.style.backgroundColor = '#c73e54';
+                if (canExecute) e.currentTarget.style.backgroundColor = 'var(--primary-dark)';
               }}
               onMouseLeave={(e) => {
-                if (canExecute) e.currentTarget.style.backgroundColor = '#e94560';
+                if (canExecute) e.currentTarget.style.backgroundColor = 'var(--primary-color)';
               }}
             >
-              {runtime.status === 'running' ? '⏳ 执行中...' : '▶️ 执行'}
+              {runtime.status === 'running' ? '执行中...' : '执行'}
             </button>
             
             <button
@@ -1005,7 +1015,7 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
               onClick={handleStop}
               disabled={!canStop}
             >
-              ⏹️ 停止
+              停止
             </button>
             
             {!showQuickCommands && (
@@ -1014,7 +1024,7 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
                 onClick={() => setShowQuickCommands(true)}
                 title="显示快捷命令"
               >
-                ⚡ 命令
+                命令
               </button>
             )}
           </div>
@@ -1024,7 +1034,6 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
       {/* 执行选项 */}
       <div style={styles.section}>
         <div style={styles.sectionTitle}>
-          <span>⚙️</span>
           <span>执行选项</span>
         </div>
         
@@ -1083,7 +1092,7 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
             <span>历史记录</span>
             <span style={{
               fontSize: '12px',
-              color: '#888888',
+              color: 'var(--text-muted)',
               marginLeft: '4px'
             }}>
               ({filteredHistory.length}/{history.length})
@@ -1129,8 +1138,8 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange }) {
                       handleHistoryDelete(index);
                     }}
                     title="删除此记录"
-                    onMouseEnter={(e) => e.currentTarget.style.color = '#dc3545'}
-                    onMouseLeave={(e) => e.currentTarget.style.color = '#888888'}
+                    onMouseEnter={(e) => e.currentTarget.style.color = 'var(--error-color)'}
+                    onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
                   >
                     ✖️
                   </button>

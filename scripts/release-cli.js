@@ -30,7 +30,7 @@ function info(message) {
   log(`ℹ️  ${message}`, 'blue');
 }
 
-function error(message) {
+function logError(message) {
   log(`❌ ${message}`, 'red');
 }
 
@@ -46,8 +46,9 @@ async function publishCLI() {
     
     success('CLI package published successfully!');
     return true;
-  } catch (error) {
-    error('Failed to publish CLI package');
+  } catch (err) {
+    logError('Failed to publish CLI package');
+    console.error(err);
     return false;
   }
 }

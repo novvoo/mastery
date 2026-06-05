@@ -27,13 +27,16 @@ const ALLOWED_CHANNELS = {
     'window:close',
     'window:show',
     'window:hide',
+    'window:getState',
     'dialog:openFile',
     'dialog:saveFile',
     'dialog:openDirectory',
     'notification:show',
     'app:getInfo',
     'app:getPath',
-    'workspace:setWorkingDirectory'
+    'workspace:setWorkingDirectory',
+    'llm:getConfigStatus',
+    'llm:saveConfig'
   ],
   
   // 发送频道（使用 send）
@@ -59,7 +62,8 @@ const ALLOWED_CHANNELS = {
     'agent:error',
     'tool:call',
     'tool:result',
-    'status:update'
+    'status:update',
+    'window:state'
   ]
 };
 
@@ -301,6 +305,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   hideWindow: async () => {
     return await ipcRenderer.invoke('window:hide');
   },
+
+  /**
+   * 获取窗口状态
+   * @returns {Promise<Object>} 窗口状态
+   */
+  getWindowState: async () => {
+    return await ipcRenderer.invoke('window:getState');
+  },
+
+  /**
+   * 监听窗口状态变化
+   * @param {Function} callback - 回调函数
+   * @returns {Function} 取消订阅函数
+   */
+  onWindowStateChange: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('window:state', listener);
+    return () => ipcRenderer.removeListener('window:state', listener);
+  },
   
   // ==================== 文件对话框 ====================
   
@@ -406,6 +429,35 @@ contextBridge.exposeInMainWorld('electronAPI', {
       throw error;
     }
   },
+
+  // ==================== LLM 配置 ====================
+
+  /**
+   * 获取 LLM 配置状态
+   * @returns {Promise<Object>} 配置状态
+   */
+  getLLMConfigStatus: async () => {
+    try {
+      return await ipcRenderer.invoke('llm:getConfigStatus');
+    } catch (error) {
+      console.error('[Preload] getLLMConfigStatus 失败:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * 保存 LLM 配置
+   * @param {Object} config - LLM 配置
+   * @returns {Promise<Object>} 保存结果
+   */
+  saveLLMConfig: async (config) => {
+    try {
+      return await ipcRenderer.invoke('llm:saveConfig', config);
+    } catch (error) {
+      console.error('[Preload] saveLLMConfig 失败:', error);
+      throw error;
+    }
+  },
   
   // ==================== 事件订阅便捷方法 ====================
   
@@ -415,7 +467,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Function} 取消订阅函数
    */
   onAgentStart: (callback) => {
-    return ipcRenderer.on('agent:start', (event, data) => callback(data));
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('agent:start', listener);
+    return () => ipcRenderer.removeListener('agent:start', listener);
   },
   
   /**
@@ -424,7 +478,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Function} 取消订阅函数
    */
   onAgentComplete: (callback) => {
-    return ipcRenderer.on('agent:complete', (event, data) => callback(data));
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('agent:complete', listener);
+    return () => ipcRenderer.removeListener('agent:complete', listener);
   },
   
   /**
@@ -433,7 +489,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Function} 取消订阅函数
    */
   onAgentError: (callback) => {
-    return ipcRenderer.on('agent:error', (event, data) => callback(data));
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('agent:error', listener);
+    return () => ipcRenderer.removeListener('agent:error', listener);
   },
   
   /**
@@ -442,7 +500,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Function} 取消订阅函数
    */
   onToolCall: (callback) => {
-    return ipcRenderer.on('tool:call', (event, data) => callback(data));
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('tool:call', listener);
+    return () => ipcRenderer.removeListener('tool:call', listener);
   },
   
   /**
@@ -451,7 +511,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Function} 取消订阅函数
    */
   onToolResult: (callback) => {
-    return ipcRenderer.on('tool:result', (event, data) => callback(data));
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('tool:result', listener);
+    return () => ipcRenderer.removeListener('tool:result', listener);
   },
   
   /**
@@ -460,7 +522,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Function} 取消订阅函数
    */
   onStatusUpdate: (callback) => {
-    return ipcRenderer.on('status:update', (event, data) => callback(data));
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('status:update', listener);
+    return () => ipcRenderer.removeListener('status:update', listener);
   },
   
   /**

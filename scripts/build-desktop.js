@@ -31,7 +31,7 @@ function info(message) {
   log(`ℹ️  ${message}`, 'blue');
 }
 
-function error(message) {
+function logError(message) {
   log(`❌ ${message}`, 'red');
 }
 
@@ -56,6 +56,12 @@ async function buildDesktop() {
   info('Building Desktop application...');
   
   try {
+    info('Building Desktop renderer...');
+    execSync('npm run desktop:renderer:build', {
+      cwd: rootDir,
+      stdio: 'inherit'
+    });
+
     let cmd = 'npx electron-builder';
     
     if (platforms.win) cmd += ' --win';
@@ -73,9 +79,9 @@ async function buildDesktop() {
     
     success('Desktop application built successfully!');
     return true;
-  } catch (error) {
-    error('Failed to build Desktop application');
-    console.error(error);
+  } catch (err) {
+    logError('Failed to build Desktop application');
+    console.error(err);
     return false;
   }
 }

@@ -37,7 +37,7 @@ function warn(message) {
   log(`⚠️  ${message}`, 'yellow');
 }
 
-function error(message) {
+function logError(message) {
   log(`❌ ${message}`, 'red');
 }
 
@@ -69,8 +69,9 @@ async function buildCLI() {
     
     success('CLI package built successfully');
     return true;
-  } catch (error) {
-    error('Failed to build CLI package');
+  } catch (err) {
+    logError('Failed to build CLI package');
+    console.error(err);
     return false;
   }
 }
@@ -79,6 +80,12 @@ async function buildDesktop() {
   info('Building Desktop application...');
   
   try {
+    info('Building Desktop renderer...');
+    execSync('npm run desktop:renderer:build', {
+      cwd: rootDir,
+      stdio: 'inherit'
+    });
+
     let cmd = 'npx electron-builder';
     
     if (platforms.win) cmd += ' --win';
@@ -92,8 +99,9 @@ async function buildDesktop() {
     
     success('Desktop application built successfully');
     return true;
-  } catch (error) {
-    error('Failed to build Desktop application');
+  } catch (err) {
+    logError('Failed to build Desktop application');
+    console.error(err);
     return false;
   }
 }
@@ -122,7 +130,7 @@ async function main() {
     log(`   - CLI: ${rootDir}/ai-engineering-mastery-agent-*.tgz`);
     log(`   - Desktop: ${rootDir}/release/`);
   } else {
-    error('Some builds failed');
+    logError('Some builds failed');
     process.exit(1);
   }
 }

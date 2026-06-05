@@ -18,6 +18,7 @@ export function useIPC() {
   
   // 引用
   const subscriptionsRef = useRef([]);
+  const isConnectedRef = useRef(false);
   
   // 检查 electronAPI 是否可用
   const hasElectronAPI = useCallback(() => {
@@ -28,6 +29,7 @@ export function useIPC() {
   const connect = useCallback(async () => {
     if (!hasElectronAPI()) {
       console.warn('[useIPC] electronAPI 不可用，可能不在 Electron 环境中');
+      isConnectedRef.current = false;
       setIsConnected(false);
       return null;
     }
@@ -35,6 +37,7 @@ export function useIPC() {
     try {
       const result = await window.electronAPI.connect();
       
+      isConnectedRef.current = true;
       setIsConnected(true);
       setConnectionInfo(result);
       setError(null);
@@ -45,6 +48,7 @@ export function useIPC() {
     } catch (err) {
       console.error('[useIPC] 连接失败:', err);
       
+      isConnectedRef.current = false;
       setIsConnected(false);
       setError(err.message);
       
@@ -67,6 +71,7 @@ export function useIPC() {
       });
       subscriptionsRef.current = [];
       
+      isConnectedRef.current = false;
       setIsConnected(false);
       setConnectionInfo(null);
       
@@ -82,7 +87,7 @@ export function useIPC() {
       throw new Error('electronAPI 不可用');
     }
     
-    if (!isConnected) {
+    if (!isConnectedRef.current) {
       throw new Error('未连接到主进程');
     }
     
@@ -92,7 +97,7 @@ export function useIPC() {
       console.error(`[useIPC] invoke ${channel} 失败:`, err);
       throw err;
     }
-  }, [hasElectronAPI, isConnected]);
+  }, [hasElectronAPI]);
   
   // 发送消息（send）
   const send = useCallback((channel, data) => {
@@ -189,6 +194,11 @@ export function useIPC() {
   const hideWindow = useCallback(async () => {
     return invoke('window:hide');
   }, [invoke]);
+
+  // 获取窗口状态
+  const getWindowState = useCallback(async () => {
+    return invoke('window:getState');
+  }, [invoke]);
   
   // 打开文件对话框
   const openFileDialog = useCallback(async (options = {}) => {
@@ -224,6 +234,16 @@ export function useIPC() {
   const setWorkingDirectory = useCallback(async (directory) => {
     return invoke('workspace:setWorkingDirectory', directory);
   }, [invoke]);
+
+  // 获取 LLM 配置状态
+  const getLLMConfigStatus = useCallback(async () => {
+    return invoke('llm:getConfigStatus');
+  }, [invoke]);
+
+  // 保存 LLM 配置
+  const saveLLMConfig = useCallback(async (config) => {
+    return invoke('llm:saveConfig', config);
+  }, [invoke]);
   
   // ==================== 事件订阅便捷方法 ====================
   
@@ -256,6 +276,17 @@ export function useIPC() {
   const onStatusUpdate = useCallback((callback) => {
     return subscribe('status:update', callback);
   }, [subscribe]);
+
+  // 订阅窗口状态变化事件
+  const onWindowStateChange = useCallback((callback) => {
+    if (!hasElectronAPI() || !window.electronAPI.onWindowStateChange) {
+      return subscribe('window:state', callback);
+    }
+
+    const unsub = window.electronAPI.onWindowStateChange(callback);
+    subscriptionsRef.current.push(unsub);
+    return unsub;
+  }, [hasElectronAPI, subscribe]);
   
   // ==================== 平台信息 ====================
   
@@ -327,6 +358,7 @@ export function useIPC() {
     closeWindow,
     showWindow,
     hideWindow,
+    getWindowState,
     
     // 文件对话框
     openFileDialog,
@@ -342,6 +374,10 @@ export function useIPC() {
     
     // 工作空间
     setWorkingDirectory,
+
+    // LLM 配置
+    getLLMConfigStatus,
+    saveLLMConfig,
     
     // 事件订阅
     onAgentStart,
@@ -350,6 +386,7 @@ export function useIPC() {
     onToolCall,
     onToolResult,
     onStatusUpdate,
+    onWindowStateChange,
     
     // 平台信息
     getPlatform,

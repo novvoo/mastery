@@ -20,24 +20,26 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    backgroundColor: '#1a1a2e',
+    backgroundColor: '#11161e',
     borderRadius: '8px',
-    border: '1px solid #0f3460'
+    border: '1px solid var(--border-subtle)',
+    boxShadow: 'var(--shadow-sm)'
   },
   
   header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '12px 16px',
-    borderBottom: '1px solid #0f3460',
-    backgroundColor: '#16213e'
+    minHeight: '48px',
+    padding: '0 14px',
+    borderBottom: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-color)'
   },
   
   title: {
-    fontSize: '14px',
-    fontWeight: '600',
-    color: '#e94560',
+    fontSize: '13px',
+    fontWeight: '700',
+    color: 'var(--text-color)',
     display: 'flex',
     alignItems: 'center',
     gap: '8px'
@@ -58,11 +60,12 @@ const styles = {
   
   searchInput: {
     width: '150px',
-    padding: '4px 8px',
-    borderRadius: '4px',
-    border: '1px solid #0f3460',
-    backgroundColor: '#1a1a2e',
-    color: '#eaeaea',
+    height: '28px',
+    padding: '0 9px',
+    borderRadius: '6px',
+    border: '1px solid var(--border-color)',
+    backgroundColor: '#0f141c',
+    color: 'var(--text-color)',
     fontSize: '12px',
     transition: 'width 0.2s ease'
   },
@@ -72,11 +75,12 @@ const styles = {
   },
   
   button: {
-    padding: '4px 8px',
-    borderRadius: '4px',
-    border: 'none',
-    backgroundColor: '#0f3460',
-    color: '#eaeaea',
+    height: '28px',
+    padding: '0 9px',
+    borderRadius: '6px',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-hover)',
+    color: 'var(--text-color)',
     cursor: 'pointer',
     fontSize: '12px',
     transition: 'all 0.2s',
@@ -86,37 +90,40 @@ const styles = {
   },
   
   buttonActive: {
-    backgroundColor: '#e94560'
+    backgroundColor: 'var(--primary-soft)',
+    color: 'var(--primary-color)',
+    border: '1px solid rgba(76, 201, 240, 0.28)'
   },
   
   viewToggle: {
     display: 'flex',
     gap: '2px',
     padding: '2px',
-    borderRadius: '4px',
-    backgroundColor: '#1a1a2e'
+    borderRadius: '7px',
+    backgroundColor: '#0f141c',
+    border: '1px solid var(--border-subtle)'
   },
   
   viewButton: {
     padding: '4px 8px',
-    borderRadius: '3px',
+    borderRadius: '5px',
     border: 'none',
     backgroundColor: 'transparent',
-    color: '#888888',
+    color: 'var(--text-muted)',
     cursor: 'pointer',
     fontSize: '11px',
     transition: 'all 0.15s'
   },
   
   viewButtonActive: {
-    backgroundColor: '#e94560',
-    color: '#ffffff'
+    backgroundColor: 'var(--surface-hover)',
+    color: 'var(--text-color)'
   },
   
   messageList: {
     flex: 1,
     overflowY: 'auto',
-    padding: '16px',
+    padding: '14px',
     scrollBehavior: 'smooth'
   },
   
@@ -132,7 +139,7 @@ const styles = {
     top: '0',
     bottom: '0',
     width: '2px',
-    backgroundColor: '#0f3460'
+    backgroundColor: 'var(--border-subtle)'
   },
   
   timelineDot: {
@@ -141,26 +148,26 @@ const styles = {
     width: '10px',
     height: '10px',
     borderRadius: '50%',
-    backgroundColor: '#e94560',
-    border: '2px solid #16213e',
+    backgroundColor: 'var(--primary-color)',
+    border: '2px solid var(--surface-color)',
     transition: 'all 0.2s'
   },
   
   // 消息项样式
   messageItem: {
-    marginBottom: '12px',
+    marginBottom: '10px',
     borderRadius: '8px',
     padding: '12px',
-    backgroundColor: '#16213e',
-    border: '1px solid transparent',
+    backgroundColor: 'var(--surface-color)',
+    border: '1px solid var(--border-subtle)',
     transition: 'all 0.2s ease',
     position: 'relative',
     cursor: 'pointer'
   },
   
   messageItemHover: {
-    border: '1px solid #e94560',
-    transform: 'translateX(2px)'
+    border: '1px solid var(--border-color)',
+    backgroundColor: 'var(--surface-raised)'
   },
   
   messageItemCollapsed: {
@@ -179,34 +186,34 @@ const styles = {
     display: 'inline-flex',
     alignItems: 'center',
     padding: '2px 8px',
-    borderRadius: '4px',
+    borderRadius: '999px',
     fontSize: '11px',
     fontWeight: '500',
     gap: '4px'
   },
   
   typeInfo: {
-    backgroundColor: 'rgba(23, 162, 184, 0.2)',
-    color: '#17a2b8',
-    border: '1px solid #17a2b8'
+    backgroundColor: 'rgba(125, 211, 252, 0.12)',
+    color: 'var(--info-color)',
+    border: '1px solid var(--info-color)'
   },
   
   typeSuccess: {
-    backgroundColor: 'rgba(40, 167, 69, 0.2)',
-    color: '#28a745',
-    border: '1px solid #28a745'
+    backgroundColor: 'rgba(93, 211, 158, 0.12)',
+    color: 'var(--success-color)',
+    border: '1px solid var(--success-color)'
   },
   
   typeError: {
-    backgroundColor: 'rgba(220, 53, 69, 0.2)',
-    color: '#dc3545',
-    border: '1px solid #dc3545'
+    backgroundColor: 'rgba(255, 107, 122, 0.12)',
+    color: 'var(--error-color)',
+    border: '1px solid var(--error-color)'
   },
   
   typeWarning: {
-    backgroundColor: 'rgba(255, 193, 7, 0.2)',
-    color: '#ffc107',
-    border: '1px solid #ffc107'
+    backgroundColor: 'rgba(246, 200, 95, 0.12)',
+    color: 'var(--warning-color)',
+    border: '1px solid var(--warning-color)'
   },
   
   typeDebug: {
@@ -216,9 +223,9 @@ const styles = {
   },
   
   typeTool: {
-    backgroundColor: 'rgba(233, 69, 96, 0.2)',
-    color: '#e94560',
-    border: '1px solid #e94560'
+    backgroundColor: 'var(--primary-soft)',
+    color: 'var(--primary-color)',
+    border: '1px solid var(--primary-color)'
   },
   
   typeResult: {
@@ -235,7 +242,7 @@ const styles = {
   
   messageTime: {
     fontSize: '11px',
-    color: '#888888',
+    color: 'var(--text-muted)',
     display: 'flex',
     alignItems: 'center',
     gap: '8px'
@@ -243,7 +250,7 @@ const styles = {
   
   messageContent: {
     fontSize: '13px',
-    color: '#eaeaea',
+    color: 'var(--text-color)',
     lineHeight: '1.6',
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
@@ -262,7 +269,7 @@ const styles = {
   messageMeta: {
     marginTop: '8px',
     fontSize: '11px',
-    color: '#888888',
+    color: 'var(--text-muted)',
     display: 'flex',
     gap: '12px',
     flexWrap: 'wrap'
@@ -281,30 +288,39 @@ const styles = {
   },
   
   actionButton: {
-    padding: '2px 6px',
-    borderRadius: '3px',
-    border: 'none',
-    backgroundColor: '#0f3460',
-    color: '#888888',
+    padding: '3px 7px',
+    borderRadius: '5px',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-hover)',
+    color: 'var(--text-muted)',
     cursor: 'pointer',
     fontSize: '11px',
     transition: 'all 0.15s'
+  },
+
+  emptyChip: {
+    padding: '5px 12px',
+    backgroundColor: '#151a23',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '999px',
+    fontSize: '12px',
+    color: 'var(--text-muted)'
   },
   
   // 详情面板
   detailPanel: {
     marginTop: '8px',
     padding: '12px',
-    backgroundColor: '#1a1a2e',
+    backgroundColor: '#0f141c',
     borderRadius: '6px',
-    border: '1px solid #0f3460',
+    border: '1px solid var(--border-subtle)',
     fontSize: '12px',
     maxHeight: '200px',
     overflowY: 'auto'
   },
   
   detailTitle: {
-    color: '#e94560',
+    color: 'var(--text-color)',
     fontWeight: '600',
     marginBottom: '8px'
   },
@@ -313,11 +329,11 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     marginBottom: '4px',
-    color: '#888888'
+    color: 'var(--text-muted)'
   },
   
   detailValue: {
-    color: '#eaeaea',
+    color: 'var(--text-color)',
     textAlign: 'right',
     maxWidth: '60%',
     overflow: 'hidden',
@@ -331,26 +347,36 @@ const styles = {
     justifyContent: 'center',
     alignItems: 'center',
     height: '100%',
-    color: '#888888',
+    color: 'var(--text-muted)',
     textAlign: 'center',
-    padding: '32px'
+    padding: '32px',
+    background: 'radial-gradient(circle at center, rgba(76, 201, 240, 0.06), transparent 42%)'
   },
   
   emptyIcon: {
-    fontSize: '64px',
-    marginBottom: '16px',
-    opacity: '0.5'
+    fontSize: '13px',
+    marginBottom: '14px',
+    opacity: '1',
+    width: '42px',
+    height: '42px',
+    borderRadius: '8px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'var(--primary-soft)',
+    color: 'var(--primary-color)',
+    border: '1px solid rgba(76, 201, 240, 0.22)'
   },
   
   emptyText: {
     fontSize: '16px',
     marginBottom: '8px',
-    color: '#eaeaea'
+    color: 'var(--text-color)'
   },
   
   emptyHint: {
     fontSize: '13px',
-    color: '#666666',
+    color: 'var(--text-dark)',
     maxWidth: '300px'
   },
   
@@ -360,32 +386,32 @@ const styles = {
     alignItems: 'center',
     gap: '12px',
     padding: '16px',
-    backgroundColor: '#16213e',
+    backgroundColor: '#151a23',
     borderRadius: '8px',
     marginBottom: '12px',
-    border: '1px solid #ffc107',
+    border: '1px solid rgba(246, 200, 95, 0.36)',
     animation: 'pulse 2s ease-in-out infinite'
   },
   
   spinner: {
     width: '20px',
     height: '20px',
-    border: '3px solid #0f3460',
-    borderTopColor: '#ffc107',
+    border: '3px solid var(--border-color)',
+    borderTopColor: 'var(--warning-color)',
     borderRadius: '50%',
     animation: 'spin 1s linear infinite'
   },
   
   runningText: {
     fontSize: '14px',
-    color: '#ffc107',
+    color: 'var(--warning-color)',
     fontWeight: '500'
   },
   
   progressBar: {
     width: '100%',
     height: '4px',
-    backgroundColor: '#0f3460',
+    backgroundColor: 'var(--border-color)',
     borderRadius: '2px',
     marginTop: '8px',
     overflow: 'hidden'
@@ -393,7 +419,7 @@ const styles = {
   
   progressFill: {
     height: '100%',
-    backgroundColor: '#ffc107',
+    backgroundColor: 'var(--warning-color)',
     borderRadius: '2px',
     transition: 'width 0.3s ease',
     animation: 'progressPulse 1.5s ease-in-out infinite'
@@ -405,7 +431,7 @@ const styles = {
     alignItems: 'center',
     gap: '8px',
     padding: '8px 12px',
-    backgroundColor: '#0f3460',
+    backgroundColor: 'var(--border-color)',
     borderRadius: '4px',
     marginBottom: '8px',
     marginTop: '16px',
@@ -414,18 +440,18 @@ const styles = {
   
   groupIcon: {
     fontSize: '12px',
-    color: '#888888'
+    color: 'var(--text-muted)'
   },
   
   groupTitle: {
     fontSize: '12px',
-    color: '#888888',
+    color: 'var(--text-muted)',
     fontWeight: '500'
   },
   
   groupCount: {
     fontSize: '11px',
-    color: '#666666'
+    color: 'var(--text-dark)'
   },
   
   // 复制成功提示
@@ -434,7 +460,7 @@ const styles = {
     bottom: '20px',
     right: '20px',
     padding: '8px 16px',
-    backgroundColor: '#28a745',
+    backgroundColor: 'var(--success-color)',
     color: '#ffffff',
     borderRadius: '4px',
     fontSize: '12px',
@@ -701,7 +727,7 @@ function MessageLog({ messages, status, onClear }) {
           <div style={{
             ...styles.timelineDot,
             top: '12px',
-            backgroundColor: getTypeStyle(msg.type).border?.split(' ')[1] || '#e94560'
+            backgroundColor: getTypeStyle(msg.type).border?.split(' ')[1] || 'var(--primary-color)'
           }} />
         )}
         
@@ -851,7 +877,7 @@ function MessageLog({ messages, status, onClear }) {
     return (
       <div style={styles.container}>
         <div style={styles.emptyContainer}>
-          <div style={styles.emptyIcon}>💬</div>
+          <div style={styles.emptyIcon}>AI</div>
           <div style={styles.emptyText}>开始与 AI Agent 对话</div>
           <div style={styles.emptyHint}>
             在左侧输入您的任务描述，点击执行按钮开始。
@@ -866,33 +892,9 @@ function MessageLog({ messages, status, onClear }) {
             flexWrap: 'wrap',
             justifyContent: 'center'
           }}>
-            <span style={{
-              padding: '4px 12px',
-              backgroundColor: '#16213e',
-              borderRadius: '4px',
-              fontSize: '12px',
-              color: '#888888'
-            }}>
-              💡 输入任务描述
-            </span>
-            <span style={{
-              padding: '4px 12px',
-              backgroundColor: '#16213e',
-              borderRadius: '4px',
-              fontSize: '12px',
-              color: '#888888'
-            }}>
-              ⚡ 点击执行
-            </span>
-            <span style={{
-              padding: '4px 12px',
-              backgroundColor: '#16213e',
-              borderRadius: '4px',
-              fontSize: '12px',
-              color: '#888888'
-            }}>
-              📊 查看结果
-            </span>
+            <span style={styles.emptyChip}>输入任务描述</span>
+            <span style={styles.emptyChip}>点击执行</span>
+            <span style={styles.emptyChip}>查看结果</span>
           </div>
         </div>
       </div>
@@ -904,11 +906,10 @@ function MessageLog({ messages, status, onClear }) {
       {/* 头部 */}
       <div style={styles.header}>
         <div style={styles.title}>
-          <span>📋</span>
           <span>消息日志</span>
           <span style={{
             fontSize: '12px',
-            color: '#888888',
+            color: 'var(--text-muted)',
             marginLeft: '4px'
           }}>
             ({filteredMessages.length}/{messages.length})

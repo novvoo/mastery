@@ -26,6 +26,7 @@ export function useRuntime() {
   // 引用
   const messageBufferRef = useRef([]);
   const statsRef = useRef(stats);
+  const lastAnswerRef = useRef('');
   
   // 添加消息
   const addMessage = useCallback((message) => {
@@ -119,6 +120,7 @@ export function useRuntime() {
     }));
     
     // 添加用户输入消息
+    lastAnswerRef.current = '';
     addMessage({
       type: 'info',
       content: `用户输入: ${input}`
@@ -128,13 +130,23 @@ export function useRuntime() {
       // 通过 IPC 发送输入
       if (window.electronAPI) {
         const result = await window.electronAPI.processInput(input, options);
+        const answer = extractAgentAnswer(result);
         
         // 添加结果消息
-        addMessage({
-          type: 'result',
-          content: result?.result || '执行完成',
-          ...result
-        });
+        if (answer && answer !== lastAnswerRef.current) {
+          lastAnswerRef.current = answer;
+          addMessage({
+            type: 'result',
+            content: answer,
+            ...result
+          });
+        } else if (!answer) {
+          addMessage({
+            type: 'success',
+            content: '执行完成',
+            ...result
+          });
+        }
         
         setStatus('completed');
         setStats(prev => ({
@@ -208,6 +220,20 @@ export function useRuntime() {
     // 订阅 Agent 完成事件
     const unsubComplete = window.electronAPI.onAgentComplete((data) => {
       setStatus('completed');
+      const answer = extractAgentAnswer(data);
+      if (answer) {
+        if (answer === lastAnswerRef.current) {
+          return;
+        }
+        lastAnswerRef.current = answer;
+        addMessage({
+          type: 'result',
+          content: answer,
+          ...data
+        });
+        return;
+      }
+
       addMessage({
         type: 'success',
         content: 'Agent 执行完成',
@@ -288,6 +314,32 @@ export function useRuntime() {
     processInput,
     stop
   };
+}
+
+function extractAgentAnswer(data) {
+  if (!data) return '';
+
+  if (typeof data === 'string') {
+    return data;
+  }
+
+  if (typeof data.answer === 'string' && data.answer.trim()) {
+    return data.answer;
+  }
+
+  if (typeof data.result === 'string' && data.result.trim()) {
+    return data.result;
+  }
+
+  if (typeof data.result?.answer === 'string' && data.result.answer.trim()) {
+    return data.result.answer;
+  }
+
+  if (typeof data.result?.text === 'string' && data.result.text.trim()) {
+    return data.result.text;
+  }
+
+  return '';
 }
 
 /**

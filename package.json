@@ -2,6 +2,7 @@
   "name": "ai-engineering-mastery-agent",
   "version": "1.0.13",
   "description": "AI Engineering Mastery Agent - A standalone ReAct agent with 12 professional coding skills, sandbox execution, graph planning, 3-layer memory, and MCP protocol support",
+  "author": "novvoo",
   "type": "module",
   "main": "src/index.js",
   "bin": {
@@ -34,8 +35,9 @@
     "examples:desktop": "bun examples/desktop-integration.js",
     "examples:performance": "bun examples/performance-tests.js",
     "examples:all": "bun examples/runtime-usage.js && bun examples/plugin-system.js && bun examples/desktop-integration.js",
-    "desktop:dev": "electron desktop/main.js",
+    "desktop:dev": "node scripts/desktop-dev.js",
     "desktop:start": "electron desktop/main.js",
+    "desktop:renderer:build": "vite build --config desktop/vite.config.js",
     "desktop:build": "bun scripts/build-desktop.js",
     "desktop:build:win": "bun scripts/build-desktop.js --win",
     "desktop:build:mac": "bun scripts/build-desktop.js --mac",
@@ -87,9 +89,13 @@
     "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
     "electron": "^28.3.3",
     "electron-builder": "^24.9.1",
-    "eslint": "^8.57.1"
+    "eslint": "^8.57.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "vite": "^5.0.10"
   },
   "build": {
     "appId": "com.ai-engineering-mastery.agent",
@@ -98,6 +104,9 @@
     "directories": {
       "output": "release",
       "buildResources": "build"
+    },
+    "extraMetadata": {
+      "main": "desktop/main.js"
     },
     "files": [
       "desktop/main.js",
@@ -211,12 +220,8 @@
       },
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
-    "appImage": {
-      "systemIntegration": "ask"
-    },
     "publish": {
-      "provider": "npm",
-      "packageName": "ai-engineering-mastery-agent"
+      "provider": "github"
     }
   }
 }
