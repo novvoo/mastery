@@ -4,7 +4,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -392,24 +392,80 @@ describe('Desktop Integration - Enhanced', () => {
       }
     });
 
-    test('工作目录文件变更应该触发刷新事件', async () => {
+    test('工作目录列表应该反映外部删除的文件', () => {
+      const root = mkdtempSync(join(tmpdir(), 'desktop-workspace-delete-'));
+
+      try {
+        writeFileSync(join(root, 'stale.md'), 'stale');
+        expect(listWorkspaceDirectory(root).entries.map(entry => entry.name)).toContain('stale.md');
+
+        unlinkSync(join(root, 'stale.md'));
+        const result = listWorkspaceDirectory(root);
+
+        expect(result.success).toBe(true);
+        expect(result.entries.map(entry => entry.name)).not.toContain('stale.md');
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    test('工作目录文件创建和删除应该触发刷新事件', async () => {
       const root = mkdtempSync(join(tmpdir(), 'desktop-watch-'));
       let watcher;
 
       try {
+        const changes = [];
+        watcher = createWorkspaceWatcher(root, (change) => {
+          changes.push(change);
+        }, { debounceMs: 10 });
+
+        const waitForChanges = (count) => new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('workspace change timeout')), 1500);
+          const interval = setInterval(() => {
+            if (changes.length >= count) {
+              clearInterval(interval);
+              clearTimeout(timeout);
+              resolve();
+            }
+          }, 20);
+        });
+
+        writeFileSync(join(root, 'notes.md'), 'hello');
+        await waitForChanges(1);
+        unlinkSync(join(root, 'notes.md'));
+        await waitForChanges(2);
+
+        expect(changes[0].root).toBe(root);
+        expect(changes[0].timestamp).toBeGreaterThan(0);
+        expect(['rename', 'change']).toContain(changes[0].eventType);
+        expect(changes.some(change => change.path === 'notes.md')).toBe(true);
+      } finally {
+        watcher?.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    test('工作目录子目录文件删除应该触发刷新事件', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'desktop-watch-nested-'));
+      let watcher;
+
+      try {
+        mkdirSync(join(root, 'docs'));
+        writeFileSync(join(root, 'docs', 'note.md'), 'hello');
+
         const changePromise = new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error('workspace change timeout')), 1000);
+          const timeout = setTimeout(() => reject(new Error('workspace nested change timeout')), 1500);
           watcher = createWorkspaceWatcher(root, (change) => {
             clearTimeout(timeout);
             resolve(change);
           }, { debounceMs: 10 });
         });
 
-        writeFileSync(join(root, 'notes.md'), 'hello');
+        unlinkSync(join(root, 'docs', 'note.md'));
         const change = await changePromise;
 
         expect(change.root).toBe(root);
-        expect(change.timestamp).toBeGreaterThan(0);
+        expect(change.path).toBe('docs/note.md');
         expect(['rename', 'change']).toContain(change.eventType);
       } finally {
         watcher?.close();

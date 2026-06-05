@@ -726,6 +726,11 @@ function App() {
   const ipc = useIPC();
   const chatInputRef = useRef(null);
   const workspaceRefreshTimerRef = useRef(null);
+  const directoryChildrenRef = useRef(directoryChildren);
+
+  useEffect(() => {
+    directoryChildrenRef.current = directoryChildren;
+  }, [directoryChildren]);
 
   const refreshRagDocuments = useCallback(async () => {
     if (!ipc.isConnected || !ipc.processInput) {
@@ -980,7 +985,7 @@ function App() {
       return;
     }
 
-    const loadedPaths = Object.keys(directoryChildren);
+    const loadedPaths = Object.keys(directoryChildrenRef.current);
     const pathsToRefresh = loadedPaths.length > 0 ? loadedPaths : [''];
     setProjectTreeError('');
 
@@ -991,28 +996,53 @@ function App() {
       }));
 
       const nextChildren = {};
+      const missingDirectories = new Set();
       let hasError = false;
       for (const { directoryPath, result } of results) {
         if (result?.success) {
           nextChildren[directoryPath] = result.entries || [];
         } else {
-          hasError = true;
+          missingDirectories.add(directoryPath);
+          if (directoryPath === '') {
+            hasError = true;
+          }
         }
       }
 
-      setDirectoryChildren(prev => ({
-        ...prev,
-        ...nextChildren
-      }));
+      setDirectoryChildren(prev => {
+        const next = {
+          ...prev,
+          ...nextChildren
+        };
+        for (const missingPath of missingDirectories) {
+          if (missingPath !== '') {
+            delete next[missingPath];
+          }
+        }
+        return next;
+      });
+      if (missingDirectories.size > 0) {
+        setExpandedDirectories(prev => {
+          const next = new Set(prev);
+          for (const missingPath of missingDirectories) {
+            if (missingPath !== '') {
+              next.delete(missingPath);
+            }
+          }
+          return next;
+        });
+      }
       setProjectTreeStatus(hasError ? 'error' : 'ready');
       if (hasError) {
-        setProjectTreeError('部分目录无法刷新');
+        setProjectTreeError('工作目录无法刷新');
+      } else {
+        setProjectTreeError('');
       }
     } catch (error) {
       setProjectTreeStatus('error');
       setProjectTreeError(error.message || '无法刷新项目文件');
     }
-  }, [directoryChildren, ipc.listDirectory]);
+  }, [ipc.listDirectory]);
 
   useEffect(() => {
     if (!ipc.isConnected || !ipc.onWorkspaceChanged) {

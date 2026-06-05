@@ -71,32 +71,103 @@ export function listWorkspaceDirectory(workingDirectory, options = {}) {
 export function createWorkspaceWatcher(workingDirectory, onChange, options = {}) {
   const root = path.resolve(workingDirectory);
   const debounceMs = Number.isInteger(options.debounceMs) ? options.debounceMs : 80;
+  const maxWatchedDirectories = Number.isInteger(options.maxWatchedDirectories)
+    ? options.maxWatchedDirectories
+    : 2000;
   let debounceTimer = null;
-  let watcher = null;
+  let closed = false;
+  const watchers = new Map();
 
-  const emitChange = (eventType, filename) => {
+  const normalizeRelativePath = (directory, filename) => {
+    const changedPath = filename ? path.join(directory, String(filename)) : directory;
+    return path.relative(root, changedPath).split(path.sep).join('/');
+  };
+
+  const listDirectories = (directory, directories = []) => {
+    if (directories.length >= maxWatchedDirectories) {
+      return directories;
+    }
+
+    directories.push(directory);
+
+    let entries = [];
+    try {
+      entries = fs.readdirSync(directory, { withFileTypes: true });
+    } catch {
+      return directories;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      listDirectories(path.join(directory, entry.name), directories);
+      if (directories.length >= maxWatchedDirectories) {
+        break;
+      }
+    }
+
+    return directories;
+  };
+
+  const syncWatchers = () => {
+    if (closed || !fs.existsSync(root)) {
+      return;
+    }
+
+    const directories = new Set(listDirectories(root));
+
+    for (const [directory, watcher] of watchers) {
+      if (!directories.has(directory)) {
+        watcher.close();
+        watchers.delete(directory);
+      }
+    }
+
+    for (const directory of directories) {
+      if (watchers.has(directory)) {
+        continue;
+      }
+
+      try {
+        const watcher = fs.watch(directory, (eventType, filename) => {
+          emitChange(eventType, normalizeRelativePath(directory, filename));
+        });
+        watchers.set(directory, watcher);
+      } catch {
+        // Some directories may disappear or be unreadable between scan and watch.
+      }
+    }
+  };
+
+  const emitChange = (eventType, relativePath) => {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      const relativePath = filename ? String(filename).split(path.sep).join('/') : '';
+      syncWatchers();
       onChange({
         eventType: eventType || 'change',
-        path: relativePath,
+        path: relativePath || '',
         root,
         timestamp: Date.now(),
       });
     }, debounceMs);
   };
 
-  try {
-    watcher = fs.watch(root, { recursive: true }, emitChange);
-  } catch {
-    watcher = fs.watch(root, emitChange);
+  syncWatchers();
+
+  if (watchers.size === 0) {
+    throw new Error('无法监听工作目录');
   }
 
   return {
     close() {
+      closed = true;
       clearTimeout(debounceTimer);
-      watcher?.close();
+      for (const watcher of watchers.values()) {
+        watcher.close();
+      }
+      watchers.clear();
     },
   };
 }
