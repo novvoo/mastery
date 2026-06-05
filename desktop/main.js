@@ -601,8 +601,19 @@ class ElectronMainApp {
    */
   #createTray() {
     console.log('🎯 创建托盘图标...');
-
-    this.#tray = new Tray(this.#getIconPath());
+    
+    try {
+      const iconPath = this.#getIconPath();
+      if (iconPath) {
+        this.#tray = new Tray(iconPath);
+      } else {
+        console.warn('⚠️  找不到图标文件，跳过托盘图标创建');
+        return; // 跳过托盘创建
+      }
+    } catch (error) {
+      console.warn('⚠️  创建托盘图标失败:', error.message);
+      return; // 如果创建失败，继续运行而不崩溃
+    }
     
     const contextMenu = Menu.buildFromTemplate([
       {
@@ -715,7 +726,9 @@ class ElectronMainApp {
   #getIconPath() {
     const iconName = process.platform === 'win32' ? 'icon.ico' : 
                      process.platform === 'darwin' ? 'icon.icns' : 'icon.png';
-    return path.join(__dirname, 'build', iconName);
+    const iconPath = path.join(__dirname, 'build', iconName);
+    // 如果图标不存在，返回 undefined，Electron 会使用默认图标
+    return fs.existsSync(iconPath) ? iconPath : undefined;
   }
 
   /**
