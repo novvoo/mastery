@@ -1,6 +1,13 @@
 /**
  * Enhanced CLI UI utilities
  * 增强版 CLI 界面工具
+ * 
+ * Inspired by OpenAI Codex 2026 design:
+ * - Summary Panel: Track agent plan, sources, and outputs
+ * - Multi-Task: Parallel task execution display
+ * - Context Annotations: Source tracking for information
+ * - Proactive Suggestions: Context-aware recommendations
+ * - Role-based Skill Cards: Organized skill bundles
  */
 
 import chalk from 'chalk';
@@ -253,7 +260,7 @@ function formatToolResultPreview(name, result) {
 }
 
 /**
- * 增强版 UI 对象
+ * Enhanced UI object
  */
 export const enhancedUI = {
   theme,
@@ -268,6 +275,248 @@ export const enhancedUI = {
   formatJSON,
   createProgressBar,
   truncate,
+
+  // ============================================================
+  // CODEX 2026 STYLE: Summary Panel - Track agent plan & outputs
+  // ============================================================
+  
+  /**
+   * Display a summary panel showing current plan, sources, and outputs
+   * @param {Object} options - { plan, sources, outputs, compact }
+   */
+  summaryPanel(options = {}) {
+    const { plan = [], sources = [], outputs = [], compact = false } = options;
+    
+    if (compact) {
+      // Compact single-line summary
+      if (plan.length > 0) {
+        console.log(theme.dim(`  📋 Plan: ${plan[plan.length - 1]}`));
+      }
+      return;
+    }
+    
+    console.log('\n' + theme.dim('┌' + '─'.repeat(58) + '┐'));
+    
+    // Plan section
+    console.log(theme.dim('│') + theme.primaryBold('  📋 CURRENT PLAN') + theme.dim(' '.repeat(37) + '│'));
+    if (plan.length === 0) {
+      console.log(theme.dim('│') + theme.muted('    No active plan') + theme.dim(' '.repeat(40) + '│'));
+    } else {
+      plan.slice(-3).forEach((item, i) => {
+        const prefix = i === Math.min(2, plan.length - 1) ? '└─' : '├─';
+        const text = truncate(String(item), 48);
+        console.log(theme.dim(`│     ${prefix} ${text}`) + theme.dim(' '.repeat(Math.max(0, 52 - text.length)) + '│'));
+      });
+    }
+    
+    // Sources section
+    console.log(theme.dim('│') + theme.secondaryBold('  📚 SOURCES') + theme.dim(' '.repeat(42) + '│'));
+    if (sources.length === 0) {
+      console.log(theme.dim('│') + theme.muted('    No sources consulted') + theme.dim(' '.repeat(39) + '│'));
+    } else {
+      sources.slice(-2).forEach((source, i) => {
+        const icon = source.type === 'file' ? '📄' : source.type === 'web' ? '🌐' : source.type === 'memory' ? '🧠' : '📌';
+        const text = truncate(String(source.name || source.url || source), 44);
+        console.log(theme.dim(`│     ${icon} ${text}`) + theme.dim(' '.repeat(Math.max(0, 50 - text.length)) + '│'));
+      });
+    }
+    
+    // Outputs section
+    console.log(theme.dim('│') + theme.successBold('  📤 OUTPUTS') + theme.dim(' '.repeat(43) + '│'));
+    if (outputs.length === 0) {
+      console.log(theme.dim('│') + theme.muted('    No outputs yet') + theme.dim(' '.repeat(41) + '│'));
+    } else {
+      outputs.slice(-2).forEach((output, i) => {
+        const text = truncate(String(output), 46);
+        console.log(theme.dim(`│     ✅ ${text}`) + theme.dim(' '.repeat(Math.max(0, 49 - text.length)) + '│'));
+      });
+    }
+    
+    console.log(theme.dim('└' + '─'.repeat(58) + '┘'));
+  },
+
+  // ============================================================
+  // CODEX 2026 STYLE: Multi-Task Display - Parallel execution
+  // ============================================================
+  
+  /**
+   * Display parallel task status
+   * @param {Array} tasks - Array of { id, name, status, progress }
+   */
+  multiTaskPanel(tasks = []) {
+    if (tasks.length === 0) return;
+    
+    console.log('\n' + theme.dim('┌' + '─'.repeat(58) + '┐'));
+    console.log(theme.dim('│') + theme.primaryBold('  ⚡ PARALLEL TASKS') + theme.dim(' '.repeat(40) + `(${tasks.length} active)│`));
+    
+    tasks.forEach((task, i) => {
+      const statusIcon = task.status === 'running' ? '▶️' : 
+                         task.status === 'completed' ? '✅' : 
+                         task.status === 'failed' ? '❌' : '⏳';
+      const statusColor = task.status === 'running' ? theme.primary :
+                          task.status === 'completed' ? theme.success :
+                          task.status === 'failed' ? theme.error : theme.muted;
+      
+      let progressStr = '';
+      if (typeof task.progress === 'number') {
+        progressStr = ` ${theme.dim('[')}${theme.success('█'.repeat(Math.floor(task.progress * 20)))}${theme.dim('░'.repeat(20 - Math.floor(task.progress * 20)))}${theme.dim(`] ${(task.progress * 100).toFixed(0)}%`)}`;
+      }
+      
+      const text = `${statusIcon} ${statusColor(truncate(task.name || task.id, 35))}${progressStr}`;
+      const padding = Math.max(0, 54 - (task.name || task.id).length);
+      console.log(theme.dim(`│  ${text}`) + theme.dim(' '.repeat(padding) + '│'));
+    });
+    
+    console.log(theme.dim('└' + '─'.repeat(58) + '┘'));
+  },
+
+  // ============================================================
+  // CODEX 2026 STYLE: Context Annotations - Source tracking
+  // ============================================================
+  
+  /**
+   * Display annotated context with source attribution
+   * @param {Object} annotation - { text, source, type }
+   */
+  annotation(annotation = {}) {
+    const { text, source, type = 'info' } = annotation;
+    
+    const typeConfig = {
+      info: { icon: '📌', color: theme.info },
+      file: { icon: '📄', color: theme.primary },
+      web: { icon: '🌐', color: theme.secondary },
+      memory: { icon: '🧠', color: theme.warning },
+      skill: { icon: '🎯', color: theme.success },
+    };
+    
+    const config = typeConfig[type] || typeConfig.info;
+    console.log(`\n  ${config.icon} ${config.color.bold('[' + (source || type.toUpperCase()) + ']')} ${theme.white(text)}`);
+  },
+
+  /**
+   * Show annotation mode indicator
+   * @param {boolean} active - Whether annotation mode is active
+   */
+  annotationMode(active = false) {
+    if (active) {
+      console.log(theme.success.bold('\n  ✏️  ANNOTATION MODE - Select elements to request changes\n'));
+    }
+  },
+
+  // ============================================================
+  // CODEX 2026 STYLE: Proactive Suggestions
+  // ============================================================
+  
+  /**
+   * Display proactive suggestions based on context
+   * @param {Array} suggestions - Array of { text, action, icon }
+   */
+  suggestions(suggestions = []) {
+    if (suggestions.length === 0) return;
+    
+    console.log('\n' + theme.dim('┌' + '─'.repeat(58) + '┐'));
+    console.log(theme.dim('│') + theme.warningBold('  💡 SUGGESTIONS') + theme.dim(' '.repeat(42) + '│'));
+    
+    suggestions.slice(0, 4).forEach((sug, i) => {
+      const icon = sug.icon || '👉';
+      const text = truncate(String(sug.text || sug), 44);
+      const action = sug.action ? ` (${sug.action})` : '';
+      console.log(theme.dim(`│  ${icon} ${text}${theme.secondary(action)}`) + theme.dim(' '.repeat(Math.max(0, 50 - text.length - action.length)) + '│'));
+    });
+    
+    console.log(theme.dim('└' + '─'.repeat(58) + '┘'));
+  },
+
+  // ============================================================
+  // CODEX 2026 STYLE: Role-based Skill Cards
+  // ============================================================
+  
+  /**
+   * Display skill cards in a role-based layout
+   * @param {Object} roleData - { role, skills: [{ name, description, icon }] }
+   */
+  skillCards(roleData = {}) {
+    const { role = 'General', skills = [] } = roleData;
+    
+    console.log('\n' + theme.primaryBold(`  🎯 ${role.toUpperCase()} SKILLS`));
+    console.log(theme.dim('─'.repeat(60)));
+    
+    skills.forEach((skill, i) => {
+      const icon = skill.icon || '⚡';
+      const name = skill.name || skill;
+      const desc = skill.description ? theme.dim(` - ${truncate(skill.description, 40)}`) : '';
+      console.log(`  ${icon} ${theme.white.bold(name)}${desc}`);
+    });
+    
+    console.log(theme.dim('─'.repeat(60)));
+  },
+
+  /**
+   * Display available skill bundles (Codex-style plugin bundles)
+   * @param {Object} bundles - { [category]: [{ name, description, icon }] }
+   */
+  skillBundles(bundles = {}) {
+    console.log('\n' + theme.primaryBold('  📦 AVAILABLE SKILL BUNDLES'));
+    console.log(theme.dim('─'.repeat(60)));
+    
+    Object.entries(bundles).forEach(([category, categorySkills]) => {
+      console.log(`\n  ${theme.secondary.bold(category)}:`);
+      categorySkills.slice(0, 5).forEach(skill => {
+        const icon = skill.icon || '⚡';
+        const name = skill.name || skill;
+        const desc = skill.description ? theme.dim(` - ${truncate(skill.description, 35)}`) : '';
+        console.log(`    ${icon} ${name}${desc}`);
+      });
+      if (categorySkills.length > 5) {
+        console.log(`    ${theme.muted(`+${categorySkills.length - 5} more...`)}`);
+      }
+    });
+    
+    console.log(theme.dim('─'.repeat(60)));
+  },
+
+  // ============================================================
+  // IMPROVED VISUAL HIERARCHY - Better spacing and typography
+  // ============================================================
+  
+  /**
+   * Create improved header with better visual hierarchy
+   * @param {string} text - Header text
+   * @param {Object} options - { subtitle, icon }
+   */
+  sectionHeader(text, options = {}) {
+    const { subtitle, icon = '─' } = options;
+    console.log('');
+    console.log(theme.primaryBold(`  ${text}`));
+    if (subtitle) {
+      console.log(theme.dim(`  ${subtitle}`));
+    }
+    console.log(theme.dim(icon.repeat(60)));
+    console.log('');
+  },
+
+  /**
+   * Display context card with better spacing
+   * @param {Object} card - { title, items, color }
+   */
+  contextCard(card = {}) {
+    const { title, items = [], color = theme.primary } = card;
+    
+    console.log('');
+    console.log(color.bold(`  ┌─ ${title}`));
+    items.forEach((item, i) => {
+      const isLast = i === items.length - 1;
+      const prefix = isLast ? '└─' : '├─';
+      const text = truncate(String(item), 52);
+      console.log(theme.dim(`  │   ${prefix} ${text}`));
+    });
+    console.log(color('  └' + '─'.repeat(Math.max(0, 55)) + '┘'));
+    console.log('');
+  },
+
+  // ============================================================
+  // LEGACY COMPATIBILITY
+  // ============================================================
 
   // 快捷方法
   brand: (text) => theme.primaryBold(text),

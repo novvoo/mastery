@@ -6,7 +6,8 @@
 
 import { SubAgent, SubAgentStatus } from './SubAgent.js';
 import { MemoryManager } from '../../memory/memory-manager.js';
-import { rm, readdir, existsSync } from 'fs/promises';
+import { rm, readdir } from 'fs/promises';
+import { existsSync } from 'fs';
 import { join } from 'path';
 
 const TEMP_DIR_CLEANUP_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24小时后清理旧临时目录

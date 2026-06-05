@@ -1,0 +1,297 @@
+/**
+ * 全局样式文件
+ * 为桌面应用提供统一的样式和主题
+ */
+
+:root {
+  /* 颜色主题 */
+  --primary-color: #4cc9f0;
+  --primary-dark: #2aa7cf;
+  --primary-soft: rgba(76, 201, 240, 0.14);
+  --secondary-color: #242b36;
+  --accent-color: #171c25;
+  --background-color: #0f1218;
+  --surface-color: #171c25;
+  --surface-raised: #1d2430;
+  --surface-hover: #242b36;
+  --border-color: #2c3544;
+  --border-subtle: #222a36;
+  --text-color: #eef3f8;
+  --text-muted: #9aa6b2;
+  --text-dark: #6f7a86;
+  
+  /* 状态颜色 */
+  --success-color: #5dd39e;
+  --warning-color: #f6c85f;
+  --error-color: #ff6b7a;
+  --info-color: #7dd3fc;
+  
+  /* 字体 */
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  
+  /* 间距 */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  
+  /* 圆角 */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.26);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.36);
+  
+  /* 过渡 */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.2s ease;
+  --transition-slow: 0.3s ease;
+}
+
+/* 全局重置 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  background-color: var(--background-color);
+  color: var(--text-color);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+textarea,
+select {
+  letter-spacing: 0;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background-color);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #354052;
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-color);
+}
+
+/* 选择文本 */
+::selection {
+  background: var(--primary-color);
+  color: white;
+}
+
+/* 输入框样式 */
+input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  background-color: #10151d;
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  transition: border-color var(--transition-fast);
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+input:disabled, textarea:disabled, select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 按钮样式 */
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  transition: all var(--transition-fast);
+  background-color: var(--surface-hover);
+  color: var(--text-color);
+}
+
+button:hover:not(:disabled) {
+  background-color: #2c3544;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+button.primary:hover:not(:disabled) {
+  background-color: var(--primary-dark);
+}
+
+/* 动画 */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-pulse {
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.animate-slideIn {
+  animation: slideIn 0.2s ease-out;
+}
+
+/* 卡片样式 */
+.card {
+  background-color: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+}
+
+/* 标签样式 */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+
+.badge.success {
+  background-color: var(--success-color);
+  color: white;
+}
+
+.badge.warning {
+  background-color: var(--warning-color);
+  color: black;
+}
+
+.badge.error {
+  background-color: var(--error-color);
+  color: white;
+}
+
+.badge.info {
+  background-color: var(--info-color);
+  color: white;
+}
+
+.badge.primary {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+/* 工具提示 */
+.tooltip {
+  position: relative;
+}
+
+.tooltip::after {
+  content: attr(title);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--accent-color);
+  color: var(--text-color);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+}
+
+.tooltip:hover::after {
+  opacity: 1;
+}
+
+/* 代码样式 */
+code {
+  background-color: var(--accent-color);
+  color: var(--primary-color);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: var(--font-size-sm);
+}
+
+pre {
+  background-color: var(--accent-color);
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  color: var(--text-color);
+}

@@ -1,7 +1,8 @@
 {
   "name": "ai-engineering-mastery-agent",
-  "version": "1.0.13",
+  "version": "1.0.15",
   "description": "AI Engineering Mastery Agent - A standalone ReAct agent with 12 professional coding skills, sandbox execution, graph planning, 3-layer memory, and MCP protocol support",
+  "author": "novvoo",
   "type": "module",
   "main": "src/index.js",
   "bin": {
@@ -18,10 +19,36 @@
     "test:debug": "bun --inspect-brk test-integration.mjs",
     "test:integration": "bun test-integration.mjs",
     "test:watch": "bun --watch test-integration.mjs",
+    "test:runtime": "bun test tests/runtime/integration.test.js",
+    "test:adapters": "bun test tests/adapters/cli.test.js",
+    "test:all": "bun test tests/",
+    "test:e2e": "bun test tests/e2e/runtime-e2e.test.js",
+    "test:e2e:watch": "bun --watch tests/e2e/runtime-e2e.test.js",
     "lint": "eslint src test-integration.mjs",
     "package:release": "bun scripts/prepare-release-package.mjs",
     "format": "prettier --write \"src/**/*.js\"",
-    "format:check": "prettier --check \"src/**/*.js\""
+    "format:check": "prettier --check \"src/**/*.js\"",
+    "examples": "bun examples/runtime-usage.js",
+    "examples:runtime": "bun examples/runtime-usage.js",
+    "examples:plugins": "bun examples/plugin-system.js",
+    "examples:desktop": "bun examples/desktop-integration.js",
+    "examples:performance": "bun examples/performance-tests.js",
+    "examples:all": "bun examples/runtime-usage.js && bun examples/plugin-system.js && bun examples/desktop-integration.js",
+    "desktop:dev": "node scripts/desktop-dev.js",
+    "desktop:start": "electron desktop/main.js",
+    "desktop:renderer:build": "vite build --config desktop/vite.config.js",
+    "desktop:build": "bun scripts/build-desktop.js",
+    "desktop:build:win": "bun scripts/build-desktop.js --win",
+    "desktop:build:mac": "bun scripts/build-desktop.js --mac",
+    "desktop:build:linux": "bun scripts/build-desktop.js --linux",
+    "desktop:build:all": "bun scripts/build-desktop.js --win --mac --linux",
+    "build:cli": "bun scripts/build-cli.js",
+    "build:desktop": "bun scripts/build-desktop.js",
+    "build:all": "bun scripts/build-all.js",
+    "release:cli": "bun scripts/release-cli.js",
+    "release:desktop": "bun scripts/release-desktop.js",
+    "release:all": "bun scripts/release-all.js",
+    "publish": "npm run release:all"
   },
   "keywords": [
     "ai-agent",
@@ -37,15 +64,21 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git+https://github.com/novvoo/ai-engineering-mastery-agent.git"
   },
+  "files": [
+    "src/",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
   "dependencies": {
     "@huggingface/tokenizers": "^0.1.3",
     "boxen": "^8.0.1",
-    "chalk": "^5.6.2",
+    "chalk": "^5.3.0",
     "cli-table3": "^0.6.5",
     "dotenv": "^17.0.0",
-    "glob": "^11.0.0",
+    "glob": "^10.4.5",
     "https-proxy-agent": "^9.0.0",
     "inquirer": "^13.4.3",
     "mammoth": "^1.12.0",
@@ -55,6 +88,142 @@
     "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
-    "eslint": "^8.57.1"
+    "@vitejs/plugin-react": "^4.2.1",
+    "electron": "^28.3.3",
+    "electron-builder": "^24.9.1",
+    "eslint": "^8.57.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "vite": "^5.0.10"
+  },
+  "build": {
+    "appId": "com.ai-engineering-mastery.agent",
+    "productName": "AI Engineering Mastery Agent",
+    "copyright": "Copyright © 2024 AI Engineering Mastery Agent",
+    "directories": {
+      "output": "release/desktop",
+      "buildResources": "build"
+    },
+    "extraMetadata": {
+      "main": "desktop/main.js"
+    },
+    "files": [
+      "desktop/main.js",
+      "desktop/preload.js",
+      "desktop/renderer/**/*",
+      "desktop/build/**/*",
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "src",
+        "to": "src",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "desktop-${productName}-${version}-${arch}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AI Agent",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "license": "LICENSE"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "artifactName": "desktop-${productName}-${version}-${arch}.${ext}"
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icons",
+      "category": "Development",
+      "maintainer": "ai-engineering@example.com",
+      "desktop": {
+        "Name": "AI Engineering Mastery Agent",
+        "Comment": "AI Engineering Mastery Agent - Desktop Application",
+        "Categories": "Development;IDE;AI",
+        "StartupWMClass": "ai-engineering-mastery-agent"
+      },
+      "artifactName": "desktop-${productName}-${version}-${arch}.${ext}"
+    },
+    "publish": {
+      "provider": "github"
+    },
+    "portable": {
+      "artifactName": "desktop-${productName}-${version}-${arch}-portable.${ext}"
+    }
   }
 }

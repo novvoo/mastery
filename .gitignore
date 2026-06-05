@@ -1,5 +1,6 @@
 node_modules/
 dist/
+release/
 .env
 logs/
 *.gguf
@@ -38,3 +39,4 @@ test*.json
 *.pfx
 *.cer
 .agent-data/
+desktop/renderer/dist/

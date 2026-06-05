@@ -4,6 +4,11 @@
 
 当前设计目标不是“让模型自由发挥”，而是让模型在本地运行时里被可靠地引导：先识别任务，选择工具，执行变更，验证结果，最后输出对用户有用的结论。
 
+### 双平台支持
+- **CLI（命令行界面）**：快速启动，轻量级，适合终端用户
+- **Desktop（桌面应用）**：Electron 构建，带图形化界面、项目文件树、RAG 面板和对话内 Agent/工具事件流，适合日常使用
+![](./images/demo_001.png)
+
 ## 核心能力
 
 - **智能意图识别**：短输入如"上海天气"会先经过 LLM intent classifier，生成结构化 routing hint，再进入 ReAct 循环。明显天气查询有窄兜底，避免模型漏判。
@@ -69,6 +74,79 @@ User Input
 - `src/mcp/`：MCP 客户端、协议适配、工具桥接。
 - `src/models/`：多 provider 适配（OpenAI, Llama, Zhipu, DeepSeek, OpenRouter）。
 - `test-integration.mjs`：端到端集成测试套件。
+- `desktop/`：Electron 桌面应用源代码和配置
+
+## 安装与运行
+
+### CLI
+
+```bash
+# 克隆项目
+git clone <repo-url>
+cd ai-engineering-mastery-agent
+
+# 安装依赖（使用 bun）
+bun install
+
+# 配置环境变量（可选，复制模板）
+cp .env.example .env
+# 编辑 .env，填入 API 密钥等配置
+
+# 运行 CLI 模式
+bun run start
+# 或开发模式
+bun run dev
+```
+
+### Desktop
+
+```bash
+# 开发模式
+npm run desktop:dev
+
+# 构建桌面应用（平台相关，产物输出到 release/desktop/）
+npm run desktop:build:all   # 所有平台
+npm run desktop:build:win   # Windows
+npm run desktop:build:mac   # macOS
+npm run desktop:build:linux # Linux
+
+# 构建 CLI npm tarball（产物输出到 release/cli/）
+npm run build:cli
+
+# 同时构建 CLI 和 Desktop，产物分别输出到 release/cli/ 与 release/desktop/
+npm run build:all
+```
+
+## 测试
+
+```bash
+# 运行完整集成测试
+npm run test
+
+# 运行指定测试
+npm run test:runtime
+npm run test:adapters
+
+# 查看所有测试脚本
+cat package.json
+```
+
+### 测试覆盖范围
+
+- ✅ Agent Engine 核心流程
+- ✅ 插件系统（注册、卸载、钩子调用）
+- ✅ 事件总线
+- ✅ 工具组和工具中间件
+- ✅ Runtime 配置
+- ✅ Agent 状态管理
+- ✅ 记忆钩子和配置钩子
+- ✅ CLI 和 Desktop 适配器
+- ✅ 端到端执行流程
+- ✅ 错误恢复和重试
+- ✅ 并发压力测试
+- ✅ 多轮对话上下文
+- ✅ 工具调用协议
+- ✅ 等等（共 159 条测试）
 
 ## 方法论
 
@@ -105,7 +183,9 @@ Agent 的工程方法论可以概括为六步：
 
 ## 用户文档 RAG
 
-CLI 里的"上传文档"不是浏览器表单上传，而是把用户提供的文件路径、macOS 文件选择器结果、网络文档链接或粘贴文本加入当前 CLI 会话的文档索引。索引是内存态的，退出当前进程后需要重新添加；这样默认不把私人文档持久化到磁盘。
+CLI 里的"上传文档"不是浏览器表单上传，而是把用户提供的文件路径、macOS 文件选择器结果、网络文档链接或粘贴文本加入当前工作目录的文档索引。索引会持久化到 `<working-directory>/.agent-data/doc-rag/`，重启 CLI 或 Desktop 后会自动加载；切换工作目录时会加载对应目录自己的 RAG 索引，避免不同项目串库。
+
+Desktop 的 RAG 面板使用同一套 `/doc` 后端：上传文件并初始化后会写入同一个持久化目录，重开应用后通过 `/doc list` 自动回填"已加载文档"列表。项目文件树也会监听工作目录变化并自动刷新。
 
 显式命令：
 

@@ -1,0 +1,252 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/electron-builder/scheme.json",
+  "appId": "com.ai-agent.desktop",
+  "productName": "AI Agent Desktop",
+  "copyright": "Copyright © 2024 AI Agent Team",
+  "directories": {
+    "output": "../release/desktop",
+    "buildResources": "build"
+  },
+  "files": [
+    "main.js",
+    "preload.js",
+    "renderer/**/*",
+    "build/**/*",
+    "!renderer/node_modules/**/*",
+    "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+    "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+    "!**/node_modules/*.d.ts",
+    "!**/node_modules/.bin",
+    "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+    "!**/._*",
+    "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
+    "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.vscode}",
+    "!**/{appveyor.yml,.travis.yml,circle.yml}",
+    "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
+  ],
+  "extraResources": [
+    {
+      "from": "../src",
+      "to": "src",
+      "filter": [
+        "**/*"
+      ]
+    },
+    {
+      "from": "../node_modules",
+      "to": "node_modules",
+      "filter": [
+        "**/*"
+      ]
+    },
+    {
+      "from": "../package.json",
+      "to": "package.json"
+    }
+  ],
+  "asar": true,
+  "asarUnpack": [
+    "node_modules/**/*"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64",
+          "ia32"
+        ]
+      },
+      {
+        "target": "portable",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "icon": "build/icon.ico",
+    "artifactName": "desktop-${productName}-${version}-${arch}-setup.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "allowElevation": true,
+    "installerIcon": "build/icon.ico",
+    "uninstallerIcon": "build/icon.ico",
+    "installerHeaderIcon": "build/icon.ico",
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "AI Agent Desktop",
+    "include": "build/installer.nsh",
+    "deleteAppDataOnUninstall": false,
+    "displayLanguageSelector": false,
+    "installerLanguages": [
+      "zh_CN",
+      "en_US"
+    ],
+    "language": "zh_CN",
+    "license": "../LICENSE",
+    "runAfterFinish": true,
+    "menuCategory": true
+  },
+  "portable": {
+    "artifactName": "desktop-${productName}-${version}-${arch}-portable.${ext}"
+  },
+  "mac": {
+    "target": [
+      {
+        "target": "dmg",
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      },
+      {
+        "target": "zip",
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      }
+    ],
+    "icon": "build/icon.icns",
+    "category": "public.app-category.developer-tools",
+    "type": "distribution",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "strictIdentify": true,
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.plist",
+    "artifactName": "desktop-${productName}-${version}-${arch}.${ext}",
+    "darkModeSupport": true
+  },
+  "dmg": {
+    "contents": [
+      {
+        "x": 130,
+        "y": 220,
+        "type": "file"
+      },
+      {
+        "x": 410,
+        "y": 220,
+        "type": "link",
+        "path": "/Applications"
+      }
+    ],
+    "window": {
+      "width": 540,
+      "height": 380
+    },
+    "title": "${productName} ${version}",
+    "iconSize": 100,
+    "artifactName": "desktop-${productName}-${version}-${arch}.${ext}"
+  },
+  "zip": {
+    "artifactName": "desktop-${productName}-${version}-${arch}.${ext}"
+  },
+  "linux": {
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      },
+      {
+        "target": "deb",
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      },
+      {
+        "target": "rpm",
+        "arch": [
+          "x64"
+        ]
+      },
+      {
+        "target": "snap",
+        "arch": [
+          "x64"
+        ]
+      },
+      {
+        "target": "tar.gz",
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      }
+    ],
+    "icon": "build/icons",
+    "category": "Development",
+    "maintainer": "ai-agent@example.com",
+    "desktop": {
+      "Name": "AI Agent Desktop",
+      "Comment": "AI Engineering Mastery Agent Desktop Application",
+      "Categories": "Development;IDE;AI;Utility",
+      "StartupWMClass": "ai-agent-desktop",
+      "Keywords": "AI;agent;coding;development;assistant",
+      "Terminal": "false",
+      "Type": "Application",
+      "Icon": "ai-agent-desktop"
+    },
+    "artifactName": "desktop-${productName}-${version}-${arch}.${ext}",
+    "executableName": "ai-agent-desktop",
+    "synopsis": "AI Engineering Mastery Agent Desktop Application",
+    "description": "A standalone ReAct agent with 12 professional coding skills, sandbox execution, graph planning, 3-layer memory, and MCP protocol support"
+  },
+  "appImage": {
+    "systemIntegration": "ask"
+  },
+  "deb": {
+    "priority": "optional",
+    "compression": "xz",
+    "depends": [
+      "libgtk-3-0",
+      "libnotify4",
+      "libnss3",
+      "libxss1",
+      "xtst6"
+    ]
+  },
+  "rpm": {
+    "compression": "xz",
+    "summary": "AI Agent Desktop Application",
+    "license": "MIT",
+    "category": "Development/Tools"
+  },
+  "snap": {
+    "confinement": "classic",
+    "grade": "stable",
+    "channels": [
+      "stable",
+      "edge"
+    ],
+    "plugs": [
+      "default",
+      "home",
+      "network",
+      "network-bind"
+    ]
+  },
+  "tar.gz": {
+    "compression": "gzip"
+  },
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "ai-agent",
+      "repo": "ai-agent-desktop",
+      "releaseType": "release"
+    }
+  ],
+  "afterSign": "build/notarize.js",
+  "buildDependenciesFromSource": false,
+  "nodeGypRebuild": false,
+  "npmRebuild": true,
+  "yarn": false
+}

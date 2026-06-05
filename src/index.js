@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * AI Engineering Mastery Agent
- * Main entry point with enhanced CLI
+ * 主入口点 - 使用新架构 Runtime Layer
  */
 
 import { clearLine, createInterface, cursorTo, emitKeypressEvents } from 'readline';
@@ -11,7 +11,23 @@ import { execFileSync } from 'child_process';
 import { platform } from 'os';
 import { input, password, select } from '@inquirer/prompts';
 
-// Core imports
+// 新架构导入 - Runtime Layer
+import {
+  createAgentEngine,
+  createRuntime,
+  createCompatibilityLayer,
+  AgentEngine,
+  RuntimeConfig,
+  PlatformType,
+  detectPlatform,
+  MigrationBridge,
+  getApiMapping,
+  getAllApiMappings,
+  getEventBus,
+  RuntimeEvent
+} from './runtime/index.js';
+
+// Core imports - 核心模块导入（旧架构）
 import { ToolCategory } from './core/types.js';
 import { ToolRegistry } from './core/tool-registry.js';
 import { SessionManager } from './core/session-manager.js';
@@ -35,7 +51,7 @@ import {
   writeUserEnv,
 } from './core/runtime-config.js';
 
-// Model imports
+// Model imports - 模型提供者导入
 import { OpenAIModelProvider } from './models/openai-provider.js';
 import { LlamaModelProvider } from './models/llama-provider.js';
 import { ZhipuModelProvider } from './models/zhipu-provider.js';
@@ -43,10 +59,10 @@ import { DeepSeekModelProvider } from './models/deepseek-provider.js';
 import { OpenRouterModelProvider } from './models/openrouter-provider.js';
 import { resolveModelCapabilities } from './models/model-capabilities.js';
 
-// Scheduler imports
+// Scheduler imports - 调度器导入
 import { SchedulerEngine } from './scheduler/SchedulerEngine.js';
 
-// Tool imports
+// Tool imports - 工具导入
 import { createFileSystemTools } from './tools/filesystem/filesystem-tools.js';
 import { createShellTool } from './tools/system/shell.js';
 import { createPtyTools, stopAllPtySessions } from './tools/system/pty.js';
@@ -60,10 +76,10 @@ import { createSubAgentTools } from './tools/scheduler/subagent-tools.js';
 import { createGitTools } from './tools/git/git-tools.js';
 import { createMCPTools } from './tools/mcp/mcp-tools.js';
 
-// MCP imports
+// MCP imports - MCP 客户端导入
 import { MCPClient } from './mcp/mcp-client.js';
 
-// Skill imports
+// Skill imports - 技能工具导入
 import createBrainstormTool from './tools/skills/brainstorm.js';
 import createGrillTool from './tools/skills/grill.js';
 import createTddTool from './tools/skills/tdd.js';
@@ -78,7 +94,7 @@ import createToPrdTool from './tools/skills/to_prd.js';
 import createToIssuesTool from './tools/skills/to_issues.js';
 import createSetupTool from './tools/skills/setup.js';
 
-// UI imports
+// UI imports - UI 组件导入
 import { enhancedUI } from './cli/enhanced-ui.js';
 import { createEnhancedCommands } from './cli/enhanced-commands.js';
 import {
@@ -89,6 +105,7 @@ import {
 } from './cli/slash-command-suggestions.js';
 
 // Load environment variables from the user config and the current workspace.
+// 加载环境变量
 loadRuntimeEnv();
 
 const COMMAND_HELP = {
@@ -260,7 +277,7 @@ class AIEngineeringAgent {
   constructor() {
     this.config = this.#loadConfig();
     this.workingDir = this.config.workingDir;
-    this.agent = null;
+    this.engine = null;
     this.schedulerEngine = null;
     this.commands = null;
     this.rl = null;
@@ -394,11 +411,18 @@ class AIEngineeringAgent {
       toolRegistry.register(tool);
       registered += 1;
     }
+    // Rebuild slash command suggestions when new MCP tools are registered
+    try {
+      this.slashCommandSuggestions = buildSlashCommandSuggestions(this.engine.getTools() || []);
+    } catch (err) {
+      enhancedUI.debugEvent('Failed to rebuild slash command suggestions after MCP register', { error: String(err) });
+    }
+
     return registered;
   }
 
   /**
-   * Initialize the application
+   * Initialize the application - 使用新架构 AgentEngine
    */
   async initialize() {
     await this.#ensureRuntimeConfig();
@@ -412,60 +436,130 @@ class AIEngineeringAgent {
       mkdirSync(this.workingDir, { recursive: true });
     }
 
-    // Create tool registry
-    const toolRegistry = new ToolRegistry();
+    // 使用新架构的 AgentEngine
+    this.engine = createAgentEngine({
+      platform: PlatformType.CLI,
+      workingDirectory: this.workingDir,
+      debug: this.debugMode,
+      maxIterations: this.config.maxIterations,
+      maxTokens: this.config.maxTokens,
+      temperature: this.config.temperature,
+    });
 
-    // Register filesystem tools
-    const fsTools = createFileSystemTools();
-    for (const tool of fsTools) {
-      toolRegistry.register(tool);
+    // 设置事件转发到 enhancedUI
+    this.#setupEventForwarding();
+
+    // 创建模型提供者（先创建，以便引擎初始化时可以使用）
+    const modelProvider = await this.#createModelProvider();
+    this.engine.attachModelProvider(modelProvider);
+    this.modelProvider = modelProvider;
+
+    // 初始化引擎（现在 modelProvider 已附加，schedulerEngine 会被创建）
+    await this.engine.initialize();
+
+    // 获取引擎中的组件引用（用于 CLI 命令）
+    this.toolRegistry = this.engine.getToolRegistry();
+    this.schedulerEngine = this.engine.getSchedulerEngine();
+    this.mcpClient = this.engine.getMcpClient();
+    this.tokenJuice = this.engine.getTokenJuice();
+    this.experienceMemory = this.engine.getExperienceMemory();
+    this.securityPolicy = this.engine.getSecurityPolicy();
+    this.intelligentReasoning = this.engine.getIntelligentReasoning();
+    this.automationEngine = this.engine.getAutomationEngine();
+
+    // Create enhanced commands
+    this.commands = createEnhancedCommands(this.schedulerEngine, {
+      mcpClient: this.mcpClient,
+      tokenJuice: this.tokenJuice,
+      experienceMemory: this.experienceMemory,
+      securityPolicy: this.securityPolicy,
+      intelligentReasoning: this.intelligentReasoning,
+      automationEngine: this.automationEngine,
+      registerMcpTools: serverName => this.#registerMCPTools(this.toolRegistry, serverName),
+    });
+
+    // Build initial slash command suggestions from registered tools
+    try {
+      this.slashCommandSuggestions = buildSlashCommandSuggestions(this.engine.getTools() || []);
+    } catch (err) {
+      enhancedUI.debugEvent('Failed to build slash command suggestions on init', { error: String(err) });
+      this.slashCommandSuggestions = [];
     }
 
-    // Register shell tool
-    toolRegistry.register(createShellTool({ sandbox: this.config.shellSandbox }));
+    // Create readline interface
+    this.rl = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+      completer: line => this.#completeSlashCommandLine(line),
+    });
+    this.rl.on('close', () => {
+      this.rlClosed = true;
+      this.isRunning = false;
+    });
+    this.#installSlashCommandSuggestions();
 
-    // Register interactive terminal and semantic workspace search tools
-    for (const tool of createPtyTools()) {
-      toolRegistry.register(tool);
-    }
-    toolRegistry.register(createSemanticSearchTool());
-    for (const tool of createDocumentRagTools()) {
-      toolRegistry.register(tool);
-    }
+    this.isRunning = true;
+  }
 
-    // Register browser-like web search and fetch tools
-    for (const tool of createWebTools()) {
-      toolRegistry.register(tool);
-    }
+  /**
+   * 设置事件转发到 enhancedUI
+   */
+  #setupEventForwarding() {
+    const eventBus = getEventBus();
+    
+    // 转发状态更新
+    eventBus.subscribe(RuntimeEvent.STATUS_UPDATE, (event) => {
+      switch (event.level) {
+        case 'info':
+          console.log(enhancedUI.theme.info(event.message));
+          break;
+        case 'success':
+          console.log(enhancedUI.theme.success(event.message));
+          break;
+        case 'error':
+          console.log(enhancedUI.theme.error(event.message));
+          break;
+        case 'debug':
+          if (this.debugMode) {
+            console.log(enhancedUI.theme.dim(event.message));
+          }
+          break;
+        default:
+          console.log(event.message);
+      }
+    });
 
-    // Register skill tools
-    const skillTools = [
-      createBrainstormTool(),
-      createGrillTool(),
-      createTddTool(),
-      createDiagnoseTool(),
-      createVerifyTool(),
-      createReviewTool(),
-      createArchitectTool(),
-      createZoomOutTool(),
-      createCavemanTool(),
-      createHandoffTool(),
-      createToPrdTool(),
-      createToIssuesTool(),
-      createSetupTool(),
-    ];
-    for (const tool of skillTools) {
-      toolRegistry.register(tool);
-    }
-    this.slashCommandSuggestions = buildSlashCommandSuggestions(skillTools);
+    // 转发工具调用
+    eventBus.subscribe(RuntimeEvent.TOOL_CALL, (event) => {
+      if (this.debugMode) {
+        console.log(enhancedUI.theme.dim(`  🔧 Calling: ${event.toolName}`));
+      }
+    });
 
-    // Create model provider
+    // 转发 Agent 完成
+    eventBus.subscribe(RuntimeEvent.AGENT_COMPLETE, (event) => {
+      if (this.debugMode) {
+        console.log(enhancedUI.theme.success('✨ Task complete!'));
+      }
+    });
+
+    // 转发 Agent 错误
+    eventBus.subscribe(RuntimeEvent.AGENT_ERROR, (event) => {
+      console.error(enhancedUI.theme.error(`❌ Agent error: ${event.error}`));
+    });
+  }
+
+  /**
+   * 创建模型提供者
+   */
+  async #createModelProvider() {
     const modelCapabilities = await resolveModelCapabilities({
       provider: this.config.provider,
       model: this.config.model,
       baseURL: this.config.apiUrl,
       apiKey: this.#getProviderApiKey(this.config.provider),
     });
+
     if (this.debugMode) {
       enhancedUI.debugEvent?.('Model capabilities resolved', {
         provider: modelCapabilities.provider,
@@ -516,141 +610,7 @@ class AIEngineeringAgent {
       throw new Error(`Unknown provider: ${this.config.provider}`);
     }
 
-    this.modelProvider = modelProvider;
-
-    // Initialize Security Policy before scheduler/subagents so every agent
-    // receives the same enforcement object.
-    this.securityPolicy = new SecurityPolicy({
-      requireApproval: process.env.REQUIRE_APPROVAL === 'true',
-    });
-
-    // Create scheduler engine
-    this.schedulerEngine = new SchedulerEngine(
-      {
-        workingDirectory: this.workingDir,
-        dataDir: resolve(this.workingDir, '.agent-data'),
-        checkIntervalMs: 60000,
-        maxAgents: 10,
-        securityPolicy: this.securityPolicy,
-      },
-      modelProvider,
-      toolRegistry,
-      null // memoryManager will be created per subagent
-    );
-
-    await this.schedulerEngine.initialize();
-
-    // Register scheduler tools (after scheduler engine is created)
-    const taskTools = createTaskTools(this.schedulerEngine);
-    for (const tool of taskTools) {
-      toolRegistry.register(tool);
-    }
-
-    const scheduleTools = createScheduleTools(this.schedulerEngine);
-    for (const tool of scheduleTools) {
-      toolRegistry.register(tool);
-    }
-
-    const subAgentTools = createSubAgentTools(this.schedulerEngine);
-    for (const tool of subAgentTools) {
-      toolRegistry.register(tool);
-    }
-
-    // Register Git tools
-    const gitTools = createGitTools();
-    for (const tool of gitTools) {
-      toolRegistry.register(tool);
-    }
-
-    // Initialize MCP client and register MCP tools
-    this.mcpClient = new MCPClient();
-    const mcpTools = createMCPTools(this.mcpClient);
-    for (const tool of mcpTools) {
-      toolRegistry.register(tool);
-    }
-
-    // Auto-connect to configured MCP servers
-    await this.#initializeMCPServers(toolRegistry);
-
-    // Initialize TokenJuice for output compression
-    this.tokenJuice = new TokenJuice({
-      maxChars: parseInt(process.env.MAX_RESULT_CHARS || '4000'), // 更激进的默认字符限制
-    });
-
-    // Initialize Experience Memory
-    const experienceDir = resolve(this.workingDir, '.agent-data');
-    if (!existsSync(experienceDir)) mkdirSync(experienceDir, { recursive: true });
-    this.experienceMemory = new ExperienceMemory({
-      filePath: resolve(experienceDir, 'experience-memory.json'),
-      maxExperiences: 500,
-    });
-
-    // Register policies after all built-in/MCP tools have been registered.
-    this.securityPolicy.registerDefaultPolicies(toolRegistry.getAll());
-
-    // Initialize Intelligent Reasoning Engine
-    this.intelligentReasoning = new IntelligentReasoning({
-      toolRegistry,
-      experienceMemory: this.experienceMemory,
-      config: {
-        maxCandidates: 5,
-        confidenceThreshold: 0.7,
-      },
-    });
-
-    // Initialize Automation Engine
-    this.automationEngine = new AutomationEngine({
-      checkIntervalMs: 5000,
-      maxConcurrentWorkflows: 5,
-      dataDir: resolve(this.workingDir, '.automation'),
-    });
-
-    // Create memory manager
-    const memoryManager = new MemoryManager(this.workingDir);
-    await memoryManager.load();
-
-    // Create main agent
-    this.agent = new ReActAgent(
-      modelProvider,
-      toolRegistry,
-      memoryManager,
-      {
-        maxIterations: this.config.maxIterations,
-        temperature: this.config.temperature,
-        model: this.config.model,
-        workingDirectory: this.workingDir,
-        debug: this.debugMode,
-        intentClassification: this.config.intentClassification,
-        securityPolicy: this.securityPolicy,
-        tokenJuice: this.tokenJuice,
-      },
-      enhancedUI
-    );
-
-    // Create enhanced commands
-    this.commands = createEnhancedCommands(this.schedulerEngine, {
-      mcpClient: this.mcpClient,
-      tokenJuice: this.tokenJuice,
-      experienceMemory: this.experienceMemory,
-      securityPolicy: this.securityPolicy,
-      intelligentReasoning: this.intelligentReasoning,
-      automationEngine: this.automationEngine,
-      registerMcpTools: serverName => this.#registerMCPTools(toolRegistry, serverName),
-    });
-
-    // Create readline interface
-    this.rl = createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      completer: line => this.#completeSlashCommandLine(line),
-    });
-    this.rl.on('close', () => {
-      this.rlClosed = true;
-      this.isRunning = false;
-    });
-    this.#installSlashCommandSuggestions();
-
-    this.isRunning = true;
+    return modelProvider;
   }
 
   async #ensureRuntimeConfig() {
@@ -830,10 +790,12 @@ class AIEngineeringAgent {
     });
 
     // Show tool summary
-    const toolRegistry = this.agent.getTools();
-    const summary = toolRegistry.getToolSummary();
-    const totalTools = Object.values(summary).flat().length;
-    console.log(enhancedUI.theme.dim(`  ℹ️  Loaded ${totalTools} tools`));
+    const toolRegistry = this.engine?.getToolRegistry();
+    if (toolRegistry) {
+      const summary = toolRegistry.getToolSummary();
+      const totalTools = Object.values(summary).flat().length;
+      console.log(enhancedUI.theme.dim(`  ℹ️  Loaded ${totalTools} tools`));
+    }
     console.log('');
   }
 
@@ -1029,9 +991,7 @@ class AIEngineeringAgent {
           this.modelProvider.setDebugMode(this.debugMode);
         }
       }
-      if (this.agent && typeof this.agent.setDebugMode === 'function') {
-        this.agent.setDebugMode(this.debugMode);
-      }
+      // Debug mode is handled by engine config
       enhancedUI.setDebugMode(this.debugMode);
       process.env.DEBUG = this.debugMode ? 'true' : 'false';
       
@@ -1075,7 +1035,7 @@ class AIEngineeringAgent {
 
   showMemoryContext(argsText = '') {
     const mode = String(argsText || '').trim().toLowerCase();
-    const memoryManager = this.agent?.memoryManager;
+    const memoryManager = this.engine?.getMemoryManager();
     if (!memoryManager) {
       enhancedUI.error('Project memory is not initialized');
       return;
@@ -1158,7 +1118,7 @@ class AIEngineeringAgent {
       return;
     }
 
-    const toolRegistry = this.agent?.getTools?.();
+    const toolRegistry = this.toolRegistry;
     if (!toolRegistry) {
       enhancedUI.error('Document tools are not initialized.');
       return;
@@ -1406,13 +1366,13 @@ class AIEngineeringAgent {
 
   async #processSlashToolCommand(input) {
     const match = input.match(/^\/([A-Za-z_][\w-]*)(?:\s+([\s\S]*))?$/);
-    if (!match || !this.agent) {
+    if (!match || !this.engine) {
       return false;
     }
 
     const rawName = match[1];
     const toolName = rawName.toLowerCase().replace(/-/g, '_');
-    const toolRegistry = this.agent.getTools();
+    const toolRegistry = this.toolRegistry;
     const tool = toolRegistry.get(toolName);
 
     if (!tool) {
@@ -1483,7 +1443,7 @@ class AIEngineeringAgent {
     }
 
     const toolName = rawName.replace(/-/g, '_');
-    const tool = this.agent?.getTools()?.get(toolName);
+    const tool = this.toolRegistry?.get(toolName);
     if (tool) {
       this.#showSlashToolHelp(rawName, tool);
       return;
@@ -1518,7 +1478,7 @@ class AIEngineeringAgent {
   }
 
   #showSlashSkillList() {
-    const tools = this.agent?.getTools()?.getAll() || [];
+    const tools = this.toolRegistry?.getAll() || [];
     const skillTools = tools
       .filter(tool => [
         ToolCategory.SKILL_ENGINEERING,
@@ -1959,11 +1919,13 @@ class AIEngineeringAgent {
       this.config.provider = provider;
       this.config.model = model;
 
-      // Update agent's model provider
-      this.agent.setModelProvider(newProvider, { model });
+      // Update engine's model provider
+      this.engine.attachModelProvider(newProvider);
 
       // Update scheduler engine's model provider for new subagents
-      this.schedulerEngine.modelProvider = newProvider;
+      if (this.schedulerEngine) {
+        this.schedulerEngine.modelProvider = newProvider;
+      }
 
       // Update our model provider reference
       this.modelProvider = newProvider;
@@ -2033,7 +1995,7 @@ class AIEngineeringAgent {
    * Show available tools
    */
   showTools() {
-    const toolRegistry = this.agent.getTools();
+    const toolRegistry = this.toolRegistry;
     const summary = toolRegistry.getToolSummary();
     
     console.log(enhancedUI.createHeader('Available Tools'));
@@ -2131,7 +2093,7 @@ class AIEngineeringAgent {
       return input;
     }
 
-    const toolRegistry = this.agent?.getTools?.();
+    const toolRegistry = this.toolRegistry;
     const indexed = [];
     const spinner = enhancedUI.spinner(`Indexing ${refs.length} referenced document${refs.length === 1 ? '' : 's'}...`);
     spinner.start();
@@ -2176,14 +2138,19 @@ class AIEngineeringAgent {
         inputPreview: input.length > 240 ? input.substring(0, 240) + '... (truncated)' : input,
         inputChars: input.length,
       });
-      // Since we passed enhancedUI to agent, it will use it directly
-      // We'll just handle spinner start/stop
+      // 使用新架构的 engine.processInput
       spinner.stop();
       const preparedInput = await this.#prepareDocumentReferences(input);
-      await this.agent.run(preparedInput);
+      const result = await this.engine.processInput(preparedInput);
       enhancedUI.debugEvent('Agent input completed', {
         inputChars: preparedInput.length,
+        result: result?.answer ? 'completed' : 'unknown',
       });
+      if (result?.answer) {
+        enhancedUI.finalAnswer(result.answer);
+      } else if (result?.status === 'max_iterations') {
+        enhancedUI.warning('Agent stopped after reaching the maximum iteration limit without a final answer.');
+      }
     } catch (error) {
       spinner.stop();
       enhancedUI.error(`Agent error: ${error.message}`);
@@ -2299,12 +2266,9 @@ class AIEngineeringAgent {
       this.rl.close();
     }
 
-    if (this.schedulerEngine) {
-      await this.schedulerEngine.stop();
-    }
-
-    if (this.mcpClient) {
-      await this.mcpClient.dispose();
+    // 使用新架构的 engine.dispose
+    if (this.engine) {
+      await this.engine.dispose();
     }
 
     stopAllPtySessions();
@@ -2408,10 +2372,97 @@ function getPackageVersion() {
   }
 }
 
-// Run the application
+// Run the application - 运行应用
 if (!(await handleCliArgs())) {
   const app = new AIEngineeringAgent();
   app.run();
 }
 
+// Export for module usage - 导出供模块使用
 export default AIEngineeringAgent;
+
+// 导出旧架构组件（向后兼容）
+export {
+  // Core components
+  ReActAgent,
+  ToolRegistry,
+  MemoryManager,
+  SecurityPolicy,
+  SessionManager,
+  TokenJuice,
+  ExperienceMemory,
+  IntelligentReasoning,
+  AutomationEngine,
+  Embedder,
+  ToolCategory,
+  
+  // Model providers
+  OpenAIModelProvider,
+  LlamaModelProvider,
+  ZhipuModelProvider,
+  DeepSeekModelProvider,
+  OpenRouterModelProvider,
+  
+  // Scheduler
+  SchedulerEngine,
+  
+  // MCP
+  MCPClient,
+  
+  // Tools
+  createFileSystemTools,
+  createShellTool,
+  createPtyTools,
+  createSemanticSearchTool,
+  createDocumentRagTools,
+  createWebTools,
+  createGitTools,
+  createMCPTools,
+  createTaskTools,
+  createScheduleTools,
+  createSubAgentTools,
+  
+  // Skills
+  createBrainstormTool,
+  createGrillTool,
+  createTddTool,
+  createDiagnoseTool,
+  createVerifyTool,
+  createReviewTool,
+  createArchitectTool,
+  createZoomOutTool,
+  createCavemanTool,
+  createHandoffTool,
+  createToPrdTool,
+  createToIssuesTool,
+  createSetupTool,
+  
+  // UI
+  enhancedUI,
+  createEnhancedCommands,
+  
+  // Config utilities
+  loadRuntimeEnv,
+  applyRuntimeValues,
+  getMissingRequiredConfig,
+  getProviderBaseUrl,
+  getProviderModel,
+  getProviderRequirement,
+  getUserEnvPath,
+  writeUserEnv,
+};
+
+// 导出新架构组件
+export {
+  // Runtime Layer
+  createAgentEngine,
+  createRuntime,
+  createCompatibilityLayer,
+  AgentEngine,
+  RuntimeConfig,
+  PlatformType,
+  detectPlatform,
+  MigrationBridge,
+  getApiMapping,
+  getAllApiMappings
+} from './runtime/index.js';

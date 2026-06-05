@@ -5472,6 +5472,53 @@ newFeaturesTests.test('Document RAG tools - index local documents and URLs', asy
     throw new Error(`Expected document search to find local policy, got:\n${localSearch}`);
   }
 
+  const pdfText = 'Rollback approvals require release lead review.';
+  writeFileSync(
+    join(docsDir, 'runbook.pdf'),
+    [
+      '%PDF-1.4',
+      '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
+      '2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj',
+      '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj',
+      `4 0 obj << /Length ${pdfText.length + 42} >> stream`,
+      `BT /F1 24 Tf 100 700 Td (${pdfText}) Tj ET`,
+      'endstream endobj',
+      '5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj',
+      'xref',
+      '0 6',
+      '0000000000 65535 f ',
+      '0000000009 00000 n ',
+      '0000000058 00000 n ',
+      '0000000115 00000 n ',
+      '0000000241 00000 n ',
+      '0000000350 00000 n ',
+      'trailer << /Root 1 0 R /Size 6 >>',
+      'startxref',
+      '420',
+      '%%EOF',
+    ].join('\n')
+  );
+
+  const pdfAdd = await tools.document_add.handler({
+    source: 'document-rag/runbook.pdf',
+    title: 'Rollback PDF runbook',
+  }, {
+    workingDirectory: TEST_CONFIG.testDir,
+  });
+  if (!pdfAdd.success || pdfAdd.kind !== 'pdf' || pdfAdd.chunks < 1) {
+    throw new Error(`Expected local PDF document to be indexed, got ${JSON.stringify(pdfAdd)}`);
+  }
+
+  const pdfSearch = await tools.document_search.handler({
+    query: 'rollback approval release lead',
+    limit: 2,
+  }, {
+    workingDirectory: TEST_CONFIG.testDir,
+  });
+  if (!pdfSearch.includes('Rollback PDF runbook') || !pdfSearch.includes('release lead review')) {
+    throw new Error(`Expected document search to find PDF runbook, got:\n${pdfSearch}`);
+  }
+
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new globalThis.Response(
     '<html><body><main><h1>Runbook</h1><p>Payment webhook retries use exponential backoff and dead letter queues.</p></main></body></html>',
@@ -5599,6 +5646,55 @@ newFeaturesTests.test('Document RAG tools - persistence survives separate tool i
   await tools2.document_clear.handler({}, ctx2);
 
   console.log('     Document RAG persistence survives separate tool instances');
+});
+
+newFeaturesTests.test('Document RAG tools - persistence is scoped by working directory', async () => {
+  const { createDocumentRagTools } = await import('./src/tools/memory/document-rag.js');
+
+  const workspaceA = join(TEST_CONFIG.testDir, 'doc-rag-scope-a');
+  const workspaceB = join(TEST_CONFIG.testDir, 'doc-rag-scope-b');
+  mkdirSync(workspaceA, { recursive: true });
+  mkdirSync(workspaceB, { recursive: true });
+
+  const tools = Object.fromEntries(createDocumentRagTools().map(t => [t.name, t]));
+  const ctxA = { workingDirectory: workspaceA, debug: true, ui: createRecordingUI(true) };
+  const ctxB = { workingDirectory: workspaceB, debug: true, ui: createRecordingUI(true) };
+
+  await tools.document_clear.handler({}, ctxA);
+  await tools.document_clear.handler({}, ctxB);
+
+  await tools.document_add.handler({
+    content: 'Workspace A private policy: blue key rotation happens every 30 days.',
+    title: 'Workspace A Policy',
+  }, ctxA);
+
+  const listA = await tools.document_list.handler({}, ctxA);
+  if (!listA.documents.some(doc => doc.title === 'Workspace A Policy')) {
+    throw new Error(`Expected workspace A document after add, got ${JSON.stringify(listA)}`);
+  }
+
+  const emptyB = await tools.document_list.handler({}, ctxB);
+  if (emptyB.count !== 0) {
+    throw new Error(`Expected workspace B to have isolated empty document state, got ${JSON.stringify(emptyB)}`);
+  }
+
+  await tools.document_add.handler({
+    content: 'Workspace B private policy: green backup review happens weekly.',
+    title: 'Workspace B Policy',
+  }, ctxB);
+
+  const reloadedA = await tools.document_list.handler({}, ctxA);
+  if (
+    !reloadedA.documents.some(doc => doc.title === 'Workspace A Policy') ||
+    reloadedA.documents.some(doc => doc.title === 'Workspace B Policy')
+  ) {
+    throw new Error(`Expected workspace A persisted state to reload without workspace B docs, got ${JSON.stringify(reloadedA)}`);
+  }
+
+  await tools.document_clear.handler({}, ctxA);
+  await tools.document_clear.handler({}, ctxB);
+
+  console.log('     Document RAG persistence is isolated by working directory');
 });
 
 
@@ -5947,6 +6043,9 @@ newFeaturesTests.test('Embedder - prepareModel probes mirrors and downloads only
     if (method === 'HEAD') {
       if (href.startsWith('https://huggingface.co/')) {
         return new globalThis.Response(null, { status: 504 });
+      }
+      if (href.startsWith('https://hf-mirror.com/')) {
+        await new Promise(resolve => setTimeout(resolve, 25));
       }
       return new globalThis.Response(null, {
         status: 200,
