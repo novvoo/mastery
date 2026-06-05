@@ -472,6 +472,35 @@ describe('Desktop Integration - Enhanced', () => {
         rmSync(root, { recursive: true, force: true });
       }
     });
+
+    test('工作目录轮询兜底应该发现原生监听漏掉的删除', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'desktop-watch-poll-'));
+      let watcher;
+
+      try {
+        writeFileSync(join(root, 'finder-delete.md'), 'hello');
+        const changePromise = new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('workspace poll timeout')), 1500);
+          watcher = createWorkspaceWatcher(root, (change) => {
+            clearTimeout(timeout);
+            resolve(change);
+          }, {
+            debounceMs: 10,
+            pollIntervalMs: 25,
+            enableNativeWatch: false
+          });
+        });
+
+        unlinkSync(join(root, 'finder-delete.md'));
+        const change = await changePromise;
+
+        expect(change.root).toBe(root);
+        expect(change.eventType).toBe('change');
+      } finally {
+        watcher?.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
   });
 
   describe('Desktop Conversation Event Integration', () => {

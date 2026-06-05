@@ -811,10 +811,20 @@ class ElectronMainApp {
 
     try {
       this.#workspaceWatcher = createWorkspaceWatcher(this.#config.workingDirectory, (change) => {
-        this.#ipcAdapter?.broadcast('workspace:changed', change);
+        this.#broadcastWorkspaceChange(change);
       });
     } catch (error) {
       console.warn(`⚠️  工作目录监听失败: ${error.message}`);
+    }
+  }
+
+  #broadcastWorkspaceChange(change) {
+    this.#ipcAdapter?.broadcast('workspace:changed', change);
+
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        window.webContents.send('workspace:changed', change);
+      }
     }
   }
 

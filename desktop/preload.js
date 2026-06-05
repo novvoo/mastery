@@ -343,14 +343,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onWorkspaceChanged: (callback) => {
-    const listener = (event, data) => {
+    const ipcEventListener = (event, data) => {
       const eventName = data?.metadata?.eventName || data?.payload?.event || data?.payload?.name;
       if (eventName === 'workspace:changed') {
         callback(data?.payload ?? data);
       }
     };
-    ipcRenderer.on('ipc:event', listener);
-    return () => ipcRenderer.removeListener('ipc:event', listener);
+    const directListener = (event, data) => {
+      callback(data);
+    };
+    ipcRenderer.on('ipc:event', ipcEventListener);
+    ipcRenderer.on('workspace:changed', directListener);
+    return () => {
+      ipcRenderer.removeListener('ipc:event', ipcEventListener);
+      ipcRenderer.removeListener('workspace:changed', directListener);
+    };
   },
   
   // ==================== 文件对话框 ====================
