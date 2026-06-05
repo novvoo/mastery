@@ -359,7 +359,7 @@ export const enhancedUI = {
       
       let progressStr = '';
       if (typeof task.progress === 'number') {
-        progressStr = ` ${theme.dim('[')}${theme.success('█'.repeat(Math.floor(task.progress * 20)))}${theme.dim('░'.repeat(20 - Math.floor(task.progress * 20))))}${theme.dim(`] ${(task.progress * 100).toFixed(0)}%`)}`;
+        progressStr = ` ${theme.dim('[')}${theme.success('█'.repeat(Math.floor(task.progress * 20)))}${theme.dim('░'.repeat(20 - Math.floor(task.progress * 20)))}${theme.dim(`] ${(task.progress * 100).toFixed(0)}%`)}`;
       }
       
       const text = `${statusIcon} ${statusColor(truncate(task.name || task.id, 35))}${progressStr}`;
