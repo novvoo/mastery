@@ -635,7 +635,7 @@ export class AgentEngine {
     // 创建 UI 门面（使用传入的 UI 适配器或默认门面）
     const uiFacade = this.#uiAdapter || this.#createUIFacade();
 
-    // 创建 Agent 实例
+    // 创建 Agent 实例（复用 AgentEngine 中的 sessionManager）
     this.#agent = new ReActAgent(
       this.#modelProvider,
       this.#toolRegistry,
@@ -647,7 +647,8 @@ export class AgentEngine {
         securityPolicy: this.#securityPolicy,
         tokenJuice: this.#tokenJuice,
         model: this.#config.model,
-        intentClassification: this.#config.intentClassification !== false
+        intentClassification: this.#config.intentClassification !== false,
+        session: this.#sessionManager  // 传递已有的 sessionManager，保留会话历史
       },
       uiFacade
     );

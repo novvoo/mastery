@@ -134,10 +134,15 @@ export class ReActAgent {
       workingDirectory: config.workingDirectory || process.cwd(),
       ...config,
     };
-    this.#sessionManager = new SessionManager({
-      ...(config.session || {}),
-      model: config.session?.model || config.model,
-    });
+    // 如果 config.session 是 SessionManager 实例，直接使用它
+    if (config.session instanceof SessionManager) {
+      this.#sessionManager = config.session;
+    } else {
+      this.#sessionManager = new SessionManager({
+        ...(config.session || {}),
+        model: config.session?.model || config.model,
+      });
+    }
     this.#retryStrategy = new RetryStrategy();
     this.#textToolParser = new TextToolParser(toolRegistry);
     this.#intentClassifier = config.intentClassification
