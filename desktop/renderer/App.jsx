@@ -2,11 +2,11 @@
  * AI Agent Desktop - 主应用组件
  * 
  * 基于 OpenAI Codex 2026 设计理念重新设计:
- * - Chat-centric 布局：主区域是对话框
- * - 顶部菜单栏：完整的菜单系统
- * - 右侧摘要面板：显示计划、来源、产出
- * - 左侧工具面板：可折叠的工具/技能包
- * - 对话内直接调用工具：像 CLI 一样显示工具调用和结果
+ * - Chat-centric 布局: 主区域是对话框
+ * - 顶部菜单栏: 完整的菜单系统
+ * - 右侧摘要面板: 显示计划、来源、产出
+ * - 左侧工具面板: 可折叠的工具/技能包
+ * - 对话内直接调用工具: 像 CLI 一样显示工具调用和结果
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -376,6 +376,128 @@ const styles = {
   footer: {
     backgroundColor: '#11161e',
     borderTop: '1px solid var(--border-subtle)'
+  },
+  
+  // ================== 模态框样式 ==================
+  modalBackdrop: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(5, 8, 13, 0.72)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    padding: '24px'
+  },
+  
+  modal: {
+    width: 'min(560px, 100%)',
+    backgroundColor: 'var(--surface-color)',
+    border: '1px solid var(--border-color)',
+    borderRadius: '8px',
+    boxShadow: 'var(--shadow-lg)',
+    overflow: 'hidden'
+  },
+  
+  modalHeader: {
+    padding: '18px 20px',
+    borderBottom: '1px solid var(--border-subtle)'
+  },
+  
+  modalTitle: {
+    margin: 0,
+    fontSize: '18px',
+    fontWeight: '700',
+    color: 'var(--text-color)'
+  },
+  
+  modalSubtitle: {
+    margin: '8px 0 0',
+    color: 'var(--text-muted)',
+    fontSize: '13px',
+    lineHeight: 1.5
+  },
+  
+  modalBody: {
+    padding: '18px 20px',
+    display: 'grid',
+    gap: '14px'
+  },
+  
+  formRow: {
+    display: 'grid',
+    gap: '7px'
+  },
+  
+  formLabel: {
+    fontSize: '12px',
+    fontWeight: '700',
+    color: 'var(--text-muted)'
+  },
+  
+  formInput: {
+    width: '100%',
+    height: '36px',
+    borderRadius: '6px',
+    border: '1px solid var(--border-color)',
+    backgroundColor: '#11161e',
+    color: 'var(--text-color)',
+    padding: '0 10px'
+  },
+  
+  modalFooter: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '14px 20px',
+    borderTop: '1px solid var(--border-subtle)',
+    backgroundColor: '#141922'
+  },
+  
+  modalActions: {
+    display: 'flex',
+    gap: '8px',
+    flexShrink: 0
+  },
+  
+  textButton: {
+    height: '34px',
+    padding: '0 12px',
+    borderRadius: '6px',
+    border: '1px solid var(--border-color)',
+    backgroundColor: 'transparent',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    minWidth: '86px',
+    whiteSpace: 'nowrap'
+  },
+  
+  primaryAction: {
+    height: '34px',
+    padding: '0 14px',
+    borderRadius: '6px',
+    border: '1px solid var(--primary-color)',
+    backgroundColor: 'var(--primary-color)',
+    color: '#061018',
+    fontWeight: '700',
+    cursor: 'pointer',
+    minWidth: '108px',
+    whiteSpace: 'nowrap'
+  },
+  
+  formError: {
+    color: 'var(--error-color)',
+    fontSize: '12px'
+  },
+  
+  formHint: {
+    color: 'var(--text-dark)',
+    fontSize: '12px',
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap'
   }
 };
 
