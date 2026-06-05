@@ -450,11 +450,72 @@ export class AgentEngine {
   }
 
   /**
+   * 注册调度器工具（在 attachModelProvider 后调用）
+   */
+  async #registerSchedulerTools() {
+    if (!this.#schedulerEngine) return;
+    
+    try {
+      const taskTools = createTaskTools(this.#schedulerEngine);
+      for (const tool of taskTools) {
+        this.#toolRegistry.register(tool);
+        await this.#pluginManager.triggerHook(HOOKS.ON_TOOL_REGISTER, tool.name, tool);
+      }
+    } catch (error) {
+      console.warn('任务工具注册失败:', error.message);
+    }
+    
+    try {
+      const scheduleTools = createScheduleTools(this.#schedulerEngine);
+      for (const tool of scheduleTools) {
+        this.#toolRegistry.register(tool);
+        await this.#pluginManager.triggerHook(HOOKS.ON_TOOL_REGISTER, tool.name, tool);
+      }
+    } catch (error) {
+      console.warn('调度工具注册失败:', error.message);
+    }
+    
+    try {
+      const subAgentTools = createSubAgentTools(this.#schedulerEngine);
+      for (const tool of subAgentTools) {
+        this.#toolRegistry.register(tool);
+        await this.#pluginManager.triggerHook(HOOKS.ON_TOOL_REGISTER, tool.name, tool);
+      }
+    } catch (error) {
+      console.warn('子代理工具注册失败:', error.message);
+    }
+  }
+
+  /**
    * 附加模型提供者
    */
   attachModelProvider(modelProvider) {
     this.#modelProvider = modelProvider;
     this.#config.modelProvider = modelProvider;
+    
+    // 如果已初始化但没有 schedulerEngine，创建它
+    if (this.#isInitialized && !this.#schedulerEngine) {
+      const experienceDir = this.#config.workingDirectory + '/.agent-data';
+      this.#schedulerEngine = new SchedulerEngine(
+        {
+          workingDirectory: this.#config.workingDirectory,
+          dataDir: experienceDir,
+          checkIntervalMs: 60000,
+          maxAgents: 10,
+          securityPolicy: this.#securityPolicy
+        },
+        this.#modelProvider,
+        this.#toolRegistry,
+        this.#memoryManager
+      );
+      // 初始化 schedulerEngine
+      this.#schedulerEngine.initialize().then(() => {
+        // 注册调度器工具
+        this.#registerSchedulerTools();
+      }).catch(error => {
+        console.warn('调度器引擎初始化失败:', error.message);
+      });
+    }
     
     // 触发配置变更钩子
     this.#pluginManager.triggerHook(HOOKS.ON_CONFIG_CHANGE, 'modelProvider', modelProvider);

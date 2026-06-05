@@ -9,7 +9,6 @@
   },
   "scripts": {
     "start": "bun src/index.js",
-    "start:new": "USE_NEW_ARCH=true bun src/new-index.js",
     "start:debug": "DEBUG=true AGENT_TRACE=true bun src/index.js",
     "start:inspect": "bun --inspect src/index.js",
     "dev": "bun --watch src/index.js",
