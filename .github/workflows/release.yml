@@ -211,6 +211,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install macOS DMG helper
+        if: matrix.target == 'mac'
+        run: npm install --no-save --package-lock=false --ignore-scripts dmg-license@1.0.11
+
       - name: Build desktop package
         shell: bash
         run: node scripts/build-desktop.js --${{ matrix.target }}
