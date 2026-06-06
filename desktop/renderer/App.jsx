@@ -21,9 +21,9 @@ import './index.css';
 
 // Codex 2026 风格布局常量
 const LAYOUT = {
-  sidebarWidth: 280,
-  summaryPanelWidth: 300,
-  previewPanelWidth: 460,
+  activityRailWidth: 52,
+  sidebarWidth: 300,
+  inspectorPanelWidth: 380,
   headerHeight: 44,
   inputAreaHeight: 140,
 };
@@ -254,6 +254,40 @@ const styles = {
     flex: 1,
     overflow: 'hidden'
   },
+
+  activityRail: {
+    width: `${LAYOUT.activityRailWidth}px`,
+    flexShrink: 0,
+    backgroundColor: '#0b0f15',
+    borderRight: '1px solid var(--border-subtle)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    padding: '8px 6px',
+    gap: '6px'
+  },
+
+  activityButton: {
+    width: '38px',
+    height: '38px',
+    borderRadius: '8px',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
+    color: 'var(--text-dark)',
+    cursor: 'pointer',
+    fontSize: '11px',
+    fontWeight: '700',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0
+  },
+
+  activityButtonActive: {
+    backgroundColor: 'var(--primary-soft)',
+    border: '1px solid rgba(76, 201, 240, 0.24)',
+    color: 'var(--primary-color)'
+  },
   
   // ================== 左侧工具面板 ==================
   leftSidebar: {
@@ -265,48 +299,28 @@ const styles = {
     overflow: 'hidden',
     transition: 'width 0.2s ease'
   },
-  
-  leftSidebarCollapsed: {
-    width: '0px',
-    borderRight: 'none'
-  },
-  
-  sidebarToggle: {
-    position: 'absolute',
-    left: `${LAYOUT.sidebarWidth + 10}px`,
-    top: '60px',
-    width: '24px',
-    height: '48px',
-    borderRadius: '0 6px 6px 0',
-    backgroundColor: 'var(--surface-color)',
-    border: '1px solid var(--border-subtle)',
-    borderLeft: 'none',
-    cursor: 'pointer',
+
+  sidebarHeader: {
+    minHeight: '42px',
+    padding: '0 12px',
+    borderBottom: '1px solid var(--border-subtle)',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
-    color: 'var(--text-muted)',
-    fontSize: '12px',
-    zIndex: 10,
-    transition: 'left 0.2s ease'
-  },
-  
-  sidebarToggleCollapsed: {
-    left: '10px'
-  },
-  
-  // ================== 右侧摘要面板 (Codex Style) ==================
-  summaryPanel: {
-    width: `${LAYOUT.summaryPanelWidth}px`,
-    backgroundColor: 'var(--surface-color)',
-    borderLeft: '1px solid var(--border-subtle)',
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden'
+    justifyContent: 'space-between',
+    gap: '8px',
+    backgroundColor: '#141922'
   },
 
-  previewPanel: {
-    width: `${LAYOUT.previewPanelWidth}px`,
+  sidebarTitle: {
+    fontSize: '12px',
+    fontWeight: '800',
+    color: 'var(--text-muted)',
+    textTransform: 'uppercase'
+  },
+  
+  // ================== 右侧 Inspector 面板 ==================
+  summaryPanel: {
+    width: `${LAYOUT.inspectorPanelWidth}px`,
     backgroundColor: 'var(--surface-color)',
     borderLeft: '1px solid var(--border-subtle)',
     display: 'flex',
@@ -321,6 +335,32 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '8px'
+  },
+
+  inspectorTabs: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: '4px',
+    padding: '8px',
+    borderBottom: '1px solid var(--border-subtle)',
+    backgroundColor: '#141922'
+  },
+
+  inspectorTab: {
+    height: '30px',
+    borderRadius: '6px',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: '700'
+  },
+
+  inspectorTabActive: {
+    backgroundColor: 'var(--surface-hover)',
+    border: '1px solid var(--border-color)',
+    color: 'var(--text-color)'
   },
 
   previewFrame: {
@@ -507,15 +547,7 @@ const styles = {
     color: 'var(--text-dark)'
   },
   
-  // ================== 技能/工具标签页 ==================
-  tabNav: {
-    display: 'flex',
-    gap: '2px',
-    padding: '10px',
-    borderBottom: '1px solid var(--border-subtle)',
-    backgroundColor: '#141922'
-  },
-  
+  // ================== 通用标签按钮 ==================
   tabButton: {
     flex: 1,
     height: '32px',
@@ -533,6 +565,19 @@ const styles = {
     backgroundColor: 'var(--surface-hover)',
     border: '1px solid var(--border-color)',
     color: 'var(--text-color)'
+  },
+
+  headerActionButton: {
+    height: '32px',
+    padding: '0 12px',
+    borderRadius: '6px',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: '600',
+    whiteSpace: 'nowrap'
   },
   
   // ================== 底部状态栏 ==================
@@ -709,8 +754,7 @@ const MENU_ITEMS = [
     label: '视图',
     items: [
       { label: '切换侧边栏', shortcut: 'Ctrl+B', command: 'toggleSidebar' },
-      { label: '切换 RAG 面板', shortcut: 'Ctrl+Shift+S', command: 'toggleSummary' },
-      { label: '切换预览面板', command: 'togglePreview' },
+      { label: '切换 Inspector', shortcut: 'Ctrl+Shift+S', command: 'toggleSummary' },
       { type: 'divider' },
       { label: 'Agent 面板', command: 'showAgent' },
       { label: '工具面板', shortcut: 'Ctrl+T', command: 'showTools' }
@@ -805,7 +849,8 @@ function App() {
   
   // Codex 风格新状态
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [summaryPanelVisible, setSummaryPanelVisible] = useState(true);
+  const [summaryPanelVisible, setSummaryPanelVisible] = useState(false);
+  const [activeInspectorTab, setActiveInspectorTab] = useState('rag');
   const [activeMenu, setActiveMenu] = useState(null);
   const [chatInput, setChatInput] = useState('');
   const [inputFocused, setInputFocused] = useState(false);
@@ -820,7 +865,7 @@ function App() {
   ));
   
   // 摘要面板数据 (Codex Style)
-  const [summaryData, setSummaryData] = useState({
+  const [summaryData] = useState({
     plan: ['分析代码结构', '编写新功能', '运行测试'],
     sources: [
       { type: 'file', name: 'src/agent.js' },
@@ -841,7 +886,6 @@ function App() {
   const [loadingDirectories, setLoadingDirectories] = useState(() => new Set());
   const [projectTreeStatus, setProjectTreeStatus] = useState('idle');
   const [projectTreeError, setProjectTreeError] = useState('');
-  const [previewVisible, setPreviewVisible] = useState(false);
   const [previewSession, setPreviewSession] = useState(null);
   const [previewStatus, setPreviewStatus] = useState('idle');
   const [previewFrameKey, setPreviewFrameKey] = useState(0);
@@ -1146,11 +1190,14 @@ function App() {
     }
 
     setPreviewStatus('starting');
-    setPreviewVisible(true);
+    setSummaryPanelVisible(true);
+    setActiveInspectorTab('preview');
     try {
       const preview = await ipc.startPreview({ target, kind: 'auto' });
       setPreviewSession(preview);
       setPreviewStatus('ready');
+      setSummaryPanelVisible(true);
+      setActiveInspectorTab('preview');
       setPreviewFrameKey(prev => prev + 1);
       return preview;
     } catch (error) {
@@ -1272,7 +1319,8 @@ function App() {
       const previews = result?.previews || [];
       if (previews.length > 0) {
         setPreviewSession(previews[0]);
-        setPreviewVisible(true);
+        setSummaryPanelVisible(true);
+        setActiveInspectorTab('preview');
         setPreviewStatus('ready');
       }
     }).catch(() => {});
@@ -1280,7 +1328,8 @@ function App() {
     if (ipc.onPreviewStarted) {
       unsubscribeStarted = ipc.onPreviewStarted(preview => {
         setPreviewSession(preview);
-        setPreviewVisible(true);
+        setSummaryPanelVisible(true);
+        setActiveInspectorTab('preview');
         setPreviewStatus('ready');
         setPreviewFrameKey(prev => prev + 1);
       });
@@ -1484,9 +1533,6 @@ function App() {
       case 'toggleSummary':
         setSummaryPanelVisible(prev => !prev);
         break;
-      case 'togglePreview':
-        setPreviewVisible(prev => !prev);
-        break;
       case 'showAgent':
         setSidebarCollapsed(false);
         setActiveTab('agent');
@@ -1533,7 +1579,7 @@ function App() {
         await ipc.openExternal?.(`${REPOSITORY_URL}/issues`);
         break;
       case 'showShortcuts':
-        window.alert('快捷键\n\nCtrl+Enter: 发送/聚焦输入\nCtrl+B: 切换侧边栏\nCtrl+Shift+S: 切换 RAG 面板\nCtrl+T: 工具面板\nCtrl+.: 停止执行');
+        window.alert('快捷键\n\nCtrl+Enter: 发送/聚焦输入\nCtrl+B: 切换侧边栏\nCtrl+Shift+S: 切换 Inspector\nCtrl+T: 工具面板\nCtrl+.: 停止执行');
         break;
       case 'showAbout':
         window.alert(`AI Agent Desktop\n\nVersion: ${platformInfo?.version || '1.0.15'}\nWorkspace: ${workingDirectory || '未设置'}`);
@@ -1593,7 +1639,8 @@ function App() {
       }
       if (result?.command === '/preview' && result.url) {
         setPreviewSession(result);
-        setPreviewVisible(true);
+        setSummaryPanelVisible(true);
+        setActiveInspectorTab('preview');
         setPreviewStatus('ready');
         setPreviewFrameKey(prev => prev + 1);
       }
@@ -1671,15 +1718,20 @@ function App() {
     }
   };
 
-  // ================== 渲染摘要面板 (Codex Style) ==================
+  // ================== 渲染 Inspector 面板 ==================
   const renderSummaryPanel = () => {
     if (!summaryPanelVisible) return null;
 
-    // RAG 初始化与文档管理面板
-    return (
-      <aside style={styles.summaryPanel}>
+    const tabLabels = [
+      { id: 'rag', label: 'RAG' },
+      { id: 'preview', label: 'Preview' },
+      { id: 'run', label: 'Run' }
+    ];
+
+    const renderRagTab = () => (
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         <div style={styles.summarySection}>
-          <div style={styles.summarySectionTitle}>⚙️ RAG 初始化</div>
+          <div style={styles.summarySectionTitle}>RAG 初始化</div>
           <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
             使用检索增强生成（RAG）之前，请上传/选择要索引的文档，并执行索引初始化。
           </div>
@@ -1737,7 +1789,7 @@ function App() {
         </div>
 
         <div style={styles.summarySection}>
-          <div style={styles.summarySectionTitle}>📁 已加载文档</div>
+          <div style={styles.summarySectionTitle}>已加载文档</div>
           {ragDocs.length === 0 ? (
             <div style={{ ...styles.summaryItem, ...styles.summaryItemEmpty }}>尚未上传文档</div>
           ) : (
@@ -1765,7 +1817,7 @@ function App() {
         </div>
 
         <div style={styles.summarySection}>
-          <div style={styles.summarySectionTitle}>📌 操作</div>
+          <div style={styles.summarySectionTitle}>操作</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <button
               style={styles.button}
@@ -1793,15 +1845,11 @@ function App() {
             >重置 RAG</button>
           </div>
         </div>
-      </aside>
+      </div>
     );
-  };
 
-  const renderPreviewPanel = () => {
-    if (!previewVisible) return null;
-
-    return (
-      <aside style={styles.previewPanel}>
+    const renderPreviewTab = () => (
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={styles.previewHeader}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>预览</div>
@@ -1830,7 +1878,6 @@ function App() {
           ) : (
             <button style={styles.button} onClick={() => handleStartPreview('.')}>启动</button>
           )}
-          <button style={styles.button} onClick={() => setPreviewVisible(false)}>关闭</button>
         </div>
 
         {previewSession?.url ? (
@@ -1852,6 +1899,61 @@ function App() {
               : '点击启动，或在对话里输入 /preview index.html。'}
           </div>
         )}
+      </div>
+    );
+
+    const renderRunTab = () => (
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        <div style={styles.summarySection}>
+          <div style={styles.summarySectionTitle}>当前计划</div>
+          {(summaryData.plan || []).map((item, index) => (
+            <div key={index} style={styles.summaryItem}>
+              <div style={styles.summaryItemIcon}>{index + 1}</div>
+              <div style={styles.summaryItemText}>{item}</div>
+            </div>
+          ))}
+        </div>
+        <div style={styles.summarySection}>
+          <div style={styles.summarySectionTitle}>上下文来源</div>
+          {(summaryData.sources || []).map((source, index) => (
+            <div key={index} style={styles.summaryItem}>
+              <div style={styles.summaryItemIcon}>{source.type === 'file' ? 'file' : 'ctx'}</div>
+              <div style={styles.summaryItemText}>{source.name}</div>
+            </div>
+          ))}
+        </div>
+        <div style={styles.summarySection}>
+          <div style={styles.summarySectionTitle}>输出</div>
+          {(summaryData.outputs || []).map((output, index) => (
+            <div key={index} style={styles.summaryItem}>
+              <div style={styles.summaryItemIcon}>out</div>
+              <div style={styles.summaryItemText}>{output}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+
+    return (
+      <aside style={styles.summaryPanel}>
+        <div style={styles.inspectorTabs}>
+          {tabLabels.map(tab => (
+            <button
+              key={tab.id}
+              style={{
+                ...styles.inspectorTab,
+                ...(activeInspectorTab === tab.id ? styles.inspectorTabActive : {})
+              }}
+              onClick={() => setActiveInspectorTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {activeInspectorTab === 'rag' && renderRagTab()}
+        {activeInspectorTab === 'preview' && renderPreviewTab()}
+        {activeInspectorTab === 'run' && renderRunTab()}
       </aside>
     );
   };
@@ -1996,36 +2098,60 @@ function App() {
       
       {/* 主体内容 */}
       <main style={styles.mainContent}>
-        {/* 左侧工具面板 */}
-        <aside style={{
-          ...styles.leftSidebar,
-          ...(sidebarCollapsed ? styles.leftSidebarCollapsed : {})
-        }}>
-          {/* 标签导航 */}
-          <div style={styles.tabNav}>
-            <button
-              style={{
-                ...styles.tabButton,
-                ...(activeTab === 'agent' ? styles.tabButtonActive : {})
-              }}
-              onClick={() => setActiveTab('agent')}
-            >
-              Agent
-            </button>
-            <button
-              style={{
-                ...styles.tabButton,
-                ...(activeTab === 'tools' ? styles.tabButtonActive : {})
-              }}
-              onClick={() => setActiveTab('tools')}
-            >
-              工具
-            </button>
-          </div>
-          
-          {/* 侧边栏内容 */}
-          {!sidebarCollapsed && renderSidebarContent()}
-        </aside>
+        <nav style={styles.activityRail} aria-label="工作区导航">
+          <button
+            style={{
+              ...styles.activityButton,
+              ...(activeTab === 'agent' && !sidebarCollapsed ? styles.activityButtonActive : {})
+            }}
+            onClick={() => {
+              setActiveTab('agent');
+              setSidebarCollapsed(false);
+            }}
+            title="Agent"
+          >
+            AG
+          </button>
+          <button
+            style={{
+              ...styles.activityButton,
+              ...(activeTab === 'tools' && !sidebarCollapsed ? styles.activityButtonActive : {})
+            }}
+            onClick={() => {
+              setActiveTab('tools');
+              setSidebarCollapsed(false);
+            }}
+            title="工具"
+          >
+            TL
+          </button>
+          <button
+            style={{
+              ...styles.activityButton,
+              marginTop: 'auto'
+            }}
+            onClick={() => setSidebarCollapsed(prev => !prev)}
+            title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+          >
+            {sidebarCollapsed ? '>' : '<'}
+          </button>
+        </nav>
+
+        {!sidebarCollapsed && (
+          <aside style={styles.leftSidebar}>
+            <div style={styles.sidebarHeader}>
+              <span style={styles.sidebarTitle}>{activeTab === 'tools' ? '工具' : 'Agent'}</span>
+              <button
+                style={{ ...styles.button, width: '30px', height: '28px', padding: 0 }}
+                onClick={() => setSidebarCollapsed(true)}
+                title="收起侧边栏"
+              >
+                ×
+              </button>
+            </div>
+            {renderSidebarContent()}
+          </aside>
+        )}
         
         {/* 聊天区域 */}
         <div style={styles.chatArea}>
@@ -2046,18 +2172,28 @@ function App() {
             
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
-                style={styles.tabButton}
-                onClick={() => setSummaryPanelVisible(prev => !prev)}
-                title="切换摘要面板"
+                style={styles.headerActionButton}
+                onClick={() => {
+                  setSummaryPanelVisible(true);
+                  setActiveInspectorTab('preview');
+                }}
+                title="打开预览"
               >
-                📊 {summaryPanelVisible ? '隐藏' : '显示'}面板
+                Preview
               </button>
               <button
-                style={styles.tabButton}
+                style={styles.headerActionButton}
+                onClick={() => setSummaryPanelVisible(prev => !prev)}
+                title="切换 Inspector"
+              >
+                {summaryPanelVisible ? '隐藏' : '显示'} Inspector
+              </button>
+              <button
+                style={styles.headerActionButton}
                 onClick={runtime.clearMessages}
                 title="清除对话"
               >
-                🗑️ 清除
+                清除
               </button>
             </div>
           </div>
@@ -2130,9 +2266,7 @@ function App() {
           </div>
         </div>
         
-        {renderPreviewPanel()}
-
-        {/* 右侧摘要面板 (Codex Style) */}
+        {/* 右侧 Inspector 面板 */}
         {renderSummaryPanel()}
       </main>
       
