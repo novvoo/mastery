@@ -10,8 +10,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { existsSync, watch, statSync } from 'fs';
-import { resolve, relative } from 'path';
+import { existsSync, watch } from 'fs';
 
 export const TriggerType = Object.freeze({
   FILE_CHANGE: 'file_change',
@@ -58,7 +57,7 @@ export class AutomationEngine extends EventEmitter {
    * 启动自动化引擎
    */
   async start() {
-    if (this.#isRunning) return;
+    if (this.#isRunning) {return;}
     this.#isRunning = true;
 
     // 启动定期检查
@@ -75,7 +74,7 @@ export class AutomationEngine extends EventEmitter {
    * 停止自动化引擎
    */
   async stop() {
-    if (!this.#isRunning) return;
+    if (!this.#isRunning) {return;}
     this.#isRunning = false;
 
     if (this.#intervalId) {
@@ -84,7 +83,7 @@ export class AutomationEngine extends EventEmitter {
     }
 
     // 关闭所有文件监视器
-    for (const [path, watcher] of this.#fileWatchers) {
+    for (const watcher of this.#fileWatchers.values()) {
       watcher.close();
     }
     this.#fileWatchers.clear();
@@ -126,17 +125,17 @@ export class AutomationEngine extends EventEmitter {
    * 设置文件监视器
    */
   #setupFileWatcher(triggerId, path, options) {
-    if (!existsSync(path)) return;
+    if (!existsSync(path)) {return;}
 
     const watcher = watch(path, { recursive: options.recursive || false }, (eventType, filename) => {
-      if (!this.#isRunning) return;
+      if (!this.#isRunning) {return;}
       
       const trigger = this.#triggers.get(triggerId);
-      if (!trigger || !trigger.enabled) return;
+      if (!trigger || !trigger.enabled) {return;}
 
       // 过滤检查
-      if (options.ignore && options.ignore.test(filename)) return;
-      if (options.include && !options.include.test(filename)) return;
+      if (options.ignore && options.ignore.test(filename)) {return;}
+      if (options.include && !options.include.test(filename)) {return;}
 
       this.#executeTrigger(triggerId, { eventType, filename, path });
     });
@@ -149,7 +148,7 @@ export class AutomationEngine extends EventEmitter {
    */
   async #executeTrigger(triggerId, context) {
     const trigger = this.#triggers.get(triggerId);
-    if (!trigger) return;
+    if (!trigger) {return;}
 
     trigger.lastTriggered = Date.now();
     trigger.triggerCount++;
@@ -171,7 +170,7 @@ export class AutomationEngine extends EventEmitter {
    */
   removeTrigger(id) {
     const trigger = this.#triggers.get(id);
-    if (!trigger) return false;
+    if (!trigger) {return false;}
 
     if (trigger.type === TriggerType.FILE_CHANGE && trigger.path) {
       const watcher = this.#fileWatchers.get(trigger.path);
@@ -229,7 +228,7 @@ export class AutomationEngine extends EventEmitter {
    */
   async executeWorkflow(id, initialContext = {}) {
     const workflow = this.#workflows.get(id);
-    if (!workflow) throw new Error(`Workflow not found: ${id}`);
+    if (!workflow) {throw new Error(`Workflow not found: ${id}`);}
 
     workflow.status = WorkflowStatus.RUNNING;
     workflow.startedAt = Date.now();
@@ -297,7 +296,7 @@ export class AutomationEngine extends EventEmitter {
    */
   pauseWorkflow(id) {
     const workflow = this.#workflows.get(id);
-    if (!workflow) return false;
+    if (!workflow) {return false;}
     
     workflow.status = WorkflowStatus.PAUSED;
     this.emit('workflow:paused', workflow);
@@ -309,7 +308,7 @@ export class AutomationEngine extends EventEmitter {
    */
   async resumeWorkflow(id) {
     const workflow = this.#workflows.get(id);
-    if (!workflow || workflow.status !== WorkflowStatus.PAUSED) return false;
+    if (!workflow || workflow.status !== WorkflowStatus.PAUSED) {return false;}
     
     return await this.executeWorkflow(id);
   }
@@ -365,11 +364,11 @@ export class AutomationEngine extends EventEmitter {
    * 检查所有条件
    */
   #checkTriggers() {
-    if (!this.#isRunning) return;
+    if (!this.#isRunning) {return;}
 
     // 检查条件触发器
     for (const [id, cond] of this.#conditions) {
-      if (!cond.enabled) continue;
+      if (!cond.enabled) {continue;}
 
       try {
         const result = this.#evaluateCondition(cond.condition, {});
@@ -418,15 +417,15 @@ export class AutomationEngine extends EventEmitter {
    * 运行后台任务
    */
   async #runBackgroundTasks() {
-    if (!this.#isRunning) return;
+    if (!this.#isRunning) {return;}
 
     const now = Date.now();
 
-    for (const [id, task] of this.#backgroundTasks) {
-      if (!task.enabled) continue;
+    for (const task of this.#backgroundTasks.values()) {
+      if (!task.enabled) {continue;}
 
       const timeSinceLastRun = now - (task.lastRun || 0);
-      if (timeSinceLastRun < task.interval) continue;
+      if (timeSinceLastRun < task.interval) {continue;}
 
       try {
         task.lastRun = now;
@@ -445,7 +444,7 @@ export class AutomationEngine extends EventEmitter {
    */
   toggleBackgroundTask(id, enabled) {
     const task = this.#backgroundTasks.get(id);
-    if (!task) return false;
+    if (!task) {return false;}
     task.enabled = enabled;
     return true;
   }

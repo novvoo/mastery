@@ -5,7 +5,7 @@
  */
 
 import { readFile, writeFile, mkdir, stat, unlink, readdir } from 'fs/promises';
-import { join, relative } from 'path';
+import { join } from 'path';
 
 const INDEX_VERSION = 2; // 版本升级以支持过期检测
 const MAX_TOTAL_INDEX_SIZE_MB = 200; // 总索引大小最大200MB
@@ -51,7 +51,7 @@ export class VectorIndex {
         
         let bytesToDelete = totalSize - MAX_TOTAL_BYTES;
         for (const info of fileInfo) {
-          if (bytesToDelete <= 0) break;
+          if (bytesToDelete <= 0) {break;}
           try {
             await unlink(info.path);
             bytesToDelete -= info.size;
@@ -80,7 +80,9 @@ export class VectorIndex {
         const isStale = await this.#checkIfStale(data);
         return { chunks: data.chunks, stale: isStale, fileMeta: data.fileMeta };
       }
-    } catch {}
+    } catch {
+      // Treat unreadable or invalid cache files as stale.
+    }
     return { chunks: null, stale: true };
   }
 

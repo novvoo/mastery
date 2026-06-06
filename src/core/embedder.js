@@ -403,7 +403,7 @@ export class Embedder {
 
       return Array.isArray(text) ? embeddings : embeddings[0];
     } finally {
-      if (timer) clearTimeout(timer);
+      if (timer) {clearTimeout(timer);}
     }
   }
 

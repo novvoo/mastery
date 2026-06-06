@@ -91,7 +91,7 @@ export class ExperienceMemory {
    * @returns {Array<object>} 相关经验列表
    */
   recall(task, options = {}) {
-    if (!task) return [];
+    if (!task) {return [];}
 
     const maxResults = options.maxResults || DEFAULT_MAX_RELEVANT;
     const keywords = task.toLowerCase().split(/\s+/).filter(w => w.length > 2);
@@ -104,7 +104,7 @@ export class ExperienceMemory {
 
       // 关键词匹配
       for (const kw of keywords) {
-        if (expText.includes(kw)) score += 2;
+        if (expText.includes(kw)) {score += 2;}
       }
 
       // 工具名匹配
@@ -142,8 +142,8 @@ export class ExperienceMemory {
     const exp = this.#experiences.find(e => e.id === experienceId);
     if (exp) {
       exp.usageCount++;
-      if (success) exp.successCount++;
-      else exp.failureCount++;
+      if (success) {exp.successCount++;}
+      else {exp.failureCount++;}
       this.#dirty = true;
       this.#save();
     }
@@ -156,7 +156,7 @@ export class ExperienceMemory {
    */
   buildExperiencePrompt(currentTask) {
     const relevant = this.recall(currentTask);
-    if (relevant.length === 0) return '';
+    if (relevant.length === 0) {return '';}
 
     const lines = ['[PAST EXPERIENCES - Learn from previous interactions:]'];
 
@@ -219,7 +219,7 @@ export class ExperienceMemory {
    * 保存到文件
    */
   #save() {
-    if (!this.#filePath || !this.#dirty) return;
+    if (!this.#filePath || !this.#dirty) {return;}
 
     try {
       const dir = resolve(this.#filePath, '..');

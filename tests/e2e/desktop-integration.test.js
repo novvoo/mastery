@@ -548,6 +548,15 @@ describe('Desktop Integration - Enhanced', () => {
       expect(toolCall.message.type).toBe('tool');
       expect(toolCall.message.toolName).toBe('read_file');
 
+      const debugStatus = normalizeRuntimeEventMessage('status:update', {
+        message: '[model:request]',
+        level: 'debug',
+        data: { model: 'gpt-test' }
+      });
+      expect(debugStatus.message.type).toBe('debug');
+      expect(debugStatus.message.content).toBe('[model:request]');
+      expect(debugStatus.message.details).toContain('gpt-test');
+
       const workspaceChange = normalizeRuntimeEventMessage('workspace:changed', { path: 'README.md' });
       expect(workspaceChange.message).toBeNull();
     });

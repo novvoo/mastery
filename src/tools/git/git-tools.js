@@ -4,7 +4,6 @@
  */
 
 import { execSync } from 'child_process';
-import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { ToolCategory } from '../../core/types.js';
 
@@ -141,9 +140,9 @@ export function createGitTools() {
 
         try {
           let command = 'diff';
-          if (staged) command += ' --cached';
-          if (stat) command += ' --stat';
-          if (file) command += ` -- "${file}"`;
+          if (staged) {command += ' --cached';}
+          if (stat) {command += ' --stat';}
+          if (file) {command += ` -- "${file}"`;}
 
           const output = execGit(command, cwd, false);
           
@@ -434,11 +433,11 @@ export function createGitTools() {
         try {
           let command = 'log';
           
-          if (oneline) command += ' --oneline';
+          if (oneline) {command += ' --oneline';}
           command += ` -n ${limit}`;
-          if (author) command += ` --author="${author}"`;
-          if (since) command += ` --since="${since}"`;
-          if (file) command += ` -- "${file}"`;
+          if (author) {command += ` --author="${author}"`;}
+          if (since) {command += ` --since="${since}"`;}
+          if (file) {command += ` -- "${file}"`;}
           
           // 添加装饰信息
           command += ' --decorate';
@@ -510,10 +509,10 @@ export function createGitTools() {
         try {
           let command = 'push';
           
-          if (force) command += ' --force';
-          if (setUpstream) command += ' -u';
+          if (force) {command += ' --force';}
+          if (setUpstream) {command += ' -u';}
           command += ` ${remote}`;
-          if (branch) command += ` "${branch}"`;
+          if (branch) {command += ` "${branch}"`;}
 
           const output = execGit(command, cwd);
 
@@ -565,9 +564,9 @@ export function createGitTools() {
         try {
           let command = 'pull';
           
-          if (rebase) command += ' --rebase';
+          if (rebase) {command += ' --rebase';}
           command += ` ${remote}`;
-          if (branch) command += ` "${branch}"`;
+          if (branch) {command += ` "${branch}"`;}
 
           const output = execGit(command, cwd);
 
@@ -683,7 +682,7 @@ export function createGitTools() {
           switch (action) {
             case 'push':
               command += ' push';
-              if (message) command += ` -m "${message}"`;
+              if (message) {command += ` -m "${message}"`;}
               break;
             case 'pop':
               command += ` pop stash@{${index}}`;

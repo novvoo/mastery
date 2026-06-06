@@ -127,6 +127,141 @@ const styles = {
     padding: '14px',
     scrollBehavior: 'smooth'
   },
+
+  runtimeDetailsPanel: {
+    marginBottom: '12px',
+    borderRadius: '8px',
+    border: '1px solid rgba(148, 163, 184, 0.22)',
+    backgroundColor: 'rgba(15, 20, 28, 0.74)',
+    overflow: 'hidden'
+  },
+
+  runtimeDetailsHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: '42px',
+    padding: '0 12px',
+    borderBottom: '1px solid rgba(148, 163, 184, 0.16)',
+    color: 'var(--text-muted)',
+    fontSize: '12px',
+    fontWeight: '600'
+  },
+
+  runtimeDetailsHeaderInteractive: {
+    cursor: 'pointer',
+    userSelect: 'none'
+  },
+
+  runtimeDetailsTitle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
+
+  runtimeDetailsActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
+
+  runtimeDetailsToggle: {
+    border: '1px solid rgba(148, 163, 184, 0.18)',
+    backgroundColor: 'rgba(148, 163, 184, 0.08)',
+    color: 'var(--text-muted)',
+    borderRadius: '5px',
+    padding: '3px 7px',
+    cursor: 'pointer',
+    fontSize: '11px'
+  },
+
+  runtimeProgress: {
+    padding: '8px 10px 10px',
+    borderBottom: '1px solid rgba(148, 163, 184, 0.1)'
+  },
+
+  runtimeProgressText: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '11px',
+    color: 'var(--text-muted)'
+  },
+
+  runtimeProgressLabel: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap'
+  },
+
+  runtimeDetailsList: {
+    overflowY: 'auto',
+    padding: '8px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    scrollBehavior: 'smooth'
+  },
+
+  runtimeDetailsListCollapsed: {
+    maxHeight: '156px'
+  },
+
+  runtimeDetailsListExpanded: {
+    maxHeight: 'min(50vh, 420px)'
+  },
+
+  runtimeDetailItem: {
+    borderRadius: '6px',
+    border: '1px solid rgba(148, 163, 184, 0.12)',
+    backgroundColor: 'rgba(17, 22, 30, 0.68)',
+    padding: '8px',
+    color: 'var(--text-muted)',
+    fontSize: '12px',
+    lineHeight: '1.5'
+  },
+
+  runtimeDetailItemInteractive: {
+    cursor: 'pointer'
+  },
+
+  runtimeDetailItemDebug: {
+    border: '1px solid rgba(108, 117, 125, 0.22)',
+    backgroundColor: 'rgba(108, 117, 125, 0.08)'
+  },
+
+  runtimeDetailItemStatus: {
+    border: '1px solid rgba(125, 211, 252, 0.18)',
+    backgroundColor: 'rgba(125, 211, 252, 0.06)'
+  },
+
+  runtimeDetailMeta: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '4px',
+    color: 'var(--text-dark)',
+    fontSize: '11px'
+  },
+
+  runtimeDetailContent: {
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    color: 'var(--text-muted)',
+    transition: 'max-height 0.18s ease'
+  },
+
+  runtimeDetailContentCollapsed: {
+    maxHeight: '42px',
+    overflow: 'hidden'
+  },
+
+  runtimeDetailContentExpanded: {
+    maxHeight: '240px',
+    overflowY: 'auto'
+  },
   
   // 时间线视图样式
   timelineView: {
@@ -394,22 +529,10 @@ const styles = {
   },
   
   // 运行指示器
-  runningIndicator: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    padding: '16px',
-    backgroundColor: '#151a23',
-    borderRadius: '8px',
-    marginBottom: '12px',
-    border: '1px solid rgba(246, 200, 95, 0.36)',
-    animation: 'pulse 2s ease-in-out infinite'
-  },
-  
   spinner: {
-    width: '20px',
-    height: '20px',
-    border: '3px solid var(--border-color)',
+    width: '14px',
+    height: '14px',
+    border: '2px solid var(--border-color)',
     borderTopColor: 'var(--warning-color)',
     borderRadius: '50%',
     animation: 'spin 1s linear infinite'
@@ -502,9 +625,12 @@ function MessageLog({ messages, status, onClear }) {
   const [showDetails, setShowDetails] = useState(new Set());
   const [copiedMessage, setCopiedMessage] = useState(null);
   const [progress, setProgress] = useState(0);
+  const [expandedRuntimePanels, setExpandedRuntimePanels] = useState(new Set());
+  const [expandedRuntimeDetails, setExpandedRuntimeDetails] = useState(new Set());
   
   // 引用
   const listRef = useRef(null);
+  const runtimeDetailsRefs = useRef(new Map());
   const searchRef = useRef(null);
   
   // 模拟进度更新（运行时）
@@ -527,13 +653,100 @@ function MessageLog({ messages, status, onClear }) {
   useEffect(() => {
     if (!listRef.current) return;
 
-    const lastMessage = messages[messages.length - 1];
+    const lastMessage = messages.filter(msg => !isRuntimeDetailMessage(msg)).at(-1);
     const shouldScroll = autoScroll || lastMessage?.type === 'event';
 
     if (shouldScroll) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
   }, [messages, autoScroll]);
+
+  function isRuntimeDetailMessage(msg) {
+    if (!msg) return false;
+    return (
+      msg.event === 'agent:start' ||
+      msg.event === 'status:update' ||
+      msg.event === 'tool:call' ||
+      msg.event === 'tool:result' ||
+      msg.event === 'tool:error' ||
+      ['agent', 'tool', 'tool_result', 'debug', 'event'].includes(msg.type)
+    );
+  }
+
+  function isStatusUpdateMessage(msg) {
+    return msg?.event === 'status:update';
+  }
+
+  function formatRuntimeDetailValue(value) {
+    if (value === null || value === undefined || value === '') {
+      return '';
+    }
+    if (typeof value === 'string') {
+      return value;
+    }
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  }
+
+  function getRuntimeDetailContent(msg) {
+    const sections = [];
+    const primaryText = formatRuntimeDetailValue(msg.content || msg.message || msg.details);
+
+    if (primaryText) {
+      sections.push(primaryText);
+    }
+
+    if (msg.toolName) {
+      sections.push(`工具: ${msg.toolName}`);
+    }
+
+    const argsText = formatRuntimeDetailValue(msg.args);
+    if (argsText) {
+      sections.push(`参数:\n${argsText}`);
+    }
+
+    const resultText = formatRuntimeDetailValue(msg.result);
+    if (resultText) {
+      sections.push(`结果:\n${resultText}`);
+    }
+
+    const payloadText = formatRuntimeDetailValue(msg.payload || msg.raw);
+    if (payloadText && !sections.includes(payloadText)) {
+      sections.push(`事件数据:\n${payloadText}`);
+    }
+
+    const fallbackFields = {
+      event: msg.event,
+      type: msg.type,
+      status: msg.status,
+      level: msg.level,
+      source: msg.source,
+      payloadSummary: msg.payloadSummary
+    };
+    const fallbackText = formatRuntimeDetailValue(Object.fromEntries(
+      Object.entries(fallbackFields).filter(([, value]) => value !== undefined && value !== '')
+    ));
+
+    return sections.join('\n\n') || fallbackText || '(无内容)';
+  }
+
+  function getStatusUpdateText(msg) {
+    if (!msg) {
+      return '准备执行';
+    }
+    const payload = msg.payload || msg.raw || {};
+    return (
+      msg.content ||
+      msg.message ||
+      payload.message ||
+      payload.status ||
+      msg.status ||
+      '状态更新'
+    );
+  }
   
   // 搜索焦点
   useEffect(() => {
@@ -562,13 +775,63 @@ function MessageLog({ messages, status, onClear }) {
     
     return result;
   }, [messages, filter, searchQuery]);
+
+  const runtimeDetailMessages = useMemo(() => (
+    filteredMessages.filter(isRuntimeDetailMessage)
+  ), [filteredMessages]);
+
+  const primaryMessages = useMemo(() => (
+    filteredMessages.filter(msg => !isRuntimeDetailMessage(msg))
+  ), [filteredMessages]);
+
+  const conversationGroups = useMemo(() => {
+    const groups = [];
+    let currentGroup = null;
+
+    const createGroup = (anchor, index) => ({
+      id: `conversation_${anchor || index}`,
+      messages: [],
+      runtimeDetails: []
+    });
+
+    filteredMessages.forEach((msg, index) => {
+      if (isRuntimeDetailMessage(msg)) {
+        if (!currentGroup) {
+          currentGroup = createGroup(msg.id || msg.timestamp || 'runtime', index);
+          groups.push(currentGroup);
+        }
+        currentGroup.runtimeDetails.push(msg);
+        return;
+      }
+
+      if (!currentGroup || msg.type === 'user') {
+        currentGroup = createGroup(msg.id || msg.timestamp || 'message', index);
+        groups.push(currentGroup);
+      }
+      currentGroup.messages.push(msg);
+    });
+
+    return groups;
+  }, [filteredMessages]);
+
+  useEffect(() => {
+    for (const group of conversationGroups) {
+      if (group.runtimeDetails.length === 0) {
+        continue;
+      }
+      const panelRef = runtimeDetailsRefs.current.get(group.id);
+      if (panelRef) {
+        panelRef.scrollTop = panelRef.scrollHeight;
+      }
+    }
+  }, [conversationGroups]);
   
   // 按时间分组消息（时间线视图）
   const groupedMessages = useMemo(() => {
     if (viewMode !== 'timeline') return null;
     
     const groups = {};
-    filteredMessages.forEach(msg => {
+    primaryMessages.forEach(msg => {
       const timestamp = msg.timestamp || Date.now();
       const minute = Math.floor(timestamp / 60000);
       const groupKey = new Date(minute * 60000).toLocaleTimeString();
@@ -580,7 +843,7 @@ function MessageLog({ messages, status, onClear }) {
     });
     
     return groups;
-  }, [filteredMessages, viewMode]);
+  }, [primaryMessages, viewMode]);
   
   // 处理过滤变更
   const handleFilterChange = useCallback((newFilter) => {
@@ -599,6 +862,30 @@ function MessageLog({ messages, status, onClear }) {
       setSearchQuery('');
     }
   }, [searchExpanded]);
+
+  const handleRuntimeDetailsToggle = useCallback((panelId) => {
+    setExpandedRuntimePanels(prev => {
+      const next = new Set(prev);
+      if (next.has(panelId)) {
+        next.delete(panelId);
+      } else {
+        next.add(panelId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleRuntimeDetailToggle = useCallback((detailId) => {
+    setExpandedRuntimeDetails(prev => {
+      const next = new Set(prev);
+      if (next.has(detailId)) {
+        next.delete(detailId);
+      } else {
+        next.add(detailId);
+      }
+      return next;
+    });
+  }, []);
   
   // 处理自动滚动变更
   const handleAutoScrollChange = useCallback(() => {
@@ -893,23 +1180,133 @@ function MessageLog({ messages, status, onClear }) {
     );
   };
   
-  // 渲染运行指示器
-  const renderRunningIndicator = () => {
-    if (status !== 'running') return null;
-    
+  const renderRuntimeDetailsPanel = (group, isActiveGroup = false) => {
+    const runtimeDetails = group?.runtimeDetails || [];
+    const visibleRuntimeDetails = runtimeDetails.filter(msg => !isStatusUpdateMessage(msg));
+    const latestStatusUpdate = [...runtimeDetails].reverse().find(isStatusUpdateMessage);
+    const isRunningGroup = status === 'running' && isActiveGroup;
+    const isExpanded = expandedRuntimePanels.has(group.id);
+    const statusText = isRunningGroup
+      ? getStatusUpdateText(latestStatusUpdate)
+      : latestStatusUpdate
+        ? getStatusUpdateText(latestStatusUpdate)
+        : '执行完成';
+
+    if (visibleRuntimeDetails.length === 0 && !isRunningGroup) {
+      return null;
+    }
+
     return (
-      <div style={styles.runningIndicator}>
-        <div style={styles.spinner}></div>
-        <div style={styles.runningText}>
-          Agent 正在执行...
+      <div key={`${group.id}_runtime`} style={styles.runtimeDetailsPanel}>
+        <div
+          style={{
+            ...styles.runtimeDetailsHeader,
+            ...styles.runtimeDetailsHeaderInteractive
+          }}
+          onClick={() => handleRuntimeDetailsToggle(group.id)}
+          title={isExpanded ? '收起运行详情' : '展开运行详情'}
+        >
+          <span style={styles.runtimeDetailsTitle}>
+            {isRunningGroup && <span style={styles.spinner}></span>}
+            <span>{isRunningGroup ? '执行过程' : '运行详情'}</span>
+          </span>
+          <span style={styles.runtimeDetailsActions}>
+            <span>{visibleRuntimeDetails.length} 条</span>
+            <button
+              type="button"
+              style={styles.runtimeDetailsToggle}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleRuntimeDetailsToggle(group.id);
+              }}
+            >
+              {isExpanded ? '收起' : '展开'}
+            </button>
+          </span>
         </div>
-        <div style={styles.progressBar}>
-          <div style={{
-            ...styles.progressFill,
-            width: `${progress}%`
-          }} />
-        </div>
+        {isRunningGroup && (
+          <div style={styles.runtimeProgress}>
+            <div style={styles.runtimeProgressText}>
+              <span style={styles.runtimeProgressLabel}>{statusText}</span>
+              <span>{Math.round(progress)}%</span>
+            </div>
+            <div style={styles.progressBar}>
+              <div style={{
+                ...styles.progressFill,
+                width: `${progress}%`
+              }} />
+            </div>
+          </div>
+        )}
+        {visibleRuntimeDetails.length > 0 && (
+          <div
+            ref={(node) => {
+              if (node) {
+                runtimeDetailsRefs.current.set(group.id, node);
+              } else {
+                runtimeDetailsRefs.current.delete(group.id);
+              }
+            }}
+            style={{
+              ...styles.runtimeDetailsList,
+              ...(isExpanded
+                ? styles.runtimeDetailsListExpanded
+                : styles.runtimeDetailsListCollapsed)
+            }}
+          >
+            {visibleRuntimeDetails.map((msg, index) => {
+              const runtimeDetailId = `${group.id}_${msg.id || `runtime_detail_${msg.timestamp || 'no_time'}_${index}`}`;
+              const isExpanded = expandedRuntimeDetails.has(runtimeDetailId);
+              const typeDisplay = getTypeDisplay(msg.type);
+              const isDebug = msg.type === 'debug';
+              const content = getRuntimeDetailContent(msg);
+              return (
+                <div
+                  key={runtimeDetailId}
+                  style={{
+                    ...styles.runtimeDetailItem,
+                    ...styles.runtimeDetailItemInteractive,
+                    ...(isDebug ? styles.runtimeDetailItemDebug : styles.runtimeDetailItemStatus)
+                  }}
+                  onClick={() => handleRuntimeDetailToggle(runtimeDetailId)}
+                  title={isExpanded ? '收起这条运行消息' : '展开这条运行消息'}
+                >
+                  <div style={styles.runtimeDetailMeta}>
+                    <span>{typeDisplay.text}</span>
+                    <span>
+                      {isExpanded ? '收起' : '展开'}
+                      {msg.timestamp ? ` · ${new Date(msg.timestamp).toLocaleTimeString()}` : ''}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      ...styles.runtimeDetailContent,
+                      ...(isExpanded
+                        ? styles.runtimeDetailContentExpanded
+                        : styles.runtimeDetailContentCollapsed)
+                    }}
+                  >
+                    {content || '(无内容)'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
+    );
+  };
+
+  const renderConversationGroup = (group, groupIndex) => {
+    const isActiveGroup = groupIndex === conversationGroups.length - 1;
+    const [firstMessage, ...restMessages] = group.messages;
+
+    return (
+      <React.Fragment key={group.id}>
+        {firstMessage && renderMessage(firstMessage, `${group.id}_0`)}
+        {renderRuntimeDetailsPanel(group, isActiveGroup)}
+        {restMessages.map((msg, index) => renderMessage(msg, `${group.id}_${index + 1}`))}
+      </React.Fragment>
     );
   };
   
@@ -1061,9 +1458,6 @@ function MessageLog({ messages, status, onClear }) {
       
       {/* 消息列表 */}
       <div ref={listRef} style={styles.messageList}>
-        {/* 运行指示器 */}
-        {renderRunningIndicator()}
-        
         {/* 时间线视图 */}
         {viewMode === 'timeline' && groupedMessages && (
           <div style={styles.timelineView}>
@@ -1079,11 +1473,11 @@ function MessageLog({ messages, status, onClear }) {
         
         {/* 列表视图 */}
         {viewMode === 'list' && (
-          filteredMessages.map((msg, index) => renderMessage(msg, index))
+          conversationGroups.map((group, index) => renderConversationGroup(group, index))
         )}
         
         {/* 无匹配消息 */}
-        {filteredMessages.length === 0 && messages.length > 0 && (
+        {primaryMessages.length === 0 && runtimeDetailMessages.length === 0 && messages.length > 0 && (
           <div style={styles.emptyContainer}>
             <div style={styles.emptyIcon}>🔍</div>
             <div style={styles.emptyText}>没有找到匹配的消息</div>

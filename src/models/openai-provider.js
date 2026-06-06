@@ -117,10 +117,10 @@ export class OpenAIModelProvider {
    * 判断错误是否可重试
    */
   #isRetryableError(error) {
-    if (error.name === 'AbortError') return false; // 超时不重试
-    if (error.message?.includes('401') || error.message?.includes('403')) return false; // 认证错误不重试
-    if (error.message?.includes('429')) return true; // 速率限制可重试
-    if (error.message?.includes('5')) return true; // 5xx 服务器错误可重试
+    if (error.name === 'AbortError') {return false;} // 超时不重试
+    if (error.message?.includes('401') || error.message?.includes('403')) {return false;} // 认证错误不重试
+    if (error.message?.includes('429')) {return true;} // 速率限制可重试
+    if (error.message?.includes('5')) {return true;} // 5xx 服务器错误可重试
     return true; // 其他网络错误可重试
   }
 

@@ -60,6 +60,28 @@ export function useRuntime() {
       messageCount: 0
     }));
   }, []);
+
+  const restoreMessages = useCallback((nextMessages = []) => {
+    const restoredMessages = Array.isArray(nextMessages)
+      ? nextMessages.map((message) => ({
+        ...message,
+        timestamp: message.timestamp || Date.now(),
+        id: message.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      }))
+      : [];
+
+    messageBufferRef.current = restoredMessages;
+    setMessages(restoredMessages);
+    setStatus(restoredMessages.length > 0 ? 'completed' : 'idle');
+    setStats(prev => ({
+      ...prev,
+      messageCount: restoredMessages.length,
+      endTime: restoredMessages.length > 0 ? Date.now() : prev.endTime
+    }));
+
+    const lastResult = [...restoredMessages].reverse().find(message => ['result', 'success'].includes(message.type));
+    lastAnswerRef.current = lastResult?.content || '';
+  }, []);
   
   // 加载工具列表
   const loadTools = useCallback(async () => {
@@ -122,8 +144,8 @@ export function useRuntime() {
     // 添加用户输入消息
     lastAnswerRef.current = '';
     addMessage({
-      type: 'info',
-      content: `用户输入: ${input}`
+      type: 'user',
+      content: input
     });
     
     try {
@@ -207,86 +229,6 @@ export function useRuntime() {
   useEffect(() => {
     if (!window.electronAPI) return;
     
-    // 订阅 Agent 启动事件
-    const unsubStart = window.electronAPI.onAgentStart((data) => {
-      setStatus('running');
-      addMessage({
-        type: 'info',
-        content: `Agent 启动: ${data.task || ''}`,
-        ...data
-      });
-    });
-    
-    // 订阅 Agent 完成事件
-    const unsubComplete = window.electronAPI.onAgentComplete((data) => {
-      setStatus('completed');
-      const answer = extractAgentAnswer(data);
-      if (answer) {
-        if (answer === lastAnswerRef.current) {
-          return;
-        }
-        lastAnswerRef.current = answer;
-        addMessage({
-          type: 'result',
-          content: answer,
-          ...data
-        });
-        return;
-      }
-
-      addMessage({
-        type: 'success',
-        content: 'Agent 执行完成',
-        ...data
-      });
-    });
-    
-    // 订阅 Agent 错误事件
-    const unsubError = window.electronAPI.onAgentError((data) => {
-      setStatus('error');
-      addMessage({
-        type: 'error',
-        content: `Agent 错误: ${data.error || ''}`,
-        ...data
-      });
-    });
-    
-    // 订阅工具调用事件
-    const unsubToolCall = window.electronAPI.onToolCall((data) => {
-      addMessage({
-        type: 'tool',
-        content: `调用工具: ${data.toolName}`,
-        toolName: data.toolName,
-        args: data.args,
-        ...data
-      });
-      
-      setStats(prev => ({
-        ...prev,
-        toolCalls: prev.toolCalls + 1
-      }));
-    });
-    
-    // 订阅工具结果事件
-    const unsubToolResult = window.electronAPI.onToolResult((data) => {
-      addMessage({
-        type: 'result',
-        content: `工具结果: ${data.toolName}`,
-        toolName: data.toolName,
-        result: data.result,
-        ...data
-      });
-    });
-    
-    // 订阅状态更新事件
-    const unsubStatus = window.electronAPI.onStatusUpdate((data) => {
-      addMessage({
-        type: data.level || 'info',
-        content: data.message || '',
-        ...data
-      });
-    });
-
     // 订阅通用 IPC 事件
     const unsubIpcEvent = window.electronAPI.on('ipc:event', (data) => {
       // IPCMessage shape: { id, type, payload, timestamp, status, correlationId, metadata }
@@ -303,18 +245,30 @@ export function useRuntime() {
         }));
       }
       if (normalized.message) {
+        if (eventName === 'agent:start') {
+          setStatus('running');
+        } else if (eventName === 'agent:complete') {
+          setStatus('completed');
+        } else if (eventName === 'agent:error') {
+          setStatus('error');
+        }
+
+        if (eventName === 'agent:complete') {
+          const answer = extractAgentAnswer(payload);
+          if (answer && answer === lastAnswerRef.current) {
+            return;
+          }
+          if (answer) {
+            lastAnswerRef.current = answer;
+          }
+        }
+
         addMessage(normalized.message);
       }
     });
     
     // 清理订阅
     return () => {
-      unsubStart?.();
-      unsubComplete?.();
-      unsubError?.();
-      unsubToolCall?.();
-      unsubToolResult?.();
-      unsubStatus?.();
       unsubIpcEvent?.();
     };
   }, [addMessage]);
@@ -330,6 +284,7 @@ export function useRuntime() {
     // 方法
     addMessage,
     clearMessages,
+    restoreMessages,
     loadTools,
     refreshState,
     processInput,

@@ -87,7 +87,7 @@ function chunkFile(path, content) {
 
   function emitChunk(srcLines, s, e) {
     const text = srcLines.slice(s, e).join('\n').trim();
-    if (!text) return;
+    if (!text) {return;}
     chunks.push({
       text,
       metadata: { path, startLine: s + 1, endLine: e },
@@ -104,7 +104,7 @@ function chunkFile(path, content) {
           metadata: { path, startLine: i + 1, endLine: end },
         });
       }
-      if (end >= e) break;
+      if (end >= e) {break;}
     }
   }
 }
@@ -140,7 +140,7 @@ function splitByTopLevelIndentation(lines, rangeStart, rangeEnd) {
     const trimmed = line.trim();
 
     // Skip blank lines inside the section
-    if (!trimmed) continue;
+    if (!trimmed) {continue;}
 
     const indent = line.length - trimmed.length;
 
@@ -171,7 +171,7 @@ async function buildIndex(workingDirectory, scopePath, pattern) {
   const root = resolve(workingDirectory, scopePath || '.');
   const cacheKey = `${root}\0${pattern}`;
   const cached = indexCache.get(cacheKey);
-  if (cached) return cached.chunks;
+  if (cached) {return cached.chunks;}
 
   // Try persistent on-disk index (survives agent restarts)
   const vIndex = new VectorIndex(workingDirectory);
@@ -182,7 +182,6 @@ async function buildIndex(workingDirectory, scopePath, pattern) {
   }
 
   // 带超时的索引构建
-  const startTime = Date.now();
   let timedOut = false;
 
   const timeoutPromise = new Promise((_, reject) => {
@@ -219,19 +218,19 @@ async function buildIndex(workingDirectory, scopePath, pattern) {
     const CONCURRENCY = 20;
     
     for (let i = 0; i < slice.length; i += CONCURRENCY) {
-      if (timedOut) break;
+      if (timedOut) {break;}
       
       const batch = await Promise.all(slice.slice(i, i + CONCURRENCY).map(async (file) => {
         try {
           const fileStat = await stat(file);
-          if (fileStat.size > MAX_FILE_BYTES) return [];
+          if (fileStat.size > MAX_FILE_BYTES) {return [];}
           const text = await readFile(file, 'utf-8');
-          if (text.includes('\0')) return [];
+          if (text.includes('\0')) {return [];}
           const relPath = relative(workingDirectory, file);
           return chunkFile(relPath, text);
         } catch { return []; }
       }));
-      for (const result of batch) fileEntries.push(...result);
+      for (const result of batch) {fileEntries.push(...result);}
     }
     
     return fileEntries;

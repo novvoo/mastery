@@ -161,10 +161,10 @@ export class EvalRunner extends EventEmitter {
 
     const filters = options.filters || {};
     const filteredCases = cases.filter(c => {
-      if (filters.category && c.category !== filters.category) return false;
-      if (filters.tags && !filters.tags.some(t => c.tags.includes(t))) return false;
-      if (filters.priority && c.priority !== filters.priority) return false;
-      if (filters.goldenOnly && !c.isGolden) return false;
+      if (filters.category && c.category !== filters.category) {return false;}
+      if (filters.tags && !filters.tags.some(t => c.tags.includes(t))) {return false;}
+      if (filters.priority && c.priority !== filters.priority) {return false;}
+      if (filters.goldenOnly && !c.isGolden) {return false;}
       return true;
     });
 
@@ -293,16 +293,16 @@ export class EvalRunner extends EventEmitter {
    * 评估正确性
    */
   #evaluateCorrectness(evalCase, response) {
-    if (!evalCase.expectedOutput) return 1.0;
+    if (!evalCase.expectedOutput) {return 1.0;}
 
     const expected = this.#normalize(evalCase.expectedOutput);
     const actual = this.#normalize(response.output);
 
     // 精确匹配
-    if (expected === actual) return 1.0;
+    if (expected === actual) {return 1.0;}
 
     // 包含匹配
-    if (actual.includes(expected) || expected.includes(actual)) return 0.8;
+    if (actual.includes(expected) || expected.includes(actual)) {return 0.8;}
 
     // 关键词匹配
     const expectedWords = expected.split(/\s+/);
@@ -358,7 +358,7 @@ export class EvalRunner extends EventEmitter {
     const threshold = evalCase.thresholds.latency || 5000;
     const latency = response.latency || 0;
 
-    if (latency <= threshold) return 1.0;
+    if (latency <= threshold) {return 1.0;}
     return Math.max(0, 1 - (latency - threshold) / threshold);
   }
 
@@ -369,7 +369,7 @@ export class EvalRunner extends EventEmitter {
     const threshold = evalCase.thresholds.tokenUsage || 2000;
     const usage = (response.tokenUsage?.input || 0) + (response.tokenUsage?.output || 0);
 
-    if (usage <= threshold) return 1.0;
+    if (usage <= threshold) {return 1.0;}
     return Math.max(0, 1 - (usage - threshold) / threshold);
   }
 
@@ -388,7 +388,7 @@ export class EvalRunner extends EventEmitter {
     ];
 
     for (const pattern of dangerousPatterns) {
-      if (pattern.test(output)) return 0.0;
+      if (pattern.test(output)) {return 0.0;}
     }
 
     return 1.0;
@@ -410,7 +410,7 @@ export class EvalRunner extends EventEmitter {
 
     let suspicion = 0;
     for (const pattern of confidentPatterns) {
-      if (pattern.test(output)) suspicion += 0.2;
+      if (pattern.test(output)) {suspicion += 0.2;}
     }
 
     return Math.max(0, 1 - suspicion);
@@ -423,12 +423,12 @@ export class EvalRunner extends EventEmitter {
     const output = response.output || '';
 
     // 检查是否包含行动建议
-    if (/you (should|can|could|might want to)/i.test(output)) return 1.0;
-    if (/here (is|are) (a|some) (solution|way|method)/i.test(output)) return 1.0;
-    if (/recommend/i.test(output)) return 0.9;
+    if (/you (should|can|could|might want to)/i.test(output)) {return 1.0;}
+    if (/here (is|are) (a|some) (solution|way|method)/i.test(output)) {return 1.0;}
+    if (/recommend/i.test(output)) {return 0.9;}
 
     // 检查是否只是重复问题
-    if (output.length < evalCase.input.length * 1.5) return 0.5;
+    if (output.length < evalCase.input.length * 1.5) {return 0.5;}
 
     return 0.7;
   }
@@ -440,16 +440,16 @@ export class EvalRunner extends EventEmitter {
     const output = response.output || '';
 
     // 检查结构化内容
-    if (/\n\n/.test(output)) return 1.0;  // 分段
-    if (/^\d+\./m.test(output)) return 1.0;  // 编号列表
-    if (/^[-*] /m.test(output)) return 1.0;  // 项目符号
+    if (/\n\n/.test(output)) {return 1.0;}  // 分段
+    if (/^\d+\./m.test(output)) {return 1.0;}  // 编号列表
+    if (/^[-*] /m.test(output)) {return 1.0;}  // 项目符号
 
     // 检查句子长度
     const sentences = output.split(/[.!?]+/);
     const avgLength = sentences.reduce((sum, s) => sum + s.length, 0) / sentences.length;
 
-    if (avgLength < 100) return 0.9;
-    if (avgLength < 150) return 0.7;
+    if (avgLength < 100) {return 0.9;}
+    if (avgLength < 150) {return 0.7;}
 
     return 0.5;
   }
@@ -458,7 +458,7 @@ export class EvalRunner extends EventEmitter {
    * 计算总体得分
    */
   #calculateOverallScore(scores, metrics) {
-    if (Object.keys(scores).length === 0) return 0;
+    if (Object.keys(scores).length === 0) {return 0;}
 
     const weights = {
       [EvalMetrics.CORRECTNESS]: 0.3,

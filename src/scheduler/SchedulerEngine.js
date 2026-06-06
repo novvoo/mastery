@@ -8,7 +8,7 @@ import { TaskQueue, TaskStore, TaskStatus } from './task-queue/index.js';
 import { CronScheduler, ScheduleStore } from './cron/index.js';
 import { SubAgentPool } from './subagent/SubAgentPool.js';
 import { MessageBus } from './subagent/MessageBus.js';
-import { ConcurrencyCoordinator, TaskGroup, ExecutionStrategy } from './concurrency/index.js';
+import { ConcurrencyCoordinator } from './concurrency/index.js';
 import { join } from 'path';
 
 const DEFAULT_TASK_TIMEOUT_MS = 5 * 60 * 1000; // 默认5分钟任务超时

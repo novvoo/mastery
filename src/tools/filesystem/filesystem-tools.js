@@ -4,7 +4,7 @@
 
 import { readFile, writeFile, readdir, stat } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join, resolve, relative } from 'path';
+import { join, resolve } from 'path';
 import { ToolCategory } from '../../core/types.js';
 
 export function createFileSystemTools() {
@@ -21,7 +21,7 @@ export function createFileSystemTools() {
       required: ['path'],
       handler: async ({ path, offset, limit }, ctx) => {
         const fullPath = resolve(join(ctx.workingDirectory, path));
-        if (!existsSync(fullPath)) return `Error: File not found: ${path}`;
+        if (!existsSync(fullPath)) {return `Error: File not found: ${path}`;}
 
         try {
           let content = await readFile(fullPath, 'utf-8');
@@ -86,7 +86,7 @@ export function createFileSystemTools() {
       required: ['path', 'old_text', 'new_text'],
       handler: async ({ path, old_text, new_text }, ctx) => {
         const fullPath = resolve(join(ctx.workingDirectory, path));
-        if (!existsSync(fullPath)) return `Error: File not found: ${path}`;
+        if (!existsSync(fullPath)) {return `Error: File not found: ${path}`;}
 
         try {
           const content = await readFile(fullPath, 'utf-8');
@@ -137,7 +137,7 @@ export function createFileSystemTools() {
             timeout: SEARCH_TIMEOUT_MS
           });
           
-          if (!result.trim()) return `No matches found for pattern: ${pattern}`;
+          if (!result.trim()) {return `No matches found for pattern: ${pattern}`;}
           
           const lines = result.trim().split('\n');
           const limitedLines = lines.slice(0, HARD_MAX_RESULTS);
@@ -172,7 +172,7 @@ export function createFileSystemTools() {
             absolute: false,
             ignore: ['**/node_modules/**', '**/.git/**'],
           });
-          if (files.length === 0) return `No files matched pattern: ${pattern}`;
+          if (files.length === 0) {return `No files matched pattern: ${pattern}`;}
           return files.join('\n');
         } catch (error) {
           return `Error globbing: ${error instanceof Error ? error.message : error}`;
@@ -192,7 +192,7 @@ export function createFileSystemTools() {
         const dirPath = resolve(join(ctx.workingDirectory, (path) || '.'));
 
         try {
-          if (!existsSync(dirPath)) return `Error: Directory not found: ${path || '.'}`;
+          if (!existsSync(dirPath)) {return `Error: Directory not found: ${path || '.'}`;}
           const entries = await readdir(dirPath);
           /** @type {string[]} */
           const results = [];

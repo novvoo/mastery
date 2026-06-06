@@ -225,7 +225,7 @@ export class CronExpression {
 
     for (let i = 0; i < count; i++) {
       const nextDate = this.getNextDate(currentDate);
-      if (!nextDate) break;
+      if (!nextDate) {break;}
       dates.push(nextDate);
       currentDate = nextDate;
     }

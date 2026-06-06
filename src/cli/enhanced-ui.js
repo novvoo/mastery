@@ -94,9 +94,9 @@ export function formatPriority(priority) {
  * @returns {string}
  */
 export function truncate(text, maxLength) {
-  if (!text) return '';
+  if (!text) {return '';}
   const str = String(text);
-  if (str.length <= maxLength) return str;
+  if (str.length <= maxLength) {return str;}
   return str.substring(0, maxLength - 3) + '...';
 }
 
@@ -106,17 +106,17 @@ export function truncate(text, maxLength) {
  * @returns {string}
  */
 export function formatTime(timestamp) {
-  if (!timestamp) return theme.muted('N/A');
+  if (!timestamp) {return theme.muted('N/A');}
   const date = new Date(timestamp);
   const now = new Date();
   const diff = now - date;
   
   // 小于1分钟
-  if (diff < 60000) return theme.success('just now');
+  if (diff < 60000) {return theme.success('just now');}
   // 小于1小时
-  if (diff < 3600000) return theme.info(`${Math.floor(diff / 60000)}m ago`);
+  if (diff < 3600000) {return theme.info(`${Math.floor(diff / 60000)}m ago`);}
   // 小于24小时
-  if (diff < 86400000) return theme.warning(`${Math.floor(diff / 3600000)}h ago`);
+  if (diff < 86400000) {return theme.warning(`${Math.floor(diff / 3600000)}h ago`);}
   // 默认显示日期
   return theme.muted(date.toLocaleString());
 }
@@ -127,10 +127,10 @@ export function formatTime(timestamp) {
  * @returns {string}
  */
 export function formatDuration(ms) {
-  if (!ms || ms < 0) return theme.muted('N/A');
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  if (ms < 3600000) return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
+  if (!ms || ms < 0) {return theme.muted('N/A');}
+  if (ms < 1000) {return `${ms}ms`;}
+  if (ms < 60000) {return `${(ms / 1000).toFixed(1)}s`;}
+  if (ms < 3600000) {return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;}
   return `${Math.floor(ms / 3600000)}h ${Math.floor((ms % 3600000) / 60000)}m`;
 }
 
@@ -212,7 +212,7 @@ function formatDebugValue(value, maxLength = 800) {
       text = String(value);
     }
   }
-  if (!text) return '';
+  if (!text) {return '';}
   return text.length > maxLength ? text.substring(0, maxLength) + '... (truncated)' : text;
 }
 
@@ -344,7 +344,7 @@ export const enhancedUI = {
    * @param {Array} tasks - Array of { id, name, status, progress }
    */
   multiTaskPanel(tasks = []) {
-    if (tasks.length === 0) return;
+    if (tasks.length === 0) {return;}
     
     console.log('\n' + theme.dim('┌' + '─'.repeat(58) + '┐'));
     console.log(theme.dim('│') + theme.primaryBold('  ⚡ PARALLEL TASKS') + theme.dim(' '.repeat(40) + `(${tasks.length} active)│`));
@@ -412,7 +412,7 @@ export const enhancedUI = {
    * @param {Array} suggestions - Array of { text, action, icon }
    */
   suggestions(suggestions = []) {
-    if (suggestions.length === 0) return;
+    if (suggestions.length === 0) {return;}
     
     console.log('\n' + theme.dim('┌' + '─'.repeat(58) + '┐'));
     console.log(theme.dim('│') + theme.warningBold('  💡 SUGGESTIONS') + theme.dim(' '.repeat(42) + '│'));

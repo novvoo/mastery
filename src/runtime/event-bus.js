@@ -561,7 +561,7 @@ export class RuntimeEventBus extends EventEmitter {
    * @returns {Promise<void>|void}
    */
   async replayHistory(options = {}) {
-    const { since, until, type, delay = 0, async = false } = options;
+    const { since, until, type, delay = 0 } = options;
 
     let events = [...this.history];
 

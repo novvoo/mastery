@@ -45,7 +45,7 @@ function splitPlanIntoIssues(plan, granularity, assignee) {
     if (subItems.length > 1) {
       for (const sub of subItems) {
         const cleaned = sub.replace(/^(\d+[\.\)]\s|[-*]\s)/, '').trim();
-        if (cleaned) items.push(cleaned);
+        if (cleaned) {items.push(cleaned);}
       }
     } else {
       items.push(segment);
@@ -116,8 +116,8 @@ function generateAcceptanceCriteria(description) {
  * Build a dependency graph in ASCII form.
  */
 function buildDependencyGraph(issues) {
-  if (issues.length === 0) return '_No issues._';
-  if (issues.length === 1) return `${issues[0].id} --> [Complete]`;
+  if (issues.length === 0) {return '_No issues._';}
+  if (issues.length === 1) {return `${issues[0].id} --> [Complete]`;}
 
   const lines = [];
   for (const issue of issues) {

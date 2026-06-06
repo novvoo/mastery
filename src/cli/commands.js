@@ -30,7 +30,7 @@ export function createSchedulerCommands(schedulerEngine) {
           const limit = parseInt(args.find(arg => arg.startsWith('--limit='))?.split('=')[1]) || 20;
 
           const options = {};
-          if (status) options.status = status;
+          if (status) {options.status = status;}
           options.limit = limit;
 
           const tasks = taskQueue.list(options);
@@ -161,7 +161,7 @@ export function createSchedulerCommands(schedulerEngine) {
         case 'list': {
           const enabledOnly = args.includes('--enabled');
           const options = {};
-          if (enabledOnly) options.enabled = true;
+          if (enabledOnly) {options.enabled = true;}
 
           const schedules = cronScheduler.list(options);
 

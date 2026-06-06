@@ -4,7 +4,7 @@
  */
 
 import { ToolCategory } from '../../core/types.js';
-import { TaskPriority, TaskStatus } from '../../scheduler/task-queue/Task.js';
+import { TaskPriority } from '../../scheduler/task-queue/Task.js';
 
 /**
  * 创建任务管理工具

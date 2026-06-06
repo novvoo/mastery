@@ -30,12 +30,12 @@ function delay(ms) {
 }
 
 function getShell() {
-  if (os.platform() === 'win32') return process.env.ComSpec || 'cmd.exe';
+  if (os.platform() === 'win32') {return process.env.ComSpec || 'cmd.exe';}
   return process.env.SHELL || '/bin/zsh';
 }
 
 function getShellArgs(command) {
-  if (os.platform() === 'win32') return ['/d', '/s', '/c', command];
+  if (os.platform() === 'win32') {return ['/d', '/s', '/c', command];}
   return ['-lc', command];
 }
 
@@ -52,7 +52,7 @@ function createSessionId() {
 
 function previewOutput(session, maxChars = 6000, since = 0) {
   const output = session.output.slice(since);
-  if (output.length <= maxChars) return output;
+  if (output.length <= maxChars) {return output;}
   return output.slice(-maxChars);
 }
 
@@ -114,7 +114,7 @@ function spawnPipeSession(command, workingDirectory) {
 
 export async function startPtyCommand({ command, cwd, cols, rows, wait_ms, max_chars }, ctx = {}) {
   const blocked = blockIfDangerous(command);
-  if (blocked) return blocked;
+  if (blocked) {return blocked;}
 
   const id = createSessionId();
   const workingDirectory = cwd
@@ -224,7 +224,7 @@ export function createPtyTools() {
       required: ['session_id'],
       handler: async ({ session_id, cursor, wait_ms, max_chars }) => {
         const session = requireSession(session_id);
-        if (wait_ms) await delay(wait_ms);
+        if (wait_ms) {await delay(wait_ms);}
         return serializeSession(session, max_chars || 6000, cursor || 0);
       },
     },

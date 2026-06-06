@@ -169,6 +169,6 @@ export async function withTimeout(fn, ms, label = 'operation') {
       }),
     ]);
   } finally {
-    if (timer) clearTimeout(timer);
+    if (timer) {clearTimeout(timer);}
   }
 }

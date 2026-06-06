@@ -137,8 +137,8 @@ function rateAssumptionRisk(text) {
   const highRiskKeywords = ['security', 'data loss', 'breaking', 'untrusted', 'reliable', 'persistence'];
   const mediumRiskKeywords = ['performance', 'compatibility', 'convention', 'migration', 'session'];
 
-  if (highRiskKeywords.some((kw) => textLower.includes(kw))) return 'High';
-  if (mediumRiskKeywords.some((kw) => textLower.includes(kw))) return 'Medium';
+  if (highRiskKeywords.some((kw) => textLower.includes(kw))) {return 'High';}
+  if (mediumRiskKeywords.some((kw) => textLower.includes(kw))) {return 'Medium';}
   return 'Low';
 }
 

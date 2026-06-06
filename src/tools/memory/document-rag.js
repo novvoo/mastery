@@ -7,7 +7,6 @@ import { basename, extname, isAbsolute, resolve, join } from 'path';
 import { Buffer } from 'buffer';
 import { URL } from 'url';
 import { Embedder } from '../../core/embedder.js';
-import { EMAIL_G } from '../../utils/regex-patterns.js';
 import { ToolCategory } from '../../core/types.js';
 
 const MAX_DOCUMENT_BYTES = 15 * 1024 * 1024;
@@ -29,7 +28,7 @@ function getPersistDir(workingDir) {
 
 async function ensureState(workingDir) {
   const dir = getPersistDir(workingDir);
-  if (loadedPersistDir === dir) return;
+  if (loadedPersistDir === dir) {return;}
 
   loadedPersistDir = dir;
   documents.clear();
@@ -40,9 +39,11 @@ async function ensureState(workingDir) {
     const chunkJson = await readFile(join(dir, 'chunks.json'), 'utf-8');
     const loadedDocs = JSON.parse(docJson);
     const loadedChunks = JSON.parse(chunkJson);
-    for (const [key, val] of Object.entries(loadedDocs)) documents.set(key, val);
+    for (const [key, val] of Object.entries(loadedDocs)) {documents.set(key, val);}
     chunks.push(...loadedChunks);
-  } catch {}
+  } catch {
+    // No persisted document index yet.
+  }
 }
 
 async function saveState(workingDir) {
@@ -185,7 +186,7 @@ function createDocumentSearchTool() {
         const embedder = await getEmbedder();
         const qEmb = await embedder.embed(query);
         results = searchWithEmbeddings(qEmb, query, scopedChunks, maxResults);
-      for (const r of results) r.query = query;
+      for (const r of results) {r.query = query;}
       }
 
       // Fallback: batch-embed all chunks (for legacy data or embedding failures)
@@ -198,7 +199,7 @@ function createDocumentSearchTool() {
         });
         results = rerankWithLexicalSignals(query, semanticResults).slice(0, maxResults);
         // Attach query for snippet extraction
-        for (const r of results) r.query = query;
+        for (const r of results) {r.query = query;}
       }
 
       ctx?.ui?.debugEvent?.('Document search completed', {
@@ -405,7 +406,7 @@ function mergeParagraphs(paragraphs, maxChars) {
   const result = [];
   let buffer = '';
   for (const para of paragraphs) {
-    if (!para) continue;
+    if (!para) {continue;}
     if (para.length > maxChars) {
       // Oversized paragraph: flush buffer first
       if (buffer) { result.push(buffer); buffer = ''; }
@@ -414,8 +415,8 @@ function mergeParagraphs(paragraphs, maxChars) {
       const breakAt = para.lastIndexOf('\n', midpoint);
       const first = breakAt > maxChars * 0.3 ? para.slice(0, breakAt).trim() : para.slice(0, maxChars).trim();
       const second = (breakAt > maxChars * 0.3 ? para.slice(breakAt) : para.slice(maxChars)).trim();
-      if (first) result.push(first);
-      if (second) result.push(second);
+      if (first) {result.push(first);}
+      if (second) {result.push(second);}
       continue;
     }
     // Merge small paragraphs up to maxChars
@@ -426,7 +427,7 @@ function mergeParagraphs(paragraphs, maxChars) {
       buffer = buffer ? buffer + '\n\n' + para : para;
     }
   }
-  if (buffer) result.push(buffer);
+  if (buffer) {result.push(buffer);}
   return result;
 }
 
@@ -436,8 +437,8 @@ function legacyChunkText(text) {
   for (let start = 0; start < text.length; start += CHUNK_CHARS - OVERLAP_CHARS) {
     const end = Math.min(text.length, start + CHUNK_CHARS);
     const chunk = text.slice(start, end).trim();
-    if (chunk) result.push(chunk);
-    if (end === text.length) break;
+    if (chunk) {result.push(chunk);}
+    if (end === text.length) {break;}
   }
   return result;
 }
@@ -445,11 +446,11 @@ function legacyChunkText(text) {
 function inferKind(source, contentType = '') {
   const ext = extname(getURLSafePath(source)).toLowerCase();
   const type = contentType.toLowerCase();
-  if (ext === '.pdf' || type.includes('application/pdf')) return 'pdf';
-  if (ext === '.docx' || type.includes('wordprocessingml.document')) return 'docx';
-  if (ext === '.html' || ext === '.htm' || type.includes('text/html')) return 'html';
-  if (ext === '.json' || type.includes('application/json')) return 'json';
-  if (ext === '.md' || ext === '.markdown') return 'markdown';
+  if (ext === '.pdf' || type.includes('application/pdf')) {return 'pdf';}
+  if (ext === '.docx' || type.includes('wordprocessingml.document')) {return 'docx';}
+  if (ext === '.html' || ext === '.htm' || type.includes('text/html')) {return 'html';}
+  if (ext === '.json' || type.includes('application/json')) {return 'json';}
+  if (ext === '.md' || ext === '.markdown') {return 'markdown';}
   return 'text';
 }
 
@@ -507,9 +508,9 @@ function searchWithEmbeddings(queryEmbedding, queryText, scopedChunks, limit) {
   const scored = [];
   for (let i = 0; i < scopedChunks.length; i++) {
     const chunk = scopedChunks[i];
-    if (!chunk.embedding || !Array.isArray(chunk.embedding) || chunk.embedding.length < 100) continue;
+    if (!chunk.embedding || !Array.isArray(chunk.embedding) || chunk.embedding.length < 100) {continue;}
     let dot = 0;
-    for (let j = 0; j < queryEmbedding.length; j++) dot += queryEmbedding[j] * chunk.embedding[j];
+    for (let j = 0; j < queryEmbedding.length; j++) {dot += queryEmbedding[j] * chunk.embedding[j];}
     const lexicalScore = computeLexicalScore(queryText, chunk.text);
     scored.push({
       index: i,
@@ -521,7 +522,7 @@ function searchWithEmbeddings(queryEmbedding, queryText, scopedChunks, limit) {
     });
   }
   // Fallback if no chunks had embeddings
-  if (scored.length === 0) return [];
+  if (scored.length === 0) {return [];}
 
   // Rerank with lexical signals
   scored.sort((a, b) => (b.score + b.lexicalScore * LEXICAL_SCORE_BOOST) - (a.score + a.lexicalScore * LEXICAL_SCORE_BOOST));
@@ -530,7 +531,7 @@ function searchWithEmbeddings(queryEmbedding, queryText, scopedChunks, limit) {
 
 function extractRelevantSnippet(text, query, maxLen) {
   const terms = extractSearchTerms(query || '');
-  if (terms.length === 0 || !text) return (text || '').slice(0, 150);
+  if (terms.length === 0 || !text) {return (text || '').slice(0, 150);}
 
   const lines = text.split('\n').filter(Boolean);
 
@@ -549,7 +550,7 @@ function extractRelevantSnippet(text, query, maxLen) {
   // Find best match (highest effective score); start snippet from its position
   scored.sort((a, b) => b.score - a.score);
   const best = scored.find(m => m.score > 0.5);
-  if (!best) return (text || '').slice(0, 150);
+  if (!best) {return (text || '').slice(0, 150);}
 
   let startPos = 0;
   for (let i = 0; i < best.index; i++) {

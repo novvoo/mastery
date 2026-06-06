@@ -1,5 +1,5 @@
 import { readFile } from 'fs/promises';
-import { join, resolve } from 'path';
+import { resolve } from 'path';
 import { ToolCategory } from '../../core/types.js';
 
 /**
@@ -89,7 +89,6 @@ function generateOverview(filePath, content, lines) {
 
 function analyzeCode(content, lines, focusAreas) {
   const issues = [];
-  const contentLower = content.toLowerCase();
 
   // --- Security Issues ---
   if (focusAreas.length === 0 || focusAreas.some((f) => f.toLowerCase().includes('security'))) {

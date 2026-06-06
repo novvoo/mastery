@@ -11,8 +11,7 @@
  */
 
 import { AgentEngine } from './agent-engine.js';
-import { PlatformType, RuntimeConfig, RuntimeEvent } from './types.js';
-import { getEventBus } from './event-bus.js';
+import { PlatformType, RuntimeConfig } from './types.js';
 
 // 导入旧架构组件
 import { ReActAgent } from '../core/agent.js';
@@ -22,9 +21,6 @@ import { SecurityPolicy } from '../core/security-policy.js';
 import { SessionManager } from '../core/session-manager.js';
 import { TokenJuice } from '../core/token-juice.js';
 import { ExperienceMemory } from '../core/experience-memory.js';
-import { IntelligentReasoning } from '../core/intelligent-reasoning.js';
-import { AutomationEngine } from '../core/automation-engine.js';
-import { Embedder } from '../core/embedder.js';
 
 // 导入模型提供者
 import { OpenAIModelProvider } from '../models/openai-provider.js';

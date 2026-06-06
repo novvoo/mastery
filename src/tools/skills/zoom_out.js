@@ -72,7 +72,7 @@ async function analyzeProjectStructure(baseDir) {
 }
 
 async function walkDirectory(dir, baseDir, modules, dependencies, maxDepth, currentDepth = 0) {
-  if (currentDepth > maxDepth) return;
+  if (currentDepth > maxDepth) {return;}
 
   const skipDirs = new Set([
     'node_modules', '.git', 'dist', 'build', '.next', '.cache',
@@ -87,7 +87,7 @@ async function walkDirectory(dir, baseDir, modules, dependencies, maxDepth, curr
   }
 
   for (const entry of entries) {
-    if (skipDirs.has(entry) || entry.startsWith('.')) continue;
+    if (skipDirs.has(entry) || entry.startsWith('.')) {continue;}
 
     const fullPath = join(dir, entry);
     let fileStat;

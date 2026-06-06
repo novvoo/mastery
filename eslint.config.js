@@ -26,7 +26,11 @@ export default [
       },
     },
     rules: {
-      "no-unused-vars": "warn",
+      "no-unused-vars": ["warn", {
+        "args": "none",
+        "caughtErrors": "none",
+        "ignoreRestSiblings": true
+      }],
       "no-undef": "error",
       "no-dupe-keys": "error",
       "no-duplicate-case": "error",
@@ -34,7 +38,7 @@ export default [
       "no-console": "off",
       "no-constant-condition": "warn",
       "no-redeclare": "error",
-      "no-shadow": "warn",
+      "no-shadow": "off",
       "eqeqeq": "warn",
       "curly": "warn",
       "no-throw-literal": "error",

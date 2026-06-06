@@ -95,13 +95,13 @@ function analyzeSymptom(symptom, errorOutput) {
 
 function extractKeyObservation(errorOutput) {
   const lines = errorOutput.split('\n').filter((l) => l.trim());
-  if (lines.length === 0) return 'Empty error output';
+  if (lines.length === 0) {return 'Empty error output';}
 
   // Look for error type lines
   const errorLine = lines.find((l) =>
     /error|exception|failed|panic|fatal/i.test(l)
   );
-  if (errorLine) return errorLine.trim();
+  if (errorLine) {return errorLine.trim();}
 
   return lines[0].trim();
 }

@@ -4,7 +4,7 @@
  * 增强版：支持任务依赖关系处理
  */
 
-import { Task, TaskStatus, TaskPriority } from './Task.js';
+import { Task, TaskStatus } from './Task.js';
 
 /**
  * 任务队列类
@@ -109,7 +109,7 @@ export class TaskQueue {
 
     for (const dependentId of dependents) {
       const dependentTask = this.#tasks.get(dependentId);
-      if (!dependentTask) continue;
+      if (!dependentTask) {continue;}
 
       // 标记依赖为已完成
       const allDepsMet = dependentTask.markDependencyCompleted(completedTaskId);
@@ -250,8 +250,8 @@ export class TaskQueue {
     // 应用更新
     if (updates.status) {
       const metadata = {};
-      if (updates.result !== undefined) metadata.result = updates.result;
-      if (updates.error !== undefined) metadata.error = updates.error;
+      if (updates.result !== undefined) {metadata.result = updates.result;}
+      if (updates.error !== undefined) {metadata.error = updates.error;}
       task.updateStatus(updates.status, metadata);
 
       // 如果任务变为完成状态，处理依赖

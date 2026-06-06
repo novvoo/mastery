@@ -14,15 +14,7 @@ import { input, password, select } from '@inquirer/prompts';
 // 新架构导入 - Runtime Layer
 import {
   createAgentEngine,
-  createRuntime,
-  createCompatibilityLayer,
-  AgentEngine,
-  RuntimeConfig,
   PlatformType,
-  detectPlatform,
-  MigrationBridge,
-  getApiMapping,
-  getAllApiMappings,
   getEventBus,
   RuntimeEvent
 } from './runtime/index.js';
@@ -37,7 +29,7 @@ import { TokenJuice } from './core/token-juice.js';
 import { ExperienceMemory } from './core/experience-memory.js';
 import { SecurityPolicy } from './core/security-policy.js';
 import { IntelligentReasoning } from './core/intelligent-reasoning.js';
-import { AutomationEngine, TriggerType, WorkflowStatus } from './core/automation-engine.js';
+import { AutomationEngine } from './core/automation-engine.js';
 import { Embedder } from './core/embedder.js';
 import {
   applyRuntimeValues,
@@ -828,7 +820,7 @@ class AIEngineeringAgent {
    * Process user command
    */
   async processCommand(input) {
-    if (!input) return true;
+    if (!input) {return true;}
 
     const command = input.toLowerCase();
     const commandName = command.split(/\s+/, 1)[0];
@@ -1190,7 +1182,12 @@ class AIEngineeringAgent {
             console.log('');
             console.log('');
             let answerText = refineResponse.text || String(refineResponse);
-            try { const parsed = JSON.parse(answerText); if (parsed?.action?.done?.text) answerText = parsed.action.done.text; } catch {}
+            try {
+              const parsed = JSON.parse(answerText);
+              if (parsed?.action?.done?.text) {answerText = parsed.action.done.text;}
+            } catch {
+              // Keep the raw answer text when it is not JSON.
+            }
             console.log(answerText);
             console.log('');
           } catch (refineError) {
@@ -1548,10 +1545,8 @@ class AIEngineeringAgent {
     const args = {};
     const regex = /([A-Za-z_][\w-]*)=(?:"([^"]*)"|'([^']*)'|`([^`]*)`|([^\s]+))/g;
     let match;
-    let consumed = '';
 
     while ((match = regex.exec(text)) !== null) {
-      consumed += match[0];
       args[match[1]] = this.#coerceSlashValue(match[2] ?? match[3] ?? match[4] ?? match[5] ?? '');
     }
 
@@ -1577,10 +1572,10 @@ class AIEngineeringAgent {
   }
 
   #coerceSlashValue(value) {
-    if (value === 'true') return true;
-    if (value === 'false') return false;
-    if (value === 'null') return null;
-    if (/^-?\d+(?:\.\d+)?$/.test(value)) return Number(value);
+    if (value === 'true') {return true;}
+    if (value === 'false') {return false;}
+    if (value === 'null') {return null;}
+    if (/^-?\d+(?:\.\d+)?$/.test(value)) {return Number(value);}
     return value;
   }
 

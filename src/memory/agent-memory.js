@@ -67,7 +67,7 @@ export class WorkingContext {
   }
 
   save() {
-    if (!this.#dirty) return;
+    if (!this.#dirty) {return;}
     
     if (this.#saveTimer) {
       clearTimeout(this.#saveTimer);
@@ -304,7 +304,7 @@ export class ProjectMemory {
   }
 
   save() {
-    if (!this.#dirty) return;
+    if (!this.#dirty) {return;}
     
     if (this.#saveTimer) {
       clearTimeout(this.#saveTimer);
@@ -342,7 +342,7 @@ export class ProjectMemory {
    * 自动探索项目结构（懒加载模式）
    */
   async explore() {
-    if (this.#explored) return;
+    if (this.#explored) {return;}
     
     try {
       const packageJson = join(this.#workingDir, 'package.json');
@@ -559,7 +559,7 @@ export class PatternLearning {
   }
 
   save() {
-    if (!this.#dirty) return;
+    if (!this.#dirty) {return;}
     
     if (this.#saveTimer) {
       clearTimeout(this.#saveTimer);
@@ -722,7 +722,7 @@ export class PatternLearning {
    */
   toPromptFragment(query = '') {
     if (!query) {
-      if (this.#patterns.successes.length === 0) return '';
+      if (this.#patterns.successes.length === 0) {return '';}
       
       const lines = ['[Learned Patterns]'];
       const recent = this.#patterns.successes.slice(-3);
@@ -733,7 +733,7 @@ export class PatternLearning {
     }
 
     const relevant = this.getRelevantPatterns(query);
-    if (relevant.length === 0) return '';
+    if (relevant.length === 0) {return '';}
 
     const lines = ['[Relevant Patterns]'];
     for (const p of relevant.slice(0, 5)) {
@@ -791,7 +791,7 @@ export class AgentMemory {
    * 初始化记忆系统（懒加载探索）
    */
   async initialize() {
-    if (this.#initialized) return;
+    if (this.#initialized) {return;}
     await this.#projectMemory.explore();
     this.#initialized = true;
   }

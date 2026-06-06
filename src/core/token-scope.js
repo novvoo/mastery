@@ -114,7 +114,7 @@ export class TokenScope {
 
   calculateCost(model, inputTokens, outputTokens) {
     const pricing = this.#pricing[model];
-    if (!pricing) return 0;
+    if (!pricing) {return 0;}
 
     const inputCost = (inputTokens / 1_000_000) * pricing.input;
     const outputCost = (outputTokens / 1_000_000) * pricing.output;
@@ -124,7 +124,7 @@ export class TokenScope {
 
   #checkBudget(userId, currentCost) {
     const budget = this.#budgetLimits[userId];
-    if (!budget) return;
+    if (!budget) {return;}
 
     const percentage = (currentCost / budget.limit) * 100;
 
@@ -270,7 +270,7 @@ export class TokenScope {
   }
 
   getCostTrend(history) {
-    if (history.length === 0) return [];
+    if (history.length === 0) {return [];}
 
     const buckets = 24;
     const now = Date.now();

@@ -240,7 +240,7 @@ class HookManager {
    */
   unregister(hookName, entry) {
     const hooks = this.#hooks.get(hookName);
-    if (!hooks) return false;
+    if (!hooks) {return false;}
     
     const index = hooks.indexOf(entry);
     if (index > -1) {
@@ -487,7 +487,7 @@ class ToolGroupManager {
    */
   deleteGroup(name) {
     const group = this.#groups.get(name);
-    if (!group) return false;
+    if (!group) {return false;}
     
     // 清除工具到分组的映射
     for (const toolName of group.tools) {
@@ -524,7 +524,7 @@ class ToolGroupManager {
    */
   removeFromGroup(toolName) {
     const group = this.#toolToGroup.get(toolName);
-    if (!group) return false;
+    if (!group) {return false;}
     
     group.tools.delete(toolName);
     this.#toolToGroup.delete(toolName);
@@ -565,7 +565,7 @@ class ToolGroupManager {
    */
   setGroupEnabled(groupName, enabled) {
     const group = this.#groups.get(groupName);
-    if (!group) return false;
+    if (!group) {return false;}
     group.enabled = enabled;
     return true;
   }
@@ -652,7 +652,7 @@ class ToolLoader {
    */
   async unloadTool(toolName) {
     const info = this.#loadedTools.get(toolName);
-    if (!info) return false;
+    if (!info) {return false;}
     
     // 从注册表中移除
     if (this.#toolRegistry.unregister) {
@@ -677,7 +677,7 @@ class ToolLoader {
    */
   async reloadTool(toolName) {
     const info = this.#loadedTools.get(toolName);
-    if (!info || info.module === 'inline') return false;
+    if (!info || info.module === 'inline') {return false;}
     
     await this.unloadTool(toolName);
     return this.loadTool(info.module, { config: info.tool.config });
@@ -707,7 +707,7 @@ class ToolLoader {
    */
   setToolEnabled(toolName, enabled) {
     const info = this.#loadedTools.get(toolName);
-    if (!info) return false;
+    if (!info) {return false;}
     info.enabled = enabled;
     return true;
   }
@@ -912,7 +912,7 @@ export class PluginManager {
       
       // 卸载工具
       unloadTool: async (toolName) => {
-        if (!self.#toolLoader) return false;
+        if (!self.#toolLoader) {return false;}
         return self.#toolLoader.unloadTool(toolName);
       }
     };
@@ -984,7 +984,7 @@ export class PluginManager {
    */
   async enable(pluginName) {
     const pluginInstance = this.#plugins.get(pluginName);
-    if (!pluginInstance) return false;
+    if (!pluginInstance) {return false;}
     
     pluginInstance.enabled = true;
     pluginInstance.state = PluginState.ACTIVE;
@@ -998,7 +998,7 @@ export class PluginManager {
    */
   async disable(pluginName) {
     const pluginInstance = this.#plugins.get(pluginName);
-    if (!pluginInstance) return false;
+    if (!pluginInstance) {return false;}
     
     pluginInstance.enabled = false;
     pluginInstance.state = PluginState.DISABLED;
@@ -1097,7 +1097,7 @@ export class PluginManager {
     const order = [];
     
     const visit = (name) => {
-      if (visited.has(name)) return;
+      if (visited.has(name)) {return;}
       visited.add(name);
       
       const deps = this.#dependencyGraph.get(name) || [];

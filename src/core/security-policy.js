@@ -173,12 +173,12 @@ export class SecurityPolicy {
 
     for (const [name, policy] of this.#toolPolicies) {
       const level = policy.permissionLevel;
-      if (!report.byPermission[level]) report.byPermission[level] = [];
+      if (!report.byPermission[level]) {report.byPermission[level] = [];}
       report.byPermission[level].push(name);
 
-      if (policy.requiresApproval) report.approvalRequired.push(name);
-      if (!policy.isConcurrencySafe) report.notConcurrencySafe.push(name);
-      if (policy.hasExternalEffect) report.withExternalEffects.push(name);
+      if (policy.requiresApproval) {report.approvalRequired.push(name);}
+      if (!policy.isConcurrencySafe) {report.notConcurrencySafe.push(name);}
+      if (policy.hasExternalEffect) {report.withExternalEffects.push(name);}
     }
 
     return report;

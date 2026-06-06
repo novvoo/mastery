@@ -10,7 +10,7 @@
 
 import { spawn } from 'child_process';
 import { mkdirSync, existsSync, writeFileSync, rmSync } from 'fs';
-import { resolve, join } from 'path';
+import { join } from 'path';
 import { randomUUID } from 'crypto';
 
 /**
@@ -282,10 +282,10 @@ ${code}
    */
   async destroySandbox(sandboxId) {
     const sandbox = this.#sandboxes.get(sandboxId);
-    if (!sandbox) return false;
+    if (!sandbox) {return false;}
 
     // 终止所有进程
-    for (const [pid, proc] of sandbox.processes) {
+    for (const proc of sandbox.processes.values()) {
       try {
         proc.kill('SIGKILL');
       } catch (e) {

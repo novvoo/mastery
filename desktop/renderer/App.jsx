@@ -29,6 +29,93 @@ const LAYOUT = {
 
 const REPOSITORY_URL = 'https://github.com/novvoo/ai-engineering-mastery-agent';
 const PROJECT_TREE_REFRESH_CONCURRENCY = 12;
+const AGENT_HISTORY_STORAGE_KEY = 'agentHistory';
+const AGENT_HISTORY_UPDATED_EVENT = 'agent-history-updated';
+const AGENT_SESSIONS_STORAGE_KEY = 'agentConversationSessions';
+const ACTIVE_AGENT_SESSION_STORAGE_KEY = 'activeAgentConversationSessionId';
+const MAX_AGENT_HISTORY_ITEMS = 50;
+const MAX_AGENT_SESSIONS = 50;
+
+function readAgentHistory() {
+  try {
+    const rawHistory = localStorage.getItem(AGENT_HISTORY_STORAGE_KEY);
+    if (!rawHistory) return [];
+    const parsed = JSON.parse(rawHistory);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error('[App] 读取输入历史失败:', error);
+    return [];
+  }
+}
+
+function createAgentSessionId() {
+  return `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function readAgentSessions() {
+  try {
+    const rawSessions = localStorage.getItem(AGENT_SESSIONS_STORAGE_KEY);
+    if (!rawSessions) return [];
+    const parsed = JSON.parse(rawSessions);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error('[App] 读取会话历史失败:', error);
+    return [];
+  }
+}
+
+function writeAgentSessions(sessions) {
+  const normalizedSessions = Array.isArray(sessions) ? sessions.slice(0, MAX_AGENT_SESSIONS) : [];
+  localStorage.setItem(AGENT_SESSIONS_STORAGE_KEY, JSON.stringify(normalizedSessions));
+}
+
+function findAgentSession(sessionId) {
+  if (!sessionId) return null;
+  return readAgentSessions().find(session => session?.id === sessionId) || null;
+}
+
+function getAgentSessionTitle(input, messages = []) {
+  const fromInput = String(input || '').trim();
+  if (fromInput) return fromInput.slice(0, 80);
+
+  const firstMessage = messages.find(message => typeof message?.content === 'string' && message.content.trim());
+  return firstMessage?.content?.replace(/^用户输入:\s*/, '').slice(0, 80) || '未命名会话';
+}
+
+function upsertAgentSession(session) {
+  if (!session?.id) return;
+  const now = Date.now();
+  const nextSession = {
+    ...session,
+    updatedAt: session.updatedAt || now,
+    createdAt: session.createdAt || now,
+    messages: Array.isArray(session.messages) ? session.messages : []
+  };
+  const nextSessions = [
+    nextSession,
+    ...readAgentSessions().filter(item => item?.id !== nextSession.id)
+  ].slice(0, MAX_AGENT_SESSIONS);
+  writeAgentSessions(nextSessions);
+}
+
+function saveAgentInputHistory(input, sessionId) {
+  const normalizedInput = String(input || '').trim();
+  if (!normalizedInput) return;
+
+  const nextHistory = [
+    {
+      input: normalizedInput,
+      sessionId,
+      timestamp: Date.now()
+    },
+    ...readAgentHistory().filter(item => item?.input !== normalizedInput)
+  ].slice(0, MAX_AGENT_HISTORY_ITEMS);
+
+  localStorage.setItem(AGENT_HISTORY_STORAGE_KEY, JSON.stringify(nextHistory));
+  window.dispatchEvent(new CustomEvent(AGENT_HISTORY_UPDATED_EVENT, {
+    detail: nextHistory
+  }));
+}
 
 function getDocumentDisplayName(pathOrTitle = '') {
   const text = String(pathOrTitle || '').trim();
@@ -608,6 +695,7 @@ const MENU_ITEMS = [
       { label: '停止执行', shortcut: 'Ctrl+.', command: 'stopAgent' },
       { type: 'divider' },
       { label: '清除对话', command: 'clearConversation' },
+      { label: '历史记录', command: 'showHistory' },
       { label: '文档搜索', command: 'insertDocSearch' },
       { type: 'divider' },
       { label: '模型配置...', shortcut: 'Ctrl+,', command: 'openModelConfig' }
@@ -698,6 +786,9 @@ function App() {
     maxIterations: 180,
     autoSave: true
   });
+  const [activeAgentSessionId, setActiveAgentSessionId] = useState(() => (
+    localStorage.getItem(ACTIVE_AGENT_SESSION_STORAGE_KEY) || createAgentSessionId()
+  ));
   
   // 摘要面板数据 (Codex Style)
   const [summaryData, setSummaryData] = useState({
@@ -728,10 +819,45 @@ function App() {
   const chatInputRef = useRef(null);
   const workspaceRefreshTimerRef = useRef(null);
   const directoryChildrenRef = useRef(directoryChildren);
+  const skipNextSessionPersistRef = useRef(false);
 
   useEffect(() => {
     directoryChildrenRef.current = directoryChildren;
   }, [directoryChildren]);
+
+  useEffect(() => {
+    localStorage.setItem(ACTIVE_AGENT_SESSION_STORAGE_KEY, activeAgentSessionId);
+  }, [activeAgentSessionId]);
+
+  useEffect(() => {
+    const activeSession = findAgentSession(activeAgentSessionId);
+    if (activeSession?.messages?.length) {
+      runtime.restoreMessages(activeSession.messages);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!activeAgentSessionId || runtime.messages.length === 0) {
+      return;
+    }
+
+    if (skipNextSessionPersistRef.current) {
+      skipNextSessionPersistRef.current = false;
+      return;
+    }
+
+    const firstInput = runtime.messages.find(message => (
+      typeof message?.content === 'string' && message.content.startsWith('用户输入:')
+    ))?.content?.replace(/^用户输入:\s*/, '');
+
+    upsertAgentSession({
+      id: activeAgentSessionId,
+      title: getAgentSessionTitle(firstInput, runtime.messages),
+      workingDirectory,
+      messages: runtime.messages,
+      updatedAt: Date.now()
+    });
+  }, [activeAgentSessionId, runtime.messages, workingDirectory]);
 
   const refreshRagDocuments = useCallback(async () => {
     if (!ipc.isConnected || !ipc.processInput) {
@@ -1070,6 +1196,7 @@ function App() {
   
   // 处理新建任务
   const handleNewTask = useCallback(() => {
+    setActiveAgentSessionId(createAgentSessionId());
     runtime.clearMessages();
     setChatInput('');
   }, [runtime]);
@@ -1192,6 +1319,32 @@ function App() {
     setShowSuggestions(text.trimStart().startsWith('/'));
     chatInputRef.current?.focus();
   }, []);
+
+  const handleRestoreHistory = useCallback((item) => {
+    const session = findAgentSession(item?.sessionId);
+    if (!session?.messages?.length) {
+      handleInsertText(item?.input || '');
+      return;
+    }
+
+    setActiveAgentSessionId(session.id);
+    runtime.restoreMessages(session.messages);
+    setSidebarCollapsed(false);
+    setActiveTab('agent');
+    setChatInput('');
+    setShowSuggestions(false);
+  }, [handleInsertText, runtime]);
+
+  const handleClearAgentHistory = useCallback(() => {
+    localStorage.removeItem(AGENT_HISTORY_STORAGE_KEY);
+    localStorage.removeItem(AGENT_SESSIONS_STORAGE_KEY);
+    localStorage.removeItem(ACTIVE_AGENT_SESSION_STORAGE_KEY);
+    skipNextSessionPersistRef.current = true;
+    setActiveAgentSessionId(createAgentSessionId());
+    window.dispatchEvent(new CustomEvent(AGENT_HISTORY_UPDATED_EVENT, {
+      detail: []
+    }));
+  }, []);
   
   // ================== Codex 风格菜单处理 ==================
   
@@ -1239,7 +1392,11 @@ function App() {
         await runtime.stop();
         break;
       case 'clearConversation':
-        runtime.clearMessages();
+        handleNewTask();
+        break;
+      case 'showHistory':
+        setSidebarCollapsed(false);
+        setActiveTab('agent');
         break;
       case 'insertDocSearch':
         handleInsertText('/doc search ');
@@ -1300,17 +1457,31 @@ function App() {
   // ================== 聊天输入处理 ==================
   
   const handleSendMessage = useCallback(async () => {
-    if (!chatInput.trim() || runtime.status === 'running') {
+    const input = chatInput.trim();
+    if (!input || runtime.status === 'running') {
       return;
     }
     
     try {
-      await runtime.processInput(chatInput.trim(), agentOptions);
+      let sessionId = activeAgentSessionId;
+      if (!sessionId) {
+        sessionId = createAgentSessionId();
+        setActiveAgentSessionId(sessionId);
+      }
+
+      saveAgentInputHistory(input, sessionId);
+      const result = await runtime.processInput(input, agentOptions);
+      if (result?.command === '/debug' && typeof result.debug === 'boolean') {
+        setAgentOptions(prev => ({
+          ...prev,
+          debug: result.debug
+        }));
+      }
       setChatInput('');
     } catch (error) {
       console.error('[App] 发送消息失败:', error);
     }
-  }, [chatInput, runtime, agentOptions]);
+  }, [activeAgentSessionId, agentOptions, chatInput, runtime]);
   
   // 命令提示相关
   const handleChatInputChange = useCallback((value) => {
@@ -1352,6 +1523,8 @@ function App() {
             agentOptions={agentOptions}
             onOptionsChange={setAgentOptions}
             onInsertText={handleInsertText}
+            onRestoreHistory={handleRestoreHistory}
+            onClearHistory={handleClearAgentHistory}
             projectTree={{
               directoryChildren,
               expandedDirectories,

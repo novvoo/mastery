@@ -58,9 +58,9 @@ export class ToolRegistry {
               type: param.type,
               description: param.description,
             };
-            if (param.enum) entry.enum = param.enum;
-            if (param.items) entry.items = { type: param.items.type, description: param.items.description };
-            if (param.default !== undefined) entry.default = param.default;
+            if (param.enum) {entry.enum = param.enum;}
+            if (param.items) {entry.items = { type: param.items.type, description: param.items.description };}
+            if (param.default !== undefined) {entry.default = param.default;}
             return [key, entry];
           })
         ),
@@ -75,7 +75,7 @@ export class ToolRegistry {
     const summary = {};
     for (const tool of this.getAll()) {
       const cat = tool.category;
-      if (!summary[cat]) summary[cat] = [];
+      if (!summary[cat]) {summary[cat] = [];}
       summary[cat].push(tool.name);
     }
     return summary;

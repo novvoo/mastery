@@ -135,7 +135,7 @@ function evaluateCriteria(criteriaList, evidenceList) {
 }
 
 function findMatchingEvidence(criterion, evidenceList) {
-  if (evidenceList.length === 0) return [];
+  if (evidenceList.length === 0) {return [];}
 
   const criterionWords = criterion.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
 

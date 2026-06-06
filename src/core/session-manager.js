@@ -91,7 +91,7 @@ export class SessionManager {
   }
 
   setTokenizerModel(model) {
-    if (this.#usesCustomTokenCounter) return;
+    if (this.#usesCustomTokenCounter) {return;}
     this.#tokenizerModel = model || 'gpt-4o';
     this.#tokenCounter = Tokenizer.createTokenCounter({ model: this.#tokenizerModel });
   }
@@ -170,7 +170,7 @@ export class SessionManager {
     let pairs = 0;
     for (let i = this.#messages.length - 1; i >= 0 && pairs < count; i--) {
       exchanges.unshift(this.#messages[i]);
-      if (this.#messages[i].role === 'user') pairs++;
+      if (this.#messages[i].role === 'user') {pairs++;}
     }
     return exchanges;
   }

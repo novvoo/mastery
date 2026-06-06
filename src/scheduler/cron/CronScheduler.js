@@ -350,9 +350,9 @@ export class CronScheduler {
 
     // 按下次执行时间排序（null排在最后）
     schedules.sort((a, b) => {
-      if (a.nextRunAt === null && b.nextRunAt === null) return 0;
-      if (a.nextRunAt === null) return 1;
-      if (b.nextRunAt === null) return -1;
+      if (a.nextRunAt === null && b.nextRunAt === null) {return 0;}
+      if (a.nextRunAt === null) {return 1;}
+      if (b.nextRunAt === null) {return -1;}
       return a.nextRunAt - b.nextRunAt;
     });
 

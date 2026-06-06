@@ -32,7 +32,7 @@ export class LlamaModelProvider {
   }
 
   async initialize() {
-    if (this.#initialized) return;
+    if (this.#initialized) {return;}
 
     const contextSize = this.#capabilities?.contextWindow || MODEL_CONTEXT_SIZES[this.#model] || this.#contextSize;
     this.#contextSize = contextSize;

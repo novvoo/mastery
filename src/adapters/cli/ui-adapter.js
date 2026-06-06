@@ -96,7 +96,7 @@ export class CLIUIAdapter {
    * Handle status update
    */
   #onStatusUpdate(event) {
-    if (!this.#ui) return;
+    if (!this.#ui) {return;}
 
     const { message, level, eventName, data } = event;
 
@@ -107,14 +107,14 @@ export class CLIUIAdapter {
 
     switch (level) {
       case 'success':
-        if (this.#ui.success) this.#ui.success(message);
+        if (this.#ui.success) {this.#ui.success(message);}
         break;
       case 'error':
-        if (this.#ui.error) this.#ui.error(message);
+        if (this.#ui.error) {this.#ui.error(message);}
         break;
       case 'info':
       default:
-        if (this.#ui.info) this.#ui.info(message);
+        if (this.#ui.info) {this.#ui.info(message);}
         break;
     }
   }

@@ -28,7 +28,7 @@ export class TextToolParser {
    * @returns {Array<object>} 解析出的工具调用列表
    */
   parse(text) {
-    if (!text || typeof text !== 'string') return [];
+    if (!text || typeof text !== 'string') {return [];}
 
     const toolCalls = [];
 
@@ -359,8 +359,8 @@ export class TextToolParser {
           quote = char;
           continue;
         }
-        if (char === '{') depth++;
-        if (char === '}') depth--;
+        if (char === '{') {depth++;}
+        if (char === '}') {depth--;}
         if (depth === 0) {
           candidates.push(text.slice(start, index + 1));
           break;
@@ -1511,7 +1511,7 @@ export class TextToolParser {
     const seen = new Set();
     return toolCalls.filter(tc => {
       const key = `${tc.name}:${JSON.stringify(tc.arguments)}`;
-      if (seen.has(key)) return false;
+      if (seen.has(key)) {return false;}
       seen.add(key);
       return true;
     });
@@ -1526,7 +1526,7 @@ export class TextToolParser {
     const grouped = new Map();
     for (const tool of tools) {
       const category = tool.category || 'general';
-      if (!grouped.has(category)) grouped.set(category, []);
+      if (!grouped.has(category)) {grouped.set(category, []);}
       grouped.get(category).push(tool.name);
     }
     

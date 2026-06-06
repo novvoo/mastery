@@ -49,7 +49,7 @@ export class Tokenizer {
   }
 
   async initialize() {
-    if (this.#initialized) return;
+    if (this.#initialized) {return;}
 
     try {
       const { Tokenizer } = await import('@huggingface/tokenizers');
@@ -76,7 +76,7 @@ export class Tokenizer {
   }
 
   async encode(text, options = {}) {
-    if (!text) return [];
+    if (!text) {return [];}
 
     const cacheKey = `${text}_${options.addSpecialTokens || false}`;
     if (this.#cache.has(cacheKey)) {
@@ -100,7 +100,7 @@ export class Tokenizer {
   }
 
   async decode(tokens, options = {}) {
-    if (!tokens || tokens.length === 0) return '';
+    if (!tokens || tokens.length === 0) {return '';}
 
     if (this.#tokenizer) {
       return this.#tokenizer.decode(tokens, {
@@ -117,7 +117,7 @@ export class Tokenizer {
   }
 
   countTokensSync(text) {
-    if (!text) return 0;
+    if (!text) {return 0;}
     return this.#fallbackEncode(String(text)).length;
   }
 
@@ -135,7 +135,7 @@ export class Tokenizer {
     let nonCjkRun = '';
 
     const flushNonCjkRun = () => {
-      if (!nonCjkRun) return;
+      if (!nonCjkRun) {return;}
       for (let i = 0; i < nonCjkRun.length; i += charsPerToken) {
         tokens.push(this.#hashChunk(nonCjkRun.slice(i, i + charsPerToken)));
       }
@@ -181,7 +181,7 @@ export class Tokenizer {
 
   async #truncateEnd(text, maxTokens) {
     const tokens = await this.encode(text);
-    if (tokens.length <= maxTokens) return text;
+    if (tokens.length <= maxTokens) {return text;}
 
     const truncatedTokens = tokens.slice(0, maxTokens);
     return await this.decode(truncatedTokens);
@@ -189,7 +189,7 @@ export class Tokenizer {
 
   async #truncateStart(text, maxTokens) {
     const tokens = await this.encode(text);
-    if (tokens.length <= maxTokens) return text;
+    if (tokens.length <= maxTokens) {return text;}
 
     const truncatedTokens = tokens.slice(-maxTokens);
     return await this.decode(truncatedTokens);
@@ -219,7 +219,6 @@ export class Tokenizer {
   async tokenizeForModel(text, model, options = {}) {
     const tokens = await this.encode(text, { addSpecialTokens: true });
 
-    const modelConfig = MODEL_CONFIGS[model] || MODEL_CONFIGS.default;
     const maxLength = options.maxLength || 8192;
 
     let processedTokens = tokens;
@@ -278,29 +277,29 @@ export class Tokenizer {
     const normalized = String(modelName || 'default').toLowerCase().trim();
     const shortName = normalized.includes('/') ? normalized.split('/').pop() : normalized;
 
-    if (MODEL_CONFIGS[shortName]) return shortName;
-    if (shortName.startsWith('claude-3.5')) return 'claude-3.5';
-    if (shortName.startsWith('claude-3')) return 'claude-3';
-    if (shortName.startsWith('claude')) return 'claude';
-    if (shortName.startsWith('gemini-1.5-pro')) return 'gemini-1.5-pro';
-    if (shortName.startsWith('gemini-1.5-flash')) return 'gemini-1.5-flash';
-    if (shortName.startsWith('gemini')) return 'gemini';
-    if (shortName.startsWith('qwen3.5-plus')) return 'qwen3.5-plus';
-    if (shortName.startsWith('qwen2.5-plus')) return 'qwen2.5-plus';
-    if (shortName.startsWith('qwen2.5')) return 'qwen2.5';
-    if (shortName.startsWith('qwen-plus')) return 'qwen-plus';
-    if (shortName.startsWith('qwen-turbo')) return 'qwen-turbo';
-    if (shortName.startsWith('qwen')) return 'qwen';
-    if (shortName.startsWith('glm-4-plus')) return 'glm-4-plus';
-    if (shortName.startsWith('glm-4-flash')) return 'glm-4-flash';
-    if (shortName.startsWith('glm-4')) return 'glm-4';
-    if (shortName.startsWith('deepseek-coder')) return 'deepseek-coder';
-    if (shortName.startsWith('deepseek')) return 'deepseek-chat';
-    if (shortName.startsWith('gpt-4o-mini')) return 'gpt-4o-mini';
-    if (shortName.startsWith('gpt-4o')) return 'gpt-4o';
-    if (shortName.startsWith('gpt-4-turbo')) return 'gpt-4-turbo';
-    if (shortName.startsWith('gpt-4')) return 'gpt-4';
-    if (shortName.startsWith('gpt-3.5')) return 'gpt-3.5-turbo';
+    if (MODEL_CONFIGS[shortName]) {return shortName;}
+    if (shortName.startsWith('claude-3.5')) {return 'claude-3.5';}
+    if (shortName.startsWith('claude-3')) {return 'claude-3';}
+    if (shortName.startsWith('claude')) {return 'claude';}
+    if (shortName.startsWith('gemini-1.5-pro')) {return 'gemini-1.5-pro';}
+    if (shortName.startsWith('gemini-1.5-flash')) {return 'gemini-1.5-flash';}
+    if (shortName.startsWith('gemini')) {return 'gemini';}
+    if (shortName.startsWith('qwen3.5-plus')) {return 'qwen3.5-plus';}
+    if (shortName.startsWith('qwen2.5-plus')) {return 'qwen2.5-plus';}
+    if (shortName.startsWith('qwen2.5')) {return 'qwen2.5';}
+    if (shortName.startsWith('qwen-plus')) {return 'qwen-plus';}
+    if (shortName.startsWith('qwen-turbo')) {return 'qwen-turbo';}
+    if (shortName.startsWith('qwen')) {return 'qwen';}
+    if (shortName.startsWith('glm-4-plus')) {return 'glm-4-plus';}
+    if (shortName.startsWith('glm-4-flash')) {return 'glm-4-flash';}
+    if (shortName.startsWith('glm-4')) {return 'glm-4';}
+    if (shortName.startsWith('deepseek-coder')) {return 'deepseek-coder';}
+    if (shortName.startsWith('deepseek')) {return 'deepseek-chat';}
+    if (shortName.startsWith('gpt-4o-mini')) {return 'gpt-4o-mini';}
+    if (shortName.startsWith('gpt-4o')) {return 'gpt-4o';}
+    if (shortName.startsWith('gpt-4-turbo')) {return 'gpt-4-turbo';}
+    if (shortName.startsWith('gpt-4')) {return 'gpt-4';}
+    if (shortName.startsWith('gpt-3.5')) {return 'gpt-3.5-turbo';}
     return shortName;
   }
 

@@ -13,7 +13,7 @@
 
 import { config } from 'dotenv';
 import { resolve, join } from 'path';
-import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync, readdirSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'fs';
 import { performance } from 'perf_hooks';
 import { spawn, spawnSync } from 'child_process';
 import { createServer } from 'http';
@@ -321,9 +321,6 @@ concurrencyTests.test('Multiple tools execute concurrently', async () => {
   await Promise.all(promises);
 
   // 验证并发执行（不是顺序执行）
-  const starts = executionOrder.filter(e => e.startsWith('start_'));
-  const ends = executionOrder.filter(e => e.startsWith('end_'));
-
   // 如果所有 start 都在任何 end 之前，说明是并发执行
   const firstEndIndex = executionOrder.findIndex(e => e.startsWith('end_'));
   const startsBeforeFirstEnd = executionOrder
@@ -454,19 +451,6 @@ recoveryTests.test('ProcessManager retries failed commands', async () => {
     restartDelay: 100,
   });
 
-  let attempts = 0;
-  
-  // 模拟一个会失败前两次的命令
-  const mockExecute = async () => {
-    attempts++;
-    if (attempts < 3) {
-      const error = new Error(`Command failed: Attempt ${attempts} failed (exit code: 1)`);
-      error.exitCode = 1;
-      throw error;
-    }
-    return { success: true, stdout: 'Success', stderr: '' };
-  };
-
   // 验证重试逻辑
   const result = await pm.shouldRetry({ exitCode: 1, killed: false, stderr: '' });
   if (!result) {
@@ -558,7 +542,7 @@ platformTests.test('ProcessManager detects platform correctly', async () => {
 platformTests.test('Command adaptation works for current platform', async () => {
   const { ProcessManager } = await import('./src/core/process-manager.js');
   const pm = new ProcessManager();
-  const info = ProcessManager.getPlatformInfo();
+  ProcessManager.getPlatformInfo();
 
   // 测试基本命令执行
   const result = await pm.execute('echo "hello world"');
@@ -643,40 +627,7 @@ timeoutAndInteractionTests.test('withTimeout function works correctly', async ()
 });
 
 timeoutAndInteractionTests.test('LLM call timeout is handled properly', async () => {
-  const { ReActAgent } = await import('./src/core/agent.js');
-  const { ToolRegistry } = await import('./src/core/tool-registry.js');
-  const { MemoryManager } = await import('./src/memory/memory-manager.js');
   const { classifyError } = await import('./src/errors/error-handler.js');
-
-  let callCount = 0;
-  const mockProvider = {
-    async chat(messages, options) {
-      callCount++;
-      // 第一次故意超时
-      if (callCount === 1) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        return { text: 'should not reach here', toolCalls: [] };
-      }
-      // 第二次正常响应
-      return {
-        text: 'FINAL_ANSWER: Recovered after timeout',
-        toolCalls: [],
-      };
-    },
-    getMaxContextTokens() {
-      return 4000;
-    },
-    dispose() {},
-  };
-
-  // 为了测试 timeout，我们需要临时修改 withTimeout 的行为
-  // 这里我们模拟一个会超时的场景
-  const registry = new ToolRegistry();
-  const memory = new MemoryManager(TEST_CONFIG.testDir);
-  const agent = new ReActAgent(mockProvider, registry, memory, {
-    maxIterations: 5,
-    workingDirectory: TEST_CONFIG.testDir,
-  });
 
   // 验证 timeout 错误分类
   const timeoutError = new Error('LLM call timed out after 120000ms');
@@ -1239,7 +1190,6 @@ multiConversationTests.test('Agent handles multiple consecutive run() calls with
   const { ReActAgent } = await import('./src/core/agent.js');
   const { ToolRegistry } = await import('./src/core/tool-registry.js');
   const { MemoryManager } = await import('./src/memory/memory-manager.js');
-  const { SessionManager } = await import('./src/core/session-manager.js');
 
   let callCount = 0;
   const responses = [
@@ -4170,10 +4120,10 @@ async function grabPortOwner(port) {
   try {
     const { spawnSync } = await import('child_process');
     const r = spawnSync('lsof', ['-i', 'TCP:' + port, '-nP', '-sTCP:LISTEN', '-F', 'pcn'], { encoding: 'utf-8', timeout: 2000 });
-    if (r.status !== 0 || !r.stdout) return null;
+    if (r.status !== 0 || !r.stdout) {return null;}
     const pidMatch = r.stdout.match(/^p(\d+)/m);
     const nameMatch = r.stdout.match(/^n(.*)/m);
-    if (!pidMatch) return null;
+    if (!pidMatch) {return null;}
     return 'PID=' + pidMatch[1] + (nameMatch ? ' (' + nameMatch[1] + ')' : '');
   } catch { return null; }
 }
@@ -4182,8 +4132,10 @@ async function startMockOpenAIServer(handler) {
   // Close any servers from previous tests
   for (const s of activeMockServers) {
     try {
-      if (s.listening) await new Promise(resolve => s.close(resolve));
-    } catch {}
+      if (s.listening) {await new Promise(resolve => s.close(resolve));}
+    } catch {
+      // Best-effort cleanup between mock server tests.
+    }
   }
   activeMockServers.length = 0;
 
@@ -4210,7 +4162,9 @@ async function startMockOpenAIServer(handler) {
         if (server.listening) {
           await new Promise(resolve => server.close(resolve));
         }
-      } catch {}
+      } catch {
+        // Server may already be closed after a failed attempt.
+      }
       await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
     }
   }
@@ -4738,7 +4692,6 @@ exitFlowTests.test('Agent can be properly reset after multiple tasks', async () 
   const { ReActAgent } = await import('./src/core/agent.js');
   const { ToolRegistry } = await import('./src/core/tool-registry.js');
   const { MemoryManager } = await import('./src/memory/memory-manager.js');
-  const { SessionManager } = await import('./src/core/session-manager.js');
 
   let callCount = 0;
   const responses = [
@@ -6583,8 +6536,6 @@ webSearchTests.test('browser-style multi action uses input_text search query', a
 });
 
 webSearchTests.test('search functions prioritize weather sites', async () => {
-  const { searchDuckDuckGoLite } = await import('./src/tools/web/web-tools.js');
-  
   // 测试优先级标记逻辑（通过内部函数测试）
   // 这里我们验证搜索结果的结构是否正确
   console.log('     Search result prioritization logic in place');
@@ -7237,7 +7188,7 @@ taskGroupingTests.test('TaskGroup - SERIAL strategy blocks concurrent tasks', as
 });
 
 taskGroupingTests.test('ConcurrencyCoordinator - basic registration and canStartTask', async () => {
-  const { ConcurrencyCoordinator, Task } = await import('./src/scheduler/concurrency/index.js');
+  const { ConcurrencyCoordinator } = await import('./src/scheduler/concurrency/index.js');
   const { Task: QueueTask, TaskStatus } = await import('./src/scheduler/task-queue/index.js');
 
   const coordinator = new ConcurrencyCoordinator({ globalConcurrencyLimit: 2 });
@@ -7564,12 +7515,12 @@ coreEngineTests.test('Regex patterns - EMAIL matches common email formats', asyn
 
   const valid = ['user@example.com', 'a.b@domain.co.uk', 'user+tag@org.org', 'x@y.z'];
   for (const email of valid) {
-    if (!EMAIL.test(email)) throw new Error(`EMAIL should match: ${email}`);
+    if (!EMAIL.test(email)) {throw new Error(`EMAIL should match: ${email}`);}
   }
 
   const invalid = ['not-an-email', '@domain.com', 'user@', ''];
   for (const email of invalid) {
-    if (EMAIL.test(email)) throw new Error(`EMAIL should NOT match: ${email}`);
+    if (EMAIL.test(email)) {throw new Error(`EMAIL should NOT match: ${email}`);}
   }
 
   // Global flag for .replace()
@@ -7580,7 +7531,7 @@ coreEngineTests.test('Regex patterns - EMAIL matches common email formats', asyn
   }
 
   // No false positive on Chinese text
-  if (EMAIL.test('你好@世界')) throw new Error('EMAIL should not match Chinese @');
+  if (EMAIL.test('你好@世界')) {throw new Error('EMAIL should not match Chinese @');}
 });
 
 coreEngineTests.test('Regex patterns - URL_PATTERN matches URLs', async () => {
@@ -7588,10 +7539,10 @@ coreEngineTests.test('Regex patterns - URL_PATTERN matches URLs', async () => {
 
   const valid = ['http://example.com', 'https://a.b/c?q=1#frag', 'http://localhost:3000/path'];
   for (const url of valid) {
-    if (!URL_PATTERN.test(url)) throw new Error(`URL_PATTERN should match: ${url}`);
+    if (!URL_PATTERN.test(url)) {throw new Error(`URL_PATTERN should match: ${url}`);}
   }
 
-  if (URL_PATTERN.test('not-a-url')) throw new Error('URL_PATTERN should not match plain text');
+  if (URL_PATTERN.test('not-a-url')) {throw new Error('URL_PATTERN should not match plain text');}
 });
 
 coreEngineTests.test('Regex patterns - PHONE matches phone numbers', async () => {
@@ -7599,7 +7550,7 @@ coreEngineTests.test('Regex patterns - PHONE matches phone numbers', async () =>
 
   const valid = ['+1 (555) 123-4567', '86-13800138000', '021 5555 1234'];
   for (const phone of valid) {
-    if (!PHONE.test(phone)) throw new Error(`PHONE should match: ${phone}`);
+    if (!PHONE.test(phone)) {throw new Error(`PHONE should match: ${phone}`);}
   }
 });
 
@@ -7608,12 +7559,12 @@ coreEngineTests.test('Regex patterns - IPV4 matches IP addresses', async () => {
 
   const valid = ['192.168.1.1', '8.8.8.8', '255.255.255.0', '0.0.0.0'];
   for (const ip of valid) {
-    if (!IPV4.test(ip)) throw new Error(`IPV4 should match: ${ip}`);
+    if (!IPV4.test(ip)) {throw new Error(`IPV4 should match: ${ip}`);}
   }
 
   const invalid = ['256.1.1.1', '999.999.999.999', 'abc.def.ghi.jkl'];
   for (const ip of invalid) {
-    if (IPV4.test(ip)) throw new Error(`IPV4 should NOT match: ${ip}`);
+    if (IPV4.test(ip)) {throw new Error(`IPV4 should NOT match: ${ip}`);}
   }
 });
 
@@ -7622,10 +7573,10 @@ coreEngineTests.test('Regex patterns - UUID matches UUIDs', async () => {
 
   const valid = ['550e8400-e29b-41d4-a716-446655440000', '00000000-0000-0000-0000-000000000000'];
   for (const uuid of valid) {
-    if (!UUID.test(uuid)) throw new Error(`UUID should match: ${uuid}`);
+    if (!UUID.test(uuid)) {throw new Error(`UUID should match: ${uuid}`);}
   }
 
-  if (UUID.test('not-a-uuid')) throw new Error('UUID should not match plain text');
+  if (UUID.test('not-a-uuid')) {throw new Error('UUID should not match plain text');}
 });
 
 coreEngineTests.test('Regex patterns - SEMVER matches version numbers', async () => {
@@ -7633,12 +7584,12 @@ coreEngineTests.test('Regex patterns - SEMVER matches version numbers', async ()
 
   const valid = ['1.2.3', '2.0.0-beta.1', '1.0.0-alpha+001', '0.0.1'];
   for (const v of valid) {
-    if (!SEMVER.test(v)) throw new Error(`SEMVER should match: ${v}`);
+    if (!SEMVER.test(v)) {throw new Error(`SEMVER should match: ${v}`);}
   }
 
   const invalid = ['1.2', 'abc', '.1.2.3'];
   for (const v of invalid) {
-    if (SEMVER.test(v)) throw new Error(`SEMVER should NOT match: ${v}`);
+    if (SEMVER.test(v)) {throw new Error(`SEMVER should NOT match: ${v}`);}
   }
 });
 
@@ -7647,10 +7598,10 @@ coreEngineTests.test('Regex patterns - HEX_COLOR matches color codes', async () 
 
   const valid = ['#fff', '#aabbcc', '#123', '#FF0000'];
   for (const c of valid) {
-    if (!HEX_COLOR.test(c)) throw new Error(`HEX_COLOR should match: ${c}`);
+    if (!HEX_COLOR.test(c)) {throw new Error(`HEX_COLOR should match: ${c}`);}
   }
 
-  if (HEX_COLOR.test('#gggggg')) throw new Error('HEX_COLOR should not match invalid hex');
+  if (HEX_COLOR.test('#gggggg')) {throw new Error('HEX_COLOR should not match invalid hex');}
 });
 
 coreEngineTests.test('Regex patterns - MD_CODE_FENCE matches markdown fences', async () => {
@@ -7658,7 +7609,7 @@ coreEngineTests.test('Regex patterns - MD_CODE_FENCE matches markdown fences', a
 
   const valid = ['```', '```json', '```javascript'];
   for (const f of valid) {
-    if (!MD_CODE_FENCE.test(f)) throw new Error(`MD_CODE_FENCE should match: ${f}`);
+    if (!MD_CODE_FENCE.test(f)) {throw new Error(`MD_CODE_FENCE should match: ${f}`);}
   }
 });
 
@@ -7667,12 +7618,12 @@ coreEngineTests.test('Regex patterns - ISO_DATE matches dates', async () => {
 
   const valid = ['2024-01-15', '2024-01-15T12:30:00Z', '2024-01-15T12:30:00.123+08:00'];
   for (const d of valid) {
-    if (!ISO_DATE.test(d)) throw new Error(`ISO_DATE should match: ${d}`);
+    if (!ISO_DATE.test(d)) {throw new Error(`ISO_DATE should match: ${d}`);}
   }
 
   const invalid = ['15/01/2024', '2024/01/15', 'Jan 15, 2024'];
   for (const d of invalid) {
-    if (ISO_DATE.test(d)) throw new Error(`ISO_DATE should NOT match non-ISO format: ${d}`);
+    if (ISO_DATE.test(d)) {throw new Error(`ISO_DATE should NOT match non-ISO format: ${d}`);}
   }
 });
 
@@ -7681,7 +7632,7 @@ coreEngineTests.test('Regex patterns - CREDIT_CARD matches card numbers', async 
 
   const valid = ['4111-1111-1111-1111', '4111111111111111', '5500 0000 0000 0004'];
   for (const cc of valid) {
-    if (!CREDIT_CARD.test(cc)) throw new Error(`CREDIT_CARD should match: ${cc}`);
+    if (!CREDIT_CARD.test(cc)) {throw new Error(`CREDIT_CARD should match: ${cc}`);}
   }
 
   const text = 'Card: 4111-1111-1111-1111 and 5500-0000-0000-0004';
@@ -7693,7 +7644,7 @@ coreEngineTests.test('Regex patterns - CREDIT_CARD matches card numbers', async 
 
   const invalid = ['1234-5678-9012', 'not-a-card'];
   for (const cc of invalid) {
-    if (CREDIT_CARD.test(cc)) throw new Error(`CREDIT_CARD should NOT match: ${cc}`);
+    if (CREDIT_CARD.test(cc)) {throw new Error(`CREDIT_CARD should NOT match: ${cc}`);}
   }
 });
 
@@ -7701,7 +7652,7 @@ coreEngineTests.test('Regex patterns - JWT matches token format', async () => {
   const { JWT } = await import('./src/utils/regex-patterns.js');
 
   const token = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U';
-  if (!JWT.test(token)) throw new Error('JWT should match valid token');
+  if (!JWT.test(token)) {throw new Error('JWT should match valid token');}
 });
 
 
@@ -7752,7 +7703,9 @@ async function runAllTests() {
   // 清理测试目录
   try {
     rmSync(TEST_CONFIG.testDir, { recursive: true, force: true });
-  } catch {}
+  } catch {
+    // Best-effort cleanup for generated integration test files.
+  }
 
   // 保存详细结果
   const reportPath = resolve(process.cwd(), 'test-integration-report.json');

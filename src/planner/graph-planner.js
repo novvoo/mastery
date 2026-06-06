@@ -60,7 +60,7 @@ export class Subtask {
    * 检查依赖是否满足
    */
   checkDependencies(taskMap) {
-    if (this.dependencies.size === 0) return true;
+    if (this.dependencies.size === 0) {return true;}
     
     for (const depId of this.dependencies) {
       const dep = taskMap.get(depId);
@@ -84,8 +84,8 @@ export class Subtask {
     
     if ([TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.SKIPPED].includes(newStatus)) {
       this.completedAt = Date.now();
-      if (data.result !== undefined) this.result = data.result;
-      if (data.error !== undefined) this.error = data.error;
+      if (data.result !== undefined) {this.result = data.result;}
+      if (data.error !== undefined) {this.error = data.error;}
     }
     
     return { oldStatus, newStatus };
@@ -193,7 +193,7 @@ export class ExecutionPlan {
       if (task) {
         for (const depId of task.dependencies) {
           if (!visited.has(depId)) {
-            if (dfs(depId)) return true;
+            if (dfs(depId)) {return true;}
           } else if (recStack.has(depId)) {
             return true;
           }
@@ -206,7 +206,7 @@ export class ExecutionPlan {
     
     for (const taskId of this.tasks.keys()) {
       if (!visited.has(taskId)) {
-        if (dfs(taskId)) return true;
+        if (dfs(taskId)) {return true;}
       }
     }
     
@@ -384,7 +384,7 @@ export class GraphPlanner extends EventEmitter {
    */
   decomposeTask(planId, taskDescription, options = {}) {
     const plan = this.#plans.get(planId);
-    if (!plan) throw new Error(`Plan ${planId} not found`);
+    if (!plan) {throw new Error(`Plan ${planId} not found`);}
 
     // 这里可以集成 LLM 进行智能任务分解
     // 简化版本：根据模板或规则分解
@@ -441,7 +441,7 @@ export class GraphPlanner extends EventEmitter {
    */
   async executePlan(planId, executor) {
     const plan = this.#plans.get(planId);
-    if (!plan) throw new Error(`Plan ${planId} not found`);
+    if (!plan) {throw new Error(`Plan ${planId} not found`);}
 
     if (plan.detectCycle()) {
       throw new Error('Cannot execute plan with cyclic dependencies');
@@ -496,7 +496,7 @@ export class GraphPlanner extends EventEmitter {
       const currentLevel = [];
       
       for (const task of sortedTasks) {
-        if (completed.has(task.id)) continue;
+        if (completed.has(task.id)) {continue;}
         
         // 检查所有依赖是否已完成
         const depsCompleted = Array.from(task.dependencies).every(depId => 
@@ -584,7 +584,7 @@ export class GraphPlanner extends EventEmitter {
     }
 
     const plan = this.#plans.get(planId);
-    if (!plan) throw new Error(`Plan ${planId} not found`);
+    if (!plan) {throw new Error(`Plan ${planId} not found`);}
 
     const task = plan.addTask(taskData);
     
@@ -626,7 +626,7 @@ export class GraphPlanner extends EventEmitter {
    */
   cancelPlan(planId) {
     const plan = this.#plans.get(planId);
-    if (!plan) return false;
+    if (!plan) {return false;}
 
     plan.status = TaskStatus.CANCELLED;
     
@@ -646,7 +646,7 @@ export class GraphPlanner extends EventEmitter {
    */
   exportToMermaid(planId) {
     const plan = this.#plans.get(planId);
-    if (!plan) throw new Error(`Plan ${planId} not found`);
+    if (!plan) {throw new Error(`Plan ${planId} not found`);}
 
     const lines = ['graph TD'];
     

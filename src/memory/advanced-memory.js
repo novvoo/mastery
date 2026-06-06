@@ -134,7 +134,7 @@ export class ContextCompressor {
    * 移除低重要性内容
    */
   removeLowImportance(context, targetTokens) {
-    if (!Array.isArray(context)) return context;
+    if (!Array.isArray(context)) {return context;}
     
     // 按重要性排序
     const sorted = [...context].sort((a, b) => 
@@ -163,7 +163,7 @@ export class ContextCompressor {
     if (typeof context === 'string') {
       // 简单摘要: 保留开头和结尾
       const tokens = this.estimateTokens(context);
-      if (tokens <= targetTokens) return context;
+      if (tokens <= targetTokens) {return context;}
       
       const ratio = targetTokens / tokens;
       const keepLength = Math.floor(context.length * ratio * 0.8);
@@ -187,7 +187,7 @@ export class ContextCompressor {
    * 截断历史
    */
   truncateHistory(context, targetTokens) {
-    if (!Array.isArray(context)) return context;
+    if (!Array.isArray(context)) {return context;}
     
     // 保留最新的内容
     let result = [];
@@ -324,8 +324,8 @@ export class AdvancedMemoryManager extends EventEmitter {
 
     // 过滤
     candidates = candidates.filter(m => {
-      if (m.importance < minImportance) return false;
-      if (tags.length > 0 && !tags.some(t => m.tags.includes(t))) return false;
+      if (m.importance < minImportance) {return false;}
+      if (tags.length > 0 && !tags.some(t => m.tags.includes(t))) {return false;}
       return true;
     });
 
@@ -352,7 +352,7 @@ export class AdvancedMemoryManager extends EventEmitter {
     const results = [];
     
     for (const memory of this.#memories.values()) {
-      if (!memory.embedding) continue;
+      if (!memory.embedding) {continue;}
       
       const similarity = this.#cosineSimilarity(queryEmbedding, memory.embedding);
       if (similarity >= threshold) {
@@ -442,7 +442,7 @@ export class AdvancedMemoryManager extends EventEmitter {
    * 计算相关性
    */
   #calculateRelevance(memory, query) {
-    if (!query) return 0;
+    if (!query) {return 0;}
     
     const content = typeof memory.content === 'string' 
       ? memory.content 
@@ -454,7 +454,7 @@ export class AdvancedMemoryManager extends EventEmitter {
     
     let matches = 0;
     for (const word of queryWords) {
-      if (contentWords.includes(word)) matches++;
+      if (contentWords.includes(word)) {matches++;}
     }
     
     return matches / queryWords.length;
@@ -464,7 +464,7 @@ export class AdvancedMemoryManager extends EventEmitter {
    * 余弦相似度
    */
   #cosineSimilarity(a, b) {
-    if (!a || !b || a.length !== b.length) return 0;
+    if (!a || !b || a.length !== b.length) {return 0;}
     
     let dotProduct = 0;
     let normA = 0;

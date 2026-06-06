@@ -10,7 +10,7 @@
  */
 
 import { existsSync, readFileSync } from 'fs';
-import { resolve, join } from 'path';
+import { resolve } from 'path';
 
 // 支持的语言
 export const SupportedLanguages = Object.freeze({

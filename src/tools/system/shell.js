@@ -64,7 +64,7 @@ function executeAsync(command, options = {}) {
       killed = true;
       child.kill('SIGTERM');
       setTimeout(() => {
-        if (!child.killed) child.kill('SIGKILL');
+        if (!child.killed) {child.kill('SIGKILL');}
       }, 5000);
     }, options.timeout || 30000);
 
@@ -189,13 +189,13 @@ export function createShellTool(options = {}) {
           const stderr = result.stderr.trim();
           const stdout = result.stdout.trim();
           let msg = `Command failed with exit code ${result.exitCode}`;
-          if (stdout) msg += `\nstdout: ${stdout}`;
-          if (stderr) msg += `\nstderr: ${stderr}`;
+          if (stdout) {msg += `\nstdout: ${stdout}`;}
+          if (stderr) {msg += `\nstderr: ${stderr}`;}
           return msg;
         }
 
         const output = result.stdout.trim();
-        if (!output) return '(command produced no output)';
+        if (!output) {return '(command produced no output)';}
         if (output.length > 5000) {
           return output.substring(0, 5000) + '\n... (truncated, ' + output.length + ' chars total)';
         }

@@ -4,10 +4,10 @@ const DOC_COMMAND_NAMES = new Set(['/doc', '/docs', '/document', '/documents']);
 
 export function parseDocumentCommand(input) {
   const rawInput = String(input || '').trim();
-  if (!rawInput) return null;
+  if (!rawInput) {return null;}
 
   const commandName = rawInput.split(/\s+/, 1)[0].toLowerCase();
-  if (!DOC_COMMAND_NAMES.has(commandName)) return null;
+  if (!DOC_COMMAND_NAMES.has(commandName)) {return null;}
 
   const argsText = rawInput.slice(commandName.length).trim();
   const [subcommandRaw, ...restParts] = argsText.split(/\s+/).filter(Boolean);
@@ -25,7 +25,7 @@ export function parseDocumentCommand(input) {
 
 export async function handleDocumentCommand(input, options = {}) {
   const parsed = parseDocumentCommand(input);
-  if (!parsed) return null;
+  if (!parsed) {return null;}
 
   const { engine, toolRegistry = engine?.getToolRegistry?.(), modelProvider = engine?.getModelProvider?.() } = options;
   const context = createDocumentToolContext(engine, options);

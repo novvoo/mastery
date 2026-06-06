@@ -100,7 +100,7 @@ export class TokenJuice {
    * 默认 token 计数器
    */
   #defaultTokenCounter(text) {
-    if (!text) return 0;
+    if (!text) {return 0;}
     let tokens = 0;
     let lastIndex = 0;
     const cjkMatches = text.matchAll(CJK_CHAR_REGEX);
@@ -305,7 +305,7 @@ export class TokenJuice {
     const { toolName, command, argv } = input;
     const cmdStr = command || argv?.join(' ') || toolName || '';
 
-    for (const { rule, compiled } of this.#compiledRules) {
+    for (const { rule } of this.#compiledRules) {
       const match = this.#matchRule(rule.match, toolName, argv, cmdStr);
       if (match.matched) {
         return {
@@ -421,7 +421,7 @@ export class TokenJuice {
    * @returns {string} 压缩后的文本
    */
   compress(text, options = {}) {
-    if (!text || typeof text !== 'string') return '';
+    if (!text || typeof text !== 'string') {return '';}
 
     let result = text;
     const maxChars = options.maxChars || this.#maxChars;
@@ -537,7 +537,7 @@ export class TokenJuice {
    * 应用转换操作
    */
   #applyTransforms(text, transforms) {
-    if (!text || !transforms) return text;
+    if (!text || !transforms) {return text;}
 
     let result = text;
 
@@ -566,7 +566,7 @@ export class TokenJuice {
    * 应用摘要规则
    */
   #applySummarize(text, summarize) {
-    if (!text || !summarize) return text;
+    if (!text || !summarize) {return text;}
 
     const lines = text.split('\n');
     const result = [];
@@ -640,7 +640,7 @@ export class TokenJuice {
    * 智能截断 - 在句子/段落边界截断
    */
   #smartTruncate(text, maxChars) {
-    if (text.length <= maxChars) return text;
+    if (text.length <= maxChars) {return text;}
 
     // 在最后一个完整段落处截断
     const truncated = text.substring(0, maxChars);
@@ -675,7 +675,7 @@ export class TokenJuice {
    * 估算 token 数量
    */
   estimateTokens(text) {
-    if (!text) return 0;
+    if (!text) {return 0;}
     return this.#tokenCounter(text);
   }
 

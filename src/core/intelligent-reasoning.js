@@ -99,26 +99,26 @@ export class IntelligentReasoning {
     const input = userInput.toLowerCase();
 
     // 意图匹配
-    if (intent.primary === 'isGit' && name.startsWith('git_')) score += 5;
-    if (intent.primary === 'isFileSystem' && (name.includes('file') || name.includes('dir'))) score += 4;
-    if (intent.primary === 'isSearch' && (name.includes('search') || name.includes('find') || name.includes('list'))) score += 4;
-    if (intent.primary === 'isAnalysis' && (name.includes('analyze') || name.includes('review') || name.includes('diagnose'))) score += 4;
-    if (intent.primary === 'isSchedule' && (name.includes('schedule') || name.includes('cron'))) score += 5;
-    if (intent.primary === 'isSubAgent' && name.includes('subagent')) score += 5;
+    if (intent.primary === 'isGit' && name.startsWith('git_')) {score += 5;}
+    if (intent.primary === 'isFileSystem' && (name.includes('file') || name.includes('dir'))) {score += 4;}
+    if (intent.primary === 'isSearch' && (name.includes('search') || name.includes('find') || name.includes('list'))) {score += 4;}
+    if (intent.primary === 'isAnalysis' && (name.includes('analyze') || name.includes('review') || name.includes('diagnose'))) {score += 4;}
+    if (intent.primary === 'isSchedule' && (name.includes('schedule') || name.includes('cron'))) {score += 5;}
+    if (intent.primary === 'isSubAgent' && name.includes('subagent')) {score += 5;}
 
     // 关键词匹配
     for (const kw of intent.keywords) {
-      if (name.includes(kw)) score += 2;
-      if (desc.includes(kw)) score += 1;
+      if (name.includes(kw)) {score += 2;}
+      if (desc.includes(kw)) {score += 1;}
     }
 
     // 技能工具特殊处理
     if (tool.category && tool.category.includes('skill')) {
-      if (input.includes('brainstorm') && name === 'brainstorm') score += 5;
-      if (input.includes('review') && name === 'review') score += 5;
-      if (input.includes('tdd') && name === 'tdd') score += 5;
-      if (input.includes('architect') && name === 'architect') score += 5;
-      if (input.includes('diagnose') && name === 'diagnose') score += 5;
+      if (input.includes('brainstorm') && name === 'brainstorm') {score += 5;}
+      if (input.includes('review') && name === 'review') {score += 5;}
+      if (input.includes('tdd') && name === 'tdd') {score += 5;}
+      if (input.includes('architect') && name === 'architect') {score += 5;}
+      if (input.includes('diagnose') && name === 'diagnose') {score += 5;}
     }
 
     return score;

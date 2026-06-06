@@ -10,12 +10,11 @@
  * - 自动重启机制
  */
 
-import { spawn, exec } from 'child_process';
+import { spawn } from 'child_process';
 import { platform, tmpdir } from 'os';
 import { existsSync, writeFileSync, readFileSync, unlinkSync, mkdirSync, readdirSync, statSync } from 'fs';
-import { resolve, join } from 'path';
+import { join } from 'path';
 import { EventEmitter } from 'events';
-import { networkInterfaces } from 'os';
 
 // 平台检测
 const PLATFORM = platform();
@@ -236,11 +235,11 @@ export class ProcessManager extends EventEmitter {
    */
   shouldRetry(result) {
     // 超时错误重试
-    if (result.killed) return true;
+    if (result.killed) {return true;}
     
     // 特定退出码重试
     const retryableCodes = [1, 126, 127, 130, 137, 143]; // 各种错误码
-    if (retryableCodes.includes(result.exitCode)) return true;
+    if (retryableCodes.includes(result.exitCode)) {return true;}
     
     // 网络相关错误重试
     if (result.stderr && /ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(result.stderr)) {
@@ -255,7 +254,7 @@ export class ProcessManager extends EventEmitter {
    */
   async #retryExecution(command, options, originalProcessId) {
     const processInfo = this.#activeProcesses.get(originalProcessId);
-    if (!processInfo) return;
+    if (!processInfo) {return;}
 
     if (processInfo.restartCount >= this.#config.maxRestartAttempts) {
       throw new Error(`Max retry attempts (${this.#config.maxRestartAttempts}) exceeded`);
@@ -489,14 +488,14 @@ export class ProcessManager extends EventEmitter {
    */
   #cleanupStaleLocks() {
     try {
-      if (!existsSync(LOCK_DIR)) return;
+      if (!existsSync(LOCK_DIR)) {return;}
       
       const files = readdirSync(LOCK_DIR);
       const now = Date.now();
       const LOCK_TTL_MS = 30 * 60 * 1000; // 30分钟后锁过期
       
       for (const file of files) {
-        if (!file.endsWith('.lock')) continue;
+        if (!file.endsWith('.lock')) {continue;}
         
         try {
           const filePath = join(LOCK_DIR, file);
@@ -542,7 +541,7 @@ export class ProcessManager extends EventEmitter {
    */
   terminateProcess(processId, force = false) {
     const info = this.#activeProcesses.get(processId);
-    if (!info || !info.process) return false;
+    if (!info || !info.process) {return false;}
 
     try {
       if (force) {

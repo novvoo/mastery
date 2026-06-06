@@ -19,10 +19,6 @@ import {
 } from '../../runtime/index.js';
 import { createPlugin } from '../../runtime/plugin-system.js';
 import {
-  MainProcessIPCAdapter,
-  RendererProcessIPCAdapter,
-  IPCMessageType,
-  IPCMessage,
   createMainProcessIPCAdapter,
   createRendererProcessIPCAdapter
 } from './ipc-adapter.js';
@@ -718,7 +714,7 @@ export class UIBridge {
    * 设置 IPC 监听器
    */
   #setupIPCListeners() {
-    if (!this.#ipcAdapter) return;
+    if (!this.#ipcAdapter) {return;}
     
     // 监听所有运行时事件
     const events = [

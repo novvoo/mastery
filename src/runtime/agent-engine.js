@@ -10,21 +10,20 @@
  * - 向后兼容旧架构
  */
 
-import { RuntimeConfig, AgentState, RuntimeEvent, ToolContext } from './types.js';
+import { RuntimeConfig, AgentState, RuntimeEvent } from './types.js';
 import { getEventBus } from './event-bus.js';
-import { PluginManager, HOOKS, HookPriority, PluginState } from './plugin-system.js';
+import { PluginManager, HOOKS } from './plugin-system.js';
 
 // Import core components - 核心模块导入
 import { ReActAgent } from '../core/agent.js';
 import { ToolRegistry } from '../core/tool-registry.js';
 import { MemoryManager } from '../memory/memory-manager.js';
 import { SecurityPolicy } from '../core/security-policy.js';
-import { PermissionLevel, ToolScope } from '../core/types.js';
 import { ExperienceMemory } from '../core/experience-memory.js';
 import { TokenJuice } from '../core/token-juice.js';
 import { SessionManager } from '../core/session-manager.js';
 import { IntelligentReasoning } from '../core/intelligent-reasoning.js';
-import { AutomationEngine, TriggerType, WorkflowStatus } from '../core/automation-engine.js';
+import { AutomationEngine } from '../core/automation-engine.js';
 import { Embedder } from '../core/embedder.js';
 
 // Import tools - 工具导入
@@ -453,7 +452,7 @@ export class AgentEngine {
    * 注册调度器工具（在 attachModelProvider 后调用）
    */
   async #registerSchedulerTools() {
-    if (!this.#schedulerEngine) return;
+    if (!this.#schedulerEngine) {return;}
     
     try {
       const taskTools = createTaskTools(this.#schedulerEngine);
@@ -616,6 +615,10 @@ export class AgentEngine {
       throw new Error('模型提供者未附加。请先使用 attachModelProvider() 方法。');
     }
 
+    if (typeof options.debug === 'boolean') {
+      this.setDebugMode(options.debug);
+    }
+
     this.#state.status = 'running';
     this.#state.currentTask = input;
     this.#state.startTime = Date.now();
@@ -698,8 +701,7 @@ export class AgentEngine {
    */
   #createUIFacade() {
     const eventBus = this.#eventBus;
-    const pluginManager = this.#pluginManager;
-    
+
     return {
       info: (message) => {
         eventBus.emit(RuntimeEvent.STATUS_UPDATE, { message, level: 'info' });
@@ -929,6 +931,10 @@ export class AgentEngine {
     if (this.#agent && typeof this.#agent.setDebugMode === 'function') {
       this.#agent.setDebugMode(enabled);
     }
+  }
+
+  getDebugMode() {
+    return this.#config.debug === true;
   }
 
   /**

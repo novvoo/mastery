@@ -4,7 +4,6 @@
  */
 
 import { input, select, confirm } from '@inquirer/prompts';
-import { Separator } from '@inquirer/core';
 import { enhancedUI, createTable, formatStatus, formatPriority, formatTime, formatDuration, truncate } from './enhanced-ui.js';
 
 /**
@@ -21,9 +20,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
   const taskQueue = schedulerEngine.getTaskQueue();
   const cronScheduler = schedulerEngine.getCronScheduler();
   const subAgentPool = schedulerEngine.getSubAgentPool();
-  const messageBus = schedulerEngine.getMessageBus();
   const mcpClient = options.mcpClient || null;
-  const tokenJuice = options.tokenJuice || null;
   const experienceMemory = options.experienceMemory || null;
   const securityPolicy = options.securityPolicy || null;
   const intelligentReasoning = options.intelligentReasoning || null;
@@ -597,7 +594,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
         ],
       });
 
-      if (action === 'back') return;
+      if (action === 'back') {return;}
       await this.handleGitCommand([action]);
     },
 
@@ -629,7 +626,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
         const untracked = [];
 
         for (const line of lines.slice(1)) {
-          if (!line.trim()) continue;
+          if (!line.trim()) {continue;}
           const status = line.substring(0, 2).trim();
           const file = line.substring(3);
           if (status.startsWith('?')) {
@@ -718,7 +715,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
             { name: 'Specify files...', value: 'files' },
           ],
         });
-        if (mode === 'all') args = ['-A'];
+        if (mode === 'all') {args = ['-A'];}
         else {
           const filesStr = await input({
             message: 'File paths (space-separated):',
@@ -1034,7 +1031,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
         ],
       });
 
-      if (action === 'back') return;
+      if (action === 'back') {return;}
       await this.handleMcpCommand([action]);
     },
 
@@ -1285,7 +1282,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
           { name: '⬅️  Back', value: 'back' },
         ],
       });
-      if (action === 'back') return;
+      if (action === 'back') {return;}
       await this.handleSecurityCommand([action]);
     },
 
@@ -1348,7 +1345,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
       console.log(enhancedUI.createHeader('Tools by Permission Level'));
 
       for (const [level, tools] of Object.entries(report.byPermission)) {
-        if (tools.length === 0) continue;
+        if (tools.length === 0) {continue;}
         const icon = level === 'dangerous' ? '🔴' : level === 'execute' ? '🟠' : level === 'write' ? '🟡' : level === 'readonly' ? '🟢' : '⚪';
         console.log(`\n  ${icon} ${enhancedUI.theme.whiteBold(level.toUpperCase())} (${tools.length})`);
         for (const name of tools) {
@@ -1419,7 +1416,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
           { name: '⬅️  Back', value: 'back' },
         ],
       });
-      if (action === 'back') return;
+      if (action === 'back') {return;}
       await this.handleExperienceCommand([action]);
     },
 
@@ -1465,7 +1462,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
         });
         query = q;
       }
-      if (!query) return;
+      if (!query) {return;}
 
       const results = experienceMemory.recall(query);
       console.log(enhancedUI.createHeader(`Search: "${query}"`));
@@ -1478,7 +1475,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
       for (const exp of results) {
         const icon = exp.outcome === 'success' ? '✅' : exp.outcome === 'failure' ? '❌' : '⚠️';
         console.log(`  ${icon} [score: ${exp.score.toFixed(2)}] ${exp.lesson}`);
-        if (exp.tool) console.log(`     Tool: ${exp.tool}`);
+        if (exp.tool) {console.log(`     Tool: ${exp.tool}`);}
       }
       console.log('');
     },
@@ -1530,7 +1527,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
           { name: '⬅️  Back', value: 'back' },
         ],
       });
-      if (action === 'back') return;
+      if (action === 'back') {return;}
       
       const inputText = await input({
         message: 'Enter text:',
@@ -1545,7 +1542,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
         });
         text = t;
       }
-      if (!text) return;
+      if (!text) {return;}
 
       const intent = await intelligentReasoning.analyzeIntent(text);
       console.log(enhancedUI.createHeader('Intent Analysis'));
@@ -1555,7 +1552,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
       console.log('');
       console.log('  Detected intents:');
       for (const [k, v] of Object.entries(intent.intents)) {
-        if (v) console.log(`    ✓ ${k.replace('is', '')}`);
+        if (v) {console.log(`    ✓ ${k.replace('is', '')}`);}
       }
       console.log('');
       console.log(`  Keywords: ${intent.keywords.join(', ') || 'none'}`);
@@ -1569,7 +1566,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
         });
         text = t;
       }
-      if (!text) return;
+      if (!text) {return;}
 
       const intent = await intelligentReasoning.analyzeIntent(text);
       const tools = await intelligentReasoning.selectTools(text, intent);
@@ -1594,7 +1591,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
         });
         text = t;
       }
-      if (!text) return;
+      if (!text) {return;}
 
       const subtasks = await intelligentReasoning.decomposeTask(text);
       console.log(enhancedUI.createHeader('Task Decomposition'));
@@ -1669,7 +1666,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
           { name: '⬅️  Back', value: 'back' },
         ],
       });
-      if (action === 'back') return;
+      if (action === 'back') {return;}
       if (action === 'toggle') {
         if (status.isRunning) {
           await automationEngine.stop();

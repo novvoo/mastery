@@ -59,7 +59,7 @@ export class DynamicContextPruning {
   }
 
   #defaultTokenCounter(text) {
-    if (!text) return 0;
+    if (!text) {return 0;}
     const chineseChars = (text.match(/[\u4e00-\u9fff]/g) || []).length;
     const otherChars = text.length - chineseChars;
     return Math.ceil(chineseChars * 2.0 + otherChars / 3.5);
@@ -339,7 +339,7 @@ export class DynamicContextPruning {
     this.#config = { ...this.#config, ...newConfig };
   }
   #injectPruneSummary(allMessages, prunedMessages, config) {
-    if (prunedMessages.length === allMessages.length) return prunedMessages;
+    if (prunedMessages.length === allMessages.length) {return prunedMessages;}
 
     const prunedIndices = new Set(prunedMessages.map(m => m.originalIndex));
     const removed = allMessages.filter(m => !prunedIndices.has(m.originalIndex));
@@ -385,7 +385,7 @@ export class DynamicContextPruning {
       summaryParts.push(`Assistant responses: ${assistantMessages.length}`);
     }
 
-    if (summaryParts.length === 0) return prunedMessages;
+    if (summaryParts.length === 0) {return prunedMessages;}
 
     const summaryText = '[Context summary: ' + summaryParts.join('. ') + ']';
     const summary = {

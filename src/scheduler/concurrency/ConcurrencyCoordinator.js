@@ -4,7 +4,6 @@
  */
 
 import { TaskGroup, ExecutionStrategy } from './TaskGroup.js';
-import { TaskStatus } from '../task-queue/Task.js';
 
 /**
  * 并发协调器类

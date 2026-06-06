@@ -13,6 +13,23 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 
+const AGENT_HISTORY_STORAGE_KEY = 'agentHistory';
+const AGENT_HISTORY_UPDATED_EVENT = 'agent-history-updated';
+const AGENT_SESSIONS_STORAGE_KEY = 'agentConversationSessions';
+const ACTIVE_AGENT_SESSION_STORAGE_KEY = 'activeAgentConversationSessionId';
+
+function readAgentHistory() {
+  try {
+    const savedHistory = localStorage.getItem(AGENT_HISTORY_STORAGE_KEY);
+    if (!savedHistory) return [];
+    const parsed = JSON.parse(savedHistory);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error('[AgentControl] 加载历史记录失败:', error);
+    return [];
+  }
+}
+
 // 样式定义
 const styles = {
   container: {
@@ -582,7 +599,17 @@ const INPUT_TEMPLATES = [
  * @param {Function} props.onInsertText - 将文本插入到主消息输入框
  * @param {Object} props.projectTree - 当前项目文件树状态和操作
  */
-function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange, agentOptions, onOptionsChange, onInsertText, projectTree }) {
+function AgentControl({
+  runtime,
+  workingDirectory,
+  onWorkingDirectoryChange,
+  agentOptions,
+  onOptionsChange,
+  onInsertText,
+  onRestoreHistory,
+  onClearHistory,
+  projectTree
+}) {
   // 状态
   const [history, setHistory] = useState([]);
   const [historySearch, setHistorySearch] = useState('');
@@ -591,27 +618,66 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange, age
   
   // 加载历史记录
   useEffect(() => {
-    try {
-      const savedHistory = localStorage.getItem('agentHistory');
-      if (savedHistory) {
-        setHistory(JSON.parse(savedHistory));
+    const loadHistory = () => setHistory(readAgentHistory());
+    const handleHistoryUpdated = (event) => {
+      if (Array.isArray(event.detail)) {
+        setHistory(event.detail);
+        return;
       }
-    } catch (error) {
-      console.error('[AgentControl] 加载历史记录失败:', error);
-    }
+      loadHistory();
+    };
+
+    loadHistory();
+    window.addEventListener(AGENT_HISTORY_UPDATED_EVENT, handleHistoryUpdated);
+    return () => window.removeEventListener(AGENT_HISTORY_UPDATED_EVENT, handleHistoryUpdated);
   }, []);
   
   const handleHistoryClick = useCallback((item) => {
+    if (onRestoreHistory) {
+      onRestoreHistory(item);
+      return;
+    }
     if (onInsertText) {
       onInsertText(item.input);
     }
-  }, [onInsertText]);
+  }, [onInsertText, onRestoreHistory]);
   
-  const handleHistoryDelete = useCallback((index) => {
-    const newHistory = history.filter((_, i) => i !== index);
+  const handleHistoryDelete = useCallback((targetItem) => {
+    const newHistory = history.filter(item => (
+      item !== targetItem &&
+      !(
+        item?.input === targetItem?.input &&
+        item?.timestamp === targetItem?.timestamp &&
+        item?.sessionId === targetItem?.sessionId
+      )
+    ));
     setHistory(newHistory);
-    localStorage.setItem('agentHistory', JSON.stringify(newHistory));
+    localStorage.setItem(AGENT_HISTORY_STORAGE_KEY, JSON.stringify(newHistory));
+    window.dispatchEvent(new CustomEvent(AGENT_HISTORY_UPDATED_EVENT, {
+      detail: newHistory
+    }));
   }, [history]);
+
+  const handleHistoryClear = useCallback(() => {
+    if (history.length === 0) {
+      return;
+    }
+
+    setHistory([]);
+    setHistorySearch('');
+
+    if (onClearHistory) {
+      onClearHistory();
+      return;
+    }
+
+    localStorage.removeItem(AGENT_HISTORY_STORAGE_KEY);
+    localStorage.removeItem(AGENT_SESSIONS_STORAGE_KEY);
+    localStorage.removeItem(ACTIVE_AGENT_SESSION_STORAGE_KEY);
+    window.dispatchEvent(new CustomEvent(AGENT_HISTORY_UPDATED_EVENT, {
+      detail: []
+    }));
+  }, [history.length, onClearHistory]);
   
   const handleQuickCommandClick = useCallback((cmd) => {
     if (onInsertText) {
@@ -855,21 +921,6 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange, age
             <input
               type="checkbox"
               style={styles.checkbox}
-              checked={agentOptions.debug}
-              onChange={(e) => handleOptionChange('debug', e.target.checked)}
-            />
-            <label 
-              style={styles.label}
-              onClick={() => handleOptionChange('debug', !agentOptions.debug)}
-            >
-              调试模式
-            </label>
-          </div>
-          
-          <div style={styles.optionRow}>
-            <input
-              type="checkbox"
-              style={styles.checkbox}
               checked={agentOptions.autoSave}
               onChange={(e) => handleOptionChange('autoSave', e.target.checked)}
             />
@@ -898,76 +949,96 @@ function AgentControl({ runtime, workingDirectory, onWorkingDirectoryChange, age
       </div>
       
       {/* 历史记录 */}
-      {history.length > 0 && (
-        <div style={styles.section}>
-          <div style={styles.sectionTitle}>
-            <span>📜</span>
-            <span>历史记录</span>
-            <span style={{
-              fontSize: '12px',
-              color: 'var(--text-muted)',
-              marginLeft: '4px'
-            }}>
-              ({filteredHistory.length}/{history.length})
-            </span>
-          </div>
-          
-          {/* 搜索 */}
-          <input
-            style={styles.historySearch}
-            value={historySearch}
-            onChange={(e) => setHistorySearch(e.target.value)}
-            placeholder="🔍 搜索历史记录..."
-          />
-          
-          {/* 列表 */}
-          <div style={styles.historySection}>
-            <div style={styles.historyList}>
-              {filteredHistory.map((item, index) => (
-                <div
-                  key={index}
+      <div style={styles.section}>
+        <div style={styles.sectionTitle}>
+          <span>📜</span>
+          <span>历史记录</span>
+          <span style={{
+            fontSize: '12px',
+            color: 'var(--text-muted)',
+            marginLeft: '4px'
+          }}>
+            ({filteredHistory.length}/{history.length})
+          </span>
+          <button
+            type="button"
+            style={{
+              ...styles.clearButton,
+              marginLeft: 'auto',
+              opacity: history.length === 0 ? 0.45 : 1,
+              cursor: history.length === 0 ? 'not-allowed' : 'pointer'
+            }}
+            onClick={handleHistoryClear}
+            disabled={history.length === 0}
+            title="清空历史记录和可恢复会话"
+          >
+            清空
+          </button>
+        </div>
+        
+        {/* 搜索 */}
+        <input
+          style={styles.historySearch}
+          value={historySearch}
+          onChange={(e) => setHistorySearch(e.target.value)}
+          placeholder="🔍 搜索历史记录..."
+          disabled={history.length === 0}
+        />
+        
+        {/* 列表 */}
+        <div style={styles.historySection}>
+          <div style={styles.historyList}>
+            {filteredHistory.map((item, index) => (
+              <div
+                key={`${item.timestamp || index}-${item.input}`}
+                style={{
+                  ...styles.historyItem,
+                  ...(hoveredHistoryItem === index ? styles.historyItemHover : {})
+                }}
+                onClick={() => handleHistoryClick(item)}
+                onMouseEnter={() => setHoveredHistoryItem(index)}
+                onMouseLeave={() => setHoveredHistoryItem(null)}
+                title={item.sessionId ? `恢复会话: ${item.input}` : item.input}
+              >
+                <div style={styles.historyItemContent}>
+                  {item.input}
+                </div>
+                <div style={styles.historyItemTime}>
+                  {item.timestamp ? new Date(item.timestamp).toLocaleString() : ''}
+                  {item.sessionId ? ' · 可恢复' : ''}
+                </div>
+                <button
                   style={{
-                    ...styles.historyItem,
-                    ...(hoveredHistoryItem === index ? styles.historyItemHover : {})
+                    ...styles.historyItemDelete,
+                    ...(hoveredHistoryItem === index ? styles.historyItemDeleteVisible : {})
                   }}
-                  onClick={() => handleHistoryClick(item)}
-                  onMouseEnter={() => setHoveredHistoryItem(index)}
-                  onMouseLeave={() => setHoveredHistoryItem(null)}
-                  title={item.input}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleHistoryDelete(item);
+                  }}
+                  title="删除此记录"
+                  onMouseEnter={(e) => e.currentTarget.style.color = 'var(--error-color)'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
                 >
-                  <div style={styles.historyItemContent}>
-                    {item.input}
-                  </div>
-                  <div style={styles.historyItemTime}>
-                    {new Date(item.timestamp).toLocaleString()}
-                  </div>
-                  <button
-                    style={{
-                      ...styles.historyItemDelete,
-                      ...(hoveredHistoryItem === index ? styles.historyItemDeleteVisible : {})
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleHistoryDelete(index);
-                    }}
-                    title="删除此记录"
-                    onMouseEnter={(e) => e.currentTarget.style.color = 'var(--error-color)'}
-                    onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
-                  >
-                    ✖️
-                  </button>
-                </div>
-              ))}
-              
-              {filteredHistory.length === 0 && history.length > 0 && (
-                <div style={styles.emptyHistory}>
-                  没有找到匹配的历史记录
-                </div>
-              )}
-            </div>
+                  ✖️
+                </button>
+              </div>
+            ))}
+            
+            {history.length === 0 && (
+              <div style={styles.emptyHistory}>
+                暂无历史记录，发送第一条消息后会自动保存
+              </div>
+            )}
+
+            {filteredHistory.length === 0 && history.length > 0 && (
+              <div style={styles.emptyHistory}>
+                没有找到匹配的历史记录
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

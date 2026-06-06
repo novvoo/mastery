@@ -4,7 +4,6 @@
  */
 
 import { createAgentEngine, PlatformType } from '../../runtime/index.js';
-import { getEventBus } from '../../runtime/event-bus.js';
 import { CLIUIAdapter } from './ui-adapter.js';
 
 /**

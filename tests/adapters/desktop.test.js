@@ -388,11 +388,62 @@ describe('MainProcessIPCAdapter', () => {
     expect(result.content).toContain('Indexed documents: 2/2');
   });
 
+  test('应该在 Desktop IPC 中本地处理 /debug 命令', async () => {
+    await adapter.initialize();
+
+    let processInputCalled = false;
+    let debugMode = false;
+    const sentMessages = [];
+    const mockEvent = {
+      sender: {
+        id: 123,
+        send: (channel, data) => sentMessages.push({ channel, data })
+      }
+    };
+    await mockIpcMain.simulateHandle(IPCMessageType.CONNECT, mockEvent);
+
+    const mockEngine = {
+      processInput: async () => {
+        processInputCalled = true;
+        return { result: 'agent path' };
+      },
+      setDebugMode: (enabled) => {
+        debugMode = enabled;
+      },
+      getDebugMode: () => debugMode,
+      stop: () => {},
+      getState: () => ({ status: 'idle' }),
+      getTools: () => []
+    };
+    adapter.attachEngine(mockEngine);
+
+    const result = await mockIpcMain.simulateHandle(
+      'agent:processInput',
+      mockEvent,
+      { input: '/debug on', options: {} }
+    );
+
+    expect(processInputCalled).toBe(false);
+    expect(debugMode).toBe(true);
+    expect(result.localCommand).toBe(true);
+    expect(result.command).toBe('/debug');
+    expect(result.debug).toBe(true);
+    expect(result.content).toContain('开启');
+    expect(sentMessages.some(message => message.channel === IPCMessageType.EVENT)).toBe(true);
+    expect(sentMessages.some(message => message.channel === RuntimeEvent.STATUS_UPDATE)).toBe(true);
+  });
+
   test('应该正确广播消息', async () => {
     await adapter.initialize();
     
     // 模拟连接窗口
-    const mockEvent = { sender: { id: 123 } };
+    const sentMessages = [];
+    const mockEvent = {
+      sender: {
+        id: 123,
+        send: (channel, data) => sentMessages.push({ channel, data })
+      }
+    };
     await mockIpcMain.simulateHandle(IPCMessageType.CONNECT, mockEvent);
     
     // 广播事件
@@ -400,6 +451,8 @@ describe('MainProcessIPCAdapter', () => {
     
     // 验证广播成功
     expect(adapter.getWindowCount()).toBe(1);
+    expect(sentMessages.map(message => message.channel)).toContain(IPCMessageType.EVENT);
+    expect(sentMessages.map(message => message.channel)).toContain('test:event');
   });
 
   test('应该正确获取窗口 ID 列表', async () => {

@@ -408,6 +408,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
   #eventBus;
   #engine;
   #windows;
+  #windowSenders;
   #handlers;
 
   constructor(ipcMain, eventBus, config = {}) {
@@ -415,6 +416,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     this.#ipcMain = ipcMain;
     this.#eventBus = eventBus;
     this.#windows = new Set();
+    this.#windowSenders = new Map();
     this.#handlers = new Map();
   }
 
@@ -440,6 +442,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     this.#ipcMain.handle(IPCMessageType.CONNECT, (event) => {
       const windowId = event.sender.id;
       this.#windows.add(windowId);
+      this.#windowSenders.set(windowId, event.sender);
       this.emit('window-connected', { windowId });
       
       if (this.config.debug) {
@@ -453,6 +456,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     this.#ipcMain.on(IPCMessageType.DISCONNECT, (event) => {
       const windowId = event.sender.id;
       this.#windows.delete(windowId);
+      this.#windowSenders.delete(windowId);
       this.emit('window-disconnected', { windowId });
       
       if (this.config.debug) {
@@ -531,6 +535,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     this.#ipcMain.on(IPCMessageType.HEARTBEAT, (event, data) => {
       this.lastHeartbeat = Date.now();
       this.#windows.add(event.sender.id);
+      this.#windowSenders.set(event.sender.id, event.sender);
     });
 
     // 处理事件订阅
@@ -587,6 +592,11 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
           throw new Error('引擎未初始化');
         }
         const input = message.payload.input;
+        const debugCommandResult = this.#handleDebugCommand(input);
+        if (debugCommandResult) {
+          return this.createResponse(message, debugCommandResult);
+        }
+
         const result = input === 'init_rag' && Array.isArray(message.payload.options?.docs)
           ? await handleDocumentBatchAdd(message.payload.options.docs, { engine: this.#engine })
           : parseDocumentCommand(input)
@@ -645,6 +655,51 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     }
 
     return tools.map(({ handler, execute, fn, ...tool }) => tool);
+  }
+
+  #handleDebugCommand(input) {
+    const trimmedInput = String(input || '').trim();
+    const match = trimmedInput.match(/^\/debug(?:\s+(status|on|off|enable|disable|true|false|toggle))?$/i);
+    if (!match) {
+      return null;
+    }
+
+    const action = (match[1] || 'toggle').toLowerCase();
+    const current = typeof this.#engine.getDebugMode === 'function'
+      ? this.#engine.getDebugMode()
+      : false;
+
+    let enabled = current;
+    if (['on', 'enable', 'true'].includes(action)) {
+      enabled = true;
+    } else if (['off', 'disable', 'false'].includes(action)) {
+      enabled = false;
+    } else if (action === 'toggle') {
+      enabled = !current;
+    }
+
+    if (action !== 'status') {
+      this.#engine.setDebugMode(enabled);
+      process.env.DEBUG = enabled ? 'true' : 'false';
+    }
+
+    const content = action === 'status'
+      ? `调试模式当前${enabled ? '已开启' : '已关闭'}`
+      : `调试模式已${enabled ? '开启' : '关闭'}`;
+
+    this.broadcast(RuntimeEvent.STATUS_UPDATE, {
+      message: content,
+      level: enabled ? 'debug' : 'info',
+      debug: enabled
+    });
+
+    return {
+      success: true,
+      localCommand: true,
+      command: '/debug',
+      debug: enabled,
+      content
+    };
   }
 
   /**
@@ -732,19 +787,23 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
    */
   broadcast(eventName, data) {
     const message = this.createEvent(eventName, data);
+    const deliveredWindowIds = new Set();
     
     for (const windowId of this.#windows) {
       const window = this.#getWindow(windowId);
       if (window) {
         window.send(IPCMessageType.EVENT, message.toJSON());
+        window.send(eventName, data);
+        deliveredWindowIds.add(windowId);
       }
     }
 
     // 也发送给订阅者
     if (this.eventSubscriptions.has(eventName)) {
       for (const [id, sender] of this.eventSubscriptions.get(eventName)) {
-        if (this.#windows.has(id)) {
+        if (this.#windows.has(id) && !deliveredWindowIds.has(id)) {
           sender.send(IPCMessageType.EVENT, message.toJSON());
+          sender.send(eventName, data);
         }
       }
     }
@@ -766,8 +825,12 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
    * 获取窗口
    */
   #getWindow(windowId) {
-    // 在实际实现中，这里需要从 Electron 的 BrowserWindow 获取窗口
-    // 这里返回一个模拟对象
+    const sender = this.#windowSenders.get(windowId);
+    if (sender && typeof sender.send === 'function') {
+      return sender;
+    }
+
+    // 测试或未连接场景下保留一个可调用的兜底对象。
     return {
       id: windowId,
       send: (channel, data) => {
@@ -794,6 +857,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
   disconnect() {
     super.disconnect();
     this.#windows.clear();
+    this.#windowSenders.clear();
     this.removeAllListeners();
     
     if (this.config.debug) {
