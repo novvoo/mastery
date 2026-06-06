@@ -62,6 +62,7 @@ import { shellSandboxConfigFromEnv } from './sandbox/shell-sandbox.js';
 import { createSemanticSearchTool } from './tools/memory/semantic-search.js';
 import { createDocumentRagTools } from './tools/memory/document-rag.js';
 import { createWebTools } from './tools/web/web-tools.js';
+import { createPreviewTools } from './tools/web/preview-tools.js';
 import { createTaskTools } from './tools/scheduler/task-tools.js';
 import { createScheduleTools } from './tools/scheduler/schedule-tools.js';
 import { createSubAgentTools } from './tools/scheduler/subagent-tools.js';
@@ -91,6 +92,7 @@ import createSetupTool from './tools/skills/setup.js';
 // UI imports - UI 组件导入
 import { enhancedUI } from './cli/enhanced-ui.js';
 import { createEnhancedCommands } from './cli/enhanced-commands.js';
+import { listPreviews, startPreview, stopPreview } from './core/preview-server.js';
 import {
   buildSlashCommandSuggestions,
   completeSlashCommand,
@@ -192,6 +194,13 @@ const COMMAND_HELP = {
     ],
     examples: ['/doc init', '/doc add ./docs/spec.pdf', '/doc add https://example.com/runbook', '根据 @./docs/spec.pdf 总结风险', '/doc search "rollback policy"', '/doc clear'],
   },
+  preview: {
+    title: '/preview',
+    description: 'Start, list, or stop a local preview for generated HTML or Node projects.',
+    usage: ['/preview [path]', '/preview node [path] [command]', '/preview list', '/preview stop <session-id>'],
+    effects: ['Serves workspace HTML over localhost.', 'Starts Node dev servers with PORT/HOST when requested.'],
+    examples: ['/preview index.html', '/preview .', '/preview node . "npm run dev"', '/preview list'],
+  },
   compress: {
     title: '/compress',
     description: 'Compress text with TokenJuice and show token/character savings.',
@@ -259,6 +268,7 @@ const COMMAND_HELP_ALIASES = {
   docs: 'doc',
   document: 'doc',
   documents: 'doc',
+  preview: 'preview',
   context: 'memory',
   status: 'stats',
   list: 'tools',
@@ -915,6 +925,11 @@ class AIEngineeringAgent {
       return true;
     }
 
+    if (commandName === '/preview') {
+      await this.handlePreviewCommand(argsText);
+      return true;
+    }
+
     // Compress command
     if (commandName === '/compress') {
       const text = argsText;
@@ -1243,6 +1258,65 @@ class AIEngineeringAgent {
 
     enhancedUI.warning(`Unknown /doc command: ${subcommand}`);
     this.#showBuiltInCommandHelp('doc');
+  }
+
+  async handlePreviewCommand(argsText = '') {
+    const args = this.parseArgs(argsText || '');
+    const subcommand = (args[0] || 'start').toLowerCase();
+
+    if (['help', '--help', '-h'].includes(subcommand)) {
+      this.#showBuiltInCommandHelp('preview');
+      return;
+    }
+
+    if (subcommand === 'list') {
+      const previews = listPreviews();
+      if (previews.length === 0) {
+        enhancedUI.info('No active preview sessions.');
+        return;
+      }
+      for (const preview of previews) {
+        enhancedUI.info(`${preview.session_id} ${preview.mode} ${preview.url}`);
+      }
+      return;
+    }
+
+    if (subcommand === 'stop') {
+      const sessionId = args[1];
+      if (!sessionId) {
+        enhancedUI.info('Usage: /preview stop <session-id>');
+        return;
+      }
+      const result = stopPreview(sessionId);
+      if (result.success) {
+        enhancedUI.success(`Preview stopped: ${sessionId}`);
+      } else {
+        enhancedUI.warning(result.error);
+      }
+      return;
+    }
+
+    const kind = ['static', 'node', 'auto'].includes(subcommand) ? subcommand : 'auto';
+    const target = ['static', 'node', 'auto'].includes(subcommand)
+      ? (args[1] || '.')
+      : (args[0] || '.');
+    const command = kind === 'node' && args.length > 2 ? args.slice(2).join(' ') : undefined;
+    const spinner = enhancedUI.spinner('Starting preview...');
+    spinner.start();
+    try {
+      const preview = await startPreview({
+        workingDirectory: this.workingDir,
+        target,
+        kind,
+        command,
+      });
+      spinner.stop();
+      enhancedUI.success(`Preview ready: ${preview.url}`);
+      enhancedUI.info(`Session: ${preview.session_id} (${preview.mode})`);
+    } catch (error) {
+      spinner.stop();
+      enhancedUI.error(`Preview failed: ${error.message}`);
+    }
   }
 
   async #handleDocumentInitCommand() {
@@ -2418,6 +2492,7 @@ export {
   createSemanticSearchTool,
   createDocumentRagTools,
   createWebTools,
+  createPreviewTools,
   createGitTools,
   createMCPTools,
   createTaskTools,

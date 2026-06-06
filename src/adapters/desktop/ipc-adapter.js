@@ -14,6 +14,7 @@ import { EventEmitter } from 'events';
 import { RuntimeEvent } from '../../runtime/types.js';
 import { buildSlashCommandSuggestions } from '../../cli/slash-command-suggestions.js';
 import { handleDocumentBatchAdd, handleDocumentCommand, parseDocumentCommand } from '../../runtime/document-command.js';
+import { listPreviews, startPreview, stopPreview } from '../../core/preview-server.js';
 
 /**
  * IPC 消息类型定义
@@ -65,6 +66,16 @@ const DEFAULT_CONFIG = {
   // 调试设置
   debug: false
 };
+
+function parsePreviewArgs(text = '') {
+  const args = [];
+  const pattern = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    args.push(match[1] ?? match[2] ?? match[3]);
+  }
+  return args;
+}
 
 /**
  * IPC 消息类
@@ -596,6 +607,10 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
         if (debugCommandResult) {
           return this.createResponse(message, debugCommandResult);
         }
+        const previewCommandResult = await this.#handlePreviewCommand(input);
+        if (previewCommandResult) {
+          return this.createResponse(message, previewCommandResult);
+        }
 
         const result = input === 'init_rag' && Array.isArray(message.payload.options?.docs)
           ? await handleDocumentBatchAdd(message.payload.options.docs, { engine: this.#engine })
@@ -699,6 +714,55 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
       command: '/debug',
       debug: enabled,
       content
+    };
+  }
+
+  async #handlePreviewCommand(input) {
+    const trimmedInput = String(input || '').trim();
+    if (!trimmedInput.toLowerCase().startsWith('/preview')) {
+      return null;
+    }
+
+    const args = parsePreviewArgs(trimmedInput.slice('/preview'.length).trim());
+    const subcommand = (args[0] || 'start').toLowerCase();
+
+    if (subcommand === 'list') {
+      return {
+        success: true,
+        localCommand: true,
+        command: '/preview',
+        content: 'Active preview sessions',
+        previews: listPreviews()
+      };
+    }
+
+    if (subcommand === 'stop') {
+      const result = stopPreview(args[1]);
+      return {
+        ...result,
+        localCommand: true,
+        command: '/preview',
+        content: result.success ? `Preview stopped: ${args[1]}` : result.error
+      };
+    }
+
+    const kind = ['static', 'node', 'auto'].includes(subcommand) ? subcommand : 'auto';
+    const target = ['static', 'node', 'auto'].includes(subcommand)
+      ? (args[1] || '.')
+      : (args[0] || '.');
+    const command = kind === 'node' && args.length > 2 ? args.slice(2).join(' ') : undefined;
+    const preview = await startPreview({
+      workingDirectory: this.#engine?.getConfig?.().workingDirectory,
+      target,
+      kind,
+      command,
+    });
+    this.broadcast('preview:started', preview);
+    return {
+      ...preview,
+      localCommand: true,
+      command: '/preview',
+      content: `Preview ready: ${preview.url}`,
     };
   }
 

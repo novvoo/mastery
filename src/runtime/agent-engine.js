@@ -34,6 +34,7 @@ import { createSemanticSearchTool } from '../tools/memory/semantic-search.js';
 import { createDocumentRagTools } from '../tools/memory/document-rag.js';
 import { createGitTools } from '../tools/git/git-tools.js';
 import { createWebTools } from '../tools/web/web-tools.js';
+import { createPreviewTools } from '../tools/web/preview-tools.js';
 import { createMCPTools } from '../tools/mcp/mcp-tools.js';
 import { createTaskTools } from '../tools/scheduler/task-tools.js';
 import { createScheduleTools } from '../tools/scheduler/schedule-tools.js';
@@ -362,6 +363,11 @@ export class AgentEngine {
     try {
       const webTools = createWebTools();
       for (const tool of webTools) {
+        this.#toolRegistry.register(tool);
+        registeredTools.push(tool.name);
+      }
+      const previewTools = createPreviewTools();
+      for (const tool of previewTools) {
         this.#toolRegistry.register(tool);
         registeredTools.push(tool.name);
       }

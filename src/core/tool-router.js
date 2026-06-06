@@ -23,6 +23,9 @@ const WEB_TOOLS = [
   'web_search',
   'web_fetch',
   'browser_open',
+  'preview_start',
+  'preview_stop',
+  'preview_list',
 ];
 
 const CODING_METHODOLOGY_TOOLS = [

@@ -245,6 +245,18 @@ export function useIPC() {
     return invoke('workspace:listDirectory', { path });
   }, [invoke]);
 
+  const startPreview = useCallback(async (options = {}) => {
+    return invoke('preview:start', options);
+  }, [invoke]);
+
+  const listPreviews = useCallback(async () => {
+    return invoke('preview:list');
+  }, [invoke]);
+
+  const stopPreview = useCallback(async (sessionId) => {
+    return invoke('preview:stop', sessionId);
+  }, [invoke]);
+
   // 获取 LLM 配置状态
   const getLLMConfigStatus = useCallback(async () => {
     return invoke('llm:getConfigStatus');
@@ -304,6 +316,26 @@ export function useIPC() {
     }
 
     const unsub = window.electronAPI.onWorkspaceChanged(callback);
+    subscriptionsRef.current.push(unsub);
+    return unsub;
+  }, [hasElectronAPI, subscribe]);
+
+  const onPreviewStarted = useCallback((callback) => {
+    if (!hasElectronAPI() || !window.electronAPI.onPreviewStarted) {
+      return subscribe('preview:started', callback);
+    }
+
+    const unsub = window.electronAPI.onPreviewStarted(callback);
+    subscriptionsRef.current.push(unsub);
+    return unsub;
+  }, [hasElectronAPI, subscribe]);
+
+  const onPreviewStopped = useCallback((callback) => {
+    if (!hasElectronAPI() || !window.electronAPI.onPreviewStopped) {
+      return subscribe('preview:stopped', callback);
+    }
+
+    const unsub = window.electronAPI.onPreviewStopped(callback);
     subscriptionsRef.current.push(unsub);
     return unsub;
   }, [hasElectronAPI, subscribe]);
@@ -396,6 +428,9 @@ export function useIPC() {
     // 工作空间
     setWorkingDirectory,
     listDirectory,
+    startPreview,
+    listPreviews,
+    stopPreview,
 
     // LLM 配置
     getLLMConfigStatus,
@@ -410,6 +445,8 @@ export function useIPC() {
     onStatusUpdate,
     onWindowStateChange,
     onWorkspaceChanged,
+    onPreviewStarted,
+    onPreviewStopped,
     
     // 平台信息
     getPlatform,

@@ -23,6 +23,7 @@ import './index.css';
 const LAYOUT = {
   sidebarWidth: 280,
   summaryPanelWidth: 300,
+  previewPanelWidth: 460,
   headerHeight: 44,
   inputAreaHeight: 140,
 };
@@ -302,6 +303,32 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden'
+  },
+
+  previewPanel: {
+    width: `${LAYOUT.previewPanelWidth}px`,
+    backgroundColor: 'var(--surface-color)',
+    borderLeft: '1px solid var(--border-subtle)',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden'
+  },
+
+  previewHeader: {
+    minHeight: '42px',
+    padding: '8px 10px',
+    borderBottom: '1px solid var(--border-subtle)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
+
+  previewFrame: {
+    flex: 1,
+    minHeight: 0,
+    width: '100%',
+    border: 'none',
+    backgroundColor: '#fff'
   },
   
   summarySection: {
@@ -683,6 +710,7 @@ const MENU_ITEMS = [
     items: [
       { label: '切换侧边栏', shortcut: 'Ctrl+B', command: 'toggleSidebar' },
       { label: '切换 RAG 面板', shortcut: 'Ctrl+Shift+S', command: 'toggleSummary' },
+      { label: '切换预览面板', command: 'togglePreview' },
       { type: 'divider' },
       { label: 'Agent 面板', command: 'showAgent' },
       { label: '工具面板', shortcut: 'Ctrl+T', command: 'showTools' }
@@ -717,6 +745,7 @@ const MENU_ITEMS = [
       { label: '查看工具面板', shortcut: 'Ctrl+T', command: 'showTools' },
       { label: '刷新项目文件', command: 'refreshProjectTree' },
       { label: '刷新 RAG 文档', command: 'refreshRagDocs' },
+      { label: '预览当前项目', command: 'startPreview' },
       { type: 'divider' },
       { label: '插入 Shell 命令', command: 'insertCommand', value: '请运行命令：' },
       { label: '插入 Web 搜索', command: 'insertCommand', value: '请搜索最新资料：' }
@@ -812,6 +841,10 @@ function App() {
   const [loadingDirectories, setLoadingDirectories] = useState(() => new Set());
   const [projectTreeStatus, setProjectTreeStatus] = useState('idle');
   const [projectTreeError, setProjectTreeError] = useState('');
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewSession, setPreviewSession] = useState(null);
+  const [previewStatus, setPreviewStatus] = useState('idle');
+  const [previewFrameKey, setPreviewFrameKey] = useState(0);
   
   // 使用自定义 Hooks
   const runtime = useRuntime();
@@ -1107,6 +1140,39 @@ function App() {
     await loadProjectDirectory('');
   }, [loadProjectDirectory]);
 
+  const handleStartPreview = useCallback(async (target = '.') => {
+    if (!ipc.startPreview) {
+      return null;
+    }
+
+    setPreviewStatus('starting');
+    setPreviewVisible(true);
+    try {
+      const preview = await ipc.startPreview({ target, kind: 'auto' });
+      setPreviewSession(preview);
+      setPreviewStatus('ready');
+      setPreviewFrameKey(prev => prev + 1);
+      return preview;
+    } catch (error) {
+      setPreviewStatus('error');
+      runtime.addMessage?.({
+        type: 'error',
+        content: `预览启动失败: ${error.message}`
+      });
+      return null;
+    }
+  }, [ipc, runtime]);
+
+  const handleStopPreview = useCallback(async () => {
+    if (!previewSession?.session_id || !ipc.stopPreview) {
+      return;
+    }
+
+    await ipc.stopPreview(previewSession.session_id);
+    setPreviewSession(null);
+    setPreviewStatus('idle');
+  }, [ipc, previewSession]);
+
   const refreshLoadedProjectDirectories = useCallback(async () => {
     if (!ipc.listDirectory) {
       return;
@@ -1193,6 +1259,47 @@ function App() {
       unsubscribe?.();
     };
   }, [ipc.isConnected, ipc.onWorkspaceChanged, refreshLoadedProjectDirectories]);
+
+  useEffect(() => {
+    if (!ipc.isConnected) {
+      return undefined;
+    }
+
+    let unsubscribeStarted = null;
+    let unsubscribeStopped = null;
+
+    ipc.listPreviews?.().then(result => {
+      const previews = result?.previews || [];
+      if (previews.length > 0) {
+        setPreviewSession(previews[0]);
+        setPreviewVisible(true);
+        setPreviewStatus('ready');
+      }
+    }).catch(() => {});
+
+    if (ipc.onPreviewStarted) {
+      unsubscribeStarted = ipc.onPreviewStarted(preview => {
+        setPreviewSession(preview);
+        setPreviewVisible(true);
+        setPreviewStatus('ready');
+        setPreviewFrameKey(prev => prev + 1);
+      });
+    }
+
+    if (ipc.onPreviewStopped) {
+      unsubscribeStopped = ipc.onPreviewStopped(result => {
+        if (result?.stopped === previewSession?.session_id) {
+          setPreviewSession(null);
+          setPreviewStatus('idle');
+        }
+      });
+    }
+
+    return () => {
+      unsubscribeStarted?.();
+      unsubscribeStopped?.();
+    };
+  }, [ipc.isConnected, ipc.listPreviews, ipc.onPreviewStarted, ipc.onPreviewStopped, previewSession?.session_id]);
   
   // 处理新建任务
   const handleNewTask = useCallback(() => {
@@ -1377,6 +1484,9 @@ function App() {
       case 'toggleSummary':
         setSummaryPanelVisible(prev => !prev);
         break;
+      case 'togglePreview':
+        setPreviewVisible(prev => !prev);
+        break;
       case 'showAgent':
         setSidebarCollapsed(false);
         setActiveTab('agent');
@@ -1413,6 +1523,9 @@ function App() {
       case 'refreshRagDocs':
         await refreshRagDocuments();
         break;
+      case 'startPreview':
+        await handleStartPreview('.');
+        break;
       case 'openDocs':
         await ipc.openExternal?.(`${REPOSITORY_URL}#readme`);
         break;
@@ -1434,6 +1547,7 @@ function App() {
     handleNewTask,
     handleProjectTreeRefresh,
     handleSaveTask,
+    handleStartPreview,
     handleWorkingDirectoryChange,
     ipc,
     platformInfo,
@@ -1476,6 +1590,12 @@ function App() {
           ...prev,
           debug: result.debug
         }));
+      }
+      if (result?.command === '/preview' && result.url) {
+        setPreviewSession(result);
+        setPreviewVisible(true);
+        setPreviewStatus('ready');
+        setPreviewFrameKey(prev => prev + 1);
       }
       setChatInput('');
     } catch (error) {
@@ -1673,6 +1793,65 @@ function App() {
             >重置 RAG</button>
           </div>
         </div>
+      </aside>
+    );
+  };
+
+  const renderPreviewPanel = () => {
+    if (!previewVisible) return null;
+
+    return (
+      <aside style={styles.previewPanel}>
+        <div style={styles.previewHeader}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>预览</div>
+            <div style={{
+              fontSize: '11px',
+              color: 'var(--text-dark)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}>
+              {previewSession?.url || (previewStatus === 'starting' ? '正在启动...' : '尚未启动')}
+            </div>
+          </div>
+          <button
+            style={styles.button}
+            onClick={() => setPreviewFrameKey(prev => prev + 1)}
+            disabled={!previewSession?.url}
+          >刷新</button>
+          <button
+            style={styles.button}
+            onClick={() => previewSession?.url && ipc.openExternal?.(previewSession.url)}
+            disabled={!previewSession?.url}
+          >浏览器</button>
+          {previewSession?.session_id ? (
+            <button style={styles.button} onClick={handleStopPreview}>停止</button>
+          ) : (
+            <button style={styles.button} onClick={() => handleStartPreview('.')}>启动</button>
+          )}
+          <button style={styles.button} onClick={() => setPreviewVisible(false)}>关闭</button>
+        </div>
+
+        {previewSession?.url ? (
+          <iframe
+            key={previewFrameKey}
+            title="workspace-preview"
+            src={previewSession.url}
+            style={styles.previewFrame}
+            sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+          />
+        ) : (
+          <div style={{
+            padding: '18px',
+            color: previewStatus === 'error' ? 'var(--error-color)' : 'var(--text-muted)',
+            fontSize: '13px'
+          }}>
+            {previewStatus === 'error'
+              ? '预览启动失败，请查看对话中的错误消息。'
+              : '点击启动，或在对话里输入 /preview index.html。'}
+          </div>
+        )}
       </aside>
     );
   };
@@ -1951,6 +2130,8 @@ function App() {
           </div>
         </div>
         
+        {renderPreviewPanel()}
+
         {/* 右侧摘要面板 (Codex Style) */}
         {renderSummaryPanel()}
       </main>

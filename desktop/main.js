@@ -40,6 +40,7 @@ import { DeepSeekModelProvider } from '../src/models/deepseek-provider.js';
 import { OpenRouterModelProvider } from '../src/models/openrouter-provider.js';
 import { resolveModelCapabilities } from '../src/models/model-capabilities.js';
 import { createWorkspaceWatcher, listWorkspaceDirectory } from './workspace.js';
+import { listPreviews, startPreview, stopAllPreviews, stopPreview } from '../src/core/preview-server.js';
 
 /**
  * Electron 主进程应用类
@@ -762,6 +763,25 @@ class ElectronMainApp {
       return listWorkspaceDirectory(this.#config.workingDirectory, options);
     });
 
+    this.#ipcAdapter.registerHandler('preview:start', async (options = {}) => {
+      const preview = await startPreview({
+        workingDirectory: this.#config.workingDirectory,
+        ...options
+      });
+      this.#ipcAdapter?.broadcast('preview:started', preview);
+      return preview;
+    });
+
+    this.#ipcAdapter.registerHandler('preview:list', async () => {
+      return { success: true, previews: listPreviews() };
+    });
+
+    this.#ipcAdapter.registerHandler('preview:stop', async (sessionId) => {
+      const result = stopPreview(typeof sessionId === 'object' ? sessionId?.session_id : sessionId);
+      this.#ipcAdapter?.broadcast('preview:stopped', result);
+      return result;
+    });
+
     // LLM 配置处理器
     this.#ipcAdapter.registerHandler('llm:getConfigStatus', async () => {
       return this.#getLLMConfigStatus();
@@ -973,7 +993,10 @@ class ElectronMainApp {
           'http://127.0.0.1:5173'
         ]);
 
-        if (!allowedDevOrigins.has(parsedUrl.origin) && parsedUrl.protocol !== 'file:') {
+        const isLocalPreview = parsedUrl.protocol === 'http:' &&
+          ['localhost', '127.0.0.1'].includes(parsedUrl.hostname);
+
+        if (!allowedDevOrigins.has(parsedUrl.origin) && parsedUrl.protocol !== 'file:' && !isLocalPreview) {
           event.preventDefault();
         }
       });
@@ -1143,6 +1166,8 @@ class ElectronMainApp {
       this.#workspaceWatcher.close();
       this.#workspaceWatcher = null;
     }
+
+    stopAllPreviews();
 
     if (this.#desktopCore) {
       await this.#desktopCore.dispose();

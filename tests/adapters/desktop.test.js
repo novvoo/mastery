@@ -4,6 +4,9 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import {
   IPCMessage,
   IPCMessageType,
@@ -22,6 +25,7 @@ import {
   createUIBridge
 } from '../../src/adapters/desktop/desktop-core.js';
 import { getEventBus, RuntimeEvent } from '../../src/runtime/index.js';
+import { stopAllPreviews } from '../../src/core/preview-server.js';
 
 // ==================== IPCMessage 测试 ====================
 
@@ -247,6 +251,7 @@ describe('MainProcessIPCAdapter', () => {
   });
 
   afterEach(() => {
+    stopAllPreviews();
     adapter.disconnect();
     eventBus.clear();
   });
@@ -431,6 +436,44 @@ describe('MainProcessIPCAdapter', () => {
     expect(result.content).toContain('开启');
     expect(sentMessages.some(message => message.channel === IPCMessageType.EVENT)).toBe(true);
     expect(sentMessages.some(message => message.channel === RuntimeEvent.STATUS_UPDATE)).toBe(true);
+  });
+
+  test('应该在 Desktop IPC 中本地处理 /preview 命令', async () => {
+    await adapter.initialize();
+
+    const root = mkdtempSync(join(tmpdir(), 'desktop-preview-'));
+    writeFileSync(join(root, 'index.html'), '<h1>Desktop Preview</h1>');
+
+    let processInputCalled = false;
+    const mockEngine = {
+      processInput: async () => {
+        processInputCalled = true;
+        return { result: 'agent path' };
+      },
+      getConfig: () => ({ workingDirectory: root, debug: false }),
+      stop: () => {},
+      getState: () => ({ status: 'idle' }),
+      getTools: () => []
+    };
+    adapter.attachEngine(mockEngine);
+
+    try {
+      const result = await mockIpcMain.simulateHandle(
+        'agent:processInput',
+        { sender: { id: 123 } },
+        { input: '/preview index.html', options: {} }
+      );
+
+      expect(processInputCalled).toBe(false);
+      expect(result.localCommand).toBe(true);
+      expect(result.command).toBe('/preview');
+      expect(result.url).toContain('127.0.0.1');
+
+      const html = await fetch(result.url).then(response => response.text());
+      expect(html).toContain('Desktop Preview');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test('应该正确广播消息', async () => {

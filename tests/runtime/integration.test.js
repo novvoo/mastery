@@ -137,6 +137,7 @@ describe('Runtime Layer Integration Tests', () => {
       expect(categories.has('FileSystem') || categories.has('filesystem')).toBe(true);
       expect(tools.some(t => t.name === 'coverage_check')).toBe(true);
       expect(tools.some(t => t.name === 'ask_user')).toBe(true);
+      expect(tools.some(t => t.name === 'preview_start')).toBe(true);
     });
 
     it('应该在 ask_user 请求补充信息时停在等待用户输入状态', async () => {

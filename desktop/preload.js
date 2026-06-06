@@ -38,6 +38,9 @@ const ALLOWED_CHANNELS = {
     'app:openExternal',
     'workspace:setWorkingDirectory',
     'workspace:listDirectory',
+    'preview:start',
+    'preview:list',
+    'preview:stop',
     'llm:getConfigStatus',
     'llm:saveConfig'
   ],
@@ -61,6 +64,8 @@ const ALLOWED_CHANNELS = {
     'app:projectCreated',
     'app:projectOpened',
     'workspace:changed',
+    'preview:started',
+    'preview:stopped',
     'agent:start',
     'agent:complete',
     'agent:error',
@@ -463,6 +468,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
       console.error('[Preload] setWorkingDirectory 失败:', error);
       throw error;
     }
+  },
+
+  startPreview: async (options = {}) => {
+    return await ipcRenderer.invoke('preview:start', options);
+  },
+
+  listPreviews: async () => {
+    return await ipcRenderer.invoke('preview:list');
+  },
+
+  stopPreview: async (sessionId) => {
+    return await ipcRenderer.invoke('preview:stop', sessionId);
+  },
+
+  onPreviewStarted: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('preview:started', listener);
+    return () => ipcRenderer.removeListener('preview:started', listener);
+  },
+
+  onPreviewStopped: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('preview:stopped', listener);
+    return () => ipcRenderer.removeListener('preview:stopped', listener);
   },
 
   // ==================== LLM 配置 ====================
