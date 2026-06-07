@@ -596,7 +596,11 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     const channel = message.metadata?.channel;
     
     if (this.config.debug) {
-      console.log(`[MainProcessIPC] 处理请求: ${channel}`, message.payload);
+      if (message.payload !== undefined) {
+        console.log(`[MainProcessIPC] 处理请求: ${channel}`, message.payload);
+      } else {
+        console.log(`[MainProcessIPC] 处理请求: ${channel}`);
+      }
     }
 
     try {
@@ -1118,7 +1122,11 @@ export class RendererProcessIPCAdapter extends IPCAdapterBase {
       this.#ipcRenderer.send(IPCMessageType.REQUEST, message.toJSON());
       
       if (this.config.debug) {
-        console.log(`[RendererProcessIPC] 发送请求: ${channel}`, payload);
+        if (payload !== undefined) {
+          console.log(`[RendererProcessIPC] 发送请求: ${channel}`, payload);
+        } else {
+          console.log(`[RendererProcessIPC] 发送请求: ${channel}`);
+        }
       }
     });
   }
