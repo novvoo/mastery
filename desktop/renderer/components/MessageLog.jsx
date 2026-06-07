@@ -772,17 +772,55 @@ function MessageLog({ messages, status, onClear, onAskAgent, showHeader = true }
       return;
     }
 
-    // 格式化导出内容
+    // 去重 - 按消息ID或时间戳+内容去重
+    const seen = new Set();
+    const uniqueMessages = visibleRuntimeDetails.filter(msg => {
+      const key = msg.id || `${msg.timestamp}_${msg.type}_${msg.toolName || ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    // 格式化导出内容（精简版）
     let content = `=== 运行详情导出 ===\n`;
     content += `导出时间: ${new Date().toLocaleString()}\n`;
-    content += `消息数量: ${visibleRuntimeDetails.length}\n`;
+    content += `原始消息: ${visibleRuntimeDetails.length} 条\n`;
+    content += `去重后: ${uniqueMessages.length} 条\n`;
     content += `\n==================\n\n`;
 
-    visibleRuntimeDetails.forEach((msg, index) => {
+    uniqueMessages.forEach((msg, index) => {
       const typeDisplay = getTypeDisplay(msg.type);
       content += `[${index + 1}] ${typeDisplay.text}\n`;
       content += `时间: ${msg.timestamp ? new Date(msg.timestamp).toLocaleString() : '未知时间'}\n`;
-      content += `内容:\n${getRuntimeDetailContent(msg)}\n`;
+      
+      // 精简内容 - 不包含冗余的事件数据
+      let msgContent = '';
+      const primaryText = msg.content || msg.message || msg.details || '';
+      if (primaryText) {
+        msgContent += primaryText;
+      }
+      if (msg.toolName) {
+        if (msgContent) msgContent += '\n';
+        msgContent += `工具: ${msg.toolName}`;
+      }
+      if (msg.args) {
+        if (msgContent) msgContent += '\n';
+        try {
+          msgContent += `参数:\n${typeof msg.args === 'string' ? msg.args : JSON.stringify(msg.args, null, 2)}`;
+        } catch {
+          msgContent += `参数:\n${String(msg.args)}`;
+        }
+      }
+      if (msg.result) {
+        if (msgContent) msgContent += '\n';
+        try {
+          msgContent += `结果:\n${typeof msg.result === 'string' ? msg.result : JSON.stringify(msg.result, null, 2)}`;
+        } catch {
+          msgContent += `结果:\n${String(msg.result)}`;
+        }
+      }
+      
+      content += `内容:\n${msgContent || '(无内容)'}\n`;
       content += `\n------------------\n\n`;
     });
 
