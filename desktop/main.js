@@ -220,19 +220,13 @@ class ElectronMainApp {
           },
           { type: 'separator' },
           {
-            label: '缓存管理',
-            submenu: [
-              {
-                label: '打开缓存目录',
-                accelerator: 'CmdOrCtrl+Shift+C',
-                click: () => this.#handleOpenCacheDir()
-              },
-              { type: 'separator' },
-              {
-                label: '清理所有缓存',
-                click: () => this.#handleClearCache()
-              }
-            ]
+            label: '打开缓存目录',
+            accelerator: 'CmdOrCtrl+Shift+C',
+            click: () => this.#handleOpenCacheDir()
+          },
+          {
+            label: '清理所有缓存',
+            click: () => this.#handleClearCache()
           },
           { type: 'separator' },
           {

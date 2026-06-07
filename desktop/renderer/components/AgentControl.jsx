@@ -455,59 +455,7 @@ const styles = {
     opacity: '1'
   },
   
-  // 模板面板
-  templatesPanel: {
-    backgroundColor: 'var(--surface-color)',
-    borderRadius: '6px',
-    padding: '8px',
-    marginTop: '8px'
-  },
-  
-  templatesHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '8px'
-  },
-  
-  templatesTitle: {
-    fontSize: '12px',
-    color: 'var(--text-muted)',
-    fontWeight: '500'
-  },
-  
-  templatesList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '4px'
-  },
-  
-  templateItem: {
-    padding: '8px',
-    borderRadius: '4px',
-    backgroundColor: 'var(--background-color)',
-    cursor: 'pointer',
-    fontSize: '12px',
-    color: 'var(--text-color)',
-    transition: 'background-color 0.15s',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px'
-  },
-  
-  templateIcon: {
-    fontSize: '14px'
-  },
-  
-  templateName: {
-    fontWeight: '500'
-  },
-  
-  templateDesc: {
-    fontSize: '11px',
-    color: 'var(--text-muted)',
-    marginLeft: '4px'
-  },
+
   
   // 执行选项
   optionsContainer: {
@@ -554,39 +502,7 @@ const styles = {
   }
 };
 
-// 输入模板定义
-const INPUT_TEMPLATES = [
-  {
-    icon: 'BUG',
-    name: 'Bug修复',
-    desc: '描述并修复bug',
-    template: '发现一个bug:\n位置: {file}\n描述: {description}\n预期行为: {expected}\n请帮我修复这个问题'
-  },
-  {
-    icon: 'NEW',
-    name: '功能开发',
-    desc: '开发新功能',
-    template: '开发新功能:\n功能名称: {name}\n需求: {requirements}\n请帮我实现这个功能'
-  },
-  {
-    icon: 'REF',
-    name: '代码重构',
-    desc: '重构现有代码',
-    template: '重构代码:\n目标文件: {file}\n重构目标: {goal}\n请帮我重构这段代码'
-  },
-  {
-    icon: 'REV',
-    name: '代码审查',
-    desc: '审查代码质量',
-    template: '审查代码:\n文件: {file}\n请检查代码质量、潜在问题和改进建议'
-  },
-  {
-    icon: 'TST',
-    name: '测试编写',
-    desc: '编写单元测试',
-    template: '编写测试:\n目标: {target}\n请为这个功能编写单元测试'
-  }
-];
+
 
 /**
  * Agent 控制面板组件
@@ -613,7 +529,6 @@ function AgentControl({
   // 状态
   const [history, setHistory] = useState([]);
   const [historySearch, setHistorySearch] = useState('');
-  const [showTemplates, setShowTemplates] = useState(false);
   const [hoveredHistoryItem, setHoveredHistoryItem] = useState(null);
   
   // 加载历史记录
@@ -683,13 +598,6 @@ function AgentControl({
     if (onInsertText) {
       onInsertText(cmd.template);
     }
-  }, [onInsertText]);
-  
-  const handleTemplateClick = useCallback((template) => {
-    if (onInsertText) {
-      onInsertText(template.template);
-    }
-    setShowTemplates(false);
   }, [onInsertText]);
   
   const handleOptionChange = useCallback((key, value) => {
@@ -873,41 +781,7 @@ function AgentControl({
       <div style={styles.section}>
         <div style={styles.sectionTitle}>
           <span>输入任务</span>
-          <button
-            style={styles.clearButton}
-            onClick={() => setShowTemplates(!showTemplates)}
-            title="显示输入模板"
-          >
-            {showTemplates ? '隐藏模板' : '模板'}
-          </button>
         </div>
-        
-        {/* 模板面板 */}
-        {showTemplates && (
-          <div style={styles.templatesPanel}>
-            <div style={styles.templatesHeader}>
-              <span style={styles.templatesTitle}>
-                输入模板
-              </span>
-            </div>
-            <div style={styles.templatesList}>
-              {INPUT_TEMPLATES.map((template, index) => (
-                <div
-                  key={index}
-                  style={styles.templateItem}
-                  onClick={() => handleTemplateClick(template)}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--background-color)'}
-                >
-                  <span style={styles.templateIcon}>{template.icon}</span>
-                  <span style={styles.templateName}>{template.name}</span>
-                  <span style={styles.templateDesc}>{template.desc}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        
       </div>
       
       {/* 执行选项 */}
