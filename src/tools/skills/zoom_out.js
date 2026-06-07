@@ -28,6 +28,10 @@ export default function zoom_out() {
       const { proposed_change, focus_file = '' } = params;
       const { workingDirectory } = ctx;
 
+      if (!proposed_change || typeof proposed_change !== 'string' || !proposed_change.trim()) {
+        return 'Error: Required parameter "proposed_change" is missing or empty. Please describe the proposed change and try again.';
+      }
+
       const baseDir = workingDirectory || process.cwd();
 
       const structure = await analyzeProjectStructure(baseDir);

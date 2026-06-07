@@ -11,10 +11,27 @@ import { TextToolParser } from './text-tool-parser.js';
 import { IntentClassifier } from './intent-classifier.js';
 import { ExecutionPlan, TaskStatus } from '../planner/graph-planner.js';
 import { DynamicContextPruning } from './dynamic-context-pruning.js';
+import { WorkspaceIndex } from './workspace-index.js';
 import { selectToolsForRequest, shouldUseIntentClassifier } from './tool-router.js';
 
 const TERMINATION_KEYWORDS = ['FINAL_ANSWER:', 'Answer:', 'TASK_COMPLETE'];
-const MAX_ITERATIONS_DEFAULT = 180;
+const MAX_ITERATIONS_DEFAULT = 120;
+
+// 自适应迭代预算
+const ITERATION_BUDGET = {
+  trivial: 15,
+  simple: 30,
+  normal: 50,
+  intensive: 100,
+  exploration: 120,
+};
+
+// 停滞检测
+const STAGNATION_LOOKBACK = 10;
+const STAGNATION_SAME_TOOL_LIMIT = 6;
+const STAGNATION_NO_MUTATION_LIMIT = 8;
+const PROGRESS_CHECKPOINT_INTERVAL = 12;
+const MAX_STAGNATION_NUDGES = 2;
 const METHODOLOGY_TOOLS = new Set([
   'coverage_check',
   'ask_user',
@@ -104,6 +121,18 @@ export class ReActAgent {
   // Deduplication tracking
   #lastResponse = '';
   #repeatCount = 0;
+  #stagnationWindow = [];
+  /** @type {number} */
+  #lastStagnationNudge = 0;
+  /** @type {number} */
+  #consecutiveSameTool = 0;
+  /** @type {number} */
+  #lastMutationIteration = 0;
+  /** @type {number} */
+  #activeProgressCheckpoints = 0;
+  /** @type {number} */
+  #iterationBudget = MAX_ITERATIONS_DEFAULT;
+
   /** @type {string[]} */
   #toolCallHistory = [];
   /** @type {Map<string, string>} */
@@ -126,6 +155,8 @@ export class ReActAgent {
   #contextPruner = null;
   /** @type {object|null} */
   #tokenJuice = null;
+  /** @type {WorkspaceIndex|null} */
+  #workspaceIndex = null;
 
   constructor(modelProvider, toolRegistry, memoryManager, config = {}, customUI = ui) {
     this.#modelProvider = modelProvider;
@@ -153,6 +184,7 @@ export class ReActAgent {
     this.#ui = customUI;
     this.#contextPruner = config.contextPruner || new DynamicContextPruning();
     this.#tokenJuice = config.tokenJuice || null;
+    this.#workspaceIndex = new WorkspaceIndex(this.#config.workingDirectory);
   }
 
   /**
@@ -229,6 +261,7 @@ export class ReActAgent {
     // Reset tracking
     this.#lastResponse = '';
     this.#repeatCount = 0;
+
     this.#toolCallHistory = [];
     this.#runToolEvents = [];
     this.#activeTaskProfile = taskProfile;
@@ -236,8 +269,15 @@ export class ReActAgent {
     this.#completedMutationPaths = new Set();
     this.#activeExecutionPlan = this.#createAutomaticExecutionPlan(userInput, this.#activeTaskProfile);
 
+    // 基于任务复杂度计算自适应迭代预算
+    const maxIterations = this.#computeIterationBudget(taskProfile);
+    this.#stagnationWindow = [];
+    this.#lastStagnationNudge = 0;
+    this.#consecutiveSameTool = 0;
+    this.#lastMutationIteration = 0;
+    this.#activeProgressCheckpoints = 0;
+
     let iteration = 0;
-    const maxIterations = this.#config.maxIterations || MAX_ITERATIONS_DEFAULT;
     let toolUseCorrections = 0;
     let codingGateCorrections = 0;
 
@@ -252,10 +292,30 @@ export class ReActAgent {
       });
       this.#sessionManager.addUserMessage(this.#buildExecutionPlanPrompt(userInput));
     }
+    // 异步预热工作目录索引（不阻塞首轮迭代）
+    // 首次构建 1-3s，后续 <100ms。摘要在第 2-3 轮到达，
+    // 正好 Agent 还在探索阶段，不影响决策质量
+    if (this.#workspaceIndex && taskProfile.isCodingTask && !taskProfile.isLikelyTrivial) {
+      this.#warmWorkspaceCache().then(summary => {
+        if (summary && this.#sessionManager) {
+          this.#sessionManager.addUserMessage(summary);
+          try { this.#debugEvent('Workspace index warmed', {
+            files: this.#workspaceIndex.size,
+            summaryChars: summary.length,
+         }); } catch {}
+        }
+      }).catch(err => {
+         try { this.#debugEvent('Workspace index warm failed', { error: err.message }); } catch {}
+     });
+      this.#workspaceIndex.startPeriodicSync();
+    }
+
 
     while (iteration < maxIterations) {
       iteration++;
       this.#ui.iteration(iteration, maxIterations);
+        // 停滞检测：注入 nudge 或进度检查点
+        this.#injectStagnationNudge(iteration, maxIterations);
       this.#debugEvent('Iteration started', {
         iteration,
         maxIterations,
@@ -475,6 +535,7 @@ export class ReActAgent {
           this.#sessionManager.addAssistantMessage(response.text, nativeToolCalls);
           for (const toolCall of nativeToolCalls) {
             const toolResult = await this.#executeToolCall(toolCall, { resultMode: 'tool' });
+            this.#recordToolCallForStagnation(toolResult, iteration);
             if (this.#isUserInputRequest(toolResult?.result)) {
               return this.#completeUserInputRequest(toolResult.result, {
                 iteration,
@@ -489,6 +550,7 @@ export class ReActAgent {
 
         for (const toolCall of parsedToolCalls) {
           const toolResult = await this.#executeToolCall(toolCall, { resultMode: 'observation' });
+          this.#recordToolCallForStagnation(toolResult, iteration);
           if (this.#isUserInputRequest(toolResult?.result)) {
             return this.#completeUserInputRequest(toolResult.result, {
               iteration,
@@ -596,6 +658,25 @@ export class ReActAgent {
       this.#ui.toolError(name, errorMsg);
       this.#addToolObservation(id, name, errorMsg, resultMode);
       return { name, result: errorMsg, error: errorMsg };
+    }
+
+    // 验证必填参数
+    if (tool.required && Array.isArray(tool.required)) {
+      const missing = tool.required.filter(param => {
+        const value = args ? args[param] : undefined;
+        return value === undefined || value === null || value === '';
+      });
+      if (missing.length > 0) {
+        const errorMsg = `Missing required parameter(s): ${missing.join(', ')}. The "${name}" tool requires: ${tool.required.join(', ')}.`;
+        this.#debugEvent('Tool call missing required params', {
+          tool: name,
+          missing,
+          receivedArgs: args,
+        });
+        this.#ui.warn?.(errorMsg);
+        this.#addToolObservation(id, name, errorMsg, resultMode);
+        return { name, result: errorMsg, error: errorMsg };
+      }
     }
 
     const securityBlock = this.#enforceToolSecurity(name, args);
@@ -1166,6 +1247,7 @@ export class ReActAgent {
       }
     } else {
       this.#repeatCount = 0;
+
     }
     this.#lastResponse = response;
 
@@ -1228,31 +1310,41 @@ export class ReActAgent {
   #manageContextWindow() {
     const maxTokens = this.#modelProvider.getMaxContextTokens();
     const currentTokens = this.#sessionManager.getTokenCount();
-    const threshold = maxTokens * 0.5; // 更早触发裁剪
+    
+    // 根据迭代进度渐进式调整裁剪强度
+    // 早期：宽松保留上下文；后期：激进裁剪以腾出空间
+    const progress = this.#iterationBudget > 0 
+      ? this.#sessionManager.getHistory().length / (this.#iterationBudget * 1.5)
+      : 0.5;
+    
+    // 阈值：早期 70% 触发，后期 40% 触发
+    const thresholdBase = 0.7;    // 宽松基准
+    const thresholdMin = 0.4;     // 激进底线
+    const progressFactor = Math.min(progress, 1.0);
+    const threshold = maxTokens * (thresholdBase - (thresholdBase - thresholdMin) * progressFactor);
+    
+    // 保留的消息数：早期 10 条，后期 4 条
+    const preserveMessages = Math.max(4, Math.floor(10 - 6 * progressFactor));
+    // 目标 token：早期 60%，后期 35%
+    const targetRatio = 0.6 - 0.25 * progressFactor;
+    const targetTokens = Math.floor(maxTokens * targetRatio);
+    const minMessages = Math.max(2, Math.floor(5 - 2 * progressFactor));
 
     if (currentTokens > threshold) {
-      this.#ui.warn(`Context window at ${Math.round(currentTokens / maxTokens * 100)}%. Trimming old messages.`);
+      this.#ui.warn(`Context window at ${Math.round(currentTokens / maxTokens * 100)}% (progress=${(progressFactor*100).toFixed(0)}%). Trimming.`);
       this.#debugEvent('Context window trimming', {
-        currentTokens,
-        maxTokens,
-        threshold,
+        currentTokens, maxTokens, threshold, targetTokens,
+        preserveRecentMessages: preserveMessages,
         messagesBefore: this.#sessionManager.getHistory().length,
       });
       let stats = null;
       if (this.#contextPruner) {
-        this.#contextPruner.updateConfig?.({
-          maxTokens,
-          targetTokens: Math.floor(maxTokens * 0.4), // 更激进的目标
-          preserveRecentMessages: 4,
-        });
+        this.#contextPruner.updateConfig?.({ maxTokens, targetTokens, preserveRecentMessages: preserveMessages });
         stats = this.#sessionManager.trimWithPruner(this.#contextPruner, {
-          maxTokens,
-          targetTokens: Math.floor(maxTokens * 0.4),
-          preserveRecentMessages: 4,
-          minMessages: 3,
+          maxTokens, targetTokens, preserveRecentMessages: preserveMessages, minMessages,
         });
       } else {
-        this.#sessionManager.trimToContextWindow(maxTokens * 0.4, { minRecentMessages: 4 });
+        this.#sessionManager.trimToContextWindow(targetTokens, { minRecentMessages: preserveMessages });
       }
       this.#debugEvent('Context window trimmed', {
         estimatedTokens: this.#sessionManager.getTokenCount(),
@@ -1269,6 +1361,7 @@ export class ReActAgent {
     this.#sessionManager.clear();
     this.#lastResponse = '';
     this.#repeatCount = 0;
+
     this.#toolCallHistory = [];
     this.#ui.info?.('Session cleared. Memory preserved.');
   }
@@ -1310,6 +1403,7 @@ export class ReActAgent {
   }
 
   #completeRun({ success, status, answer, reason, iterations, startedAt, error, userInputRequest }) {
+    this.#workspaceIndex?.stopPeriodicSync();
     const result = {
       success,
       status,
@@ -1318,7 +1412,7 @@ export class ReActAgent {
       iterations,
       durationMs: Date.now() - startedAt,
       toolEvents: this.#runToolEvents.map(event => ({ ...event })),
-    };
+   };
     if (error) {
       result.error = error;
     }
@@ -1691,6 +1785,147 @@ export class ReActAgent {
     }
     
     return errorMsg;
+  }
+
+
+  /**
+   * 根据任务复杂度计算自适应迭代预算
+   * 核心原则：够用就好，不用浪费；也不限制复杂任务
+   */
+  #computeIterationBudget(taskProfile) {
+    // 如果用户显式指定了 maxIterations，优先使用
+    if (this.#config.maxIterations && this.#config.maxIterations !== MAX_ITERATIONS_DEFAULT) {
+      return this.#config.maxIterations;
+    }
+
+    if (!taskProfile) return ITERATION_BUDGET.normal;
+
+    // 基于任务分类自动选择预算等级
+    if (taskProfile.isLikelyTrivial) {
+      return ITERATION_BUDGET.trivial;
+    }
+    if (!taskProfile.isCodingTask) {
+      return ITERATION_BUDGET.simple;
+    }
+    if (taskProfile.requiresAutomaticPlanning || taskProfile.isBugTask) {
+      return ITERATION_BUDGET.intensive;
+    }
+    if (taskProfile.isCodingTask) {
+      return ITERATION_BUDGET.normal;
+    }
+    return ITERATION_BUDGET.normal;
+  }
+
+  /**
+   * 记录工具调用到停滞检测滑动窗口
+   * 跟踪工具类型和是否执行了修改操作
+   */
+  #recordToolCallForStagnation(toolResult, iteration) {
+    if (!toolResult || !toolResult.name) return;
+    const isMutation = this.#isMutationTool(toolResult.name, toolResult);
+    this.#stagnationWindow.push({
+      toolName: toolResult.name,
+      iteration,
+      isMutation,
+    });
+    if (this.#stagnationWindow.length > STAGNATION_LOOKBACK) {
+      this.#stagnationWindow.shift();
+    }
+    if (isMutation) {
+      this.#lastMutationIteration = iteration;
+    }
+  }
+
+  /**
+   * 停滞检测与进度检查点注入
+   *
+   * 不直接终止 Agent，而是注入一个 nudge 消息让 LLM 意识到
+   * 当前效率低下的模式，自行调整策略。
+   *
+   * 检测三种停滞模式：
+   * 1. 工具调用停滞：同一类工具连续重复多次
+   * 2. 零进展停滞：长时间无修改操作
+   * 3. 进度检查点：定期提示 LLM 总结进展
+   *
+   * 超过 MAX_STAGNATION_NUDGES 次后，降级迭代预算以节约 token
+   */
+  #injectStagnationNudge(iteration, maxIterations) {
+    if (iteration < 3) return; // 前 3 轮不检测
+
+    // 检查是否已达到进度检查点间隔
+    if (iteration % PROGRESS_CHECKPOINT_INTERVAL === 0) {
+      this.#activeProgressCheckpoints++;
+      const planStatus = this.#activeExecutionPlan
+        ? this.#summarizePlanProgress(this.#activeExecutionPlan)
+        : 'not available';
+      this.#sessionManager.addUserMessage(
+        `[Progress checkpoint @iter ${iteration}/${maxIterations}]
+Plan status:
+${planStatus}
+If you have enough information to answer, provide FINAL_ANSWER now.
+If you are stuck, try a fundamentally different approach instead of repeating the same pattern.`
+      );
+      return;
+    }
+
+    // 当迭代预算被降级后，不再注入 nudge
+    if (this.#consecutiveSameTool >= STAGNATION_SAME_TOOL_LIMIT ||
+        this.#stagnationWindow.length >= STAGNATION_LOOKBACK) {
+      if (this.#lastMutationIteration + STAGNATION_NO_MUTATION_LIMIT < iteration) {
+        // 已尝试过最大 nudge 次数？降级预算
+        if (this.#lastStagnationNudge >= MAX_STAGNATION_NUDGES) {
+          this.#iterationBudget = Math.min(this.#iterationBudget, Math.ceil(maxIterations * 0.4));
+        }
+      }
+    }
+
+    // 模式 1：相同工具类型连续重复
+    const window = this.#stagnationWindow;
+    if (window.length >= STAGNATION_SAME_TOOL_LIMIT) {
+      const recentTools = window.slice(-STAGNATION_SAME_TOOL_LIMIT);
+      const uniqueTools = new Set(recentTools.map(t => t.toolName));
+      if (uniqueTools.size <= 2 && window.every(t => !t.isMutation)) {
+        this.#lastStagnationNudge++;
+        const toolList = [...uniqueTools].join(', ');
+        this.#sessionManager.addUserMessage(
+          `[Efficiency note] You have called ${toolList} repeatedly for ${STAGNATION_SAME_TOOL_LIMIT} consecutive iterations with no modifications.
+Consider: (1) call a different tool to make progress, (2) provide FINAL_ANSWER if you already have enough information, or (3) ask the user for clarification.`
+        );
+        this.#consecutiveSameTool = 0;
+        return;
+      }
+    }
+
+    // 模式 2：长时间无修改操作
+    if (this.#lastMutationIteration > 0 &&
+        this.#lastMutationIteration + STAGNATION_NO_MUTATION_LIMIT <= iteration &&
+        window.length >= STAGNATION_NO_MUTATION_LIMIT) {
+      this.#lastStagnationNudge++;
+      const planStatus = this.#activeExecutionPlan
+        ? this.#summarizePlanProgress(this.#activeExecutionPlan)
+        : 'not available';
+      this.#sessionManager.addUserMessage(
+        `[Efficiency note] No modifications were made in the last ${STAGNATION_NO_MUTATION_LIMIT} iterations.
+Plan status:
+${planStatus}
+If you are still investigating, try narrowing your search. Otherwise, provide FINAL_ANSWER with what you have found so far.`
+      );
+      this.#lastMutationIteration = iteration;
+    }
+  }
+
+  /**
+   * 预热工作目录索引
+   * WorkspaceIndex.warm() 自动处理：加载缓存 → 增量同步 → 全量构建
+   * 返回项目文件结构摘要，注入到 Agent 上下文
+   */
+  async #warmWorkspaceCache() {
+    try {
+      return await this.#workspaceIndex.warm();
+    } catch (err) {
+      this.#debugEvent('WorkspaceIndex warmup failed', { error: err.message });
+      return '';
+    }
   }
 
   /**
