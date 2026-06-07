@@ -73,13 +73,13 @@
   <circle cx="582" cy="399" r="11" class="accent-green"/>
   <text x="602" y="404" class="label">6. 交付与记忆</text>
   <text x="578" y="438" class="body">handoff: 变更、验证、风险摘要</text>
-  <text x="578" y="462" class="body">项目隔离的文档索引和历史会话</text>
-  <text x="578" y="486" class="body">CLI 与 Desktop 共享 RAG 能力</text>
+  <text x="578" y="462" class="body">~/.agent-cache/files 持久化缓存</text>
+  <text x="578" y="486" class="body">文档索引 + 会话记忆共享</text>
 
   <path class="arrow" d="M 925 287 C 925 338 795 342 795 390"/>
   <path class="arrow" d="M 470 438 L 542 438"/>
   <path class="arrow" d="M 680 365 C 680 330 120 330 120 287"/>
 
   <rect x="60" y="540" width="1080" height="42" rx="10" class="chip"/>
-  <text x="86" y="566" class="chip-text">安全边界：工作区路径策略 / 敏感路径限制 / Shell 沙箱 / 工具安全检查 / 上下文预算裁剪</text>
+  <text x="86" y="566" class="chip-text">安全 + 效率：工作区路径策略 / 缓存一致性验证 / Shell 沙箱 / 智能 LRU / 上下文预算裁剪</text>
 </svg>
