@@ -1749,6 +1749,21 @@ function App() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [activeMenu]);
   
+  // 监听主进程菜单事件
+  useEffect(() => {
+    if (!ipc.isConnected || !ipc.subscribe) {
+      return undefined;
+    }
+
+    const unsubscribe = ipc.subscribe('menu:click', async (event) => {
+      await handleMenuItemClick(event);
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, [ipc.isConnected, ipc.subscribe, handleMenuItemClick]);
+  
   // ================== 聊天输入处理 ==================
   
   const handleSubmitAgentInput = useCallback(async (rawInput, options = {}) => {

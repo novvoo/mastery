@@ -209,14 +209,25 @@ class ElectronMainApp {
         label: '文件',
         submenu: [
           {
-            label: '新建工作区',
+            label: '新建任务',
             accelerator: 'CmdOrCtrl+N',
-            click: () => this.#handleNewProject()
+            click: () => this.#sendMenuEvent('newTask')
           },
           {
-            label: '打开工作区',
+            label: '切换工作目录',
             accelerator: 'CmdOrCtrl+O',
-            click: () => this.#handleOpenProject()
+            click: () => this.#sendMenuEvent('changeWorkspace')
+          },
+          { type: 'separator' },
+          {
+            label: '保存会话快照',
+            accelerator: 'CmdOrCtrl+S',
+            click: () => this.#sendMenuEvent('saveSession')
+          },
+          {
+            label: '导出对话 Markdown',
+            accelerator: 'CmdOrCtrl+E',
+            click: () => this.#sendMenuEvent('exportConversation')
           },
           { type: 'separator' },
           {
@@ -244,12 +255,6 @@ class ElectronMainApp {
             ]
           },
           { type: 'separator' },
-          {
-            label: '保存配置',
-            accelerator: 'CmdOrCtrl+S',
-            click: () => this.#handleSaveConfig()
-          },
-          { type: 'separator' },
           process.platform === 'darwin' ? { role: 'close' } : { role: 'quit' }
         ]
       },
@@ -274,6 +279,32 @@ class ElectronMainApp {
       {
         label: '视图',
         submenu: [
+          {
+            label: '切换侧边栏',
+            accelerator: 'CmdOrCtrl+B',
+            click: () => this.#sendMenuEvent('toggleSidebar')
+          },
+          {
+            label: '切换 Inspector',
+            accelerator: 'CmdOrCtrl+Shift+S',
+            click: () => this.#sendMenuEvent('toggleSummary')
+          },
+          {
+            label: '最大化/还原窗口',
+            accelerator: 'CmdOrCtrl+Shift+M',
+            click: () => this.#sendMenuEvent('toggleMaximize')
+          },
+          { type: 'separator' },
+          {
+            label: 'Agent 面板',
+            click: () => this.#sendMenuEvent('showAgent')
+          },
+          {
+            label: '工具面板',
+            accelerator: 'CmdOrCtrl+T',
+            click: () => this.#sendMenuEvent('showTools')
+          },
+          { type: 'separator' },
           { role: 'reload' },
           { role: 'forceReload' },
           { role: 'toggleDevTools' },
@@ -283,6 +314,102 @@ class ElectronMainApp {
           { role: 'zoomOut' },
           { type: 'separator' },
           { role: 'togglefullscreen' }
+        ]
+      },
+      
+      // Agent 菜单
+      {
+        label: 'Agent',
+        submenu: [
+          {
+            label: '聚焦输入',
+            accelerator: 'CmdOrCtrl+Return',
+            click: () => this.#sendMenuEvent('focusInput')
+          },
+          {
+            label: '停止执行',
+            accelerator: 'CmdOrCtrl+.',
+            click: () => this.#sendMenuEvent('stopAgent')
+          },
+          { type: 'separator' },
+          {
+            label: '清除对话',
+            click: () => this.#sendMenuEvent('clearConversation')
+          },
+          {
+            label: '历史记录',
+            click: () => this.#sendMenuEvent('showHistory')
+          },
+          {
+            label: '文档搜索',
+            click: () => this.#sendMenuEvent('insertDocSearch')
+          },
+          { type: 'separator' },
+          {
+            label: '模型配置',
+            accelerator: 'CmdOrCtrl+,',
+            click: () => this.#sendMenuEvent('openModelConfig')
+          }
+        ]
+      },
+      
+      // 技能菜单
+      {
+        label: '技能',
+        submenu: [
+          {
+            label: '诊断',
+            click: () => this.#sendMenuEvent('insertCommand', { value: '/diagnose symptom=' })
+          },
+          {
+            label: '代码审查',
+            click: () => this.#sendMenuEvent('insertCommand', { value: '/review scope=' })
+          },
+          {
+            label: 'TDD',
+            click: () => this.#sendMenuEvent('insertCommand', { value: '/tdd phase=red component=' })
+          },
+          {
+            label: '架构设计',
+            click: () => this.#sendMenuEvent('insertCommand', { value: '/architect goal=' })
+          },
+          {
+            label: '交接总结',
+            click: () => this.#sendMenuEvent('insertCommand', { value: '/handoff session_summary=' })
+          }
+        ]
+      },
+      
+      // 工具菜单
+      {
+        label: '工具',
+        submenu: [
+          {
+            label: '查看工具面板',
+            accelerator: 'CmdOrCtrl+T',
+            click: () => this.#sendMenuEvent('showTools')
+          },
+          {
+            label: '刷新项目文件',
+            click: () => this.#sendMenuEvent('refreshProjectTree')
+          },
+          {
+            label: '刷新 RAG 文档',
+            click: () => this.#sendMenuEvent('refreshRagDocs')
+          },
+          {
+            label: '预览当前项目',
+            click: () => this.#sendMenuEvent('startPreview')
+          },
+          { type: 'separator' },
+          {
+            label: '插入 Shell 命令',
+            click: () => this.#sendMenuEvent('insertCommand', { value: '请运行命令：' })
+          },
+          {
+            label: '插入 Web 搜索',
+            click: () => this.#sendMenuEvent('insertCommand', { value: '请搜索最新资料：' })
+          }
         ]
       },
       
@@ -314,6 +441,10 @@ class ElectronMainApp {
             }
           },
           {
+            label: '快捷键',
+            click: () => this.#sendMenuEvent('showShortcuts')
+          },
+          {
             label: '报告问题',
             click: async () => {
               await shell.openExternal('https://github.com/novvoo/ai-engineering-mastery-agent/issues');
@@ -330,6 +461,13 @@ class ElectronMainApp {
 
     const menu = Menu.buildFromTemplate(template);
     Menu.setApplicationMenu(menu);
+  }
+
+  #sendMenuEvent(command, data = {}) {
+    if (!this.#mainWindow || this.#mainWindow.isDestroyed()) {
+      return;
+    }
+    this.#mainWindow.webContents.send('menu:click', { command, ...data });
   }
 
   /**
