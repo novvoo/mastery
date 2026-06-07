@@ -2190,17 +2190,23 @@ function App() {
   
   return (
     <div style={styles.container}>
-      {/* 顶部菜单栏 */}
+      {/* 顶部状态栏 */}
       <header style={{
-        ...styles.menuBar,
-        paddingLeft: shouldReserveMacTrafficLightSpace ? '86px' : '12px'
+        display: 'flex',
+        alignItems: 'center',
+        minHeight: `${LAYOUT.headerHeight}px`,
+        paddingLeft: shouldReserveMacTrafficLightSpace ? '86px' : '12px',
+        paddingRight: '12px',
+        backgroundColor: '#11161e',
+        borderBottom: '1px solid var(--border-subtle)',
+        justifyContent: 'flex-end'
       }}>
         {/* Logo */}
         <div style={{ 
           display: 'flex', 
           alignItems: 'center', 
           gap: '8px',
-          marginRight: '12px',
+          marginRight: 'auto',
           fontSize: '14px',
           fontWeight: '700',
           color: 'var(--primary-color)'
@@ -2220,63 +2226,8 @@ function App() {
           AI Agent
         </div>
         
-        {/* 菜单 */}
-        {MENU_ITEMS.map((menu) => (
-          <div key={menu.label} style={{ position: 'relative' }}>
-            <button
-              style={{
-                ...styles.menuItem,
-                ...(activeMenu === menu.label ? styles.menuItemActive : {})
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleMenuClick(menu.label);
-              }}
-              onMouseEnter={(e) => {
-                if (activeMenu !== null) {
-                  e.currentTarget.style.backgroundColor = 'var(--surface-hover)';
-                  e.currentTarget.style.color = 'var(--text-color)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (activeMenu !== menu.label) {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = 'var(--text-muted)';
-                }
-              }}
-            >
-              {menu.label}
-            </button>
-            
-            {/* 下拉菜单 */}
-            {activeMenu === menu.label && (
-              <div style={styles.menuDropdown} onClick={(e) => e.stopPropagation()}>
-                {menu.items.map((item, index) => {
-                  if (item.type === 'divider') {
-                    return <div key={index} style={styles.menuDivider} />;
-                  }
-                  return (
-                    <button
-                      key={index}
-                      style={styles.menuDropdownItem}
-                      onClick={() => handleMenuItemClick(item)}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      <span>{item.label}</span>
-                      {item.shortcut && (
-                        <span style={styles.menuDropdownShortcut}>{item.shortcut}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ))}
-        
         {/* 右侧状态 */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -2303,17 +2254,50 @@ function App() {
           {!platformInfo?.isMac && (
             <div style={{ display: 'flex', gap: '4px', marginLeft: '8px' }}>
               <button 
-                style={{...styles.menuItem, width: '32px', height: '32px', padding: 0}}
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  padding: 0
+                }}
                 onClick={handleMinimize}
                 title="最小化"
               >−</button>
               <button 
-                style={{...styles.menuItem, width: '32px', height: '32px', padding: 0}}
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  padding: 0
+                }}
                 onClick={handleMaximize}
                 title={windowState.isMaximized ? '还原' : '最大化'}
               >{windowState.isMaximized ? '❐' : '□'}</button>
               <button 
-                style={{...styles.menuItem, width: '32px', height: '32px', padding: 0, color: 'var(--error-color)'}}
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: 'transparent',
+                  color: 'var(--error-color)',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  padding: 0
+                }}
                 onClick={handleClose}
                 title="关闭"
               >×</button>
