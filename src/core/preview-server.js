@@ -110,7 +110,7 @@ function detectNodeCommand(projectRoot, explicitCommand, port) {
   }
 
   const manager = choosePackageManager(projectRoot);
-  const passthroughArgs = ['dev', 'preview', 'serve'].includes(scriptName)
+  const passthroughArgs = ['dev', 'preview', 'serve'].includes(scriptName) && !hasExplicitPort(scripts[scriptName])
     ? ` -- --host ${PREVIEW_HOST} --port ${port}`
     : '';
 
@@ -171,21 +171,56 @@ function wait(ms) {
   return new Promise(resolveWait => setTimeout(resolveWait, ms));
 }
 
-async function waitForHttp(url, timeoutMs = SERVER_READY_TIMEOUT_MS) {
+function hasExplicitPort(command = '') {
+  return /(?:^|\s)(?:-p|--port)(?:\s+|=)\d+\b/.test(String(command));
+}
+
+function extractLocalHttpUrl(text = '') {
+  const matches = String(text).match(/https?:\/\/(?:127\.0\.0\.1|localhost):\d+(?:\/[^\s]*)?/gi) || [];
+  for (const match of matches) {
+    try {
+      const parsed = new URL(match);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return parsed.toString();
+      }
+    } catch {
+      // Ignore partial URLs in process output.
+    }
+  }
+  return null;
+}
+
+async function waitForNodePreviewHttp(session, getOutput, timeoutMs = SERVER_READY_TIMEOUT_MS) {
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
+
   while (Date.now() < deadline) {
-    try {
-      const response = await fetch(url, { method: 'GET' });
-      if (response.status < 500) {
-        return true;
+    const detectedUrl = extractLocalHttpUrl(getOutput());
+    const urlsToTry = detectedUrl && detectedUrl !== session.url
+      ? [detectedUrl, session.url]
+      : [session.url];
+
+    for (const url of urlsToTry) {
+      try {
+        const response = await fetch(url, { method: 'GET' });
+        if (response.status < 500) {
+          if (url !== session.url) {
+            const parsed = new URL(url);
+            session.url = url;
+            session.host = parsed.hostname;
+            session.port = Number(parsed.port);
+          }
+          return true;
+        }
+      } catch (error) {
+        lastError = error;
       }
-    } catch (error) {
-      lastError = error;
     }
+
     await wait(300);
   }
-  throw new Error(`Preview server did not become ready: ${lastError?.message || url}`);
+
+  throw new Error(`Preview server did not become ready: ${lastError?.message || session.url}`);
 }
 
 function createStaticServer(root) {
@@ -332,7 +367,7 @@ async function startNodePreview({ workingDirectory, target, command, port }) {
   });
 
   try {
-    await waitForHttp(session.url);
+    await waitForNodePreviewHttp(session, () => output);
   } catch (error) {
     stopPreview(session.id);
     throw new Error(`${error.message}\nCommand output:\n${output.slice(-2000)}`);

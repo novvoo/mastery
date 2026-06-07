@@ -1,8 +1,21 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import net from 'net';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { startPreview, stopAllPreviews, stopPreview } from '../../src/core/preview-server.js';
+
+function getAvailablePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once('error', reject);
+    server.once('listening', () => {
+      const address = server.address();
+      server.close(() => resolve(address.port));
+    });
+    server.listen(0, '127.0.0.1');
+  });
+}
 
 describe('preview server', () => {
   afterEach(() => {
@@ -128,6 +141,42 @@ describe('preview server', () => {
       const payload = await fetch(preview.url).then(response => response.json());
       expect(payload.hostArg).toBe('127.0.0.1');
       expect(Number(payload.portArg)).toBe(preview.port);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('follows the local URL printed by fixed-port start scripts', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'preview-fixed-port-'));
+    const fixedPort = await getAvailablePort();
+    try {
+      writeFileSync(join(root, 'server.js'), `
+        import http from 'http';
+        const port = Number(process.argv[2]);
+        http.createServer((req, res) => {
+          res.end('Fixed Port Preview OK');
+        }).listen(port, '127.0.0.1', () => {
+          console.log('Available on:');
+          console.log('  http://127.0.0.1:' + port);
+        });
+      `);
+      writeFileSync(join(root, 'package.json'), JSON.stringify({
+        type: 'module',
+        scripts: { start: `node server.js ${fixedPort}` },
+      }));
+
+      const preview = await startPreview({
+        workingDirectory: root,
+        target: '.',
+        kind: 'auto',
+      });
+
+      expect(preview.success).toBe(true);
+      expect(preview.mode).toBe('node');
+      expect(preview.port).toBe(fixedPort);
+      expect(preview.url).toBe(`http://127.0.0.1:${fixedPort}/`);
+      const text = await fetch(preview.url).then(response => response.text());
+      expect(text).toBe('Fixed Port Preview OK');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
