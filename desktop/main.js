@@ -7,10 +7,14 @@ import { app, BrowserWindow, ipcMain, dialog, Notification, Menu, Tray, shell } 
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { homedir } from 'os';
 
 // 获取当前目录
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// 缓存目录
+const CACHE_DIR = path.join(homedir(), '.agent-cache', 'files');
 
 // 导入 Desktop Core 和 IPC 适配器
 import {
@@ -213,6 +217,22 @@ class ElectronMainApp {
             label: '打开工作区',
             accelerator: 'CmdOrCtrl+O',
             click: () => this.#handleOpenProject()
+          },
+          { type: 'separator' },
+          {
+            label: '缓存管理',
+            submenu: [
+              {
+                label: '打开缓存目录',
+                accelerator: 'CmdOrCtrl+Shift+C',
+                click: () => this.#handleOpenCacheDir()
+              },
+              { type: 'separator' },
+              {
+                label: '清理所有缓存',
+                click: () => this.#handleClearCache()
+              }
+            ]
           },
           { type: 'separator' },
           {
@@ -1092,6 +1112,69 @@ class ElectronMainApp {
       });
     } catch (error) {
       dialog.showErrorBox('保存失败', error.message);
+    }
+  }
+
+  /**
+   * 处理打开缓存目录
+   */
+  #handleOpenCacheDir() {
+    if (!fs.existsSync(CACHE_DIR)) {
+      fs.mkdirSync(CACHE_DIR, { recursive: true });
+    }
+    shell.openPath(CACHE_DIR);
+  }
+
+  /**
+   * 处理清理缓存
+   */
+  async #handleClearCache() {
+    const result = await dialog.showMessageBox(this.#mainWindow, {
+      type: 'question',
+      buttons: ['确认清理', '取消'],
+      title: '确认清理缓存',
+      message: '确定要清理所有文件缓存吗？这将删除 ~/.agent-cache/files 目录下的所有内容。',
+      defaultId: 0,
+      cancelId: 1
+    });
+
+    if (result.response === 0) {
+      try {
+        // 递归删除缓存目录
+        if (fs.existsSync(CACHE_DIR)) {
+          const deleteRecursive = (dir) => {
+            if (fs.existsSync(dir)) {
+              fs.readdirSync(dir).forEach((file) => {
+                const curPath = path.join(dir, file);
+                if (fs.lstatSync(curPath).isDirectory()) {
+                  deleteRecursive(curPath);
+                } else {
+                  fs.unlinkSync(curPath);
+                }
+              });
+              fs.rmdirSync(dir);
+            }
+          };
+          
+          deleteRecursive(CACHE_DIR);
+          
+          dialog.showMessageBox(this.#mainWindow, {
+            type: 'info',
+            title: '清理完成',
+            message: '缓存已清理',
+            buttons: ['确定']
+          });
+        } else {
+          dialog.showMessageBox(this.#mainWindow, {
+            type: 'info',
+            title: '提示',
+            message: '缓存目录不存在，无需清理',
+            buttons: ['确定']
+          });
+        }
+      } catch (error) {
+        dialog.showErrorBox('清理失败', error.message);
+      }
     }
   }
 
