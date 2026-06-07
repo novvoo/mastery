@@ -966,11 +966,8 @@ function App() {
   const [previewSession, setPreviewSession] = useState(null);
   const [previewStatus, setPreviewStatus] = useState('idle');
   const [previewFrameKey, setPreviewFrameKey] = useState(0);
-  const [activePreviewUrl, setActivePreviewUrl] = useState(readStoredPreviewUrl);
-  const [previewUrlDraft, setPreviewUrlDraft] = useState(() => {
-    const storedUrl = readStoredPreviewUrl();
-    return storedUrl ? formatPreviewUrlInput(storedUrl) : '';
-  });
+  const [activePreviewUrl, setActivePreviewUrl] = useState(null);
+  const [previewUrlDraft, setPreviewUrlDraft] = useState('');
   
   // 使用自定义 Hooks
   const runtime = useRuntime();
@@ -2122,7 +2119,7 @@ function App() {
           </div>
         ) : null}
 
-        {activePreviewUrl ? (
+        {previewStatus === 'ready' && activePreviewUrl ? (
           <iframe
             key={previewFrameKey}
             title="workspace-preview"
