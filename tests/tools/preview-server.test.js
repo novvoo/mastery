@@ -75,4 +75,61 @@ describe('preview server', () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  test('does not pass preview host and port flags to compile-only dev scripts', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'preview-tsc-only-'));
+    try {
+      writeFileSync(join(root, 'index.html'), '<h1>Snake Game</h1>');
+      writeFileSync(join(root, 'package.json'), JSON.stringify({
+        type: 'module',
+        scripts: { dev: 'tsc --watch' },
+      }));
+
+      const preview = await startPreview({
+        workingDirectory: root,
+        target: '.',
+        kind: 'auto',
+      });
+
+      expect(preview.success).toBe(true);
+      expect(preview.mode).toBe('static');
+      const html = await fetch(preview.url).then(response => response.text());
+      expect(html).toContain('Snake Game');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('passes preview host and port flags to Vite dev scripts', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'preview-vite-script-'));
+    try {
+      writeFileSync(join(root, 'server.js'), `
+        import http from 'http';
+        const portArg = process.argv[process.argv.indexOf('--port') + 1];
+        const hostArg = process.argv[process.argv.indexOf('--host') + 1];
+        const port = Number(portArg);
+        http.createServer((req, res) => {
+          res.end(JSON.stringify({ hostArg, portArg }));
+        }).listen(port, hostArg);
+      `);
+      writeFileSync(join(root, 'package.json'), JSON.stringify({
+        type: 'module',
+        scripts: { dev: 'node server.js vite' },
+      }));
+
+      const preview = await startPreview({
+        workingDirectory: root,
+        target: '.',
+        kind: 'auto',
+      });
+
+      expect(preview.success).toBe(true);
+      expect(preview.mode).toBe('node');
+      const payload = await fetch(preview.url).then(response => response.json());
+      expect(payload.hostArg).toBe('127.0.0.1');
+      expect(Number(payload.portArg)).toBe(preview.port);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

@@ -70,25 +70,47 @@ function choosePackageManager(projectRoot) {
   return 'npm';
 }
 
+function readPackageScripts(projectRoot) {
+  const packagePath = join(projectRoot, 'package.json');
+  if (!existsSync(packagePath)) {
+    return {};
+  }
+
+  const pkg = JSON.parse(readFileSync(packagePath, 'utf8'));
+  return pkg.scripts || {};
+}
+
+function isWebPreviewScript(command = '') {
+  const normalized = String(command || '').toLowerCase();
+  return /\b(vite|next\s+dev|astro\s+dev|webpack-dev-server|webpack\s+serve|parcel|serve|http-server|live-server|vite-preview|nuxt\s+dev|svelte-kit\s+dev)\b/.test(normalized)
+    || /\b(dev-server|preview-server)\b/.test(normalized)
+    || /\b(node|bun|tsx|ts-node)\b.*\b(server|app|index)\b/.test(normalized);
+}
+
+function findWebPreviewScriptName(scripts = {}) {
+  const preferredNames = ['dev', 'start', 'preview', 'serve'];
+  for (const name of preferredNames) {
+    if (scripts[name] && isWebPreviewScript(scripts[name])) {
+      return name;
+    }
+  }
+
+  return Object.keys(scripts).find(name => isWebPreviewScript(scripts[name])) || null;
+}
+
 function detectNodeCommand(projectRoot, explicitCommand, port) {
   if (explicitCommand) {
     return explicitCommand;
   }
 
-  const packagePath = join(projectRoot, 'package.json');
-  if (!existsSync(packagePath)) {
-    return null;
-  }
-
-  const pkg = JSON.parse(readFileSync(packagePath, 'utf8'));
-  const scripts = pkg.scripts || {};
-  const scriptName = ['dev', 'start', 'preview', 'serve'].find(name => scripts[name]);
+  const scripts = readPackageScripts(projectRoot);
+  const scriptName = findWebPreviewScriptName(scripts);
   if (!scriptName) {
     return null;
   }
 
   const manager = choosePackageManager(projectRoot);
-  const passthroughArgs = ['dev', 'preview'].includes(scriptName)
+  const passthroughArgs = ['dev', 'preview', 'serve'].includes(scriptName)
     ? ` -- --host ${PREVIEW_HOST} --port ${port}`
     : '';
 
@@ -328,6 +350,13 @@ function inferPreviewKind({ workingDirectory, target, kind }) {
     return ['.html', '.htm'].includes(extname(resolved).toLowerCase()) ? 'static' : 'node';
   }
   if (existsSync(join(resolved, 'package.json'))) {
+    const scripts = readPackageScripts(resolved);
+    if (findWebPreviewScriptName(scripts)) {
+      return 'node';
+    }
+    if (existsSync(join(resolved, 'index.html'))) {
+      return 'static';
+    }
     return 'node';
   }
   return 'static';
