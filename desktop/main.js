@@ -464,10 +464,12 @@ class ElectronMainApp {
   }
 
   #sendMenuEvent(command, data = {}) {
-    if (!this.#mainWindow || this.#mainWindow.isDestroyed()) {
+    if (!this.#ipcAdapter) {
+      console.warn('IPC 适配器未初始化，无法发送菜单事件');
       return;
     }
-    this.#mainWindow.webContents.send('menu:click', { command, ...data });
+    // 使用 IPC 适配器广播菜单事件
+    this.#ipcAdapter.broadcast('menu:click', { command, ...data });
   }
 
   /**

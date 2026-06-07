@@ -1756,7 +1756,6 @@ function App() {
     }
 
     const unsubscribe = ipc.subscribe('menu:click', async (event) => {
-      console.log('[App] 收到菜单事件:', event);
       await handleMenuItemClick(event);
     });
 
