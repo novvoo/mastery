@@ -25,6 +25,9 @@ const LAYOUT = {
   activityRailWidth: 52,
   sidebarWidth: 300,
   inspectorPanelWidth: 380,
+  inspectorMinWidth: 320,
+  inspectorMaxWidth: 860,
+  inspectorExpandedWidth: 720,
   headerHeight: 44,
   inputAreaHeight: 140,
 };
@@ -57,6 +60,28 @@ function readStoredPreviewUrl() {
   } catch {
     return null;
   }
+}
+
+function readStoredInspectorTab() {
+  const tab = readDesktopLayout().activeInspectorTab;
+  return ['rag', 'preview'].includes(tab) ? tab : 'rag';
+}
+
+function clampInspectorWidth(width) {
+  const viewportLimit = typeof window === 'undefined'
+    ? LAYOUT.inspectorMaxWidth
+    : Math.max(LAYOUT.inspectorMinWidth, Math.min(LAYOUT.inspectorMaxWidth, Math.floor(window.innerWidth * 0.72)));
+  const numericWidth = Number(width) || LAYOUT.inspectorPanelWidth;
+  return Math.max(LAYOUT.inspectorMinWidth, Math.min(viewportLimit, numericWidth));
+}
+
+function createAgentErrorPrompt(message) {
+  const content = String(message?.content || message?.message || message?.details || '').trim();
+  const payload = message?.payload || message?.raw;
+  const payloadText = payload
+    ? `\n\n附加上下文:\n${typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2)}`
+    : '';
+  return `请帮我分析并修复下面这个错误。请先判断信息是否足够；如果不够，明确说明还缺什么；如果足够，请给出原因、修复步骤和需要验证的命令。\n\n错误信息:\n${content || '(无错误文本)'}${payloadText}`;
 }
 
 function readAgentHistory() {
@@ -342,12 +367,32 @@ const styles = {
   
   // ================== 右侧 Inspector 面板 ==================
   summaryPanel: {
-    width: `${LAYOUT.inspectorPanelWidth}px`,
     backgroundColor: 'var(--surface-color)',
     borderLeft: '1px solid var(--border-subtle)',
     display: 'flex',
     flexDirection: 'column',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    position: 'relative'
+  },
+
+  inspectorResizeHandle: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: '6px',
+    cursor: 'col-resize',
+    zIndex: 2,
+    backgroundColor: 'transparent'
+  },
+
+  inspectorHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px',
+    borderBottom: '1px solid var(--border-subtle)',
+    backgroundColor: '#141922'
   },
 
   previewHeader: {
@@ -360,12 +405,11 @@ const styles = {
   },
 
   inspectorTabs: {
+    flex: 1,
     display: 'grid',
-    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(88px, 1fr))',
     gap: '4px',
-    padding: '8px',
-    borderBottom: '1px solid var(--border-subtle)',
-    backgroundColor: '#141922'
+    minWidth: 0
   },
 
   inspectorTab: {
@@ -383,6 +427,22 @@ const styles = {
     backgroundColor: 'var(--surface-hover)',
     border: '1px solid var(--border-color)',
     color: 'var(--text-color)'
+  },
+
+  iconButton: {
+    width: '30px',
+    height: '30px',
+    borderRadius: '6px',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-hover)',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    fontSize: '13px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+    flex: '0 0 auto'
   },
 
   previewFrame: {
@@ -873,7 +933,9 @@ function App() {
   // Codex 风格新状态
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => Boolean(readDesktopLayout().sidebarCollapsed));
   const [summaryPanelVisible, setSummaryPanelVisible] = useState(() => Boolean(readDesktopLayout().summaryPanelVisible));
-  const [activeInspectorTab, setActiveInspectorTab] = useState(() => readDesktopLayout().activeInspectorTab || 'rag');
+  const [activeInspectorTab, setActiveInspectorTab] = useState(readStoredInspectorTab);
+  const [inspectorPanelWidth, setInspectorPanelWidth] = useState(() => clampInspectorWidth(readDesktopLayout().inspectorPanelWidth));
+  const [inspectorExpanded, setInspectorExpanded] = useState(() => Boolean(readDesktopLayout().inspectorExpanded));
   const [activeMenu, setActiveMenu] = useState(null);
   const [chatInput, setChatInput] = useState('');
   const [inputFocused, setInputFocused] = useState(false);
@@ -887,19 +949,6 @@ function App() {
     localStorage.getItem(ACTIVE_AGENT_SESSION_STORAGE_KEY) || createAgentSessionId()
   ));
   
-  // 摘要面板数据 (Codex Style)
-  const [summaryData] = useState({
-    plan: ['分析代码结构', '编写新功能', '运行测试'],
-    sources: [
-      { type: 'file', name: 'src/agent.js' },
-      { type: 'memory', name: '之前的对话上下文' }
-    ],
-    outputs: [
-      '生成 README.md',
-      '修复 bug #123'
-    ]
-  });
-
   // RAG (Retrieval-Augmented Generation) 面板状态
   const [ragDocs, setRagDocs] = useState([]); // { name, path }
   const [ragStatus, setRagStatus] = useState('idle'); // idle | indexing | ready | error
@@ -925,6 +974,7 @@ function App() {
   const workspaceRefreshTimerRef = useRef(null);
   const directoryChildrenRef = useRef(directoryChildren);
   const skipNextSessionPersistRef = useRef(false);
+  const inspectorResizeRef = useRef(null);
 
   useEffect(() => {
     directoryChildrenRef.current = directoryChildren;
@@ -934,9 +984,11 @@ function App() {
     localStorage.setItem(DESKTOP_LAYOUT_STORAGE_KEY, JSON.stringify({
       sidebarCollapsed,
       summaryPanelVisible,
-      activeInspectorTab
+      activeInspectorTab,
+      inspectorPanelWidth,
+      inspectorExpanded
     }));
-  }, [activeInspectorTab, sidebarCollapsed, summaryPanelVisible]);
+  }, [activeInspectorTab, inspectorExpanded, inspectorPanelWidth, sidebarCollapsed, summaryPanelVisible]);
 
   useEffect(() => {
     if (!activePreviewUrl) return;
@@ -946,6 +998,31 @@ function App() {
   useEffect(() => {
     localStorage.setItem(ACTIVE_AGENT_SESSION_STORAGE_KEY, activeAgentSessionId);
   }, [activeAgentSessionId]);
+
+  useEffect(() => {
+    const handlePointerMove = (event) => {
+      const resizeState = inspectorResizeRef.current;
+      if (!resizeState) {
+        return;
+      }
+      const nextWidth = resizeState.startWidth + (resizeState.startX - event.clientX);
+      setInspectorPanelWidth(clampInspectorWidth(nextWidth));
+      setInspectorExpanded(false);
+    };
+
+    const handlePointerUp = () => {
+      inspectorResizeRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, []);
 
   useEffect(() => {
     const activeSession = findAgentSession(activeAgentSessionId);
@@ -1683,9 +1760,13 @@ function App() {
   
   // ================== 聊天输入处理 ==================
   
-  const handleSendMessage = useCallback(async () => {
-    const input = chatInput.trim();
+  const handleSubmitAgentInput = useCallback(async (rawInput, options = {}) => {
+    const input = String(rawInput || '').trim();
     if (!input || runtime.status === 'running') {
+      if (input && options.keepWhenBusy !== false) {
+        setChatInput(input);
+        chatInputRef.current?.focus();
+      }
       return;
     }
     
@@ -1712,11 +1793,22 @@ function App() {
         setPreviewStatus('ready');
         setPreviewFrameKey(prev => prev + 1);
       }
-      setChatInput('');
+      if (options.clearInput !== false) {
+        setChatInput('');
+      }
     } catch (error) {
       console.error('[App] 发送消息失败:', error);
     }
-  }, [activeAgentSessionId, agentOptions, chatInput, followPreviewUrl, runtime]);
+  }, [activeAgentSessionId, agentOptions, followPreviewUrl, runtime]);
+
+  const handleSendMessage = useCallback(async () => {
+    await handleSubmitAgentInput(chatInput);
+  }, [chatInput, handleSubmitAgentInput]);
+
+  const handleAskAgentFromMessage = useCallback(async (message) => {
+    const prompt = createAgentErrorPrompt(message);
+    await handleSubmitAgentInput(prompt);
+  }, [handleSubmitAgentInput]);
   
   // 命令提示相关
   const handleChatInputChange = useCallback((value) => {
@@ -1745,6 +1837,27 @@ function App() {
       setShowSuggestions(false);
     }
   }, [handleSendMessage, showSuggestions]);
+
+  const handleInspectorResizeStart = useCallback((event) => {
+    event.preventDefault();
+    inspectorResizeRef.current = {
+      startX: event.clientX,
+      startWidth: inspectorPanelWidth
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [inspectorPanelWidth]);
+
+  const handleInspectorExpandToggle = useCallback(() => {
+    setInspectorPanelWidth(prev => {
+      if (inspectorExpanded) {
+        return clampInspectorWidth(LAYOUT.inspectorPanelWidth);
+      }
+      return clampInspectorWidth(Math.max(prev, LAYOUT.inspectorExpandedWidth));
+    });
+    setInspectorExpanded(prev => !prev);
+    setSummaryPanelVisible(true);
+  }, [inspectorExpanded]);
   
   // 渲染侧边栏内容
   const renderSidebarContent = () => {
@@ -1792,8 +1905,7 @@ function App() {
 
     const tabLabels = [
       { id: 'rag', label: 'RAG' },
-      { id: 'preview', label: 'Preview' },
-      { id: 'run', label: 'Run' }
+      { id: 'preview', label: 'Preview' }
     ];
 
     const renderRagTab = () => (
@@ -1941,6 +2053,14 @@ function App() {
             onClick={() => activePreviewUrl && ipc.openExternal?.(activePreviewUrl)}
             disabled={!activePreviewUrl}
           >浏览器</button>
+          <button
+            style={styles.iconButton}
+            onClick={handleInspectorExpandToggle}
+            title={inspectorExpanded ? '还原预览区域' : '放大预览区域'}
+            aria-label={inspectorExpanded ? '还原预览区域' : '放大预览区域'}
+          >
+            {inspectorExpanded ? '↙' : '⛶'}
+          </button>
           {previewSession?.session_id ? (
             <button style={styles.button} onClick={handleStopPreview}>停止</button>
           ) : (
@@ -2030,58 +2150,45 @@ function App() {
       </div>
     );
 
-    const renderRunTab = () => (
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-        <div style={styles.summarySection}>
-          <div style={styles.summarySectionTitle}>当前计划</div>
-          {(summaryData.plan || []).map((item, index) => (
-            <div key={index} style={styles.summaryItem}>
-              <div style={styles.summaryItemIcon}>{index + 1}</div>
-              <div style={styles.summaryItemText}>{item}</div>
-            </div>
-          ))}
-        </div>
-        <div style={styles.summarySection}>
-          <div style={styles.summarySectionTitle}>上下文来源</div>
-          {(summaryData.sources || []).map((source, index) => (
-            <div key={index} style={styles.summaryItem}>
-              <div style={styles.summaryItemIcon}>{source.type === 'file' ? 'file' : 'ctx'}</div>
-              <div style={styles.summaryItemText}>{source.name}</div>
-            </div>
-          ))}
-        </div>
-        <div style={styles.summarySection}>
-          <div style={styles.summarySectionTitle}>输出</div>
-          {(summaryData.outputs || []).map((output, index) => (
-            <div key={index} style={styles.summaryItem}>
-              <div style={styles.summaryItemIcon}>out</div>
-              <div style={styles.summaryItemText}>{output}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-
     return (
-      <aside style={styles.summaryPanel}>
-        <div style={styles.inspectorTabs}>
-          {tabLabels.map(tab => (
-            <button
-              key={tab.id}
-              style={{
-                ...styles.inspectorTab,
-                ...(activeInspectorTab === tab.id ? styles.inspectorTabActive : {})
-              }}
-              onClick={() => setActiveInspectorTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
+      <aside style={{
+        ...styles.summaryPanel,
+        width: `${inspectorPanelWidth}px`,
+        minWidth: `${LAYOUT.inspectorMinWidth}px`,
+        maxWidth: `${LAYOUT.inspectorMaxWidth}px`
+      }}>
+        <div
+          style={styles.inspectorResizeHandle}
+          onPointerDown={handleInspectorResizeStart}
+          title="拖拽调整 Inspector 宽度"
+        />
+        <div style={styles.inspectorHeader}>
+          <div style={styles.inspectorTabs}>
+            {tabLabels.map(tab => (
+              <button
+                key={tab.id}
+                style={{
+                  ...styles.inspectorTab,
+                  ...(activeInspectorTab === tab.id ? styles.inspectorTabActive : {})
+                }}
+                onClick={() => setActiveInspectorTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <button
+            style={styles.iconButton}
+            onClick={handleInspectorExpandToggle}
+            title={inspectorExpanded ? '还原子窗口宽度' : '放大子窗口'}
+            aria-label={inspectorExpanded ? '还原子窗口宽度' : '放大子窗口'}
+          >
+            {inspectorExpanded ? '↙' : '⛶'}
+          </button>
         </div>
 
         {activeInspectorTab === 'rag' && renderRagTab()}
         {activeInspectorTab === 'preview' && renderPreviewTab()}
-        {activeInspectorTab === 'run' && renderRunTab()}
       </aside>
     );
   };
@@ -2332,6 +2439,7 @@ function App() {
               messages={runtime.messages}
               status={runtime.status}
               onClear={runtime.clearMessages}
+              onAskAgent={handleAskAgentFromMessage}
             />
           </div>
           

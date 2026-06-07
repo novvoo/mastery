@@ -170,9 +170,14 @@ const styles = {
     backgroundColor: 'rgba(148, 163, 184, 0.08)',
     color: 'var(--text-muted)',
     borderRadius: '5px',
-    padding: '3px 7px',
+    width: '24px',
+    height: '24px',
+    padding: 0,
     cursor: 'pointer',
-    fontSize: '11px'
+    fontSize: '12px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
 
   runtimeProgress: {
@@ -210,6 +215,10 @@ const styles = {
 
   runtimeDetailsListExpanded: {
     maxHeight: 'min(50vh, 420px)'
+  },
+
+  runtimeDetailsListLarge: {
+    maxHeight: 'min(72vh, 680px)'
   },
 
   runtimeDetailItem: {
@@ -612,8 +621,9 @@ const styles = {
  * @param {Array} props.messages - 消息列表
  * @param {string} props.status - 当前状态
  * @param {Function} props.onClear - 清空消息回调
+ * @param {Function} props.onAskAgent - 将错误消息交给 Agent 处理
  */
-function MessageLog({ messages, status, onClear }) {
+function MessageLog({ messages, status, onClear, onAskAgent }) {
   // 状态
   const [filter, setFilter] = useState('all');
   const [autoScroll, setAutoScroll] = useState(true);
@@ -626,6 +636,7 @@ function MessageLog({ messages, status, onClear }) {
   const [copiedMessage, setCopiedMessage] = useState(null);
   const [progress, setProgress] = useState(0);
   const [expandedRuntimePanels, setExpandedRuntimePanels] = useState(new Set());
+  const [largeRuntimePanels, setLargeRuntimePanels] = useState(new Set());
   const [expandedRuntimeDetails, setExpandedRuntimeDetails] = useState(new Set());
   
   // 引用
@@ -875,6 +886,23 @@ function MessageLog({ messages, status, onClear }) {
     });
   }, []);
 
+  const handleRuntimePanelSizeToggle = useCallback((panelId) => {
+    setLargeRuntimePanels(prev => {
+      const next = new Set(prev);
+      if (next.has(panelId)) {
+        next.delete(panelId);
+      } else {
+        next.add(panelId);
+      }
+      return next;
+    });
+    setExpandedRuntimePanels(prev => {
+      const next = new Set(prev);
+      next.add(panelId);
+      return next;
+    });
+  }, []);
+
   const handleRuntimeDetailToggle = useCallback((detailId) => {
     setExpandedRuntimeDetails(prev => {
       const next = new Set(prev);
@@ -905,6 +933,9 @@ function MessageLog({ messages, status, onClear }) {
     setCollapsedMessages(new Set());
     setShowDetails(new Set());
     setSelectedMessage(null);
+    setExpandedRuntimePanels(new Set());
+    setLargeRuntimePanels(new Set());
+    setExpandedRuntimeDetails(new Set());
   }, [onClear]);
   
   // 处理消息折叠/展开
@@ -949,6 +980,16 @@ function MessageLog({ messages, status, onClear }) {
       console.error('[MessageLog] 复制失败:', error);
     }
   }, []);
+
+  const handleAskAgent = useCallback((msg) => {
+    if (onAskAgent) {
+      onAskAgent(msg);
+    }
+  }, [onAskAgent]);
+
+  const isActionableErrorMessage = useCallback((msg) => (
+    msg?.type === 'error' || msg?.level === 'error' || msg?.event === 'tool:error'
+  ), []);
   
   // 处理消息悬停
   const handleMouseEnter = useCallback((msgId) => {
@@ -1026,6 +1067,7 @@ function MessageLog({ messages, status, onClear }) {
     const showDetail = showDetails.has(msgId);
     const isSelected = selectedMessage === msgId;
     const typeDisplay = getTypeDisplay(msg.type);
+    const isActionableError = isActionableErrorMessage(msg);
     
     return (
       <div 
@@ -1096,8 +1138,21 @@ function MessageLog({ messages, status, onClear }) {
         {/* 操作按钮 */}
         <div style={{
           ...styles.messageActions,
-          ...(isSelected ? styles.messageActionsVisible : {})
+          ...(isSelected || isActionableError ? styles.messageActionsVisible : {})
         }}>
+          {isActionableError && onAskAgent && (
+            <button
+              style={styles.actionButton}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAskAgent(msg);
+              }}
+              title="把错误消息交给 Agent 分析处理"
+            >
+              交给 Agent
+            </button>
+          )}
+
           <button
             style={styles.actionButton}
             onClick={(e) => {
@@ -1186,6 +1241,7 @@ function MessageLog({ messages, status, onClear }) {
     const latestStatusUpdate = [...runtimeDetails].reverse().find(isStatusUpdateMessage);
     const isRunningGroup = status === 'running' && isActiveGroup;
     const isExpanded = expandedRuntimePanels.has(group.id);
+    const isLarge = largeRuntimePanels.has(group.id);
     const statusText = isRunningGroup
       ? getStatusUpdateText(latestStatusUpdate)
       : latestStatusUpdate
@@ -1215,12 +1271,26 @@ function MessageLog({ messages, status, onClear }) {
             <button
               type="button"
               style={styles.runtimeDetailsToggle}
+              title={isLarge ? '还原执行过程窗口' : '放大执行过程窗口'}
+              aria-label={isLarge ? '还原执行过程窗口' : '放大执行过程窗口'}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleRuntimePanelSizeToggle(group.id);
+              }}
+            >
+              {isLarge ? '↙' : '⛶'}
+            </button>
+            <button
+              type="button"
+              style={styles.runtimeDetailsToggle}
+              title={isExpanded ? '收起运行详情' : '展开运行详情'}
+              aria-label={isExpanded ? '收起运行详情' : '展开运行详情'}
               onClick={(event) => {
                 event.stopPropagation();
                 handleRuntimeDetailsToggle(group.id);
               }}
             >
-              {isExpanded ? '收起' : '展开'}
+              {isExpanded ? '▾' : '▸'}
             </button>
           </span>
         </div>
@@ -1249,9 +1319,11 @@ function MessageLog({ messages, status, onClear }) {
             }}
             style={{
               ...styles.runtimeDetailsList,
-              ...(isExpanded
-                ? styles.runtimeDetailsListExpanded
-                : styles.runtimeDetailsListCollapsed)
+              ...(isLarge
+                ? styles.runtimeDetailsListLarge
+                : isExpanded
+                  ? styles.runtimeDetailsListExpanded
+                  : styles.runtimeDetailsListCollapsed)
             }}
           >
             {visibleRuntimeDetails.map((msg, index) => {
