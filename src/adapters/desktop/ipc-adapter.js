@@ -659,8 +659,6 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
         case 'window:getState':
         case 'app:getInfo':
         case 'llm:getConfigStatus':
-        case 'agent:getTools':
-        case 'agent:getState':
         case 'workspace:listDirectory':
         case 'preview:list':
         case 'window:minimize':
