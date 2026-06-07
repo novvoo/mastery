@@ -113,6 +113,59 @@ describe('preview server', () => {
     }
   });
 
+  test('runs build before serving static frontend output', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'preview-build-static-'));
+    try {
+      writeFileSync(join(root, 'build.js'), `
+        import { mkdirSync, writeFileSync } from 'fs';
+        mkdirSync('dist', { recursive: true });
+        writeFileSync('dist/index.html', '<h1>Built Preview OK</h1>');
+      `);
+      writeFileSync(join(root, 'package.json'), JSON.stringify({
+        type: 'module',
+        scripts: { build: 'node build.js' },
+      }));
+
+      const preview = await startPreview({
+        workingDirectory: root,
+        target: '.',
+        kind: 'auto',
+      });
+
+      expect(preview.success).toBe(true);
+      expect(preview.mode).toBe('static');
+      expect(preview.root).toBe(join(root, 'dist'));
+      expect(preview.pipeline.map(stage => stage.name)).toEqual(['build']);
+      expect(preview.pipeline[0].status).toBe('completed');
+      const html = await fetch(preview.url).then(response => response.text());
+      expect(html).toContain('Built Preview OK');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('reports build stage failures with command output', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'preview-build-fail-'));
+    try {
+      writeFileSync(join(root, 'build.js'), `
+        console.error('build broke before preview');
+        process.exit(2);
+      `);
+      writeFileSync(join(root, 'package.json'), JSON.stringify({
+        type: 'module',
+        scripts: { build: 'node build.js' },
+      }));
+
+      await expect(startPreview({
+        workingDirectory: root,
+        target: '.',
+        kind: 'auto',
+      })).rejects.toThrow(/Preview build stage failed[\s\S]*build broke before preview/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('passes preview host and port flags to Vite dev scripts', async () => {
     const root = mkdtempSync(join(tmpdir(), 'preview-vite-script-'));
     try {

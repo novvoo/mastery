@@ -10,6 +10,8 @@ export const PREVIEW_HOST = '127.0.0.1';
 export const PREVIEW_PORT_START = 41730;
 export const PREVIEW_PORT_END = 42730;
 const SERVER_READY_TIMEOUT_MS = 15000;
+const PREVIEW_STAGE_TIMEOUT_MS = 120000;
+const STAGE_OUTPUT_LIMIT = 4000;
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -80,6 +82,14 @@ function readPackageScripts(projectRoot) {
   return pkg.scripts || {};
 }
 
+function readPackageJson(projectRoot) {
+  const packagePath = join(projectRoot, 'package.json');
+  if (!existsSync(packagePath)) {
+    return null;
+  }
+  return JSON.parse(readFileSync(packagePath, 'utf8'));
+}
+
 function isWebPreviewScript(command = '') {
   const normalized = String(command || '').toLowerCase();
   return /\b(vite|next\s+dev|astro\s+dev|webpack-dev-server|webpack\s+serve|parcel|serve|http-server|live-server|vite-preview|nuxt\s+dev|svelte-kit\s+dev)\b/.test(normalized)
@@ -124,6 +134,160 @@ function detectNodeCommand(projectRoot, explicitCommand, port) {
     return `yarn ${scriptName}${passthroughArgs}`;
   }
   return `npm run ${scriptName}${passthroughArgs}`;
+}
+
+function createPackageManagerCommand(projectRoot, action) {
+  const manager = choosePackageManager(projectRoot);
+  if (action === 'install') {
+    if (manager === 'bun') {
+      return 'bun install';
+    }
+    if (manager === 'pnpm') {
+      return 'pnpm install';
+    }
+    if (manager === 'yarn') {
+      return 'yarn install';
+    }
+    return 'npm install';
+  }
+
+  if (manager === 'bun') {
+    return `bun run ${action}`;
+  }
+  if (manager === 'pnpm') {
+    return `pnpm run ${action}`;
+  }
+  if (manager === 'yarn') {
+    return `yarn ${action}`;
+  }
+  return `npm run ${action}`;
+}
+
+function hasPackageDependencies(pkg) {
+  if (!pkg) {
+    return false;
+  }
+  return ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
+    .some(field => Object.keys(pkg[field] || {}).length > 0);
+}
+
+function findBuildScriptName(scripts = {}) {
+  if (scripts.build) {
+    return 'build';
+  }
+  if (scripts.compile) {
+    return 'compile';
+  }
+  return null;
+}
+
+function findStaticOutputRoot(projectRoot) {
+  const candidates = ['dist', 'build', 'out', 'public', '.output/public', '.next'];
+  for (const candidate of candidates) {
+    const outputRoot = join(projectRoot, candidate);
+    if (existsSync(join(outputRoot, 'index.html'))) {
+      return outputRoot;
+    }
+  }
+  if (existsSync(join(projectRoot, 'index.html'))) {
+    return projectRoot;
+  }
+  return null;
+}
+
+function runCommandStage({ projectRoot, command, name, label, timeoutMs = PREVIEW_STAGE_TIMEOUT_MS, env = {} }) {
+  const stage = {
+    name,
+    label,
+    command,
+    status: 'running',
+    startedAt: Date.now(),
+    output: '',
+  };
+
+  const shellCommand = getShellCommand(command);
+  const child = spawn(shellCommand.executable, shellCommand.args, {
+    cwd: projectRoot,
+    env: { ...process.env, ...env },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  let output = '';
+  const append = data => {
+    output += data.toString();
+    if (output.length > STAGE_OUTPUT_LIMIT) {
+      output = output.slice(-STAGE_OUTPUT_LIMIT);
+    }
+    stage.output = output;
+  };
+  child.stdout.on('data', append);
+  child.stderr.on('data', append);
+
+  return new Promise((resolveStage, rejectStage) => {
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      stage.status = 'failed';
+      stage.completedAt = Date.now();
+      stage.durationMs = stage.completedAt - stage.startedAt;
+      rejectStage(new Error(`Preview ${label} stage timed out after ${timeoutMs}ms.\nCommand: ${command}\nOutput:\n${output}`));
+    }, timeoutMs);
+
+    child.once('error', error => {
+      clearTimeout(timer);
+      stage.status = 'failed';
+      stage.completedAt = Date.now();
+      stage.durationMs = stage.completedAt - stage.startedAt;
+      rejectStage(new Error(`Preview ${label} stage failed: ${error.message}\nCommand: ${command}\nOutput:\n${output}`));
+    });
+
+    child.once('exit', exitCode => {
+      clearTimeout(timer);
+      stage.completedAt = Date.now();
+      stage.durationMs = stage.completedAt - stage.startedAt;
+      stage.output = output;
+      if (exitCode === 0) {
+        stage.status = 'completed';
+        resolveStage(stage);
+        return;
+      }
+      stage.status = 'failed';
+      rejectStage(new Error(`Preview ${label} stage failed with exit code ${exitCode}.\nCommand: ${command}\nOutput:\n${output}`));
+    });
+  });
+}
+
+async function preparePackagePreview(projectRoot, { scripts, explicitCommand, pipeline }) {
+  const pkg = readPackageJson(projectRoot);
+  if (!pkg) {
+    return;
+  }
+
+  if (hasPackageDependencies(pkg) && !existsSync(join(projectRoot, 'node_modules'))) {
+    const command = createPackageManagerCommand(projectRoot, 'install');
+    const stage = await runCommandStage({
+      projectRoot,
+      command,
+      name: 'install',
+      label: 'install',
+    });
+    pipeline.push(stage);
+  }
+
+  const hasRunnableServer = explicitCommand || findWebPreviewScriptName(scripts);
+  const buildScriptName = findBuildScriptName(scripts);
+  if (!hasRunnableServer && buildScriptName) {
+    const command = createPackageManagerCommand(projectRoot, buildScriptName);
+    const stage = await runCommandStage({
+      projectRoot,
+      command,
+      name: 'build',
+      label: 'build',
+      env: {
+        HOST: PREVIEW_HOST,
+      },
+    });
+    pipeline.push(stage);
+  }
 }
 
 function getShellCommand(command) {
@@ -275,7 +439,7 @@ function createStaticServer(root) {
   });
 }
 
-async function startStaticPreview({ workingDirectory, target, port }) {
+async function startStaticPreview({ workingDirectory, target, port, pipeline = [] }) {
   const { resolved } = resolveInsideWorkspace(workingDirectory, target || '.');
   if (!existsSync(resolved)) {
     throw new Error(`Preview target not found: ${resolved}`);
@@ -304,6 +468,7 @@ async function startStaticPreview({ workingDirectory, target, port }) {
     process: null,
     server,
     command: null,
+    pipeline,
     startedAt: Date.now(),
   };
   sessions.set(session.id, session);
@@ -314,9 +479,28 @@ async function startNodePreview({ workingDirectory, target, command, port }) {
   const { resolved } = resolveInsideWorkspace(workingDirectory, target || '.');
   const projectRoot = existsSync(resolved) && statSync(resolved).isFile() ? dirname(resolved) : resolved;
   const previewPort = await findAvailablePort(port);
+  const pipeline = [];
+  const scripts = readPackageScripts(projectRoot);
+
+  await preparePackagePreview(projectRoot, {
+    scripts,
+    explicitCommand: command,
+    pipeline,
+  });
+
   const nodeCommand = detectNodeCommand(projectRoot, command, previewPort);
   if (!nodeCommand) {
-    throw new Error('No Node preview command found. Add package.json scripts.dev/start or pass command.');
+    const staticRoot = findStaticOutputRoot(projectRoot);
+    if (staticRoot) {
+      const staticTarget = relative(projectRoot, staticRoot) || '.';
+      return startStaticPreview({
+        workingDirectory: projectRoot,
+        target: staticTarget,
+        port: previewPort,
+        pipeline,
+      });
+    }
+    throw new Error('No preview output found. Add package.json scripts.dev/start, add a build script that creates index.html, or pass command.');
   }
 
   const shellCommand = getShellCommand(nodeCommand);
@@ -354,6 +538,16 @@ async function startNodePreview({ workingDirectory, target, command, port }) {
     process: child,
     server: null,
     command: nodeCommand,
+    pipeline: [
+      ...pipeline,
+      {
+        name: 'start',
+        label: 'start',
+        command: nodeCommand,
+        status: 'running',
+        startedAt: Date.now(),
+      },
+    ],
     startedAt: Date.now(),
     get output() {
       return output;
@@ -385,13 +579,6 @@ function inferPreviewKind({ workingDirectory, target, kind }) {
     return ['.html', '.htm'].includes(extname(resolved).toLowerCase()) ? 'static' : 'node';
   }
   if (existsSync(join(resolved, 'package.json'))) {
-    const scripts = readPackageScripts(resolved);
-    if (findWebPreviewScriptName(scripts)) {
-      return 'node';
-    }
-    if (existsSync(join(resolved, 'index.html'))) {
-      return 'static';
-    }
     return 'node';
   }
   return 'static';
@@ -445,6 +632,14 @@ function serializeSession(session) {
     target: session.target,
     entry: session.entry,
     command: session.command,
+    pipeline: session.pipeline?.map(stage => ({
+      name: stage.name,
+      label: stage.label,
+      command: stage.command,
+      status: stage.status,
+      duration_ms: stage.durationMs,
+      output: stage.output ? stage.output.slice(-STAGE_OUTPUT_LIMIT) : undefined,
+    })) || [],
     status: session.process?.exitCode === null || session.server ? 'running' : 'exited',
     output: session.output ? session.output.slice(-4000) : undefined,
     started_at: new Date(session.startedAt).toISOString(),

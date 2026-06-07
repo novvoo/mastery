@@ -1976,6 +1976,38 @@ function App() {
           <button style={styles.button} type="submit">前往</button>
         </form>
 
+        {previewSession?.pipeline?.length ? (
+          <div style={{
+            padding: '8px 10px',
+            borderBottom: '1px solid var(--border-subtle)',
+            display: 'flex',
+            gap: '6px',
+            overflowX: 'auto'
+          }}>
+            {previewSession.pipeline.map((stage) => (
+              <div
+                key={`${stage.name}-${stage.command}`}
+                title={stage.command}
+                style={{
+                  flex: '0 0 auto',
+                  maxWidth: '180px',
+                  padding: '5px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-subtle)',
+                  color: stage.status === 'failed' ? 'var(--error-color)' : 'var(--text-muted)',
+                  backgroundColor: stage.status === 'running' ? 'rgba(79, 140, 255, 0.08)' : 'var(--surface-color)',
+                  fontSize: '11px',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}
+              >
+                {stage.name}: {stage.status}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         {activePreviewUrl ? (
           <iframe
             key={previewFrameKey}
