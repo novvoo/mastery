@@ -285,6 +285,25 @@ describe('MainProcessIPCAdapter', () => {
     expect(adapter.getStats()).toBeDefined();
   });
 
+  test('应该通过 Desktop 直连 IPC 切换窗口最大化状态', async () => {
+    await adapter.initialize();
+
+    let isMaximized = false;
+    adapter.registerHandler('window:maximize', async () => {
+      isMaximized = !isMaximized;
+      return { success: true, isMaximized };
+    });
+
+    const mockEvent = { sender: { id: 123 } };
+    const first = await mockIpcMain.simulateHandle('window:maximize', mockEvent);
+    const second = await mockIpcMain.simulateHandle('window:maximize', mockEvent);
+
+    expect(first.success).toBe(true);
+    expect(first.isMaximized).toBe(true);
+    expect(second.success).toBe(true);
+    expect(second.isMaximized).toBe(false);
+  });
+
   test('应该正确注销处理器', () => {
     adapter.registerHandler('test:handler', async () => {});
     adapter.unregisterHandler('test:handler');

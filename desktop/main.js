@@ -643,7 +643,7 @@ class ElectronMainApp {
         }
         this.#broadcastWindowState();
       }
-      return { success: true };
+      return { success: true, ...this.#getWindowState() };
     });
 
     this.#ipcAdapter.registerHandler('window:getState', async () => {

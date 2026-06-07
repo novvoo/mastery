@@ -777,6 +777,7 @@ const MENU_ITEMS = [
     items: [
       { label: '切换侧边栏', shortcut: 'Ctrl+B', command: 'toggleSidebar' },
       { label: '切换 Inspector', shortcut: 'Ctrl+Shift+S', command: 'toggleSummary' },
+      { label: '最大化/还原窗口', shortcut: 'Ctrl+Shift+M', command: 'toggleMaximize' },
       { type: 'divider' },
       { label: 'Agent 面板', command: 'showAgent' },
       { label: '工具面板', shortcut: 'Ctrl+T', command: 'showTools' }
@@ -1596,6 +1597,9 @@ function App() {
       case 'toggleSummary':
         setSummaryPanelVisible(prev => !prev);
         break;
+      case 'toggleMaximize':
+        await ipc.maximizeWindow();
+        break;
       case 'showAgent':
         setSidebarCollapsed(false);
         setActiveTab('agent');
@@ -1642,7 +1646,7 @@ function App() {
         await ipc.openExternal?.(`${REPOSITORY_URL}/issues`);
         break;
       case 'showShortcuts':
-        window.alert('快捷键\n\nCtrl+Enter: 发送/聚焦输入\nCtrl+B: 切换侧边栏\nCtrl+Shift+S: 切换 Inspector\nCtrl+T: 工具面板\nCtrl+.: 停止执行');
+        window.alert('快捷键\n\nCtrl+Enter: 发送/聚焦输入\nCtrl+B: 切换侧边栏\nCtrl+Shift+S: 切换 Inspector\nCtrl+Shift+M: 最大化/还原窗口\nCtrl+T: 工具面板\nCtrl+.: 停止执行');
         break;
       case 'showAbout':
         window.alert(`AI Agent Desktop\n\nVersion: ${platformInfo?.version || '1.0.15'}\nWorkspace: ${workingDirectory || '未设置'}`);
@@ -2176,8 +2180,8 @@ function App() {
               <button 
                 style={{...styles.menuItem, width: '32px', height: '32px', padding: 0}}
                 onClick={handleMaximize}
-                title="最大化"
-              >□</button>
+                title={windowState.isMaximized ? '还原' : '最大化'}
+              >{windowState.isMaximized ? '❐' : '□'}</button>
               <button 
                 style={{...styles.menuItem, width: '32px', height: '32px', padding: 0, color: 'var(--error-color)'}}
                 onClick={handleClose}
