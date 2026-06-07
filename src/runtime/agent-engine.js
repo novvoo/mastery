@@ -82,10 +82,6 @@ export class AgentEngine {
   #automationEngine;
   #embedder;
   
-  // 工具调用去重和缓存
-  #toolCallHistory = [];
-  #toolResultCache = new Map();
-  
   // 扩展组件
   #pluginManager;
   #modelProvider;
@@ -652,7 +648,7 @@ export class AgentEngine {
     // 创建 UI 门面（使用传入的 UI 适配器或默认门面）
     const uiFacade = this.#uiAdapter || this.#createUIFacade();
 
-    // 创建 Agent 实例（复用 AgentEngine 中的 sessionManager 和工具缓存）
+    // 创建 Agent 实例（复用 AgentEngine 中的 sessionManager）
     this.#agent = new ReActAgent(
       this.#modelProvider,
       this.#toolRegistry,
@@ -665,9 +661,7 @@ export class AgentEngine {
         tokenJuice: this.#tokenJuice,
         model: this.#config.model,
         intentClassification: this.#config.intentClassification !== false,
-        session: this.#sessionManager,  // 传递已有的 sessionManager，保留会话历史
-        toolCallHistory: this.#toolCallHistory,  // 传递全局工具调用历史
-        toolResultCache: this.#toolResultCache   // 传递全局工具结果缓存
+        session: this.#sessionManager  // 传递已有的 sessionManager，保留会话历史
       },
       uiFacade
     );

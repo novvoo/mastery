@@ -23,7 +23,10 @@ const styles = {
     flexDirection: 'column',
     height: '100%',
     overflow: 'hidden',
-    backgroundColor: 'var(--background-color)'
+    backgroundColor: '#11161e',
+    borderRadius: '8px',
+    border: '1px solid var(--border-subtle)',
+    boxShadow: 'var(--shadow-sm)'
   },
   
   header: {
@@ -123,7 +126,7 @@ const styles = {
   messageList: {
     flex: 1,
     overflowY: 'auto',
-    padding: '8px 12px',
+    padding: '14px',
     scrollBehavior: 'smooth'
   },
 
@@ -209,25 +212,22 @@ const styles = {
   },
 
   runtimeDetailsListCollapsed: {
-    maxHeight: '620px',
-    overflowY: 'auto'
+    maxHeight: '156px'
   },
 
   runtimeDetailsListExpanded: {
-    maxHeight: 'min(50vh, 520px)',
-    overflowY: 'auto'
+    maxHeight: 'min(50vh, 420px)'
   },
 
   runtimeDetailsListLarge: {
-    maxHeight: 'min(72vh, 780px)',
-    overflowY: 'auto'
+    maxHeight: 'min(72vh, 680px)'
   },
 
   runtimeDetailItem: {
     borderRadius: '6px',
     border: '1px solid rgba(148, 163, 184, 0.12)',
     backgroundColor: 'rgba(17, 22, 30, 0.68)',
-    padding: '4px 8px',
+    padding: '8px',
     color: 'var(--text-muted)',
     fontSize: '12px',
     lineHeight: '1.5'
@@ -252,27 +252,24 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: '8px',
-    marginBottom: '2px',
+    marginBottom: '4px',
     color: 'var(--text-dark)',
     fontSize: '11px'
   },
 
   runtimeDetailContent: {
-    whiteSpace: 'nowrap',
-    textOverflow: 'ellipsis',
-    overflow: 'hidden',
+    whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
     color: 'var(--text-muted)',
     transition: 'max-height 0.18s ease'
   },
 
   runtimeDetailContentCollapsed: {
-    maxHeight: '18px',
+    maxHeight: '42px',
     overflow: 'hidden'
   },
 
   runtimeDetailContentExpanded: {
-    whiteSpace: 'pre-wrap',
     maxHeight: '240px',
     overflowY: 'auto'
   },
@@ -628,7 +625,7 @@ const styles = {
  * @param {Function} props.onClear - 清空消息回调
  * @param {Function} props.onAskAgent - 将错误消息交给 Agent 处理
  */
-function MessageLog({ messages, status, onClear, onAskAgent, showHeader = true }) {
+function MessageLog({ messages, status, onClear, onAskAgent }) {
   // 状态
   const [filter, setFilter] = useState('all');
   const [autoScroll, setAutoScroll] = useState(true);
@@ -762,80 +759,6 @@ function MessageLog({ messages, status, onClear, onAskAgent, showHeader = true }
       msg.status ||
       '状态更新'
     );
-  }
-
-  // 导出运行详情
-  function handleExportRuntimeDetails(group) {
-    const runtimeDetails = group?.runtimeDetails || [];
-    const visibleRuntimeDetails = runtimeDetails.filter(msg => !isStatusUpdateMessage(msg));
-    
-    if (visibleRuntimeDetails.length === 0) {
-      alert('没有可导出的运行详情');
-      return;
-    }
-
-    // 去重 - 按消息ID或时间戳+内容去重
-    const seen = new Set();
-    const uniqueMessages = visibleRuntimeDetails.filter(msg => {
-      const key = msg.id || `${msg.timestamp}_${msg.type}_${msg.toolName || ''}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-
-    // 格式化导出内容（精简版）
-    let content = `=== 运行详情导出 ===\n`;
-    content += `导出时间: ${new Date().toLocaleString()}\n`;
-    content += `原始消息: ${visibleRuntimeDetails.length} 条\n`;
-    content += `去重后: ${uniqueMessages.length} 条\n`;
-    content += `\n==================\n\n`;
-
-    uniqueMessages.forEach((msg, index) => {
-      const typeDisplay = getTypeDisplay(msg.type);
-      content += `[${index + 1}] ${typeDisplay.text}\n`;
-      content += `时间: ${msg.timestamp ? new Date(msg.timestamp).toLocaleString() : '未知时间'}\n`;
-      
-      // 精简内容 - 不包含冗余的事件数据
-      let msgContent = '';
-      const primaryText = msg.content || msg.message || msg.details || '';
-      if (primaryText) {
-        msgContent += primaryText;
-      }
-      if (msg.toolName) {
-        if (msgContent) msgContent += '\n';
-        msgContent += `工具: ${msg.toolName}`;
-      }
-      if (msg.args) {
-        if (msgContent) msgContent += '\n';
-        try {
-          msgContent += `参数:\n${typeof msg.args === 'string' ? msg.args : JSON.stringify(msg.args, null, 2)}`;
-        } catch {
-          msgContent += `参数:\n${String(msg.args)}`;
-        }
-      }
-      if (msg.result) {
-        if (msgContent) msgContent += '\n';
-        try {
-          msgContent += `结果:\n${typeof msg.result === 'string' ? msg.result : JSON.stringify(msg.result, null, 2)}`;
-        } catch {
-          msgContent += `结果:\n${String(msg.result)}`;
-        }
-      }
-      
-      content += `内容:\n${msgContent || '(无内容)'}\n`;
-      content += `\n------------------\n\n`;
-    });
-
-    // 创建并下载文件
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `运行详情_${new Date().getTime()}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   }
   
   // 搜索焦点
@@ -1194,16 +1117,14 @@ function MessageLog({ messages, status, onClear, onAskAgent, showHeader = true }
           ...styles.messageContent,
           ...(isCollapsed ? styles.messageContentCollapsed : {})
         }}>
-          {(msg.type === 'agent' || msg.type === 'result' || msg.type === 'info') ? (
+          {msg.type === 'agent' ? (
             <div className="markdown">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {msg.content || msg.message || ''}
               </ReactMarkdown>
             </div>
           ) : (
-            <div style={{ whiteSpace: 'pre-wrap' }}>
-              {msg.content || msg.message || ''}
-            </div>
+            msg.content || msg.message || ''
           )}
         </div>
         
@@ -1360,18 +1281,6 @@ function MessageLog({ messages, status, onClear, onAskAgent, showHeader = true }
             <button
               type="button"
               style={styles.runtimeDetailsToggle}
-              title="导出运行详情"
-              aria-label="导出运行详情"
-              onClick={(event) => {
-                event.stopPropagation();
-                handleExportRuntimeDetails(group);
-              }}
-            >
-              📥
-            </button>
-            <button
-              type="button"
-              style={styles.runtimeDetailsToggle}
               title={isLarge ? '还原执行过程窗口' : '放大执行过程窗口'}
               aria-label={isLarge ? '还原执行过程窗口' : '放大执行过程窗口'}
               onClick={(event) => {
@@ -1444,45 +1353,23 @@ function MessageLog({ messages, status, onClear, onAskAgent, showHeader = true }
                   onClick={() => handleRuntimeDetailToggle(runtimeDetailId)}
                   title={isExpanded ? '收起这条运行消息' : '展开这条运行消息'}
                 >
-                  {isExpanded ? (
-                    <>
-                      <div style={styles.runtimeDetailMeta}>
-                        <span>{typeDisplay.text}</span>
-                        <span>
-                          {isExpanded ? '收起' : '展开'}
-                          {msg.timestamp ? ` · ${new Date(msg.timestamp).toLocaleTimeString()}` : ''}
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          ...styles.runtimeDetailContent,
-                          ...styles.runtimeDetailContentExpanded
-                        }}
-                      >
-                        {content || '(无内容)'}
-                      </div>
-                    </>
-                  ) : (
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--text-dark)', fontSize: '11px', whiteSpace: 'nowrap' }}>
-                        {typeDisplay.text}
-                      </span>
-                      <span style={{
-                        ...styles.runtimeDetailContent,
-                        flex: 1,
-                        minWidth: 0
-                      }}>
-                        {content || '(无内容)'}
-                      </span>
-                      <span style={{
-                        color: 'var(--text-dark)',
-                        fontSize: '11px',
-                        whiteSpace: 'nowrap'
-                      }}>
-                        {msg.timestamp ? ` · ${new Date(msg.timestamp).toLocaleTimeString()}` : ''}
-                      </span>
-                    </div>
-                  )}
+                  <div style={styles.runtimeDetailMeta}>
+                    <span>{typeDisplay.text}</span>
+                    <span>
+                      {isExpanded ? '收起' : '展开'}
+                      {msg.timestamp ? ` · ${new Date(msg.timestamp).toLocaleTimeString()}` : ''}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      ...styles.runtimeDetailContent,
+                      ...(isExpanded
+                        ? styles.runtimeDetailContentExpanded
+                        : styles.runtimeDetailContentCollapsed)
+                    }}
+                  >
+                    {content || '(无内容)'}
+                  </div>
                 </div>
               );
             })}
@@ -1546,112 +1433,110 @@ function MessageLog({ messages, status, onClear, onAskAgent, showHeader = true }
   return (
     <div style={styles.container}>
       {/* 头部 */}
-      {showHeader && (
-        <div style={styles.header}>
-          <div style={styles.title}>
-            <span>消息日志</span>
-            <span style={{
-              fontSize: '12px',
-              color: 'var(--text-muted)',
-              marginLeft: '4px'
-            }}>
-              ({filteredMessages.length}/{messages.length})
-            </span>
-          </div>
-          
-          <div style={styles.headerButtons}>
-            {/* 搜索 */}
-            <div style={styles.searchContainer}>
-              {searchExpanded && (
-                <input
-                  ref={searchRef}
-                  style={{
-                    ...styles.searchInput,
-                    ...styles.searchInputExpanded
-                  }}
-                  value={searchQuery}
-                  onChange={handleSearch}
-                  placeholder="搜索消息..."
-                  onBlur={() => {
-                    if (!searchQuery) setSearchExpanded(false);
-                  }}
-                />
-              )}
-              <button
-                style={styles.button}
-                onClick={handleSearchToggle}
-                title="搜索消息"
-              >
-                🔍
-              </button>
-            </div>
-            
-            {/* 视图切换 */}
-            <div style={styles.viewToggle}>
-              <button
+      <div style={styles.header}>
+        <div style={styles.title}>
+          <span>消息日志</span>
+          <span style={{
+            fontSize: '12px',
+            color: 'var(--text-muted)',
+            marginLeft: '4px'
+          }}>
+            ({filteredMessages.length}/{messages.length})
+          </span>
+        </div>
+        
+        <div style={styles.headerButtons}>
+          {/* 搜索 */}
+          <div style={styles.searchContainer}>
+            {searchExpanded && (
+              <input
+                ref={searchRef}
                 style={{
-                  ...styles.viewButton,
-                  ...(viewMode === 'list' ? styles.viewButtonActive : {})
+                  ...styles.searchInput,
+                  ...styles.searchInputExpanded
                 }}
-                onClick={() => handleViewChange('list')}
-                title="列表视图"
-              >
-                📋
-              </button>
-              <button
-                style={{
-                  ...styles.viewButton,
-                  ...(viewMode === 'timeline' ? styles.viewButtonActive : {})
+                value={searchQuery}
+                onChange={handleSearch}
+                placeholder="搜索消息..."
+                onBlur={() => {
+                  if (!searchQuery) setSearchExpanded(false);
                 }}
-                onClick={() => handleViewChange('timeline')}
-                title="时间线视图"
-              >
-                📅
-              </button>
-            </div>
-            
-            {/* 过滤按钮 */}
-            <select
-              style={{
-                ...styles.button,
-                padding: '4px 8px',
-                cursor: 'pointer'
-              }}
-              value={filter}
-              onChange={(e) => handleFilterChange(e.target.value)}
-            >
-              <option value="all">全部</option>
-              <option value="user">👤 用户</option>
-              <option value="info">ℹ️ 信息</option>
-              <option value="success">✅ 成功</option>
-              <option value="error">❌ 错误</option>
-              <option value="tool">🔧 工具</option>
-              <option value="result">📊 结果</option>
-            </select>
-            
-            {/* 自动滚动按钮 */}
-            <button
-              style={{
-                ...styles.button,
-                ...(autoScroll ? styles.buttonActive : {})
-              }}
-              onClick={handleAutoScrollChange}
-              title={autoScroll ? '停止自动滚动' : '启用自动滚动'}
-            >
-              {autoScroll ? '📍 自动' : '📌 手动'}
-            </button>
-            
-            {/* 清空按钮 */}
+              />
+            )}
             <button
               style={styles.button}
-              onClick={handleClear}
-              title="清空消息"
+              onClick={handleSearchToggle}
+              title="搜索消息"
             >
-              🗑️ 清空
+              🔍
             </button>
           </div>
+          
+          {/* 视图切换 */}
+          <div style={styles.viewToggle}>
+            <button
+              style={{
+                ...styles.viewButton,
+                ...(viewMode === 'list' ? styles.viewButtonActive : {})
+              }}
+              onClick={() => handleViewChange('list')}
+              title="列表视图"
+            >
+              📋
+            </button>
+            <button
+              style={{
+                ...styles.viewButton,
+                ...(viewMode === 'timeline' ? styles.viewButtonActive : {})
+              }}
+              onClick={() => handleViewChange('timeline')}
+              title="时间线视图"
+            >
+              📅
+            </button>
+          </div>
+          
+          {/* 过滤按钮 */}
+          <select
+            style={{
+              ...styles.button,
+              padding: '4px 8px',
+              cursor: 'pointer'
+            }}
+            value={filter}
+            onChange={(e) => handleFilterChange(e.target.value)}
+          >
+            <option value="all">全部</option>
+            <option value="user">👤 用户</option>
+            <option value="info">ℹ️ 信息</option>
+            <option value="success">✅ 成功</option>
+            <option value="error">❌ 错误</option>
+            <option value="tool">🔧 工具</option>
+            <option value="result">📊 结果</option>
+          </select>
+          
+          {/* 自动滚动按钮 */}
+          <button
+            style={{
+              ...styles.button,
+              ...(autoScroll ? styles.buttonActive : {})
+            }}
+            onClick={handleAutoScrollChange}
+            title={autoScroll ? '停止自动滚动' : '启用自动滚动'}
+          >
+            {autoScroll ? '📍 自动' : '📌 手动'}
+          </button>
+          
+          {/* 清空按钮 */}
+          <button
+            style={styles.button}
+            onClick={handleClear}
+            title="清空消息"
+          >
+            🗑️ 清空
+          </button>
         </div>
-      )}
+      </div>
       
       {/* 消息列表 */}
       <div ref={listRef} style={styles.messageList}>

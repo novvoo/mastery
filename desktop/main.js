@@ -7,14 +7,10 @@ import { app, BrowserWindow, ipcMain, dialog, Notification, Menu, Tray, shell } 
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import { homedir } from 'os';
 
 // 获取当前目录
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// 缓存目录
-const CACHE_DIR = path.join(homedir(), '.agent-cache', 'files');
 
 // 导入 Desktop Core 和 IPC 适配器
 import {
@@ -209,50 +205,20 @@ class ElectronMainApp {
         label: '文件',
         submenu: [
           {
-            label: '新建任务',
+            label: '新建工作区',
             accelerator: 'CmdOrCtrl+N',
-            click: () => this.#sendMenuEvent('newTask')
+            click: () => this.#handleNewProject()
           },
           {
-            label: '切换工作目录',
+            label: '打开工作区',
             accelerator: 'CmdOrCtrl+O',
-            click: () => this.#sendMenuEvent('changeWorkspace')
+            click: () => this.#handleOpenProject()
           },
           { type: 'separator' },
           {
-            label: '保存会话快照',
+            label: '保存配置',
             accelerator: 'CmdOrCtrl+S',
-            click: () => this.#sendMenuEvent('saveSession')
-          },
-          {
-            label: '导出对话 Markdown',
-            accelerator: 'CmdOrCtrl+E',
-            click: () => this.#sendMenuEvent('exportConversation')
-          },
-          { type: 'separator' },
-          {
-            label: '缓存管理',
-            submenu: [
-              {
-                label: '打开缓存目录',
-                accelerator: 'CmdOrCtrl+Shift+C',
-                click: () => this.#handleOpenCacheDir()
-              },
-              {
-                label: '清理所有缓存',
-                click: () => this.#handleClearCache()
-              },
-              { type: 'separator' },
-              {
-                label: '同步工作目录缓存',
-                accelerator: 'CmdOrCtrl+Shift+S',
-                click: () => this.#handleSyncCache()
-              },
-              {
-                label: '显示缓存统计',
-                click: () => this.#handleShowCacheStats()
-              }
-            ]
+            click: () => this.#handleSaveConfig()
           },
           { type: 'separator' },
           process.platform === 'darwin' ? { role: 'close' } : { role: 'quit' }
@@ -279,32 +245,6 @@ class ElectronMainApp {
       {
         label: '视图',
         submenu: [
-          {
-            label: '切换侧边栏',
-            accelerator: 'CmdOrCtrl+B',
-            click: () => this.#sendMenuEvent('toggleSidebar')
-          },
-          {
-            label: '切换 Inspector',
-            accelerator: 'CmdOrCtrl+Shift+S',
-            click: () => this.#sendMenuEvent('toggleSummary')
-          },
-          {
-            label: '最大化/还原窗口',
-            accelerator: 'CmdOrCtrl+Shift+M',
-            click: () => this.#sendMenuEvent('toggleMaximize')
-          },
-          { type: 'separator' },
-          {
-            label: 'Agent 面板',
-            click: () => this.#sendMenuEvent('showAgent')
-          },
-          {
-            label: '工具面板',
-            accelerator: 'CmdOrCtrl+T',
-            click: () => this.#sendMenuEvent('showTools')
-          },
-          { type: 'separator' },
           { role: 'reload' },
           { role: 'forceReload' },
           { role: 'toggleDevTools' },
@@ -314,102 +254,6 @@ class ElectronMainApp {
           { role: 'zoomOut' },
           { type: 'separator' },
           { role: 'togglefullscreen' }
-        ]
-      },
-      
-      // Agent 菜单
-      {
-        label: 'Agent',
-        submenu: [
-          {
-            label: '聚焦输入',
-            accelerator: 'CmdOrCtrl+Return',
-            click: () => this.#sendMenuEvent('focusInput')
-          },
-          {
-            label: '停止执行',
-            accelerator: 'CmdOrCtrl+.',
-            click: () => this.#sendMenuEvent('stopAgent')
-          },
-          { type: 'separator' },
-          {
-            label: '清除对话',
-            click: () => this.#sendMenuEvent('clearConversation')
-          },
-          {
-            label: '历史记录',
-            click: () => this.#sendMenuEvent('showHistory')
-          },
-          {
-            label: '文档搜索',
-            click: () => this.#sendMenuEvent('insertDocSearch')
-          },
-          { type: 'separator' },
-          {
-            label: '模型配置',
-            accelerator: 'CmdOrCtrl+,',
-            click: () => this.#sendMenuEvent('openModelConfig')
-          }
-        ]
-      },
-      
-      // 技能菜单
-      {
-        label: '技能',
-        submenu: [
-          {
-            label: '诊断',
-            click: () => this.#sendMenuEvent('insertCommand', { value: '/diagnose symptom=' })
-          },
-          {
-            label: '代码审查',
-            click: () => this.#sendMenuEvent('insertCommand', { value: '/review scope=' })
-          },
-          {
-            label: 'TDD',
-            click: () => this.#sendMenuEvent('insertCommand', { value: '/tdd phase=red component=' })
-          },
-          {
-            label: '架构设计',
-            click: () => this.#sendMenuEvent('insertCommand', { value: '/architect goal=' })
-          },
-          {
-            label: '交接总结',
-            click: () => this.#sendMenuEvent('insertCommand', { value: '/handoff session_summary=' })
-          }
-        ]
-      },
-      
-      // 工具菜单
-      {
-        label: '工具',
-        submenu: [
-          {
-            label: '查看工具面板',
-            accelerator: 'CmdOrCtrl+T',
-            click: () => this.#sendMenuEvent('showTools')
-          },
-          {
-            label: '刷新项目文件',
-            click: () => this.#sendMenuEvent('refreshProjectTree')
-          },
-          {
-            label: '刷新 RAG 文档',
-            click: () => this.#sendMenuEvent('refreshRagDocs')
-          },
-          {
-            label: '预览当前项目',
-            click: () => this.#sendMenuEvent('startPreview')
-          },
-          { type: 'separator' },
-          {
-            label: '插入 Shell 命令',
-            click: () => this.#sendMenuEvent('insertCommand', { value: '请运行命令：' })
-          },
-          {
-            label: '插入 Web 搜索',
-            click: () => this.#sendMenuEvent('insertCommand', { value: '请搜索最新资料：' })
-          }
         ]
       },
       
@@ -441,10 +285,6 @@ class ElectronMainApp {
             }
           },
           {
-            label: '快捷键',
-            click: () => this.#sendMenuEvent('showShortcuts')
-          },
-          {
             label: '报告问题',
             click: async () => {
               await shell.openExternal('https://github.com/novvoo/ai-engineering-mastery-agent/issues');
@@ -461,15 +301,6 @@ class ElectronMainApp {
 
     const menu = Menu.buildFromTemplate(template);
     Menu.setApplicationMenu(menu);
-  }
-
-  #sendMenuEvent(command, data = {}) {
-    if (!this.#ipcAdapter) {
-      console.warn('IPC 适配器未初始化，无法发送菜单事件');
-      return;
-    }
-    // 使用 IPC 适配器广播菜单事件
-    this.#ipcAdapter.broadcast('menu:click', { command, ...data });
   }
 
   /**
@@ -1261,125 +1092,6 @@ class ElectronMainApp {
       });
     } catch (error) {
       dialog.showErrorBox('保存失败', error.message);
-    }
-  }
-
-  /**
-   * 处理打开缓存目录
-   */
-  #handleOpenCacheDir() {
-    if (!fs.existsSync(CACHE_DIR)) {
-      fs.mkdirSync(CACHE_DIR, { recursive: true });
-    }
-    shell.openPath(CACHE_DIR);
-  }
-
-  /**
-   * 处理清理缓存
-   */
-  async #handleClearCache() {
-    const result = await dialog.showMessageBox(this.#mainWindow, {
-      type: 'question',
-      buttons: ['确认清理', '取消'],
-      title: '确认清理缓存',
-      message: '确定要清理所有文件缓存吗？这将删除 ~/.agent-cache/files 目录下的所有内容。',
-      defaultId: 0,
-      cancelId: 1
-    });
-
-    if (result.response === 0) {
-      try {
-        // 递归删除缓存目录
-        if (fs.existsSync(CACHE_DIR)) {
-          const deleteRecursive = (dir) => {
-            if (fs.existsSync(dir)) {
-              fs.readdirSync(dir).forEach((file) => {
-                const curPath = path.join(dir, file);
-                if (fs.lstatSync(curPath).isDirectory()) {
-                  deleteRecursive(curPath);
-                } else {
-                  fs.unlinkSync(curPath);
-                }
-              });
-              fs.rmdirSync(dir);
-            }
-          };
-          
-          deleteRecursive(CACHE_DIR);
-          
-          dialog.showMessageBox(this.#mainWindow, {
-            type: 'info',
-            title: '清理完成',
-            message: '缓存已清理',
-            buttons: ['确定']
-          });
-        } else {
-          dialog.showMessageBox(this.#mainWindow, {
-            type: 'info',
-            title: '提示',
-            message: '缓存目录不存在，无需清理',
-            buttons: ['确定']
-          });
-        }
-      } catch (error) {
-        dialog.showErrorBox('清理失败', error.message);
-      }
-    }
-  }
-
-  /**
-   * 处理同步缓存
-   */
-  async #handleSyncCache() {
-    try {
-      dialog.showMessageBox(this.#mainWindow, {
-        type: 'info',
-        title: '同步缓存',
-        message: '缓存将自动与工作目录同步。当文件发生变更时，缓存会自动失效并重新读取。',
-        buttons: ['确定']
-      });
-    } catch (error) {
-      dialog.showErrorBox('同步失败', error.message);
-    }
-  }
-
-  /**
-   * 处理显示缓存统计
-   */
-  async #handleShowCacheStats() {
-    try {
-      let fileCount = 0;
-      let totalSize = 0;
-      
-      if (fs.existsSync(CACHE_DIR)) {
-        const countFiles = (dir) => {
-          if (fs.existsSync(dir)) {
-            fs.readdirSync(dir).forEach((file) => {
-              const curPath = path.join(dir, file);
-              const stats = fs.lstatSync(curPath);
-              if (stats.isDirectory()) {
-                countFiles(curPath);
-              } else {
-                fileCount++;
-                totalSize += stats.size;
-              }
-            });
-          }
-        };
-        
-        countFiles(CACHE_DIR);
-      }
-      
-      const sizeMB = (totalSize / (1024 * 1024)).toFixed(2);
-      
-      dialog.showMessageBox(this.#mainWindow, {
-        type: 'info',
-        title: '缓存统计',
-        message: `缓存文件数量: ${fileCount}\n缓存总大小: ${sizeMB} MB\n缓存目录: ${CACHE_DIR}`,
-        buttons: ['确定']
-      });
-    } catch (error) {
-      dialog.showErrorBox('获取统计失败', error.message);
     }
   }
 

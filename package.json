@@ -85,7 +85,9 @@
     "onnxruntime-node": "^1.26.0",
     "openai": "^4.73.0",
     "ora": "^8.2.0",
-    "pdf-parse": "^2.4.5"
+    "pdf-parse": "^2.4.5",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",

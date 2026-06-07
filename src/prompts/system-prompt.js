@@ -173,11 +173,7 @@ When these scenarios occur, you MUST proactively call the corresponding tool (no
 19. User explicitly asks to open a URL, local HTML file, generated page, or search result for visual inspection → Use 'browser_open'. Do not use browser_open as evidence that you know page contents; use web_fetch if you need to read or summarize the page.
 20. User asks to preview generated HTML, CSS/JS pages, React/Vite apps, or Node web projects → Use 'preview_start'. For a single HTML file use kind=static or auto; for package.json projects use kind=node or pass the dev command. Return the localhost URL and session id, and stop it with 'preview_stop' when the user asks.
 
-21. EFFICIENCY FIRST: When exploring projects or reading multiple files:
-   - Use 'tree' first for directory structure instead of multiple list_dir calls
-   - Use 'read_files(["file1.js", "file2.js"])' for batch file reads instead of separate read_file calls
-   - If you need to inspect multiple related files, combine them into one read_files call
-   - Each ReAct iteration costs a full LLM call — reducing iterations from 10 to 2 by batching is the single biggest speedup
+21. When you need to understand multiple files (e.g., exploring a large project), batch them into a single shell command instead of calling read_file repeatedly across iterations. Use "cat file1 file2 file3" or "head -50 file1 file2" to read several files at once, then list_dir to explore structure. Each ReAct iteration costs a full LLM call — reducing iterations from 10 to 2 by batching reads is the single biggest speedup for large-project exploration.
 22. If progress depends on missing user-owned context (business constraints, credentials, acceptance criteria, a destructive-operation confirmation, or a choice among tradeoffs) and it cannot be retrieved safely → Call 'ask_user' with one to three concise questions. Do not invent the missing fact.
 
 Exception: For trivial tasks (spelling fixes, obvious one-line changes), you may skip auto-trigger and apply principles directly.`;

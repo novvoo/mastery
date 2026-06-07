@@ -596,11 +596,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     const channel = message.metadata?.channel;
     
     if (this.config.debug) {
-      if (message.payload !== undefined) {
-        console.log(`[MainProcessIPC] 处理请求: ${channel}`, message.payload);
-      } else {
-        console.log(`[MainProcessIPC] 处理请求: ${channel}`);
-      }
+      console.log(`[MainProcessIPC] 处理请求: ${channel}`, message.payload);
     }
 
     try {
@@ -660,38 +656,15 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
         case 'system:getStats':
           return this.createResponse(message, this.getStats());
 
-        case 'window:getState':
-        case 'app:getInfo':
-        case 'llm:getConfigStatus':
-        case 'workspace:listDirectory':
-        case 'preview:list':
-        case 'window:minimize':
-        case 'window:maximize':
-        case 'window:close':
-        case 'window:show':
-        case 'window:hide':
-        case 'dialog:openFile':
-        case 'dialog:saveFile':
-        case 'dialog:openDirectory':
-        case 'notification:show':
-        case 'app:getPath':
-        case 'app:openExternal':
-        case 'workspace:setWorkingDirectory':
-        case 'preview:start':
-        case 'preview:stop':
-        case 'llm:saveConfig':
-          // 这些应该由外部通过 registerHandler 注册，如果没有注册，返回默认值
-          const customHandler = this.#handlers.get(channel);
-          if (customHandler) {
-            const result = await customHandler(message.payload, sender);
+        default:
+          // 自定义处理器
+          const handler = this.#handlers.get(channel);
+          if (handler) {
+            const result = await handler(message.payload, sender);
+            // 确保结果不为 undefined
             return this.createResponse(message, result !== undefined ? result : { success: true });
           }
-          // 如果没有注册，返回默认响应而不是抛出错误
-          console.warn(`[MainProcessIPC] 频道 ${channel} 未注册处理器，返回默认值`);
-          return this.createResponse(message, { success: true, info: '处理器未注册' });
           
-        default:
-          // 未知的频道
           throw new Error(`未知的频道: ${channel}`);
       }
     } catch (error) {
@@ -866,7 +839,6 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
 
   /**
    * 发送消息到指定窗口
-   * 如果没有指定 windowId，则广播到所有窗口
    */
   async send(message, windowId) {
     if (!this.isConnected) {
@@ -878,24 +850,14 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
       this.#processQueue();
     }
 
-    if (windowId !== undefined && windowId !== null) {
-      // 发送到指定窗口
-      const window = this.#getWindow(windowId);
-      if (!window) {
-        throw new Error(`窗口未找到: ${windowId}`);
-      }
-      window.send(message.type, message.toJSON());
-      return message;
-    } else {
-      // 广播到所有窗口
-      for (const winId of this.#windows) {
-        const window = this.#getWindow(winId);
-        if (window) {
-          window.send(message.type, message.toJSON());
-        }
-      }
-      return message;
+    // 查找窗口
+    const window = this.#getWindow(windowId);
+    if (!window) {
+      throw new Error(`窗口未找到: ${windowId}`);
     }
+
+    window.send(message.type, message.toJSON());
+    return message;
   }
 
   /**
@@ -941,11 +903,6 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
    * 获取窗口
    */
   #getWindow(windowId) {
-    if (windowId === undefined || windowId === null) {
-      // 对于 undefined 或 null 窗口 ID，直接返回 null，调用者应该处理广播逻辑
-      return null;
-    }
-
     const sender = this.#windowSenders.get(windowId);
     if (sender && typeof sender.send === 'function') {
       return sender;
@@ -1122,11 +1079,7 @@ export class RendererProcessIPCAdapter extends IPCAdapterBase {
       this.#ipcRenderer.send(IPCMessageType.REQUEST, message.toJSON());
       
       if (this.config.debug) {
-        if (payload !== undefined) {
-          console.log(`[RendererProcessIPC] 发送请求: ${channel}`, payload);
-        } else {
-          console.log(`[RendererProcessIPC] 发送请求: ${channel}`);
-        }
+        console.log(`[RendererProcessIPC] 发送请求: ${channel}`, payload);
       }
     });
   }

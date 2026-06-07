@@ -829,28 +829,4 @@ describe('Runtime Layer Integration Tests', () => {
       expect(configHookCalled).toBe(true);
     });
   });
-
-  describe('File Cache System', () => {
-    it('应该缓存文件系统工具调用', async () => {
-      engine = createAgentEngine({ workingDirectory: testDir });
-      await engine.initialize();
-      
-      // 检查文件系统工具是否已注册
-      const tools = engine.getTools();
-      const hasListDir = tools.some(t => t.name === 'list_dir');
-      const hasReadFile = tools.some(t => t.name === 'read_file');
-      
-      expect(hasListDir).toBe(true);
-      expect(hasReadFile).toBe(true);
-    });
-
-    it('AgentEngine 应该维护工具调用历史', async () => {
-      engine = createAgentEngine({ workingDirectory: testDir });
-      await engine.initialize();
-      
-      // 检查引擎是否有我们添加的工具调用历史机制
-      expect(engine).toBeDefined();
-      expect(typeof engine.processInput).toBe('function');
-    });
-  });
 });
