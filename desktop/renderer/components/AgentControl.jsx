@@ -732,7 +732,6 @@ function AgentControl({
     : '未设置';
   
   return (
-  return (
     <div style={styles.container}>
       {/* 状态显示 */}
       <div style={styles.section}>
