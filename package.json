@@ -101,7 +101,7 @@
   "build": {
     "appId": "com.ai-engineering-mastery.agent",
     "productName": "AI Engineering Mastery Agent",
-    "copyright": "Copyright © 2024 AI Engineering Mastery Agent",
+    "copyright": "Copyright \u00a9 2024 AI Engineering Mastery Agent",
     "directories": {
       "output": "release/desktop",
       "buildResources": "build"
@@ -227,5 +227,6 @@
     "portable": {
       "artifactName": "desktop-${productName}-${version}-${arch}-portable.${ext}"
     }
-  }
+  },
+  "workspaces": []
 }
