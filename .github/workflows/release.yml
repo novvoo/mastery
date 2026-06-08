@@ -224,7 +224,7 @@ jobs:
         with:
           path: |
             .electron-builder-cache
-          key: ${{ runner.os }}-electron-builder-${{ hashFiles("**/package-lock.json", "desktop/package.json") }}
+          key: ${{ runner.os }}-electron-builder-${{ hashFiles('**/package-lock.json', 'desktop/package.json') }}
           restore-keys: |
             ${{ runner.os }}-electron-builder-
 
