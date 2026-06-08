@@ -2152,6 +2152,15 @@ const handleClearAgentHistory = useCallback(() => {
           >
             {sidebarCollapsed ? '>' : '<'}
           </button>
+          <button
+            style={{
+              ...styles.activityButton
+            }}
+            onClick={() => setShowSettings(true)}
+            title="设置"
+          >
+            ⚙️
+          </button>
         </nav>
 
         {!sidebarCollapsed && (
@@ -2178,10 +2187,6 @@ const handleClearAgentHistory = useCallback(() => {
               </div>
             </div>
             {renderSidebarContent()}
-          <div style={{borderTop:'1px solid var(--border-subtle)',padding:'8px 12px',display:'flex',justifyContent:'flex-end',marginTop:'auto'}}>
-            <button style={{width:'30px',height:'30px',borderRadius:'6px',border:'1px solid var(--border-subtle)',backgroundColor:'transparent',color:'var(--text-muted)',cursor:'pointer',fontSize:'16px',display:'inline-flex',alignItems:'center',justifyContent:'center'}}
-              onClick={() => setShowSettings(true)} title="设置">⚙️</button>
-          </div>
         </aside>
         )}
         
