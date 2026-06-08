@@ -153,7 +153,7 @@ export function useRuntime() {
       if (window.electronAPI) {
         const result = await window.electronAPI.processInput(input, options);
         const answer = extractAgentAnswer(result);
-        const converged = answer ? answer.split('\n\n')[0].trim() : answer;
+        const converged = answer ? truncateAnswer(answer) : answer;
         const needsUserInput = result?.status === 'needs_user_input';
         
         // 添加结果消息（已收敛）
@@ -257,7 +257,7 @@ export function useRuntime() {
 
         if (eventName === 'agent:complete') {
           const answer = extractAgentAnswer(payload);
-          const dedup = answer ? answer.split('\n\n')[0].trim() : answer;
+          const dedup = answer ? truncateAnswer(answer) : answer;
           if (dedup && dedup === lastAnswerRef.current) {
             return;
           }
@@ -321,7 +321,7 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
       const answer = extractAgentAnswer(payload);
       const needsUserInput = payload?.result?.status === 'needs_user_input' || payload?.status === 'needs_user_input';
       // 收敛 Agent 回答：只取第一段（FINAL_ANSWER 后的冗余内容不显示）
-      const converged = answer ? answer.split('\n\n')[0].trim() : answer;
+      const converged = answer ? truncateAnswer(answer) : answer;
       return {
         message: {
           ...base,
