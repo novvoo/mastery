@@ -732,6 +732,7 @@ function AgentControl({
     : '未设置';
   
   return (
+  return (
     <div style={styles.container}>
       {/* 状态显示 */}
       <div style={styles.section}>
@@ -751,130 +752,7 @@ function AgentControl({
           )}
         </div>
         
-        {/* 工作目录 */}
-        <div style={styles.workingDirectory}>
-          <span style={styles.directoryIcon}>DIR</span>
-          <span style={styles.directoryText}>
-            {workingDirectory || '未设置'}
-          </span>
-          <button
-            style={styles.changeButton}
-            onClick={onWorkingDirectoryChange}
-            title="更改工作目录"
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
-          >
-            更改
-          </button>
-        </div>
-        <div style={styles.projectExplorer}>
-          <div style={styles.projectExplorerHeader}>
-            <span style={styles.projectExplorerTitle} title={workingDirectory || ''}>
-              {rootName}
-            </span>
-            <button
-              type="button"
-              style={styles.projectExplorerButton}
-              onClick={projectTree?.onRefresh}
-              disabled={!workingDirectory || projectTree?.status === 'loading'}
-              title="刷新文件列表"
-            >
-              ↻
-            </button>
-          </div>
-          {projectTree?.error ? (
-            <div style={styles.projectTreeEmpty}>{projectTree.error}</div>
-          ) : projectTree?.status === 'loading' && !(projectTree?.directoryChildren?.[''] || []).length ? (
-            <div style={styles.projectTreeEmpty}>正在读取项目文件...</div>
-          ) : (
-            <div style={styles.projectTree}>
-              {renderProjectTreeRows('', 0)}
-            </div>
-          )}
-        </div>
-      </div>
-      
-      {/* 快捷命令面板已移除 */}
-      
-      {/* 输入区域 */}
-      <div style={styles.section}>
-        <div style={styles.sectionTitle}>
-          <span>输入任务</span>
-          <button
-            style={styles.clearButton}
-            onClick={() => setShowTemplates(!showTemplates)}
-            title="显示输入模板"
-          >
-            {showTemplates ? '隐藏模板' : '模板'}
-          </button>
-        </div>
-        
-        {/* 模板面板 */}
-        {showTemplates && (
-          <div style={styles.templatesPanel}>
-            <div style={styles.templatesHeader}>
-              <span style={styles.templatesTitle}>
-                输入模板
-              </span>
-            </div>
-            <div style={styles.templatesList}>
-              {INPUT_TEMPLATES.map((template, index) => (
-                <div
-                  key={index}
-                  style={styles.templateItem}
-                  onClick={() => handleTemplateClick(template)}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--background-color)'}
-                >
-                  <span style={styles.templateIcon}>{template.icon}</span>
-                  <span style={styles.templateName}>{template.name}</span>
-                  <span style={styles.templateDesc}>{template.desc}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        
-      </div>
-      
-      {/* 执行选项 */}
-      <div style={styles.section}>
-        <div style={styles.sectionTitle}>
-          <span>执行选项</span>
-        </div>
-        
-        <div style={styles.optionsContainer}>
-          <div style={styles.optionRow}>
-            <input
-              type="checkbox"
-              style={styles.checkbox}
-              checked={agentOptions.autoSave}
-              onChange={(e) => handleOptionChange('autoSave', e.target.checked)}
-            />
-            <label 
-              style={styles.label}
-              onClick={() => handleOptionChange('autoSave', !agentOptions.autoSave)}
-            >
-              自动保存结果
-            </label>
-          </div>
-          
-          <div style={styles.optionRow}>
-            <label style={{ ...styles.label, width: '100px' }}>
-              最大迭代:
-            </label>
-            <input
-              type="number"
-              style={styles.numberInput}
-              value={agentOptions.maxIterations}
-              onChange={(e) => handleOptionChange('maxIterations', parseInt(e.target.value) || 180)}
-              min={1}
-              max={500}
-            />
-          </div>
-        </div>
-      </div>
-      
+
       {/* 历史会话 */}
       <div style={styles.section}>
         <div style={styles.sectionTitle}>
@@ -939,6 +817,89 @@ function AgentControl({
           </div>
         </div>
       </div>
+
+        <div style={styles.projectExplorer}>
+          <div style={styles.projectExplorerHeader}>
+            <span style={styles.projectExplorerTitle} title={workingDirectory || ''}>
+              {rootName}
+            </span>
+            <button
+              type="button"
+              style={styles.projectExplorerButton}
+              onClick={projectTree?.onRefresh}
+              disabled={!workingDirectory || projectTree?.status === 'loading'}
+              title="刷新文件列表"
+            >
+              ↻
+            </button>
+          </div>
+          {projectTree?.error ? (
+            <div style={styles.projectTreeEmpty}>{projectTree.error}</div>
+          ) : projectTree?.status === 'loading' && !(projectTree?.directoryChildren?.[''] || []).length ? (
+            <div style={styles.projectTreeEmpty}>正在读取项目文件...</div>
+          ) : (
+            <div style={styles.projectTree}>
+              {renderProjectTreeRows('', 0)}
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {/* 快捷命令面板已移除 */}
+      
+      {/* 输入区域 */}
+      <div style={styles.section}>
+        <div style={styles.sectionTitle}>
+
+          <span>输入任务</span>
+          <button
+            style={styles.clearButton}
+        </div>
+        
+          <div style={styles.templatesPanel}>
+            <div style={styles.templatesHeader}>
+              <span style={styles.templatesTitle}>
+                输入模板
+              </span>
+            </div>
+            <div style={styles.templatesList}>
+              {INPUT_TEMPLATES.map((template, index) => (
+                <div
+                  key={index}
+                  style={styles.templateItem}
+                  onClick={() => handleTemplateClick(template)}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--background-color)'}
+                >
+                  <span style={styles.templateIcon}>{template.icon}</span>
+                  <span style={styles.templateName}>{template.name}</span>
+                  <span style={styles.templateDesc}>{template.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+      </div>
+      
+
+        {/* 工作目录 */}
+        <div style={styles.workingDirectory}>
+          <span style={styles.directoryIcon}>DIR</span>
+          <span style={styles.directoryText}>
+            {workingDirectory || '未设置'}
+          </span>
+          <button
+            style={styles.changeButton}
+            onClick={onWorkingDirectoryChange}
+            title="更改工作目录"
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
+          >
+            更改
+          </button>
+        </div>
+
     </div>
   );
 }

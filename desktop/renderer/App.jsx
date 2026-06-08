@@ -2156,7 +2156,7 @@ const handleClearAgentHistory = useCallback(() => {
         {!sidebarCollapsed && (
           <aside style={styles.leftSidebar}>
             <div style={styles.sidebarHeader}>
-              <span style={styles.sidebarTitle}>{activeTab === 'tools' ? '工具' : 'Agent'}</span>
+              <span style={styles.sidebarTitle}>{activeTab === 'tools' ? '工具' : '会话'}</span>
               <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                 {activeTab !== 'tools' && (
                   <button
@@ -2177,7 +2177,11 @@ const handleClearAgentHistory = useCallback(() => {
               </div>
             </div>
             {renderSidebarContent()}
-          </aside>
+          <div style={{borderTop:'1px solid var(--border-subtle)',padding:'8px 12px',display:'flex',justifyContent:'flex-end',marginTop:'auto'}}>
+            <button style={{width:'30px',height:'30px',borderRadius:'6px',border:'1px solid var(--border-subtle)',backgroundColor:'transparent',color:'var(--text-muted)',cursor:'pointer',fontSize:'16px',display:'inline-flex',alignItems:'center',justifyContent:'center'}}
+              onClick={() => setShowLLMSetup(true)} title="设置">⚙️</button>
+          </div>
+        </aside>
         )}
         
         {/* 聊天区域 */}
