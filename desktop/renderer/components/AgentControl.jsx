@@ -867,7 +867,7 @@ function AgentControl({
               type="number"
               style={styles.numberInput}
               value={agentOptions.maxIterations}
-              onChange={(e) => handleOptionChange('maxIterations', parseInt(e.target.value) || 180)}
+              onChange={(e) => handleOptionChange('maxIterations', parseInt(e.target.value) || 60)}
               min={1}
               max={500}
             />

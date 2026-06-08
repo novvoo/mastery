@@ -12,7 +12,7 @@ import { CLIUIAdapter } from './ui-adapter.js';
 export async function runCLIRuntime(options = {}) {
   const workingDirectory = options.workingDirectory || process.cwd();
   const debug = options.debug || false;
-  const maxIterations = options.maxIterations || 180;
+  const maxIterations = options.maxIterations || 60;
 
   // Create the agent engine
   const engine = createAgentEngine({

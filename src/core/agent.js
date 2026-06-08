@@ -19,13 +19,13 @@ import { ObservationSummarizer } from './observation-summarizer.js';
 const TERMINATION_KEYWORDS = ['FINAL_ANSWER:', 'Answer:', 'TASK_COMPLETE'];
 const MAX_ITERATIONS_DEFAULT = 120;
 
-// 自适应迭代预算
+// 自适应迭代预算（占 maxIterations 的比例）
 const ITERATION_BUDGET = {
-  trivial: 15,
-  simple: 30,
-  normal: 50,
-  intensive: 100,
-  exploration: 120,
+  trivial: 0.25,
+  simple: 0.5,
+  normal: 0.8,
+  intensive: 1.0,
+  exploration: 1.0,
 };
 
 // 停滞检测
@@ -2000,27 +2000,24 @@ export class ReActAgent {
    * 核心原则：够用就好，不用浪费；也不限制复杂任务
    */
   #computeIterationBudget(taskProfile) {
-    // 如果用户显式指定了 maxIterations，优先使用
-    if (this.#config.maxIterations && this.#config.maxIterations !== MAX_ITERATIONS_DEFAULT) {
-      return this.#config.maxIterations;
+    const maxIterations = this.#config.maxIterations || MAX_ITERATIONS_DEFAULT;
+    let ratio;
+
+    if (!taskProfile) {
+      ratio = ITERATION_BUDGET.normal;
+    } else if (taskProfile.isLikelyTrivial) {
+      ratio = ITERATION_BUDGET.trivial;
+    } else if (!taskProfile.isCodingTask) {
+      ratio = ITERATION_BUDGET.simple;
+    } else if (taskProfile.requiresAutomaticPlanning || taskProfile.isBugTask) {
+      ratio = ITERATION_BUDGET.intensive;
+    } else if (taskProfile.isCodingTask) {
+      ratio = ITERATION_BUDGET.normal;
+    } else {
+      ratio = ITERATION_BUDGET.normal;
     }
 
-    if (!taskProfile) { return ITERATION_BUDGET.normal; }
-
-    // 基于任务分类自动选择预算等级
-    if (taskProfile.isLikelyTrivial) {
-      return ITERATION_BUDGET.trivial;
-    }
-    if (!taskProfile.isCodingTask) {
-      return ITERATION_BUDGET.simple;
-    }
-    if (taskProfile.requiresAutomaticPlanning || taskProfile.isBugTask) {
-      return ITERATION_BUDGET.intensive;
-    }
-    if (taskProfile.isCodingTask) {
-      return ITERATION_BUDGET.normal;
-    }
-    return ITERATION_BUDGET.normal;
+    return Math.max(1, Math.round(maxIterations * ratio));
   }
 
   /**

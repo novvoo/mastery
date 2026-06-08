@@ -58,7 +58,7 @@ export class RuntimeConfig {
     this.debug = options.debug || false;
     this.modelProvider = options.modelProvider;
     this.autoDownloadModels = options.autoDownloadModels !== false;
-    this.maxIterations = options.maxIterations || 180;
+    this.maxIterations = options.maxIterations || 60;
     
     // 新增配置项
     this.pluginConfig = options.pluginConfig || {};

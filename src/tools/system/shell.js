@@ -9,16 +9,29 @@ import { createShellSandbox, shellSandboxConfigFromEnv } from '../../sandbox/she
 import { startPtyCommand } from './pty.js';
 
 const DANGEROUS_PATTERNS = [
-  /rm\s+-rf\s+\//,
-  /rm\s+-rf\s+~/,
-  /mkfs/,
-  /dd\s+if=/,
+  // Destructive rm targeting sensitive paths (with leading-path variations like
+  // /bin/rm, and whitespace variations).
+  /(?:^|[\s;&|`$()])(?:\/\S+\/)?rm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*|-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*|--recursive\s+--force)\s+(?:\/|~|\.\.\/|\$\{|`)/,
+  /(?:^|[\s;&|`$()])(?:\/\S+\/)?rm\s+-[a-zA-Z]*(?:rf|fr)[a-zA-Z]*\s+(?:\/|~|\.\.)/,
+  // mkfs, dd, mkswap and friends.
+  /(?:^|[\s;&|`$()])(?:mkfs|mkswap|dd|shred)\b/,
+  // Writing directly to block/device nodes.
   />\s*\/dev\//,
-  /chmod\s+777\s+\//,
-  /curl.*\|\s*(ba)?sh/,
-  /wget.*\|\s*(ba)?sh/,
-  /:()\s*{.*};:/,  // fork bomb
+  // World-writable chmod on system paths.
+  /chmod\s+(?:-R\s+)?777\s+(?:\/|~|\.\.)/,
+  // Piping downloads directly into a shell interpreter.
+  /(?:curl|wget|aria2c|python|python3|node)\b[^\n;|&`]*\|\s*(?:ba|z|k|da)?sh\b/,
+  /(?:curl|wget)\b[^\n;|&`]*>\s*(?:\/tmp|\/var)\/.*\.(?:sh|py|pl)\b/,
+  // Classic fork bomb.
+  /:\s*\(\s*\)\s*\{[^{}]*\}\s*;\s*:/,
+  // Attempting to elevate privileges blindly.
+  /\b(?:sudo|su|doas|pkexec)\s+-[a-zA-Z]*[iSs]\b/,
+  // Writing to /etc, /usr, /boot, /proc/sys without a clear sandbox prefix.
+  />\s*(?:\/etc|\/usr|\/boot|\/proc\/sys|\/sys)\//,
 ];
+
+const MAX_COMMAND_LENGTH = 8192;
+const HARD_TIMEOUT_MS = 120000;
 
 /**
  * 异步执行命令（不阻塞事件循环）
@@ -86,8 +99,15 @@ export function createShellTool(options = {}) {
     },
     required: ['command'],
     handler: async ({ command, timeout, foreground }, ctx) => {
+      if (typeof command !== 'string' || command.trim().length === 0) {
+        return 'Error: command must be a non-empty string.';
+      }
+      if (command.length > MAX_COMMAND_LENGTH) {
+        return `Error: command exceeds max length (${command.length} > ${MAX_COMMAND_LENGTH} chars).`;
+      }
+
       const cmd = command;
-      const ms = timeout || 30000;
+      const ms = Math.min(timeout || 30000, HARD_TIMEOUT_MS);
       const startedAt = Date.now();
 
       if (ctx.debug && ctx.ui?.debugEvent) {
@@ -96,10 +116,12 @@ export function createShellTool(options = {}) {
           cwd: ctx.workingDirectory,
           timeoutMs: ms,
           tool: ctx.toolName || 'shell',
+          foregroundBypass: !!foreground,
         });
       }
 
-      // Safety check
+      // Safety check -- before any execution. Runs the raw string through each
+      // pattern to catch obvious destructive operations.
       for (const pattern of DANGEROUS_PATTERNS) {
         if (pattern.test(cmd)) {
           if (ctx.debug && ctx.ui?.debugEvent) {
@@ -128,6 +150,15 @@ export function createShellTool(options = {}) {
           'Use pty_read with the returned output_cursor to observe progress, and call pty_stop when verification is done. Do not retry this command with shell just because it is still running.',
           sessionJson,
         ].join('\n');
+      }
+
+      if (foreground) {
+        if (ctx.debug && ctx.ui?.debugEvent) {
+          ctx.ui.debugEvent('Shell: foreground bypass active', {
+            command: cmd,
+            reason: longRunning.reason || 'long-running detection bypass',
+          });
+        }
       }
 
       try {

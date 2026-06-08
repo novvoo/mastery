@@ -873,7 +873,7 @@ function App() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [agentOptions, setAgentOptions] = useState({
     debug: false,
-    maxIterations: 180,
+    maxIterations: 60,
     autoSave: true
   });
   const [activeAgentSessionId, setActiveAgentSessionId] = useState(() => (
@@ -2361,7 +2361,7 @@ const handleClearAgentHistory = useCallback(() => {
           <div style={{display:'flex',alignItems:'center',gap:'8px',padding:'5px 8px'}}>
             <span style={{fontSize:'11px',color:'var(--text-muted)',whiteSpace:'nowrap'}}>Max iterations</span>
             <input type="number" value={agentOptions.maxIterations}
-              onChange={(e)=>setAgentOptions(p=>({...p,maxIterations:parseInt(e.target.value)||180}))}
+              onChange={(e)=>setAgentOptions(p=>({...p,maxIterations:parseInt(e.target.value)||60}))}
               style={{width:'56px',height:'24px',borderRadius:'4px',border:'1px solid var(--border-subtle)',backgroundColor:'#11161e',color:'var(--text-color)',padding:'0 6px',fontSize:'11px'}}
               min={1} max={500}/>
           </div>

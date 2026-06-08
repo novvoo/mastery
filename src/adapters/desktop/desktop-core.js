@@ -41,7 +41,7 @@ export const DesktopState = {
 const DEFAULT_DESKTOP_CONFIG = {
   workingDirectory: process.cwd(),
   debug: false,
-  maxIterations: 180,
+  maxIterations: 60,
   autoDownloadModels: true,
   
   // IPC 配置

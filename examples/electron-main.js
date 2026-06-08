@@ -122,7 +122,7 @@ class ElectronMainApp {
     this.#desktopCore = createDesktopCore({
       workingDirectory: this.#config.workingDirectory,
       debug: this.#config.debug,
-      maxIterations: 180,
+      maxIterations: 60,
       ipc: {
         enabled: true,
         requestTimeout: 30000,

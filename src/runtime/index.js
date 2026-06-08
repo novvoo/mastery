@@ -41,7 +41,7 @@ export function createRuntime(options = {}) {
     platform,
     workingDirectory: options.workingDirectory || process.cwd(),
     debug: options.debug || false,
-    maxIterations: options.maxIterations || 180,
+    maxIterations: options.maxIterations || 60,
     autoDownloadModels: options.autoDownloadModels !== false,
     ...options
   });

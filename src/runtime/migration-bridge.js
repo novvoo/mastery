@@ -84,7 +84,7 @@ export class MigrationBridge {
         platform: this.#platform,
         workingDirectory: process.env.WORKING_DIRECTORY || process.cwd(),
         debug: process.env.DEBUG === 'true',
-        maxIterations: parseInt(process.env.MAX_ITERATIONS || '180'),
+        maxIterations: parseInt(process.env.MAX_ITERATIONS || '60'),
         autoDownloadModels: process.env.AUTO_DOWNLOAD_MODELS !== 'false'
       });
       await this.#engine.initialize();
@@ -231,7 +231,7 @@ export class MigrationBridge {
       this.#oldComponents.toolRegistry,
       this.#oldComponents.memoryManager,
       {
-        maxIterations: options.maxIterations || parseInt(process.env.MAX_ITERATIONS || '180'),
+        maxIterations: options.maxIterations || parseInt(process.env.MAX_ITERATIONS || '60'),
         workingDirectory: options.workingDirectory || process.cwd(),
         debug: options.debug || process.env.DEBUG === 'true',
         securityPolicy: this.#oldComponents.securityPolicy,
@@ -365,7 +365,7 @@ export class MigrationBridge {
       platform: this.#platform,
       workingDirectory: oldConfig.workingDirectory || oldConfig.workingDir || process.cwd(),
       debug: oldConfig.debug || false,
-      maxIterations: oldConfig.maxIterations || 180,
+      maxIterations: oldConfig.maxIterations || 60,
       autoDownloadModels: oldConfig.autoDownloadModels !== false,
       modelProvider: oldConfig.modelProvider,
       model: oldConfig.model,

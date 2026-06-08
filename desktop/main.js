@@ -78,7 +78,7 @@ class ElectronMainApp {
       
       // Runtime 配置
       runtime: {
-        maxIterations: config.maxIterations || 180,
+        maxIterations: config.maxIterations || 60,
         autoDownloadModels: config.autoDownloadModels !== false,
         hookTimeout: config.hookTimeout || 5000
       },
