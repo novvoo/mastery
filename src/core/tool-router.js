@@ -28,30 +28,42 @@ const WEB_TOOLS = [
   'preview_list',
 ];
 
-const CODING_METHODOLOGY_TOOLS = [
-  'setup',
-  'coverage_check',
+// Tiered methodology tools. The default coding surface only exposes the
+// review/verify/diagnose/ask_user tier; heavier planning tools are deferred
+// to non-trivial tasks, and doc/product tools are exposed only when the user
+// explicitly asks for them.
+const MINIMAL_METHOD_TOOLS = [
   'ask_user',
-  'grill',
-  'brainstorm',
-  'zoom_out',
-  'architect',
-  'diagnose',
-  'tdd',
   'review',
   'verify',
+  'diagnose',
+];
+
+const EXTENDED_PLANNING_TOOLS = [
+  'brainstorm',
+  'grill',
+  'zoom_out',
+  'architect',
+  'tdd',
+];
+
+const DOC_PRODUCT_TOOLS = [
   'to_prd',
   'to_issues',
+  'setup',
+];
+
+const ADVANCED_METHOD_TOOLS = [
+  'coverage_check',
+  'handoff',
 ];
 
 const GENERAL_METHODOLOGY_TOOLS = [
-  'coverage_check',
   'ask_user',
-  'grill',
-  'brainstorm',
-  'diagnose',
   'review',
   'verify',
+  'diagnose',
+  'brainstorm',
 ];
 
 const GIT_READ_TOOLS = [
@@ -158,12 +170,34 @@ export function selectToolsForRequest(allTools, {
     /压缩上下文|handoff|交接|暂停|稍后继续|记忆压缩|compress|continue later/,
   ].some(pattern => pattern.test(input));
 
+  // Tiered exposure for coding tasks: always start with a minimal surface;
+  // heavy planning tools are unlocked only for non-trivial work.
   if (taskProfile?.isCodingTask) {
     add(CORE_READ_TOOLS);
     add(CORE_WRITE_TOOLS);
     add(TERMINAL_TOOLS);
-    add(CODING_METHODOLOGY_TOOLS);
+    add(MINIMAL_METHOD_TOOLS);
     add(GIT_READ_TOOLS);
+
+    // Non-trivial / complex coding tasks get planning surface
+    if (!taskProfile.isLikelyTrivial || taskProfile?.requiresAutomaticPlanning) {
+      add(EXTENDED_PLANNING_TOOLS);
+    }
+
+    // User explicitly asked for doc/product artifacts
+    const asksForDocs = [
+      /prd|产品|需求文档|issue|工单|写文档|docs|specification|design doc/,
+      /\b(prd|issue|requirements|spec|design doc)\b/,
+    ].some(pattern => pattern.test(input));
+    if (asksForDocs) {
+      add(DOC_PRODUCT_TOOLS);
+    }
+
+    // Bug-focused tasks get coverage_check (heuristic: only when bug-like)
+    if (taskProfile?.isBugTask || /bug|报错|错误|失败|崩溃|卡住|test failing|failing test/i.test(input)) {
+      add(['coverage_check']);
+    }
+
     if (asksForGit) {
       add(GIT_MUTATION_TOOLS);
     }
@@ -175,7 +209,7 @@ export function selectToolsForRequest(allTools, {
     }
   } else if (asksForFreshData) {
     add(WEB_TOOLS);
-    add(['coverage_check', 'grill']);
+    add(['review', 'verify']);
   } else {
     add(CORE_READ_TOOLS);
     add(GENERAL_METHODOLOGY_TOOLS);
