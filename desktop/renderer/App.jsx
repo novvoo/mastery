@@ -847,6 +847,7 @@ function App() {
   const [workingDirectory, setWorkingDirectory] = useState('');
   const [llmConfigStatus, setLLMConfigStatus] = useState(null);
   const [showLLMSetup, setShowLLMSetup] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [llmForm, setLLMForm] = useState({
     provider: 'openai',
     apiKey: '',
@@ -2179,7 +2180,7 @@ const handleClearAgentHistory = useCallback(() => {
             {renderSidebarContent()}
           <div style={{borderTop:'1px solid var(--border-subtle)',padding:'8px 12px',display:'flex',justifyContent:'flex-end',marginTop:'auto'}}>
             <button style={{width:'30px',height:'30px',borderRadius:'6px',border:'1px solid var(--border-subtle)',backgroundColor:'transparent',color:'var(--text-muted)',cursor:'pointer',fontSize:'16px',display:'inline-flex',alignItems:'center',justifyContent:'center'}}
-              onClick={() => setShowLLMSetup(true)} title="设置">⚙️</button>
+              onClick={() => setShowSettings(true)} title="设置">⚙️</button>
           </div>
         </aside>
         )}
@@ -2321,7 +2322,116 @@ const handleClearAgentHistory = useCallback(() => {
       </footer>
 
       {/* LLM 首次配置引导 */}
-      {showLLMSetup && (
+            {/* 设置面板 */}
+      {showSettings && (
+        <div style={styles.modalBackdrop}>
+          <div style={{...styles.modal, width: 'min(480px, 100%)'}}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>&#x2699;&#xFE0F; 设置</h2>
+              <p style={styles.modalSubtitle}>通用配置与执行选项</p>
+            </div>
+
+            <div style={styles.modalBody}>
+              <div style={styles.formRow}>
+                <label style={styles.formLabel}>模型服务</label>
+                <div style={{fontSize:'12px',color:'var(--text-muted)',marginBottom:'8px'}}>
+                  当前: {llmConfigStatus?.configured ? (llmConfigStatus.provider + ':' + llmConfigStatus.model) : '\u672a\u914d\u7f6e'}
+                </div>
+                <button
+                  style={styles.primaryAction}
+                  onClick={() => { setShowSettings(false); setShowLLMSetup(true); }}
+                >
+                  \u914d\u7f6e\u6a21\u578b\u670d\u52a1
+                </button>
+              </div>
+
+              <div style={{height:'1px',backgroundColor:'var(--border-subtle)',margin:'6px 0'}} />
+
+              <div style={styles.formRow}>
+                <label style={styles.formLabel}>\u6267\u884c\u9009\u9879</label>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
+                <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
+                  <input type="checkbox" style={{width:'16px',height:'16px',cursor:'pointer',accentColor:'var(--primary-color)'}}
+                    checked={agentOptions.autoSave}
+                    onChange={(e) => setAgentOptions(prev => ({...prev, autoSave: e.target.checked}))}
+                  />
+                  <label style={{fontSize:'13px',color:'var(--text-color)',cursor:'pointer'}}
+                    onClick={() => setAgentOptions(prev => ({...prev, autoSave: !prev.autoSave}))}>
+                    \u81ea\u52a8\u4fdd\u5b58\u7ed3\u679c
+                  </label>
+                </div>
+
+                <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
+                  <label style={{fontSize:'13px',color:'var(--text-color)',minWidth:'100px'}}>\u6700\u5927\u8fed\u4ee3:</label>
+                  <input type="number" style={{width:'80px',height:'32px',borderRadius:'6px',border:'1px solid var(--border-color)',backgroundColor:'#11161e',color:'var(--text-color)',padding:'0 10px',fontSize:'13px'}}
+                    value={agentOptions.maxIterations}
+                    onChange={(e) => setAgentOptions(prev => ({...prev, maxIterations: parseInt(e.target.value) || 180}))}
+                    min={1} max={500}
+                  />
+                </div>
+
+                <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
+                  <input type="checkbox" style={{width:'16px',height:'16px',cursor:'pointer',accentColor:'var(--primary-color)'}}
+                    checked={agentOptions.autoScroll !== false}
+                    onChange={(e) => setAgentOptions(prev => ({...prev, autoScroll: e.target.checked}))}
+                  />
+                  <label style={{fontSize:'13px',color:'var(--text-color)',cursor:'pointer'}}
+                    onClick={() => setAgentOptions(prev => ({...prev, autoScroll: prev.autoScroll !== false ? false : true}))}>
+                    \u81ea\u52a8\u6eda\u52a8\u5230\u6700\u65b0\u6d88\u606f
+                  </label>
+                </div>
+              </div>
+
+              <div style={{height:'1px',backgroundColor:'var(--border-subtle)',margin:'6px 0'}} />
+
+              <div style={styles.formRow}>
+                <label style={styles.formLabel}>\u5f00\u53d1\u8005\u9009\u9879</label>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
+                <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
+                  <input type="checkbox" style={{width:'16px',height:'16px',cursor:'pointer',accentColor:'var(--primary-color)'}}
+                    checked={agentOptions.debug || false}
+                    onChange={(e) => setAgentOptions(prev => ({...prev, debug: e.target.checked}))}
+                  />
+                  <label style={{fontSize:'13px',color:'var(--text-color)',cursor:'pointer'}}
+                    onClick={() => setAgentOptions(prev => ({...prev, debug: !prev.debug}))}>
+                    \u8c03\u8bd5\u6a21\u5f0f\uff08\u663e\u793a\u8be6\u7ec6\u5de5\u5177\u8c03\u7528\u4fe1\u606f\uff09
+                  </label>
+                </div>
+
+                <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
+                  <input type="checkbox" style={{width:'16px',height:'16px',cursor:'pointer',accentColor:'var(--primary-color)'}}
+                    checked={agentOptions.verbose || false}
+                    onChange={(e) => setAgentOptions(prev => ({...prev, verbose: e.target.checked}))}
+                  />
+                  <label style={{fontSize:'13px',color:'var(--text-color)',cursor:'pointer'}}
+                    onClick={() => setAgentOptions(prev => ({...prev, verbose: !prev.verbose}))}>
+                    \u8be6\u7ec6\u65e5\u5fd7\uff08\u5728\u8fd0\u884c\u8be6\u60c5\u4e2d\u663e\u793a\u5b8c\u6574\u8f93\u51fa\uff09
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <div style={{fontSize:'11px',color:'var(--text-dark)'}}>
+                {llmConfigStatus?.configured ? '\u6a21\u578b\u5df2\u914d\u7f6e' : '\u6a21\u578b\u672a\u914d\u7f6e'}
+              </div>
+              <div style={styles.modalActions}>
+                <button
+                  style={styles.textButton}
+                  onClick={() => setShowSettings(false)}
+                >
+                  \u5173\u95ed
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+{showLLMSetup && (
         <div style={styles.modalBackdrop}>
           <div style={styles.modal}>
             <div style={styles.modalHeader}>
