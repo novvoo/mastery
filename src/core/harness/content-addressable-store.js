@@ -10,7 +10,8 @@
  * - Dependencies：依赖关系
  */
 
-import { readFile, writeFile, readdir, stat, existsSync } from 'fs/promises';
+import { readFile, writeFile, readdir, stat } from 'fs/promises';
+import { existsSync } from 'fs';
 import { join, resolve, relative, dirname, basename } from 'path';
 import { ContentAddressableStore, StateGraph } from './state-graph-core.js';
 

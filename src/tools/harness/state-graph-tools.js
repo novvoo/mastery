@@ -11,7 +11,8 @@ import { ToolCategory } from '../../core/types.js';
 import { ContentAddressableStore, StateGraph } from '../../core/harness/state-graph-core.js';
 import { CompleteIndex } from '../../core/harness/content-addressable-store.js';
 import { ContextProjectionGenerator } from '../../core/harness/context-projection.js';
-import { readFile, writeFile, existsSync } from 'fs/promises';
+import { readFile, writeFile } from 'fs/promises';
+import { existsSync } from 'fs';
 import { resolve, join } from 'path';
 
 // 全局实例（实际使用中应该与 Agent 实例绑定

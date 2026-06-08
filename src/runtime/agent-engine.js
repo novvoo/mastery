@@ -32,6 +32,8 @@ import { createShellTool } from '../tools/system/shell.js';
 import { createPtyTools } from '../tools/system/pty.js';
 import { createWorkspaceKnowledgeTools } from '../tools/system/workspace-knowledge.js';
 import { createStateCentricTools } from '../tools/harness/state-centric-tools.js';
+import { createStateGraphTools } from '../tools/harness/state-graph-tools.js';
+import { createContextExpansionTools } from '../tools/harness/context-expansion.js';
 import { createSemanticSearchTool } from '../tools/memory/semantic-search.js';
 import { createDocumentRagTools } from '../tools/memory/document-rag.js';
 import { createGitTools } from '../tools/git/git-tools.js';
@@ -340,6 +342,28 @@ export class AgentEngine {
       }
     } catch (error) {
       console.warn('状态驱动编辑工具注册失败:', error.message);
+    }
+
+    // 2.3 State Graph 工具（操作项目状态图，替代直接读写文件）
+    try {
+      const stateGraphTools = createStateGraphTools();
+      for (const tool of stateGraphTools) {
+        this.#toolRegistry.register(tool);
+        registeredTools.push(tool.name);
+      }
+    } catch (error) {
+      console.warn('State Graph 工具注册失败:', error.message);
+    }
+
+    // 2.4 上下文扩展工具（按需加载上下文，避免上下文膨胀）
+    try {
+      const contextExpansionTools = createContextExpansionTools(this.#config?.workingDirectory);
+      for (const tool of contextExpansionTools) {
+        this.#toolRegistry.register(tool);
+        registeredTools.push(tool.name);
+      }
+    } catch (error) {
+      console.warn('上下文扩展工具注册失败:', error.message);
     }
 
     // 3. PTY 工具（交互式终端）

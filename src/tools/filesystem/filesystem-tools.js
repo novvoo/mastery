@@ -10,7 +10,52 @@ import { readFile, writeFile, readdir, stat } from 'fs/promises';
 import { existsSync } from 'fs';
 import { execFile } from 'child_process';
 import { join, resolve, sep, isAbsolute } from 'path';
+import { Buffer } from 'buffer';
 import { ToolCategory } from '../../core/types.js';
+
+/**
+ * 检测内容是否为 base64 编码，并在适当时解码
+ * - data: URI 格式: "data:[<mediatype>][;base64],<data>"
+ * - 纯 base64 字符串: 仅 A-Za-z0-9+/= 字符，长度 > 40
+ * @param {string} content
+ * @returns {{ isBase64: boolean, decoded: Buffer|string|null }}
+ */
+function tryDecodeBase64(content) {
+  if (typeof content !== 'string') {
+    return { isBase64: false, decoded: null };
+  }
+
+  // 1) data URI 格式
+  const dataUriMatch = content.trim().match(/^data:[^;,\s]*;base64,([A-Za-z0-9+/=\s]+)$/);
+  if (dataUriMatch) {
+    try {
+      const b64 = dataUriMatch[1].replace(/\s/g, '');
+      return { isBase64: true, decoded: Buffer.from(b64, 'base64') };
+    } catch {
+      return { isBase64: false, decoded: null };
+    }
+  }
+
+  // 2) 纯 base64 字符串检测 — 必须是无空白的纯 base64 字符
+  const trimmed = content.trim();
+  if (trimmed.length > 40
+      && trimmed.length % 4 === 0
+      && /^[A-Za-z0-9+/]+={0,2}$/.test(trimmed)) {
+    try {
+      const buf = Buffer.from(trimmed, 'base64');
+      // 反向验证：解码后重新编码应接近原字符串
+      const reencoded = buf.toString('base64');
+      if (reencoded === trimmed
+          || reencoded === trimmed.replace(/=+$/, '') + '=='.slice((3 - (trimmed.length % 4)) % 3)) {
+        return { isBase64: true, decoded: buf };
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  return { isBase64: false, decoded: null };
+}
 
 /**
  * Safely resolve a user-supplied path and verify it stays within the working
@@ -153,6 +198,30 @@ export function createFileSystemTools() {
           const dir = fullPath.substring(0, fullPath.lastIndexOf('/'));
           if (dir && !existsSync(dir)) {
             await mkdir(dir, { recursive: true });
+          }
+
+          const b64Result = tryDecodeBase64(content);
+          if (b64Result.isBase64 && b64Result.decoded) {
+            const decodedBuffer = b64Result.decoded;
+            // 判断是纯文本还是二进制 — 如果是有效的 UTF-8 文本，用 'utf-8'
+            let contentInfo;
+            try {
+              const asText = decodedBuffer.toString('utf-8');
+              // 如果重新编码一致，作为文本处理
+              if (Buffer.from(asText, 'utf-8').equals(decodedBuffer)) {
+                await writeFile(fullPath, asText, 'utf-8');
+                contentInfo = `${asText.split('\n').length} lines (decoded from base64)`;
+              } else {
+                // 二进制内容，直接写 buffer
+                await writeFile(fullPath, decodedBuffer);
+                contentInfo = `${decodedBuffer.length} bytes (binary, decoded from base64)`;
+              }
+            } catch {
+              await writeFile(fullPath, decodedBuffer);
+              contentInfo = `${decodedBuffer.length} bytes (binary, decoded from base64)`;
+            }
+            await ctx.memoryManager.updateFileMap(path, 'created/modified');
+            return `File written successfully: ${path} (${contentInfo})`;
           }
 
           await writeFile(fullPath, content, 'utf-8');
