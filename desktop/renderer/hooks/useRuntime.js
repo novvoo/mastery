@@ -153,14 +153,15 @@ export function useRuntime() {
       if (window.electronAPI) {
         const result = await window.electronAPI.processInput(input, options);
         const answer = extractAgentAnswer(result);
+        const converged = answer ? answer.split('\n\n')[0].trim() : answer;
         const needsUserInput = result?.status === 'needs_user_input';
         
-        // 添加结果消息
-        if (answer && answer !== lastAnswerRef.current) {
-          lastAnswerRef.current = answer;
+        // 添加结果消息（已收敛）
+        if (converged && converged !== lastAnswerRef.current) {
+          lastAnswerRef.current = converged;
           addMessage({
             type: needsUserInput ? 'warning' : 'result',
-            content: answer,
+            content: converged,
             ...result
           });
         } else if (!answer) {
@@ -256,11 +257,12 @@ export function useRuntime() {
 
         if (eventName === 'agent:complete') {
           const answer = extractAgentAnswer(payload);
-          if (answer && answer === lastAnswerRef.current) {
+          const dedup = answer ? answer.split('\n\n')[0].trim() : answer;
+          if (dedup && dedup === lastAnswerRef.current) {
             return;
           }
-          if (answer) {
-            lastAnswerRef.current = answer;
+          if (dedup) {
+            lastAnswerRef.current = dedup;
           }
         }
 
