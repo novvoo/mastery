@@ -82,6 +82,24 @@ const GIT_MUTATION_TOOLS = [
   'git_reset',
 ];
 
+// State-Centric / Hash-Anchored tools.
+// - harness_analyze: create content-addressable anchors for a file
+// - harness_replace: content-addressed edit (replace via anchor hash)
+// - harness_insert: insert after a given anchor hash
+// - harness_delete: delete by anchor hash
+// - harness_query: inspect store/anchors
+// - harness_rollback: roll back to a prior state
+// These are *exposed* but the default edit_file also uses the same
+// hash-anchored patcher internally so the baseline path is deterministic.
+const HARNESS_STATE_TOOLS = [
+  'harness_analyze',
+  'harness_replace',
+  'harness_insert',
+  'harness_delete',
+  'harness_query',
+  'harness_rollback',
+];
+
 const TASK_TOOLS = [
   'task_create',
   'task_list',
@@ -178,6 +196,12 @@ export function selectToolsForRequest(allTools, {
     add(TERMINAL_TOOLS);
     add(MINIMAL_METHOD_TOOLS);
     add(GIT_READ_TOOLS);
+
+    // State-centric / hash-anchored tools — light surface: analyze + query
+    // are always available for coding tasks because they're purely reading
+    // the project state; mutating harness_* tools are exposed with a lower
+    // priority alongside edit_file.
+    add(HARNESS_STATE_TOOLS);
 
     // Non-trivial / complex coding tasks get planning surface
     if (!taskProfile.isLikelyTrivial || taskProfile?.requiresAutomaticPlanning) {
