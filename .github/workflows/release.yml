@@ -61,7 +61,9 @@ jobs:
           no-cache: true
 
       - name: Install production dependencies
-        run: ELECTRON_SKIP_BINARY_DOWNLOAD=1 bun install --frozen-lockfile --production
+        run: bun install --frozen-lockfile --production
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
       - name: Prepare release package
         run: bun run package:release

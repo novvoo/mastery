@@ -7674,6 +7674,52 @@ coreEngineTests.test('Regex patterns - JWT matches token format', async () => {
   if (!JWT.test(token)) {throw new Error('JWT should match valid token');}
 });
 
+// ============ 10. Adapter & Desktop Unit Tests ============
+const adapterUnitTests = new TestRunner("Adapter \u0026 Desktop Unit Tests");
+
+adapterUnitTests.test("tests/adapters/cli.test.js passes all tests", async () => {
+  return new Promise((resolve, reject) => {
+    const child = spawn("bun", ["test", "tests/adapters/cli.test.js"], { stdio: ["ignore", "pipe", "pipe"] });
+    let output = "";
+    child.stdout.on("data", (d) => { output += d.toString(); });
+    child.stderr.on("data", (d) => { output += d.toString(); });
+    child.on("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`CLI adapter tests failed (exit ${code}):\n${output.slice(-300)}`));
+    });
+    child.on("error", reject);
+  });
+});
+
+adapterUnitTests.test("tests/adapters/desktop.test.js passes all tests", async () => {
+  return new Promise((resolve, reject) => {
+    const child = spawn("bun", ["test", "tests/adapters/desktop.test.js"], { stdio: ["ignore", "pipe", "pipe"] });
+    let output = "";
+    child.stdout.on("data", (d) => { output += d.toString(); });
+    child.stderr.on("data", (d) => { output += d.toString(); });
+    child.on("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`Desktop adapter tests failed (exit ${code}):\n${output.slice(-300)}`));
+    });
+    child.on("error", reject);
+  });
+});
+
+adapterUnitTests.test("desktop/tests/desktop.test.js passes all tests", async () => {
+  return new Promise((resolve, reject) => {
+    const child = spawn("bun", ["test", "desktop/tests/desktop.test.js"], { stdio: ["ignore", "pipe", "pipe"] });
+    let output = "";
+    child.stdout.on("data", (d) => { output += d.toString(); });
+    child.stderr.on("data", (d) => { output += d.toString(); });
+    child.on("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`Desktop IPC init tests failed (exit ${code}):\n${output.slice(-300)}`));
+    });
+    child.on("error", reject);
+  });
+});
+
+
 
 
 async function runAllTests() {
@@ -7702,6 +7748,7 @@ async function runAllTests() {
     await webSearchTests.run();
     await productionReadinessTests.run();
     await coreEngineTests.run();
+    await adapterUnitTests.run();
   } catch (error) {
     console.error('\nTest suite failed:', error.message);
   }
