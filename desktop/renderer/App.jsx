@@ -2371,7 +2371,7 @@ const handleClearAgentHistory = useCallback(() => {
               onClick={()=>{setShowSettings(false);setShowLLMSetup(true);}}
               onMouseEnter={(e)=>e.currentTarget.style.backgroundColor='var(--surface-hover)'}
               onMouseLeave={(e)=>e.currentTarget.style.backgroundColor='transparent'}>
-              Model config...
+              设置...
             </button>
           </div>
         </div>
