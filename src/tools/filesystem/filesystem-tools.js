@@ -226,6 +226,21 @@ export function createFileSystemTools() {
 
           await writeFile(fullPath, content, 'utf-8');
           await ctx.memoryManager.updateFileMap(path, 'created/modified');
+
+          // --- Record in harness ContentAddressableStore (if available) ---
+          if (ctx.contentStore) {
+            try {
+              const blobHash = ctx.contentStore.storeBlob(content);
+              ctx.contentStore.setRef(`file:${path}`, blobHash);
+              // Auto-analyze: create line-level anchors via the injected fileAnalyzer.
+              if (ctx.fileAnalyzer && typeof ctx.fileAnalyzer.analyzeFile === 'function') {
+                ctx.fileAnalyzer.analyzeFile(path, content);
+              }
+            } catch {
+              // Non-fatal: contentStore is optional extension surface.
+            }
+          }
+
           return `File written successfully: ${path} (${content.split('\n').length} lines)`;
         } catch (error) {
           return `Error writing file: ${error instanceof Error ? error.message : error}`;
@@ -235,11 +250,12 @@ export function createFileSystemTools() {
 
     {
       name: 'edit_file',
-      description: 'Edit a file by replacing a specific text segment. Use this for surgical changes.',
+      description:
+        'Edit a file by replacing a specific text segment. The old_text must be unique in the file (exactly one match). Uses a content-addressable anchor hash to verify the unchanged region around the edit, and returns a deterministic diff.',
       category: ToolCategory.FILESYSTEM,
       params: {
         path: { type: 'string', description: 'File path relative to working directory' },
-        old_text: { type: 'string', description: 'The exact text to find and replace' },
+        old_text: { type: 'string', description: 'The exact text to find and replace (must match exactly one location in the file)' },
         new_text: { type: 'string', description: 'The replacement text' },
       },
       required: ['path', 'old_text', 'new_text'],
@@ -251,14 +267,72 @@ export function createFileSystemTools() {
 
         try {
           const content = await readFile(fullPath, 'utf-8');
-          if (!content.includes(old_text)) {
-            return `Error: The specified old_text was not found in the file. Make sure it matches exactly.`;
+
+          // --- Uniqueness gate (anchor hash requires a single match) ---
+          const occurrences = countOccurrences(content, old_text);
+          if (occurrences === 0) {
+            return `Error: The specified old_text was not found in the file. Make sure it matches exactly (including whitespace/indentation).`;
+          }
+          if (occurrences > 1) {
+            const firstMatchLine = content.substring(0, content.indexOf(old_text)).split('\n').length;
+            return `Error: old_text matches ${occurrences} locations in the file (first match around line ${firstMatchLine}). ` +
+                   `Make old_text more specific by including surrounding context lines so it matches exactly one location.`;
           }
 
+          // --- Anchor hash: hash of the 200-char context window around the match.
+          //    This lets us detect whether the file was concurrently modified. ---
+          const matchOffset = content.indexOf(old_text);
+          const ctxStart = Math.max(0, matchOffset - 200);
+          const ctxEnd = Math.min(content.length, matchOffset + old_text.length + 200);
+          const anchorContext = content.substring(ctxStart, ctxEnd);
+          const anchorHash = hashContent(anchorContext);
+          const beforeHash = hashContent(content);
+
+          // Cross-check anchor hash against the harness ContentAddressableStore
+          // (ctx.contentStore is set by the agent if the store is available).
+          if (ctx.contentStore) {
+            const storedAnchor = ctx.contentStore.getAnchor(anchorHash);
+            if (storedAnchor) {
+              const knownSnippet = storedAnchor.text.slice(0, Math.min(storedAnchor.text.length, 50));
+              if (!anchorContext.includes(knownSnippet)) {
+                return `Error: Anchor hash ${anchorHash.substring(0, 12)}... no longer matches file content. ` +
+                       `The file was modified underneath this edit. Re-read the file and try again.`;
+              }
+            }
+          }
+
+          const firstMatchLine = content.substring(0, matchOffset).split('\n').length;
           const newContent = content.replace(old_text, new_text);
+          const afterHash = hashContent(newContent);
+          const diff = generateUnifiedDiff(content, newContent, path);
+
           await writeFile(fullPath, newContent, 'utf-8');
           await ctx.memoryManager.updateFileMap(path, 'edited');
-          return `File edited successfully: ${path}`;
+
+          // --- Record edit in the harness ContentAddressableStore (if available) ---
+          if (ctx.contentStore) {
+            try {
+              ctx.contentStore.storeAnchor(path, matchOffset, matchOffset + old_text.length, old_text);
+              const newBlobHash = ctx.contentStore.storeBlob(newContent);
+              ctx.contentStore.setRef(`file:${path}`, newBlobHash);
+              // Re-analyze the modified file so new anchors reflect the new content.
+              if (ctx.fileAnalyzer && typeof ctx.fileAnalyzer.analyzeFile === 'function') {
+                ctx.fileAnalyzer.analyzeFile(path, newContent);
+              }
+            } catch {
+              // Non-fatal: contentStore is optional extension surface.
+            }
+          }
+
+          const oldLineCount = old_text.split('\n').length;
+          return (
+            `File edited successfully: ${path}\n` +
+            `Changed ${oldLineCount} line(s) starting at line ${firstMatchLine}.\n` +
+            `Anchor hash: ${anchorHash.substring(0, 16)}...\n` +
+            `Before hash: ${beforeHash.substring(0, 16)}\n` +
+            `After hash:  ${afterHash.substring(0, 16)}\n` +
+            `---- diff ----\n${diff}`
+          );
         } catch (error) {
           return `Error editing file: ${error instanceof Error ? error.message : error}`;
         }

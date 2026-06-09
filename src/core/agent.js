@@ -15,6 +15,7 @@ import { WorkspaceIndex } from './workspace-index.js';
 import { selectToolsForRequest, shouldUseIntentClassifier } from './tool-router.js';
 import { WorkspaceState } from './workspace-state.js';
 import { ObservationSummarizer } from './observation-summarizer.js';
+import { ContentAddressableStore, FileAnalyzer } from './harness/content-addressing.js';
 
 const TERMINATION_KEYWORDS = ['FINAL_ANSWER:', 'Answer:', 'TASK_COMPLETE'];
 const MAX_ITERATIONS_DEFAULT = 120;
@@ -171,6 +172,10 @@ export class ReActAgent {
   #lastWorkspaceHintUpdate = 0;
   /** @type {string} */
   #cachedWorkspaceHint = '';
+  /** @type {ContentAddressableStore|null} */
+  #contentStore = null;
+  /** @type {FileAnalyzer|null} */
+  #fileAnalyzer = null;
 
   constructor(modelProvider, toolRegistry, memoryManager, config = {}, customUI = ui) {
     this.#modelProvider = modelProvider;
@@ -199,6 +204,14 @@ export class ReActAgent {
     this.#contextPruner = config.contextPruner || new DynamicContextPruning();
     this.#tokenJuice = config.tokenJuice || null;
     this.#workspaceIndex = new WorkspaceIndex(this.#config.workingDirectory);
+
+    // Content-addressable store: session-scoped (not global singleton).
+    // Lives for the duration of this agent instance, is passed to all
+    // filesystem tool handlers so they can record anchors/blobs and detect
+    // concurrent modifications.
+    this.#contentStore = new ContentAddressableStore();
+    this.#fileAnalyzer = new FileAnalyzer(this.#contentStore);
+
     
     // 初始化工作区状态追踪
     this.#initializeWorkspaceState(config);
@@ -770,6 +783,10 @@ export class ReActAgent {
         ui: this.#ui,
         toolName: name,
         subAgent: this.#config.subAgent,
+        // Content-addressable store: enables hash-anchored patch verification
+        // in filesystem tools (edit_file, write_file) and provides anchors.
+        contentStore: this.#contentStore,
+        fileAnalyzer: this.#fileAnalyzer,
       };
 
       const result = await withTimeout(
