@@ -5569,6 +5569,151 @@ newFeaturesTests.test('Document RAG tools - hybrid ranking boosts Chinese resume
 
 
 
+newFeaturesTests.test('Document RAG CLI - /doc search passes full evidence (not just header) to refine model', async () => {
+  const { handleDocumentCommand } = await import('./src/runtime/document-command.js');
+
+  const FAKE_SNIPPET = '2010 - 2014 北京大学计算机科学与技术，本科';
+  const searchOutput = [
+    'Found 1 relevant snippet (from 3 indexed chunks).',
+    '#1 [李四简历] 85%',
+    'Semantic: 0.69',
+    '---',
+    FAKE_SNIPPET,
+  ].join('\n');
+
+  const modelMessages = [];
+  const mockModelProvider = {
+    async chat(messages, options) {
+      modelMessages.push(messages);
+      return { text: 'TEST_ANSWER_PLACEHOLDER' };
+    },
+  };
+
+  const mockToolRegistry = {
+    async execute(name, args) {
+      if (name === 'document_search') return searchOutput;
+      throw new Error(`Unexpected tool: ${name}`);
+    },
+  };
+
+  const result = await handleDocumentCommand('/doc search 李四毕业', {
+    toolRegistry: mockToolRegistry,
+    modelProvider: mockModelProvider,
+  });
+
+  if (!modelMessages || modelMessages.length === 0) {
+    throw new Error('Expected modelProvider.chat to be called for refine');
+  }
+
+  const userMsg = modelMessages[0].find(m => m.role === 'user');
+  if (!userMsg) throw new Error('Expected user role message in refine prompt');
+  const userContent = String(userMsg.content || '');
+
+  // Critical assertion: refine prompt must include evidence snippets, not only
+  // the "Found N relevant snippets" header. This guards against the bug where
+  // split('\n\n')[0] stripped away all evidence before the model saw it.
+  if (!userContent.includes(FAKE_SNIPPET)) {
+    throw new Error(
+      `refine prompt missing evidence snippet. Got:\n${userContent.substring(0, 500)}`
+    );
+  }
+  if (!userContent.includes('Question:') || !userContent.includes('Search results:')) {
+    throw new Error(`refine prompt missing expected structure. Got:\n${userContent.substring(0, 300)}`);
+  }
+  // Also ensure the header is present (we keep it as context)
+  if (!userContent.includes('Found 1 relevant snippet')) {
+    throw new Error(`refine prompt should include header too, got:\n${userContent.substring(0, 300)}`);
+  }
+
+  if (!result?.success) throw new Error(`Expected success result, got: ${JSON.stringify(result)}`);
+  if (!String(result?.content || '').includes(FAKE_SNIPPET)) {
+    throw new Error('raw search evidence should still appear in command result');
+  }
+
+  console.log('     Document RAG CLI /doc search refine prompt contains full evidence snippets');
+});
+
+newFeaturesTests.test('Document RAG CLI - /doc search falls back to raw result when no model provider', async () => {
+  const { handleDocumentCommand } = await import('./src/runtime/document-command.js');
+
+  const searchOutput = 'Found 1 relevant snippet (from 3 indexed chunks).\n\n#1 [Doc] 85%\n---\nevidence here';
+  const mockToolRegistry = {
+    async execute(name) { return searchOutput; },
+  };
+
+  const result = await handleDocumentCommand('/doc search anything', {
+    toolRegistry: mockToolRegistry,
+    // No modelProvider → should not crash, just return raw results
+  });
+
+  if (!result?.success) throw new Error(`Expected success, got ${JSON.stringify(result)}`);
+  if (!String(result.content).includes('evidence here')) {
+    throw new Error(`Expected raw evidence in fallback output, got: ${result.content}`);
+  }
+
+  console.log('     Document RAG CLI /doc search gracefully falls back without model provider');
+});
+
+newFeaturesTests.test('Document RAG - document_answer synthesizeWithLLM routes top evidence to model', async () => {
+  const { createDocumentRagTools } = await import('./src/tools/memory/document-rag.js');
+
+  const tools = Object.fromEntries(createDocumentRagTools().map(tool => [tool.name, tool]));
+  await tools.document_clear.handler({});
+
+  await tools.document_add.handler({
+    id: 'resume-test-refine',
+    title: '测试简历',
+    content: [
+      '高级 Golang 工程师 张三',
+      '工作经历',
+      '字节跳动 高级 Golang 工程师，负责分布式消息中间件架构设计与实现。',
+      '教育背景',
+      '2010 - 2014 北京大学 计算机科学与技术 本科',
+    ].join('\n'),
+  });
+
+  const capturedMessages = [];
+  const capturingModelProvider = {
+    async chat(messages, options) {
+      capturedMessages.push(messages);
+      return { text: 'SYNTHESIZED_ANSWER_FROM_LLM' };
+    },
+  };
+  const ctx = { workingDirectory: process.cwd(), modelProvider: capturingModelProvider };
+
+  const answer = await tools.document_answer.handler({
+    question: '张三在哪里工作过',
+    limit: 5,
+  }, ctx);
+
+  if (!answer?.success && answer?.answer !== undefined) {
+    // document_answer returns an object with answer, citations, etc. (not success key).
+    // Accept either shape.
+  }
+  const answerField = typeof answer === 'string' ? answer : (answer?.answer || '');
+
+  if (capturedMessages.length === 0) {
+    throw new Error('document_answer should have invoked modelProvider.chat for synthesis when provided');
+  }
+  const userMsg = capturedMessages[0].find(m => m.role === 'user');
+  const userContent = String(userMsg?.content || '');
+
+  if (!userContent.includes('字节跳动')) {
+    throw new Error(`Synthesis prompt missing top evidence. Got (first 600 chars):\n${userContent.substring(0, 600)}`);
+  }
+  if (!userContent.includes('Question:') || !userContent.includes('张三')) {
+    throw new Error(`Synthesis prompt missing question/context. Got:\n${userContent.substring(0, 300)}`);
+  }
+  // Final answer should now contain the synthesized LLM output
+  if (!String(answerField).includes('SYNTHESIZED_ANSWER_FROM_LLM')) {
+    throw new Error(`Expected synthesized answer to appear in result, got: ${answerField.substring(0, 300)}`);
+  }
+
+  await tools.document_clear.handler({}, ctx);
+  console.log('     Document RAG document_answer routes evidence to LLM synthesis');
+});
+
+
 newFeaturesTests.test('Document RAG tools - persistence survives separate tool instances (agent restart)', async () => {
   const { createDocumentRagTools } = await import('./src/tools/memory/document-rag.js');
 

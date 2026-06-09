@@ -957,8 +957,8 @@ async function synthesizeWithLLM(question, evidenceItems, modelProvider) {
     `Answer:`;
 
   const messages = [
-    { role: 'system', text: systemPrompt },
-    { role: 'user', text: userPrompt },
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
   ];
 
   try {
