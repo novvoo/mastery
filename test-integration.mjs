@@ -8028,6 +8028,20 @@ adapterUnitTests.test("desktop/tests/desktop.test.js passes all tests", async ()
   });
 });
 
+adapterUnitTests.test("tests/runtime/dsml-parser.test.js passes all tests", async () => {
+  return new Promise((resolve, reject) => {
+    const child = spawn("bun", ["test", "tests/runtime/dsml-parser.test.js"], { stdio: ["ignore", "pipe", "pipe"] });
+    let output = "";
+    child.stdout.on("data", (d) => { output += d.toString(); });
+    child.stderr.on("data", (d) => { output += d.toString(); });
+    child.on("exit", (code) => {
+      if (code === 0) {resolve();}
+      else {reject(new Error(`DSML parser tests failed (exit ${code}):\n${output.slice(-300)}`));}
+    });
+    child.on("error", reject);
+  });
+});
+
 
 
 
