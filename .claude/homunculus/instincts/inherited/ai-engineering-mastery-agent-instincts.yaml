@@ -1,0 +1,310 @@
+# Instincts generated from https://github.com/novvoo/ai-engineering-mastery-agent
+# Generated: 2026-06-09T03:55:52.347Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: ai-engineering-mastery-agent-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/novvoo/ai-engineering-mastery-agent
+---
+
+# Ai Engineering Mastery Agent Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: feat
+
+## Evidence
+
+- 2 commits analyzed
+- Detected conventional commit pattern
+- Examples: feat: 提升代码效率与准确性
+
+---
+id: ai-engineering-mastery-agent-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/novvoo/ai-engineering-mastery-agent
+---
+
+# Ai Engineering Mastery Agent Commit Length
+
+## Action
+
+Keep commit messages concise (~16 characters)
+
+## Evidence
+
+- Average commit message length: 16 chars
+- Based on 2 commits
+
+---
+id: ai-engineering-mastery-agent-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/novvoo/ai-engineering-mastery-agent
+---
+
+# Ai Engineering Mastery Agent Naming Files
+
+## Action
+
+Use kebab-case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: kebab-case
+
+---
+id: ai-engineering-mastery-agent-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/novvoo/ai-engineering-mastery-agent
+---
+
+# Ai Engineering Mastery Agent Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: ai-engineering-mastery-agent-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/novvoo/ai-engineering-mastery-agent
+---
+
+# Ai Engineering Mastery Agent Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: ai-engineering-mastery-agent-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/novvoo/ai-engineering-mastery-agent
+---
+
+# Ai Engineering Mastery Agent Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: ai-engineering-mastery-agent-workflow-improve-code-efficiency-and-accuracy
+trigger: "when doing improve code efficiency and accuracy"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/novvoo/ai-engineering-mastery-agent
+---
+
+# Ai Engineering Mastery Agent Workflow Improve Code Efficiency And Accuracy
+
+## Action
+
+Follow the improve-code-efficiency-and-accuracy workflow:
+1. Identify inefficiencies or inaccuracies in core or tool-related code.
+2. Modify files in src/core (such as agent.js, tool-router.js) and related src/tools modules.
+3. Commit changes with a message indicating code efficiency or accuracy improvements.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: src/core/agent.js, src/core/tool-router.js, src/tools/*/*.js
+
+---
+id: ai-engineering-mastery-agent-instinct-naming-conventions
+trigger: "When creating or renaming files, functions, classes, or constants"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: novvoo/ai-engineering-mastery-agent
+---
+
+# Ai Engineering Mastery Agent Instinct Naming Conventions
+
+## Action
+
+Apply kebab-case for files, camelCase for functions, PascalCase for classes, and SCREAMING_SNAKE_CASE for constants
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions
+- Consistent naming in src/core/agent.js and src/tools/*/*.js
+
+---
+id: ai-engineering-mastery-agent-instinct-import-style
+trigger: "When importing modules in JavaScript files"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: novvoo/ai-engineering-mastery-agent
+---
+
+# Ai Engineering Mastery Agent Instinct Import Style
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in codeStyle.importStyle
+- Seen in src/core/agent.js
+
+---
+id: ai-engineering-mastery-agent-instinct-export-style
+trigger: "When exporting functions or variables from a module"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: novvoo/ai-engineering-mastery-agent
+---
+
+# Ai Engineering Mastery Agent Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in codeStyle.exportStyle
+- Seen in src/core/tool-router.js
+
+---
+id: ai-engineering-mastery-agent-instinct-commit-format
+trigger: "When making a git commit"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: novvoo/ai-engineering-mastery-agent
+---
+
+# Ai Engineering Mastery Agent Instinct Commit Format
+
+## Action
+
+Use the conventional commit format with the 'feat' prefix for new features or improvements
+
+## Evidence
+
+- Pattern in commits.prefixes
+- Example: 'feat: 提升代码效率与准确性'
+
+---
+id: ai-engineering-mastery-agent-instinct-commit-length
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: novvoo/ai-engineering-mastery-agent
+---
+
+# Ai Engineering Mastery Agent Instinct Commit Length
+
+## Action
+
+Keep the commit message concise, averaging around 16 characters
+
+## Evidence
+
+- Pattern in commits.averageLength
+- Example: 'feat: 提升代码效率与准确性'
+
+---
+id: ai-engineering-mastery-agent-instinct-error-handling
+trigger: "When handling errors in JavaScript code"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: novvoo/ai-engineering-mastery-agent
+---
+
+# Ai Engineering Mastery Agent Instinct Error Handling
+
+## Action
+
+Use try-catch blocks for error handling; do not implement custom error classes or global handlers
+
+## Evidence
+
+- Pattern in errorHandling.style
+- No customErrorClasses or globalHandler present
+
+---
+id: ai-engineering-mastery-agent-instinct-testing-location
+trigger: "When adding or updating tests"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: novvoo/ai-engineering-mastery-agent
+---
+
+# Ai Engineering Mastery Agent Instinct Testing Location
+
+## Action
+
+Place test files in a separate location from source code
+
+## Evidence
+
+- Pattern in architecture.folderStructure.testLocation
+
+---
+id: ai-engineering-mastery-agent-instinct-improve-efficiency-workflow
+trigger: "When inefficiencies or inaccuracies are identified in core or tool-related code"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: novvoo/ai-engineering-mastery-agent
+---
+
+# Ai Engineering Mastery Agent Instinct Improve Efficiency Workflow
+
+## Action
+
+Refactor and enhance code efficiency and accuracy in src/core/agent.js, src/core/tool-router.js, and src/tools/*/*.js, then commit with a message indicating improvements
+
+## Evidence
+
+- Workflow: improve-code-efficiency-and-accuracy
+- Pattern in workflow commitSequence and filesInvolved
+
