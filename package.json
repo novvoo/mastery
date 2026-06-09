@@ -1,6 +1,6 @@
 {
   "name": "ai-engineering-mastery-agent",
-  "version": "1.0.28",
+  "version": "1.0.29",
   "description": "AI Engineering Mastery Agent - A standalone ReAct agent with 12 professional coding skills, sandbox execution, graph planning, 3-layer memory, and MCP protocol support",
   "author": "novvoo",
   "type": "module",
@@ -101,7 +101,7 @@
   "build": {
     "appId": "com.ai-engineering-mastery.agent",
     "productName": "AI Engineering Mastery Agent",
-    "copyright": "Copyright \u00a9 2024 AI Engineering Mastery Agent",
+    "copyright": "Copyright © 2024 AI Engineering Mastery Agent",
     "directories": {
       "output": "release/desktop",
       "buildResources": "build"
