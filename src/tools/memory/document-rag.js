@@ -6,12 +6,16 @@ import { readFile, stat, mkdir, writeFile } from 'fs/promises';
 import { basename, extname, isAbsolute, resolve, join } from 'path';
 import { Buffer } from 'buffer';
 import { URL } from 'url';
-import { Embedder } from '../../core/embedder.js';
+import { Embedder, heuristicCountTokens, mmrReRank, mergeAdjacentChunks } from '../../core/embedder.js';
 import { ToolCategory } from '../../core/types.js';
 
 const MAX_DOCUMENT_BYTES = 15 * 1024 * 1024;
-const CHUNK_CHARS = 2400;
-const OVERLAP_CHARS = 300;
+const CHUNK_TOKENS_TARGET = 750;
+const CHUNK_TOKENS_MIN = 600;
+const CHUNK_TOKENS_MAX = 900;
+const OVERLAP_TOKENS = 125;
+const MIN_SEMANTIC_SCORE = 0.25;           // document_search 语义分阈值
+const MMR_LAMBDA = 0.7;
 const USER_AGENT = 'AI-Engineering-Agent/1.0 (+document-rag)';
 const LEXICAL_SCORE_BOOST = 0.25;
 
@@ -68,6 +72,7 @@ export function createDocumentRagTools() {
   return [
     createDocumentAddTool(),
     createDocumentSearchTool(),
+    createDocumentAnswerTool(),
     createDocumentListTool(),
     createDocumentClearTool(),
   ];
@@ -164,9 +169,11 @@ function createDocumentSearchTool() {
       query: { type: 'string', description: 'Natural-language question or concept to search for.' },
       limit: { type: 'number', description: 'Maximum matching chunks to return (default 5, max 20).' },
       document_id: { type: 'string', description: 'Optional document id to restrict search.' },
+      min_score: { type: 'number', description: 'Minimum semantic score to keep (default 0.25; higher = stricter).' },
+      mmr_lambda: { type: 'number', description: 'MMR balance: 1.0 = pure relevance, 0.0 = pure diversity (default 0.7).' },
     },
     required: ['query'],
-    handler: async ({ query, limit, document_id }, ctx) => {
+    handler: async ({ query, limit, document_id, min_score, mmr_lambda }, ctx) => {
       await ensureState(ctx?.workingDirectory);
       const scopedChunks = document_id
         ? chunks.filter(chunk => chunk.metadata.documentId === document_id)
@@ -177,40 +184,269 @@ function createDocumentSearchTool() {
       }
 
       const maxResults = normalizeLimit(limit);
+      const finalMinScore = Number(min_score) || MIN_SEMANTIC_SCORE;
+      const finalLambda = Number(mmr_lambda) >= 0 ? Number(mmr_lambda) : MMR_LAMBDA;
 
-      // Prefer pre-computed embeddings when available (avoids re-embedding all chunks)
+      // Phase 1: score all chunks with embeddings (pre-computed or batch)
+      let scored;
       const hasPrecomputed = scopedChunks.some(c => Array.isArray(c.embedding) && c.embedding.length > 100);
-      let results;
 
       if (hasPrecomputed) {
         const embedder = await getEmbedder();
         const qEmb = await embedder.embed(query);
-        results = searchWithEmbeddings(qEmb, query, scopedChunks, maxResults);
-      for (const r of results) {r.query = query;}
+        scored = searchWithEmbeddings(qEmb, query, scopedChunks, Math.min(scopedChunks.length, 200));
+      } else {
+        const embedder = await getEmbedder();
+        scored = await embedder.batchFindSimilar(query, scopedChunks, {
+          limit: Math.min(scopedChunks.length, 200),
+          includeAll: false,
+        });
+        scored = rerankWithLexicalSignals(query, scored);
       }
 
-      // Fallback: batch-embed all chunks (for legacy data or embedding failures)
-      if (!results || results.length === 0) {
-        const embedder = await getEmbedder();
-        const semanticResults = await embedder.batchFindSimilar(query, scopedChunks, {
-          limit: maxResults,
-          threshold: 0,
-          includeAll: true,
-        });
-        results = rerankWithLexicalSignals(query, semanticResults).slice(0, maxResults);
-        // Attach query for snippet extraction
-        for (const r of results) {r.query = query;}
-      }
+      // Phase 2: drop low-relevance noise below min_score
+      const aboveThreshold = (scored || []).filter(r => Number(r.score) >= finalMinScore);
+
+      // Phase 3: merge adjacent chunks from the same document (reduces snippet duplication)
+      const merged = mergeAdjacentChunks(aboveThreshold);
+
+      // Phase 4: MMR to balance relevance & diversity (avoids returning near-duplicates)
+      const reranked = mmrReRank(merged, {
+        lambda: finalLambda,
+        limit: maxResults,
+        minScore: -Infinity,
+      });
+
+      const results = reranked.length > 0 ? reranked : aboveThreshold.slice(0, maxResults);
+      for (const r of results) r.query = query;
 
       ctx?.ui?.debugEvent?.('Document search completed', {
         query,
         chunks: scopedChunks.length,
-        resultCount: results.length,
+        aboveThreshold: aboveThreshold.length,
+        merged: merged.length,
+        finalResults: results.length,
       });
 
-      return formatSearchResults(results);
+      return formatSearchResults(results, { totalChunks: scopedChunks.length, minScore: finalMinScore });
     },
   };
+}
+
+/**
+ * document_answer: high-level RAG that returns a structured answer with
+ * citations, evidence snippets, confidence, and missing-info flags. This is
+ * the preferred interface for LLM-based answering about user documents.
+ */
+function createDocumentAnswerTool() {
+  return {
+    name: 'document_answer',
+    description: 'Given a natural-language question about the uploaded documents, return a structured RAG answer including citations, evidence snippets, confidence, and missing-info. Use this instead of document_search when the user wants a direct answer grounded in their documents.',
+    category: ToolCategory.FILESYSTEM,
+    params: {
+      question: { type: 'string', description: 'The question to answer based on the indexed documents.' },
+      limit: { type: 'number', description: 'Max evidence chunks to consider (default 8, max 20).' },
+      document_id: { type: 'string', description: 'Optional document id to restrict search.' },
+      min_score: { type: 'number', description: 'Minimum semantic score (default 0.25).' },
+      mmr_lambda: { type: 'number', description: 'MMR lambda for diversity (default 0.7).' },
+    },
+    required: ['question'],
+    handler: async ({ question, limit, document_id, min_score, mmr_lambda }, ctx) => {
+      await ensureState(ctx?.workingDirectory);
+      const scopedChunks = document_id
+        ? chunks.filter(chunk => chunk.metadata.documentId === document_id)
+        : chunks;
+
+      if (scopedChunks.length === 0) {
+        return buildEmptyAnswer(question, 'No documents are indexed yet. Use document_add first.');
+      }
+
+      const maxResults = Math.min(20, Math.max(3, Number(limit) || 8));
+      const finalMinScore = Number(min_score) || MIN_SEMANTIC_SCORE;
+      const finalLambda = Number(mmr_lambda) >= 0 ? Number(mmr_lambda) : MMR_LAMBDA;
+
+      // Phase 1: retrieval (semantic + lexical)
+      let scored;
+      const hasPrecomputed = scopedChunks.some(c => Array.isArray(c.embedding) && c.embedding.length > 100);
+      if (hasPrecomputed) {
+        const embedder = await getEmbedder();
+        const qEmb = await embedder.embed(question);
+        scored = searchWithEmbeddings(qEmb, question, scopedChunks, Math.min(scopedChunks.length, 200));
+      } else {
+        const embedder = await getEmbedder();
+        scored = await embedder.batchFindSimilar(question, scopedChunks, {
+          limit: Math.min(scopedChunks.length, 200),
+          includeAll: false,
+        });
+        scored = rerankWithLexicalSignals(question, scored);
+      }
+
+      const aboveThreshold = (scored || []).filter(r => Number(r.score) >= finalMinScore);
+
+      // Phase 2: merge adjacent chunks from the same document
+      const merged = mergeAdjacentChunks(aboveThreshold);
+
+      // Phase 3: MMR re-rank to a small, diverse set of evidence chunks
+      const reranked = mmrReRank(merged, {
+        lambda: finalLambda,
+        limit: maxResults,
+        minScore: -Infinity,
+      });
+
+      const evidence = (reranked.length > 0 ? reranked : aboveThreshold.slice(0, maxResults));
+
+      // Phase 4: synthesize a structured answer (no LLM call — evidence-driven)
+      return buildStructuredAnswer(question, evidence, scopedChunks.length, finalMinScore);
+    },
+  };
+}
+
+function buildEmptyAnswer(question, reason) {
+  return {
+    structured_rag: true,
+    question,
+    answer: reason || 'No documents available to answer this question.',
+    citations: [],
+    evidence: [],
+    confidence: 0.0,
+    missing_info: {
+      reason,
+      no_documents: true,
+      low_relevance: false,
+    },
+    meta: {
+      total_indexed_chunks: 0,
+      min_score: null,
+      evidence_used: 0,
+    },
+  };
+}
+
+function buildStructuredAnswer(question, evidence, totalChunks, minScore) {
+  if (!evidence || evidence.length === 0) {
+    return {
+      structured_rag: true,
+      question,
+      answer: 'No document content scored above the relevance threshold. The indexed documents may not cover this question.',
+      citations: [],
+      evidence: [],
+      confidence: 0.05,
+      missing_info: {
+        reason: `No chunks passed min_score=${minScore}.`,
+        no_documents: false,
+        low_relevance: true,
+      },
+      meta: {
+        total_indexed_chunks: totalChunks,
+        min_score: minScore,
+        evidence_used: 0,
+      },
+    };
+  }
+
+  // Build citations & evidence
+  const seenDocs = new Set();
+  const citations = [];
+  const evidenceItems = [];
+
+  for (let i = 0; i < evidence.length; i++) {
+    const item = evidence[i];
+    const md = item.metadata || {};
+    const docId = md.documentId || md.source || `doc-${i}`;
+    const docTitle = md.title || 'Untitled';
+    const snippet = extractRelevantSnippet(item.text, question, 400);
+    const scorePct = Math.round((Number(item.score) + 1) / 2 * 100);
+
+    evidenceItems.push({
+      rank: i + 1,
+      document_id: docId,
+      title: docTitle,
+      source: md.source || null,
+      chunk_index: md.chunkIndex || null,
+      score: Number(item.score) || 0,
+      score_pct: scorePct,
+      snippet,
+      text_length: String(item.text || '').length,
+    });
+
+    if (!seenDocs.has(docId)) {
+      seenDocs.add(docId);
+      citations.push({
+        document_id: docId,
+        title: docTitle,
+        source: md.source || null,
+        kind: md.kind || null,
+        references: 1,
+      });
+    } else {
+      const c = citations.find(c => c.document_id === docId);
+      if (c) c.references += 1;
+    }
+  }
+
+  // Aggregate confidence: weighted by top evidence scores
+  const topScores = evidence.slice(0, 3).map(e => Number(e.score) || 0);
+  const avgTop = topScores.reduce((a, b) => a + b, 0) / Math.max(1, topScores.length);
+  // Map cosine-similarity style score [-1,1] → confidence [0,1]
+  const confidence = Math.max(0, Math.min(1, (avgTop + 1) / 2));
+
+  // Synthesize a short answer summary from the top evidence snippets
+  const topSnippet = evidenceItems.slice(0, 2).map(e => e.snippet).join(' ');
+  const condensed = condenseForAnswer(topSnippet, question, 600);
+
+  // Determine "missing info": evidence is weak (score low)
+  const lowRelevance = avgTop < 0.1; // cosine < 0.1 = very weak match
+  const missingInfo = {
+    reason: lowRelevance
+      ? 'Top evidence scores are low. The answer may be incomplete or speculative — verify against the evidence snippets.'
+      : null,
+    no_documents: false,
+    low_relevance: lowRelevance,
+    suggested_next: lowRelevance
+      ? 'Try: (a) a more specific query, (b) lowering min_score, or (c) adding more relevant documents.'
+      : null,
+  };
+
+  return {
+    structured_rag: true,
+    question,
+    answer: condensed,
+    citations,
+    evidence: evidenceItems,
+    confidence: Math.round(confidence * 1000) / 1000,
+    missing_info: missingInfo,
+    meta: {
+      total_indexed_chunks: totalChunks,
+      min_score: minScore,
+      evidence_used: evidenceItems.length,
+    },
+  };
+}
+
+function condenseForAnswer(text, question, maxChars) {
+  if (!text) return '';
+  const queryTerms = new Set(
+    (String(question || '').toLowerCase().match(/[\p{L}\p{N}_-]{2,}/gu) || [])
+  );
+  const sentences = text.split(/(?<=[.!?。！？])\s+/);
+  const scored = sentences.map((s, i) => {
+    const lower = s.toLowerCase();
+    let hit = 0;
+    for (const t of queryTerms) if (lower.includes(t)) hit++;
+    return { text: s, score: hit, index: i };
+  });
+  scored.sort((a, b) => b.score - a.score || a.index - b.index);
+  const picked = [];
+  let used = 0;
+  for (const s of scored) {
+    if (used + s.text.length > maxChars) break;
+    picked.push(s);
+    used += s.text.length;
+  }
+  picked.sort((a, b) => a.index - b.index);
+  const out = picked.map(p => p.text).join(' ').trim();
+  if (!out) return text.slice(0, maxChars);
+  return out.length > maxChars ? out.slice(0, maxChars - 3) + '...' : out;
 }
 
 function createDocumentListTool() {
@@ -381,66 +617,115 @@ async function withSuppressedPdfJsCanvasWarnings(fn) {
 
 function chunkText(text) {
   const normalized = normalizeText(text);
+  const totalTokens = tokenCount(normalized);
 
-  // Strategy: split by blank lines (paragraphs), merge small ones, split large ones.
-  // Only fall back to character split when there are no structural boundaries.
-
-  const paragraphs = normalized.split(/\n{2,}/).filter(Boolean).map(p => p.trim());
-  if (paragraphs.length <= 1 && paragraphs[0] && paragraphs[0].length > CHUNK_CHARS) {
-    // Single wall of text: try line-by-line, then character split
-    const lines = paragraphs[0].split('\n').filter(Boolean).map(l => l.trim());
-    if (lines.length > 1) {
-      return mergeParagraphs(lines, CHUNK_CHARS);
-    }
-    // Completely unstructured text — use legacy character split
-    return legacyChunkText(normalized);
+  // Short document: one chunk (but still ensure it fits under the model window)
+  if (totalTokens <= CHUNK_TOKENS_MAX) {
+    return [normalized];
   }
 
-  return mergeParagraphs(paragraphs, CHUNK_CHARS);
+  // Strategy: split by blank lines → paragraphs, greedily pack paragraphs
+  // into CHUNK_TOKENS_TARGET-sized blocks, carrying OVERLAP_TOKENS of context
+  // across boundaries. Oversized paragraphs are line-split, then word-split.
+  const paragraphs = normalized.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  if (paragraphs.length === 0) {
+    return legacyTokenSplit(normalized);
+  }
+
+  return packByTokens(paragraphs);
 }
 
-/**
- * Merge small paragraphs into CHUNK_CHARS-sized blocks, split oversized ones.
- */
-function mergeParagraphs(paragraphs, maxChars) {
+function packByTokens(segments) {
   const result = [];
   let buffer = '';
-  for (const para of paragraphs) {
-    if (!para) {continue;}
-    if (para.length > maxChars) {
-      // Oversized paragraph: flush buffer first
-      if (buffer) { result.push(buffer); buffer = ''; }
-      // Split oversized paragraph by semantic boundary closest to midpoint
-      const midpoint = Math.floor(para.length / 2);
-      const breakAt = para.lastIndexOf('\n', midpoint);
-      const first = breakAt > maxChars * 0.3 ? para.slice(0, breakAt).trim() : para.slice(0, maxChars).trim();
-      const second = (breakAt > maxChars * 0.3 ? para.slice(breakAt) : para.slice(maxChars)).trim();
-      if (first) {result.push(first);}
-      if (second) {result.push(second);}
+  let bufferTokens = 0;
+
+  for (const seg of segments) {
+    if (!seg) continue;
+    const segTokens = tokenCount(seg);
+
+    if (segTokens > CHUNK_TOKENS_MAX) {
+      // Oversized paragraph: flush current buffer, then line-split
+      if (buffer) {
+        result.push(buffer.trim());
+        buffer = '';
+        bufferTokens = 0;
+      }
+      // Line-split the oversized paragraph
+      const linePieces = seg.split('\n').map(l => l.trim()).filter(Boolean);
+      for (const piece of linePieces) {
+        const pieceTokens = tokenCount(piece);
+        if (pieceTokens > CHUNK_TOKENS_MAX) {
+          // Final fallback: word/char-based token split
+          result.push(...legacyTokenSplit(piece));
+        } else if (bufferTokens + pieceTokens > CHUNK_TOKENS_TARGET) {
+          result.push(buffer.trim());
+          buffer = carryOverlap(buffer) + ' ' + piece;
+          bufferTokens = tokenCount(buffer);
+        } else {
+          buffer = buffer ? buffer + '\n\n' + piece : piece;
+          bufferTokens += pieceTokens;
+        }
+      }
       continue;
     }
-    // Merge small paragraphs up to maxChars
-    if (buffer.length + para.length + 1 > maxChars) {
-      result.push(buffer);
-      buffer = para;
+
+    // Normal paragraph: merge until we approach CHUNK_TOKENS_TARGET
+    if (bufferTokens + segTokens > CHUNK_TOKENS_TARGET) {
+      result.push(buffer.trim());
+      buffer = carryOverlap(buffer) + ' ' + seg;
+      bufferTokens = tokenCount(buffer);
     } else {
-      buffer = buffer ? buffer + '\n\n' + para : para;
+      buffer = buffer ? buffer + '\n\n' + seg : seg;
+      bufferTokens += segTokens;
     }
   }
-  if (buffer) {result.push(buffer);}
+  if (buffer && buffer.trim()) result.push(buffer.trim());
+  return result.filter(Boolean);
+}
+
+function carryOverlap(text) {
+  if (!text) return '';
+  // Grab last ~OVERLAP_TOKENS of words/lines
+  const pieces = text.split(/\s+/).filter(Boolean);
+  if (pieces.length === 0) return '';
+  // Rough heuristic: 1.3 tokens per word
+  const targetWords = Math.max(6, Math.round(OVERLAP_TOKENS / 1.3));
+  return pieces.slice(-targetWords).join(' ');
+}
+
+/** Token-split fallback for completely unstructured text. */
+function legacyTokenSplit(text) {
+  const result = [];
+  const s = String(text || '');
+  if (!s) return result;
+  const words = s.split(/\s+/);
+  let buffer = '';
+  let bufferTokens = 0;
+  for (const word of words) {
+    const wTokens = Math.max(1, Math.round(tokenCount(word)));
+    if (bufferTokens + wTokens > CHUNK_TOKENS_TARGET) {
+      result.push(buffer.trim());
+      buffer = carryOverlap(buffer) + ' ' + word;
+      bufferTokens = tokenCount(buffer);
+    } else {
+      buffer = buffer ? buffer + ' ' + word : word;
+      bufferTokens += wTokens;
+    }
+  }
+  if (buffer && buffer.trim()) result.push(buffer.trim());
   return result;
 }
 
-/** Legacy character-split fallback for completely unstructured text. */
-function legacyChunkText(text) {
-  const result = [];
-  for (let start = 0; start < text.length; start += CHUNK_CHARS - OVERLAP_CHARS) {
-    const end = Math.min(text.length, start + CHUNK_CHARS);
-    const chunk = text.slice(start, end).trim();
-    if (chunk) {result.push(chunk);}
-    if (end === text.length) {break;}
-  }
-  return result;
+function tokenCount(text) {
+  try {
+    if (typeof heuristicCountTokens === 'function') return heuristicCountTokens(text);
+  } catch {}
+  const s = String(text || '');
+  if (!s) return 0;
+  const cjk = (s.match(/[\u4e00-\u9fff]/g) || []).length;
+  const words = (s.match(/[\p{L}\p{N}_-]+/gu) || []).length;
+  return Math.max(1, Math.round(cjk + words * 1.3));
 }
 
 function inferKind(source, contentType = '') {
@@ -531,11 +816,10 @@ function searchWithEmbeddings(queryEmbedding, queryText, scopedChunks, limit) {
 
 function extractRelevantSnippet(text, query, maxLen) {
   const terms = extractSearchTerms(query || '');
-  if (terms.length === 0 || !text) {return (text || '').slice(0, 150);}
+  if (terms.length === 0 || !text) return (text || '').slice(0, maxLen || 500);
 
   const lines = text.split('\n').filter(Boolean);
 
-  // Score each line; penalise long lines at tie-break level to prefer specific matches
   const scored = lines.map((line) => {
     const lower = line.toLowerCase();
     let score = 0;
@@ -543,38 +827,51 @@ function extractRelevantSnippet(text, query, maxLen) {
       const count = lower.split(term.value).length - 1;
       score += count * term.weight * 10;
     }
-    // Tiny length penalty to break ties: prefer short specific lines over long incidental ones
     return { text: line, score: score - Math.min(line.length / 100, 1), index: lines.indexOf(line) };
   });
 
-  // Find best match (highest effective score); start snippet from its position
   scored.sort((a, b) => b.score - a.score);
   const best = scored.find(m => m.score > 0.5);
-  if (!best) {return (text || '').slice(0, 150);}
+  if (!best) return (text || '').slice(0, maxLen || 500);
 
   let startPos = 0;
-  for (let i = 0; i < best.index; i++) {
-    startPos += lines[i].length + 1;
-  }
-  return text.substring(startPos, startPos + maxLen).trim();
+  for (let i = 0; i < best.index; i++) startPos += lines[i].length + 1;
+  return text.substring(startPos, startPos + (maxLen || 500)).trim();
 }
 
-function formatSearchResults(results) {
-  if (results.length === 0) {
+function formatSearchResults(results, meta = {}) {
+  if (!results || results.length === 0) {
+    if (meta.minScore != null) {
+      return `No document matches above min_score=${meta.minScore}. Try a lower min_score or broader query.`;
+    }
     return 'No document matches found.';
   }
 
-  return results.map((result, index) => {
+  const header = [
+    `Found ${results.length} relevant snippet${results.length === 1 ? '' : 's'}${meta.totalChunks ? ` (from ${meta.totalChunks} indexed chunk${meta.totalChunks === 1 ? '' : 's'})` : ''}.`,
+    meta.minScore != null ? `min_score ≥ ${meta.minScore}` : null,
+  ].filter(Boolean).join(' ');
+
+  const items = results.map((result, index) => {
     const metadata = result.metadata || {};
-    const preview = extractRelevantSnippet(result.text, result.query || '', 400);
-    const display = preview.length > 400 ? preview.slice(0, 397) + '...' : preview;
-    const pct = Math.round((result.score + 1) / 2 * 100);
-    return [
-      `[${metadata.title || 'Untitled'}] \u2192 ${pct}% match`,
-      display,
-      `Source: ${metadata.source}`,
-    ].join('\n');
-  }).join('\n\n');
+    const preview = extractRelevantSnippet(result.text, result.query || '', 500);
+    const display = preview.length > 500 ? preview.slice(0, 497) + '...' : preview;
+    const scorePct = Math.round((Number(result.score) + 1) / 2 * 100);
+    const semanticPct = typeof result.semanticScore === 'number'
+      ? Math.round((result.semanticScore + 1) / 2 * 100)
+      : null;
+
+    const lines = [];
+    lines.push(`#${index + 1} [${metadata.title || 'Untitled'}] ${scorePct}%${semanticPct ? ` (semantic ${semanticPct}%)` : ''}`);
+    if (metadata.source) lines.push(`Source : ${metadata.source}`);
+    if (metadata.chunkIndex) lines.push(`Chunk  : ${metadata.chunkIndex}`);
+    if (typeof result.score === 'number') lines.push(`Score  : ${result.score.toFixed(3)}`);
+    lines.push('---');
+    lines.push(display);
+    return lines.join('\n');
+  });
+
+  return header + '\n\n' + items.join('\n\n');
 }
 
 function rerankWithLexicalSignals(query, semanticResults) {

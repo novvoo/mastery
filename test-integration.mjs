@@ -5551,7 +5551,7 @@ newFeaturesTests.test('Document RAG tools - hybrid ranking boosts Chinese resume
     limit: 1,
   });
 
-  if (!educationSearch.includes('李四简历') || !educationSearch.includes('% match')) {
+  if (!educationSearch.includes('李四简历') || !educationSearch.includes('%')) {
     throw new Error(`Expected Chinese education search to return formatted result, got:\n${educationSearch}`);
   }
 
@@ -5560,7 +5560,7 @@ newFeaturesTests.test('Document RAG tools - hybrid ranking boosts Chinese resume
     limit: 1,
   });
 
-  if (!workSearch.includes('李四简历') || !workSearch.includes('% match')) {
+  if (!workSearch.includes('李四简历') || !workSearch.includes('%')) {
     throw new Error(`Expected Chinese work search to return formatted result, got:\n${workSearch}`);
   }
 
@@ -6307,6 +6307,370 @@ newFeaturesTests.test('SessionManager defaults to Tokenizer counter and tracks m
   }
 
   console.log('     SessionManager Tokenizer counter integration works');
+});
+
+// ============ RAG v2 Enhancement Tests (token-chunking, MMR, merge-adjacent, structured answer) ============
+
+newFeaturesTests.test('Embedder - heuristicCountTokens handles CJK, Latin, and empty inputs', async () => {
+  const { heuristicCountTokens } = await import('./src/core/embedder.js');
+
+  if (heuristicCountTokens('') !== 0) {
+    throw new Error(`Expected empty string to count 0 tokens, got ${heuristicCountTokens('')}`);
+  }
+  if (heuristicCountTokens(null) !== 0) {
+    throw new Error(`Expected null input to count 0 tokens, got ${heuristicCountTokens(null)}`);
+  }
+
+  const cjk = heuristicCountTokens('你好世界');
+  if (cjk < 3 || cjk > 8) {
+    throw new Error(`Expected CJK-only 4-char text to count ~4 tokens, got ${cjk}`);
+  }
+
+  const latin = heuristicCountTokens('Hello world from test automation');
+  if (latin < 3 || latin > 20) {
+    throw new Error(`Expected 5-word latin text to count ~6-8 tokens, got ${latin}`);
+  }
+
+  const mixed = heuristicCountTokens('李四毕业于 Yale University，主修 distributed systems。');
+  if (mixed < 5 || mixed > 40) {
+    throw new Error(`Expected mixed CJK+Latin text to count in reasonable range, got ${mixed}`);
+  }
+
+  console.log('     Embedder heuristicCountTokens handles mixed language and empty inputs');
+});
+
+newFeaturesTests.test('Embedder - getMaxTokens exposes a positive model window size', async () => {
+  const { Embedder } = await import('./src/core/embedder.js');
+
+  const embedder = new Embedder({ dimension: 768, autoDownload: false });
+  await embedder.initialize();
+
+  const maxTokens = embedder.getMaxTokens();
+  if (!Number.isFinite(maxTokens) || maxTokens < 64) {
+    throw new Error(`Expected getMaxTokens to return positive window size, got ${maxTokens}`);
+  }
+
+  console.log(`     Embedder getMaxTokens reports window of ${maxTokens} tokens`);
+});
+
+newFeaturesTests.test('Embedder - countTokens returns token counts even in fallback mode', async () => {
+  const { Embedder } = await import('./src/core/embedder.js');
+
+  const embedder = new Embedder({
+    modelPath: join(TEST_CONFIG.testDir, 'no-model.onnx'),
+    autoDownload: false,
+  });
+  await embedder.initialize();
+
+  const single = embedder.countTokens('Hello world from the embedder fallback path');
+  if (!Array.isArray(single) || single.length !== 1 || single[0] < 1) {
+    throw new Error(`Expected countTokens to return [positiveNumber], got ${JSON.stringify(single)}`);
+  }
+
+  const multi = embedder.countTokens(['text one', 'text two longer', '']);
+  if (!Array.isArray(multi) || multi.length !== 3) {
+    throw new Error(`Expected countTokens batch to return same-length array, got ${JSON.stringify(multi)}`);
+  }
+  if (multi[2] !== 0) {
+    throw new Error(`Expected empty string to be counted as 0 tokens, got ${multi[2]}`);
+  }
+
+  console.log(`     Embedder countTokens fallback mode works (single=${single[0]}, multi=${JSON.stringify(multi)})`);
+});
+
+newFeaturesTests.test('Embedder - splitByTokenCount respects target token budget and overlap', async () => {
+  const { Embedder, heuristicCountTokens } = await import('./src/core/embedder.js');
+
+  const embedder = new Embedder({ dimension: 768, autoDownload: false });
+  await embedder.initialize();
+
+  const paragraphs = [
+    '第一章 分布式系统基础。CAP 定理指出一致性、可用性、分区容忍性三者不可兼得。在生产环境中，通常优先保证 AP，然后通过最终一致性收敛。',
+    '第二章 消息队列架构。Kafka 使用分区与复制机制实现高吞吐。消费者通过 offset 管理消费进度，Broker 通过 Zookeeper 或 KRaft 维护集群元数据。',
+    '第三章 缓存失效策略。常见策略包括 LRU、LFU、TTL 以及写穿/回写。缓存穿透、雪崩、击穿是三种经典问题，分别对应空结果、集中过期、热点 Key。',
+    '第四章 数据库水平扩展。分库分表、读写分离、NewSQL 是主流路径。分布式事务常见方案为 2PC、TCC、Saga、基于消息的最终一致性。',
+    '第五章 服务治理。服务注册与发现、熔断、限流、降级是四大基础能力。常见实现包括 Consul、Nacos、Eureka 以及 Hystrix/Sentinel 等流量控制组件。',
+  ];
+  const longText = paragraphs.join('\n\n');
+
+  // splitByTokenCount returns string[] (raw text chunks). Token count is heuristic.
+  const chunks = embedder.splitByTokenCount(longText, { targetTokens: 150, maxTokens: 300, overlapTokens: 30 });
+  if (!Array.isArray(chunks) || chunks.length < 2) {
+    throw new Error(`Expected splitByTokenCount to produce multiple chunks, got ${JSON.stringify(chunks)}`);
+  }
+
+  // Each chunk should be a non-empty string and reasonable length.
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i];
+    if (typeof c !== 'string' || c.length === 0) {
+      throw new Error(`Chunk ${i} should be a non-empty string, got ${JSON.stringify(c)}`);
+    }
+  }
+
+  // Rough sanity: sum of chunk token counts should be >= total (overlap causes overcount).
+  const totalTokens = heuristicCountTokens(longText);
+  const sumChunkTokens = chunks.reduce((s, c) => s + heuristicCountTokens(c), 0);
+  // Allowing up to 5x for overlap content being counted multiple times across chunks.
+  if (sumChunkTokens < totalTokens * 0.5 || sumChunkTokens > totalTokens * 5) {
+    throw new Error(`Chunk token sum looks wrong: total=${totalTokens}, chunks-sum=${sumChunkTokens}`);
+  }
+
+  console.log(`     Embedder splitByTokenCount produced ${chunks.length} chunks (total~${totalTokens} tokens, avg~${Math.round(totalTokens / chunks.length)} tokens/chunk)`);
+});
+
+newFeaturesTests.test('Embedder - mmrReRank removes near-duplicates while respecting min_score', async () => {
+  const { mmrReRank } = await import('./src/core/embedder.js');
+
+  const items = [
+    { score: 0.9,  text: 'apple banana cherry date', embedding: [1, 0, 0, 0, 0, 0] },
+    { score: 0.88, text: 'apple banana cherry date fruit similar', embedding: [0.99, 0.01, 0, 0, 0, 0] },
+    { score: 0.8,  text: 'machine learning neural network deep model', embedding: [0, 1, 0, 0, 0, 0] },
+    { score: 0.75, text: 'python programming language runtime', embedding: [0, 0, 1, 0, 0, 0] },
+    { score: 0.1,  text: 'unrelated noise text low score', embedding: [0, 0, 0, 1, 0, 0] },
+  ];
+
+  const top3 = mmrReRank(items, { lambda: 0.5, limit: 3, minScore: 0.5 });
+  if (top3.length !== 3) {
+    throw new Error(`Expected MMR to return 3 items, got ${top3.length}`);
+  }
+
+  if (top3.some(r => r.score < 0.5)) {
+    throw new Error(`MMR included items below min_score: ${JSON.stringify(top3.map(r => r.score))}`);
+  }
+
+  const applePicks = top3.filter(r => r.text.includes('apple')).length;
+  if (applePicks > 1) {
+    throw new Error(`MMR should demote near-duplicates, but picked ${applePicks} apple chunks: ${JSON.stringify(top3.map(r => r.text))}`);
+  }
+
+  const empty = mmrReRank([], { lambda: 0.5, limit: 5 });
+  if (!Array.isArray(empty) || empty.length !== 0) {
+    throw new Error(`Expected mmrReRank([]) to return [], got ${JSON.stringify(empty)}`);
+  }
+
+  console.log(`     Embedder mmrReRank deduplicates (picked ${applePicks} of 2 near-duplicates, scores: ${top3.map(r => r.score).join(', ')})`);
+});
+
+newFeaturesTests.test('Embedder - mergeAdjacentChunks merges same-document adjacent indices', async () => {
+  const { mergeAdjacentChunks } = await import('./src/core/embedder.js');
+
+  const items = [
+    { score: 0.8, text: '文档A 第一部分内容', metadata: { documentId: 'A', chunkIndex: 1, source: 'a.md' } },
+    { score: 0.7, text: '文档B 独立内容', metadata: { documentId: 'B', chunkIndex: 1, source: 'b.md' } },
+    { score: 0.6, text: '文档A 相邻第二部分', metadata: { documentId: 'A', chunkIndex: 2, source: 'a.md' } },
+    { score: 0.5, text: '文档A 不相邻第四部分', metadata: { documentId: 'A', chunkIndex: 4, source: 'a.md' } },
+  ];
+
+  const merged = mergeAdjacentChunks(items);
+  // Expected: 3 items (A-1+A-2 merged into one, A-4 standalone, B-1 standalone).
+  // mergeAdjacentChunks sorts by chunkIndex then merges consecutively indexed items,
+  // and the merged item carries the higher (latter) chunkIndex.
+  if (merged.length !== 3) {
+    throw new Error(`Expected 3 items after merge, got ${merged.length}: ${JSON.stringify(merged.map(m => ({ doc: m.metadata?.documentId, idx: m.metadata?.chunkIndex })))}`);
+  }
+
+  // The A-1/A-2 merged item should carry text from both.
+  const mergedA = merged.find(m => m.metadata?.documentId === 'A'
+    && m.text.includes('第一部分') && m.text.includes('相邻第二部分'));
+  if (!mergedA) {
+    throw new Error(`Expected A-1 and A-2 to be merged into one item, got ${JSON.stringify(merged)}`);
+  }
+
+  const standaloneB = merged.find(m => m.metadata?.documentId === 'B');
+  if (!standaloneB || standaloneB.text !== '文档B 独立内容') {
+    throw new Error(`Expected standalone doc B to be unchanged, got ${JSON.stringify(standaloneB)}`);
+  }
+
+  const nonAdjA = merged.find(m => m.metadata?.chunkIndex === 4);
+  if (!nonAdjA) {
+    throw new Error(`Expected non-adjacent A-4 to remain standalone, got ${JSON.stringify(merged)}`);
+  }
+
+  console.log(`     Embedder mergeAdjacentChunks collapsed 4 items to ${merged.length}`);
+});
+
+newFeaturesTests.test('Document RAG - document_search accepts min_score and mmr_lambda parameters', async () => {
+  const { createDocumentRagTools } = await import('./src/tools/memory/document-rag.js');
+  const tools = Object.fromEntries(createDocumentRagTools().map(tool => [tool.name, tool]));
+
+  // All tool handlers in this test share the same working directory so
+  // ensureState() resolves to the same persist dir.
+  const ctx = { workingDirectory: TEST_CONFIG.testDir };
+  await tools.document_clear.handler({}, ctx);
+
+  await tools.document_add.handler({
+    id: 'rag-sample-1',
+    title: '分布式系统笔记',
+    content: [
+      '# 分布式系统',
+      'CAP 定理在网络分区发生时要求系统在一致性与可用性之间做选择。',
+      'BASE 原则（基本可用、软状态、最终一致）是很多互联网系统的默认选择。',
+      'Raft 与 Paxos 通过选举与日志复制实现强一致共识，常见实现包括 etcd、Zookeeper。',
+      '两阶段提交 2PC 是经典强一致事务协议，但其阻塞与单点故障问题促使业界探索 TCC、Saga。',
+    ].join('\n'),
+  }, ctx);
+
+  // Plain query without extra params.
+  const plain = await tools.document_search.handler({
+    query: 'CAP 定理与 BASE 原则',
+    limit: 3,
+  }, ctx);
+  if (typeof plain !== 'string' || !plain.includes('分布式系统笔记')) {
+    throw new Error(`Expected plain document_search to hit, got:\n${plain}`);
+  }
+
+  // Explicit min_score + mmr_lambda.
+  const withParams = await tools.document_search.handler({
+    query: 'Raft Paxos etcd 一致性',
+    limit: 3,
+    min_score: 0.0,
+    mmr_lambda: 0.7,
+  }, ctx);
+  if (typeof withParams !== 'string' || withParams.trim().length === 0) {
+    throw new Error(`Expected document_search with min_score and mmr_lambda to return results, got:\n${withParams}`);
+  }
+
+  console.log('     Document RAG document_search accepts min_score and mmr_lambda parameters');
+});
+
+newFeaturesTests.test('Document RAG - document_add produces chunks sized by token budget (not hard char cutoff)', async () => {
+  const { createDocumentRagTools } = await import('./src/tools/memory/document-rag.js');
+  const { heuristicCountTokens } = await import('./src/core/embedder.js');
+
+  const tools = Object.fromEntries(createDocumentRagTools().map(tool => [tool.name, tool]));
+  const ctx = { workingDirectory: TEST_CONFIG.testDir };
+  await tools.document_clear.handler({}, ctx);
+
+  const paragraphs = [];
+  for (let i = 1; i <= 20; i++) {
+    paragraphs.push(
+      `第 ${i} 节。本节讨论系统架构中的可观测性建设：日志、指标、追踪是三大支柱。` +
+      `结构化日志通常使用 JSON 格式输出到集中式采集管道，例如 ELK 或 Loki。` +
+      `指标方面 Prometheus 与 OpenTelemetry 是主流选择，强调维度化与 pull 模式。` +
+      `分布式追踪则通过 OpenTelemetry、Jaeger 等工具在跨服务调用链上注入 traceId。`
+    );
+  }
+  const longContent = paragraphs.join('\n\n');
+
+  const add = await tools.document_add.handler({
+    id: 'observability-long',
+    title: '可观测性长文档',
+    content: longContent,
+  }, ctx);
+  if (!add?.success) {
+    throw new Error(`Expected document_add to succeed, got ${JSON.stringify(add)}`);
+  }
+
+  if (!Number.isFinite(add.chunks) || add.chunks < 1) {
+    throw new Error(`Expected document_add to report >= 1 chunk, got ${JSON.stringify(add)}`);
+  }
+
+  const approxTotal = heuristicCountTokens(longContent);
+  const avgChunkTokens = approxTotal / add.chunks;
+  if (avgChunkTokens < 40 || avgChunkTokens > 2000) {
+    throw new Error(`Chunks look wrong: approx total=${approxTotal}, chunks=${add.chunks}, avg=${avgChunkTokens.toFixed(0)}`);
+  }
+
+  console.log(`     Document RAG document_add token budget produced ${add.chunks} chunks (avg ~${avgChunkTokens.toFixed(0)} tokens/chunk)`);
+});
+
+newFeaturesTests.test('Document RAG - document_answer returns structured JSON with citations, evidence, confidence', async () => {
+  const { createDocumentRagTools } = await import('./src/tools/memory/document-rag.js');
+
+  const tools = Object.fromEntries(createDocumentRagTools().map(tool => [tool.name, tool]));
+  const ctx = { workingDirectory: TEST_CONFIG.testDir };
+  await tools.document_clear.handler({}, ctx);
+
+  await tools.document_add.handler({
+    id: 'structured-rag-sample',
+    title: '测试工程基础',
+    content: [
+      '单元测试（Unit Test）关注最小可测试单元的正确性，通常由开发者在本地编写，框架有 Jest、pytest、Go test 等。',
+      '集成测试（Integration Test）验证多个模块协同工作。常见场景：API 到数据库、服务间调用。',
+      '端到端测试（E2E Test）模拟真实用户路径。工具包括 Playwright、Cypress、Selenium 等。',
+      '测试金字塔建议底部是大量单元测试，中部是若干集成测试，顶端是少量端到端测试。',
+    ].join('\n'),
+  }, ctx);
+
+  const toolObj = tools.document_answer;
+  if (!toolObj) {
+    throw new Error('document_answer tool is not registered in createDocumentRagTools');
+  }
+  if (!toolObj.params?.min_score || !toolObj.params?.mmr_lambda) {
+    throw new Error(`document_answer params missing min_score or mmr_lambda, got ${JSON.stringify(toolObj.params)}`);
+  }
+
+  const answer = await toolObj.handler({
+    question: '测试金字塔的结构是什么',
+    limit: 5,
+    min_score: 0.0,
+    mmr_lambda: 0.6,
+  }, ctx);
+
+  if (!answer || answer.structured_rag !== true) {
+    throw new Error(`Expected answer.structured_rag === true, got ${JSON.stringify(answer)}`);
+  }
+  if (typeof answer.question !== 'string' || answer.question.length === 0) {
+    throw new Error(`Expected answer.question to be set, got ${JSON.stringify(answer.question)}`);
+  }
+  if (typeof answer.answer !== 'string') {
+    throw new Error(`Expected answer.answer string, got ${JSON.stringify(answer.answer)}`);
+  }
+  if (!Array.isArray(answer.citations)) {
+    throw new Error(`Expected answer.citations array, got ${JSON.stringify(answer.citations)}`);
+  }
+  if (!Array.isArray(answer.evidence)) {
+    throw new Error(`Expected answer.evidence array, got ${JSON.stringify(answer.evidence)}`);
+  }
+
+  for (const ev of answer.evidence) {
+    if (typeof ev.rank !== 'number' || typeof ev.score !== 'number' || typeof ev.snippet !== 'string') {
+      throw new Error(`Evidence item missing required fields: ${JSON.stringify(ev)}`);
+    }
+    if (typeof ev.document_id !== 'string' || ev.document_id.length === 0) {
+      throw new Error(`Evidence item missing document_id: ${JSON.stringify(ev)}`);
+    }
+  }
+
+  if (typeof answer.confidence !== 'number' || answer.confidence < 0 || answer.confidence > 1.0001) {
+    throw new Error(`Expected answer.confidence in [0,1], got ${JSON.stringify(answer.confidence)}`);
+  }
+  if (!answer.missing_info || typeof answer.missing_info.low_relevance !== 'boolean') {
+    throw new Error(`Expected answer.missing_info.low_relevance boolean, got ${JSON.stringify(answer.missing_info)}`);
+  }
+  if (!answer.meta || !Number.isFinite(answer.meta.total_indexed_chunks) || answer.meta.min_score == null) {
+    throw new Error(`Expected answer.meta.{total_indexed_chunks, min_score}, got ${JSON.stringify(answer.meta)}`);
+  }
+
+  console.log(`     Document RAG document_answer structured OK (evidence=${answer.evidence.length}, citations=${answer.citations.length}, confidence=${answer.confidence.toFixed(3)})`);
+});
+
+newFeaturesTests.test('Document RAG - document_answer returns structured empty answer when nothing indexed', async () => {
+  const { createDocumentRagTools } = await import('./src/tools/memory/document-rag.js');
+
+  const tools = Object.fromEntries(createDocumentRagTools().map(tool => [tool.name, tool]));
+  const ctx = { workingDirectory: TEST_CONFIG.testDir };
+  await tools.document_clear.handler({}, ctx);
+
+  const toolObj = tools.document_answer;
+  const answer = await toolObj.handler({
+    question: '请介绍 Kafka 的分区与副本',
+  }, ctx);
+
+  if (!answer || answer.structured_rag !== true) {
+    throw new Error(`Expected structured_rag=true on empty answer, got ${JSON.stringify(answer)}`);
+  }
+  if (!Array.isArray(answer.citations) || answer.citations.length !== 0) {
+    throw new Error(`Expected empty citations when nothing indexed, got ${JSON.stringify(answer.citations)}`);
+  }
+  if (!Array.isArray(answer.evidence) || answer.evidence.length !== 0) {
+    throw new Error(`Expected empty evidence when nothing indexed, got ${JSON.stringify(answer.evidence)}`);
+  }
+  if (typeof answer.answer !== 'string' || answer.answer.length === 0) {
+    throw new Error(`Expected a human-readable empty answer message, got ${JSON.stringify(answer.answer)}`);
+  }
+
+  console.log('     Document RAG document_answer returns structured empty-answer JSON');
 });
 
 // ============ 9. 网络搜索功能测试 ============

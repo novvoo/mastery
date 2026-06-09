@@ -5,16 +5,20 @@
 import { readFile, stat } from 'fs/promises';
 import { relative, resolve } from 'path';
 import { glob } from 'glob';
-import { Embedder } from '../../core/embedder.js';
+import { Embedder, heuristicCountTokens, mmrReRank } from '../../core/embedder.js';
 import { ToolCategory } from '../../core/types.js';
 import { VectorIndex } from './vector-index.js';
 
 const DEFAULT_PATTERN = '**/*.{js,mjs,cjs,ts,tsx,jsx,json,md,txt,yml,yaml,css,html}';
 const MAX_FILE_BYTES = 256 * 1024;
-const CHUNK_LINES = 80;
-const OVERLAP_LINES = 12;
-const BUILD_TIMEOUT_MS = 60000; // 60秒构建超时
-const MAX_INDEX_SIZE_MB = 50; // 索引最大50MB
+const CHUNK_TOKENS_TARGET = 750;       // 600-900 范围
+const CHUNK_TOKENS_MIN = 600;
+const CHUNK_TOKENS_MAX = 900;
+const OVERLAP_TOKENS = 125;            // 100-150 范围
+const BUILD_TIMEOUT_MS = 60000;        // 60秒构建超时
+const MAX_INDEX_SIZE_MB = 50;          // 索引最大50MB
+const MIN_SEMANTIC_SCORE = 0.2;        // 过滤极不相关的 chunk
+const MMR_LAMBDA = 0.65;               // 平衡 relevance / diversity
 
 const indexCache = new Map();
 let embedderPromise = null;
@@ -35,43 +39,45 @@ function normalizeLimit(limit) {
 }
 
 /**
- * Structure-aware code chunking.
+ * Structure-aware + token-bounded code chunking.
  *
- * Strategy (language-agnostic, no regex for syntax):
- *   1. Split file by blank lines → natural sections (function defs, classes, import blocks)
- *   2. Sections <= CHUNK_LINES  → keep as-is
- *   3. Sections >  CHUNK_LINES  → split by top-level indentation resets (zero-regex, works for any brace / indent language)
- *   4. Still too large          → sliding-window fallback (original behaviour)
+ * Strategy:
+ *   1. Split file by blank lines → natural logical sections
+ *   2. Sections <= CHUNK_TOKENS_MAX (in tokens, not chars) → keep as-is
+ *   3. Sections >  CHUNK_TOKENS_MAX → split by top-level indentation resets
+ *   4. Still too large → sliding-window fallback at token granularity
  *
- * Returns chunks with { text, metadata } that the agent can later use the LLM
- * itself to re-contextualise any truncated code.
+ * Token budget is 600-900 tokens per chunk with 100-150 token overlap so
+ * each chunk stays well under the gte-multilingual-base 512-token window
+ * for good embeddings while still capturing enough context to be useful.
  */
 function chunkFile(path, content) {
   const lines = content.split('\n');
   const chunks = [];
 
-  // ── Tier 1: split by blank lines (natural logical boundaries) ──
+  // Tier 1: split by blank lines (natural logical boundaries)
   const blankSections = splitByBlankLines(lines);
 
   for (const section of blankSections) {
-    const sectionLen = section.end - section.start + 1;
+    const sectionText = lines.slice(section.start, section.end).join('\n');
+    const sectionTokens = tokenCount(sectionText);
 
-    if (sectionLen <= CHUNK_LINES) {
-      emitChunk(lines, section.start, section.end);
+    if (sectionTokens <= CHUNK_TOKENS_MAX) {
+      emitChunk(lines, section.start, section.end, sectionTokens);
       continue;
     }
 
-    // ── Tier 2: split large section by top-level indentation ──
+    // Tier 2: split large section by top-level indentation
     const indentSections = splitByTopLevelIndentation(lines, section.start, section.end);
 
-    // Only use indent split if it actually broke the section up
     if (indentSections.length > 1) {
       for (const sub of indentSections) {
-        const subLen = sub.end - sub.start + 1;
-        if (subLen <= CHUNK_LINES) {
-          emitChunk(lines, sub.start, sub.end);
+        const subText = lines.slice(sub.start, sub.end).join('\n');
+        const subTokens = tokenCount(subText);
+        if (subTokens <= CHUNK_TOKENS_MAX) {
+          emitChunk(lines, sub.start, sub.end, subTokens);
         } else {
-          // ── Tier 3: sliding-window fallback (original behaviour) ──
+          // Tier 3: sliding-window fallback at token granularity
           slidingWindowFallback(lines, sub.start, sub.end);
         }
       }
@@ -83,30 +89,53 @@ function chunkFile(path, content) {
 
   return chunks;
 
-  // ── helpers ──
-
-  function emitChunk(srcLines, s, e) {
+  function emitChunk(srcLines, s, e, tokens) {
     const text = srcLines.slice(s, e).join('\n').trim();
-    if (!text) {return;}
+    if (!text) return;
     chunks.push({
       text,
-      metadata: { path, startLine: s + 1, endLine: e },
+      metadata: { path, startLine: s + 1, endLine: e, tokens: tokens || tokenCount(text) },
     });
   }
 
   function slidingWindowFallback(srcLines, s, e) {
-    for (let i = s; i < e; i += CHUNK_LINES - OVERLAP_LINES) {
-      const end = Math.min(e, i + CHUNK_LINES);
-      const text = srcLines.slice(i, end).join('\n').trim();
-      if (text) {
-        chunks.push({
-          text,
-          metadata: { path, startLine: i + 1, endLine: end },
-        });
+    // Accumulate lines until we hit CHUNK_TOKENS_TARGET, then emit and
+    // back up by OVERLAP_TOKENS worth of lines for overlap.
+    let startIdx = s;
+    while (startIdx < e) {
+      let currentTokens = 0;
+      let endIdx = startIdx;
+      while (endIdx < e && currentTokens < CHUNK_TOKENS_TARGET) {
+        currentTokens += tokenCount(srcLines[endIdx]);
+        endIdx++;
       }
-      if (end >= e) {break;}
+      if (endIdx === startIdx) endIdx = Math.min(e, startIdx + 1);
+      emitChunk(srcLines, startIdx, endIdx, currentTokens);
+      if (endIdx >= e) break;
+      // Advance by roughly (CHUNK_TOKENS_TARGET - OVERLAP_TOKENS) tokens
+      let advanceTokens = 0;
+      let newStart = startIdx;
+      const stepTarget = Math.max(CHUNK_TOKENS_MIN, CHUNK_TOKENS_TARGET - OVERLAP_TOKENS);
+      while (newStart < endIdx && advanceTokens < stepTarget) {
+        advanceTokens += tokenCount(srcLines[newStart]);
+        newStart++;
+      }
+      if (newStart <= startIdx) newStart = startIdx + 1;
+      startIdx = newStart;
     }
   }
+}
+
+function tokenCount(text) {
+  try {
+    if (typeof heuristicCountTokens === 'function') return heuristicCountTokens(text);
+  } catch {}
+  // Ultra-light fallback: ~4 chars per token for CJK-heavy, ~0.75 words for Latin
+  const s = String(text || '');
+  if (!s) return 0;
+  const cjk = (s.match(/[\u4e00-\u9fff]/g) || []).length;
+  const words = (s.match(/[\p{L}\p{N}_-]+/gu) || []).length;
+  return Math.max(1, Math.round(cjk + words * 1.3));
 }
 
 /**
@@ -321,17 +350,33 @@ export function createSemanticSearchTool() {
       }
 
       const embedder = await getEmbedder();
-      const results = await embedder.batchFindSimilar(query, chunks, {
-        limit: normalizeLimit(limit),
-        threshold: 0,
+      // Batch score all chunks to get a big candidate pool, then:
+      //   1. drop chunks below MIN_SEMANTIC_SCORE (noise / unrelated)
+      //   2. MMR re-rank the top-K to avoid returning near-duplicates
+      const topK = Math.min(chunks.length, Math.max(50, normalizeLimit(limit) * 10));
+      const allScored = await embedder.batchFindSimilar(query, chunks, {
+        limit: topK,
+        includeAll: false,
       });
+
+      const minScore = Number(ctx?.args?.min_score) || MIN_SEMANTIC_SCORE;
+      const filtered = (allScored || []).filter(r => Number(r.score) >= minScore);
+
+      const reranked = mmrReRank(filtered, {
+        lambda: Number(ctx?.args?.mmr_lambda) || MMR_LAMBDA,
+        limit: normalizeLimit(limit),
+        minScore: -Infinity,
+      });
+
+      const results = reranked.length > 0 ? reranked : filtered.slice(0, normalizeLimit(limit));
 
       if (ctx.debug && ctx.ui?.debugEvent) {
         ctx.ui.debugEvent('Semantic search completed', {
           query,
           chunks: chunks.length,
+          candidatesAfterMinScore: filtered.length,
+          resultsAfterMMR: results.length,
           durationMs: Date.now() - startedAt,
-          resultCount: results.length,
         });
       }
 

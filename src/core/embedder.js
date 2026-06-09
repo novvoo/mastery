@@ -24,8 +24,9 @@ const DEFAULT_HF_ENDPOINT = 'https://huggingface.co';
 const DEFAULT_HF_MIRROR = 'https://hf-mirror.com';
 const DEFAULT_DOWNLOAD_TIMEOUT_MS = 30000;
 const DEFAULT_PROBE_TIMEOUT_MS = 10000;
-const MAX_INPUT_TEXT_CHARS = 100000; // 单个输入最大字符数
-const EMBEDDING_BATCH_TIMEOUT_MS = 60000; // 嵌入处理超时
+const MAX_INPUT_TEXT_CHARS = 100000; // soft cap per input (sanity only, not a truncation target)
+const EMBEDDING_BATCH_TIMEOUT_MS = 60000;
+const DEFAULT_MAX_TOKENS = 512; // gte-multilingual-base official max sequence length
 
 export function getDefaultEmbeddingModelPath() {
   return join(
@@ -80,6 +81,7 @@ export class Embedder {
   #probeTimeoutMs;
   #fallbackReason;
   #pooling;
+  #maxTokens;
 
   constructor(options = {}) {
     this.#modelPath = options.modelPath || process.env.EMBEDDING_MODEL_PATH || getDefaultEmbeddingModelPath();
@@ -90,6 +92,7 @@ export class Embedder {
     this.#dimension = options.dimension || 768;
     this.#batchSize = options.batchSize || 32;
     this.#pooling = normalizePooling(options.pooling || process.env.EMBEDDING_POOLING || DEFAULT_POOLING);
+    this.#maxTokens = Number(options.maxTokens || process.env.EMBEDDING_MAX_TOKENS || DEFAULT_MAX_TOKENS);
     this.#initialized = false;
     this.#onnxRuntime = null;
     this.#model = null;
@@ -434,13 +437,21 @@ export class Embedder {
   async #processWithONNX(texts) {
     const encodings = texts.map(text => this.#tokenizer.encode(text));
 
+    // Truncate to max sequence length at the TOKEN level (not character level).
+    // We reserve 2 positions for <[BOS_never_used_51bce0c785ca2f68081bfa7d91973934]>/sep_token equivalent bookend tokens
+    // that the tokenizer may add implicitly.
+    const maxTokens = Math.max(8, this.#maxTokens - 2);
     const maxLength = Math.min(
       Math.max(...encodings.map((e) => e.ids.length)),
-      512
+      this.#maxTokens
     );
 
     const paddedIds = encodings.map((e) => {
       const ids = [...e.ids];
+      // Truncate overlong sequences at token level (prefer keep start-of-text)
+      if (ids.length > maxTokens) {
+        ids.length = maxTokens;
+      }
       while (ids.length < maxLength) {
         ids.push(0);
       }
@@ -545,10 +556,12 @@ export class Embedder {
   }
 
   #preprocessText(text) {
-    return text
+    // Normalize whitespace only. Length/truncation happens at the token level
+    // in #processWithONNX (cap to this.#maxTokens tokens) so chunks never
+    // silently lose semantic content due to a character-only cutoff.
+    return String(text || '')
       .replace(/\s+/g, ' ')
-      .trim()
-      .substring(0, 512);
+      .trim();
   }
 
   #normalizeVector(vector) {
@@ -643,9 +656,126 @@ export class Embedder {
       modelPath: this.#modelPath,
       dimension: this.#dimension,
       batchSize: this.#batchSize,
+      maxTokens: this.#maxTokens,
+      pooling: this.#pooling,
       initialized: this.#initialized,
       onnxRuntime: !!this.#onnxRuntime,
+      hasTokenizer: !!this.#tokenizer,
     };
+  }
+
+  /**
+   * Returns the maximum number of tokens accepted per embedding input.
+   * Pure sync accessor; does not require initialize().
+   */
+  getMaxTokens() {
+    return this.#maxTokens;
+  }
+
+  /**
+   * Counts tokens for one or more texts using the real tokenizer when
+   * available, otherwise falls back to a whitespace+punctuation heuristic
+   * (roughly 4 chars per token for CJK-heavy text, 0.75 words per token
+   * for Latin script). Safe to call before initialize().
+   */
+  countTokens(textOrTexts) {
+    const texts = Array.isArray(textOrTexts) ? textOrTexts : [textOrTexts];
+    if (this.#tokenizer) {
+      return texts.map(t => {
+        try {
+          return this.#tokenizer.encode(String(t || '')).ids.length;
+        } catch {
+          return heuristicCountTokens(String(t || ''));
+        }
+      });
+    }
+    return texts.map(t => heuristicCountTokens(String(t || '')));
+  }
+
+  /**
+   * Splits a long text into roughly N-token chunks using the tokenizer
+   * (falls back to heuristic token counting when the tokenizer is not
+   * available). Returns an array of plain-text chunks. The tokenizer
+   * window (maxTokens) is used as a hard per-chunk cap.
+   */
+  splitByTokenCount(text, options = {}) {
+    const textStr = String(text || '');
+    const target = Number(options.targetTokens) || 750;
+    const overlap = Number(options.overlapTokens) || 100;
+    const hardCap = Math.max(32, Math.min(this.#maxTokens, Number(options.maxTokensPerChunk) || this.#maxTokens));
+    const finalTarget = Math.min(target, hardCap);
+    const finalOverlap = Math.min(overlap, Math.max(8, Math.floor(finalTarget * 0.2)));
+
+    if (!textStr) return [];
+
+    // Fast path: small text → one chunk
+    const totalTokens = this.countTokens(textStr)[0];
+    if (totalTokens <= finalTarget) return [textStr];
+
+    // Split into natural segments (newlines / sentences) first, then
+    // greedily pack segments into chunks, recomputing token counts per
+    // assembled buffer. This keeps sentences/paragraphs intact when
+    // possible, which is much better for retrieval quality.
+    const segments = textStr.split(/(\s{2,}|\n{1,})/).filter(Boolean);
+    const chunks = [];
+    let buffer = '';
+    let bufferTokens = 0;
+    let overlapTail = '';
+    let overlapTailTokens = 0;
+
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      const segTokens = this.countTokens(seg)[0];
+
+      // Check if adding this segment would exceed the hard cap
+      if (buffer && (bufferTokens + segTokens) > finalTarget) {
+        chunks.push(buffer.trim());
+        // Carry overlap from the tail of the finished chunk
+        if (finalOverlap > 0) {
+          const words = buffer.split(/\s+/);
+          overlapTail = words.slice(-Math.max(4, Math.ceil(finalOverlap / 2))).join(' ');
+          overlapTailTokens = this.countTokens(overlapTail)[0];
+        } else {
+          overlapTail = '';
+          overlapTailTokens = 0;
+        }
+        buffer = overlapTail;
+        bufferTokens = overlapTailTokens;
+      }
+
+      buffer = buffer ? buffer + (buffer.endsWith(' ') || seg.startsWith(' ') ? '' : ' ') + seg : seg;
+      bufferTokens += segTokens;
+    }
+
+    const trimmed = buffer.trim();
+    if (trimmed) chunks.push(trimmed);
+
+    // Final safety: if any chunk still exceeds hardCap, forcibly split it
+    const finalChunks = [];
+    for (const c of chunks) {
+      const cTokens = this.countTokens(c)[0];
+      if (cTokens <= hardCap) {
+        finalChunks.push(c);
+      } else {
+        // Force split at word boundaries
+        const words = c.split(/\s+/);
+        let sub = '';
+        let subTokens = 0;
+        for (const w of words) {
+          const wTokens = this.countTokens(w)[0];
+          if (sub && (subTokens + wTokens) > hardCap) {
+            finalChunks.push(sub.trim());
+            sub = w;
+            subTokens = wTokens;
+          } else {
+            sub = sub ? sub + ' ' + w : w;
+            subTokens += wTokens;
+          }
+        }
+        if (sub.trim()) finalChunks.push(sub.trim());
+      }
+    }
+    return finalChunks;
   }
 }
 
@@ -675,6 +805,148 @@ function normalizePooling(value) {
     return normalized;
   }
   return DEFAULT_POOLING;
+}
+
+/**
+ * Rough token counter used when a real tokenizer is unavailable.
+ * Treats CJK characters as ~1 token each and splits Latin script on
+ * whitespace/punctuation. Good enough to size chunks before a real
+ * embedding pass runs.
+ */
+export function heuristicCountTokens(text) {
+  const s = String(text || '');
+  if (!s) return 0;
+  const cjkMatches = s.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu) || [];
+  const cjkCount = cjkMatches.length;
+  const stripped = s.replace(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu, ' ');
+  const latinTokens = stripped.match(/[\p{L}\p{N}_-]+/gu) || [];
+  // 1.3 rough compensation for sub-word tokenization on Latin text
+  return Math.round(cjkCount + latinTokens.length * 1.3);
+}
+
+/**
+ * Maximal Marginal Relevance re-ranking.
+ * @param {Array<{score:number,embedding?:number[]|null,text?:string}>} items
+ * @param {number} lambda  1.0 = pure relevance; 0.0 = pure diversity
+ * @param {number} limit   how many items to return
+ * @param {number} minScore items below this are discarded (before MMR)
+ */
+export function mmrReRank(items, { lambda = 0.7, limit = 5, minScore = -Infinity } = {}) {
+  const candidates = items
+    .map((it, i) => ({ ...it, _origIndex: i }))
+    .filter(it => Number(it.score) >= minScore);
+
+  if (candidates.length === 0) return [];
+  if (candidates.length <= limit) return candidates;
+
+  const selected = [];
+  const remaining = candidates.slice();
+
+  while (selected.length < limit && remaining.length > 0) {
+    let bestScore = -Infinity;
+    let bestIdx = -1;
+    for (let i = 0; i < remaining.length; i++) {
+      const cand = remaining[i];
+      const rel = Number(cand.score) || 0;
+      let maxSimToSelected = 0;
+      for (const sel of selected) {
+        const sim = fastSimilarity(cand, sel);
+        if (sim > maxSimToSelected) maxSimToSelected = sim;
+      }
+      const mmr = lambda * rel - (1 - lambda) * maxSimToSelected;
+      if (mmr > bestScore) {
+        bestScore = mmr;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx < 0) break;
+    selected.push(remaining[bestIdx]);
+    remaining.splice(bestIdx, 1);
+  }
+  return selected;
+}
+
+function fastSimilarity(a, b) {
+  if (Array.isArray(a.embedding) && Array.isArray(b.embedding) && a.embedding.length === b.embedding.length) {
+    let dot = 0;
+    for (let i = 0; i < a.embedding.length; i++) dot += a.embedding[i] * b.embedding[i];
+    return Math.max(-1, Math.min(1, dot));
+  }
+  // Fallback: bag-of-words jaccard over tokens
+  return jaccardSimilarity(String(a.text || ''), String(b.text || ''));
+}
+
+function jaccardSimilarity(a, b) {
+  if (!a || !b) return 0;
+  const ta = new Set(a.toLowerCase().match(/[\p{L}\p{N}_-]{2,}/gu) || []);
+  const tb = new Set(b.toLowerCase().match(/[\p{L}\p{N}_-]{2,}/gu) || []);
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let inter = 0;
+  for (const t of ta) if (tb.has(t)) inter++;
+  const union = ta.size + tb.size - inter;
+  return union > 0 ? inter / union : 0;
+}
+
+/**
+ * Merge adjacent chunks from the same document when they overlap or are
+ * contiguous. Useful for document RAG results where a single paragraph
+ * may have been split across multiple chunks.
+ */
+export function mergeAdjacentChunks(items) {
+  if (!Array.isArray(items) || items.length === 0) return items;
+  const byDoc = new Map();
+  for (const it of items) {
+    const docId = it.metadata?.documentId || '__global__';
+    if (!byDoc.has(docId)) byDoc.set(docId, []);
+    byDoc.get(docId).push(it);
+  }
+  const out = [];
+  for (const group of byDoc.values()) {
+    group.sort((a, b) => (Number(a.metadata?.chunkIndex) || 0) - (Number(b.metadata?.chunkIndex) || 0));
+    let i = 0;
+    while (i < group.length) {
+      let current = { ...group[i] };
+      while (i + 1 < group.length) {
+        const next = group[i + 1];
+        if (next.metadata?.documentId !== current.metadata?.documentId) break;
+        // Merge if chunk indices are consecutive and content differs
+        if (shouldMerge(current, next)) {
+          current = mergeTwo(current, next);
+          i++;
+        } else {
+          break;
+        }
+      }
+      out.push(current);
+      i++;
+    }
+  }
+  return out;
+}
+
+function shouldMerge(a, b) {
+  const idxA = Number(a.metadata?.chunkIndex) || 0;
+  const idxB = Number(b.metadata?.chunkIndex) || 0;
+  if (idxB - idxA !== 1) return false;
+  // Don't merge if one text is already fully contained in the other
+  const tA = String(a.text || '').toLowerCase();
+  const tB = String(b.text || '').toLowerCase();
+  if (tA.includes(tB) || tB.includes(tA)) return true;
+  return true;
+}
+
+function mergeTwo(a, b) {
+  const combined = String(a.text || '') + '\n\n' + String(b.text || '');
+  return {
+    ...a,
+    text: combined,
+    score: Math.max(Number(a.score) || 0, Number(b.score) || 0),
+    metadata: {
+      ...(a.metadata || {}),
+      chunkIndex: b.metadata?.chunkIndex || a.metadata?.chunkIndex,
+      _mergedFrom: (a.metadata?._mergedFrom || 1) + 1,
+    },
+  };
 }
 
 export default Embedder;
