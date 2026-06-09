@@ -58,20 +58,91 @@ export class TextToolParser {
   /**
    * 格式 1: CALL tool_name({"param": "value"})
    */
+  /**
+   * Scan forward from startIdx to find a balanced JSON object.
+   * Tracks brace depth and ignores braces inside string literals.
+   * Supports double quotes, single quotes, and backslash escapes.
+   * @returns {{endIdx: number, content: string} | null}
+   */
+  #findBalancedJSON(text, startIdx) {
+    let depth = 0;
+    let inString = false;
+    let stringChar = '';
+    let escaped = false;
+    let i = startIdx;
+
+    while (i < text.length) {
+      const ch = text[i];
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          i++;
+          continue;
+        }
+        if (ch === '\\') {
+          escaped = true;
+          i++;
+          continue;
+        }
+        if (ch === stringChar) {
+          inString = false;
+        }
+        i++;
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        inString = true;
+        stringChar = ch;
+        i++;
+        continue;
+      }
+
+      if (ch === '{') {
+        depth++;
+        i++;
+        continue;
+      }
+
+      if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          return {
+            endIdx: i + 1,
+            content: text.substring(startIdx, i + 1),
+          };
+        }
+        i++;
+        continue;
+      }
+
+      i++;
+    }
+
+    return null;
+  }
+
   #parseCALLFormat(text) {
     const toolCalls = [];
-    // 支持多行和嵌套括号
-    const callRegex = /CALL\s+\/?([A-Za-z_][\w-]*)\s*\((\{[\s\S]*?\})\)/g;
+    // Find each CALL header, then scan for balanced JSON argument object.
+    // A naive /\{[\s\S]*?\}/ non-greedy match stops at the first }, which
+    // breaks when string values contain code snippets like { x: 10 }.
+    const headerRegex = /CALL\s+\/?([A-Za-z_][\w-]*)\s*\(\s*\{/g;
     let match;
 
-    while ((match = callRegex.exec(text)) !== null) {
-      const argsStr = match[2];
-      
+    while ((match = headerRegex.exec(text)) !== null) {
+      const toolName = match[1];
+      const braceStart = match.index + match[0].length - 1;
+      const found = this.#findBalancedJSON(text, braceStart);
+      if (!found) continue;
+
       try {
-        const args = this.#safeJSONParse(argsStr);
+        const args = this.#safeJSONParse(found.content);
         if (args) {
-          const { name, args: normalizedArgs } = this.#normalizeJSONToolCall(match[1], args);
+          const { name, args: normalizedArgs } = this.#normalizeJSONToolCall(toolName, args);
           if (this.#toolRegistry?.has && !this.#toolRegistry.has(name)) {
+            headerRegex.lastIndex = found.endIdx;
             continue;
           }
           toolCalls.push({
@@ -81,8 +152,10 @@ export class TextToolParser {
             source: 'CALL_format',
           });
         }
+        headerRegex.lastIndex = found.endIdx;
       } catch (e) {
-        console.debug(`Failed to parse CALL format: ${argsStr.substring(0, 50)}`);
+        console.debug(`Failed to parse CALL format`);
+        headerRegex.lastIndex = found.endIdx;
       }
     }
 
@@ -94,16 +167,31 @@ export class TextToolParser {
    */
   #parseJSONBlockFormat(text) {
     const toolCalls = [];
-    const blockRegex = /```(?:tool)?\s*\n?\s*(\{[\s\S]*?\})\s*\n?```/g;
+    // Find ```tool { markers, then scan for balanced JSON instead of
+    // relying on non-greedy (\{[\s\S]*?\}) which stops at the first }
+    // inside nested values like {"arguments": {"deep": {...}}}.
+    const blockRegex = /```(?:tool)?\s*\n?\s*\{/g;
     let match;
 
     while ((match = blockRegex.exec(text)) !== null) {
+      const braceStart = match.index + match[0].length - 1;
+      const found = this.#findBalancedJSON(text, braceStart);
+      if (!found) continue;
+
+      // verify closing code fence appears within a few characters after the JSON
+      const after = text.substring(found.endIdx, found.endIdx + 20);
+      if (!/^\s*\n?\s*```/.test(after)) {
+        blockRegex.lastIndex = found.endIdx;
+        continue;
+      }
+
       try {
-        const json = this.#safeJSONParse(match[1]);
+        const json = this.#safeJSONParse(found.content);
         toolCalls.push(...this.#toolCallsFromJSON(json, 'JSON_block', toolCalls.length));
       } catch (e) {
         // 不是有效的工具调用 JSON
       }
+      blockRegex.lastIndex = found.endIdx;
     }
 
     return toolCalls;
@@ -1245,16 +1333,74 @@ export class TextToolParser {
    * 安全的 JSON 解析
    */
   #safeJSONParse(str) {
+    if (!str || typeof str !== 'string') return null;
     try {
       // 先尝试直接解析
       return JSON.parse(str);
     } catch {
       // 尝试修复常见 JSON 错误
       try {
-        // 单引号转双引号
-        const fixed = str
-          .replace(/'/g, '"')
-          .replace(/(\w+):/g, '"$1":')
+        // Step 1: normalize line endings - replace bare CR/LF inside
+        // string literals with \n escape sequences. Scan char-by-char
+        // and only rewrite characters that appear to be inside quoted strings.
+        let normalized = '';
+        let i = 0;
+        while (i < str.length) {
+          const ch = str[i];
+          if (ch === '"') {
+            // start of a JSON string literal - copy verbatim,
+            // but escape any raw control characters inside it
+            normalized += '"';
+            i++;
+            let escaped = false;
+            while (i < str.length) {
+              const c = str[i];
+              if (escaped) {
+                normalized += c;
+                escaped = false;
+                i++;
+                continue;
+              }
+              if (c === '\\') {
+                normalized += c;
+                escaped = true;
+                i++;
+                continue;
+              }
+              if (c === '"') {
+                normalized += c;
+                i++;
+                break;
+              }
+              if (c === '\n') { normalized += '\\n'; i++; continue; }
+              if (c === '\r') { normalized += '\\r'; i++; continue; }
+              if (c === '\t') { normalized += '\\t'; i++; continue; }
+              normalized += c;
+              i++;
+            }
+            continue;
+          }
+          normalized += ch;
+          i++;
+        }
+
+        // Step 2: try parsing the newline-normalized version
+        try {
+          return JSON.parse(normalized);
+        } catch {
+          // Fall through to lenient fallback
+        }
+
+        // Step 3: lenient fallback - add quotes around bare keys,
+        // strip trailing commas. Only apply single-to-double-quote when
+        // the string has no double quotes at all (avoids mangling code
+        // like print('ok') inside JSON strings).
+        let fixed = normalized;
+        if (!fixed.includes('"')) {
+          fixed = fixed.replace(/'/g, '"');
+        }
+        fixed = fixed
+          .replace(/([{,]\s*)([A-Za-z_][\w-]*)\s*:/g, '$1"$2":')
           .replace(/,\s*([}\]])/g, '$1');
         return JSON.parse(fixed);
       } catch {

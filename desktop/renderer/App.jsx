@@ -1875,7 +1875,28 @@ const handleClearAgentHistory = useCallback(() => {
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap'
             }}>
-              {activePreviewUrl || (previewStatus === 'starting' ? '正在启动...' : '尚未启动')}
+              {activePreviewUrl ? (
+                <a
+                  href={activePreviewUrl}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    ipc.openExternal?.(activePreviewUrl);
+                  }}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    color: 'var(--primary-color)',
+                    textDecoration: 'underline',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                  }}
+                  title="点击在外部浏览器中打开"
+                >
+                  {activePreviewUrl}
+                </a>
+              ) : (
+                previewStatus === 'starting' ? '正在启动...' : '尚未启动'
+              )}
             </div>
           </div>
           <button
@@ -1969,7 +1990,8 @@ const handleClearAgentHistory = useCallback(() => {
             title="workspace-preview"
             src={activePreviewUrl}
             style={styles.previewFrame}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox"
+            referrerPolicy="no-referrer"
           />
         ) : (
           <div style={{

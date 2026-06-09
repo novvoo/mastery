@@ -14,6 +14,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useIPC } from '../hooks/useIPC.js';
 
 // 样式定义
 const styles = {
@@ -626,6 +627,75 @@ const styles = {
  * @param {Function} props.onAskAgent - 将错误消息交给 Agent 处理
  */
 function MessageLog({ messages, status, onClear, onAskAgent }) {
+  const ipc = useIPC();
+
+  // ============================================================
+  // 将消息文本中的裸 URL 转换为标准 Markdown 链接 [url](url)
+  // remark-gfm 默认不会自动识别裸 URL（如 "访问 http://example.com 获取更多"）
+  // 只有显式的 [text](url) 或 <url> 格式才被解析为链接
+  // 标准 Markdown 链接格式最可靠，避免 <url> 被误认为 HTML
+  // ============================================================
+  const AUTO_LINK_RE = /(?<!<)(?<!\]\()(?<!\[)(\b(?:https?:\/\/|www\.)[^\s<>\]\[()"']+[^\s<>\]\[()"'\.,;!?\n])/gi;
+
+  const preprocessTextForLinks = useCallback((text) => {
+    if (!text || typeof text !== 'string') return text;
+    return text.replace(AUTO_LINK_RE, (match) => `[${match}](${match})`);
+  }, []);
+
+  // 在消息容器上用事件委托捕获所有 <a> 标签的点击
+  // 这样无论链接是 ReactMarkdown 生成的，还是嵌入的 HTML 结构，都能被正确拦截
+  // 比自定义 ReactMarkdown components 更可靠（components 对复杂嵌套内容可能不生效）
+  const handleMessageContainerClick = useCallback((e) => {
+    const target = e.target;
+    if (!target || target.nodeType !== 1) return;
+
+    // 查找最近的 <a> 祖先元素
+    const anchor = target.closest('a');
+    if (!anchor) return;
+
+    const href = anchor.getAttribute('href') || anchor.href;
+    if (!href) return;
+
+    // 只处理外部链接（http/https）
+    if (!/^https?:\/\//i.test(href) && !/^www\./i.test(href)) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    let finalUrl = href;
+    if (/^www\./i.test(finalUrl)) {
+      finalUrl = 'https://' + finalUrl;
+    }
+
+    if (typeof ipc?.openExternal === 'function') {
+      ipc.openExternal(finalUrl).catch((err) => {
+        console.error('[MessageLog] openExternal 失败:', err);
+        window.open(finalUrl, '_blank', 'noopener,noreferrer');
+      });
+    } else {
+      window.open(finalUrl, '_blank', 'noopener,noreferrer');
+    }
+  }, [ipc]);
+
+  // ReactMarkdown 自定义组件：为 <img> 设置安全策略
+  const markdownComponents = useMemo(() => ({
+    img: ({ src, alt, ...rest }) => (
+      <img
+        src={src}
+        alt={alt || ''}
+        referrerPolicy="no-referrer"
+        style={{ maxWidth: '100%', height: 'auto', borderRadius: '6px' }}
+        {...rest}
+      />
+    ),
+  }), []);
+
+  // 为 markdown 容器添加 CSS 规则：确保 <a> 标签有明确的链接样式
+  const markdownStyle = {
+    maxHeight: '400px',
+    overflowY: 'auto',
+  };
+
   // 状态
   const [filter, setFilter] = useState('all');
   const [autoScroll, setAutoScroll] = useState(true);
@@ -1160,9 +1230,17 @@ function MessageLog({ messages, status, onClear, onAskAgent }) {
           ...(isCollapsed ? styles.messageContentCollapsed : {})
         }}>
           {msg.content || msg.message ? (
-            <div className="markdown" style={{maxHeight: '400px', overflowY: 'auto'}}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {msg.content || msg.message || ''}
+            <div
+              className="markdown"
+              style={markdownStyle}
+              onClick={handleMessageContainerClick}
+            >
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={markdownComponents}
+                remarkPluginSettings={{ gfm: true }}
+              >
+                {preprocessTextForLinks(msg.content || msg.message || '')}
               </ReactMarkdown>
             </div>
           ) : null}
@@ -1540,6 +1618,55 @@ function MessageLog({ messages, status, onClear, onAskAgent }) {
   
   return (
     <div style={styles.container}>
+      {/* 消息容器内部链接样式：确保 ReactMarkdown 生成的 <a> 标签有明确的链接外观 */}
+      <style>{`
+        .markdown a {
+          color: var(--primary-color, #4a9eff);
+          text-decoration: underline;
+          cursor: pointer;
+          word-break: break-all;
+          padding: 0 2px;
+          border-radius: 2px;
+          transition: background-color 0.15s;
+        }
+        .markdown a:hover {
+          background-color: rgba(74, 158, 255, 0.12);
+          text-decoration: underline;
+        }
+        .markdown code {
+          background-color: var(--surface-color, #1a1f2e);
+          border-radius: 4px;
+          padding: 2px 6px;
+          font-size: 12px;
+          color: var(--text-color, #e6e9ef);
+        }
+        .markdown pre {
+          background-color: var(--surface-color, #1a1f2e);
+          border-radius: 6px;
+          padding: 12px;
+          overflow-x: auto;
+          font-size: 12px;
+        }
+        .markdown pre code {
+          background: transparent;
+          padding: 0;
+        }
+        .markdown p {
+          margin: 8px 0;
+          line-height: 1.6;
+          font-size: 13px;
+          color: var(--text-color, #e6e9ef);
+        }
+        .markdown ul, .markdown ol {
+          margin: 8px 0;
+          padding-left: 20px;
+          font-size: 13px;
+        }
+        .markdown li {
+          margin: 4px 0;
+          line-height: 1.5;
+        }
+      `}</style>
       {/* 头部 */}
       <div style={styles.header}>
         <div style={styles.title}>

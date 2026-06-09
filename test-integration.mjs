@@ -8042,6 +8042,20 @@ adapterUnitTests.test("tests/runtime/dsml-parser.test.js passes all tests", asyn
   });
 });
 
+adapterUnitTests.test("tests/runtime/call-format-nested-braces.test.js passes all tests", async () => {
+  return new Promise((resolve, reject) => {
+    const child = spawn("bun", ["test", "tests/runtime/call-format-nested-braces.test.js"], { stdio: ["ignore", "pipe", "pipe"] });
+    let output = "";
+    child.stdout.on("data", (d) => { output += d.toString(); });
+    child.stderr.on("data", (d) => { output += d.toString(); });
+    child.on("exit", (code) => {
+      if (code === 0) {resolve();}
+      else {reject(new Error(`CALL format nested braces tests failed (exit ${code}):\n${output.slice(-300)}`));}
+    });
+    child.on("error", reject);
+  });
+});
+
 
 
 

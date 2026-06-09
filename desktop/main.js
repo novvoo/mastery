@@ -425,6 +425,38 @@ class ElectronMainApp {
       this.#broadcastWindowState();
     };
 
+    // 安全性：拦截所有 window.open / target="_blank" 的新建窗口请求
+    // 统一在用户的默认浏览器中打开外部链接，防止在应用窗口内导航
+    this.#mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+      const urlLower = String(url || '').toLowerCase();
+      const isDevServer = urlLower.startsWith('http://localhost:5173') ||
+        urlLower.startsWith('http://127.0.0.1:5173');
+      const isLocalPreview = /^http:\/\/(localhost|127\.0\.0\.1):/i.test(urlLower);
+      const isSafeScheme = /^(file:|about:|data:|blob:)/i.test(urlLower);
+
+      // 允许开发服务器和本地预览在应用内新开窗口，其他交给系统浏览器
+      if (isDevServer || isLocalPreview || isSafeScheme) {
+        return { action: 'allow', overrideBrowserWindowOptions: { show: true } };
+      }
+      shell.openExternal(url);
+      return { action: 'deny' };
+    });
+
+    // 阻止主窗口 webContents 导航到非允许的外部 URL
+    // 这是最后一道防线：即便 React 层的点击拦截被绕过，此处也会阻止导航
+    this.#mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+      const urlLower = String(navigationUrl || '').toLowerCase();
+      const isDevServer = urlLower.startsWith('http://localhost:5173') ||
+        urlLower.startsWith('http://127.0.0.1:5173');
+      const isLocalPreview = /^http:\/\/(localhost|127\.0\.0\.1):/i.test(urlLower);
+      const isFile = /^file:/i.test(urlLower);
+
+      if (!isDevServer && !isFile && !isLocalPreview) {
+        event.preventDefault();
+        shell.openExternal(navigationUrl);
+      }
+    });
+
     // 窗口关闭处理
     this.#mainWindow.on('close', (event) => {
       if (!this.#isQuitting) {
@@ -1047,8 +1079,31 @@ class ElectronMainApp {
       await this.#cleanup();
     });
 
-    // 安全性：阻止导航到外部 URL
+    // 安全性：全局拦截所有 webContents 的导航和新窗口请求
+    // 这确保主窗口 webContents 以及任何后续创建的 webContents（如 <webview>）
+    // 都不会意外导航到外部 URL，而是把外部链接交给系统默认浏览器
     app.on('web-contents-created', (event, contents) => {
+      // 1. 拦截所有新窗口请求（window.open / target="_blank" 等）
+      contents.setWindowOpenHandler(({ url }) => {
+        const parsed = new URL(url);
+        const devOrigins = new Set([
+          'http://localhost:5173',
+          'http://127.0.0.1:5173',
+        ]);
+        const isLocalPreview = parsed.protocol === 'http:' &&
+          ['localhost', '127.0.0.1'].includes(parsed.hostname);
+        const isSafeScheme = ['file:', 'about:', 'data:', 'blob:'].includes(parsed.protocol);
+
+        if (devOrigins.has(parsed.origin) || isLocalPreview || isSafeScheme) {
+          return { action: 'allow', overrideBrowserWindowOptions: { show: true } };
+        }
+
+        // 其他所有外部 URL → 在系统默认浏览器打开
+        shell.openExternal(url);
+        return { action: 'deny' };
+      });
+
+      // 2. 阻止导航到非允许的外部 URL（最后一道防线）
       contents.on('will-navigate', (event, navigationUrl) => {
         const parsedUrl = new URL(navigationUrl);
         const allowedDevOrigins = new Set([
@@ -1061,6 +1116,7 @@ class ElectronMainApp {
 
         if (!allowedDevOrigins.has(parsedUrl.origin) && parsedUrl.protocol !== 'file:' && !isLocalPreview) {
           event.preventDefault();
+          shell.openExternal(navigationUrl);
         }
       });
     });
