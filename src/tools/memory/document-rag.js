@@ -873,7 +873,9 @@ function createDocumentAnswerTool() {
       const reranked = mmrReRank(merged, { lambda: finalLambda, limit: maxResults, minScore: -Infinity });
       const evidence = (reranked.length > 0 ? reranked : hybrid).slice(0, maxResults);
 
-      return buildStructuredAnswer(question, evidence, scopedChunks.length, finalMinScore);
+      return buildStructuredAnswer(question, evidence, scopedChunks.length, finalMinScore, {
+        modelProvider: ctx?.modelProvider || null,
+      });
     },
   };
 }
@@ -929,6 +931,48 @@ function createDocumentClearTool() {
  * STRUCTURED ANSWER BUILDER (enhanced with section paths)
  * ===================================================================== */
 
+async function synthesizeWithLLM(question, evidenceItems, modelProvider) {
+  if (!modelProvider || typeof modelProvider.chat !== 'function') return null;
+
+  const topEv = evidenceItems.slice(0, 5);
+  const evidenceText = topEv.map((e, i) => {
+    const md = e.metadata || {};
+    const section = (md.sectionPath && md.sectionPath.length > 0)
+      ? ` [section: ${md.sectionPath.join(' › ')}]`
+      : '';
+    return `[Evidence #${i + 1}] doc=${md.documentId || '?'} chunk=${md.chunkIndex || '?'}${section}\n${(e.snippet || e.text || '').trim()}`;
+  }).join('\n\n---\n\n');
+
+  const systemPrompt =
+    '你是一个严谨的证据型问答助手。你的任务是：仅根据用户提供的 evidence 片段，用简洁的中文（或与 question 相同的语言）回答问题。\n' +
+    '规则：\n' +
+    '1) 严格依据 evidence 内容作答，不得引入外部知识，不得臆测。\n' +
+    '2) 如果 evidence 中没有相关内容，直接说明"证据不足，无法回答"。\n' +
+    '3) 直接输出答案，不需要礼貌语、不需要重复问题，不要出现"根据证据"等套话。\n' +
+    '4) 答案中在关键信息后的括号内引用证据编号，例如：(证据 #1)。';
+
+  const userPrompt =
+    `Question: ${question}\n\n` +
+    `Evidence snippets (most relevant first):\n${evidenceText}\n\n` +
+    `Answer:`;
+
+  const messages = [
+    { role: 'system', text: systemPrompt },
+    { role: 'user', text: userPrompt },
+  ];
+
+  try {
+    const resp = await modelProvider.chat(messages, {
+      maxTokens: 600,
+      temperature: 0.0,
+    });
+    const text = (resp?.text || '').trim();
+    return text || null;
+  } catch (e) {
+    return null;
+  }
+}
+
 function buildEmptyAnswer(question, reason) {
   return {
     structured_rag: true,
@@ -950,8 +994,9 @@ function buildEmptyAnswer(question, reason) {
     },
   };
 }
+async function buildStructuredAnswer(question, evidence, totalChunks, minScore, options = {}) {
+  const { modelProvider = null } = options;
 
-function buildStructuredAnswer(question, evidence, totalChunks, minScore) {
   if (!evidence || evidence.length === 0) {
     return {
       structured_rag: true,
@@ -1039,12 +1084,21 @@ function buildStructuredAnswer(question, evidence, totalChunks, minScore) {
   const avgTop = topSemScores.reduce((a, b) => a + b, 0) / Math.max(1, topSemScores.length);
   const confidence = Math.max(0, Math.min(1, (avgTop + 1) / 2));
 
-  // Synthesize the "answer" field — a compact snippet focused on the question,
-  // drawn from the top evidence. Non-LLM; purely extractive.
-  const topSnippet = evidenceItems.slice(0, 2).map(e => e.snippet).join(' ');
-  const condensed = condenseForAnswer(topSnippet, question, 600);
-
   const lowRelevance = avgTop < 0.1;
+
+  // Synthesize the "answer" field: try LLM first (zero hardcoded keywords),
+  // fall back to evidence-best-snippet when model unavailable.
+  let synthesizedAnswer = null;
+  let answerMethod = 'fallback-extractive';
+  if (modelProvider && typeof modelProvider.chat === 'function' && !lowRelevance) {
+    synthesizedAnswer = await synthesizeWithLLM(question, evidenceItems, modelProvider);
+    if (synthesizedAnswer) answerMethod = 'llm-evidence-based';
+  }
+  if (!synthesizedAnswer) {
+    const topSnippet = evidenceItems.slice(0, 2).map(e => e.snippet).join(' ');
+    synthesizedAnswer = condenseForAnswer(topSnippet, question, 600);
+  }
+
   const missingInfo = {
     reason: lowRelevance
       ? 'Top evidence scores are low. The answer may be incomplete or speculative — verify against the evidence snippets.'
@@ -1059,7 +1113,7 @@ function buildStructuredAnswer(question, evidence, totalChunks, minScore) {
   return {
     structured_rag: true,
     question,
-    answer: condensed,
+    answer: synthesizedAnswer,
     sections_hit: [...sectionsHit].slice(0, 20),
     citations,
     evidence: evidenceItems,
@@ -1070,6 +1124,7 @@ function buildStructuredAnswer(question, evidence, totalChunks, minScore) {
       min_score: minScore,
       evidence_used: evidenceItems.length,
       retrieval_method: 'hybrid',
+      answer_method: answerMethod,
     },
   };
 }
