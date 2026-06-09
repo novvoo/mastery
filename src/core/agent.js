@@ -16,6 +16,8 @@ import { selectToolsForRequest, shouldUseIntentClassifier } from './tool-router.
 import { WorkspaceState } from './workspace-state.js';
 import { ObservationSummarizer } from './observation-summarizer.js';
 import { ContentAddressableStore, FileAnalyzer } from './harness/content-addressing.js';
+import { readFile } from 'fs/promises';
+import { existsSync } from 'fs';
 
 const TERMINATION_KEYWORDS = ['FINAL_ANSWER:', 'Answer:', 'TASK_COMPLETE'];
 const MAX_ITERATIONS_DEFAULT = 120;
@@ -72,6 +74,31 @@ const VERIFICATION_TOOLS = new Set([
   'pty_read',
   'semantic_search',
 ]);
+// Inspection-only tools (read back your own edits is NOT a runtime test).
+const INSPECTION_ONLY_TOOLS = new Set([
+  'read_file',
+  'list_dir',
+  'glob',
+  'search',
+  'semantic_search',
+  'review',
+]);
+// True runtime verification: shell/pty that runs test/lint/build commands, or verify tool.
+const RUNTIME_VERIFICATION_TOOLS = new Set([
+  'verify',
+  'shell',
+  'pty_start',
+  'pty_write',
+  'pty_read',
+]);
+// Shell sub-command patterns that count as real runtime verification.
+const RUNTIME_VERIFICATION_COMMAND_PATTERNS = [
+  /\b(test|tests|testing)\b/i,
+  /\b(lint|linting|eslint|prettier)\b/i,
+  /\b(build|compile|bundle|tsc|webpack|rollup|vite build|babel)\b/i,
+  /\b(type.?check|typecheck|check)\b/i,
+  /\b(npm|pnpm|yarn|bun|node|python|pytest|vitest|jest|mocha|cargo|go test|dotnet test|mvn test|gradle test)\b/i,
+];
 const SEMANTIC_RISK_DOMAINS = [
   {
     id: 'units_timing',
@@ -333,7 +360,9 @@ export class ReActAgent {
 
     if (this.#activeTaskProfile.isCodingTask) {
       this.#debugEvent('Coding task mode enabled', this.#activeTaskProfile);
-      this.#sessionManager.addUserMessage(this.#buildCodingTaskOperatingPrompt(userInput));
+      const basePrompt = this.#buildCodingTaskOperatingPrompt(userInput);
+      const strategy = await this.#suggestVerificationStrategy(userInput);
+      this.#sessionManager.addUserMessage(`${basePrompt}\n\nVerification strategy:\n${strategy}`);
     }
 
     if (this.#activeExecutionPlan) {
@@ -787,6 +816,9 @@ export class ReActAgent {
         // in filesystem tools (edit_file, write_file) and provides anchors.
         contentStore: this.#contentStore,
         fileAnalyzer: this.#fileAnalyzer,
+        // Snapshot of tool events so far, used by the `verify` tool to build
+        // an evidence-based report rather than trusting textual "evidence" args.
+        toolEventsSnapshot: this.#runToolEvents.map(event => ({ ...event })),
       };
 
       const result = await withTimeout(
@@ -1825,7 +1857,127 @@ export class ReActAgent {
     );
   }
 
+  // ---------------------------------------------------------------
+  // Verification strategy: read package.json (or known project files)
+  // and map changed file extensions -> recommended shell commands.
+  // Returns a short human-readable recommendation string.
+  // ---------------------------------------------------------------
+  async #suggestVerificationStrategy(userInput) {
+    try {
+      const workingDirectory = this.#config.workingDirectory || process.cwd();
+      const pkgPath = `${workingDirectory}/package.json`;
+      const changedFiles = this.#extractRequestedFilePaths(userInput);
+
+      // Infer file types from user-input file paths
+      const extensions = new Set();
+      for (const p of changedFiles) {
+        const m = p.match(/\.[a-zA-Z0-9]+$/);
+        if (m) extensions.add(m[0].toLowerCase());
+      }
+
+      let recommendedCommands = [];
+      let packageInfo = null;
+
+      // 1) Try package.json scripts
+      if (existsSync(pkgPath)) {
+        try {
+          const raw = await readFile(pkgPath, 'utf-8');
+          const pkg = JSON.parse(raw);
+          packageInfo = { scripts: pkg.scripts || {} };
+          const scripts = pkg.scripts || {};
+          // Order by priority: test > lint > build > typecheck > check
+          const priority = [
+            ['test', /^(test|tests?|spec)$/i],
+            ['lint', /^(lint|linting|eslint|stylelint)$/i],
+            ['build', /^(build|compile|bundle|build:.*)$/i],
+            ['typecheck', /^(type.?check|tsc|typecheck:.*|check)$/i],
+            ['start', /^(start|dev|serve)$/i],
+          ];
+          for (const [label, regex] of priority) {
+            const name = Object.keys(scripts).find(s => regex.test(s));
+            if (name) {
+              recommendedCommands.push(`npm run ${name}  # ${label}`);
+            }
+          }
+          // Fallback if nothing matched but scripts exist
+          if (recommendedCommands.length === 0 && Object.keys(scripts).length > 0) {
+            const first = Object.keys(scripts)[0];
+            recommendedCommands.push(`npm run ${first}  # first available script`);
+          }
+        } catch {
+          // JSON parse errors are non-fatal; continue without package.json hints
+        }
+      }
+
+      // 2) Fall back to extension-based heuristics
+      const extBasedCommands = [];
+      for (const ext of extensions) {
+        if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
+          extBasedCommands.push('node --check <file>  # syntax check');
+          extBasedCommands.push('npx tsc --noEmit  # typecheck');
+          extBasedCommands.push('npm test  # if tests exist');
+        } else if (['.py'].includes(ext)) {
+          extBasedCommands.push('python -c "import py_compile; py_compile.compile(\'<file>\', doraise=True)"  # syntax check');
+          extBasedCommands.push('pytest  # if tests exist');
+        } else if (['.go'].includes(ext)) {
+          extBasedCommands.push('go build ./...');
+          extBasedCommands.push('go test ./...');
+        } else if (['.rs'].includes(ext)) {
+          extBasedCommands.push('cargo check');
+          extBasedCommands.push('cargo test');
+        } else if (['.java'].includes(ext)) {
+          extBasedCommands.push('mvn test');
+        }
+      }
+
+      // 3) Detect "non-verifiable" files (markdown, plain data, config without tests)
+      const verificationHintExts = new Set();
+      let unverifiableExts = [];
+      for (const ext of extensions) {
+        if (['.md', '.txt', '.json', '.yml', '.yaml', '.toml', '.csv'].includes(ext)) {
+          verificationHintExts.add(ext);
+        }
+      }
+      for (const ext of verificationHintExts) {
+        if (['.json', '.yml', '.yaml', '.toml'].includes(ext)) {
+          // JSON/YAML/TOML can at least be parsed
+          if (ext === '.json') extBasedCommands.push('node -e "JSON.parse(require(\'fs\').readFileSync(\'<file>\',\'utf8\'))"  # syntax check JSON');
+        } else {
+          // markdown/txt - no sensible runtime command
+          unverifiableExts.push(ext);
+        }
+      }
+
+      // Compose the prompt
+      const lines = [];
+      if (packageInfo) {
+        const scripts = Object.keys(packageInfo.scripts).slice(0, 6);
+        lines.push(`Detected package.json. Relevant scripts: ${scripts.join(', ') || '(none)'}.`);
+      }
+      if (recommendedCommands.length > 0) {
+        lines.push('Recommended verification commands (from package.json):');
+        for (const c of recommendedCommands.slice(0, 4)) lines.push(`  - ${c}`);
+      }
+      if (extBasedCommands.length > 0) {
+        lines.push('File-extension-based verification commands:');
+        for (const c of extBasedCommands.slice(0, 6)) lines.push(`  - ${c}`);
+      }
+      if (unverifiableExts.length > 0) {
+        lines.push(`Files with extensions ${unverifiableExts.join(', ')} may not have meaningful runtime verification; ` +
+                    'use read_file to inspect correctness instead of claiming "tested".');
+      }
+      if (lines.length === 0) {
+        lines.push('Before finishing, run a shell command that exercises your changes (for example: a test, linter, typechecker, or build).');
+      }
+      return lines.join('\n');
+    } catch {
+      return 'Before finishing, run a shell command that exercises your changes (for example: a test, linter, typechecker, or build).';
+    }
+  }
+
   #buildCodingTaskOperatingPrompt(userInput) {
+    // NOTE: the verification strategy helper is async; the caller prepends it
+    // into the same user-message via `await`. We build it lazily in run().
     const hasMethodologyTools = this.#hasAnyTool(METHODOLOGY_TOOLS);
     const methodologyLine = hasMethodologyTools
       ? 'Use the built-in methodology tools proactively when they fit: setup only when project context is missing, coverage_check before uncertain/RAG/web answers, diagnose for bugs, grill/zoom_out for unclear or shared changes, brainstorm/tdd before implementation when non-trivial, to_prd/to_issues for formal planning, review after editing, and verify before completion. For a small standalone file creation, do not run setup repeatedly; write the file and inspect it.'
@@ -1836,9 +1988,17 @@ export class ReActAgent {
       `Act like a responsible coding agent. First understand the repo with tools, then make the smallest necessary change, then verify with fresh evidence.\n` +
       `${methodologyLine}\n` +
       `${this.#activeTaskProfile?.requiresSemanticRiskReview ? `${this.#buildSemanticRiskGuidance()}\n` : ''}` +
-      `For file creation or file edits, prefer write_file/edit_file directly when available; shell is for inspection, commands, and verification, not a substitute for editing files. ` +
-      `If you write or edit files, you must inspect the result and run an appropriate verification command or verify tool before FINAL_ANSWER. ` +
-      `Final answers must mention what changed and what verification passed.`
+      `For file creation or file edits, prefer write_file/edit_file directly when available; shell is for inspection, commands, and verification, not a substitute for editing files.\n` +
+      `Strict verification rules — read these carefully and obey them every time:\n` +
+      `1. Any code/file you write or edit MUST be inspected after creation (read_file, list_dir, or equivalent) to confirm the content matches your intent.\n` +
+      `2. Inspection-only tools (read_file, list_dir, glob, search, semantic_search, review) are NOT runtime verification. Reading your own file back proves only that the file was written; it does NOT prove the code runs, compiles, passes tests, or behaves correctly.\n` +
+      `3. True runtime verification means executing code against a real tool / shell command. Acceptable runtime verification evidence includes: a test runner (jest, vitest, pytest, cargo test, go test, mvn test, etc.), a linter (eslint, tsc --noEmit, flake8, golangci-lint, etc.), a build / compile step (npm run build, tsc, cargo build, go build, webpack, etc.), a node/python/go/java script that exercises the changed code, or the verify tool.\n` +
+      `4. After every successful mutation (write_file, edit_file, shell/pty that writes code), you MUST produce at least one successful runtime verification observation before FINAL_ANSWER. Do not finish the task by only reading the file back.\n` +
+      `5. If verification fails (tests fail, build errors, lint errors), fix the failure and re-verify. Do not report "completed" while verification is failing or un-run.\n` +
+      `6. For files that cannot be run (pure data: .md, .txt, etc.), inspect the file with read_file/list_dir/parsing and honestly report that verification is inspection-only; do not claim "tested" or "verified" for a markdown or plain-text file.\n` +
+      `7. The verify tool, if available, is especially valuable after editing because it produces an evidence-based report. Consider calling verify on the changed paths near the end of the task.\n` +
+      `8. When this task has semantic risk domains (units/timing, API semantics, state transitions, concurrency/IO, security boundaries), run dedicated review or verification that exercises those behaviors, not just a syntax check.\n` +
+      `Final answers must explicitly mention: (a) what files changed and how, (b) which runtime verification step was run and what it reported (command + outcome), and (c) any caveats or open issues. Never state "it works" without fresh runtime verification evidence from this session.`
     );
   }
 
