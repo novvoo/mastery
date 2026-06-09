@@ -11,6 +11,7 @@ import { existsSync } from 'fs';
 import { execFile } from 'child_process';
 import { join, resolve, sep, isAbsolute } from 'path';
 import { Buffer } from 'buffer';
+import { createHash } from 'crypto';
 import { ToolCategory } from '../../core/types.js';
 
 /**
@@ -96,6 +97,103 @@ function safeResolvePath(workingDirectory, userPath) {
 
   const relPath = fullPath.slice(normalizedWorkingDir.length);
   return { ok: true, fullPath, relPath };
+}
+
+// =========================================================================
+// Content-addressable helpers: deterministic hash + unified diff (no deps)
+// =========================================================================
+
+function hashContent(content) {
+  return createHash('sha256').update(content).digest('hex');
+}
+
+// LCS-based unified diff generator. Context lines: 3.
+// Returns a string starting with "--- a/<path>\n+++ b/<path>\n"
+function generateUnifiedDiff(oldText, newText, filename) {
+  const a = oldText.split('\n');
+  const b = newText.split('\n');
+  if (a.length > 0 && a[a.length - 1] === '') a.pop();
+  if (b.length > 0 && b[b.length - 1] === '') b.pop();
+  const n = a.length;
+  const m = b.length;
+  if (n === 0 && m === 0) return '(no changes)';
+
+  // Build LCS DP table. For large diffs, fall back to whole-file presentation.
+  const SAFE_CELLS = 16_000_000;
+  const ops = [];
+  if (n * m <= SAFE_CELLS) {
+    const dp = Array.from({length: n + 1}, () => new Uint32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = m - 1; j >= 0; j--) {
+        if (a[i] === b[j]) dp[i][j] = dp[i + 1][j + 1] + 1;
+        else dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+    let i = 0, j = 0;
+    while (i < n || j < m) {
+      if (i < n && j < m && a[i] === b[j]) {
+        ops.push({ type: 'equal', oldIdx: i, newIdx: j, text: a[i] });
+        i++; j++;
+      } else if (i < n && (j === m || dp[i + 1][j] >= dp[i][j + 1])) {
+        ops.push({ type: 'del', oldIdx: i, newIdx: j, text: a[i] });
+        i++;
+      } else {
+        ops.push({ type: 'add', oldIdx: i, newIdx: j, text: b[j] });
+        j++;
+      }
+    }
+  } else {
+    // Large diff fallback: delete all then add all
+    for (let i = 0; i < n; i++) ops.push({ type: 'del', oldIdx: i, newIdx: 0, text: a[i] });
+    for (let j = 0; j < m; j++) ops.push({ type: 'add', oldIdx: n, newIdx: j, text: b[j] });
+  }
+
+  const CONTEXT = 3;
+  const hunks = [];
+  let k = 0;
+  while (k < ops.length) {
+    if (ops[k].type === 'equal') { k++; continue; }
+    let startIdx = Math.max(0, k - CONTEXT);
+    let nonEqEnd = k;
+    while (nonEqEnd < ops.length && ops[nonEqEnd].type !== 'equal') nonEqEnd++;
+    let endIdx = Math.min(ops.length, nonEqEnd + CONTEXT);
+
+    const firstOp = ops[startIdx];
+    const lastOp = ops[endIdx - 1];
+    const oldStart = firstOp.oldIdx;
+    const newStart = firstOp.newIdx;
+    let oldCount = 0, newCount = 0;
+    for (let p = startIdx; p < endIdx; p++) {
+      const o = ops[p];
+      if (o.type === 'equal') { oldCount++; newCount++; }
+      else if (o.type === 'del') { oldCount++; }
+      else { newCount++; }
+    }
+    const body = [];
+    for (let p = startIdx; p < endIdx; p++) {
+      const o = ops[p];
+      if (o.type === 'equal') body.push(' ' + o.text);
+      else if (o.type === 'del') body.push('-' + o.text);
+      else body.push('+' + o.text);
+    }
+    hunks.push(`@@ -${oldStart + 1},${oldCount} +${newStart + 1},${newCount} @@\n${body.join('\n')}`);
+    k = endIdx;
+  }
+
+  if (hunks.length === 0) return '(no changes)';
+  return `--- a/${filename}\n+++ b/${filename}\n${hunks.join('\n')}\n`;
+}
+
+// Count occurrences of a substring in a string
+function countOccurrences(text, sub) {
+  if (!sub) return 0;
+  let count = 0;
+  let idx = 0;
+  while ((idx = text.indexOf(sub, idx)) !== -1) {
+    count++;
+    idx += sub.length;
+  }
+  return count;
 }
 
 export function createFileSystemTools() {
