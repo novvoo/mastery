@@ -16,7 +16,7 @@ import { selectToolsForRequest, shouldUseIntentClassifier } from './tool-router.
 import { WorkspaceState } from './workspace-state.js';
 import { ObservationSummarizer } from './observation-summarizer.js';
 import { ContentAddressableStore, FileAnalyzer } from './harness/content-addressing.js';
-import { quickAssess, deepAssess, computeIterationBudget as rbComputeIterationBudget, RISK_LEVEL, getCompletionGates, getMethodologyGuidance } from './risk-budget.js';
+import { quickAssess, deepAssess, mergeIntentProfile, computeIterationBudget as rbComputeIterationBudget, RISK_LEVEL, getCompletionGates, getMethodologyGuidance } from './risk-budget.js';
 import { isMutationEvent as evIsMutationEvent, isRuntimeVerificationEvent, isSemanticRiskReviewEvent as evIsSemanticRiskReviewEvent, checkCompletionGates as evCheckCompletionGates, crossCheckVerifyClaim, finalAnswerMentionsVerification } from './evidence-verifier.js';
 import { MAX_ITERATIONS_DEFAULT } from '../runtime/types.js';
 import { readFile } from 'fs/promises';
@@ -307,16 +307,16 @@ export class ReActAgent {
       });
     }
 
-    const taskProfile = this.#classifyTask(userInput);
+    // 1. 先调用 LLM 意图识别（如果需要）
     const intent = this.#intentClassifier && shouldUseIntentClassifier(userInput)
       ? await this.#intentClassifier.classify(userInput, {
         recentMessages: this.#sessionManager.getRecentExchanges(3),
       })
       : null;
+
     if (this.#intentClassifier && !intent) {
       this.#debugEvent('Intent classifier skipped', {
         reason: 'local_task_router',
-        isCodingTask: taskProfile.isCodingTask,
       });
     }
     if (intent) {
@@ -329,6 +329,9 @@ export class ReActAgent {
         firstActionHint: intent.firstActionHint,
       });
     }
+
+    // 2. 然后做任务分类（传入 intent，让 mergeIntentProfile 决定最终判断）
+    const taskProfile = this.#classifyTask(userInput, intent);
 
     // Add user message
     this.#sessionManager.addUserMessage(userInput);
@@ -575,18 +578,18 @@ export class ReActAgent {
         // For coding tasks, never surface it only if at least one tool has been executed
         // successfully — otherwise the agent could exit without creating/verifying any code.
         const hasToolEvidence = this.#runToolEvents.some(event => event.success);
-        const isCodingTask = this.#activeTaskProfile?.isCodingTask;
+        const isModificationTask = this.#activeTaskProfile?.isModificationTask;
         const allowProviderStop = allToolCalls.length === 0 &&
           response.finishReason === 'stop' &&
           response.text?.trim() &&
-          (!isCodingTask || hasToolEvidence);
+          (!isModificationTask || hasToolEvidence);
 
         if (allowProviderStop) {
           const answer = this.#normalizeFinalAnswer(response.text);
           this.#debugEvent('Final answer emitted', {
             iteration,
             totalDurationMs: Date.now() - runStartedAt,
-            reason: isCodingTask ? 'provider_stop_without_tool_calls' : 'provider_stop_without_tool_calls',
+            reason: isModificationTask ? 'provider_stop_with_tool_evidence' : 'provider_stop_without_tool_calls',
             answerPreview: this.#preview(answer, 300),
           });
           this.#ui.finalAnswer(answer);
@@ -595,18 +598,16 @@ export class ReActAgent {
             success: true,
             status: 'completed',
             answer,
-            reason: 'provider_stop_without_tool_calls',
+            reason: isModificationTask ? 'provider_stop_with_tool_evidence' : 'provider_stop_without_tool_calls',
             iterations: iteration,
             startedAt: runStartedAt,
           });
         }
 
-        // For coding tasks: if LLM stopped without tool calls and no tool
-        // evidence yet, surface a clear nudge instead of early exit.
-        if (isCodingTask && allToolCalls.length === 0 && response.finishReason === 'stop' && response.text?.trim()) {
-          this.#debug('Coding task: LLM stopped but no tool evidence — nudging to continue');
+        if (isModificationTask && allToolCalls.length === 0 && response.finishReason === 'stop' && response.text?.trim()) {
+          this.#debug('Modification task: LLM stopped but no tool evidence — nudging to continue');
           this.#debugEvent('Continuation requested', {
-            reason: 'coding_task_requires_tool_evidence_before_finish',
+            reason: 'modification_task_requires_tool_evidence_before_finish',
             responsePreview: this.#preview(response.text, 240),
           });
           this.#sessionManager.addAssistantMessage(response.text);
@@ -1803,25 +1804,32 @@ export class ReActAgent {
     );
   }
 
-  #classifyTask(userInput) {
-    const risk = quickAssess(userInput);
+  #classifyTask(userInput, intent = null) {
+    let risk = quickAssess(userInput);
+
+    // 如果有 intent 结果，用 LLM 意图识别覆盖/增强硬编码判断
+    if (intent) {
+      risk = mergeIntentProfile(risk, intent, userInput);
+    }
 
     const mentionsMultipleArtifacts = /(多个|拆分|分离|接口|controller|route|schema|resolver|service|component|module|html.*js|js.*html|css|测试)/i.test(String(userInput || ''))
-      || /\b(multiple|separate|split|html.*js|js.*html|css|tests?|docs?|route|controller|schema|resolver|endpoint|component|service|module)\b/i.test(String(userInput || ''));
+      || /\b(multiple|separate|separate|split|html.*js|js.*html|css|tests?|docs?|route|controller|schema|resolver|endpoint|component|service|module)\b/i.test(String(userInput || ''));
     const likelyFeatureWork = /(实现|创建|新建|写一个|做一个|开发|生成)/i.test(String(userInput || ''))
       || /\b(implement|create|build|write|develop|generate|add)\b/i.test(String(userInput || ''));
 
-    const requiresAutomaticPlanning = risk.isCodingTask &&
+    // 自动执行计划仅在"需要修改代码"的任务上生成
+    const requiresAutomaticPlanning = risk.isModificationTask &&
       risk.riskLevel !== RISK_LEVEL.LOW &&
       (mentionsMultipleArtifacts || likelyFeatureWork || risk.isBugTask);
 
     return {
       isCodingTask: risk.isCodingTask,
-      isModificationTask: risk.isCodingTask,
+      isModificationTask: risk.isModificationTask,
       isBugTask: risk.isBugTask,
       isLikelyTrivial: risk.isLikelyTrivial,
       requiresAutomaticPlanning,
-      requiresSemanticRiskReview: risk.semanticDomains.length > 0 && risk.isCodingTask && !risk.isLikelyTrivial,
+      // semantic risk review 仅在需要修改代码的任务上启用
+      requiresSemanticRiskReview: risk.semanticDomains.length > 0 && risk.isModificationTask && !risk.isLikelyTrivial,
       semanticRiskDomains: risk.semanticDomains,
       riskLevel: risk.riskLevel,
       riskScore: risk.score,
@@ -2004,7 +2012,7 @@ export class ReActAgent {
   }
 
   #shouldBlockCodingFinal(userInput, responseText) {
-    if (!this.#activeTaskProfile?.isCodingTask) {
+    if (!this.#activeTaskProfile?.isModificationTask) {
       return { block: false };
     }
 
@@ -2149,15 +2157,26 @@ export class ReActAgent {
 
   /**
    * 根据任务复杂度计算自适应迭代预算
-   * 核心原则：够用就好，不用浪费；也不限制复杂任务
+   * 核心原则：
+   * 1. 用户显式设置 maxIterations 时，尊重该值，不再缩小
+   * 2. 使用默认值时，按风险等级自适应调整，但不低于完成工具调用 + 至少一轮生成最终答案的最小值
    */
   #computeIterationBudget(taskProfile) {
-    const maxIterations = this.#config.maxIterations || MAX_ITERATIONS_DEFAULT;
+    const userSetMaxIterations = Number.isFinite(this.#config.maxIterations) && this.#config.maxIterations > 0;
+    const baseMax = this.#config.maxIterations || MAX_ITERATIONS_DEFAULT;
 
-    if (!taskProfile) {
-      return Math.round(maxIterations * 0.5);
+    // 用户显式指定迭代数：尊重该值，不再按风险进一步缩小
+    if (userSetMaxIterations) {
+      return baseMax;
     }
-    return rbComputeIterationBudget(taskProfile.riskLevel || taskProfile, maxIterations);
+
+    // 使用默认值时，按风险等级自适应
+    if (!taskProfile) {
+      return Math.max(4, Math.round(baseMax * 0.5));
+    }
+    const budget = rbComputeIterationBudget(taskProfile.riskLevel || taskProfile, baseMax);
+    // 保证至少有 4 次迭代（工具调用 + 生成最终答案）
+    return Math.max(4, budget);
   }
 
   /**

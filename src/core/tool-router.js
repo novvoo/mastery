@@ -1,3 +1,5 @@
+import { CODING_CONTEXT_KEYWORDS, CODING_VERB_CONTEXT_PATTERNS, MODIFICATION_VERB_PATTERNS, isCliCommand } from './risk-budget.js';
+
 const CORE_READ_TOOLS = [
   'read_file',
   'list_dir',
@@ -208,11 +210,11 @@ export function selectToolsForRequest(allTools, {
       add(MINIMAL_METHOD_TOOLS);
     } else if (risk === 'high') {
       add(MINIMAL_METHOD_TOOLS);
-      add(['brainstorm', 'grill', 'zoom_out']);
+      add(EXTENDED_PLANNING_TOOLS);
     } else if (risk === 'critical') {
       add(MINIMAL_METHOD_TOOLS);
       add(EXTENDED_PLANNING_TOOLS);
-      add(['coverage_check']);
+      add(['coverage_check', 'architect']);
     }
     // risk === 'low' → no methodology tools, pure fast path
 
@@ -289,14 +291,23 @@ export function selectToolsForRequest(allTools, {
 export function shouldUseIntentClassifier(userInput) {
   const input = String(userInput || '').toLowerCase();
 
+  // CLI 命令：不调用 LLM 意图识别
+  if (isCliCommand(userInput)) {
+    return false;
+  }
+
+  // 明确编码任务：不调用 LLM 意图识别（直接走编码流程，节省一次 LLM 往返）
   const clearlyCoding = [
-    /写.*代码|写.*html|写.*js|写.*css|创建.*文件|新建.*文件|修改.*代码|改.*代码|修复|实现|开发|重构|集成测试|单元测试/,
-    /\b(code|coding|implement|fix|bug|refactor|unit test|integration test|write tests?|add tests?|html|css|javascript|typescript)\b/,
+    ...CODING_CONTEXT_KEYWORDS,
+    ...MODIFICATION_VERB_PATTERNS,
+    ...CODING_VERB_CONTEXT_PATTERNS,
   ].some(pattern => pattern.test(input));
+
   if (clearlyCoding) {
     return false;
   }
 
+  // 外部查询类（天气、新闻、实时数据等）：可能需要 LLM 意图识别来做更好 routing
   return [
     /天气|气温|新闻|最新|今天|现在|当前|实时|汇率|价格|股价|比分|赛程|政策|法规/,
     /\b(weather|news|latest|today|now|current|real[- ]?time|price|stock|exchange rate|schedule|score|law|regulation)\b/,
