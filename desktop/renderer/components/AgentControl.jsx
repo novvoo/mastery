@@ -27,7 +27,7 @@ const styles = {
   
   section: {
     padding: '14px',
-    borderBottom: '1px solid var(--border-subtle)'
+    borderBottom: 'none'
   },
   
   sectionTitle: {
@@ -62,25 +62,25 @@ const styles = {
   statusRunning: {
     backgroundColor: 'rgba(246, 200, 95, 0.12)',
     color: 'var(--warning-color)',
-    border: '1px solid var(--warning-color)'
+    border: 'none'
   },
   
   statusIdle: {
     backgroundColor: 'rgba(93, 211, 158, 0.12)',
     color: 'var(--success-color)',
-    border: '1px solid var(--success-color)'
+    border: 'none'
   },
   
   statusError: {
     backgroundColor: 'rgba(255, 107, 122, 0.12)',
     color: 'var(--error-color)',
-    border: '1px solid var(--error-color)'
+    border: 'none'
   },
   
   statusCompleted: {
     backgroundColor: 'rgba(125, 211, 252, 0.12)',
     color: 'var(--info-color)',
-    border: '1px solid var(--info-color)'
+    border: 'none'
   },
   
   // 工作目录
@@ -91,7 +91,7 @@ const styles = {
     padding: '9px 10px',
     borderRadius: '6px',
     backgroundColor: '#11161e',
-    border: '1px solid var(--border-subtle)'
+    border: 'none'
   },
   
   directoryIcon: {
@@ -123,7 +123,7 @@ const styles = {
   projectExplorer: {
     marginTop: '8px',
     borderRadius: '6px',
-    border: '1px solid var(--border-subtle)',
+    border: 'none',
     backgroundColor: '#11161e',
     overflow: 'hidden'
   },
@@ -133,7 +133,7 @@ const styles = {
     justifyContent: 'space-between',
     gap: '8px',
     padding: '8px 10px',
-    borderBottom: '1px solid var(--border-subtle)'
+    borderBottom: 'none'
   },
   projectExplorerTitle: {
     minWidth: 0,
@@ -148,7 +148,7 @@ const styles = {
     width: '24px',
     height: '24px',
     borderRadius: '4px',
-    border: '1px solid var(--border-subtle)',
+    border: 'none',
     backgroundColor: 'var(--surface-hover)',
     color: 'var(--text-muted)',
     cursor: 'pointer',
@@ -222,14 +222,14 @@ const styles = {
   textareaWrapper: {
     position: 'relative',
     borderRadius: '8px',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     backgroundColor: '#11161e',
     boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.025)',
     transition: 'border-color 0.2s, box-shadow 0.2s'
   },
   
   textareaWrapperFocused: {
-    border: '1px solid var(--primary-color)',
+    border: 'none',
     boxShadow: '0 0 0 3px var(--primary-soft)'
   },
   
@@ -287,7 +287,7 @@ const styles = {
     left: '0',
     right: '0',
     backgroundColor: 'var(--surface-color)',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     borderRadius: '6px',
     maxHeight: '150px',
     overflowY: 'auto',
@@ -339,7 +339,7 @@ const styles = {
     height: '36px',
     padding: '0 12px',
     borderRadius: '6px',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     backgroundColor: 'var(--surface-hover)',
     color: 'var(--text-color)',
     cursor: 'pointer',
@@ -355,13 +355,13 @@ const styles = {
   
   primaryButton: {
     backgroundColor: 'var(--primary-color)',
-    border: '1px solid var(--primary-color)',
+    border: 'none',
     color: '#061018'
   },
   
   disabledButton: {
     backgroundColor: '#151a23',
-    border: '1px solid var(--border-subtle)',
+    border: 'none',
     color: 'var(--text-dark)',
     cursor: 'not-allowed'
   },
@@ -378,7 +378,7 @@ const styles = {
     width: '100%',
     padding: '6px 10px',
     borderRadius: '4px',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     backgroundColor: 'var(--background-color)',
     color: 'var(--text-color)',
     fontSize: '12px',
@@ -399,13 +399,13 @@ const styles = {
     fontSize: '13px',
     color: 'var(--text-color)',
     transition: 'background-color 0.2s',
-    border: '1px solid transparent',
+    border: 'none',
     position: 'relative'
   },
   
   historyItemHover: {
     backgroundColor: 'var(--surface-color)',
-    border: '1px solid var(--border-color)'
+    border: 'none'
   },
   
   historyItemContent: {
@@ -525,7 +525,7 @@ const styles = {
     width: '60px',
     padding: '4px',
     borderRadius: '4px',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     backgroundColor: 'var(--background-color)',
     color: 'var(--text-color)',
     fontSize: '12px'
@@ -914,7 +914,7 @@ function AgentControl({
                   style={{
                     ...styles.historyItem,
                     ...(isActive ? styles.historyItemHover : {}),
-                    border: isActive ? '1px solid var(--primary-color)' : '1px solid transparent'
+                    border: isActive ? 'none' : 'none'
                   }}
                   onClick={() => onSwitchSession(session.id)}
                   title={'切换到会话: ' + (session.title || session.id)}

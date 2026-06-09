@@ -14,7 +14,7 @@ const styles = {
   },
 
   section: {
-    borderBottom: '1px solid var(--border-subtle)'
+    borderBottom: 'none'
   },
 
   sectionHeader: {
@@ -57,7 +57,7 @@ const styles = {
     paddingBottom: '9px',
     paddingLeft: '10px',
     borderRadius: '8px',
-    border: '1px solid var(--border-subtle)',
+    border: 'none',
     backgroundColor: '#151a23',
     marginBottom: '8px'
   },
@@ -88,7 +88,7 @@ const styles = {
     borderRadius: '999px',
     fontSize: '10px',
     color: 'var(--primary-color)',
-    border: '1px solid rgba(76, 201, 240, 0.26)',
+    border: 'none',
     backgroundColor: 'var(--primary-soft)'
   },
 
@@ -118,7 +118,7 @@ const styles = {
     paddingBottom: '10px',
     paddingLeft: '12px',
     backgroundColor: '#141922',
-    borderBottom: '1px solid var(--border-subtle)'
+    borderBottom: 'none'
   },
 
   searchRow: {
@@ -135,7 +135,7 @@ const styles = {
     paddingBottom: '0',
     paddingLeft: '10px',
     borderRadius: '6px',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     backgroundColor: '#11161e',
     color: 'var(--text-color)',
     fontSize: '12px',
@@ -146,7 +146,7 @@ const styles = {
     width: '106px',
     height: '32px',
     borderRadius: '6px',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     backgroundColor: '#11161e',
     color: 'var(--text-color)',
     fontSize: '12px'
@@ -171,11 +171,11 @@ const styles = {
     marginBottom: '8px',
     cursor: 'pointer',
     transition: 'border-color 0.15s, background-color 0.15s',
-    border: '1px solid var(--border-subtle)'
+    border: 'none'
   },
 
   toolItemSelected: {
-    border: '1px solid rgba(76, 201, 240, 0.35)',
+    border: 'none',
     backgroundColor: 'var(--primary-soft)'
   },
 
@@ -207,7 +207,7 @@ const styles = {
     borderRadius: '4px',
     backgroundColor: '#11161e',
     color: 'var(--text-muted)',
-    border: '1px solid var(--border-subtle)'
+    border: 'none'
   },
 
   toolDescription: {
@@ -236,7 +236,7 @@ const styles = {
     paddingLeft: '10px',
     borderRadius: '6px',
     backgroundColor: '#0f141c',
-    border: '1px solid var(--border-subtle)'
+    border: 'none'
   },
 
   detailTitle: {

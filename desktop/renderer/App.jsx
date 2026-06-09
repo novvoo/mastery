@@ -218,7 +218,7 @@ const styles = {
     minHeight: `${LAYOUT.headerHeight}px`,
     padding: '0 var(--spacing-md)',
     backgroundColor: 'var(--bg-depth-2)',
-    borderBottom: '1px solid var(--border-subtle)',
+    borderBottom: 'none',
     gap: 'var(--spacing-xs)'
   },
   
@@ -255,7 +255,7 @@ const styles = {
     left: 0,
     minWidth: '200px',
     backgroundColor: 'var(--surface-color)',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     borderRadius: '8px',
     boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
     padding: '6px 0',
@@ -309,7 +309,7 @@ const styles = {
     width: `${LAYOUT.activityRailWidth}px`,
     flexShrink: 0,
     backgroundColor: 'var(--bg-depth-0)',
-    borderRight: '1px solid var(--border-subtle)',
+    borderRight: 'none',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -321,7 +321,7 @@ const styles = {
     width: '38px',
     height: '38px',
     borderRadius: '8px',
-    border: '1px solid transparent',
+    border: 'none',
     backgroundColor: 'transparent',
     color: 'var(--text-dark)',
     cursor: 'pointer',
@@ -335,7 +335,7 @@ const styles = {
 
   activityButtonActive: {
     backgroundColor: 'var(--primary-soft)',
-    border: '1px solid rgba(76, 201, 240, 0.24)',
+    border: 'none',
     color: 'var(--primary-color)'
   },
   
@@ -343,7 +343,7 @@ const styles = {
   leftSidebar: {
     width: `${LAYOUT.sidebarWidth}px`,
     backgroundColor: 'var(--bg-depth-3)',
-    borderRight: '1px solid var(--border-subtle)',
+    borderRight: 'none',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
@@ -353,7 +353,7 @@ const styles = {
   sidebarHeader: {
     minHeight: '42px',
     padding: '0 var(--spacing-md)',
-    borderBottom: '1px solid var(--border-subtle)',
+    borderBottom: 'none',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -371,7 +371,7 @@ const styles = {
   // ================== 右侧 Inspector 面板 ==================
   summaryPanel: {
     backgroundColor: 'var(--bg-depth-3)',
-    borderLeft: '1px solid var(--border-subtle)',
+    borderLeft: 'none',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
@@ -394,14 +394,14 @@ const styles = {
     alignItems: 'center',
     gap: '6px',
     padding: 'var(--spacing-sm)',
-    borderBottom: '1px solid var(--border-subtle)',
+    borderBottom: 'none',
     backgroundColor: 'var(--bg-depth-2)'
   },
 
   previewHeader: {
     minHeight: '42px',
     padding: '8px 10px',
-    borderBottom: '1px solid var(--border-subtle)',
+    borderBottom: 'none',
     display: 'flex',
     alignItems: 'center',
     gap: '8px'
@@ -418,7 +418,7 @@ const styles = {
   inspectorTab: {
     height: '30px',
     borderRadius: '6px',
-    border: '1px solid transparent',
+    border: 'none',
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',
     cursor: 'pointer',
@@ -428,7 +428,7 @@ const styles = {
 
   inspectorTabActive: {
     backgroundColor: 'var(--surface-hover)',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     color: 'var(--text-color)'
   },
 
@@ -436,7 +436,7 @@ const styles = {
     width: '30px',
     height: '30px',
     borderRadius: '6px',
-    border: '1px solid var(--border-subtle)',
+    border: 'none',
     backgroundColor: 'var(--surface-hover)',
     color: 'var(--text-muted)',
     cursor: 'pointer',
@@ -458,7 +458,7 @@ const styles = {
   
   summarySection: {
     padding: '14px',
-    borderBottom: '1px solid var(--border-subtle)'
+    borderBottom: 'none'
   },
   
   summarySectionTitle: {
@@ -502,7 +502,7 @@ const styles = {
     height: '32px',
     padding: '0 10px',
     borderRadius: '6px',
-    border: '1px solid var(--border-subtle)',
+    border: 'none',
     backgroundColor: 'var(--surface-hover)',
     color: 'var(--text-color)',
     cursor: 'pointer',
@@ -524,7 +524,7 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 'var(--spacing-sm) var(--spacing-xl)',
-    borderBottom: '1px solid var(--border-subtle)',
+    borderBottom: 'none',
     backgroundColor: 'var(--bg-depth-3)'
   },
   
@@ -545,18 +545,18 @@ const styles = {
     borderRadius: '999px',
     fontSize: '12px',
     fontWeight: '500',
-    border: '1px solid'
+    border: 'none'
   },
   
   statusReady: {
     backgroundColor: 'rgba(93, 211, 158, 0.12)',
-    border: '1px solid rgba(93, 211, 158, 0.28)',
+    border: 'none',
     color: 'var(--success-color)'
   },
   
   statusRunning: {
     backgroundColor: 'rgba(246, 200, 95, 0.12)',
-    border: '1px solid rgba(246, 200, 95, 0.28)',
+    border: 'none',
     color: 'var(--warning-color)'
   },
   
@@ -571,7 +571,7 @@ const styles = {
   inputArea: {
     padding: 'var(--spacing-sm) var(--spacing-xl)',
     backgroundColor: 'var(--bg-depth-3)',
-    borderTop: '1px solid var(--border-subtle)'
+    borderTop: 'none'
   },
   
   inputWrapper: {
@@ -588,7 +588,7 @@ const styles = {
     maxHeight: '200px',
     padding: '12px 14px',
     borderRadius: '12px',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     backgroundColor: 'var(--background-color)',
     color: 'var(--text-color)',
     fontSize: '14px',
@@ -600,7 +600,7 @@ const styles = {
   },
   
   inputTextareaFocused: {
-    border: '1px solid var(--primary-color)',
+    border: 'none',
     boxShadow: '0 0 0 3px var(--primary-soft)'
   },
   
@@ -636,7 +636,7 @@ const styles = {
     flex: 1,
     height: '32px',
     borderRadius: '6px',
-    border: '1px solid transparent',
+    border: 'none',
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',
     cursor: 'pointer',
@@ -647,7 +647,7 @@ const styles = {
   
   tabButtonActive: {
     backgroundColor: 'var(--surface-hover)',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     color: 'var(--text-color)'
   },
 
@@ -655,7 +655,7 @@ const styles = {
     height: '32px',
     padding: '0 12px',
     borderRadius: '6px',
-    border: '1px solid transparent',
+    border: 'none',
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',
     cursor: 'pointer',
@@ -667,7 +667,7 @@ const styles = {
   // ================== 底部状态栏 ==================
   footer: {
     backgroundColor: 'var(--bg-depth-2)',
-    borderTop: '1px solid var(--border-subtle)'
+    borderTop: 'none'
   },
   
   // ================== 模态框样式 ==================
@@ -685,7 +685,7 @@ const styles = {
   modal: {
     width: 'min(560px, 100%)',
     backgroundColor: 'var(--surface-color)',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     borderRadius: '8px',
     boxShadow: 'var(--shadow-lg)',
     overflow: 'hidden'
@@ -693,7 +693,7 @@ const styles = {
   
   modalHeader: {
     padding: '18px 20px',
-    borderBottom: '1px solid var(--border-subtle)'
+    borderBottom: 'none'
   },
   
   modalTitle: {
@@ -731,7 +731,7 @@ const styles = {
     width: '100%',
     height: '36px',
     borderRadius: '6px',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     backgroundColor: '#11161e',
     color: 'var(--text-color)',
     padding: '0 10px'
@@ -743,7 +743,7 @@ const styles = {
     alignItems: 'center',
     gap: '12px',
     padding: '14px 20px',
-    borderTop: '1px solid var(--border-subtle)',
+    borderTop: 'none',
     backgroundColor: '#141922'
   },
   
@@ -757,7 +757,7 @@ const styles = {
     height: '34px',
     padding: '0 12px',
     borderRadius: '6px',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',
     cursor: 'pointer',
@@ -769,7 +769,7 @@ const styles = {
     height: '34px',
     padding: '0 14px',
     borderRadius: '6px',
-    border: '1px solid var(--primary-color)',
+    border: 'none',
     backgroundColor: 'var(--primary-color)',
     color: '#061018',
     fontWeight: '700',
@@ -1985,7 +1985,7 @@ const handleClearAgentHistory = useCallback(() => {
             display: 'flex',
             gap: '8px',
             padding: '8px 10px',
-            borderBottom: '1px solid var(--border-subtle)'
+            borderBottom: 'none'
           }}
           onSubmit={handlePreviewUrlSubmit}
         >
@@ -1995,7 +1995,7 @@ const handleClearAgentHistory = useCallback(() => {
               minWidth: 0,
               height: '30px',
               borderRadius: '6px',
-              border: '1px solid var(--border-subtle)',
+              border: 'none',
               backgroundColor: 'var(--background-color)',
               color: 'var(--text-color)',
               padding: '0 10px',
@@ -2011,7 +2011,7 @@ const handleClearAgentHistory = useCallback(() => {
         {previewSession?.pipeline?.length ? (
           <div style={{
             padding: '8px 10px',
-            borderBottom: '1px solid var(--border-subtle)',
+            borderBottom: 'none',
             display: 'flex',
             gap: '6px',
             overflowX: 'auto'
@@ -2025,7 +2025,7 @@ const handleClearAgentHistory = useCallback(() => {
                   maxWidth: '180px',
                   padding: '5px 8px',
                   borderRadius: '6px',
-                  border: '1px solid var(--border-subtle)',
+                  border: 'none',
                   color: stage.status === 'failed' ? 'var(--error-color)' : 'var(--text-muted)',
                   backgroundColor: stage.status === 'running' ? 'rgba(79, 140, 255, 0.08)' : 'var(--surface-color)',
                   fontSize: '11px',
@@ -2313,11 +2313,11 @@ const handleClearAgentHistory = useCallback(() => {
         <div style={{
           position: 'fixed', left: '56px', bottom: '44px',
           width: '220px', backgroundColor: 'var(--surface-color)',
-          border: '1px solid var(--border-color)', borderRadius: '8px',
+          border: 'none', borderRadius: '8px',
           boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000,
           padding: '8px', fontSize: '12px', color: 'var(--text-color)'
         }}>
-          <div style={{padding:'4px 8px 8px',borderBottom:'1px solid var(--border-subtle)',marginBottom:'6px',fontWeight:'700',fontSize:'11px',color:'var(--text-muted)',textTransform:'uppercase'}}>
+          <div style={{padding:'4px 8px 8px',borderBottom:'none',marginBottom:'6px',fontWeight:'700',fontSize:'11px',color:'var(--text-muted)',textTransform:'uppercase'}}>
             ROOT
           </div>
 
@@ -2361,12 +2361,12 @@ const handleClearAgentHistory = useCallback(() => {
             <span style={{fontSize:'11px',color:'var(--text-muted)',whiteSpace:'nowrap'}}>Max iterations</span>
             <input type="number" value={agentOptions.maxIterations}
               onChange={(e)=>setAgentOptions(p=>({...p,maxIterations:parseInt(e.target.value)||60}))}
-              style={{width:'56px',height:'24px',borderRadius:'4px',border:'1px solid var(--border-subtle)',backgroundColor:'#11161e',color:'var(--text-color)',padding:'0 6px',fontSize:'11px'}}
+              style={{width:'56px',height:'24px',borderRadius:'4px',border:'none',backgroundColor:'#11161e',color:'var(--text-color)',padding:'0 6px',fontSize:'11px'}}
               min={1} max={500}/>
           </div>
 
-          <div style={{borderTop:'1px solid var(--border-subtle)',margin:'6px 0',padding:'6px 8px 0'}}>
-            <button style={{width:'100%',height:'28px',borderRadius:'5px',border:'1px solid var(--border-subtle)',backgroundColor:'transparent',color:'var(--text-muted)',cursor:'pointer',fontSize:'11px',textAlign:'center'}}
+          <div style={{borderTop:'none',margin:'6px 0',padding:'6px 8px 0'}}>
+            <button style={{width:'100%',height:'28px',borderRadius:'5px',border:'none',backgroundColor:'transparent',color:'var(--text-muted)',cursor:'pointer',fontSize:'11px',textAlign:'center'}}
               onClick={()=>{setShowSettings(false);setShowLLMSetup(true);}}
               onMouseEnter={(e)=>e.currentTarget.style.backgroundColor='var(--surface-hover)'}
               onMouseLeave={(e)=>e.currentTarget.style.backgroundColor='transparent'}>

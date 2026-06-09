@@ -46,7 +46,7 @@ export default function Input({
     width: '100%',
     backgroundColor: 'var(--background-color)',
     color: 'var(--text-color)',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     fontFamily: 'inherit',
     resize: 'none',
     outline: 'none',

@@ -14,7 +14,7 @@ const styles = {
     minHeight: '44px',
     padding: '6px 14px',
     backgroundColor: '#141922',
-    borderBottom: '1px solid var(--border-subtle)'
+    borderBottom: 'none'
   },
   
   leftSection: {
@@ -36,7 +36,7 @@ const styles = {
     height: '30px',
     padding: '0 10px',
     borderRadius: '6px',
-    border: '1px solid transparent',
+    border: 'none',
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',
     cursor: 'pointer',
@@ -53,7 +53,7 @@ const styles = {
   
   toolbarButtonActive: {
     backgroundColor: 'var(--primary-soft)',
-    border: '1px solid rgba(76, 201, 240, 0.32)',
+    border: 'none',
     color: 'var(--primary-color)'
   },
   
@@ -94,24 +94,24 @@ const styles = {
     borderRadius: '999px',
     fontSize: '12px',
     fontWeight: '600',
-    border: '1px solid transparent'
+    border: 'none'
   },
   
   statusReady: {
     backgroundColor: 'rgba(93, 211, 158, 0.12)',
-    border: '1px solid rgba(93, 211, 158, 0.28)',
+    border: 'none',
     color: 'var(--success-color)'
   },
   
   statusRunning: {
     backgroundColor: 'rgba(246, 200, 95, 0.12)',
-    border: '1px solid rgba(246, 200, 95, 0.28)',
+    border: 'none',
     color: 'var(--warning-color)'
   },
   
   statusError: {
     backgroundColor: 'rgba(255, 107, 122, 0.12)',
-    border: '1px solid rgba(255, 107, 122, 0.28)',
+    border: 'none',
     color: 'var(--error-color)'
   }
 };

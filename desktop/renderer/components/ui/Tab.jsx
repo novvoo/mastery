@@ -41,7 +41,7 @@ export function TabItem({ id, children, style }) {
       style={{
         height: '30px',
         borderRadius: 'var(--radius-md)',
-        border: isActive ? '1px solid var(--border-color)' : '1px solid transparent',
+        border: 'none',
         backgroundColor: isActive ? 'var(--surface-hover)' : 'transparent',
         color: isActive ? 'var(--text-color)' : 'var(--text-muted)',
         cursor: 'pointer',

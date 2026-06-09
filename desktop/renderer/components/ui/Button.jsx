@@ -17,27 +17,27 @@ const VARIANTS = {
   default: {
     backgroundColor: 'var(--surface-hover)',
     color: 'var(--text-color)',
-    border: '1px solid var(--border-subtle)',
+    border: 'none',
   },
   primary: {
     backgroundColor: 'var(--primary-color)',
     color: '#061018',
-    border: '1px solid var(--primary-color)',
+    border: 'none',
   },
   danger: {
     backgroundColor: 'var(--error-color)',
     color: '#fff',
-    border: '1px solid var(--error-color)',
+    border: 'none',
   },
   ghost: {
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',
-    border: '1px solid transparent',
+    border: 'none',
   },
   icon: {
     backgroundColor: 'var(--surface-hover)',
     color: 'var(--text-muted)',
-    border: '1px solid var(--border-subtle)',
+    border: 'none',
   },
 };
 

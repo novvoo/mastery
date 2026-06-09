@@ -50,7 +50,7 @@ const styles = {
     right: 0,
     marginBottom: '8px',
     backgroundColor: 'var(--surface-color)',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     borderRadius: '10px',
     boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
     maxHeight: '280px',
@@ -65,7 +65,7 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '10px 12px',
-    borderBottom: '1px solid var(--border-subtle)',
+    borderBottom: 'none',
     backgroundColor: '#141922'
   },
   
@@ -128,7 +128,7 @@ const styles = {
   
   footer: {
     padding: '8px 12px',
-    borderTop: '1px solid var(--border-subtle)',
+    borderTop: 'none',
     backgroundColor: '#141922',
     display: 'flex',
     gap: '16px',

@@ -14,7 +14,7 @@ const styles = {
     minHeight: '32px',
     padding: '0 14px',
     backgroundColor: '#11161e',
-    borderTop: '1px solid var(--border-subtle)'
+    borderTop: 'none'
   },
   
   leftSection: {

@@ -13,15 +13,15 @@ import React from 'react';
 const VARIANTS = {
   sidebar: {
     backgroundColor: 'var(--surface-color)',
-    borderRight: '1px solid var(--border-subtle)',
+    borderRight: 'none',
   },
   inspector: {
     backgroundColor: 'var(--surface-color)',
-    borderLeft: '1px solid var(--border-subtle)',
+    borderLeft: 'none',
   },
   card: {
     backgroundColor: 'var(--surface-color)',
-    border: '1px solid var(--border-color)',
+    border: 'none',
     borderRadius: 'var(--radius-lg)',
   },
 };
@@ -32,7 +32,7 @@ export function PanelHeader({ title, actions, style }) {
       style={{
         minHeight: '42px',
         padding: '0 var(--spacing-md)',
-        borderBottom: '1px solid var(--border-subtle)',
+        borderBottom: 'none',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
