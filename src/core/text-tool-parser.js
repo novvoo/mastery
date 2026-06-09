@@ -33,6 +33,8 @@ export class TextToolParser {
     const toolCalls = [];
 
     // 尝试多种解析策略
+    // DSML format first since it is unambiguous when present
+    toolCalls.push(...this.#parseDSMLFormat(text));
     toolCalls.push(...this.#parseCALLFormat(text));
     toolCalls.push(...this.#parseJSONBlockFormat(text));
     toolCalls.push(...this.#parseActionTagFormat(text));
@@ -149,6 +151,109 @@ export class TextToolParser {
         arguments: { command },
         source: 'shell_code_block',
       });
+    }
+
+    return toolCalls;
+  }
+
+  #parseDSMLFormat(text) {
+    if (!text || typeof text !== 'string') {return [];}
+
+    // DSML: <｜｜DSML｜｜invoke name="tool"> / <||DSML||invoke name="tool">
+    // Unicode fullwidth vertical bar (U+FF5C) or plain ASCII pipes.
+    const pipe = '(?:\\uFF5C\\uFF5C|\\|\\|)';
+    const dsmlTag = `<${pipe}DSML${pipe}`;
+
+    const toolCalls = [];
+
+    // Find all invoke blocks: <｜｜DSML｜｜invoke name="name"> ... </｜｜DSML｜｜invoke>
+    // Also handle self-closing parameter tags: <｜｜DSML｜｜parameter name="n" string="true">value<｜｜DSML｜｜parameter>
+    const invokeRegex = new RegExp(
+      `${dsmlTag}invoke\\s+name="([^"]+)"\\s*>` +
+      '([\\s\\S]*?)' +
+      `<\\/?${pipe}DSML${pipe}invoke\\s*>`,
+      'gi',
+    );
+
+    const paramRegex = new RegExp(
+      `${dsmlTag}parameter\\s+name="([^"]+)"(?:\\s+[^>]*)?>` +
+      '([\\s\\S]*?)' +
+      `<\\/?${pipe}DSML${pipe}parameter\\s*>`,
+      'gi',
+    );
+
+    let invokeMatch;
+    while ((invokeMatch = invokeRegex.exec(text)) !== null) {
+      const name = this.#resolveToolName(invokeMatch[1]);
+      if (!this.#toolRegistry?.has?.(name)) {
+        continue;
+      }
+
+      const innerText = invokeMatch[2];
+      const args = {};
+      let paramMatch;
+
+      while ((paramMatch = paramRegex.exec(innerText)) !== null) {
+        const paramName = paramMatch[1];
+        let paramValue = paramMatch[2] ? paramMatch[2].trim() : '';
+        const decoded = this.#decodeStringLiteral(paramValue);
+        args[paramName] = decoded !== undefined ? decoded : paramValue;
+      }
+
+      if (Object.keys(args).length === 0) {
+        // Fallback: look for inline JSON in the invoke body
+        const jsonMatch = innerText.match(/^\s*(\{[\s\S]*\})\s*$/);
+        if (jsonMatch) {
+          const parsed = this.#safeJSONParse(jsonMatch[1]);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            Object.assign(args, parsed);
+          }
+        }
+      }
+
+      toolCalls.push({
+        id: `call_${Date.now()}_${toolCalls.length}`,
+        name,
+        arguments: args,
+        source: 'DSML',
+      });
+    }
+
+    // Also handle standalone DSML invoke blocks without wrapping tool_calls tag
+    if (toolCalls.length === 0 && new RegExp(`${dsmlTag}`, 'i').test(text)) {
+      // Try parsing bare <｜｜DSML｜｜tool_name attr="value" ...> tags (name-based)
+      const namedTagRegex = new RegExp(
+        `${dsmlTag}([A-Za-z_][\\w-]*)\\s*([^>]*)>`,
+        'gi',
+      );
+
+      let namedMatch;
+      while ((namedMatch = namedTagRegex.exec(text)) !== null) {
+        const rawName = namedMatch[1];
+        if (rawName === 'tool_calls' || rawName === 'parameter' || rawName === 'invoke') {
+          continue;
+        }
+        const name = this.#resolveToolName(rawName);
+        if (!this.#toolRegistry?.has?.(name)) {
+          continue;
+        }
+
+        const attrsText = namedMatch[2] || '';
+        const args = {};
+        const attrRegex = /(\w+)\s*=\s*"([^"]*)"/g;
+        let attrMatch;
+        while ((attrMatch = attrRegex.exec(attrsText)) !== null) {
+          if (attrMatch[1] === 'name') continue;
+          args[attrMatch[1]] = this.#decodeStringLiteral(attrMatch[2]);
+        }
+
+        toolCalls.push({
+          id: `call_${Date.now()}_${toolCalls.length}`,
+          name,
+          arguments: args,
+          source: 'DSML_named_tag',
+        });
+      }
     }
 
     return toolCalls;
@@ -1541,6 +1646,7 @@ export class TextToolParser {
       '2. ```tool\n{"name": "tool_name", "arguments": {"param": "value"}}\n```',
       '3. <action>{"tool_name": {"param": "value"}}</action>',
       '4. {"action": {"tool_name": {"param": "value"}}}',
+      '5. <||DSML||tool_calls>\n<||DSML||invoke name="tool_name">\n<||DSML||parameter name="param" string="true">value<||DSML||parameter>\n<||DSML||invoke>\n<||DSML||tool_calls>',
       '',
       'After receiving tool results, continue reasoning or output FINAL_ANSWER: followed by your final response.',
     ];

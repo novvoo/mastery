@@ -570,12 +570,21 @@ export class ReActAgent {
         // explicit FINAL_ANSWER marker. If the provider says the response is
         // complete and no tool call is present, surface it instead of making a
         // hidden continuation request that looks like a hang in the terminal.
-        if (allToolCalls.length === 0 && response.finishReason === 'stop' && response.text?.trim()) {
+        // For coding tasks, never surface it only if at least one tool has been executed
+        // successfully — otherwise the agent could exit without creating/verifying any code.
+        const hasToolEvidence = this.#runToolEvents.some(event => event.success);
+        const isCodingTask = this.#activeTaskProfile?.isCodingTask;
+        const allowProviderStop = allToolCalls.length === 0 &&
+          response.finishReason === 'stop' &&
+          response.text?.trim() &&
+          (!isCodingTask || hasToolEvidence);
+
+        if (allowProviderStop) {
           const answer = this.#normalizeFinalAnswer(response.text);
           this.#debugEvent('Final answer emitted', {
             iteration,
             totalDurationMs: Date.now() - runStartedAt,
-            reason: 'provider_stop_without_tool_calls',
+            reason: isCodingTask ? 'provider_stop_without_tool_calls' : 'provider_stop_without_tool_calls',
             answerPreview: this.#preview(answer, 300),
           });
           this.#ui.finalAnswer(answer);
@@ -590,6 +599,21 @@ export class ReActAgent {
           });
         }
 
+        // For coding tasks: if LLM stopped without tool calls and no tool
+        // evidence yet, surface a clear nudge instead of early exit.
+        if (isCodingTask && allToolCalls.length === 0 && response.finishReason === 'stop' && response.text?.trim()) {
+          this.#debug('Coding task: LLM stopped but no tool evidence — nudging to continue');
+          this.#debugEvent('Continuation requested', {
+            reason: 'coding_task_requires_tool_evidence_before_finish',
+            responsePreview: this.#preview(response.text, 240),
+          });
+          this.#sessionManager.addAssistantMessage(response.text);
+          this.#sessionManager.addUserMessage(
+            `This is a coding task and no tool has been executed yet. To complete this task, use the available tools to: (a) inspect the workspace with list_dir/read_file, (b) write code with write_file/edit_file, (c) verify with shell/verify. Do not finish until you have produced and verified real code changes.`
+          );
+          continue;
+        }
+
         // If no tool calls and no termination, prompt to continue
         if (allToolCalls.length === 0) {
           this.#debug('No tool calls detected, prompting to continue...');
@@ -601,7 +625,8 @@ export class ReActAgent {
           this.#sessionManager.addUserMessage(
             `No tool call detected in your response. To use a tool, output in one of these formats:\n` +
             `1. CALL tool_name({"param": "value"})\n` +
-            `2. \`\`\`tool\n{"name": "tool_name", "arguments": {"param": "value"}}\n\`\`\`\n\n` +
+            `2. \`\`\`tool\n{"name": "tool_name", "arguments": {"param": "value"}}\n\`\`\`\n` +
+            `3. <||DSML||tool_calls>\n   <||DSML||invoke name="tool_name">\n   <||DSML||parameter name="param" string="true">value<||DSML||parameter>\n   <||DSML||invoke>\n   <||DSML||tool_calls>\n\n` +
             `If you have reached a final conclusion, respond with "FINAL_ANSWER:" followed by your response.`
           );
           continue;
@@ -1751,6 +1776,8 @@ export class ReActAgent {
       /<function_call>[\s\S]*?<\/function_call>/i,
       /```(?:tool|json)?\s*\n\s*\{[\s\S]*?(?:"name"|"action"|"tool")[\s\S]*?\}\s*```/i,
       /\bCALL\s+\/?[A-Za-z_][\w-]*\s*\(/,
+      // DSML format: <｜｜DSML｜｜invoke> or <||DSML||invoke>
+      /<(?:\uFF5C\uFF5C|\|\|)DSML(?:\uFF5C\uFF5C|\|\|)\s*\w+/i,
     ].some(pattern => pattern.test(response));
   }
 
