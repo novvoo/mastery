@@ -2224,10 +2224,9 @@ class AIEngineeringAgent {
         inputPreview: input.length > 240 ? input.substring(0, 240) + '... (truncated)' : input,
         inputChars: input.length,
       });
-      // 使用新架构的 engine.processInput
-      spinner.stop();
       const preparedInput = await this.#prepareDocumentReferences(input);
       const result = await this.engine.processInput(preparedInput);
+      spinner.stop();
       enhancedUI.debugEvent('Agent input completed', {
         inputChars: preparedInput.length,
         result: result?.status || (result?.answer ? 'completed' : 'unknown'),

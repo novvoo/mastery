@@ -205,6 +205,7 @@ export class ReActAgent {
   #contentStore = null;
   /** @type {FileAnalyzer|null} */
   #fileAnalyzer = null;
+  #stopRequested = false;
 
   constructor(modelProvider, toolRegistry, memoryManager, config = {}, customUI = ui) {
     this.#modelProvider = modelProvider;
@@ -271,6 +272,7 @@ export class ReActAgent {
    */
   async run(userInput) {
     const runStartedAt = Date.now();
+    this.#stopRequested = false;
     this.#lastRunResult = {
       success: false,
       status: 'running',
@@ -397,6 +399,17 @@ export class ReActAgent {
 
     while (iteration < maxIterations) {
       iteration++;
+      if (this.#stopRequested) {
+        this.#debugEvent('Stop requested - terminating run', { iteration });
+        return this.#completeRun({
+          success: false,
+          status: 'cancelled',
+          answer: '',
+          reason: 'user_stop',
+          iterations: iteration,
+          startedAt: runStartedAt,
+        });
+      }
       this.#ui.iteration(iteration, maxIterations);
         // 停滞检测：注入 nudge 或进度检查点
         this.#injectStagnationNudge(iteration, maxIterations);
@@ -712,6 +725,17 @@ export class ReActAgent {
       iterations: maxIterations,
       startedAt: runStartedAt,
     });
+  }
+
+  /**
+   * Stop the currently running agent execution.
+   * Sets a flag that the main iteration loop checks at the beginning of each cycle.
+   * The agent will finish the current iteration's work-in-flight (LLM call already in
+   * progress) and then exit with a `cancelled` status on the next loop tick.
+   */
+  stop() {
+    this.#stopRequested = true;
+    this.#debugEvent('Stop requested', { at: new Date().toISOString() });
   }
 
   /**
