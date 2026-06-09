@@ -99,10 +99,13 @@ export async function handleDocumentCommand(input, options = {}) {
     }
 
     const rawResult = await toolRegistry.execute('document_search', { query, limit: 5 }, context);
-    const firstResultBlock = rawResult ? String(rawResult).split('\n\n')[0] : '';
+    const searchPayload = rawResult != null ? String(rawResult) : '';
+    // Keep header + evidence entries but cap total to avoid blowing context.
+    // document_search already caps at limit=5 and ~500 chars per snippet (~3KB total).
+    const truncatedSearch = searchPayload.length > 8000 ? searchPayload.slice(0, 8000) + '\n...[truncated]' : searchPayload;
     let answer = '';
 
-    if (modelProvider && rawResult && !String(rawResult).startsWith('No document')) {
+    if (modelProvider && searchPayload && !searchPayload.startsWith('No document')) {
       try {
         const refineResponse = await modelProvider.chat([
           {
@@ -111,7 +114,7 @@ export async function handleDocumentCommand(input, options = {}) {
           },
           {
             role: 'user',
-            content: `Question: ${query}\n\nSearch results:\n${firstResultBlock}`,
+            content: `Question: ${query}\n\nSearch results:\n${truncatedSearch}`,
           },
         ], { maxTokens: 500 });
         answer = normalizeModelText(refineResponse);

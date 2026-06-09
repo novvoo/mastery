@@ -1179,17 +1179,18 @@ class AIEngineeringAgent {
 
         // Show raw search result as source
         const firstResultLine = (result || '').split('\n')[0];
-        const firstResultBlock = result ? result.split('\n\n')[0] : '';
+        const searchPayload = result ? String(result) : '';
+        const truncatedSearch = searchPayload.length > 8000 ? searchPayload.slice(0, 8000) + '\n...[truncated]' : searchPayload;
         console.log(enhancedUI.theme.dim(firstResultLine));
 
         // If a model provider is available, refine the answer via LLM
-        if (this.modelProvider && result && !result.startsWith('No document')) {
+        if (this.modelProvider && searchPayload && !searchPayload.startsWith('No document')) {
           try {
             const refineSpinner = enhancedUI.spinner('Refining answer...');
             refineSpinner.start();
             const refineMessages = [
               { role: 'system', content: 'You are a precise document analyst. Based on the user question and search results, extract a concise answer. Use the user\'s language. If insufficient info, say so.' },
-              { role: 'user', content: 'Question: ' + query + '\n\nSearch results:\n' + firstResultBlock }
+              { role: 'user', content: 'Question: ' + query + '\n\nSearch results:\n' + truncatedSearch }
             ];
             const refineResponse = await this.modelProvider.chat(refineMessages, { maxTokens: 500 });
             refineSpinner.stop();
