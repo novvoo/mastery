@@ -5609,9 +5609,6 @@ newFeaturesTests.test('Document RAG CLI - /doc search passes full evidence (not 
   if (!userMsg) throw new Error('Expected user role message in refine prompt');
   const userContent = String(userMsg.content || '');
 
-  // Critical assertion: refine prompt must include evidence snippets, not only
-  // the "Found N relevant snippets" header. This guards against the bug where
-  // split('\n\n')[0] stripped away all evidence before the model saw it.
   if (!userContent.includes(FAKE_SNIPPET)) {
     throw new Error(
       `refine prompt missing evidence snippet. Got:\n${userContent.substring(0, 500)}`
@@ -5620,15 +5617,34 @@ newFeaturesTests.test('Document RAG CLI - /doc search passes full evidence (not 
   if (!userContent.includes('Question:') || !userContent.includes('Search results:')) {
     throw new Error(`refine prompt missing expected structure. Got:\n${userContent.substring(0, 300)}`);
   }
-  // Also ensure the header is present (we keep it as context)
   if (!userContent.includes('Found 1 relevant snippet')) {
     throw new Error(`refine prompt should include header too, got:\n${userContent.substring(0, 300)}`);
   }
 
   if (!result?.success) throw new Error(`Expected success result, got: ${JSON.stringify(result)}`);
-  if (!String(result?.content || '').includes(FAKE_SNIPPET)) {
-    throw new Error('raw search evidence should still appear in command result');
+  const content = String(result?.content || '');
+  // Default mode: only the refined answer, no raw evidence noise
+  if (!content.includes('TEST_ANSWER_PLACEHOLDER')) {
+    throw new Error(`default output should show the refined answer. Got: ${content}`);
   }
+  if (content.includes(FAKE_SNIPPET)) {
+    throw new Error(`default output should NOT include raw evidence (use --debug). Got: ${content.substring(0, 300)}`);
+  }
+
+  // With --debug: raw evidence + refined answer both present
+  modelMessages.length = 0;
+  const debugResult = await handleDocumentCommand('/doc search 李四毕业 --debug', {
+    toolRegistry: mockToolRegistry,
+    modelProvider: mockModelProvider,
+  });
+  const debugContent = String(debugResult?.content || '');
+  if (!debugContent.includes(FAKE_SNIPPET)) {
+    throw new Error('--debug output should include raw evidence. Got: ' + debugContent.substring(0, 300));
+  }
+  if (!debugContent.includes('TEST_ANSWER_PLACEHOLDER')) {
+    throw new Error('--debug output should include refined answer. Got: ' + debugContent.substring(0, 300));
+  }
+
 
   console.log('     Document RAG CLI /doc search refine prompt contains full evidence snippets');
 });

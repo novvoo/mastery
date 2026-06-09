@@ -1165,9 +1165,11 @@ class AIEngineeringAgent {
     }
 
     if (['search', 'find', 'query'].includes(subcommand)) {
-      const query = restParts.length > 0 ? restText : '';
+      const flags = new Set(restParts.filter(p => p.startsWith('--')));
+      const query = restParts.filter(p => !p.startsWith('--')).join(' ');
+      const showRaw = flags.has('--debug') || flags.has('--raw');
       if (!query) {
-        enhancedUI.info('Usage: /doc search <query>');
+        enhancedUI.info('Usage: /doc search <query> [--debug|--raw]');
         return;
       }
 
@@ -1177,13 +1179,14 @@ class AIEngineeringAgent {
         const result = await toolRegistry.execute('document_search', { query, limit: 5 }, this.#documentToolContext());
         spinner.stop();
 
-        // Show raw search result as source
         const firstResultLine = (result || '').split('\n')[0];
         const searchPayload = result ? String(result) : '';
         const truncatedSearch = searchPayload.length > 8000 ? searchPayload.slice(0, 8000) + '\n...[truncated]' : searchPayload;
-        console.log(enhancedUI.theme.dim(firstResultLine));
+        if (showRaw) {
+          console.log(enhancedUI.theme.dim(firstResultLine));
+        }
 
-        // If a model provider is available, refine the answer via LLM
+        let answerText = '';
         if (this.modelProvider && searchPayload && !searchPayload.startsWith('No document')) {
           try {
             const refineSpinner = enhancedUI.spinner('Refining answer...');
@@ -1195,22 +1198,33 @@ class AIEngineeringAgent {
             const refineResponse = await this.modelProvider.chat(refineMessages, { maxTokens: 500 });
             refineSpinner.stop();
 
-            console.log('');
-            console.log(enhancedUI.createHeader('Answer'));
-            console.log('');
-            console.log('');
-            let answerText = refineResponse.text || String(refineResponse);
+            answerText = refineResponse.text || String(refineResponse);
             try {
               const parsed = JSON.parse(answerText);
-              if (parsed?.action?.done?.text) {answerText = parsed.action.done.text;}
+              if (parsed?.action?.done?.text) { answerText = parsed.action.done.text; }
             } catch {
               // Keep the raw answer text when it is not JSON.
             }
-            console.log(answerText);
-            console.log('');
           } catch (refineError) {
-            // Fallback: raw result already shown above
+            answerText = '';
           }
+        }
+
+        if (showRaw && searchPayload) {
+          console.log('');
+          console.log(enhancedUI.createHeader('Raw Evidence'));
+          console.log('');
+          console.log(searchPayload);
+        }
+        if (answerText) {
+          console.log('');
+          console.log(enhancedUI.createHeader('Answer'));
+          console.log('');
+          console.log(answerText);
+          console.log('');
+        } else if (!showRaw) {
+          // When no model provider, fall back to showing the raw result
+          console.log(searchPayload);
         }
       } catch (error) {
         spinner.stop();

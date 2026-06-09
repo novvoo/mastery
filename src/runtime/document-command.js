@@ -89,19 +89,20 @@ export async function handleDocumentCommand(input, options = {}) {
   }
 
   if (['search', 'find', 'query'].includes(parsed.subcommand)) {
-    const query = parsed.restParts.length > 0 ? parsed.restText : '';
+    const flags = new Set(parsed.restParts.filter(p => p.startsWith('--')));
+    const query = parsed.restParts.filter(p => !p.startsWith('--')).join(' ');
+    const showRaw = flags.has('--debug') || flags.has('--raw');
+
     if (!query) {
       return createCommandResult(parsed, {
         success: false,
-        content: 'Usage: /doc search <query>',
+        content: 'Usage: /doc search <query> [--debug|--raw]',
         error: 'Missing search query.',
       });
     }
 
     const rawResult = await toolRegistry.execute('document_search', { query, limit: 5 }, context);
     const searchPayload = rawResult != null ? String(rawResult) : '';
-    // Keep header + evidence entries but cap total to avoid blowing context.
-    // document_search already caps at limit=5 and ~500 chars per snippet (~3KB total).
     const truncatedSearch = searchPayload.length > 8000 ? searchPayload.slice(0, 8000) + '\n...[truncated]' : searchPayload;
     let answer = '';
 
@@ -125,7 +126,9 @@ export async function handleDocumentCommand(input, options = {}) {
 
     return createCommandResult(parsed, {
       success: true,
-      content: answer ? `${rawResult}\n\nAnswer\n\n${answer}` : String(rawResult || ''),
+      content: answer
+        ? (showRaw ? `${rawResult}\n\nAnswer\n\n${answer}` : answer)
+        : String(rawResult || ''),
       answer,
       data: {
         query,
