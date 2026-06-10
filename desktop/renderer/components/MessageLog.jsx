@@ -35,7 +35,7 @@ const styles = {
     alignItems: 'center',
     minHeight: '32px',
     padding: '0 10px',
-    borderBottom: 'none',
+    borderBottom: '1px solid var(--border-subtle)',
     backgroundColor: 'var(--surface-color)'
   },
   
@@ -135,7 +135,7 @@ const styles = {
   runtimeDetailsPanel: {
     marginBottom: '12px',
     borderRadius: '8px',
-    border: 'none',
+    border: '1px solid var(--border-subtle)',
     backgroundColor: 'rgba(15, 20, 28, 0.74)',
     overflow: 'hidden'
   },
@@ -146,7 +146,7 @@ const styles = {
     justifyContent: 'space-between',
     minHeight: '42px',
     padding: '0 12px',
-    borderBottom: 'none',
+    borderBottom: '1px solid var(--border-subtle)',
     color: 'var(--text-muted)',
     fontSize: '12px',
     fontWeight: '600'
@@ -186,7 +186,7 @@ const styles = {
 
   runtimeProgress: {
     padding: '8px 10px 10px',
-    borderBottom: 'none'
+    borderBottom: '1px solid var(--border-subtle)'
   },
 
   runtimeProgressText: {
@@ -498,7 +498,7 @@ const styles = {
     padding: '12px',
     backgroundColor: '#0f141c',
     borderRadius: '6px',
-    border: 'none',
+    border: '1px solid var(--border-subtle)',
     fontSize: '12px',
     maxHeight: '200px',
     overflowY: 'auto'
@@ -1683,6 +1683,7 @@ function MessageLog({ messages, status, onClear, onAskAgent }) {
         }
         .markdown pre {
           background-color: var(--surface-color, #1a1f2e);
+          border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.15));
           border-radius: 6px;
           padding: 12px;
           overflow-x: auto;

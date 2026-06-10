@@ -503,8 +503,8 @@ export function getCompletionGates(riskLevel, profile = {}) {
 
   switch (riskLevel) {
     case RISK_LEVEL.LOW:
-      // LOW: 改了就验证，不改就 inspect
-      gates.requireRuntimeVerification = profile.isModificationTask !== false;
+      // LOW: 编码任务需要运行验证（功能测试），纯只读/查询任务无需验证
+      gates.requireRuntimeVerification = profile.isCodingTask !== false;
       return gates;
 
     case RISK_LEVEL.MEDIUM:
@@ -541,6 +541,7 @@ export function getMethodologyGuidance(riskLevel, profile = {}) {
       lines.push(
         'This task is low-risk: make the smallest necessary change, inspect it, and run a real shell command (syntax check, existing test, linter, or build) to confirm.',
       );
+      lines.push('You MUST run a functional test at the final step before finishing — this is mandatory for all coding tasks.');
       lines.push('Do NOT call brainstorm/grill/zoom_out/architect/tdd — they are overkill for a small change.');
       break;
 
@@ -548,6 +549,7 @@ export function getMethodologyGuidance(riskLevel, profile = {}) {
       lines.push(
         'This task is medium-risk: read the project first, make focused edits, then run a real verification command (test/lint/build).',
       );
+      lines.push('You MUST run a functional test at the final step before finishing — this is mandatory for all coding tasks.');
       lines.push('Call review/verify/diagnose only if you are uncertain about the change; do NOT call them as a ritual.');
       break;
 

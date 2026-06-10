@@ -197,8 +197,9 @@ export function checkCompletionGates(toolEvents, gates, profile = {}) {
     }
   }
 
-  // 2. 只要有 mutation，必须有运行验证 —— 这是铁律
-  if (summary.hasMutation && gates.requireRuntimeVerification) {
+  // 2. 只要有 mutation，必须有运行验证 —— 这是铁律（无论风险等级）
+  //    编码任务只要有 mutation 就必须验证，即使是 LOW/MEDIUM
+  if (gates.requireRuntimeVerification && summary.hasMutation) {
     if (!summary.hasRuntimeVerification) {
       missing.push('no_runtime_verification');
     }

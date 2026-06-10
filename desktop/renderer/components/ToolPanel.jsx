@@ -14,7 +14,7 @@ const styles = {
   },
 
   section: {
-    borderBottom: 'none'
+    borderBottom: '1px solid var(--border-subtle)'
   },
 
   sectionHeader: {
@@ -118,7 +118,7 @@ const styles = {
     paddingBottom: '10px',
     paddingLeft: '12px',
     backgroundColor: '#141922',
-    borderBottom: 'none'
+    borderBottom: '1px solid var(--border-subtle)'
   },
 
   searchRow: {

@@ -2036,7 +2036,14 @@ export class ReActAgent {
   }
 
   #shouldBlockCodingFinal(userInput, responseText) {
-    if (!this.#activeTaskProfile?.isModificationTask) {
+    // 完成门控入口条件：
+    // 1. 修改类任务（isModificationTask）→ 必须进入门控
+    // 2. 编码任务 + 产生了代码修改（mutation）证据 → 必须进入门控
+    // 3. 只读查询/非编码任务 → 不进入门控
+    const successfulEvents = this.#runToolEvents.filter(event => event.success);
+    const hasMutationEvidence = successfulEvents.some(event => evIsMutationEvent(event));
+
+    if (!this.#activeTaskProfile?.isModificationTask && !hasMutationEvidence) {
       return { block: false };
     }
 
@@ -2044,8 +2051,6 @@ export class ReActAgent {
     if (!text) {
       return { block: false };
     }
-
-    const successfulEvents = this.#runToolEvents.filter(event => event.success);
 
     // 用 evidence-verifier 评估
     const gates = getCompletionGates(this.#activeTaskProfile.riskLevel, this.#activeTaskProfile);

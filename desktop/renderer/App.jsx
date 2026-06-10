@@ -218,7 +218,7 @@ const styles = {
     minHeight: `${LAYOUT.headerHeight}px`,
     padding: '0 var(--spacing-md)',
     backgroundColor: 'var(--bg-depth-2)',
-    borderBottom: 'none',
+    borderBottom: '1px solid var(--border-subtle)',
     gap: 'var(--spacing-xs)'
   },
   
@@ -309,7 +309,7 @@ const styles = {
     width: `${LAYOUT.activityRailWidth}px`,
     flexShrink: 0,
     backgroundColor: 'var(--bg-depth-0)',
-    borderRight: 'none',
+    borderRight: '1px solid var(--border-subtle)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -343,7 +343,7 @@ const styles = {
   leftSidebar: {
     width: `${LAYOUT.sidebarWidth}px`,
     backgroundColor: 'var(--bg-depth-3)',
-    borderRight: 'none',
+    borderRight: '1px solid var(--border-subtle)',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
@@ -394,14 +394,14 @@ const styles = {
     alignItems: 'center',
     gap: '6px',
     padding: 'var(--spacing-sm)',
-    borderBottom: 'none',
+    borderBottom: '1px solid var(--border-subtle)',
     backgroundColor: 'var(--bg-depth-2)'
   },
 
   previewHeader: {
     minHeight: '42px',
     padding: '8px 10px',
-    borderBottom: 'none',
+    borderBottom: '1px solid var(--border-subtle)',
     display: 'flex',
     alignItems: 'center',
     gap: '8px'
@@ -524,7 +524,7 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 'var(--spacing-sm) var(--spacing-xl)',
-    borderBottom: 'none',
+    borderBottom: '1px solid var(--border-subtle)',
     backgroundColor: 'var(--bg-depth-3)'
   },
   
@@ -571,7 +571,7 @@ const styles = {
   inputArea: {
     padding: 'var(--spacing-sm) var(--spacing-xl)',
     backgroundColor: 'var(--bg-depth-3)',
-    borderTop: 'none'
+    borderTop: '1px solid var(--border-subtle)'
   },
   
   inputWrapper: {
@@ -667,7 +667,7 @@ const styles = {
   // ================== 底部状态栏 ==================
   footer: {
     backgroundColor: 'var(--bg-depth-2)',
-    borderTop: 'none'
+    borderTop: '1px solid var(--border-subtle)'
   },
   
   // ================== 模态框样式 ==================
