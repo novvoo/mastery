@@ -272,8 +272,8 @@ const styles = {
   },
 
   runtimeDetailContentExpanded: {
-    maxHeight: '240px',
-    overflowY: 'auto'
+    maxHeight: 'none',
+    overflowY: 'visible'
   },
   
   // 时间线视图样式
@@ -439,8 +439,8 @@ const styles = {
     lineHeight: '1.45',
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
-    maxHeight: '300px',
-    overflowY: 'auto',
+    maxHeight: 'none',
+    overflowY: 'visible',
     transition: 'max-height 0.3s ease'
   },
   
@@ -500,8 +500,8 @@ const styles = {
     borderRadius: '6px',
     border: '1px solid var(--border-subtle)',
     fontSize: '12px',
-    maxHeight: '200px',
-    overflowY: 'auto'
+    maxHeight: 'none',
+    overflowY: 'visible'
   },
   
   detailTitle: {
@@ -717,8 +717,8 @@ function MessageLog({ messages, status, onClear, onAskAgent }) {
 
   // 为 markdown 容器添加 CSS 规则：确保 <a> 标签有明确的链接样式
   const markdownStyle = {
-    maxHeight: '400px',
-    overflowY: 'auto',
+    maxHeight: 'none',
+    overflowY: 'visible',
   };
 
   // 状态
