@@ -137,7 +137,9 @@ const styles = {
     borderRadius: '8px',
     border: '1px solid var(--border-subtle)',
     backgroundColor: 'rgba(15, 20, 28, 0.74)',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    position: 'relative',
+    zIndex: 2
   },
 
   runtimeDetailsHeader: {
@@ -272,8 +274,8 @@ const styles = {
   },
 
   runtimeDetailContentExpanded: {
-    maxHeight: 'none',
-    overflowY: 'visible'
+    maxHeight: '300px',
+    overflowY: 'auto'
   },
   
   // 时间线视图样式
@@ -439,8 +441,8 @@ const styles = {
     lineHeight: '1.45',
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
-    maxHeight: 'none',
-    overflowY: 'visible',
+    maxHeight: '400px',
+    overflowY: 'auto',
     transition: 'max-height 0.3s ease'
   },
   
@@ -500,8 +502,8 @@ const styles = {
     borderRadius: '6px',
     border: '1px solid var(--border-subtle)',
     fontSize: '12px',
-    maxHeight: 'none',
-    overflowY: 'visible'
+    maxHeight: '300px',
+    overflowY: 'auto'
   },
   
   detailTitle: {
