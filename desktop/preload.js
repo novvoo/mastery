@@ -72,6 +72,8 @@ const ALLOWED_CHANNELS = {
     'agent:error',
     'tool:call',
     'tool:result',
+    'tool:error',
+    'tool:activity',
     'status:update',
     'window:state'
   ]

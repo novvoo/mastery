@@ -26,6 +26,7 @@ import { SessionManager } from '../core/session-manager.js';
 import { IntelligentReasoning } from '../core/intelligent-reasoning.js';
 import { AutomationEngine } from '../core/automation-engine.js';
 import { Embedder } from '../core/embedder.js';
+import { describeToolActivity } from '../core/tool-activity.js';
 
 // Tools — 工具编目层（单一入口）
 import { createCoreTools, createSchedulerTools, SKILL_TOOL_CREATORS } from '../tools/index.js';
@@ -635,13 +636,19 @@ export class AgentEngine {
         });
       },
       toolCall: (name, args) => {
-        eventBus.emit(RuntimeEvent.TOOL_CALL, { toolName: name, args });
+        const activity = describeToolActivity(name, args, 'running');
+        eventBus.emit(RuntimeEvent.TOOL_CALL, { toolName: name, args, activity });
+        eventBus.emit(RuntimeEvent.TOOL_ACTIVITY, activity);
       },
-      toolResult: (name, result) => {
-        eventBus.emit(RuntimeEvent.TOOL_RESULT, { toolName: name, result });
+      toolResult: (name, result, args = {}) => {
+        const activity = describeToolActivity(name, args, 'completed', result);
+        eventBus.emit(RuntimeEvent.TOOL_RESULT, { toolName: name, args, result, activity });
+        eventBus.emit(RuntimeEvent.TOOL_ACTIVITY, activity);
       },
-      toolError: (name, error) => {
-        eventBus.emit(RuntimeEvent.TOOL_ERROR, { toolName: name, error });
+      toolError: (name, error, args = {}) => {
+        const activity = describeToolActivity(name, args, 'failed', error);
+        eventBus.emit(RuntimeEvent.TOOL_ERROR, { toolName: name, args, error, activity });
+        eventBus.emit(RuntimeEvent.TOOL_ACTIVITY, activity);
       },
       finalAnswer: (answer) => {
         eventBus.emit(RuntimeEvent.AGENT_COMPLETE, { answer });
@@ -685,18 +692,30 @@ export class AgentEngine {
           // 触发工具调用前钩子
           await pluginManager.triggerHook(HOOKS.BEFORE_TOOL_CALL, name, arguments_);
           
-          eventBus.emit(RuntimeEvent.TOOL_CALL, { toolName: name, args: arguments_ });
+          {
+            const activity = describeToolActivity(name, arguments_, 'running');
+            eventBus.emit(RuntimeEvent.TOOL_CALL, { toolName: name, args: arguments_, activity });
+            eventBus.emit(RuntimeEvent.TOOL_ACTIVITY, activity);
+          }
           
           try {
             const result = await originalExecute(name, arguments_, ctx);
-            eventBus.emit(RuntimeEvent.TOOL_RESULT, { toolName: name, result });
+            {
+              const activity = describeToolActivity(name, arguments_, 'completed', result);
+              eventBus.emit(RuntimeEvent.TOOL_RESULT, { toolName: name, args: arguments_, result, activity });
+              eventBus.emit(RuntimeEvent.TOOL_ACTIVITY, activity);
+            }
             
             // 触发工具调用后钩子
             await pluginManager.triggerHook(HOOKS.AFTER_TOOL_CALL, name, result);
             
             return result;
           } catch (error) {
-            eventBus.emit(RuntimeEvent.TOOL_ERROR, { toolName: name, error: error.message });
+            {
+              const activity = describeToolActivity(name, arguments_, 'failed', error.message);
+              eventBus.emit(RuntimeEvent.TOOL_ERROR, { toolName: name, args: arguments_, error: error.message, activity });
+              eventBus.emit(RuntimeEvent.TOOL_ACTIVITY, activity);
+            }
             
             // 触发工具错误钩子
             await pluginManager.triggerHook(HOOKS.ON_TOOL_ERROR, name, error);

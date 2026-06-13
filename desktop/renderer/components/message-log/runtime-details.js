@@ -12,6 +12,7 @@ export function isRuntimeDetailMessage(msg) {
     msg.event === 'tool:call' ||
     msg.event === 'tool:result' ||
     msg.event === 'tool:error' ||
+    msg.event === 'tool:activity' ||
     ['tool', 'tool_result', 'debug', 'event'].includes(msg.type)
   );
 }
@@ -65,6 +66,10 @@ export function getRuntimeDetailContent(msg) {
 
   if (msg.toolName) {
     sections.push(`工具: ${msg.toolName}`);
+  }
+
+  if (msg.activity?.statusText) {
+    sections.push(`状态: ${msg.activity.statusText}`);
   }
 
   const argsText = formatRuntimeDetailValue(msg.args);
@@ -192,5 +197,6 @@ export function buildRuntimeDetailsExportData(details) {
     args: msg.args || null,
     result: msg.result || null,
     payload: msg.payload || null,
+    activity: msg.activity || null,
   }));
 }

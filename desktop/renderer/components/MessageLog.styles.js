@@ -267,6 +267,194 @@ export const styles = {
     maxHeight: '300px',
     overflowY: 'auto'
   },
+
+  activityPanel: {
+    padding: '10px',
+    borderBottom: '1px solid var(--border-subtle)',
+    backgroundColor: 'rgba(245, 240, 235, 0.025)'
+  },
+
+  activitySummaryRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    marginBottom: '8px',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    flexWrap: 'wrap'
+  },
+
+  taskStageList: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))',
+    gap: '6px',
+    marginBottom: '8px'
+  },
+
+  taskStageItem: {
+    minWidth: 0,
+    height: '30px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '0 8px',
+    borderRadius: '6px',
+    backgroundColor: 'rgba(245, 240, 235, 0.035)',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 700
+  },
+
+  taskStageCompleted: {
+    backgroundColor: 'rgba(52, 211, 153, 0.08)',
+    color: 'var(--text-color)'
+  },
+
+  taskStageRunning: {
+    backgroundColor: 'rgba(96, 165, 250, 0.08)',
+    color: 'var(--text-color)'
+  },
+
+  taskStageWaiting: {
+    backgroundColor: 'rgba(250, 204, 21, 0.08)',
+    color: 'var(--text-color)'
+  },
+
+  taskStageFailed: {
+    backgroundColor: 'rgba(248, 113, 113, 0.09)',
+    color: 'var(--text-color)'
+  },
+
+  taskStageMark: {
+    width: '16px',
+    height: '16px',
+    borderRadius: '50%',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(245, 240, 235, 0.08)',
+    flexShrink: 0
+  },
+
+  taskStageLabel: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap'
+  },
+
+  fileStatusList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '5px',
+    marginBottom: '8px'
+  },
+
+  fileStatusItem: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '8px',
+    minHeight: '28px',
+    padding: '0 8px',
+    borderRadius: '6px',
+    backgroundColor: 'rgba(0, 0, 0, 0.14)'
+  },
+
+  fileStatusPath: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: 'var(--text-color)',
+    fontSize: '12px',
+    fontWeight: 600
+  },
+
+  fileStatusChip: {
+    flexShrink: 0,
+    color: 'var(--primary-color)',
+    fontSize: '11px',
+    fontWeight: 800
+  },
+
+  activityList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px'
+  },
+
+  activityItem: {
+    minHeight: '34px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '8px',
+    padding: '6px 8px',
+    borderRadius: '6px',
+    backgroundColor: 'rgba(245, 240, 235, 0.04)',
+    border: '1px solid transparent'
+  },
+
+  activityItemCompleted: {
+    backgroundColor: 'rgba(52, 211, 153, 0.065)',
+    borderColor: 'rgba(52, 211, 153, 0.12)'
+  },
+
+  activityItemFailed: {
+    backgroundColor: 'rgba(248, 113, 113, 0.075)',
+    borderColor: 'rgba(248, 113, 113, 0.16)'
+  },
+
+  activityItemWaiting: {
+    backgroundColor: 'rgba(96, 165, 250, 0.07)',
+    borderColor: 'rgba(96, 165, 250, 0.16)'
+  },
+
+  activityMain: {
+    minWidth: 0,
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '7px'
+  },
+
+  activityStatusDot: {
+    width: '7px',
+    height: '7px',
+    borderRadius: '50%',
+    backgroundColor: 'var(--primary-color)',
+    flexShrink: 0
+  },
+
+  activityTitle: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: 'var(--text-color)',
+    fontSize: '12px',
+    fontWeight: 600
+  },
+
+  activityActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    flexShrink: 0
+  },
+
+  activityActionButton: {
+    height: '24px',
+    padding: '0 8px',
+    borderRadius: '5px',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'rgba(245, 240, 235, 0.06)',
+    color: 'var(--text-color)',
+    cursor: 'pointer',
+    fontSize: '11px',
+    fontWeight: 700
+  },
   
   // 时间线视图样式
   timelineView: {
@@ -636,4 +824,3 @@ export const styles = {
     zIndex: 1000
   }
 };
-

@@ -3,6 +3,7 @@
  */
 
 import chalk from 'chalk';
+import { describeToolActivity, summarizeActivityForCLI } from '../core/tool-activity.js';
 
 export const ui = {
   brand(text) {
@@ -17,8 +18,9 @@ export const ui = {
   },
 
   toolCall(name, args) {
+    const activity = describeToolActivity(name, args, 'running');
     console.log('');
-    console.log(chalk.yellow(`  🔧 Tool: ${name}`));
+    console.log(chalk.yellow(`  ${summarizeActivityForCLI(activity)}`));
     for (const [key, value] of Object.entries(args)) {
       const display = typeof value === 'string' && value.length > 100
         ? value.substring(0, 100) + '...'
@@ -28,14 +30,16 @@ export const ui = {
     console.log(chalk.dim('     └─ ...'));
   },
 
-  toolResult(name, result) {
+  toolResult(name, result, args = {}) {
+    const activity = describeToolActivity(name, args, 'completed', result);
     const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
     const preview = resultStr.length > 200 ? resultStr.substring(0, 200) + '...' : resultStr;
-    console.log(chalk.green(`  ✅ ${name}: ${preview.replace(/\n/g, '\\n')}`));
+    console.log(chalk.green(`  ${summarizeActivityForCLI(activity)}: ${preview.replace(/\n/g, '\\n')}`));
   },
 
-  toolError(name, error) {
-    console.log(chalk.red(`  ❌ ${name} error: ${error}`));
+  toolError(name, error, args = {}) {
+    const activity = describeToolActivity(name, args, 'failed', error);
+    console.log(chalk.red(`  ${summarizeActivityForCLI(activity)}: ${error}`));
   },
 
   thought(text) {

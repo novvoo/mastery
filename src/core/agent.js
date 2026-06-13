@@ -214,7 +214,13 @@ export class ReActAgent {
     }
 
     // Step 2: 任务分类（合并进 IntentClassifier，消除一层路由）
-    const taskProfile = this.#intentClassifier?.classifyTask(userInput, intent);
+    const taskProfile = this.#intentClassifier?.classifyTask(userInput, intent) || {
+      isCodingTask: false,
+      isModificationTask: false,
+      riskLevel: 'low',
+      semanticRiskDomains: [],
+      requiresSemanticRiskReview: false,
+    };
 
     // Step 3: 准备运行上下文
     this.#sessionManager.addUserMessage(userInput);

@@ -355,6 +355,27 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     }
   }, [onAskAgent]);
 
+  const handleActivityAction = useCallback((action, activity) => {
+    if (!onAskAgent || !activity) {
+      return;
+    }
+
+    const target = activity.target ? ` ${activity.target}` : '';
+    const prompt = action === 'undo'
+      ? `请检查并准备撤销这次变更：${activity.statusText || activity.title || activity.toolName}${target}。先说明会撤销什么，再等待我确认。`
+      : action === 'continue'
+        ? '我确认继续。请基于当前等待交互状态继续执行下一步。'
+        : `请审核这次变更：${activity.statusText || activity.title || activity.toolName}${target}。检查 diff、潜在风险和需要补测的地方。`;
+
+    onAskAgent({
+      type: 'event',
+      event: `activity:${action}`,
+      content: prompt,
+      activity,
+      timestamp: Date.now(),
+    });
+  }, [onAskAgent]);
+
   const isActionableErrorMessage = useCallback((msg) => (
     msg?.type === 'error' || msg?.level === 'error' || msg?.event === 'tool:error'
   ), []);
@@ -630,9 +651,10 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       isLarge={largeRuntimePanels.has(group.id)}
       expandedRuntimeDetails={expandedRuntimeDetails}
       getTypeDisplay={getTypeDisplay}
-      onExport={handleExportRuntimeDetails}
-      onPanelSizeToggle={handleRuntimePanelSizeToggle}
-      onRefChange={handleRuntimeDetailsRefChange}
+                onExport={handleExportRuntimeDetails}
+                onPanelSizeToggle={handleRuntimePanelSizeToggle}
+                onActivityAction={handleActivityAction}
+                onRefChange={handleRuntimeDetailsRefChange}
       onRuntimeDetailToggle={handleRuntimeDetailToggle}
       onRuntimeDetailsToggle={handleRuntimeDetailsToggle}
     />

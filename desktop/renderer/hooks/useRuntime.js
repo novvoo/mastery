@@ -3,6 +3,8 @@
  * 提供 Agent Runtime 的状态管理和操作方法
  */
 
+/* global window */
+
 import { useState, useCallback, useEffect, useRef } from 'react';
 
 /**
@@ -355,9 +357,10 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
         message: {
           ...base,
           type: 'tool',
-          content: `调用工具: ${payload?.toolName || payload?.name || 'unknown'}`,
+          content: payload?.activity?.statusText || `调用工具: ${payload?.toolName || payload?.name || 'unknown'}`,
           toolName: payload?.toolName || payload?.name,
           args: payload?.args,
+          activity: payload?.activity,
         },
       };
     case 'tool:result':
@@ -365,9 +368,11 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
         message: {
           ...base,
           type: 'tool_result',
-          content: `工具结果: ${payload?.toolName || payload?.name || 'unknown'}`,
+          content: payload?.activity?.statusText || `工具结果: ${payload?.toolName || payload?.name || 'unknown'}`,
           toolName: payload?.toolName || payload?.name,
+          args: payload?.args,
           result: payload?.result,
+          activity: payload?.activity,
         },
       };
     case 'tool:error':
@@ -375,8 +380,21 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
         message: {
           ...base,
           type: 'error',
-          content: `工具错误: ${payload?.toolName || payload?.name || 'unknown'} ${payload?.error || ''}`.trim(),
+          content: payload?.activity?.statusText || `工具错误: ${payload?.toolName || payload?.name || 'unknown'} ${payload?.error || ''}`.trim(),
           toolName: payload?.toolName || payload?.name,
+          args: payload?.args,
+          activity: payload?.activity,
+        },
+      };
+    case 'tool:activity':
+      return {
+        message: {
+          ...base,
+          type: 'event',
+          runtimeDetail: true,
+          content: payload?.statusText || payload?.title || '工具活动更新',
+          toolName: payload?.toolName,
+          activity: payload,
         },
       };
     case 'status:update':

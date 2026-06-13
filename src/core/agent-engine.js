@@ -243,6 +243,7 @@ export class AgentEngine {
     // ========== Step 4：编码任务增强 ==========
     let toolUseCorrections = 0;
     let codingGateCorrections = 0;
+    let lastResponseText = '';
 
     if (taskProfile.isCodingTask) {
       this.#ui.debugEvent?.('Coding task mode enabled', taskProfile);
@@ -339,6 +340,7 @@ export class AgentEngine {
           'LLM call',
         ),
       );
+      lastResponseText = response?.text || '';
 
       this.#ui.debugEvent?.('LLM response', {
         durationMs: Date.now() - llmStartedAt,
@@ -558,7 +560,7 @@ export class AgentEngine {
     }
 
     // 达到迭代上限仍未完成
-    const lastText = response?.text?.trim() || '';
+    const lastText = lastResponseText.trim();
     const fallback = lastText || 'Agent 达到迭代上限仍未完成任务。';
     this.#ui.finalAnswer?.(fallback);
     return this.#completeRun({

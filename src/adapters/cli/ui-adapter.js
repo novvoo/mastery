@@ -4,6 +4,7 @@
  */
 
 import { RuntimeEvent } from '../../runtime/types.js';
+import { describeToolActivity, summarizeActivityForCLI } from '../../core/tool-activity.js';
 
 export class CLIUIAdapter {
   #eventBus;
@@ -72,7 +73,8 @@ export class CLIUIAdapter {
   #onToolCall(event) {
     if (this.#ui && this.#ui.theme) {
       const { dim } = this.#ui.theme;
-      console.log(dim(`\n🔧 Calling tool: ${event.toolName}`));
+      const activity = event.activity || describeToolActivity(event.toolName, event.args, 'running');
+      console.log(dim(`\n${summarizeActivityForCLI(activity)}`));
     }
   }
 
@@ -80,7 +82,11 @@ export class CLIUIAdapter {
    * Handle tool result
    */
   #onToolResult(event) {
-    // Can log if needed, but tools typically handle their own output
+    if (this.#ui && this.#ui.theme) {
+      const { success } = this.#ui.theme;
+      const activity = event.activity || describeToolActivity(event.toolName, {}, 'completed', event.result);
+      console.log(success(summarizeActivityForCLI(activity)));
+    }
   }
 
   /**
@@ -88,7 +94,8 @@ export class CLIUIAdapter {
    */
   #onToolError(event) {
     if (this.#ui && this.#ui.showError) {
-      this.#ui.showError(new Error(`Tool ${event.toolName} failed: ${event.error}`));
+      const activity = event.activity || describeToolActivity(event.toolName, {}, 'failed', event.error);
+      this.#ui.showError(new Error(summarizeActivityForCLI(activity)));
     }
   }
 

@@ -26,6 +26,7 @@ export const RuntimeEvent = {
   TOOL_CALL: 'tool:call',
   TOOL_RESULT: 'tool:result',
   TOOL_ERROR: 'tool:error',
+  TOOL_ACTIVITY: 'tool:activity',
   TOOL_LOADED: 'tool:loaded',
   TOOL_UNLOADED: 'tool:unloaded',
   

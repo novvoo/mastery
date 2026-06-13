@@ -7,6 +7,7 @@ import {
   getStatusUpdateText,
   isStatusUpdateMessage,
 } from './runtime-details.js';
+import { buildActivitySummary, getActivityTone, getFileStatusLabel } from './activity-summary.js';
 
 export function RuntimeDetailsPanel({
   group,
@@ -18,6 +19,7 @@ export function RuntimeDetailsPanel({
   getTypeDisplay,
   onExport,
   onPanelSizeToggle,
+  onActivityAction,
   onRefChange,
   onRuntimeDetailToggle,
   onRuntimeDetailsToggle,
@@ -25,6 +27,7 @@ export function RuntimeDetailsPanel({
   const runtimeDetails = group?.runtimeDetails || [];
   const visibleRuntimeDetails = runtimeDetails.filter(msg => !isStatusUpdateMessage(msg));
   const latestStatusUpdate = [...runtimeDetails].reverse().find(isStatusUpdateMessage);
+  const activitySummary = buildActivitySummary(runtimeDetails);
   const isRunningGroup = status === 'running' && isActiveGroup;
   const statusText = isRunningGroup || latestStatusUpdate
     ? getStatusUpdateText(latestStatusUpdate)
@@ -46,11 +49,11 @@ export function RuntimeDetailsPanel({
       >
         <span style={styles.runtimeDetailsTitle}>
           {isRunningGroup && <span style={styles.spinner}></span>}
-          <span>{isRunningGroup ? '执行过程' : '运行详情'}</span>
+          <span>{isRunningGroup ? '执行过程' : '执行摘要'}</span>
         </span>
         <span style={styles.runtimeDetailsActions}>
           <span style={styles.runtimeStatusChip} title={statusText}>{statusText}</span>
-          <span>{visibleRuntimeDetails.length} 条</span>
+          <span>{activitySummary.total || visibleRuntimeDetails.length} 项</span>
           {visibleRuntimeDetails.length > 0 && (
             <button
               type="button"
@@ -95,10 +98,122 @@ export function RuntimeDetailsPanel({
         <div style={styles.runtimeProgress}>
           <div style={styles.runtimeProgressText}>
             <span style={styles.runtimeProgressLabel}>{statusText}</span>
-            <span>{visibleRuntimeDetails.length} 个事件</span>
+            <span>
+              {activitySummary.running} 进行中 / {activitySummary.completed} 完成
+              {activitySummary.failed > 0 ? ` / ${activitySummary.failed} 失败` : ''}
+            </span>
           </div>
           <div style={styles.progressBar}>
-            <div style={{ ...styles.progressFill, width: '100%' }} />
+            <div style={{ ...styles.progressFill, width: `${Math.max(6, activitySummary.progress)}%` }} />
+          </div>
+        </div>
+      )}
+      {activitySummary.activities.length > 0 && (
+        <div style={styles.activityPanel}>
+          <div style={styles.activitySummaryRow}>
+            <span>文件 {activitySummary.fileCount}</span>
+            <span>完成 {activitySummary.completed}</span>
+            <span>审核 {activitySummary.reviewable}</span>
+            <span>可撤销 {activitySummary.undoable}</span>
+            {activitySummary.waitingForUser && <span>等待确认</span>}
+            {activitySummary.waitingForUser && (
+              <button
+                type="button"
+                style={styles.activityActionButton}
+                title="确认继续执行"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onActivityAction?.('continue', {
+                    kind: 'tool_activity',
+                    phase: 'waiting',
+                    intent: 'interaction',
+                    statusText: '等待用户确认',
+                  });
+                }}
+              >
+                确认继续
+              </button>
+            )}
+          </div>
+          <div style={styles.taskStageList}>
+            {activitySummary.taskStages.map(stage => (
+              <div
+                key={stage.id}
+                style={{
+                  ...styles.taskStageItem,
+                  ...(stage.status === 'completed' ? styles.taskStageCompleted : {}),
+                  ...(stage.status === 'running' ? styles.taskStageRunning : {}),
+                  ...(stage.status === 'waiting' ? styles.taskStageWaiting : {}),
+                  ...(stage.status === 'failed' ? styles.taskStageFailed : {}),
+                }}
+              >
+                <span style={styles.taskStageMark}>
+                  {stage.status === 'completed' ? '✓' : stage.status === 'failed' ? '!' : stage.status === 'pending' ? '·' : '…'}
+                </span>
+                <span style={styles.taskStageLabel}>{stage.label}</span>
+              </div>
+            ))}
+          </div>
+          {activitySummary.files.length > 0 && (
+            <div style={styles.fileStatusList}>
+              {activitySummary.files.slice(0, 6).map(file => (
+                <div key={file.path} style={styles.fileStatusItem}>
+                  <span style={styles.fileStatusPath} title={file.path}>{file.path}</span>
+                  <span style={styles.fileStatusChip}>{getFileStatusLabel(file.status)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={styles.activityList}>
+            {activitySummary.activities.slice(-8).map((activity, index) => {
+              const tone = getActivityTone(activity);
+              return (
+                <div
+                  key={`${activity.id || activity.toolName}_${index}`}
+                  style={{
+                    ...styles.activityItem,
+                    ...(tone === 'completed' ? styles.activityItemCompleted : {}),
+                    ...(tone === 'failed' ? styles.activityItemFailed : {}),
+                    ...(tone === 'waiting' ? styles.activityItemWaiting : {}),
+                  }}
+                >
+                  <div style={styles.activityMain}>
+                    <span style={styles.activityStatusDot}></span>
+                    <span style={styles.activityTitle} title={activity.statusText || activity.title}>
+                      {activity.statusText || activity.title}
+                    </span>
+                  </div>
+                  <div style={styles.activityActions}>
+                    {activity.canUndo && (
+                      <button
+                        type="button"
+                        style={styles.activityActionButton}
+                        title="让 Agent 准备撤销这次变更"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onActivityAction?.('undo', activity);
+                        }}
+                      >
+                        撤销
+                      </button>
+                    )}
+                    {activity.canReview && (
+                      <button
+                        type="button"
+                        style={styles.activityActionButton}
+                        title="审核这次文件变更"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onActivityAction?.('review', activity);
+                        }}
+                      >
+                        审核
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

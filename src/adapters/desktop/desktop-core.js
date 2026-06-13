@@ -165,6 +165,7 @@ export class DesktopCore {
       RuntimeEvent.TOOL_CALL,
       RuntimeEvent.TOOL_RESULT,
       RuntimeEvent.TOOL_ERROR,
+      RuntimeEvent.TOOL_ACTIVITY,
       RuntimeEvent.STATUS_UPDATE,
       RuntimeEvent.CONFIG_CHANGE,
       RuntimeEvent.MESSAGE_RECEIVED,
@@ -753,6 +754,7 @@ export class UIBridge {
       RuntimeEvent.TOOL_CALL,
       RuntimeEvent.TOOL_RESULT,
       RuntimeEvent.TOOL_ERROR,
+      RuntimeEvent.TOOL_ACTIVITY,
       RuntimeEvent.STATUS_UPDATE,
       RuntimeEvent.CONFIG_CHANGE
     ];
