@@ -215,17 +215,11 @@ export function buildSystemPrompt(memoryManager, toolRegistry, workingDirectory)
 }
 
 function formatToolList(registry) {
-  const summary = registry.getToolSummary();
   const lines = [
     'The runtime advertises the task-relevant tool subset in each LLM request.',
     'Use only tools that are available in the current request. Tool schemas are provided via function definitions when supported.',
-    '',
-    'Registered tool groups:',
+    'Do not assume a registered tool is callable unless it appears in the current request tool context.',
   ];
-
-  for (const [category, names] of Object.entries(summary)) {
-    lines.push(`- ${category}: ${names.join(', ')}`);
-  }
 
   return lines.join('\n');
 }

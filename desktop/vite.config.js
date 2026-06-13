@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rendererRoot = path.resolve(__dirname, './renderer');
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   root: rendererRoot,
   base: './',
   plugins: [react()],
@@ -16,9 +16,11 @@ export default defineConfig({
       '@': rendererRoot,
     },
   },
+  define: command === 'build' ? { 'process.env.NODE_ENV': '"production"' } : {},
   build: {
     outDir: path.resolve(rendererRoot, './dist'),
     emptyOutDir: true,
+    minify: 'terser',
     rollupOptions: {
       input: {
         main: path.resolve(rendererRoot, './index.html'),
@@ -30,4 +32,4 @@ export default defineConfig({
     open: false,
     cors: true,
   },
-});
+}));

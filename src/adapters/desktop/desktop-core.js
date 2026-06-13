@@ -677,7 +677,7 @@ export class DesktopCore {
       });
       
       if (this.#config.debug) {
-        console.log('[DesktopCore] 已销毁');
+        try { console.log('[DesktopCore] 已销毁'); } catch { /* EIO: pipe already closed during shutdown */ }
       }
     } catch (error) {
       this.#handleError(error, 'dispose');

@@ -16,123 +16,34 @@ import { selectToolsForRequest, shouldUseIntentClassifier } from './tool-router.
 import { WorkspaceState } from './workspace-state.js';
 import { ObservationSummarizer } from './observation-summarizer.js';
 import { ContentAddressableStore, FileAnalyzer } from './harness/content-addressing.js';
-import { quickAssess, deepAssess, mergeIntentProfile, computeIterationBudget as rbComputeIterationBudget, RISK_LEVEL, getCompletionGates, getMethodologyGuidance } from './risk-budget.js';
+import { withRoutedToolContext } from './routed-tool-context.js';
+import {
+  buildCodingCompletionGatePrompt as buildCodingCompletionGatePromptText,
+  buildCodingTaskOperatingPrompt as buildCodingTaskOperatingPromptText,
+  buildSemanticRiskGuidance as buildSemanticRiskGuidanceText,
+} from './coding-prompts.js';
+import { quickAssess, deepAssess, mergeIntentProfile, computeIterationBudget as rbComputeIterationBudget, getCompletionGates } from './risk-budget.js';
 import { isMutationEvent as evIsMutationEvent, isRuntimeVerificationEvent, isSemanticRiskReviewEvent as evIsSemanticRiskReviewEvent, checkCompletionGates as evCheckCompletionGates, crossCheckVerifyClaim, finalAnswerMentionsVerification } from './evidence-verifier.js';
 import { MAX_ITERATIONS_DEFAULT } from '../runtime/types.js';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 
-const TERMINATION_KEYWORDS = ['FINAL_ANSWER:', 'Answer:', 'TASK_COMPLETE'];
-
-// 自适应迭代预算（占 maxIterations 的比例）
-const ITERATION_BUDGET = {
-  trivial: 0.25,
-  simple: 0.5,
-  normal: 0.8,
-  intensive: 1.0,
-  exploration: 1.0,
-};
-
-// 停滞检测
-const STAGNATION_LOOKBACK = 10;
-const STAGNATION_SAME_TOOL_LIMIT = 6;
-const STAGNATION_NO_MUTATION_LIMIT = 8;
-const PROGRESS_CHECKPOINT_INTERVAL = 12;
-const MAX_STAGNATION_NUDGES = 2;
-const METHODOLOGY_TOOLS = new Set([
-  'coverage_check',
-  'ask_user',
-  'brainstorm',
-  'grill',
-  'zoom_out',
-  'tdd',
-  'review',
-  'verify',
-  'diagnose',
-  'architect',
-  'to_prd',
-  'to_issues',
-  'setup',
-]);
-const MUTATION_TOOLS = new Set([
-  'write_file',
-  'edit_file',
-  'shell',
-  'pty_start',
-  'pty_write',
-  'git_apply_patch',
-  'git_commit',
-  'git_push',
-]);
-const VERIFICATION_TOOLS = new Set([
-  'verify',
-  'review',
-  'read_file',
-  'list_dir',
-  'glob',
-  'search',
-  'shell',
-  'pty_start',
-  'pty_read',
-  'semantic_search',
-]);
-// Inspection-only tools (read back your own edits is NOT a runtime test).
-const INSPECTION_ONLY_TOOLS = new Set([
-  'read_file',
-  'list_dir',
-  'glob',
-  'search',
-  'semantic_search',
-  'review',
-]);
-// True runtime verification: shell/pty that runs test/lint/build commands, or verify tool.
-const RUNTIME_VERIFICATION_TOOLS = new Set([
-  'verify',
-  'shell',
-  'pty_start',
-  'pty_write',
-  'pty_read',
-]);
-// Shell sub-command patterns that count as real runtime verification.
-const RUNTIME_VERIFICATION_COMMAND_PATTERNS = [
-  /\b(test|tests|testing)\b/i,
-  /\b(lint|linting|eslint|prettier)\b/i,
-  /\b(build|compile|bundle|tsc|webpack|rollup|vite build|babel)\b/i,
-  /\b(type.?check|typecheck|check)\b/i,
-  /\b(npm|pnpm|yarn|bun|node|python|pytest|vitest|jest|mocha|cargo|go test|dotnet test|mvn test|gradle test)\b/i,
-];
-const SEMANTIC_RISK_DOMAINS = [
-  {
-    id: 'units_timing',
-    label: 'units/time/animation semantics',
-    pattern: /时间|速度|帧|毫秒|秒|定时|计时|循环|动画|游戏|物理|实时|fps|frame|clock|tick|speed|interval|timeout|timer|animation|game|physics|realtime|real-time/i,
-    checklist: 'track units in variable names and API arguments; separate render FPS from simulation/update intervals; verify user-visible timing or movement behavior',
-  },
-  {
-    id: 'api_semantics',
-    label: 'third-party API semantics',
-    pattern: /api|sdk|库|框架|pygame|three\.js|react|vue|express|fastapi|requestanimationframe|setinterval|settimeout|websocket|http|fetch/i,
-    checklist: 'confirm parameter meanings, return values, lifecycle constraints, and error behavior before treating a call as correct',
-  },
-  {
-    id: 'state_transitions',
-    label: 'state transition invariants',
-    pattern: /状态|状态机|胜负|分数|移动|碰撞|合并|撤销|重试|缓存|session|state|fsm|transition|score|collision|merge|retry|cache/i,
-    checklist: 'verify state invariants, edge transitions, reset behavior, and repeated-action behavior',
-  },
-  {
-    id: 'concurrency_io',
-    label: 'async/concurrency/io semantics',
-    pattern: /并发|异步|队列|锁|流|文件|网络|超时|重试|async|await|promise|concurrent|parallel|queue|lock|stream|file|network|timeout|retry/i,
-    checklist: 'check ordering, cancellation, timeout/retry behavior, idempotency, and partial failure handling',
-  },
-  {
-    id: 'security_boundary',
-    label: 'security/input boundary semantics',
-    pattern: /安全|权限|认证|登录|密钥|token|注入|沙箱|secret|password|auth|permission|sanitize|injection|sandbox|xss|csrf/i,
-    checklist: 'validate trust boundaries, secrets handling, escaping/sanitization, and permission checks',
-  },
-];
+import {
+  INSPECTION_ONLY_TOOLS,
+  ITERATION_BUDGET,
+  MAX_STAGNATION_NUDGES,
+  METHODOLOGY_TOOLS,
+  MUTATION_TOOLS,
+  PROGRESS_CHECKPOINT_INTERVAL,
+  RUNTIME_VERIFICATION_COMMAND_PATTERNS,
+  RUNTIME_VERIFICATION_TOOLS,
+  SEMANTIC_RISK_DOMAINS,
+  STAGNATION_LOOKBACK,
+  STAGNATION_NO_MUTATION_LIMIT,
+  STAGNATION_SAME_TOOL_LIMIT,
+  TERMINATION_KEYWORDS,
+  VERIFICATION_TOOLS,
+} from './agent-constants.js';
 
 export class ReActAgent {
   /** @type {import('./tool-registry.js').ToolRegistry} */
@@ -179,6 +90,8 @@ export class ReActAgent {
   #activeTaskProfile = null;
   /** @type {ExecutionPlan|null} */
   #activeExecutionPlan = null;
+  /** @type {Set<string>|null} */
+  #activeRoutedToolNames = null;
   /** @type {Set<string>} */
   #requiredMutationPaths = new Set();
   /** @type {Set<string>} */
@@ -298,8 +211,9 @@ export class ReActAgent {
       );
       this.#sessionManager.setSystemPrompt(systemPrompt);
 
-      // Add tool usage instructions for text-based LLMs
-      const toolInstructions = this.#textToolParser.generateToolPrompt();
+      // Add text-tool syntax only. The concrete tool list is injected per
+      // request after routing so the model never sees the full registry.
+      const toolInstructions = this.#textToolParser.generateToolPrompt([]);
       this.#sessionManager.addSystemMessage(toolInstructions);
 
       this.#debugEvent('Session initialized', {
@@ -349,6 +263,7 @@ export class ReActAgent {
     this.#toolCallHistory = [];
     this.#runToolEvents = [];
     this.#activeTaskProfile = taskProfile;
+    this.#activeRoutedToolNames = null;
     this.#requiredMutationPaths = this.#extractRequestedFilePaths(userInput);
     this.#completedMutationPaths = new Set();
     this.#activeExecutionPlan = this.#createAutomaticExecutionPlan(userInput, this.#activeTaskProfile);
@@ -426,14 +341,19 @@ export class ReActAgent {
 
         // Get messages for LLM after context trimming so the request reflects
         // the actual session state that will continue into later iterations.
-        const messages = this.#sessionManager.getMessages();
         const routedTools = selectToolsForRequest(this.#toolRegistry.getAll(), {
           userInput,
           taskProfile: this.#activeTaskProfile,
           intent,
           currentPhase: this.#deriveCurrentPhase(iteration, maxIterations),
         });
+        this.#activeRoutedToolNames = new Set(routedTools.map(tool => tool.name));
         const functions = this.#toolRegistry.toFunctionDefinitions(routedTools);
+        const messages = withRoutedToolContext(
+          this.#sessionManager.getMessages(),
+          this.#textToolParser.generateToolPrompt(routedTools),
+          this.#deriveCurrentPhase(iteration, maxIterations)
+        );
 
         // Call LLM with retry
         const llmStartedAt = Date.now();
@@ -807,6 +727,19 @@ export class ReActAgent {
         tool: name,
         arguments: args,
         availableTools: this.#toolRegistry.getAll().map(item => item.name),
+      });
+      this.#ui.toolError(name, errorMsg);
+      this.#addToolObservation(id, name, errorMsg, resultMode);
+      return { name, result: errorMsg, error: errorMsg };
+    }
+
+    if (this.#activeRoutedToolNames && !this.#activeRoutedToolNames.has(name)) {
+      const availableToolNames = Array.from(this.#activeRoutedToolNames).join(', ') || '(none)';
+      const errorMsg = `Tool "${name}" is registered but not available in the current request phase. Available tools now: ${availableToolNames}.`;
+      this.#debugEvent('Tool call blocked by routing', {
+        tool: name,
+        arguments: args,
+        availableTools: Array.from(this.#activeRoutedToolNames),
       });
       this.#ui.toolError(name, errorMsg);
       this.#addToolObservation(id, name, errorMsg, resultMode);
@@ -1915,21 +1848,7 @@ export class ReActAgent {
   }
 
   #buildSemanticRiskGuidance() {
-    const domains = this.#activeTaskProfile?.semanticRiskDomains || [];
-    if (domains.length === 0) {
-      return '';
-    }
-
-    const checklist = domains
-      .map(domain => `- ${domain.label}: ${domain.checklist}`)
-      .join('\n');
-
-    return (
-      `Semantic/API risk review is required before completion because this task touches high-risk behavior semantics.\n` +
-      `Risk domains:\n${checklist}\n` +
-      `Do not hardcode isolated API trivia. Instead, inspect the changed code and verify whether variable units, API parameter meanings, state transitions, and user-visible behavior match the requested intent. ` +
-      `Prefer CALL review({"file_path":"...","focus_areas":"semantic API semantics, units, timing, state invariants, behavior verification"}) on changed files, then run behavior-level verification.`
-    );
+    return buildSemanticRiskGuidanceText(this.#activeTaskProfile?.semanticRiskDomains || []);
   }
 
   // ---------------------------------------------------------------
@@ -2051,34 +1970,12 @@ export class ReActAgent {
   }
 
   #buildCodingTaskOperatingPrompt(userInput) {
-    const hasMethodologyTools = this.#hasAnyTool(METHODOLOGY_TOOLS);
-    const riskLevel = this.#activeTaskProfile?.riskLevel || RISK_LEVEL.MEDIUM;
-    const profile = this.#activeTaskProfile || {};
-
-    let methodologyLine;
-    if (hasMethodologyTools) {
-      methodologyLine = getMethodologyGuidance(riskLevel, profile);
-    } else {
-      methodologyLine = 'Use the same methodology directly in your reasoning because methodology tools are not registered in this runtime.';
-    }
-
-    return (
-      `Coding task mode is active for the previous user request:\n${userInput}\n\n` +
-      `Risk level: ${riskLevel}. Act like a responsible coding agent. First understand the repo with tools, then make the smallest necessary change, then verify with fresh evidence.\n` +
-      `${methodologyLine}\n` +
-      `${profile.requiresSemanticRiskReview ? `${this.#buildSemanticRiskGuidance()}\n` : ''}` +
-      `For file creation or file edits, prefer write_file/edit_file directly when available; shell is for inspection, commands, and verification, not a substitute for editing files.\n` +
-      `Strict verification rules — read these carefully and obey them every time:\n` +
-      `1. Any code/file you write or edit MUST be inspected after creation (read_file, list_dir, or equivalent) to confirm the content matches your intent.\n` +
-      `2. Inspection-only tools (read_file, list_dir, glob, search, semantic_search, review) are NOT runtime verification. Reading your own file back proves only that the file was written; it does NOT prove the code runs, compiles, passes tests, or behaves correctly.\n` +
-      `3. True runtime verification means executing code against a real tool / shell command. Acceptable runtime verification evidence includes: a test runner (jest, vitest, pytest, cargo test, go test, mvn test, etc.), a linter (eslint, tsc --noEmit, flake8, golangci-lint, etc.), a build / compile step (npm run build, tsc, cargo build, go build, webpack, etc.), a node/python/go/java script that exercises the changed code, or the verify tool.\n` +
-      `4. After every successful mutation (write_file, edit_file, shell/pty that writes code), you MUST produce at least one successful runtime verification observation before FINAL_ANSWER. Do not finish the task by only reading the file back.\n` +
-      `5. If verification fails (tests fail, build errors, lint errors), fix the failure and re-verify. Do not report "completed" while verification is failing or un-run.\n` +
-      `6. For files that cannot be run (pure data: .md, .txt, etc.), inspect the file with read_file/list_dir/parsing and honestly report that verification is inspection-only; do not claim "tested" or "verified" for a markdown or plain-text file.\n` +
-      `7. The verify tool, if available, is especially valuable after editing because it produces an evidence-based report. Consider calling verify on the changed paths near the end of the task.\n` +
-      `8. When this task has semantic risk domains (units/timing, API semantics, state transitions, concurrency/IO, security boundaries), run dedicated review or verification that exercises those behaviors, not just a syntax check.\n` +
-      `Final answers must explicitly mention: (a) what files changed and how, (b) which runtime verification step was run and what it reported (command + outcome), and (c) any caveats or open issues. Never state "it works" without fresh runtime verification evidence from this session.`
-    );
+    return buildCodingTaskOperatingPromptText({
+      userInput,
+      hasMethodologyTools: this.#hasAnyTool(METHODOLOGY_TOOLS),
+      profile: this.#activeTaskProfile || {},
+      semanticRiskGuidance: this.#buildSemanticRiskGuidance(),
+    });
   }
 
   #shouldBlockCodingFinal(userInput, responseText) {
@@ -2148,24 +2045,12 @@ export class ReActAgent {
   }
 
   #buildCodingCompletionGatePrompt(userInput, gate) {
-    const reasonText = {
-      no_tool_evidence: 'You are trying to finish a coding task without any successful tool evidence.',
-      missing_methodology_step: 'You have not used the built-in coding methodology yet.',
-      missing_code_change: 'You have not produced a successful code/file change yet.',
-      missing_verification: 'You changed code/files but have not verified the result with fresh evidence.',
-      missing_semantic_risk_review: 'This task touches high-risk behavior semantics but has no semantic/API risk review evidence yet.',
-      final_answer_missing_verification_summary: 'Your final answer claims completion but does not summarize verification.',
-      automatic_plan_incomplete: 'The automatic task orchestration plan is not complete yet.',
-    }[gate.reason] || gate.reason;
-
-    return (
-      `Coding completion gate blocked the final answer.\n` +
-      `Original user request: ${userInput}\n` +
-      `Reason: ${reasonText}\n` +
-      `Evidence so far: ${JSON.stringify(gate.evidence)}\n\n` +
-      `${this.#activeTaskProfile?.requiresSemanticRiskReview ? `${this.#buildSemanticRiskGuidance()}\n` : ''}` +
-      `Continue working now. If this task creates or modifies a file and write_file/edit_file is available, call write_file or edit_file next to make the change. Inspect your own changes, run a relevant verification command or verify tool, and only then answer with FINAL_ANSWER including what changed and what passed.`
-    );
+    return buildCodingCompletionGatePromptText({
+      userInput,
+      gate,
+      semanticRiskGuidance: this.#buildSemanticRiskGuidance(),
+      requiresSemanticRiskReview: this.#activeTaskProfile?.requiresSemanticRiskReview,
+    });
   }
 
   #hasAnyTool(toolNames) {
@@ -2195,7 +2080,9 @@ export class ReActAgent {
    */
   #formatToolNotFoundError(toolName) {
     const allTools = this.#toolRegistry.getAll();
-    const availableToolNames = allTools.map(t => t.name).join(', ');
+    const availableToolNames = this.#activeRoutedToolNames
+      ? Array.from(this.#activeRoutedToolNames).join(', ')
+      : allTools.map(t => t.name).join(', ');
     
     // Check for common browser/navigation related tool names
     const browserToolPatterns = ['navigate', 'browse', 'browser', 'web', 'url', 'fetch', 'get_weather'];

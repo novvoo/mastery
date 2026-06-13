@@ -4,6 +4,7 @@
  */
 
 import React from 'react';
+import { getRuntimeStatusMeta } from '../runtime-status.js';
 
 // 样式定义
 const styles = {
@@ -63,6 +64,15 @@ const styles = {
   dotError: {
     backgroundColor: 'var(--error-color)'
   },
+
+  dotCompleted: {
+    backgroundColor: 'var(--info-color)'
+  },
+
+  dotWaiting: {
+    backgroundColor: 'var(--warning-color)',
+    animation: 'pulse 1s infinite'
+  },
   
   statusText: {
     fontSize: '12px'
@@ -94,11 +104,17 @@ function StatusBar({ status, workingDirectory, toolCount, isConnected, stats }) 
   const getStatusDotStyle = () => {
     switch (status) {
       case 'running':
+      case 'initializing':
         return { ...styles.statusDot, ...styles.dotRunning };
       case 'idle':
+      case 'ready':
         return { ...styles.statusDot, ...styles.dotIdle };
       case 'error':
         return { ...styles.statusDot, ...styles.dotError };
+      case 'completed':
+        return { ...styles.statusDot, ...styles.dotCompleted };
+      case 'needs_user_input':
+        return { ...styles.statusDot, ...styles.dotWaiting };
       default:
         return styles.statusDot;
     }
@@ -113,18 +129,7 @@ function StatusBar({ status, workingDirectory, toolCount, isConnected, stats }) 
   
   // 获取状态文本
   const getStatusText = () => {
-    switch (status) {
-      case 'running':
-        return '运行中';
-      case 'idle':
-        return '就绪';
-      case 'error':
-        return '错误';
-      case 'completed':
-        return '完成';
-      default:
-        return '未知';
-    }
+    return getRuntimeStatusMeta(status).text;
   };
   
   // 格式化工作目录（显示最后两级）

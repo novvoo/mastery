@@ -1,3 +1,15 @@
+import { getParseHints } from './text-tool-parser-hints.js';
+import {
+  mapRuntimeToolCommandName,
+  mapToolCodeName,
+  NAMED_XML_TOOL_ALIASES,
+  normalizeToolArgumentAliases,
+  shellQuote,
+  stripShellTokenQuotes,
+  TOOL_CODE_CALL_NAMES,
+} from './text-tool-parser-normalizers.js';
+import { generateTextToolPrompt } from './text-tool-parser-prompt.js';
+
 /**
  * Text Tool Parser
  * 为不支持 function calling 的语言类 LLM 提供鲁棒的工具调用解析
@@ -31,22 +43,23 @@ export class TextToolParser {
     if (!text || typeof text !== 'string') {return [];}
 
     const toolCalls = [];
+    const hints = getParseHints(text, value => this.#hasNamedXMLCandidate(value));
 
-    // 尝试多种解析策略
-    // DSML format first since it is unambiguous when present
-    toolCalls.push(...this.#parseDSMLFormat(text));
-    toolCalls.push(...this.#parseCALLFormat(text));
-    toolCalls.push(...this.#parseJSONBlockFormat(text));
-    toolCalls.push(...this.#parseActionTagFormat(text));
-    toolCalls.push(...this.#parseRawJSONActionFormat(text));
-    toolCalls.push(...this.#parseEmbeddedJSONActionFormat(text));
-    toolCalls.push(...this.#parseFunctionCallsFormat(text));
-    toolCalls.push(...this.#parseFunctionCallTagFormat(text));
-    toolCalls.push(...this.#parseToolCallTagFormat(text));
-    toolCalls.push(...this.#parseXMLFormat(text));
-    toolCalls.push(...this.#parseNamedToolXMLFormat(text));
-    toolCalls.push(...this.#parseToolCodeFormat(text));
-    toolCalls.push(...this.#parseShellCodeBlockFormat(text));
+    // Run only the parsers whose opening syntax is present. Most model
+    // responses are ordinary prose, so this avoids repeated full-text scans.
+    if (hints.dsml) {toolCalls.push(...this.#parseDSMLFormat(text));}
+    if (hints.call) {toolCalls.push(...this.#parseCALLFormat(text));}
+    if (hints.jsonBlock) {toolCalls.push(...this.#parseJSONBlockFormat(text));}
+    if (hints.actionTag) {toolCalls.push(...this.#parseActionTagFormat(text));}
+    if (hints.rawJSON) {toolCalls.push(...this.#parseRawJSONActionFormat(text));}
+    if (hints.embeddedJSONAction) {toolCalls.push(...this.#parseEmbeddedJSONActionFormat(text));}
+    if (hints.functionCalls) {toolCalls.push(...this.#parseFunctionCallsFormat(text));}
+    if (hints.functionCallTag) {toolCalls.push(...this.#parseFunctionCallTagFormat(text));}
+    if (hints.toolCallTag) {toolCalls.push(...this.#parseToolCallTagFormat(text));}
+    if (hints.xmlTool) {toolCalls.push(...this.#parseXMLFormat(text));}
+    if (hints.namedXML) {toolCalls.push(...this.#parseNamedToolXMLFormat(text));}
+    if (hints.toolCode) {toolCalls.push(...this.#parseToolCodeFormat(text));}
+    if (hints.shellCodeBlock) {toolCalls.push(...this.#parseShellCodeBlockFormat(text));}
     if (toolCalls.length === 0) {
       toolCalls.push(...this.#parseNaturalLanguage(text));
     }
@@ -85,17 +98,33 @@ export class TextToolParser {
    */
   #strictParse(text) {
     const toolCalls = [];
-    toolCalls.push(...this.#parseDSMLFormat(text));
-    toolCalls.push(...this.#parseCALLFormat(text));
-    toolCalls.push(...this.#parseJSONBlockFormat(text));
-    toolCalls.push(...this.#parseActionTagFormat(text));
-    toolCalls.push(...this.#parseRawJSONActionFormat(text));
-    toolCalls.push(...this.#parseFunctionCallsFormat(text));
-    toolCalls.push(...this.#parseFunctionCallTagFormat(text));
-    toolCalls.push(...this.#parseToolCallTagFormat(text));
-    toolCalls.push(...this.#parseXMLFormat(text));
-    toolCalls.push(...this.#parseNamedToolXMLFormat(text));
+    const hints = getParseHints(text, value => this.#hasNamedXMLCandidate(value));
+    if (hints.dsml) {toolCalls.push(...this.#parseDSMLFormat(text));}
+    if (hints.call) {toolCalls.push(...this.#parseCALLFormat(text));}
+    if (hints.jsonBlock) {toolCalls.push(...this.#parseJSONBlockFormat(text));}
+    if (hints.actionTag) {toolCalls.push(...this.#parseActionTagFormat(text));}
+    if (hints.rawJSON) {toolCalls.push(...this.#parseRawJSONActionFormat(text));}
+    if (hints.functionCalls) {toolCalls.push(...this.#parseFunctionCallsFormat(text));}
+    if (hints.functionCallTag) {toolCalls.push(...this.#parseFunctionCallTagFormat(text));}
+    if (hints.toolCallTag) {toolCalls.push(...this.#parseToolCallTagFormat(text));}
+    if (hints.xmlTool) {toolCalls.push(...this.#parseXMLFormat(text));}
+    if (hints.namedXML) {toolCalls.push(...this.#parseNamedToolXMLFormat(text));}
     return this.#deduplicate(toolCalls);
+  }
+
+  #hasNamedXMLCandidate(text) {
+    const tools = this.#toolRegistry ? this.#toolRegistry.getAll() : [];
+    for (const tool of tools) {
+      if (tool?.name && text.includes(`<${tool.name}>`)) {
+        return true;
+      }
+    }
+    for (const [alias, runtimeName] of Object.entries(NAMED_XML_TOOL_ALIASES)) {
+      if (this.#toolRegistry?.has?.(runtimeName) && text.includes(`<${alias}>`)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   #scanForToolIntentWithoutParse(text) {
@@ -713,7 +742,7 @@ export class TextToolParser {
     const source = 'shell_code_block_runtime_tool';
 
     for (const call of this.#extractToolCodeCalls(text)) {
-      const mapped = this.#mapRuntimeToolCommandName(call.name);
+      const mapped = mapRuntimeToolCommandName(call.name, value => this.#resolveToolName(value));
       if (!mapped || mapped === 'shell' || !this.#toolRegistry?.has?.(mapped)) {
         continue;
       }
@@ -757,7 +786,7 @@ export class TextToolParser {
       return null;
     }
 
-    const mapped = this.#mapRuntimeToolCommandName(match[1]);
+    const mapped = mapRuntimeToolCommandName(match[1], value => this.#resolveToolName(value));
     if (!mapped || mapped === 'shell' || !this.#toolRegistry?.has?.(mapped)) {
       return null;
     }
@@ -771,12 +800,12 @@ export class TextToolParser {
       }
       args = this.#normalizeJSONToolCall(mapped, jsonArgs).args;
     } else if (mapped === 'list_dir') {
-      args = { path: this.#stripShellTokenQuotes(rest || '.') };
+      args = { path: stripShellTokenQuotes(rest || '.') };
     } else if (mapped === 'read_file') {
       if (!rest) {
         return null;
       }
-      args = { path: this.#stripShellTokenQuotes(rest) };
+      args = { path: stripShellTokenQuotes(rest) };
     } else {
       return null;
     }
@@ -789,33 +818,6 @@ export class TextToolParser {
     };
   }
 
-  #stripShellTokenQuotes(value) {
-    return String(value || '').replace(/^['"]|['"]$/g, '');
-  }
-
-  #mapRuntimeToolCommandName(rawName) {
-    const name = String(rawName || '').replace(/^\//, '');
-    const snakeName = name
-      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
-      .replace(/-/g, '_')
-      .toLowerCase();
-
-    const aliases = {
-      list_files: 'list_dir',
-      list_directory: 'list_dir',
-      inspect_workspace: 'list_dir',
-      save_file: 'write_file',
-      search_web: 'web_search',
-      browser_search: 'web_search',
-      internet_search: 'web_search',
-      fetch_url: 'web_fetch',
-      browser_fetch: 'web_fetch',
-      plan_solution: 'brainstorm',
-    };
-
-    return aliases[snakeName] || this.#resolveToolName(snakeName);
-  }
-  
   /**
    * 格式 3: <action>{"tool_name": {"param": "value"}}</action>
    * Some models emit XML-wrapped JSON even when instructed to use CALL.
@@ -1250,7 +1252,7 @@ export class TextToolParser {
     for (const tool of tools) {
       tagToToolName.set(tool.name, tool.name);
     }
-    for (const [alias, runtimeName] of Object.entries(this.#namedXMLToolAliases())) {
+    for (const [alias, runtimeName] of Object.entries(NAMED_XML_TOOL_ALIASES)) {
       if (this.#toolRegistry?.has?.(runtimeName)) {
         tagToToolName.set(alias, runtimeName);
       }
@@ -1273,7 +1275,7 @@ export class TextToolParser {
         toolCalls.push({
           id: `call_${Date.now()}_${toolCalls.length}`,
           name,
-          arguments: this.#normalizeLooseArgs(name, this.#normalizeToolArgumentAliases(name, args)),
+          arguments: this.#normalizeLooseArgs(name, normalizeToolArgumentAliases(name, args)),
           source: 'named_tool_xml',
         });
       }
@@ -1302,7 +1304,7 @@ export class TextToolParser {
 
       for (const call of this.#extractToolCodeCalls(block)) {
         const rawName = call.name;
-        const mapped = this.#mapToolCodeName(rawName);
+        const mapped = mapToolCodeName(rawName, value => this.#resolveToolName(value));
         if (!mapped || !this.#toolRegistry?.has?.(mapped)) {
           continue;
         }
@@ -1349,8 +1351,7 @@ export class TextToolParser {
 
   #extractToolCodeCalls(block) {
     const calls = [];
-    const names = ['ls', 'list', 'list_files', 'list_dir', 'list_directory', 'inspect_workspace', 'cat', 'read', 'read_file', 'write', 'write_file', 'shell', 'bash', 'run', 'run_command', 'web_search', 'search_web', 'browser_search', 'web_fetch', 'fetch_url', 'plan_solution'];
-    const namePattern = new RegExp(`\\b(${names.join('|')})\\s*\\(`, 'g');
+    const namePattern = new RegExp(`\\b(${TOOL_CODE_CALL_NAMES.join('|')})\\s*\\(`, 'g');
     let match;
 
     while ((match = namePattern.exec(block)) !== null) {
@@ -1571,68 +1572,6 @@ export class TextToolParser {
       }
     }
     return value;
-  }
-
-  #mapToolCodeName(rawName) {
-    const name = String(rawName || '').replace(/^\//, '');
-    const aliases = {
-      ls: 'list_dir',
-      list: 'list_dir',
-      list_files: 'list_dir',
-      list_dir: 'list_dir',
-      list_directory: 'list_dir',
-      inspect_workspace: 'list_dir',
-      cat: 'read_file',
-      read: 'read_file',
-      read_file: 'read_file',
-      write: 'write_file',
-      write_file: 'write_file',
-      shell: 'shell',
-      bash: 'shell',
-      run: 'shell',
-      run_command: 'shell',
-      execute_command: 'shell',
-      run_in_terminal: 'shell',
-      terminal: 'shell',
-      exec: 'shell',
-      search_web: 'web_search',
-      browser_search: 'web_search',
-      web_search: 'web_search',
-      google: 'web_search',
-      internet_search: 'web_search',
-      fetch_url: 'web_fetch',
-      browser_fetch: 'web_fetch',
-      web_fetch: 'web_fetch',
-      plan_solution: 'brainstorm',
-    };
-    return aliases[name] || this.#resolveToolName(name);
-  }
-
-  #namedXMLToolAliases() {
-    return {
-      list_files: 'list_dir',
-      list_directory: 'list_dir',
-      ls: 'list_dir',
-      inspect_workspace: 'list_dir',
-      read: 'read_file',
-      cat: 'read_file',
-      write: 'write_file',
-      save_file: 'write_file',
-      run_command: 'shell',
-      execute_command: 'shell',
-      run_in_terminal: 'shell',
-      terminal: 'shell',
-      exec: 'shell',
-      bash: 'shell',
-      search_web: 'web_search',
-      browser_search: 'web_search',
-      google: 'web_search',
-      internet_search: 'web_search',
-      fetch_url: 'web_fetch',
-      browser_fetch: 'web_fetch',
-      plan: 'brainstorm',
-      plan_solution: 'brainstorm',
-    };
   }
 
   #parseToolCodeArgs(argsText) {
@@ -2047,7 +1986,7 @@ export class TextToolParser {
       const path = args.path || args.dir || args.directory || '.';
       return {
         name: 'shell',
-        args: { command: `mkdir -p ${this.#shellQuote(path)}` },
+        args: { command: `mkdir -p ${shellQuote(path)}` },
       };
     }
 
@@ -2083,7 +2022,7 @@ export class TextToolParser {
       };
     }
 
-    return { name: resolvedName, args: this.#normalizeToolArgumentAliases(resolvedName, args) };
+    return { name: resolvedName, args: normalizeToolArgumentAliases(resolvedName, args) };
   }
 
   #normalizeLooseArgs(toolName, args) {
@@ -2108,19 +2047,6 @@ export class TextToolParser {
     return args;
   }
 
-  #normalizeToolArgumentAliases(toolName, args) {
-    if ((toolName === 'read_file' || toolName === 'write_file' || toolName === 'edit_file' || toolName === 'list_dir')
-      && !args.path
-      && (args.file_path || args.file || args.filename)) {
-      return { ...args, path: args.file_path || args.file || args.filename };
-    }
-    return args;
-  }
-
-  #shellQuote(value) {
-    return `'${String(value).replace(/'/g, `'\\''`)}'`;
-  }
-
   /**
    * 去重
    */
@@ -2138,32 +2064,8 @@ export class TextToolParser {
    * 生成工具使用提示
    * 用于指导语言类 LLM 如何调用工具
    */
-  generateToolPrompt() {
-    const tools = this.#toolRegistry ? this.#toolRegistry.getAll() : [];
-    const grouped = new Map();
-    for (const tool of tools) {
-      const category = tool.category || 'general';
-      if (!grouped.has(category)) {grouped.set(category, []);}
-      grouped.get(category).push(tool.name);
-    }
-    
-    const lines = [
-      'You can call tools exposed for the current request. Tool availability is intentionally task-scoped to keep reasoning fast.',
-      '',
-      'Registered tool groups:',
-      ...Array.from(grouped.entries()).map(([category, names]) => `- ${category}: ${names.join(', ')}`),
-      '',
-      'To use a tool, output in one of these formats:',
-      '1. CALL tool_name({"param": "value"})',
-      '2. ```tool\n{"name": "tool_name", "arguments": {"param": "value"}}\n```',
-      '3. <action>{"tool_name": {"param": "value"}}</action>',
-      '4. {"action": {"tool_name": {"param": "value"}}}',
-      '5. <||DSML||tool_calls>\n<||DSML||invoke name="tool_name">\n<||DSML||parameter name="param" string="true">value<||DSML||parameter>\n<||DSML||invoke>\n<||DSML||tool_calls>',
-      '',
-      'After receiving tool results, continue reasoning or output FINAL_ANSWER: followed by your final response.',
-    ];
-
-    return lines.join('\n');
+  generateToolPrompt(tools = null) {
+    return generateTextToolPrompt(this.#toolRegistry, tools);
   }
 }
 

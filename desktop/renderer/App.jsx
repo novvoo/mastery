@@ -10,836 +10,52 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import AgentControl from './components/AgentControl.jsx';
-import ToolPanel from './components/ToolPanel.jsx';
-import MessageLog from './components/MessageLog.jsx';
 import StatusBar from './components/StatusBar.jsx';
-import CommandSuggestions from './components/CommandSuggestions.jsx';
+import { SettingsMenu } from './components/SettingsMenu.jsx';
+import { LLMSetupModal } from './components/LLMSetupModal.jsx';
+import { ActivityRail } from './components/workbench/ActivityRail.jsx';
+import { ChatWorkspace } from './components/workbench/ChatWorkspace.jsx';
+import { InspectorPanel } from './components/workbench/InspectorPanel.jsx';
+import { SidebarPanel } from './components/workbench/SidebarPanel.jsx';
+import { TopBar } from './components/workbench/TopBar.jsx';
 import { useRuntime } from './hooks/useRuntime.js';
 import { useIPC } from './hooks/useIPC.js';
 import { formatPreviewUrlInput, normalizePreviewUrlInput } from './preview-url.js';
-import { Button, Badge, Panel, PanelHeader, EmptyState } from './components/ui/index.js';
-import { TabGroup, TabItem } from './components/ui/Tab.jsx';
+import { getRuntimeStatusMeta } from './runtime-status.js';
+import { LAYOUT, LLM_PROVIDER_OPTIONS } from './app/config.js';
+import {
+  ACTIVE_AGENT_SESSION_STORAGE_KEY,
+  AGENT_HISTORY_STORAGE_KEY,
+  AGENT_HISTORY_UPDATED_EVENT,
+  AGENT_SESSIONS_STORAGE_KEY,
+  AGENT_SESSIONS_UPDATED_EVENT,
+  createAgentErrorPrompt,
+  clampInspectorWidth,
+  createAgentSessionId,
+  DESKTOP_LAYOUT_STORAGE_KEY,
+  findAgentSession,
+  getAgentSessionTitle,
+  getDocumentDisplayName,
+  mergeRagDocuments,
+  normalizeRagDocuments,
+  PREVIEW_URL_STORAGE_KEY,
+  PROJECT_TREE_REFRESH_CONCURRENCY,
+  readAgentSessions,
+  readDesktopLayout,
+  readStoredInspectorTab,
+  readStoredPreviewUrl,
+  saveAgentInputHistory,
+  upsertAgentSession,
+} from './app/session-storage.js';
+import { styles } from './app/styles.js';
 import './index.css';
 
 // Codex 2026 风格布局常量
-const LAYOUT = {
-  activityRailWidth: 52,
-  sidebarWidth: 300,
-  inspectorPanelWidth: 380,
-  inspectorMinWidth: 320,
-  inspectorMaxWidth: 860,
-  inspectorExpandedWidth: 720,
-  headerHeight: 44,
-  inputAreaHeight: 140,
-};
-
-const REPOSITORY_URL = 'https://github.com/novvoo/ai-engineering-mastery-agent';
-const PROJECT_TREE_REFRESH_CONCURRENCY = 12;
-const AGENT_HISTORY_STORAGE_KEY = 'agentHistory';
-const AGENT_HISTORY_UPDATED_EVENT = 'agent-history-updated';
-const AGENT_SESSIONS_STORAGE_KEY = 'agentConversationSessions';
-const ACTIVE_AGENT_SESSION_STORAGE_KEY = 'activeAgentConversationSessionId';
-const DESKTOP_LAYOUT_STORAGE_KEY = 'desktopWorkbenchLayout';
-const AGENT_SESSIONS_UPDATED_EVENT = 'agent-sessions-updated';
-const PREVIEW_URL_STORAGE_KEY = 'desktopPreviewUrl';
-const MAX_AGENT_HISTORY_ITEMS = 50;
-const MAX_AGENT_SESSIONS = 50;
-
-function readDesktopLayout() {
-  try {
-    const raw = localStorage.getItem(DESKTOP_LAYOUT_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function readStoredPreviewUrl() {
-  try {
-    return normalizePreviewUrlInput(localStorage.getItem(PREVIEW_URL_STORAGE_KEY));
-  } catch {
-    return null;
-  }
-}
-
-function readStoredInspectorTab() {
-  const tab = readDesktopLayout().activeInspectorTab;
-  return ['rag', 'preview'].includes(tab) ? tab : 'rag';
-}
-
-function clampInspectorWidth(width) {
-  const viewportLimit = typeof window === 'undefined'
-    ? LAYOUT.inspectorMaxWidth
-    : Math.max(LAYOUT.inspectorMinWidth, Math.min(LAYOUT.inspectorMaxWidth, Math.floor(window.innerWidth * 0.72)));
-  const numericWidth = Number(width) || LAYOUT.inspectorPanelWidth;
-  return Math.max(LAYOUT.inspectorMinWidth, Math.min(viewportLimit, numericWidth));
-}
-
-function createAgentErrorPrompt(message) {
-  const content = String(message?.content || message?.message || message?.details || '').trim();
-  const payload = message?.payload || message?.raw;
-  const payloadText = payload
-    ? `\n\n附加上下文:\n${typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2)}`
-    : '';
-  return `请帮我分析并修复下面这个错误。请先判断信息是否足够；如果不够，明确说明还缺什么；如果足够，请给出原因、修复步骤和需要验证的命令。\n\n错误信息:\n${content || '(无错误文本)'}${payloadText}`;
-}
-
-function readAgentHistory() {
-  try {
-    const rawHistory = localStorage.getItem(AGENT_HISTORY_STORAGE_KEY);
-    if (!rawHistory) return [];
-    const parsed = JSON.parse(rawHistory);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    console.error('[App] 读取输入历史失败:', error);
-    return [];
-  }
-}
-
-function createAgentSessionId() {
-  return `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function readAgentSessions() {
-  try {
-    const rawSessions = localStorage.getItem(AGENT_SESSIONS_STORAGE_KEY);
-    if (!rawSessions) return [];
-    const parsed = JSON.parse(rawSessions);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    console.error('[App] 读取会话历史失败:', error);
-    return [];
-  }
-}
-
-function writeAgentSessions(sessions) {
-  const normalizedSessions = Array.isArray(sessions) ? sessions.slice(0, MAX_AGENT_SESSIONS) : [];
-  localStorage.setItem(AGENT_SESSIONS_STORAGE_KEY, JSON.stringify(normalizedSessions));
-}
-
-function findAgentSession(sessionId) {
-  if (!sessionId) return null;
-  return readAgentSessions().find(session => session?.id === sessionId) || null;
-}
-
-function getAgentSessionTitle(input, messages = []) {
-  const fromInput = String(input || '').trim();
-  if (fromInput) return fromInput.slice(0, 80);
-
-  const firstMessage = messages.find(message => typeof message?.content === 'string' && message.content.trim());
-  return firstMessage?.content?.replace(/^用户输入:\s*/, '').slice(0, 80) || '未命名会话';
-}
-
-function upsertAgentSession(session) {
-  if (!session?.id) return;
-  const now = Date.now();
-  const nextSession = {
-    ...session,
-    updatedAt: session.updatedAt || now,
-    createdAt: session.createdAt || now,
-    messages: Array.isArray(session.messages) ? session.messages : []
-  };
-  const nextSessions = [
-    nextSession,
-    ...readAgentSessions().filter(item => item?.id !== nextSession.id)
-  ].slice(0, MAX_AGENT_SESSIONS);
-  writeAgentSessions(nextSessions);
-}
-
-function saveAgentInputHistory(input, sessionId) {
-  const normalizedInput = String(input || '').trim();
-  if (!normalizedInput) return;
-
-  const nextHistory = [
-    {
-      input: normalizedInput,
-      sessionId,
-      timestamp: Date.now()
-    },
-    ...readAgentHistory().filter(item => item?.input !== normalizedInput)
-  ].slice(0, MAX_AGENT_HISTORY_ITEMS);
-
-  localStorage.setItem(AGENT_HISTORY_STORAGE_KEY, JSON.stringify(nextHistory));
-  window.dispatchEvent(new CustomEvent(AGENT_HISTORY_UPDATED_EVENT, {
-    detail: nextHistory
-  }));
-}
-
-function getDocumentDisplayName(pathOrTitle = '') {
-  const text = String(pathOrTitle || '').trim();
-  if (!text) return '未命名文档';
-  return text.split(/[\\/]/).filter(Boolean).pop() || text;
-}
-
-function normalizeRagDocuments(documents = []) {
-  return (documents || []).map(doc => ({
-    id: doc.id,
-    name: doc.title || getDocumentDisplayName(doc.source),
-    path: doc.source || '',
-    kind: doc.kind,
-    chunks: doc.chunks,
-    chars: doc.chars,
-    indexed: true,
-  }));
-}
-
-function mergeRagDocuments(currentDocs = [], nextDocs = []) {
-  const merged = new Map();
-  for (const doc of currentDocs) {
-    const key = doc.id || doc.path || doc.name;
-    if (key) merged.set(key, doc);
-  }
-  for (const doc of nextDocs) {
-    const key = doc.id || doc.path || doc.name;
-    if (key) merged.set(key, doc);
-  }
-  return Array.from(merged.values());
-}
-
 // 样式定义
-const styles = {
-  container: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100vh',
-    backgroundColor: 'var(--background-color)',
-    color: 'var(--text-color)',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif',
-    overflow: 'hidden'
-  },
-  
-  // ================== 顶部菜单栏 ==================
-  menuBar: {
-    display: 'flex',
-    alignItems: 'center',
-    minHeight: `${LAYOUT.headerHeight}px`,
-    padding: '0 var(--spacing-md)',
-    backgroundColor: 'var(--bg-depth-2)',
-    borderBottom: '1px solid var(--border-subtle)',
-    gap: 'var(--spacing-xs)'
-  },
-  
-  menuItem: {
-    position: 'relative',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-    height: '32px',
-    padding: '0 10px',
-    borderRadius: '6px',
-    border: 'none',
-    backgroundColor: 'transparent',
-    color: 'var(--text-muted)',
-    cursor: 'pointer',
-    fontSize: '13px',
-    fontWeight: '500',
-    transition: 'all 0.15s'
-  },
-  
-  menuItemHover: {
-    backgroundColor: 'var(--surface-hover)',
-    color: 'var(--text-color)'
-  },
-  
-  menuItemActive: {
-    backgroundColor: 'var(--primary-soft)',
-    color: 'var(--primary-color)'
-  },
-  
-  menuDropdown: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    minWidth: '200px',
-    backgroundColor: 'var(--surface-color)',
-    border: 'none',
-    borderRadius: '8px',
-    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
-    padding: '6px 0',
-    zIndex: 1000
-  },
-  
-  menuDropdownItem: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    padding: '8px 14px',
-    border: 'none',
-    backgroundColor: 'transparent',
-    color: 'var(--text-color)',
-    cursor: 'pointer',
-    fontSize: '13px',
-    textAlign: 'left',
-    transition: 'background-color 0.1s'
-  },
-  
-  menuDropdownShortcut: {
-    fontSize: '11px',
-    color: 'var(--text-dark)',
-    fontFamily: 'monospace'
-  },
-  
-  menuDivider: {
-    height: '1px',
-    backgroundColor: 'var(--border-subtle)',
-    margin: '6px 0'
-  },
-  
-  menuSectionTitle: {
-    padding: '6px 14px',
-    fontSize: '11px',
-    fontWeight: '700',
-    color: 'var(--text-dark)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px'
-  },
-  
-  // ================== 主内容区 ==================
-  mainContent: {
-    display: 'flex',
-    flex: 1,
-    overflow: 'hidden'
-  },
-
-  activityRail: {
-    width: `${LAYOUT.activityRailWidth}px`,
-    flexShrink: 0,
-    backgroundColor: 'var(--bg-depth-0)',
-    borderRight: '1px solid var(--border-subtle)',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    padding: 'var(--spacing-sm) 6px',
-    gap: '6px'
-  },
-
-  activityButton: {
-    width: '38px',
-    height: '38px',
-    borderRadius: '8px',
-    border: 'none',
-    backgroundColor: 'transparent',
-    color: 'var(--text-dark)',
-    cursor: 'pointer',
-    fontSize: '11px',
-    fontWeight: '700',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 0
-  },
-
-  activityButtonActive: {
-    backgroundColor: 'var(--primary-soft)',
-    border: 'none',
-    color: 'var(--primary-color)'
-  },
-  
-  // ================== 左侧工具面板 ==================
-  leftSidebar: {
-    width: `${LAYOUT.sidebarWidth}px`,
-    backgroundColor: 'var(--bg-depth-3)',
-    borderRight: '1px solid var(--border-subtle)',
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    transition: 'width var(--transition-normal)'
-  },
-
-  sidebarHeader: {
-    minHeight: '42px',
-    padding: '0 var(--spacing-md)',
-    borderBottom: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 'var(--spacing-sm)',
-    backgroundColor: 'var(--bg-depth-2)'
-  },
-
-  sidebarTitle: {
-    fontSize: '12px',
-    fontWeight: '800',
-    color: 'var(--text-muted)',
-    textTransform: 'uppercase'
-  },
-  
-  // ================== 右侧 Inspector 面板 ==================
-  summaryPanel: {
-    backgroundColor: 'var(--bg-depth-3)',
-    borderLeft: 'none',
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    position: 'relative'
-  },
-
-  inspectorResizeHandle: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: '6px',
-    cursor: 'col-resize',
-    zIndex: 2,
-    backgroundColor: 'transparent'
-  },
-
-  inspectorHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    padding: 'var(--spacing-sm)',
-    borderBottom: '1px solid var(--border-subtle)',
-    backgroundColor: 'var(--bg-depth-2)'
-  },
-
-  previewHeader: {
-    minHeight: '42px',
-    padding: '8px 10px',
-    borderBottom: '1px solid var(--border-subtle)',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px'
-  },
-
-  inspectorTabs: {
-    flex: 1,
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(88px, 1fr))',
-    gap: '4px',
-    minWidth: 0
-  },
-
-  inspectorTab: {
-    height: '30px',
-    borderRadius: '6px',
-    border: 'none',
-    backgroundColor: 'transparent',
-    color: 'var(--text-muted)',
-    cursor: 'pointer',
-    fontSize: '12px',
-    fontWeight: '700'
-  },
-
-  inspectorTabActive: {
-    backgroundColor: 'var(--surface-hover)',
-    border: 'none',
-    color: 'var(--text-color)'
-  },
-
-  iconButton: {
-    width: '30px',
-    height: '30px',
-    borderRadius: '6px',
-    border: 'none',
-    backgroundColor: 'var(--surface-hover)',
-    color: 'var(--text-muted)',
-    cursor: 'pointer',
-    fontSize: '13px',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 0,
-    flex: '0 0 auto'
-  },
-
-  previewFrame: {
-    flex: 1,
-    minHeight: 0,
-    width: '100%',
-    border: 'none',
-    backgroundColor: '#fff'
-  },
-  
-  summarySection: {
-    padding: '14px',
-    borderBottom: 'none'
-  },
-  
-  summarySectionTitle: {
-    fontSize: '12px',
-    fontWeight: '700',
-    color: 'var(--text-muted)',
-    marginBottom: '10px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px'
-  },
-  
-  summaryItem: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: '8px',
-    padding: '8px 10px',
-    borderRadius: '6px',
-    backgroundColor: 'var(--background-color)',
-    marginBottom: '6px',
-    fontSize: '12px'
-  },
-  
-  summaryItemIcon: {
-    fontSize: '12px',
-    flexShrink: 0,
-    marginTop: '2px'
-  },
-  
-  summaryItemText: {
-    flex: 1,
-    color: 'var(--text-color)',
-    lineHeight: 1.4
-  },
-  
-  summaryItemEmpty: {
-    color: 'var(--text-dark)',
-    fontStyle: 'italic'
-  },
-  button: {
-    height: '32px',
-    padding: '0 10px',
-    borderRadius: '6px',
-    border: 'none',
-    backgroundColor: 'var(--surface-hover)',
-    color: 'var(--text-color)',
-    cursor: 'pointer',
-    fontSize: '13px'
-  },
-  
-  // ================== 聊天区域 ==================
-  chatArea: {
-    flex: 1,
-    minHeight: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    backgroundColor: 'var(--background-color)'
-  },
-  
-  chatHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 'var(--spacing-sm) var(--spacing-xl)',
-    borderBottom: '1px solid var(--border-subtle)',
-    backgroundColor: 'var(--bg-depth-3)'
-  },
-  
-  chatTitle: {
-    fontSize: '15px',
-    fontWeight: '700',
-    color: 'var(--text-color)',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px'
-  },
-  
-  chatStatus: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    padding: '4px 10px',
-    borderRadius: '999px',
-    fontSize: '12px',
-    fontWeight: '500',
-    border: 'none'
-  },
-  
-  statusReady: {
-    backgroundColor: 'rgba(93, 211, 158, 0.12)',
-    border: 'none',
-    color: 'var(--success-color)'
-  },
-  
-  statusRunning: {
-    backgroundColor: 'rgba(246, 200, 95, 0.12)',
-    border: 'none',
-    color: 'var(--warning-color)'
-  },
-  
-  // ================== 消息列表 ==================
-  messageContainer: {
-    flex: 1,
-    minHeight: 0,
-    overflow: 'hidden',
-  },
-  
-  // ================== 输入区域 ==================
-  inputArea: {
-    padding: 'var(--spacing-sm) var(--spacing-xl)',
-    backgroundColor: 'var(--bg-depth-3)',
-    borderTop: '1px solid var(--border-subtle)'
-  },
-  
-  inputWrapper: {
-    display: 'flex',
-    gap: '10px',
-    alignItems: 'flex-end',
-    position: 'relative',
-    zIndex: 50
-  },
-  
-  inputTextarea: {
-    flex: 1,
-    minHeight: '48px',
-    maxHeight: '200px',
-    padding: '12px 14px',
-    borderRadius: '12px',
-    border: 'none',
-    backgroundColor: 'var(--background-color)',
-    color: 'var(--text-color)',
-    fontSize: '14px',
-    fontFamily: 'inherit',
-    resize: 'none',
-    outline: 'none',
-    lineHeight: 1.5,
-    transition: 'border-color 0.2s, box-shadow 0.2s'
-  },
-  
-  inputTextareaFocused: {
-    border: 'none',
-    boxShadow: '0 0 0 3px var(--primary-soft)'
-  },
-  
-  sendButton: {
-    width: '44px',
-    height: '44px',
-    borderRadius: '10px',
-    border: 'none',
-    backgroundColor: 'var(--primary-color)',
-    color: '#061018',
-    cursor: 'pointer',
-    fontSize: '18px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'all 0.2s'
-  },
-  
-  sendButtonDisabled: {
-    backgroundColor: 'var(--border-subtle)',
-    color: 'var(--text-dark)',
-    cursor: 'not-allowed'
-  },
-  
-  inputHint: {
-    marginTop: '4px',
-    fontSize: '11px',
-    color: 'var(--text-dark)'
-  },
-  
-  // ================== 通用标签按钮 ==================
-  tabButton: {
-    flex: 1,
-    height: '32px',
-    borderRadius: '6px',
-    border: 'none',
-    backgroundColor: 'transparent',
-    color: 'var(--text-muted)',
-    cursor: 'pointer',
-    fontSize: '12px',
-    fontWeight: '600',
-    transition: 'all 0.15s'
-  },
-  
-  tabButtonActive: {
-    backgroundColor: 'var(--surface-hover)',
-    border: 'none',
-    color: 'var(--text-color)'
-  },
-
-  headerActionButton: {
-    height: '32px',
-    padding: '0 12px',
-    borderRadius: '6px',
-    border: 'none',
-    backgroundColor: 'transparent',
-    color: 'var(--text-muted)',
-    cursor: 'pointer',
-    fontSize: '12px',
-    fontWeight: '600',
-    whiteSpace: 'nowrap'
-  },
-  
-  // ================== 底部状态栏 ==================
-  footer: {
-    backgroundColor: 'var(--bg-depth-2)',
-    borderTop: '1px solid var(--border-subtle)'
-  },
-  
-  // ================== 模态框样式 ==================
-  modalBackdrop: {
-    position: 'fixed',
-    inset: 0,
-    backgroundColor: 'rgba(5, 8, 13, 0.72)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1000,
-    padding: '24px'
-  },
-  
-  modal: {
-    width: 'min(560px, 100%)',
-    backgroundColor: 'var(--surface-color)',
-    border: 'none',
-    borderRadius: '8px',
-    boxShadow: 'var(--shadow-lg)',
-    overflow: 'hidden'
-  },
-  
-  modalHeader: {
-    padding: '18px 20px',
-    borderBottom: 'none'
-  },
-  
-  modalTitle: {
-    margin: 0,
-    fontSize: '18px',
-    fontWeight: '700',
-    color: 'var(--text-color)'
-  },
-  
-  modalSubtitle: {
-    margin: '8px 0 0',
-    color: 'var(--text-muted)',
-    fontSize: '13px',
-    lineHeight: 1.5
-  },
-  
-  modalBody: {
-    padding: '18px 20px',
-    display: 'grid',
-    gap: '14px'
-  },
-  
-  formRow: {
-    display: 'grid',
-    gap: '7px'
-  },
-  
-  formLabel: {
-    fontSize: '12px',
-    fontWeight: '700',
-    color: 'var(--text-muted)'
-  },
-  
-  formInput: {
-    width: '100%',
-    height: '36px',
-    borderRadius: '6px',
-    border: 'none',
-    backgroundColor: '#11161e',
-    color: 'var(--text-color)',
-    padding: '0 10px'
-  },
-  
-  modalFooter: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: '12px',
-    padding: '14px 20px',
-    borderTop: 'none',
-    backgroundColor: '#141922'
-  },
-  
-  modalActions: {
-    display: 'flex',
-    gap: '8px',
-    flexShrink: 0
-  },
-  
-  textButton: {
-    height: '34px',
-    padding: '0 12px',
-    borderRadius: '6px',
-    border: 'none',
-    backgroundColor: 'transparent',
-    color: 'var(--text-muted)',
-    cursor: 'pointer',
-    minWidth: '86px',
-    whiteSpace: 'nowrap'
-  },
-  
-  primaryAction: {
-    height: '34px',
-    padding: '0 14px',
-    borderRadius: '6px',
-    border: 'none',
-    backgroundColor: 'var(--primary-color)',
-    color: '#061018',
-    fontWeight: '700',
-    cursor: 'pointer',
-    minWidth: '108px',
-    whiteSpace: 'nowrap'
-  },
-  
-  formError: {
-    color: 'var(--error-color)',
-    fontSize: '12px'
-  },
-  
-  formHint: {
-    color: 'var(--text-dark)',
-    fontSize: '12px',
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap'
-  }
-};
-
-const LLM_PROVIDER_OPTIONS = {
-  openai: {
-    label: 'OpenAI / OpenAI Compatible',
-    keyLabel: 'OPENAI_API_KEY',
-    defaultModel: 'gpt-4o',
-    defaultBaseUrl: 'https://api.openai.com/v1'
-  },
-  deepseek: {
-    label: 'DeepSeek',
-    keyLabel: 'DEEPSEEK_API_KEY',
-    defaultModel: 'deepseek-chat',
-    defaultBaseUrl: 'https://api.deepseek.com/v1'
-  },
-  zhipu: {
-    label: 'Zhipu',
-    keyLabel: 'ZHIPU_API_KEY',
-    defaultModel: 'glm-4',
-    defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4'
-  },
-  openrouter: {
-    label: 'OpenRouter',
-    keyLabel: 'OPENROUTER_API_KEY',
-    defaultModel: 'anthropic/claude-3.5-sonnet',
-    defaultBaseUrl: 'https://openrouter.ai/api/v1'
-  }
-};
-
 // Codex 风格的菜单定义
 
 
 // 技能包定义 (Codex 2026 Style)
-const SKILL_BUNDLES = {
-  '后端开发': [
-    { name: 'architect', desc: '架构设计', icon: '🏗️' },
-    { name: 'tdd', desc: '测试驱动开发', icon: '🧪' },
-    { name: 'diagnose', desc: '问题诊断', icon: '🔬' }
-  ],
-  '前端开发': [
-    { name: 'grill', desc: 'UI 快速构建', icon: '🔥' },
-    { name: 'setup', desc: '项目初始化', icon: '⚡' }
-  ],
-  '协作': [
-    { name: 'review', desc: '代码审查', icon: '👀' },
-    { name: 'handoff', desc: '任务交接', icon: '🤝' }
-  ]
-};
-
 /**
  * 主应用组件
  */
@@ -909,6 +125,7 @@ function App() {
   
   // 使用自定义 Hooks
   const runtime = useRuntime();
+  const runtimeStatusMeta = getRuntimeStatusMeta(runtime.status);
   const ipc = useIPC();
   const chatInputRef = useRef(null);
   const workspaceRefreshTimerRef = useRef(null);
@@ -1506,7 +723,7 @@ function App() {
     setChatInput('');
   }, [runtime]);
 
-const handleClearAgentHistory = useCallback(() => {
+  const handleClearAgentHistory = useCallback(() => {
     localStorage.removeItem(AGENT_HISTORY_STORAGE_KEY);
     localStorage.removeItem(AGENT_SESSIONS_STORAGE_KEY);
     localStorage.removeItem(ACTIVE_AGENT_SESSION_STORAGE_KEY);
@@ -1519,48 +736,6 @@ const handleClearAgentHistory = useCallback(() => {
 
 
 
-  const renderSidebarContent = () => {
-    switch (activeTab) {
-      case 'agent':
-        return (
-          <AgentControl
-            runtime={runtime}
-            workingDirectory={workingDirectory}
-            onWorkingDirectoryChange={handleWorkingDirectoryChange}
-            agentOptions={agentOptions}
-            onOptionsChange={setAgentOptions}
-            onInsertText={handleInsertText}
-            sessions={sessions}
-            activeSessionId={activeAgentSessionId}
-            onSwitchSession={handleRestoreHistory}
-            onRestoreHistory={handleRestoreHistory}
-            onClearHistory={handleClearAgentHistory}
-            projectTree={{
-              directoryChildren,
-              expandedDirectories,
-              loadingDirectories,
-              status: projectTreeStatus,
-              error: projectTreeError,
-              onToggleDirectory: handleProjectDirectoryToggle,
-              onRefresh: handleProjectTreeRefresh
-            }}
-          />
-        );
-      
-      case 'tools':
-        return (
-          <ToolPanel
-            tools={runtime.tools}
-            loading={runtime.loading}
-            messages={runtime.messages}
-          />
-        );
-      
-      default:
-        return null;
-    }
-  };
-  
   // 处理窗口控制
   const handleMinimize = useCallback(() => {
     ipc.minimizeWindow();
@@ -1573,21 +748,6 @@ const handleClearAgentHistory = useCallback(() => {
   const handleClose = useCallback(() => {
     ipc.closeWindow();
   }, [ipc]);
-  
-  // 处理保存任务
-  const handleSaveTask = useCallback(() => {
-    const snapshot = {
-      savedAt: new Date().toISOString(),
-      workingDirectory,
-      messages: runtime.messages,
-      ragDocs,
-    };
-    localStorage.setItem('ai-agent-session-snapshot', JSON.stringify(snapshot));
-    ipc.showNotification?.({
-      title: '会话已保存',
-      body: '已保存到本地浏览器存储，可在当前设备恢复参考。'
-    });
-  }, [ipc, ragDocs, runtime.messages, workingDirectory]);
   
   // 处理导出
   const handleExport = useCallback(() => {
@@ -1768,11 +928,6 @@ const handleClearAgentHistory = useCallback(() => {
     }
   }, [ipc, llmForm]);
 
-  const formatEnvPath = useCallback((path) => {
-    if (!path) return '~/.config/ai-engineering-mastery-agent/.env';
-    return path.replace(/^\/Users\/[^/]+/, '~');
-  }, []);
-
   const handleInsertText = useCallback((text) => {
     setChatInput(text);
     setShowSuggestions(text.trimStart().startsWith('/'));
@@ -1794,509 +949,193 @@ const handleClearAgentHistory = useCallback(() => {
     setShowSuggestions(false);
   }, [handleInsertText, runtime]);
 
+  const handleAddRagDocuments = useCallback(async () => {
+    try {
+      if (!window.electronAPI) return;
+      const result = await window.electronAPI.openFileDialog({ properties: ['openFile', 'multiSelections'] });
+      const paths = result?.filePaths || result || [];
+      const files = (paths || []).map(path => ({
+        name: getDocumentDisplayName(path),
+        path,
+        indexed: false,
+      }));
+      setRagDocs(prev => mergeRagDocuments(prev, files));
+    } catch (error) {
+      console.error('选择文件失败', error);
+    }
+  }, []);
 
-  // ================== 渲染 Inspector 面板 ==================
-  const renderSummaryPanel = () => {
-    if (!summaryPanelVisible) return null;
+  const handleInitializeRagIndex = useCallback(async () => {
+    if (ragDocs.length === 0) return;
+    setRagStatus('indexing');
+    setRagIndexProgress(0);
+    try {
+      const paths = ragDocs.map(doc => doc.path);
+      if (ipc.processInput) {
+        const result = await ipc.processInput('init_rag', { docs: paths });
+        const indexedDocs = normalizeRagDocuments(result?.documents || []);
+        if (indexedDocs.length > 0) {
+          setRagDocs(prev => mergeRagDocuments(prev, indexedDocs));
+        }
+        await refreshRagDocuments();
+      }
+      setRagStatus('ready');
+      setRagIndexProgress(100);
+    } catch (error) {
+      console.error('RAG 初始化失败', error);
+      setRagStatus('error');
+    }
+  }, [ipc, ragDocs, refreshRagDocuments]);
 
-    const renderRagTab = () => (
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-        <div style={styles.summarySection}>
-          <div style={styles.summarySectionTitle}>RAG 初始化</div>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-            使用检索增强生成（RAG）之前，请上传/选择要索引的文档，并执行索引初始化。
-          </div>
+  const handleRemoveRagDocument = useCallback(async (doc, index) => {
+    if (doc.indexed && doc.id && ipc.processInput) {
+      await ipc.processInput(`/doc clear ${doc.id}`);
+      await refreshRagDocuments();
+      return;
+    }
+    setRagDocs(prev => prev.filter((_, itemIndex) => itemIndex !== index));
+  }, [ipc, refreshRagDocuments]);
 
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-            <button
-              style={styles.button}
-              onClick={async () => {
-                try {
-                  if (!window.electronAPI) return;
-                  const result = await window.electronAPI.openFileDialog({ properties: ['openFile', 'multiSelections'] });
-                  const paths = result?.filePaths || result || [];
-                  const files = (paths || []).map(p => ({
-                    name: getDocumentDisplayName(p),
-                    path: p,
-                    indexed: false,
-                  }));
-                  setRagDocs(prev => mergeRagDocuments(prev, files));
-                } catch (err) {
-                  console.error('选择文件失败', err);
-                }
-              }}
-            >上传文档</button>
+  const handleInsertDocSearch = useCallback(() => {
+    setChatInput('/doc search ');
+    chatInputRef.current?.focus();
+  }, []);
 
-            <button
-              style={styles.button}
-              onClick={async () => {
-                if (ragDocs.length === 0) return;
-                setRagStatus('indexing');
-                setRagIndexProgress(0);
-                try {
-                  const paths = ragDocs.map(d => d.path);
-                  if (ipc.processInput) {
-                    const result = await ipc.processInput('init_rag', { docs: paths });
-                    const indexedDocs = normalizeRagDocuments(result?.documents || []);
-                    if (indexedDocs.length > 0) {
-                      setRagDocs(prev => mergeRagDocuments(prev, indexedDocs));
-                    }
-                    await refreshRagDocuments();
-                  }
-                  setRagStatus('ready');
-                  setRagIndexProgress(100);
-                } catch (err) {
-                  console.error('RAG 初始化失败', err);
-                  setRagStatus('error');
-                }
-              }}
-            >初始化索引</button>
-          </div>
+  const handleResetRag = useCallback(async () => {
+    try {
+      if (ipc.processInput) {
+        await ipc.processInput('/doc clear');
+      }
+    } catch (error) {
+      console.error('清空 RAG 索引失败', error);
+    } finally {
+      setRagDocs([]);
+      setRagStatus('idle');
+      setRagIndexProgress(0);
+    }
+  }, [ipc]);
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <div style={{ fontSize: '12px' }}>状态:</div>
-            <div style={{ fontSize: '12px', fontWeight: 600 }}>{ragStatus}</div>
-          </div>
-        </div>
+  const handleOpenExternal = useCallback((url) => {
+    if (url) {
+      ipc.openExternal?.(url);
+    }
+  }, [ipc]);
 
-        <div style={styles.summarySection}>
-          <div style={styles.summarySectionTitle}>已加载文档</div>
-          {ragDocs.length === 0 ? (
-            <div style={{ ...styles.summaryItem, ...styles.summaryItemEmpty }}>尚未上传文档</div>
-          ) : (
-            ragDocs.map((doc, i) => (
-              <div key={i} style={{ ...styles.summaryItem, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={styles.summaryItemIcon}>📄</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '13px', color: 'var(--text-color)' }}>{doc.name}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{doc.path}</div>
-                </div>
-                <button
-                  style={styles.button}
-                  onClick={async () => {
-                    if (doc.indexed && doc.id && ipc.processInput) {
-                      await ipc.processInput(`/doc clear ${doc.id}`);
-                      await refreshRagDocuments();
-                      return;
-                    }
-                    setRagDocs(prev => prev.filter((_, idx) => idx !== i));
-                  }}
-                >移除</button>
-              </div>
-            ))
-          )}
-        </div>
+  const handleRefreshPreviewFrame = useCallback(() => {
+    setPreviewFrameKey(prev => prev + 1);
+  }, []);
 
-        <div style={styles.summarySection}>
-          <div style={styles.summarySectionTitle}>操作</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <button
-              style={styles.button}
-              onClick={() => {
-                // 用文档搜索命令初始化提示
-                setChatInput('/doc search ');
-                chatInputRef.current?.focus();
-              }}
-            >快速创建文档搜索命令</button>
-            <button
-              style={styles.button}
-              onClick={async () => {
-                try {
-                  if (ipc.processInput) {
-                    await ipc.processInput('/doc clear');
-                  }
-                } catch (error) {
-                  console.error('清空 RAG 索引失败', error);
-                } finally {
-                  setRagDocs([]);
-                  setRagStatus('idle');
-                  setRagIndexProgress(0);
-                }
-              }}
-            >重置 RAG</button>
-          </div>
-        </div>
-      </div>
-    );
 
-    const renderPreviewTab = () => (
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <div style={styles.previewHeader}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>预览</div>
-            <div style={{
-              fontSize: '11px',
-              color: 'var(--text-dark)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
-            }}>
-              {activePreviewUrl ? (
-                <a
-                  href={activePreviewUrl}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    ipc.openExternal?.(activePreviewUrl);
-                  }}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    color: 'var(--primary-color)',
-                    textDecoration: 'underline',
-                    cursor: 'pointer',
-                    fontSize: '11px',
-                  }}
-                  title="点击在外部浏览器中打开"
-                >
-                  {activePreviewUrl}
-                </a>
-              ) : (
-                previewStatus === 'starting' ? '正在启动...' : '尚未启动'
-              )}
-            </div>
-          </div>
-          <button
-            style={styles.button}
-            onClick={() => setPreviewFrameKey(prev => prev + 1)}
-            disabled={!activePreviewUrl}
-          >刷新</button>
-          <button
-            style={styles.button}
-            onClick={() => activePreviewUrl && ipc.openExternal?.(activePreviewUrl)}
-            disabled={!activePreviewUrl}
-          >浏览器</button>
-          <button
-            style={styles.iconButton}
-            onClick={handleInspectorExpandToggle}
-            title={inspectorExpanded ? '还原预览区域' : '放大预览区域'}
-            aria-label={inspectorExpanded ? '还原预览区域' : '放大预览区域'}
-          >
-            {inspectorExpanded ? '↙' : '⛶'}
-          </button>
-          {previewSession?.session_id ? (
-            <button style={styles.button} onClick={handleStopPreview}>停止</button>
-          ) : (
-            <button style={styles.button} onClick={() => handleStartPreview('.')}>启动</button>
-          )}
-        </div>
-
-        <form
-          style={{
-            display: 'flex',
-            gap: '8px',
-            padding: '8px 10px',
-            borderBottom: 'none'
-          }}
-          onSubmit={handlePreviewUrlSubmit}
-        >
-          <input
-            style={{
-              flex: 1,
-              minWidth: 0,
-              height: '30px',
-              borderRadius: '6px',
-              border: 'none',
-              backgroundColor: 'var(--background-color)',
-              color: 'var(--text-color)',
-              padding: '0 10px',
-              fontSize: '12px'
-            }}
-            value={previewUrlDraft}
-            onChange={(event) => setPreviewUrlDraft(event.target.value)}
-            placeholder="127.0.0.1:41730"
-          />
-          <button style={styles.button} type="submit">前往</button>
-        </form>
-
-        {previewSession?.pipeline?.length ? (
-          <div style={{
-            padding: '8px 10px',
-            borderBottom: 'none',
-            display: 'flex',
-            gap: '6px',
-            overflowX: 'auto'
-          }}>
-            {previewSession.pipeline.map((stage) => (
-              <div
-                key={`${stage.name}-${stage.command}`}
-                title={stage.command}
-                style={{
-                  flex: '0 0 auto',
-                  maxWidth: '180px',
-                  padding: '5px 8px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  color: stage.status === 'failed' ? 'var(--error-color)' : 'var(--text-muted)',
-                  backgroundColor: stage.status === 'running' ? 'rgba(79, 140, 255, 0.08)' : 'var(--surface-color)',
-                  fontSize: '11px',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }}
-              >
-                {stage.name}: {stage.status}
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        {activePreviewUrl ? (
-          <iframe
-            key={previewFrameKey}
-            title="workspace-preview"
-            src={activePreviewUrl}
-            style={styles.previewFrame}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox"
-            referrerPolicy="no-referrer"
-          />
-        ) : (
-          <div style={{
-            padding: '18px',
-            color: previewStatus === 'error' ? 'var(--error-color)' : 'var(--text-muted)',
-            fontSize: '13px'
-          }}>
-            {previewStatus === 'error'
-              ? '预览启动失败，请查看对话中的错误消息。'
-              : '点击启动，或在对话里输入 /preview index.html。'}
-          </div>
-        )}
-      </div>
-    );
-
-    return (
-      <Panel
-        variant="inspector"
-        collapsed={false}
-        width={inspectorPanelWidth}
-        ariaLabel="Inspector 面板"
-        style={{
-          minWidth: `${LAYOUT.inspectorMinWidth}px`,
-          maxWidth: `${LAYOUT.inspectorMaxWidth}px`,
-        }}
-      >
-        <div
-          style={styles.inspectorResizeHandle}
-          onPointerDown={handleInspectorResizeStart}
-          title="拖拽调整 Inspector 宽度"
-          role="separator"
-          aria-orientation="vertical"
-        />
-        <div style={styles.inspectorHeader}>
-          <TabGroup activeTab={activeInspectorTab} onChange={setActiveInspectorTab}>
-            <TabItem id="rag">RAG</TabItem>
-            <TabItem id="preview">Preview</TabItem>
-          </TabGroup>
-          <Button
-            variant="icon"
-            size="sm"
-            onClick={handleInspectorExpandToggle}
-            title={inspectorExpanded ? '还原预览区域' : '放大预览区域'}
-            ariaLabel={inspectorExpanded ? '还原预览区域' : '放大预览区域'}
-          >
-            {inspectorExpanded ? '↙' : '⛶'}
-          </Button>
-        </div>
-
-        {activeInspectorTab === 'rag' && renderRagTab()}
-        {activeInspectorTab === 'preview' && renderPreviewTab()}
-      </Panel>
-    );
-  };
-  
-  const shouldReserveMacTrafficLightSpace = platformInfo?.isMac
-    && !windowState.isFullScreen
-    && !windowState.isMaximized;
-  
   return (
     <div style={styles.container}>
-      {/* 顶部菜单栏 */}
-      <header style={{
-        ...styles.menuBar,
-        paddingLeft: shouldReserveMacTrafficLightSpace ? '86px' : 'var(--spacing-md)',
-        WebkitAppRegion: 'drag'
-      }}>
-        {/* 切换边栏 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', WebkitAppRegion: 'no-drag' }}>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSidebarCollapsed(prev => !prev)}
-            title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-            ariaLabel={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-          >
-            {sidebarCollapsed ? '☰' : '✕'}
-          </Button>
-        </div>
-        
-        {/* 右侧状态 */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', WebkitAppRegion: 'no-drag' }}>
-          <Badge variant={runtime.status === 'running' ? 'warning' : 'success'} size="md">
-            <span>{runtime.status === 'running' ? '⚡' : '✓'}</span>
-            <span>{runtime.status === 'running' ? '运行中' : '就绪'}</span>
-          </Badge>
-          
-          {/* 窗口控制按钮 (非 Mac) */}
-          {!platformInfo?.isMac && (
-            <div style={{ display: 'flex', gap: 'var(--spacing-xs)', marginLeft: 'var(--spacing-sm)' }}>
-              <Button variant="ghost" size="sm" onClick={handleMinimize} title="最小化">−</Button>
-              <Button variant="ghost" size="sm" onClick={handleMaximize} title={windowState.isMaximized ? '还原' : '最大化'}>
-                {windowState.isMaximized ? '❐' : '□'}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={handleClose} title="关闭" style={{ color: 'var(--error-color)' }}>×</Button>
-            </div>
-          )}
-        </div>
-      </header>
-      
-      {/* 主体内容 */}
+      <TopBar
+        platformInfo={platformInfo}
+        windowState={windowState}
+        runtimeStatusMeta={runtimeStatusMeta}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={() => setSidebarCollapsed(prev => !prev)}
+        onMinimize={handleMinimize}
+        onMaximize={handleMaximize}
+        onClose={handleClose}
+      />
+
       <main style={styles.mainContent}>
-        <nav style={styles.activityRail} aria-label="工作区导航">
-          <Button
-            variant="icon"
-            size="md"
-            onClick={() => {
-              setActiveTab('agent');
-              setSidebarCollapsed(false);
-            }}
-            title="Agent"
-            ariaLabel="Agent 面板"
-            style={activeTab === 'agent' && !sidebarCollapsed ? styles.activityButtonActive : {}}
-          >
-            AG
-          </Button>
-          <Button
-            variant="icon"
-            size="md"
-            onClick={() => {
-              setActiveTab('tools');
-              setSidebarCollapsed(false);
-            }}
-            title="工具"
-            ariaLabel="工具面板"
-            style={activeTab === 'tools' && !sidebarCollapsed ? styles.activityButtonActive : {}}
-          >
-            TL
-          </Button>
-          <Button
-            variant="icon"
-            size="md"
-            onClick={() => setShowSettings(prev => !prev)}
-            title="设置"
-            ariaLabel="设置"
-            style={{ marginTop: 'auto' }}
-          >
-            ⚙️
-          </Button>
-        </nav>
+        <ActivityRail
+          activeTab={activeTab}
+          sidebarCollapsed={sidebarCollapsed}
+          onShowAgent={() => {
+            setActiveTab('agent');
+            setSidebarCollapsed(false);
+          }}
+          onShowTools={() => {
+            setActiveTab('tools');
+            setSidebarCollapsed(false);
+          }}
+          onToggleSettings={() => setShowSettings(prev => !prev)}
+        />
 
         {!sidebarCollapsed && (
-          <Panel variant="sidebar" width={LAYOUT.sidebarWidth} ariaLabel="侧边栏">
-            <PanelHeader
-              title={activeTab === 'tools' ? '工具' : '会话'}
-              actions={
-                <>
-                  {activeTab !== 'tools' && (
-                    <Button variant="icon" size="sm" onClick={handleNewTask} title="新对话" ariaLabel="新对话">+</Button>
-                  )}
-                  <Button variant="icon" size="sm" onClick={() => setSidebarCollapsed(true)} title="收起侧边栏" ariaLabel="收起侧边栏">×</Button>
-                </>
-              }
-            />
-            {renderSidebarContent()}
-          </Panel>
+          <SidebarPanel
+            activeTab={activeTab}
+            runtime={runtime}
+            workingDirectory={workingDirectory}
+            agentOptions={agentOptions}
+            onOptionsChange={setAgentOptions}
+            onInsertText={handleInsertText}
+            sessions={sessions}
+            activeSessionId={activeAgentSessionId}
+            onSwitchSession={handleRestoreHistory}
+            onRestoreHistory={handleRestoreHistory}
+            onClearHistory={handleClearAgentHistory}
+            onWorkingDirectoryChange={handleWorkingDirectoryChange}
+            onNewTask={handleNewTask}
+            onCollapse={() => setSidebarCollapsed(true)}
+            projectTree={{
+              directoryChildren,
+              expandedDirectories,
+              loadingDirectories,
+              status: projectTreeStatus,
+              error: projectTreeError,
+              onToggleDirectory: handleProjectDirectoryToggle,
+              onRefresh: handleProjectTreeRefresh
+            }}
+          />
         )}
-        
-        {/* 聊天区域 */}
-        <div style={styles.chatArea}>
-          {/* 聊天头部 */}
-          <div style={styles.chatHeader}>
-            <div style={styles.chatTitle}>
-              <span>💬</span>
-              <span>对话</span>
-              <span style={{ 
-                fontSize: '12px', 
-                fontWeight: '400', 
-                color: 'var(--text-muted)',
-                marginLeft: '8px'
-              }}>
-                {runtime.messages.length} 条消息
-              </span>
-            </div>
-            
-            <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-              <Button variant="ghost" size="sm" onClick={handleExport} title="导出对话" ariaLabel="导出对话">导出</Button>
-              <Button variant="ghost" size="sm" onClick={() => { setSummaryPanelVisible(true); setActiveInspectorTab('preview'); }} title="打开预览" ariaLabel="打开预览">Preview</Button>
-              <Button variant="ghost" size="sm" onClick={() => setSummaryPanelVisible(prev => !prev)} title="切换 Inspector" ariaLabel="切换 Inspector">
-                {summaryPanelVisible ? '隐藏' : '显示'} Inspector
-              </Button>
-              <Button variant="ghost" size="sm" onClick={runtime.clearMessages} title="清除对话" ariaLabel="清除对话">清除</Button>
-            </div>
-          </div>
-          
-          {/* 消息列表 */}
-          <div style={styles.messageContainer} role="log" aria-label="对话消息" aria-live="polite" tabIndex={0}>
-            <MessageLog
-              messages={runtime.messages}
-              status={runtime.status}
-              onClear={runtime.clearMessages}
-              onAskAgent={handleAskAgentFromMessage}
-            />
-          </div>
-          
-          {/* 输入区域 */}
-          <div style={styles.inputArea}>
-            <div style={styles.inputWrapper}>
-              {/* 命令提示 */}
-              {showSuggestions && (
-                <CommandSuggestions
-                  input={chatInput}
-                  tools={runtime.tools}
-                  onSelect={handleCommandSelect}
-                  onClose={handleSuggestionsClose}
-                />
-              )}
-              
-              <textarea
-                ref={chatInputRef}
-                style={{
-                  ...styles.inputTextarea,
-                  ...(inputFocused ? styles.inputTextareaFocused : {})
-                }}
-                value={chatInput}
-                onChange={(e) => handleChatInputChange(e.target.value)}
-                onKeyDown={handleChatKeyDown}
-                onFocus={() => setInputFocused(true)}
-                onBlur={() => setInputFocused(false)}
-                placeholder="输入消息... (Ctrl+Enter 发送 | 输入 / 查看命令)"
-                disabled={runtime.status === 'running'}
-              />
-              <button
-                style={{
-                  ...styles.sendButton,
-                  ...(runtime.status === 'running'
-                    ? { backgroundColor: 'var(--warning-color)', color: '#000' }
-                    : !chatInput.trim()
-                      ? styles.sendButtonDisabled
-                      : {})
-                }}
-                onClick={runtime.status === 'running' ? () => runtime.stop() : handleSendMessage}
-                disabled={runtime.status !== 'running' && !chatInput.trim()}
-                title={runtime.status === 'running' ? '停止执行 (Cmd+Ctrl+.)' : '发送消息 (Ctrl+Enter)'}
-                aria-label={runtime.status === 'running' ? '停止执行' : '发送消息'}
-              >
-                {runtime.status === 'running' ? '■' : '↑'}
-              </button>
-            </div>
-            <div style={styles.inputHint}>
-              按 <kbd className="kbd-hint">Ctrl+Enter</kbd> 发送 | 输入 <kbd className="kbd-hint">/技能名</kbd> 快速调用技能
-            </div>
-          </div>
-        </div>
-        
-        {/* 右侧 Inspector 面板 */}
-        {renderSummaryPanel()}
+
+        <ChatWorkspace
+          runtime={runtime}
+          chatInput={chatInput}
+          chatInputRef={chatInputRef}
+          inputFocused={inputFocused}
+          showSuggestions={showSuggestions}
+          onAskAgentFromMessage={handleAskAgentFromMessage}
+          onChatInputChange={handleChatInputChange}
+          onChatKeyDown={handleChatKeyDown}
+          onCommandSelect={handleCommandSelect}
+          onSuggestionsClose={handleSuggestionsClose}
+          onFocus={() => setInputFocused(true)}
+          onBlur={() => setInputFocused(false)}
+          onSendMessage={handleSendMessage}
+          onExport={handleExport}
+          onOpenPreview={() => {
+            setSummaryPanelVisible(true);
+            setActiveInspectorTab('preview');
+          }}
+          onToggleInspector={() => setSummaryPanelVisible(prev => !prev)}
+          summaryPanelVisible={summaryPanelVisible}
+        />
+
+        {summaryPanelVisible && (
+          <InspectorPanel
+            activeInspectorTab={activeInspectorTab}
+            activePreviewUrl={activePreviewUrl}
+            inspectorExpanded={inspectorExpanded}
+            inspectorPanelWidth={inspectorPanelWidth}
+            ipc={ipc}
+            previewFrameKey={previewFrameKey}
+            previewSession={previewSession}
+            previewStatus={previewStatus}
+            previewUrlDraft={previewUrlDraft}
+            ragDocs={ragDocs}
+            ragStatus={ragStatus}
+            onAddDocuments={handleAddRagDocuments}
+            onExpandToggle={handleInspectorExpandToggle}
+            onInitializeIndex={handleInitializeRagIndex}
+            onInsertDocSearch={handleInsertDocSearch}
+            onOpenExternal={handleOpenExternal}
+            onPreviewUrlDraftChange={setPreviewUrlDraft}
+            onPreviewUrlSubmit={handlePreviewUrlSubmit}
+            onRefreshFrame={handleRefreshPreviewFrame}
+            onRemoveDocument={handleRemoveRagDocument}
+            onResetRag={handleResetRag}
+            onResizeStart={handleInspectorResizeStart}
+            onStartPreview={handleStartPreview}
+            onStopPreview={handleStopPreview}
+            onTabChange={setActiveInspectorTab}
+          />
+        )}
       </main>
-      
+
       {/* 底部状态栏 */}
       <footer style={styles.footer}>
         <StatusBar
@@ -2308,164 +1147,26 @@ const handleClearAgentHistory = useCallback(() => {
         />
       </footer>
 
-                  {/* 设置下拉菜单 */}
+      {/* 设置下拉菜单 */}
       {showSettings && (
-        <div style={{
-          position: 'fixed', left: '56px', bottom: '44px',
-          width: '220px', backgroundColor: 'var(--surface-color)',
-          border: 'none', borderRadius: '8px',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000,
-          padding: '8px', fontSize: '12px', color: 'var(--text-color)'
-        }}>
-          <div style={{padding:'4px 8px 8px',borderBottom:'none',marginBottom:'6px',fontWeight:'700',fontSize:'11px',color:'var(--text-muted)',textTransform:'uppercase'}}>
-            ROOT
-          </div>
-
-          <label style={{display:'flex',alignItems:'center',gap:'8px',padding:'5px 8px',borderRadius:'4px',cursor:'pointer'}}
-            onMouseEnter={(e)=>e.currentTarget.style.backgroundColor='var(--surface-hover)'}
-            onMouseLeave={(e)=>e.currentTarget.style.backgroundColor='transparent'}>
-            <input type="checkbox" checked={agentOptions.autoSave}
-              onChange={(e)=>setAgentOptions(p=>({...p,autoSave:e.target.checked}))}
-              style={{width:'14px',height:'14px',accentColor:'var(--primary-color)',cursor:'pointer'}}/>
-            Auto Save
-          </label>
-
-          <label style={{display:'flex',alignItems:'center',gap:'8px',padding:'5px 8px',borderRadius:'4px',cursor:'pointer'}}
-            onMouseEnter={(e)=>e.currentTarget.style.backgroundColor='var(--surface-hover)'}
-            onMouseLeave={(e)=>e.currentTarget.style.backgroundColor='transparent'}>
-            <input type="checkbox" checked={agentOptions.autoScroll !== false}
-              onChange={(e)=>setAgentOptions(p=>({...p,autoScroll:e.target.checked}))}
-              style={{width:'14px',height:'14px',accentColor:'var(--primary-color)',cursor:'pointer'}}/>
-            Autoscroll
-          </label>
-
-          <label style={{display:'flex',alignItems:'center',gap:'8px',padding:'5px 8px',borderRadius:'4px',cursor:'pointer'}}
-            onMouseEnter={(e)=>e.currentTarget.style.backgroundColor='var(--surface-hover)'}
-            onMouseLeave={(e)=>e.currentTarget.style.backgroundColor='transparent'}>
-            <input type="checkbox" checked={agentOptions.debug || false}
-              onChange={(e)=>setAgentOptions(p=>({...p,debug:e.target.checked}))}
-              style={{width:'14px',height:'14px',accentColor:'var(--primary-color)',cursor:'pointer'}}/>
-            Developer Mode
-          </label>
-
-          <label style={{display:'flex',alignItems:'center',gap:'8px',padding:'5px 8px',borderRadius:'4px',cursor:'pointer'}}
-            onMouseEnter={(e)=>e.currentTarget.style.backgroundColor='var(--surface-hover)'}
-            onMouseLeave={(e)=>e.currentTarget.style.backgroundColor='transparent'}>
-            <input type="checkbox" checked={agentOptions.verbose || false}
-              onChange={(e)=>setAgentOptions(p=>({...p,verbose:e.target.checked}))}
-              style={{width:'14px',height:'14px',accentColor:'var(--primary-color)',cursor:'pointer'}}/>
-            Verbose logging
-          </label>
-
-          <div style={{display:'flex',alignItems:'center',gap:'8px',padding:'5px 8px'}}>
-            <span style={{fontSize:'11px',color:'var(--text-muted)',whiteSpace:'nowrap'}}>Max iterations</span>
-            <input type="number" value={agentOptions.maxIterations}
-              onChange={(e)=>setAgentOptions(p=>({...p,maxIterations:parseInt(e.target.value)||60}))}
-              style={{width:'56px',height:'24px',borderRadius:'4px',border:'none',backgroundColor:'#11161e',color:'var(--text-color)',padding:'0 6px',fontSize:'11px'}}
-              min={1} max={500}/>
-          </div>
-
-          <div style={{borderTop:'none',margin:'6px 0',padding:'6px 8px 0'}}>
-            <button style={{width:'100%',height:'28px',borderRadius:'5px',border:'none',backgroundColor:'transparent',color:'var(--text-muted)',cursor:'pointer',fontSize:'11px',textAlign:'center'}}
-              onClick={()=>{setShowSettings(false);setShowLLMSetup(true);}}
-              onMouseEnter={(e)=>e.currentTarget.style.backgroundColor='var(--surface-hover)'}
-              onMouseLeave={(e)=>e.currentTarget.style.backgroundColor='transparent'}>
-              设置...
-            </button>
-          </div>
-        </div>
+        <SettingsMenu
+          agentOptions={agentOptions}
+          setAgentOptions={setAgentOptions}
+          onClose={() => setShowSettings(false)}
+          onOpenLLMSetup={() => setShowLLMSetup(true)}
+        />
       )}
       {showLLMSetup && (
-        <div style={styles.modalBackdrop}>
-          <div style={styles.modal}>
-            <div style={styles.modalHeader}>
-              <h2 style={styles.modalTitle}>配置模型服务</h2>
-              <p style={styles.modalSubtitle}>
-                Desktop 需要 LLM 配置后才能执行 Agent 任务。配置会保存到 CLI 共用的用户 .env 文件中。
-              </p>
-            </div>
-
-            <div style={styles.modalBody}>
-              <div style={styles.formRow}>
-                <label style={styles.formLabel}>模型提供商</label>
-                <select
-                  style={styles.formInput}
-                  value={llmForm.provider}
-                  onChange={(event) => handleLLMProviderChange(event.target.value)}
-                  disabled={llmSetupSaving}
-                >
-                  {Object.entries(LLM_PROVIDER_OPTIONS).map(([value, option]) => (
-                    <option key={value} value={value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={styles.formRow}>
-                <label style={styles.formLabel}>
-                  {LLM_PROVIDER_OPTIONS[llmForm.provider]?.keyLabel || 'API Key'}
-                </label>
-                <input
-                  style={styles.formInput}
-                  type="password"
-                  value={llmForm.apiKey}
-                  onChange={(event) => handleLLMFormChange('apiKey', event.target.value)}
-                  placeholder="输入 API Key"
-                  disabled={llmSetupSaving}
-                />
-              </div>
-
-              <div style={styles.formRow}>
-                <label style={styles.formLabel}>模型名称</label>
-                <input
-                  style={styles.formInput}
-                  value={llmForm.model}
-                  onChange={(event) => handleLLMFormChange('model', event.target.value)}
-                  placeholder={LLM_PROVIDER_OPTIONS[llmForm.provider]?.defaultModel}
-                  disabled={llmSetupSaving}
-                />
-              </div>
-
-              <div style={styles.formRow}>
-                <label style={styles.formLabel}>Base URL</label>
-                <input
-                  style={styles.formInput}
-                  value={llmForm.baseUrl}
-                  onChange={(event) => handleLLMFormChange('baseUrl', event.target.value)}
-                  placeholder={LLM_PROVIDER_OPTIONS[llmForm.provider]?.defaultBaseUrl}
-                  disabled={llmSetupSaving}
-                />
-              </div>
-
-              {llmSetupError && (
-                <div style={styles.formError}>{llmSetupError}</div>
-              )}
-            </div>
-
-            <div style={styles.modalFooter}>
-              <div style={styles.formHint}>
-                保存位置: {formatEnvPath(llmConfigStatus?.userEnvPath)}
-              </div>
-              <div style={styles.modalActions}>
-                <button
-                  style={styles.textButton}
-                  onClick={() => setShowLLMSetup(false)}
-                  disabled={llmSetupSaving}
-                >
-                  稍后配置
-                </button>
-                <button
-                  style={styles.primaryAction}
-                  onClick={handleSaveLLMConfig}
-                  disabled={llmSetupSaving}
-                >
-                  {llmSetupSaving ? '保存中...' : '保存并启用'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <LLMSetupModal
+          llmConfigStatus={llmConfigStatus}
+          llmForm={llmForm}
+          llmSetupError={llmSetupError}
+          llmSetupSaving={llmSetupSaving}
+          onClose={() => setShowLLMSetup(false)}
+          onFormChange={handleLLMFormChange}
+          onProviderChange={handleLLMProviderChange}
+          onSave={handleSaveLLMConfig}
+        />
       )}
     </div>
   );

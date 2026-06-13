@@ -252,6 +252,10 @@ export function useRuntime() {
           setStatus(payload?.result?.status === 'needs_user_input' ? 'needs_user_input' : 'completed');
         } else if (eventName === 'agent:error') {
           setStatus('error');
+        } else if (eventName === 'agent:stop') {
+          setStatus('idle');
+        } else if (eventName === 'status:update' && typeof payload?.status === 'string') {
+          setStatus(payload.status);
         }
 
         if (eventName === 'agent:complete') {
@@ -322,6 +326,7 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
         message: {
           ...base,
           type: needsUserInput ? 'warning' : (answer ? 'result' : 'success'),
+          runtimeDetail: true,
           content: answer || (needsUserInput ? '需要你补充信息后继续' : 'Agent 执行完成'),
         },
       };
@@ -331,7 +336,17 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
         message: {
           ...base,
           type: 'error',
+          runtimeDetail: true,
           content: `Agent 错误: ${payload?.error || payload?.message || '未知错误'}`,
+        },
+      };
+    case 'agent:stop':
+      return {
+        message: {
+          ...base,
+          type: 'warning',
+          runtimeDetail: true,
+          content: 'Agent 已停止',
         },
       };
     case 'tool:call':

@@ -12,6 +12,7 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { getRuntimeStatusMeta } from '../runtime-status.js';
 
 // removed
 const ACTIVE_AGENT_SESSION_STORAGE_KEY = 'activeAgentConversationSessionId';
@@ -80,6 +81,12 @@ const styles = {
   statusCompleted: {
     backgroundColor: 'rgba(125, 211, 252, 0.12)',
     color: 'var(--info-color)',
+    border: 'none'
+  },
+
+  statusWaiting: {
+    backgroundColor: 'rgba(246, 200, 95, 0.12)',
+    color: 'var(--warning-color)',
     border: 'none'
   },
   
@@ -638,34 +645,32 @@ function AgentControl({
   
   // 获取状态样式
   const getStatusStyle = () => {
+    const statusMeta = getRuntimeStatusMeta(runtime.status);
     switch (runtime.status) {
       case 'running':
+      case 'initializing':
         return { ...styles.statusBadge, ...styles.statusRunning };
       case 'idle':
+      case 'ready':
         return { ...styles.statusBadge, ...styles.statusIdle };
       case 'error':
         return { ...styles.statusBadge, ...styles.statusError };
       case 'completed':
         return { ...styles.statusBadge, ...styles.statusCompleted };
+      case 'needs_user_input':
+        return { ...styles.statusBadge, ...styles.statusWaiting };
       default:
-        return styles.statusBadge;
+        return {
+          ...styles.statusBadge,
+          color: statusMeta.tone === 'muted' ? 'var(--text-muted)' : 'var(--text-color)',
+          backgroundColor: 'var(--surface-hover)',
+        };
     }
   };
   
   // 获取状态文本
   const getStatusText = () => {
-    switch (runtime.status) {
-      case 'running':
-        return '运行中';
-      case 'idle':
-        return '就绪';
-      case 'error':
-        return '错误';
-      case 'completed':
-        return '完成';
-      default:
-        return '⚪ 未知';
-    }
+    return getRuntimeStatusMeta(runtime.status).text;
   };
 
   const renderProjectTreeRows = (parentPath = '', depth = 0) => {

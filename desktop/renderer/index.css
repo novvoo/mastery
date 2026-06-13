@@ -5,26 +5,26 @@
 
 :root {
   /* 颜色主题 */
-  --primary-color: #4cc9f0;
-  --primary-dark: #2aa7cf;
-  --primary-soft: rgba(76, 201, 240, 0.14);
-  --secondary-color: #242b36;
-  --accent-color: #171c25;
-  --background-color: #0f1218;
-  --surface-color: #171c25;
-  --surface-raised: #1d2430;
-  --surface-hover: #242b36;
-  --border-color: rgba(148, 163, 184, 0.16);
-  --border-subtle: rgba(148, 163, 184, 0.08);
-  --text-color: #eef3f8;
-  --text-muted: #9aa6b2;
-  --text-dark: #6f7a86;
+  --primary-color: #63e6be;
+  --primary-dark: #38c79c;
+  --primary-soft: rgba(99, 230, 190, 0.14);
+  --secondary-color: #25272c;
+  --accent-color: #17191d;
+  --background-color: #0b0d10;
+  --surface-color: #15171b;
+  --surface-raised: #1b1e24;
+  --surface-hover: #242831;
+  --border-color: rgba(214, 221, 230, 0.14);
+  --border-subtle: rgba(214, 221, 230, 0.08);
+  --text-color: #f4f6f8;
+  --text-muted: #a5adb8;
+  --text-dark: #707986;
   
   /* 状态颜色 */
   --success-color: #5dd39e;
-  --warning-color: #f6c85f;
+  --warning-color: #f7c873;
   --error-color: #ff6b7a;
-  --info-color: #7dd3fc;
+  --info-color: #80d8ff;
   
   /* 字体 */
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -51,9 +51,9 @@
   --radius-full: 999px;
   
   /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
-  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.26);
-  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.36);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22);
+  --shadow-md: 0 18px 42px rgba(0, 0, 0, 0.28);
+  --shadow-lg: 0 28px 64px rgba(0, 0, 0, 0.42);
   
   /* 过渡 */
   --transition-fast: 0.15s ease;
@@ -70,11 +70,11 @@
   --z-toast: 300;
 
   /* 面板背景层级 (从深到浅) */
-  --bg-depth-0: #080b10;   /* 活动栏/最深层 */
-  --bg-depth-1: #0f1218;   /* 主背景/聊天区 */
-  --bg-depth-2: #141922;   /* 面板头部 */
-  --bg-depth-3: #171c25;   /* 面板主体 */
-  --bg-depth-4: #1d2430;   /* 面板内容/浮起 */
+  --bg-depth-0: #070809;   /* 活动栏/最深层 */
+  --bg-depth-1: #0b0d10;   /* 主背景/聊天区 */
+  --bg-depth-2: #111317;   /* 面板头部 */
+  --bg-depth-3: #15171b;   /* 面板主体 */
+  --bg-depth-4: #1b1e24;   /* 面板内容/浮起 */
 
   /* 焦点环 */
   --focus-ring: 0 0 0 2px var(--primary-color);

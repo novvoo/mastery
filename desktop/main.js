@@ -40,11 +40,19 @@ import { DeepSeekModelProvider } from '../src/models/deepseek-provider.js';
 import { OpenRouterModelProvider } from '../src/models/openrouter-provider.js';
 import { resolveModelCapabilities } from '../src/models/model-capabilities.js';
 import { createWorkspaceWatcher, listWorkspaceDirectory } from './workspace.js';
+import { createApplicationMenu } from './menu.js';
 import { listPreviews, startPreview, stopAllPreviews, stopPreview } from '../src/core/preview-server.js';
 
 /**
  * Electron 主进程应用类
  */
+
+// 全局处理关闭期间的 EIO 错误（stdout/stderr 管道已关闭时 console 输出会抛出）
+process.on('uncaughtException', (err) => {
+  if (err?.code === 'EIO' && err?.syscall === 'write') return;
+  console.error('Uncaught Exception:', err);
+});
+
 class ElectronMainApp {
   #desktopCore = null;
   #ipcAdapter = null;
@@ -182,181 +190,10 @@ class ElectronMainApp {
    * 创建应用菜单
    */
   #createMenu() {
-    const sendMenuAction = (command, payload) => {
-      const win = BrowserWindow.getAllWindows().find(w => !w.isDestroyed());
-      if (win) {
-        win.webContents.send('app:menuAction', { command, ...payload });
-      }
-    };
-    const template = [
-      // 应用菜单（macOS）
-      ...(process.platform === 'darwin' ? [{
-        label: app.name,
-        submenu: [
-          { role: 'about' },
-          { type: 'separator' },
-          { role: 'services' },
-          { type: 'separator' },
-          { role: 'hide' },
-          { role: 'hideOthers' },
-          { role: 'unhide' },
-          { type: 'separator' },
-          { role: 'quit' }
-        ]
-      }] : []),
-      
-      // 文件菜单
-      {
-        label: '文件',
-        submenu: [
-          {
-            label: '新建任务',
-            accelerator: 'CmdOrCtrl+N',
-            click: () => sendMenuAction('newTask')
-          },
-          {
-            label: '切换工作目录...',
-            accelerator: 'CmdOrCtrl+O',
-            click: () => this.#handleOpenProject()
-          },
-          { type: 'separator' },
-          {
-            label: '保存会话快照',
-            accelerator: 'CmdOrCtrl+S',
-            click: () => sendMenuAction('saveSession')
-          },
-          {
-            label: '导出对话',
-            accelerator: 'CmdOrCtrl+E',
-            click: () => sendMenuAction('exportConversation')
-          },
-          { type: 'separator' },
-          { role: 'quit', label: process.platform === 'darwin' ? '退出 AI Agent' : '退出' }
-        ]
-      },
-      
-      // 编辑菜单
-      {
-        label: '编辑',
-        submenu: [
-          { role: 'undo' },
-          { role: 'redo' },
-          { type: 'separator' },
-          { role: 'cut' },
-          { role: 'copy' },
-          { role: 'paste' },
-          { role: 'delete' },
-          { type: 'separator' },
-          { role: 'selectAll' }
-        ]
-      },
-      {
-        label: 'Agent',
-        submenu: [
-          {
-            label: '聚焦输入',
-            accelerator: 'CmdOrCtrl+Enter',
-            click: () => sendMenuAction('focusInput')
-          },
-          {
-            label: '停止执行',
-            accelerator: 'CmdOrCtrl+.',
-            click: () => sendMenuAction('stopAgent')
-          },
-          { type: 'separator' },
-          { label: '清除对话', click: () => sendMenuAction('clearConversation') },
-          { label: '文档搜索', click: () => sendMenuAction('insertDocSearch') },
-          { type: 'separator' },
-          { label: '模型配置...', accelerator: 'CmdOrCtrl+,', click: () => sendMenuAction('openModelConfig') }
-        ]
-      },
-      {
-        label: '技能',
-        submenu: [
-          { label: '诊断', click: () => sendMenuAction('insertCommand', { value: '/diagnose symptom=' }) },
-          { label: '代码审查', click: () => sendMenuAction('insertCommand', { value: '/review scope=' }) },
-          { label: 'TDD', click: () => sendMenuAction('insertCommand', { value: '/tdd phase=red component=' }) },
-          { label: '架构设计', click: () => sendMenuAction('insertCommand', { value: '/architect goal=' }) },
-          { label: '交接总结', click: () => sendMenuAction('insertCommand', { value: '/handoff session_summary=' }) }
-        ]
-      },
-      {
-        label: '视图',
-        submenu: [
-          { label: '切换侧边栏', accelerator: 'CmdOrCtrl+B', click: () => sendMenuAction('toggleSidebar') },
-          { label: '切换 Inspector', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendMenuAction('toggleSummary') },
-          { label: 'Agent 面板', click: () => sendMenuAction('showAgent') },
-          { label: '工具面板', accelerator: 'CmdOrCtrl+T', click: () => sendMenuAction('showTools') },
-          { type: 'separator' },
-          { label: '刷新项目文件', click: () => sendMenuAction('refreshProjectTree') },
-          { label: '刷新 RAG 文档', click: () => sendMenuAction('refreshRagDocs') },
-          { label: '预览当前项目', click: () => sendMenuAction('startPreview') },
-          { type: 'separator' },
-          { role: 'toggleDevTools' },
-          { role: 'togglefullscreen' }
-        ]
-      },
-      
-      // 视图菜单
-      {
-        label: '视图',
-        submenu: [
-          { role: 'reload' },
-          { role: 'forceReload' },
-          { role: 'toggleDevTools' },
-          { type: 'separator' },
-          { role: 'resetZoom' },
-          { role: 'zoomIn' },
-          { role: 'zoomOut' },
-          { type: 'separator' },
-          { role: 'togglefullscreen' }
-        ]
-      },
-      
-      // 窗口菜单
-      {
-        label: '窗口',
-        submenu: [
-          { role: 'minimize' },
-          { role: 'zoom' },
-          ...(process.platform === 'darwin' ? [
-            { type: 'separator' },
-            { role: 'front' },
-            { type: 'separator' },
-            { role: 'window' }
-          ] : [
-            { role: 'close' }
-          ])
-        ]
-      },
-      
-      // 帮助菜单
-      {
-        label: '帮助',
-        submenu: [
-          {
-            label: '文档',
-            click: async () => {
-              await shell.openExternal('https://github.com/novvoo/ai-engineering-mastery-agent#readme');
-            }
-          },
-          {
-            label: '报告问题',
-            click: async () => {
-              await shell.openExternal('https://github.com/novvoo/ai-engineering-mastery-agent/issues');
-            }
-          },
-          { type: 'separator' },
-          {
-            label: '关于',
-            click: () => this.#showAboutDialog()
-          }
-        ]
-      }
-    ];
-
-    const menu = Menu.buildFromTemplate(template);
-    Menu.setApplicationMenu(menu);
+    createApplicationMenu({
+      onOpenProject: () => this.#handleOpenProject(),
+      onShowAboutDialog: () => this.#showAboutDialog(),
+    });
   }
 
   /**
@@ -1279,7 +1116,7 @@ class ElectronMainApp {
    * 清理资源
    */
   async #cleanup() {
-    console.log('🧹 清理资源...');
+    try { console.log('🧹 清理资源...'); } catch { /* EIO during shutdown */ }
 
     if (this.#workspaceWatcher) {
       this.#workspaceWatcher.close();
@@ -1303,7 +1140,7 @@ class ElectronMainApp {
       this.#tray = null;
     }
 
-    console.log('✅ 资源清理完成');
+    try { console.log('✅ 资源清理完成'); } catch { /* EIO during shutdown */ }
   }
 
   /**
