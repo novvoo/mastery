@@ -5,9 +5,9 @@ export const styles = {
     display: 'flex',
     flexDirection: 'column',
     height: '100vh',
-    backgroundColor: 'var(--background-color)',
+    background: 'linear-gradient(180deg, #181719 0%, var(--background-color) 42%, #101012 100%)',
     color: 'var(--text-color)',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif',
+    fontFamily: 'var(--font-family)',
     overflow: 'hidden'
   },
   
@@ -17,16 +17,16 @@ export const styles = {
     alignItems: 'center',
     minHeight: `${LAYOUT.headerHeight}px`,
     padding: '0 var(--spacing-md)',
-    backgroundColor: 'var(--bg-depth-2)',
-    borderBottom: '1px solid var(--border-subtle)',
+    backgroundColor: 'rgba(20, 20, 22, 0.94)',
+    borderBottom: '1px solid rgba(232, 120, 74, 0.12)',
     gap: 'var(--spacing-sm)',
-    boxShadow: '0 1px 0 rgba(255, 255, 255, 0.02)'
+    boxShadow: '0 1px 0 rgba(245, 240, 235, 0.03), 0 10px 30px rgba(0, 0, 0, 0.18)'
   },
 
   topBarBrand: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    gap: '8px',
     minWidth: 0,
     WebkitAppRegion: 'no-drag'
   },
@@ -38,8 +38,9 @@ export const styles = {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'var(--primary-soft)',
-    color: 'var(--primary-color)',
+    background: 'linear-gradient(145deg, rgba(232, 120, 74, 0.22), rgba(232, 120, 74, 0.07))',
+    color: 'var(--text-color)',
+    border: '1px solid rgba(232, 120, 74, 0.35)',
     fontSize: '11px',
     fontWeight: 800,
     letterSpacing: 0
@@ -54,8 +55,9 @@ export const styles = {
 
   brandTitle: {
     fontSize: '13px',
-    fontWeight: 750,
-    color: 'var(--text-color)'
+    fontWeight: 700,
+    color: 'var(--text-color)',
+    letterSpacing: '0.01em'
   },
 
   brandSubtitle: {
@@ -149,8 +151,8 @@ export const styles = {
   activityRail: {
     width: `${LAYOUT.activityRailWidth}px`,
     flexShrink: 0,
-    backgroundColor: 'var(--bg-depth-0)',
-    borderRight: '1px solid var(--border-subtle)',
+    backgroundColor: '#101012',
+    borderRight: '1px solid rgba(245, 240, 235, 0.07)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -176,7 +178,7 @@ export const styles = {
 
   activityButtonActive: {
     backgroundColor: 'var(--primary-soft)',
-    border: 'none',
+    border: '1px solid rgba(232, 120, 74, 0.24)',
     color: 'var(--primary-color)'
   },
   
@@ -268,9 +270,9 @@ export const styles = {
   },
 
   inspectorTabActive: {
-    backgroundColor: 'var(--surface-hover)',
+    backgroundColor: 'var(--primary-soft)',
     border: 'none',
-    color: 'var(--text-color)'
+    color: 'var(--primary-color)'
   },
 
   iconButton: {
@@ -440,7 +442,7 @@ export const styles = {
     padding: '0 10px',
     borderRadius: '6px',
     border: '1px solid var(--border-subtle)',
-    backgroundColor: 'var(--surface-hover)',
+    backgroundColor: 'rgba(245, 240, 235, 0.055)',
     color: 'var(--text-color)',
     cursor: 'pointer',
     fontSize: '13px'
@@ -453,25 +455,27 @@ export const styles = {
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    backgroundColor: 'var(--background-color)'
+    background: 'linear-gradient(180deg, rgba(232, 120, 74, 0.055) 0%, rgba(20, 20, 22, 0) 170px), var(--background-color)'
   },
   
   chatHeader: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 'var(--spacing-sm) var(--spacing-xl)',
-    borderBottom: '1px solid var(--border-subtle)',
-    backgroundColor: 'var(--bg-depth-3)'
+    padding: '12px var(--spacing-xl)',
+    borderBottom: '1px solid rgba(245, 240, 235, 0.075)',
+    backgroundColor: 'rgba(20, 20, 22, 0.74)'
   },
   
   chatTitle: {
-    fontSize: '15px',
+    fontSize: '13px',
     fontWeight: '700',
     color: 'var(--text-color)',
     display: 'flex',
     alignItems: 'center',
-    gap: '8px'
+    gap: '9px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em'
   },
 
   chatTitleMark: {
@@ -481,17 +485,20 @@ export const styles = {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'var(--primary-soft)',
-    color: 'var(--primary-color)',
+    background: 'linear-gradient(145deg, rgba(232, 120, 74, 0.24), rgba(232, 120, 74, 0.08))',
+    color: 'var(--text-color)',
+    border: '1px solid rgba(232, 120, 74, 0.3)',
     fontSize: '10px',
     fontWeight: 800
   },
 
   chatMessageCount: {
     fontSize: '12px',
-    fontWeight: 400,
+    fontWeight: 500,
     color: 'var(--text-muted)',
-    marginLeft: '8px'
+    marginLeft: '8px',
+    textTransform: 'none',
+    letterSpacing: 0
   },
   
   chatStatus: {
@@ -522,13 +529,15 @@ export const styles = {
     flex: 1,
     minHeight: 0,
     overflow: 'hidden',
+    padding: '10px 14px 0',
   },
   
   // ================== 输入区域 ==================
   inputArea: {
-    padding: 'var(--spacing-sm) var(--spacing-xl)',
-    backgroundColor: 'var(--bg-depth-3)',
-    borderTop: '1px solid var(--border-subtle)'
+    padding: '12px var(--spacing-xl) 14px',
+    backgroundColor: 'rgba(20, 20, 22, 0.92)',
+    borderTop: '1px solid rgba(232, 120, 74, 0.12)',
+    boxShadow: '0 -18px 40px rgba(0, 0, 0, 0.22)'
   },
   
   inputWrapper: {
@@ -544,30 +553,31 @@ export const styles = {
     minHeight: '48px',
     maxHeight: '200px',
     padding: '12px 14px',
-    borderRadius: '12px',
-    border: 'none',
-    backgroundColor: 'var(--background-color)',
+    borderRadius: '8px',
+    border: '1px solid rgba(245, 240, 235, 0.1)',
+    backgroundColor: '#101011',
     color: 'var(--text-color)',
     fontSize: '14px',
     fontFamily: 'inherit',
     resize: 'none',
     outline: 'none',
     lineHeight: 1.5,
-    transition: 'border-color 0.2s, box-shadow 0.2s'
+    transition: 'border-color 0.2s, box-shadow 0.2s, background-color 0.2s'
   },
   
   inputTextareaFocused: {
-    border: 'none',
+    border: '1px solid rgba(232, 120, 74, 0.45)',
+    backgroundColor: '#131314',
     boxShadow: '0 0 0 3px var(--primary-soft)'
   },
   
   sendButton: {
     width: '44px',
     height: '44px',
-    borderRadius: '10px',
-    border: 'none',
+    borderRadius: '8px',
+    border: '1px solid rgba(245, 240, 235, 0.12)',
     backgroundColor: 'var(--primary-color)',
-    color: '#061018',
+    color: '#141416',
     cursor: 'pointer',
     fontSize: '18px',
     display: 'flex',
@@ -603,9 +613,9 @@ export const styles = {
   },
   
   tabButtonActive: {
-    backgroundColor: 'var(--surface-hover)',
+    backgroundColor: 'var(--primary-soft)',
     border: 'none',
-    color: 'var(--text-color)'
+    color: 'var(--primary-color)'
   },
 
   headerActionButton: {
@@ -623,7 +633,7 @@ export const styles = {
   
   // ================== 底部状态栏 ==================
   footer: {
-    backgroundColor: 'var(--bg-depth-2)',
+    backgroundColor: '#121214',
     borderTop: '1px solid var(--border-subtle)'
   },
   
@@ -631,7 +641,7 @@ export const styles = {
   modalBackdrop: {
     position: 'fixed',
     inset: 0,
-    backgroundColor: 'rgba(5, 8, 13, 0.72)',
+    backgroundColor: 'rgba(10, 10, 12, 0.78)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -642,7 +652,7 @@ export const styles = {
   modal: {
     width: 'min(560px, 100%)',
     backgroundColor: 'var(--surface-color)',
-    border: 'none',
+    border: '1px solid rgba(245, 240, 235, 0.1)',
     borderRadius: '8px',
     boxShadow: 'var(--shadow-lg)',
     overflow: 'hidden'
@@ -689,7 +699,7 @@ export const styles = {
     height: '36px',
     borderRadius: '6px',
     border: 'none',
-    backgroundColor: '#11161e',
+    backgroundColor: '#111113',
     color: 'var(--text-color)',
     padding: '0 10px'
   },
@@ -701,7 +711,7 @@ export const styles = {
     gap: '12px',
     padding: '14px 20px',
     borderTop: 'none',
-    backgroundColor: '#141922'
+    backgroundColor: '#151416'
   },
   
   modalActions: {
@@ -728,7 +738,7 @@ export const styles = {
     borderRadius: '6px',
     border: 'none',
     backgroundColor: 'var(--primary-color)',
-    color: '#061018',
+    color: '#141416',
     fontWeight: '700',
     cursor: 'pointer',
     minWidth: '108px',
@@ -749,4 +759,3 @@ export const styles = {
     whiteSpace: 'nowrap'
   }
 };
-

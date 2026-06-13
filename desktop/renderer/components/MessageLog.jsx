@@ -15,6 +15,13 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { MarkdownMessageContent } from './MarkdownMessageContent.jsx';
 import { styles } from './MessageLog.styles.js';
 import { useIPC } from '../hooks/useIPC.js';
+import { RuntimeDetailsPanel } from './message-log/RuntimeDetailsPanel.jsx';
+import {
+  buildRuntimeDetailsExportData,
+  createConversationGroups,
+  isPrimaryMessage,
+  isRuntimeDetailMessage,
+} from './message-log/runtime-details.js';
 
 // 样式定义
 /**
@@ -86,7 +93,6 @@ function MessageLog({ messages, status, onClear, onAskAgent }) {
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [showDetails, setShowDetails] = useState(new Set());
   const [copiedMessage, setCopiedMessage] = useState(null);
-  const [progress, setProgress] = useState(0);
   const [expandedRuntimePanels, setExpandedRuntimePanels] = useState(new Set());
   const [largeRuntimePanels, setLargeRuntimePanels] = useState(new Set());
   const [expandedRuntimeDetails, setExpandedRuntimeDetails] = useState(new Set());
@@ -95,22 +101,6 @@ function MessageLog({ messages, status, onClear, onAskAgent }) {
   const listRef = useRef(null);
   const runtimeDetailsRefs = useRef(new Map());
   const searchRef = useRef(null);
-  
-  // 模拟进度更新（运行时）
-  useEffect(() => {
-    if (status === 'running') {
-      const interval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 90) return prev;
-          return prev + Math.random() * 10;
-        });
-      }, 1000);
-      
-      return () => clearInterval(interval);
-    } else {
-      setProgress(0);
-    }
-  }, [status]);
   
   // 自动滚动到底部
   useEffect(() => {
@@ -125,34 +115,6 @@ function MessageLog({ messages, status, onClear, onAskAgent }) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
   }, [messages, autoScroll]);
-
-  function isRuntimeDetailMessage(msg) {
-    if (!msg) return false;
-    return (
-      msg.runtimeDetail === true ||
-      msg.event === 'agent:start' ||
-      msg.event === 'agent:complete' ||
-      msg.event === 'agent:error' ||
-      msg.event === 'agent:stop' ||
-      msg.event === 'status:update' ||
-      msg.event === 'tool:call' ||
-      msg.event === 'tool:result' ||
-      msg.event === 'tool:error' ||
-      ['agent', 'tool', 'tool_result', 'debug', 'event'].includes(msg.type)
-    );
-  }
-
-  function isStatusUpdateMessage(msg) {
-    return msg?.event === 'status:update';
-  }
-
-  function isPrimaryMessage(msg) {
-    if (!msg) return false;
-    if (!isRuntimeDetailMessage(msg)) {
-      return true;
-    }
-    return msg.event === 'agent:complete' && ['result', 'warning', 'success'].includes(msg.type);
-  }
 
   function messageMatchesFilter(msg) {
     return filter === 'all' || msg?.type === filter;
@@ -175,111 +137,6 @@ function MessageLog({ messages, status, onClear, onAskAgent }) {
     return messageMatchesFilter(msg) && messageMatchesSearch(msg);
   }
 
-  function formatRuntimeDetailValue(value) {
-    if (value === null || value === undefined || value === '') {
-      return '';
-    }
-    if (typeof value === 'string') {
-      return value;
-    }
-    try {
-      return JSON.stringify(value, null, 2);
-    } catch {
-      return String(value);
-    }
-  }
-
-  function getRuntimeDetailContent(msg) {
-    const sections = [];
-    const primaryText = formatRuntimeDetailValue(msg.content || msg.message || msg.details);
-
-    if (primaryText) {
-      sections.push(primaryText);
-    }
-
-    if (msg.toolName) {
-      sections.push(`工具: ${msg.toolName}`);
-    }
-
-    const argsText = formatRuntimeDetailValue(msg.args);
-    if (argsText) {
-      sections.push(`参数:\n${argsText}`);
-    }
-
-    const resultText = formatRuntimeDetailValue(msg.result);
-    if (resultText) {
-      // 收敛工具结果：移除首行的匹配率
-      const lines = resultText.split('\n');
-      const isScoreLine = lines.length > 1 && /^\[.+?\] → \d+% match/.test(lines[0].trim());
-      let clean = isScoreLine ? lines.slice(1).join('\n').trim() : resultText;
-      // 截断过长工具结果（保留前 12 行 + 最后 3 行）
-      const allLines = clean.split('\n');
-      if (allLines.length > 20) {
-        clean = allLines.slice(0, 12).join('\n') + '\n... [截断 ' + (allLines.length - 15) + ' 行] ...\n' + allLines.slice(-3).join('\n');
-      }
-      sections.push(`结果:\n${clean}`);
-    }
-
-    const payloadText = formatRuntimeDetailValue(msg.payload || msg.raw);
-    if (payloadText && !sections.includes(payloadText)) {
-      sections.push(`事件数据:\n${payloadText}`);
-    }
-
-    const fallbackFields = {
-      event: msg.event,
-      type: msg.type,
-      status: msg.status,
-      level: msg.level,
-      source: msg.source,
-      payloadSummary: msg.payloadSummary
-    };
-    const fallbackText = formatRuntimeDetailValue(Object.fromEntries(
-      Object.entries(fallbackFields).filter(([, value]) => value !== undefined && value !== '')
-    ));
-
-    return sections.join('\n\n') || fallbackText || '(无内容)';
-  }
-
-  function getRuntimeDetailPreviewText(msg) {
-    const directText = msg?.content || msg?.message || msg?.details;
-    if (directText) {
-      return String(directText).split('\n')[0].trim();
-    }
-    if (msg?.toolName) {
-      return `工具: ${msg.toolName}`;
-    }
-    if (msg?.result) {
-      return String(msg.result).split('\n')[0].trim();
-    }
-    const payload = msg?.payload || msg?.raw;
-    if (payload) {
-      return typeof payload === 'string'
-        ? payload.split('\n')[0].trim()
-        : JSON.stringify({
-          event: msg.event,
-          type: msg.type,
-          status: msg.status,
-          source: msg.source,
-        });
-    }
-    return '(无内容)';
-  }
-
-  function getStatusUpdateText(msg) {
-    if (!msg) {
-      return '准备执行';
-    }
-    const payload = msg.payload || msg.raw || {};
-    return (
-      msg.content ||
-      msg.message ||
-      payload.message ||
-      payload.status ||
-      msg.status ||
-      '状态更新'
-    );
-  }
-  
   // 搜索焦点
   useEffect(() => {
     if (searchExpanded && searchRef.current) {
@@ -300,42 +157,10 @@ function MessageLog({ messages, status, onClear, onAskAgent }) {
     filteredMessages.filter(isPrimaryMessage)
   ), [filteredMessages]);
 
-  const conversationGroups = useMemo(() => {
-    const groups = [];
-    let currentGroup = null;
-
-    const createGroup = (anchor, index) => ({
-      id: `conversation_${anchor || index}`,
-      messages: [],
-      runtimeDetails: []
-    });
-
-    messages.forEach((msg, index) => {
-      const isPrimary = isPrimaryMessage(msg);
-
-      if (isRuntimeDetailMessage(msg)) {
-        if (!currentGroup) {
-          currentGroup = createGroup(msg.id || msg.timestamp || 'runtime', index);
-          groups.push(currentGroup);
-        }
-        if (messageMatchesSearch(msg)) {
-          currentGroup.runtimeDetails.push(msg);
-        }
-      }
-
-      if (!isPrimary || !messageIsVisible(msg)) {
-        return;
-      }
-
-      if (!currentGroup || msg.type === 'user') {
-        currentGroup = createGroup(msg.id || msg.timestamp || 'message', index);
-        groups.push(currentGroup);
-      }
-      currentGroup.messages.push(msg);
-    });
-
-    return groups.filter(group => group.messages.length > 0 || group.runtimeDetails.length > 0);
-  }, [messages, filter, searchQuery]);
+  const conversationGroups = useMemo(() => createConversationGroups(messages, {
+    messageIsVisible,
+    messageMatchesSearch,
+  }), [messages, filter, searchQuery]);
 
   useEffect(() => {
     for (const group of conversationGroups) {
@@ -434,15 +259,7 @@ function MessageLog({ messages, status, onClear, onAskAgent }) {
     const details = group?.runtimeDetails || [];
     if (details.length === 0) return;
 
-    const exportData = details.map(msg => ({
-      event: msg.event || msg.type || 'unknown',
-      type: msg.type || 'unknown',
-      timestamp: msg.timestamp ? new Date(msg.timestamp).toISOString() : null,
-      toolName: msg.toolName || null,
-      content: msg.content || msg.message || null,
-      args: msg.args || null,
-      result: msg.result || null,
-    }));
+    const exportData = buildRuntimeDetailsExportData(details);
 
     const blob = new Blob(
       [JSON.stringify(exportData, null, 2)],
@@ -456,6 +273,14 @@ function MessageLog({ messages, status, onClear, onAskAgent }) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }, []);
+
+  const handleRuntimeDetailsRefChange = useCallback((groupId, node) => {
+    if (node) {
+      runtimeDetailsRefs.current.set(groupId, node);
+    } else {
+      runtimeDetailsRefs.current.delete(groupId);
+    }
   }, []);
   
   // 处理自动滚动变更
@@ -794,211 +619,22 @@ function MessageLog({ messages, status, onClear, onAskAgent }) {
     );
   };
   
-  const renderRuntimeDetailsPanel = (group, isActiveGroup = false) => {
-    const runtimeDetails = group?.runtimeDetails || [];
-    const visibleRuntimeDetails = runtimeDetails.filter(msg => !isStatusUpdateMessage(msg));
-    const latestStatusUpdate = [...runtimeDetails].reverse().find(isStatusUpdateMessage);
-    const isRunningGroup = status === 'running' && isActiveGroup;
-    const isExpanded = expandedRuntimePanels.has(group.id);
-    const isLarge = largeRuntimePanels.has(group.id);
-    const statusText = isRunningGroup
-      ? getStatusUpdateText(latestStatusUpdate)
-      : latestStatusUpdate
-        ? getStatusUpdateText(latestStatusUpdate)
-        : '执行完成';
-
-    // 即使没有可见运行详情也保留面板头部（防止 Agent 回答后整个面板消失）
-    if (visibleRuntimeDetails.length === 0 && !isRunningGroup) {
-      // 返回一个精简的头部，让用户知道执行过程存在
-      return (
-        <div key={group.id + '_runtime_empty'} style={styles.runtimeDetailsPanel}>
-          <div style={{...styles.runtimeDetailsHeader, opacity: 0.5, cursor: 'default'}}>
-            <span style={styles.runtimeDetailsTitle}>
-              <span>运行详情</span>
-            </span>
-            <span style={styles.runtimeDetailsActions}>
-              <span style={styles.runtimeStatusChip} title={statusText}>{statusText}</span>
-              <span>0 条</span>
-            </span>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div key={`${group.id}_runtime`} style={styles.runtimeDetailsPanel}>
-        <div
-          style={{
-            ...styles.runtimeDetailsHeader,
-            ...styles.runtimeDetailsHeaderInteractive
-          }}
-          onClick={() => handleRuntimeDetailsToggle(group.id)}
-          title={isExpanded ? '收起运行详情' : '展开运行详情'}
-        >
-          <span style={styles.runtimeDetailsTitle}>
-            {isRunningGroup && <span style={styles.spinner}></span>}
-            <span>{isRunningGroup ? '执行过程' : '运行详情'}</span>
-          </span>
-          <span style={styles.runtimeDetailsActions}>
-            <span style={styles.runtimeStatusChip} title={statusText}>{statusText}</span>
-            <span>{visibleRuntimeDetails.length} 条</span>
-            <button
-              type="button"
-              style={styles.runtimeDetailsToggle}
-              title="导出运行详情为 JSON"
-              aria-label="导出运行详情"
-              onClick={(event) => {
-                event.stopPropagation();
-                handleExportRuntimeDetails(group);
-              }}
-            >
-              ↓
-            </button>
-            <button
-              type="button"
-              style={styles.runtimeDetailsToggle}
-              title={isLarge ? '还原执行过程窗口' : '放大执行过程窗口'}
-              aria-label={isLarge ? '还原执行过程窗口' : '放大执行过程窗口'}
-              onClick={(event) => {
-                event.stopPropagation();
-                handleRuntimePanelSizeToggle(group.id);
-              }}
-            >
-              {isLarge ? '↙' : '⛶'}
-            </button>
-            <button
-              type="button"
-              style={styles.runtimeDetailsToggle}
-              title={isExpanded ? '收起运行详情' : '展开运行详情'}
-              aria-label={isExpanded ? '收起运行详情' : '展开运行详情'}
-              onClick={(event) => {
-                event.stopPropagation();
-                handleRuntimeDetailsToggle(group.id);
-              }}
-            >
-              {isExpanded ? '▾' : '▸'}
-            </button>
-          </span>
-        </div>
-        {isRunningGroup && (
-          <div style={styles.runtimeProgress}>
-            <div style={styles.runtimeProgressText}>
-              <span style={styles.runtimeProgressLabel}>{statusText}</span>
-              <span>{Math.round(progress)}%</span>
-            </div>
-            <div style={styles.progressBar}>
-              <div style={{
-                ...styles.progressFill,
-                width: `${progress}%`
-              }} />
-            </div>
-          </div>
-        )}
-        {visibleRuntimeDetails.length > 0 && (
-          <div
-            ref={(node) => {
-              if (node) {
-                runtimeDetailsRefs.current.set(group.id, node);
-              } else {
-                runtimeDetailsRefs.current.delete(group.id);
-              }
-            }}
-            style={{
-              ...styles.runtimeDetailsList,
-              ...(isLarge
-                ? styles.runtimeDetailsListLarge
-                : isExpanded
-                  ? styles.runtimeDetailsListExpanded
-                  : styles.runtimeDetailsListCollapsed)
-            }}
-          >
-            {visibleRuntimeDetails.map((msg, index) => {
-              const runtimeDetailId = `${group.id}_${msg.id || `runtime_detail_${msg.timestamp || 'no_time'}_${index}`}`;
-              const isExpanded = expandedRuntimeDetails.has(runtimeDetailId);
-              const typeDisplay = getTypeDisplay(msg.type);
-              const isDebug = msg.type === 'debug';
-              const content = isExpanded ? getRuntimeDetailContent(msg) : '';
-              const firstLine = isExpanded
-                ? (content ? content.split('\n')[0].trim() : '(无内容)')
-                : getRuntimeDetailPreviewText(msg);
-              const scoreInfo = msg.type === 'tool_result' && typeof msg.result === 'string'
-                ? ((m) => m ? { file: m[1], score: parseInt(m[2]) } : null)(msg.result.match(/^\[(.+?)\] → (\d+)% match/))
-                : null;
-              return (
-                <div
-                  key={runtimeDetailId}
-                  style={{
-                    ...styles.runtimeDetailItem,
-                    ...styles.runtimeDetailItemInteractive,
-                    ...(isDebug ? styles.runtimeDetailItemDebug : styles.runtimeDetailItemStatus),
-                    ...(isExpanded ? {} : { padding: '3px 8px' })
-                  }}
-                  onClick={() => handleRuntimeDetailToggle(runtimeDetailId)}
-                  title={isExpanded ? '收起' : '展开'}
-                >
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: '8px',
-                    color: 'var(--text-dark)',
-                    fontSize: '11px',
-                    ...(isExpanded ? { marginBottom: '4px' } : {})
-                  }}>
-                    <span style={{
-                      flex: isExpanded ? '0 0 auto' : 1,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}>
-                      <span style={{ flexShrink: 0 }}>{typeDisplay.text}</span>
-                      {scoreInfo && (
-                        <span style={{padding:'1px 6px',borderRadius:'3px',backgroundColor:'var(--primary-soft)',color:'var(--primary-color)',fontSize:'10px',fontWeight:'700',flexShrink:0,marginRight:'2px'}}>
-                          {scoreInfo.score}%
-                        </span>
-                      )}
-                      {!isExpanded && (
-                        <span style={{
-                          marginLeft: '4px',
-                          color: 'var(--text-muted)',
-                          fontWeight: 400,
-                          fontSize: '11px',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap'
-                        }}>
-                          {firstLine.substring(0, 120)}
-                        </span>
-                      )}
-                    </span>
-                    <span style={{ flexShrink: 0 }}>
-                      {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
-                      <span style={{ marginLeft: '6px', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                        {isExpanded ? '▾' : '▸'}
-                      </span>
-                    </span>
-                  </div>
-                  {isExpanded && (
-                    <div
-                      style={{
-                        ...styles.runtimeDetailContent,
-                        ...styles.runtimeDetailContentExpanded
-                      }}
-                    >
-                      {content || '(无内容)'}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  };
+  const renderRuntimeDetailsPanel = (group, isActiveGroup = false) => (
+    <RuntimeDetailsPanel
+      group={group}
+      status={status}
+      isActiveGroup={isActiveGroup}
+      isExpanded={expandedRuntimePanels.has(group.id)}
+      isLarge={largeRuntimePanels.has(group.id)}
+      expandedRuntimeDetails={expandedRuntimeDetails}
+      getTypeDisplay={getTypeDisplay}
+      onExport={handleExportRuntimeDetails}
+      onPanelSizeToggle={handleRuntimePanelSizeToggle}
+      onRefChange={handleRuntimeDetailsRefChange}
+      onRuntimeDetailToggle={handleRuntimeDetailToggle}
+      onRuntimeDetailsToggle={handleRuntimeDetailsToggle}
+    />
+  );
 
   const renderConversationGroup = (group, groupIndex) => {
     const isActiveGroup = groupIndex === conversationGroups.length - 1;

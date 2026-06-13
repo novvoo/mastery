@@ -5,7 +5,7 @@ export const styles = {
     flexDirection: 'column',
     height: '100%',
     overflow: 'hidden',
-    backgroundColor: '#11161e',
+    backgroundColor: 'transparent',
     border: 'none',
     boxShadow: 'none'
   },
@@ -17,7 +17,7 @@ export const styles = {
     minHeight: '32px',
     padding: '0 10px',
     borderBottom: '1px solid var(--border-subtle)',
-    backgroundColor: 'var(--surface-color)'
+    backgroundColor: 'rgba(20, 20, 22, 0.76)'
   },
   
   title: {
@@ -48,7 +48,7 @@ export const styles = {
     padding: '0 9px',
     borderRadius: '6px',
     border: 'none',
-    backgroundColor: '#0f141c',
+    backgroundColor: '#101011',
     color: 'var(--text-color)',
     fontSize: '12px',
     transition: 'width 0.2s ease'
@@ -63,7 +63,7 @@ export const styles = {
     padding: '0 9px',
     borderRadius: '6px',
     border: 'none',
-    backgroundColor: 'var(--surface-hover)',
+    backgroundColor: 'rgba(245, 240, 235, 0.055)',
     color: 'var(--text-color)',
     cursor: 'pointer',
     fontSize: '12px',
@@ -84,7 +84,7 @@ export const styles = {
     gap: '2px',
     padding: '2px',
     borderRadius: '7px',
-    backgroundColor: '#0f141c',
+    backgroundColor: '#101011',
     border: 'none'
   },
   
@@ -107,7 +107,7 @@ export const styles = {
   messageList: {
     flex: 1,
     overflowY: 'auto',
-    padding: '6px 8px',
+    padding: '10px 8px 14px',
     scrollBehavior: 'smooth',
     display: 'flex',
     flexDirection: 'column'
@@ -117,7 +117,7 @@ export const styles = {
     marginBottom: '12px',
     borderRadius: '8px',
     border: '1px solid var(--border-subtle)',
-    backgroundColor: 'rgba(15, 20, 28, 0.74)',
+    backgroundColor: 'rgba(16, 16, 17, 0.78)',
     overflow: 'hidden',
     position: 'relative',
     zIndex: 2
@@ -220,7 +220,7 @@ export const styles = {
   runtimeDetailItem: {
     borderRadius: '6px',
     border: 'none',
-    backgroundColor: 'rgba(17, 22, 30, 0.68)',
+    backgroundColor: 'rgba(245, 240, 235, 0.045)',
     padding: '8px',
     color: 'var(--text-muted)',
     fontSize: '12px',
@@ -233,12 +233,12 @@ export const styles = {
 
   runtimeDetailItemDebug: {
     border: 'none',
-    backgroundColor: 'rgba(108, 117, 125, 0.08)'
+    backgroundColor: 'rgba(138, 133, 128, 0.08)'
   },
 
   runtimeDetailItemStatus: {
     border: 'none',
-    backgroundColor: 'rgba(125, 211, 252, 0.06)'
+    backgroundColor: 'rgba(232, 120, 74, 0.06)'
   },
 
   runtimeDetailMeta: {
@@ -296,7 +296,7 @@ export const styles = {
   
   // 消息项外层容器
   messageItem: {
-    marginBottom: '4px',
+    marginBottom: '8px',
     display: 'flex',
     flexDirection: 'column',
     border: 'none',
@@ -322,20 +322,22 @@ export const styles = {
 
   // 消息气泡
   messageBubble: {
-    borderRadius: '12px',
-    padding: '8px 12px',
-    backgroundColor: 'rgba(148, 163, 184, 0.06)',
+    borderRadius: '8px',
+    padding: '10px 12px',
+    backgroundColor: 'rgba(245, 240, 235, 0.055)',
+    border: '1px solid rgba(245, 240, 235, 0.07)',
     maxWidth: '85%'
   },
 
   messageBubbleUser: {
-    backgroundColor: 'rgba(148, 163, 184, 0.10)',
-    borderRadius: '12px 12px 4px 12px',
+    backgroundColor: 'rgba(232, 120, 74, 0.12)',
+    borderColor: 'rgba(232, 120, 74, 0.22)',
+    borderRadius: '8px 8px 3px 8px',
     maxWidth: '80%'
   },
 
   messageBubbleAgent: {
-    borderRadius: '12px 12px 12px 4px',
+    borderRadius: '8px 8px 8px 3px',
     maxWidth: '85%'
   },
 
@@ -358,7 +360,7 @@ export const styles = {
   },
   
   typeInfo: {
-    backgroundColor: 'rgba(125, 211, 252, 0.12)',
+    backgroundColor: 'rgba(157, 183, 212, 0.12)',
     color: 'var(--info-color)',
     border: 'none'
   },
@@ -382,8 +384,8 @@ export const styles = {
   },
   
   typeDebug: {
-    backgroundColor: 'rgba(108, 117, 125, 0.2)',
-    color: '#6c757d',
+    backgroundColor: 'rgba(138, 133, 128, 0.16)',
+    color: 'var(--text-dark)',
     border: 'none'
   },
   
@@ -400,8 +402,8 @@ export const styles = {
   },
   
   typeResult: {
-    backgroundColor: 'rgba(0, 123, 255, 0.2)',
-    color: '#007bff',
+    backgroundColor: 'rgba(157, 183, 212, 0.12)',
+    color: 'var(--info-color)',
     border: 'none'
   },
   
@@ -412,7 +414,7 @@ export const styles = {
   },
 
   typeAgent: {
-    backgroundColor: 'rgba(76, 201, 240, 0.12)',
+    backgroundColor: 'var(--primary-soft)',
     color: 'var(--primary-color)',
     border: 'none'
   },
@@ -477,7 +479,7 @@ export const styles = {
 
   emptyChip: {
     padding: '5px 12px',
-    backgroundColor: '#151a23',
+    backgroundColor: 'rgba(245, 240, 235, 0.06)',
     border: 'none',
     borderRadius: '999px',
     fontSize: '12px',
@@ -488,7 +490,7 @@ export const styles = {
   detailPanel: {
     marginTop: '8px',
     padding: '12px',
-    backgroundColor: '#0f141c',
+    backgroundColor: '#101011',
     borderRadius: '6px',
     border: '1px solid var(--border-subtle)',
     fontSize: '12px',
@@ -527,7 +529,7 @@ export const styles = {
     color: 'var(--text-muted)',
     textAlign: 'center',
     padding: '32px',
-    background: 'radial-gradient(circle at center, rgba(76, 201, 240, 0.06), transparent 42%)'
+    background: 'linear-gradient(180deg, rgba(232, 120, 74, 0.06), transparent 44%)'
   },
   
   emptyIcon: {
@@ -596,7 +598,7 @@ export const styles = {
     alignItems: 'center',
     gap: '8px',
     padding: '6px 10px',
-    backgroundColor: 'var(--border-color)',
+    backgroundColor: 'rgba(245, 240, 235, 0.07)',
     borderRadius: '4px',
     marginBottom: '4px',
     marginTop: '8px',
@@ -626,7 +628,7 @@ export const styles = {
     right: '20px',
     padding: '8px 16px',
     backgroundColor: 'var(--success-color)',
-    color: '#ffffff',
+    color: '#141416',
     borderRadius: '4px',
     fontSize: '12px',
     boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
@@ -634,5 +636,4 @@ export const styles = {
     zIndex: 1000
   }
 };
-
 

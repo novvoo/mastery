@@ -58,6 +58,7 @@ export default [
         beforeAll: "readonly",
         afterAll: "readonly",
         expect: "readonly",
+        performance: "readonly",
       },
     },
     rules: {

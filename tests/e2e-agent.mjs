@@ -353,6 +353,51 @@ async function test_e2e_max_iterations() {
 }
 
 // ============================================================================
+// 测试 6: Native tool_calls — 真实模型 SDK 风格函数调用
+// ============================================================================
+async function test_e2e_native_tool_calls() {
+  console.log('\n[E2E-6] Native tool_calls 函数调用链路');
+  const workDir = createTempDir('e2e-6');
+
+  const toolRegistry = createToolRegistry();
+  const memory = createMockMemory();
+
+  const provider = createScriptedModelProvider([
+    {
+      text: '',
+      toolCalls: [{
+        id: 'call_add_1',
+        type: 'function',
+        function: {
+          name: 'add',
+          arguments: JSON.stringify({ a: 7, b: 8 }),
+        },
+      }],
+      finishReason: 'tool_calls',
+    },
+    {
+      text: 'FINAL_ANSWER: native tool_calls 已执行，7 + 8 = 15。',
+      finishReason: 'stop',
+    },
+  ]);
+
+  const agent = new ReActAgent(provider, toolRegistry, memory, {
+    workingDirectory: workDir,
+    model: 'mock-model',
+    maxIterations: 5,
+    toolResultCacheEnabled: false,
+  }, silentUI);
+
+  const result = await agent.run('用 native tool call 帮我计算 7 + 8');
+
+  assert('native tool_calls 返回 completed', result.status === 'completed', `实际=${result.status}`);
+  assert('provider 被调用了 2 次', provider.callCount === 2, `实际=${provider.callCount}`);
+  assert('answer 包含 native tool_calls 计算结果', /15|native tool_calls/.test(result.answer || ''), `answer=${result.answer}`);
+
+  try { rmSync(workDir, { recursive: true, force: true }); } catch {}
+}
+
+// ============================================================================
 // 主流程
 // ============================================================================
 async function main() {
@@ -365,6 +410,7 @@ async function main() {
   await test_e2e_direct_answer();
   await test_e2e_token_budget();
   await test_e2e_max_iterations();
+  await test_e2e_native_tool_calls();
 
   console.log('\n' + '='.repeat(60));
   console.log(`  E2E 测试结果`);

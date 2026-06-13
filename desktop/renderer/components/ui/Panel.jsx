@@ -12,11 +12,11 @@ import React from 'react';
 
 const VARIANTS = {
   sidebar: {
-    backgroundColor: 'var(--surface-color)',
+    backgroundColor: 'rgba(25, 25, 27, 0.96)',
     borderRight: '1px solid var(--border-subtle)',
   },
   inspector: {
-    backgroundColor: 'var(--surface-color)',
+    backgroundColor: 'rgba(25, 25, 27, 0.96)',
     borderLeft: '1px solid var(--border-subtle)',
   },
   card: {
@@ -37,7 +37,7 @@ export function PanelHeader({ title, actions, style }) {
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: 'var(--spacing-sm)',
-        backgroundColor: 'var(--surface-raised)',
+        backgroundColor: 'rgba(20, 20, 22, 0.82)',
         ...style,
       }}
     >
@@ -47,7 +47,7 @@ export function PanelHeader({ title, actions, style }) {
           fontWeight: 800,
           color: 'var(--text-muted)',
           textTransform: 'uppercase',
-          letterSpacing: '0.5px',
+          letterSpacing: '0.08em',
         }}>
           {title}
         </span>

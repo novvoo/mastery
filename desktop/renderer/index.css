@@ -5,30 +5,31 @@
 
 :root {
   /* 颜色主题 */
-  --primary-color: #63e6be;
-  --primary-dark: #38c79c;
-  --primary-soft: rgba(99, 230, 190, 0.14);
-  --secondary-color: #25272c;
-  --accent-color: #17191d;
-  --background-color: #0b0d10;
-  --surface-color: #15171b;
-  --surface-raised: #1b1e24;
-  --surface-hover: #242831;
-  --border-color: rgba(214, 221, 230, 0.14);
-  --border-subtle: rgba(214, 221, 230, 0.08);
-  --text-color: #f4f6f8;
-  --text-muted: #a5adb8;
-  --text-dark: #707986;
+  --primary-color: #E8784A;
+  --primary-dark: #C95F36;
+  --primary-soft: rgba(232, 120, 74, 0.16);
+  --primary-faint: rgba(232, 120, 74, 0.07);
+  --secondary-color: #24211f;
+  --accent-color: #191715;
+  --background-color: #141416;
+  --surface-color: #19191b;
+  --surface-raised: #202023;
+  --surface-hover: #292623;
+  --border-color: rgba(245, 240, 235, 0.14);
+  --border-subtle: rgba(245, 240, 235, 0.08);
+  --text-color: #F5F0EB;
+  --text-muted: #B6AEA7;
+  --text-dark: #8A8580;
   
   /* 状态颜色 */
-  --success-color: #5dd39e;
+  --success-color: #88D4A2;
   --warning-color: #f7c873;
   --error-color: #ff6b7a;
-  --info-color: #80d8ff;
+  --info-color: #9DB7D4;
   
   /* 字体 */
-  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  --font-mono: 'Monaco', 'Menlo', 'Consolas', monospace;
+  --font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+  --font-mono: "SFMono-Regular", 'Monaco', 'Menlo', 'Consolas', monospace;
   --font-size-xs: 11px;
   --font-size-sm: 12px;
   --font-size-base: 14px;
@@ -51,9 +52,9 @@
   --radius-full: 999px;
   
   /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22);
-  --shadow-md: 0 18px 42px rgba(0, 0, 0, 0.28);
-  --shadow-lg: 0 28px 64px rgba(0, 0, 0, 0.42);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-md: 0 18px 42px rgba(0, 0, 0, 0.32);
+  --shadow-lg: 0 28px 64px rgba(0, 0, 0, 0.48);
   
   /* 过渡 */
   --transition-fast: 0.15s ease;
@@ -70,11 +71,11 @@
   --z-toast: 300;
 
   /* 面板背景层级 (从深到浅) */
-  --bg-depth-0: #070809;   /* 活动栏/最深层 */
-  --bg-depth-1: #0b0d10;   /* 主背景/聊天区 */
-  --bg-depth-2: #111317;   /* 面板头部 */
-  --bg-depth-3: #15171b;   /* 面板主体 */
-  --bg-depth-4: #1b1e24;   /* 面板内容/浮起 */
+  --bg-depth-0: #0d0d0f;   /* 活动栏/最深层 */
+  --bg-depth-1: #141416;   /* 主背景/聊天区 */
+  --bg-depth-2: #181719;   /* 面板头部 */
+  --bg-depth-3: #1b1a1c;   /* 面板主体 */
+  --bg-depth-4: #242224;   /* 面板内容/浮起 */
 
   /* 焦点环 */
   --focus-ring: 0 0 0 2px var(--primary-color);
@@ -97,7 +98,7 @@ html, body, #root {
 body {
   font-family: var(--font-family);
   font-size: var(--font-size-base);
-  background-color: var(--background-color);
+  background: var(--background-color);
   color: var(--text-color);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -121,7 +122,7 @@ select {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #354052;
+  background: #3a3530;
   border-radius: var(--radius-sm);
 }
 
@@ -132,14 +133,14 @@ select {
 /* 选择文本 */
 ::selection {
   background: var(--primary-color);
-  color: white;
+  color: #141416;
 }
 
 /* 输入框样式 */
 input, textarea, select {
   font-family: inherit;
   font-size: inherit;
-  background-color: #10151d;
+  background-color: #111113;
   color: var(--text-color);
   border: none;
   border-radius: var(--radius-md);
@@ -172,7 +173,7 @@ button {
 }
 
 button:hover:not(:disabled) {
-  background-color: #2c3544;
+  background-color: var(--surface-hover);
 }
 
 button:disabled {
@@ -182,7 +183,7 @@ button:disabled {
 
 button.primary {
   background-color: var(--primary-color);
-  color: white;
+  color: #141416;
 }
 
 button.primary:hover:not(:disabled) {

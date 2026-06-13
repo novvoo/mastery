@@ -46,14 +46,6 @@ export function TopBar({
         </Button>
       </div>
 
-      <div style={styles.topBarBrand}>
-        <div style={styles.brandMark}>AI</div>
-        <div style={styles.brandText}>
-          <span style={styles.brandTitle}>Engineering Agent</span>
-          <span style={styles.brandSubtitle}>Desktop Workbench</span>
-        </div>
-      </div>
-
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', WebkitAppRegion: 'no-drag' }}>
         <Badge variant={runtimeStatusMeta.badgeVariant} size="md">
           <span>{runtimeStatusMeta.icon}</span>

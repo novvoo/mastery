@@ -20,7 +20,7 @@ export default defineConfig(({ command }) => ({
   build: {
     outDir: path.resolve(rendererRoot, './dist'),
     emptyOutDir: true,
-    minify: 'terser',
+    minify: 'esbuild',
     rollupOptions: {
       input: {
         main: path.resolve(rendererRoot, './index.html'),

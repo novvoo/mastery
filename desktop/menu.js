@@ -1,4 +1,7 @@
-import { app, BrowserWindow, Menu, shell } from 'electron';
+import electron from 'electron';
+import { APP_NAME } from './app-metadata.js';
+
+const { BrowserWindow, Menu, shell } = electron;
 
 export function createApplicationMenu({
   onOpenProject,
@@ -13,9 +16,9 @@ export function createApplicationMenu({
 
   const template = [
     ...(process.platform === 'darwin' ? [{
-      label: app.name,
+      label: APP_NAME,
       submenu: [
-        { role: 'about' },
+        { label: `关于 ${APP_NAME}`, click: onShowAboutDialog },
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
@@ -35,7 +38,7 @@ export function createApplicationMenu({
         { label: '保存会话快照', accelerator: 'CmdOrCtrl+S', click: () => sendMenuAction('saveSession') },
         { label: '导出对话', accelerator: 'CmdOrCtrl+E', click: () => sendMenuAction('exportConversation') },
         { type: 'separator' },
-        { role: 'quit', label: process.platform === 'darwin' ? '退出 AI Agent' : '退出' }
+        { role: 'quit', label: process.platform === 'darwin' ? `退出 ${APP_NAME}` : '退出' }
       ]
     },
     {

@@ -21,8 +21,8 @@ const VARIANTS = {
   },
   primary: {
     backgroundColor: 'var(--primary-color)',
-    color: '#061018',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
+    color: '#141416',
+    border: '1px solid rgba(245, 240, 235, 0.14)',
   },
   danger: {
     backgroundColor: 'var(--error-color)',
@@ -35,7 +35,7 @@ const VARIANTS = {
     border: 'none',
   },
   icon: {
-    backgroundColor: 'var(--surface-hover)',
+    backgroundColor: 'rgba(245, 240, 235, 0.055)',
     color: 'var(--text-muted)',
     border: '1px solid var(--border-subtle)',
   },
@@ -81,7 +81,7 @@ export default function Button({
         whiteSpace: 'nowrap',
         transition: 'all var(--transition-fast)',
         opacity: disabled ? 0.5 : 1,
-        boxShadow: variant === 'ghost' ? 'none' : 'var(--shadow-sm)',
+        boxShadow: variant === 'ghost' ? 'none' : '0 1px 0 rgba(245, 240, 235, 0.04)',
         ...sizeStyles,
         ...variantStyles,
         ...style,

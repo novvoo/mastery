@@ -24,6 +24,7 @@
     "test:all": "node tests/core-integration.mjs && node tests/e2e-agent.mjs",
     "test:e2e": "node tests/e2e-agent.mjs",
     "test:core": "node tests/core-integration.mjs",
+    "test:coverage": "bun test tests/tools tests/desktop tests/scripts tests/entrypoints --coverage && node tests/core-integration.mjs && node tests/e2e-agent.mjs",
     "lint": "eslint src tests",
     "lint:src": "eslint src",
     "lint:tests": "eslint tests",
