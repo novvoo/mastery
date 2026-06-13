@@ -44,7 +44,7 @@
     "release:cli": "bun scripts/release-cli.js",
     "release:desktop": "bun scripts/release-desktop.js",
     "release:all": "bun scripts/release-all.js",
-    "publish": "npm run release:all"
+    "publish": "bun run release:all"
   },
   "keywords": [
     "ai-agent",

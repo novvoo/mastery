@@ -74,12 +74,12 @@ fi
 # 安装依赖（如果需要）
 if [ ! -d "node_modules" ]; then
     echo "📦 Installing dependencies..."
-    npm install
+    bun install
 fi
 
 # 启动应用
-echo "✨ Starting agent..."
-node src/index.js "$@"
+echo "✨ Starting agent...
+bun src/index.js "$@"
 EOF
 
 chmod +x ${BUILD_DIR}/${PACKAGE_NAME}/start.sh
@@ -111,12 +111,12 @@ if not exist .env (
 :: Install dependencies if needed
 if not exist node_modules (
     echo 📦 Installing dependencies...
-    npm install
+    bun install
 )
 
 :: Start application
 echo ✨ Starting agent...
-node src/index.js %*
+bun src/index.js %*
 EOF
 
 # 创建安装脚本
@@ -139,18 +139,18 @@ fi
 NODE_VERSION=$(node --version)
 echo "✅ Node.js version: ${NODE_VERSION}"
 
-# 检查 npm
-if ! command -v npm &> /dev/null; then
-    echo "❌ npm not found. Please install npm."
+# 检查 bun
+if ! command -v bun &> /dev/null; then
+    echo "❌ bun not found. Please install bun: https://bun.sh/"
     exit 1
 fi
 
-echo "✅ npm version: $(npm --version)"
+echo "✅ bun version: $(bun --version)"
 echo ""
 
 # 安装依赖
 echo "📦 Installing dependencies..."
-npm install
+bun install
 
 # 创建 .env 文件
 if [ ! -f .env ]; then
@@ -170,7 +170,7 @@ echo "🚀 To start the agent, run:"
 echo "   ./start.sh"
 echo ""
 echo "🧪 To run tests:"
-echo "   npm test"
+echo "   bun test"
 echo ""
 EOF
 
@@ -203,7 +203,7 @@ echo "✅ Node.js ${NODE_VERSION}"
 # 检查依赖
 echo "🔍 Checking dependencies..."
 if [ ! -d "node_modules" ]; then
-    echo "❌ Dependencies not installed. Run: npm install"
+    echo "❌ Dependencies not installed. Run: bun install"
     exit 1
 fi
 echo "✅ Dependencies installed"
@@ -219,7 +219,7 @@ echo "✅ Configuration file exists"
 # 运行测试
 echo ""
 echo "🧪 Running tests..."
-npm test
+bun test
 
 echo ""
 echo "✅ Verification complete!"

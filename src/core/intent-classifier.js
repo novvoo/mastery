@@ -1,9 +1,25 @@
 /**
- * LLM-backed intent classification for short or implicit user requests.
+ * IntentClassifier — 统一路由入口（合并了原 TaskClassifier）
  *
- * This layer does not execute tools. It turns raw user input into a structured
- * routing hint that the ReAct loop can use before deciding its first action.
+ * 职责：
+ *   1. LLM 意图识别 → intent（recommendedTools, firstActionHint 等）
+ *   2. 任务分类 → taskProfile（isCodingTask, isModificationTask, riskLevel 等）
+ *
+ * 原先两步路由：Intent → TaskClassifier → toolRouter
+ * 现在一步：IntentClassifier.classify() + .classifyTask()
  */
+
+import {
+  quickAssess,
+  deepAssess,
+  mergeIntentProfile,
+  computeIterationBudget,
+  getCompletionGates,
+} from './risk-budget.js';
+import {
+  SEMANTIC_RISK_DOMAINS,
+  MAX_ITERATIONS_DEFAULT,
+} from './agent-constants.js';
 
 const DEFAULT_CONFIDENCE_THRESHOLD = 0.75;
 
@@ -323,6 +339,74 @@ export class IntentClassifier {
       ? value.arguments
       : {};
     return { tool, arguments: args };
+  }
+
+  // ============================================================
+  // 原 TaskClassifier 功能（合并进来，消除一层路由）
+  // ============================================================
+
+  /**
+   * 任务分类 → taskProfile
+   * 接受可选的 LLM 意图识别结果，用于覆盖或增强硬编码判断。
+   */
+  classifyTask(userInput, intent = null) {
+    const risk = intent
+      ? mergeIntentProfile(quickAssess(userInput), intent, userInput)
+      : quickAssess(userInput);
+
+    return {
+      isCodingTask: risk.isCodingTask,
+      isModificationTask: risk.isModificationTask,
+      isBugTask: risk.isBugTask,
+      isLikelyTrivial: risk.isLikelyTrivial,
+      requiresAutomaticPlanning: risk.isModificationTask,
+      requiresSemanticRiskReview:
+        risk.semanticDomains.length > 0 && risk.isModificationTask,
+      semanticRiskDomains: risk.semanticDomains,
+      riskLevel: risk.riskLevel,
+      riskScore: risk.score,
+      riskReasons: risk.reasons,
+      input: String(userInput || ''),
+    };
+  }
+
+  /** 基于任务 profile 计算自适应迭代预算 */
+  budgetFor(profile) {
+    if (!profile || profile.isLikelyTrivial) return Math.min(8, this.#config.maxIterations || MAX_ITERATIONS_DEFAULT);
+    if (profile.isBugTask) return Math.min(40, this.#config.maxIterations || MAX_ITERATIONS_DEFAULT);
+    if (profile.isModificationTask) return Math.min(25, this.#config.maxIterations || MAX_ITERATIONS_DEFAULT);
+    return this.#config.maxIterations || MAX_ITERATIONS_DEFAULT;
+  }
+
+  /** 从用户输入推断语义风险域 */
+  inferSemanticRiskDomains(userInput) {
+    const text = String(userInput || '');
+    return SEMANTIC_RISK_DOMAINS.filter(domain => domain.pattern.test(text)).map(
+      ({ id, label, checklist }) => ({ id, label, checklist })
+    );
+  }
+
+  /** 深度评估（较慢，对高风险任务启用） */
+  deepAssess(userInput) {
+    return deepAssess(userInput);
+  }
+
+  /** completion gates — 对编码完成的后门策略 */
+  completionGates(profile) {
+    if (!profile?.isModificationTask) return [];
+    return getCompletionGates?.() ?? [];
+  }
+
+  /** 用于计划任务的迭代预算 */
+  iterationBudget(profile) {
+    return computeIterationBudget
+      ? computeIterationBudget({
+          isCodingTask: profile?.isCodingTask,
+          isModificationTask: profile?.isModificationTask,
+          isBugTask: profile?.isBugTask,
+          riskScore: profile?.riskScore ?? 0,
+        })
+      : this.budgetFor(profile);
   }
 }
 

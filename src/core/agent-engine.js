@@ -1,0 +1,641 @@
+/**
+ * AgentEngine — 真正的内核 API 层
+ *
+ * 架构目标：让 CLI、Desktop、Web 只 import 这一个文件，
+ * 不再直接依赖 src/core/* 的内部实现。
+ *
+ * Runtime Layer (agent-engine.js)
+ *   ├─ TaskClassifier        — 任务类型 / 语义风险 / 迭代预算
+ *   ├─ ExecutionPlanManager  — 执行计划 (inspect→plan→implement→verify)
+ *   ├─ ToolExecutor          — 工具规范化执行 / 安全策略 / 缓存
+ *   ├─ ContextManager        — 上下文窗口裁剪 / 工作区摘要
+ *   └─ StagnationDetector    — 停滞 nudge / 进度检查点
+ *
+ * 对外 API：
+ *   engine.run(userInput)      — 主循环入口
+ *   engine.stop()              — 中断当前 run
+ *   engine.getRunResult()      — 返回最近一次 run 的结构化结果
+ *   engine.dispose()           — 释放资源
+ */
+
+import { SessionManager } from './session-manager.js';
+import { buildSystemPrompt } from '../prompts/system-prompt.js';
+import { RetryStrategy, withTimeout } from '../errors/error-handler.js';
+import { TextToolParser } from './text-tool-parser.js';
+import { IntentClassifier } from './intent-classifier.js';
+import { DynamicContextPruning } from './dynamic-context-pruning.js';
+import { WorkspaceIndex } from './workspace-index.js';
+import { selectToolsForRequest, shouldUseIntentClassifier } from './tool-router.js';
+import { WorkspaceState } from './workspace-state.js';
+import { ObservationSummarizer } from './observation-summarizer.js';
+import { ContentAddressableStore, FileAnalyzer } from './harness/content-addressing.js';
+import { withRoutedToolContext } from './routed-tool-context.js';
+import { TokenScope } from './token-scope.js';
+import { quickAssess, computeIterationBudget } from './risk-budget.js';
+import { ExecutionPlanManager } from './execution-plan-manager.js';
+import { ToolExecutor } from './tool-executor.js';
+import { ContextManager } from './context-manager.js';
+import {
+  buildToolSyntaxCorrectionPrompt,
+  buildToolUseCorrectionPrompt,
+  buildCodingTaskOperatingPrompt,
+  buildCodingCompletionGatePrompt,
+  suggestVerificationStrategy,
+  isTermination as isTerminationResponse,
+  extractFinalAnswer,
+  normalizeFinalAnswer,
+  containsUnparsedToolSyntax as containsUnparsedSyntax,
+  shouldCorrectToolRefusal as shouldCorrectRefusal,
+  shouldBlockCodingFinal,
+} from './prompt-builder.js';
+import { StagnationDetector } from './termination-detector.js';
+import { TaskStatus } from '../planner/graph-planner.js';
+import { MAX_ITERATIONS_DEFAULT } from './agent-constants.js';
+
+/**
+ * AgentEngine 工厂函数。供 CLI/Desktop 调用。
+ *
+ * @param {object} options
+ * @param {object} options.modelProvider     — 必须。实现 chat(messages, opts)
+ * @param {object} options.toolRegistry      — 必须。实现 get(name) / getAll() / toFunctionDefinitions()
+ * @param {object} [options.memoryManager]   — 可选。记忆管理器
+ * @param {object} [options.config]          — { workingDirectory, maxIterations, maxTokens, securityPolicy, intentClassification }
+ * @param {object} [options.ui]              — UI 回调。默认无输出（quiet）。
+ * @returns {AgentEngine}
+ */
+export function createAgentEngine({ modelProvider, toolRegistry, memoryManager = null, config = {}, ui = null }) {
+  return new AgentEngine({ modelProvider, toolRegistry, memoryManager, config, ui });
+}
+
+export class AgentEngine {
+  // ============ 子系统 ============
+  #modelProvider;
+  #toolRegistry;
+  #memoryManager;
+  #config;
+  #ui;
+  #sessionManager;
+  #retryStrategy;
+  #textToolParser;
+  #intentClassifier;
+  #executionPlanManager;
+  #toolExecutor;
+  #contextManager;
+  #stagnationDetector;
+  #workspaceIndex;
+  #workspaceState;
+  #observationSummarizer;
+  #contentStore;
+  #fileAnalyzer;
+  #contextPruner;
+  #tokenScope;
+
+  // ============ 运行态 ============
+  #stopRequested = false;
+  #lastRunResult = null;
+  #systemPromptInitialized = false;
+
+  constructor({ modelProvider, toolRegistry, memoryManager, config, ui }) {
+    this.#modelProvider = modelProvider;
+    this.#toolRegistry = toolRegistry;
+    this.#memoryManager = memoryManager;
+    this.#config = {
+      maxIterations: config.maxIterations || MAX_ITERATIONS_DEFAULT,
+      workingDirectory: config.workingDirectory || process.cwd(),
+      toolResultCacheEnabled: config.toolResultCacheEnabled !== false,
+      securityPolicy: config.securityPolicy || null,
+      intentClassification: config.intentClassification || false,
+      tokenBudget: config.tokenBudget || null,
+      tokenBudgetWarningThreshold: config.tokenBudgetWarningThreshold ?? 70,
+      maxTokens: config.maxTokens || 2048,
+      ...config,
+    };
+    this.#ui = ui || {
+      toolCall: () => {}, toolResult: () => {}, toolError: () => {},
+      iteration: () => {}, finalAnswer: () => {},
+      warn: () => {}, debug: () => {}, debugEvent: () => {},
+    };
+
+    // ============ 子系统初始化 ============
+    this.#sessionManager = new SessionManager({ model: this.#config.session?.model });
+    this.#retryStrategy = new RetryStrategy();
+    this.#textToolParser = new TextToolParser(toolRegistry);
+    this.#intentClassifier = this.#config.intentClassification
+      ? new IntentClassifier(modelProvider, toolRegistry, this.#config.intentClassifier || {})
+      : null;
+    this.#executionPlanManager = new ExecutionPlanManager();
+    this.#contextPruner = new DynamicContextPruning();
+    this.#tokenScope = this.#config.tokenScope || new TokenScope({
+      budgetLimits: this.#config.tokenBudget ? {
+        global: {
+          limit: this.#config.tokenBudget,
+          warningThreshold: this.#config.tokenBudgetWarningThreshold,
+        },
+      } : null,
+      onBudgetWarning: (info) => this.#ui.debugEvent?.('Token budget warning', info),
+      onBudgetExceeded: (info) => {
+        this.#ui.debugEvent?.('Token budget exceeded - stopping', info);
+        this.#stopRequested = true;
+      },
+    });
+    this.#workspaceState = new WorkspaceState();
+    this.#observationSummarizer = new ObservationSummarizer(this.#workspaceState);
+    this.#workspaceIndex = new WorkspaceIndex(this.#config.workingDirectory);
+    this.#contentStore = new ContentAddressableStore();
+    this.#fileAnalyzer = new FileAnalyzer(this.#contentStore);
+
+    this.#toolExecutor = new ToolExecutor({
+      toolRegistry: this.#toolRegistry,
+      securityPolicy: this.#config.securityPolicy,
+      textToolParser: this.#textToolParser,
+      ui: this.#ui,
+      config: this.#config,
+      contentStore: this.#contentStore,
+      fileAnalyzer: this.#fileAnalyzer,
+    });
+    this.#contextManager = null; // 在 run() 中懒创建（需要 sessionManager 就绪）
+    this.#stagnationDetector = new StagnationDetector();
+  }
+
+  // ============================================================
+  // 对外 API
+  // ============================================================
+
+  /**
+   * 主入口：接受用户输入，运行完整的 ReAct 循环，返回最终答案或结构化错误。
+   *
+   * @param {string} userInput
+   * @returns {Promise<{success:boolean,status:string,answer:string,reason:string|null,iterations:number,durationMs:number,toolEvents:object[],error?:string,userInputRequest?:string}>}
+   */
+  async run(userInput) {
+    const runStartedAt = Date.now();
+    this.#stopRequested = false;
+    this.#lastRunResult = {
+      success: false,
+      status: 'running',
+      answer: '',
+      reason: null,
+      iterations: 0,
+      durationMs: 0,
+      toolEvents: [],
+    };
+    this.#ui.debugEvent?.('Agent run started', {
+      inputPreview: this.#preview(userInput, 240),
+      workingDirectory: this.#config.workingDirectory,
+      maxIterations: this.#config.maxIterations,
+    });
+
+    // 首次 run：设置 system prompt
+    if (!this.#systemPromptInitialized || this.#sessionManager.length === 0) {
+      const systemPrompt = buildSystemPrompt(this.#memoryManager, this.#toolRegistry, this.#config.workingDirectory);
+      this.#sessionManager.setSystemPrompt(systemPrompt);
+      const toolInstructions = this.#textToolParser.generateToolPrompt([]);
+      this.#sessionManager.addSystemMessage(toolInstructions);
+      this.#systemPromptInitialized = true;
+      this.#ui.debugEvent?.('Session initialized', {
+        toolCount: this.#toolRegistry.size,
+        systemPromptChars: systemPrompt.length,
+        toolInstructionChars: toolInstructions.length,
+      });
+    }
+
+    // ========== Step 1：意图识别（仅当显式开启时才调用 LLM 预分类） ==========
+    const intent = (this.#intentClassifier && shouldUseIntentClassifier(userInput))
+      ? await this.#intentClassifier.classify(userInput, {
+          recentMessages: this.#sessionManager.getRecentExchanges(3),
+        })
+      : null;
+
+    if (intent) {
+      this.#ui.debugEvent?.('Intent classified', {
+        intent: intent.intent,
+        confidence: intent.confidence,
+        recommendedTools: intent.recommendedTools,
+      });
+    } else {
+      this.#ui.debugEvent?.('Intent classifier skipped', { reason: 'local_task_router' });
+    }
+
+    // ========== Step 2：任务分类（合并进 IntentClassifier，消除一层路由） ==========
+    const taskProfile = this.#intentClassifier?.classifyTask?.(userInput, intent)
+      ?? quickAssess(userInput);
+
+    // ========== Step 3：准备运行上下文 ==========
+    this.#sessionManager.addUserMessage(userInput);
+    const routingPrompt = this.#intentClassifier?.buildRoutingPrompt?.(intent);
+    if (routingPrompt) this.#sessionManager.addUserMessage(routingPrompt);
+
+    this.#stagnationDetector.reset();
+    this.#executionPlanManager.plan; // 触发 plan 初始化（下面会实际创建）
+
+    const executionPlan = this.#executionPlanManager.createIfNeeded(userInput, taskProfile);
+    const maxIterations = this.#intentClassifier?.budgetFor?.(taskProfile)
+      ?? computeIterationBudget(taskProfile.riskLevel, this.#config.maxIterations);
+    this.#contextManager = new ContextManager({
+      sessionManager: this.#sessionManager,
+      contextPruner: this.#contextPruner,
+      tokenScope: this.#tokenScope,
+      workspaceState: this.#workspaceState,
+      observationSummarizer: this.#observationSummarizer,
+      config: { maxTokens: this.#config.maxTokens },
+    });
+
+    // ========== Step 4：编码任务增强 ==========
+    let toolUseCorrections = 0;
+    let codingGateCorrections = 0;
+
+    if (taskProfile.isCodingTask) {
+      this.#ui.debugEvent?.('Coding task mode enabled', taskProfile);
+      const basePrompt = buildCodingTaskOperatingPrompt(userInput);
+      const strategy = await suggestVerificationStrategy(userInput, { workingDirectory: this.#config.workingDirectory });
+      this.#sessionManager.addUserMessage(`${basePrompt}\n\nVerification strategy:\n${strategy}`);
+    }
+
+    if (executionPlan) {
+      this.#ui.debugEvent?.('Automatic task orchestration enabled', { plan: executionPlan.toJSON() });
+      this.#sessionManager.addUserMessage(this.#executionPlanManager.buildPrompt());
+    }
+
+    // 异步预热工作目录索引（不阻塞首轮迭代）
+    if (taskProfile.isCodingTask) {
+      this.#workspaceIndex.warm().then(summary => {
+        if (summary && this.#sessionManager) {
+          this.#sessionManager.addUserMessage(summary);
+        }
+      }).catch(err => {
+        this.#ui.debugEvent?.('Workspace index warm failed', { error: err.message });
+      });
+      this.#workspaceIndex.startPeriodicSync();
+    }
+
+    // ============================================================
+    // 主循环：Thought → Action → Observation
+    // ============================================================
+    let iteration = 0;
+
+    while (iteration < maxIterations) {
+      iteration++;
+
+      if (this.#stopRequested) {
+        return this.#completeRun({
+          success: false, status: 'cancelled', answer: '', reason: 'user_stop',
+          iterations: iteration, startedAt: runStartedAt,
+        });
+      }
+      this.#ui.iteration?.(iteration, maxIterations);
+
+      // 停滞检测：注入 nudge 或进度检查点
+      const planSummary = executionPlan ? this.#planSummary(executionPlan) : null;
+      const nudge = this.#stagnationDetector.nudge(iteration, maxIterations, { planSummary });
+      if (nudge?.message) {
+        this.#sessionManager.addUserMessage(nudge.message);
+      }
+
+      this.#ui.debugEvent?.('Iteration started', {
+        iteration,
+        maxIterations,
+        sessionMessages: this.#sessionManager.getHistory().length,
+        estimatedTokens: this.#sessionManager.getTokenCount?.() ?? 0,
+      });
+
+      // ========== 上下文窗口管理 ==========
+      this.#contextManager.manage(iteration, maxIterations);
+
+      // ========== Step 5：2 层路由 (intent → tool-router) ==========
+      const currentPhase = this.#executionPlanManager.plan?.status === TaskStatus.RUNNING
+        ? this.#phaseFromIteration(iteration, maxIterations)
+        : null;
+
+      // 扁平化：统一使用 tool-router 做最终工具选择
+      const routedTools = selectToolsForRequest(this.#toolRegistry.getAll(), {
+        userInput, taskProfile, intent, currentPhase,
+      });
+      const activeRoutedToolNames = new Set(routedTools.map(tool => tool.name));
+      const functions = this.#toolRegistry.toFunctionDefinitions(routedTools);
+      const messages = withRoutedToolContext(
+        this.#sessionManager.getMessages(),
+        this.#textToolParser.generateToolPrompt(routedTools),
+        currentPhase,
+      );
+
+      // ========== Step 6：LLM 调用（带重试 + 超时） ==========
+      const llmStartedAt = Date.now();
+      this.#ui.debugEvent?.('LLM request', {
+        modelProvider: this.#modelProvider.constructor?.name || 'unknown',
+        messageCount: messages.length,
+        toolDefinitions: functions.length,
+        routedToolNames: functions.map(tool => tool.name),
+        currentPhase,
+        maxTokens: this.#config.maxTokens,
+      });
+
+      const response = await this.#retryStrategy.executeWithRetry(() =>
+        withTimeout(
+          () => this.#modelProvider.chat(messages, {
+            functions,
+            maxTokens: this.#config.maxTokens,
+          }),
+          120000, // 2 分钟超时
+          'LLM call',
+        ),
+      );
+
+      this.#ui.debugEvent?.('LLM response', {
+        durationMs: Date.now() - llmStartedAt,
+        finishReason: response.finishReason,
+        textPreview: this.#preview(response.text, 300),
+        nativeToolCalls: response.toolCalls?.length || 0,
+      });
+
+      // TokenScope: 记录 token 成本
+      try {
+        const modelName = this.#modelProvider.getModelName?.() || this.#modelProvider.constructor?.name || 'unknown';
+        let inputTokens;
+        let outputTokens;
+        if (response.usage && response.usage.inputTokens != null) {
+          inputTokens = response.usage.inputTokens;
+          outputTokens = response.usage.outputTokens || Math.ceil((response.text || '').length / 4);
+        } else {
+          let inputChars = 0;
+          for (const msg of messages) {
+            inputChars += (typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '')).length;
+          }
+          inputTokens = Math.ceil(inputChars / 4);
+          outputTokens = Math.ceil((response.text || '').length / 4);
+        }
+        this.#tokenScope.recordRequest({
+          model: modelName, inputTokens, outputTokens, userId: 'global',
+          metadata: { source: 'agent-run', iteration: iteration },
+        });
+      } catch { /* Token accounting best-effort, 不影响主循环 */ }
+
+      this.#ui.debug?.(`Response: ${(response.text || '').substring(0, 200)}...`);
+
+      // ========== Step 7：工具调用解析（native + text-based） ==========
+      const nativeToolCalls = response.toolCalls || [];
+      const parsedToolCalls = nativeToolCalls.length === 0
+        ? this.#textToolParser.parse(response.text)
+        : [];
+      const allToolCalls = [...nativeToolCalls, ...parsedToolCalls];
+
+      if (allToolCalls.length > 0) {
+        this.#ui.debugEvent?.('Tool calls detected', {
+          native: nativeToolCalls.map(call => ({ name: call.name, arguments: call.arguments })),
+          parsed: parsedToolCalls.map(call => ({ name: call.name, arguments: call.arguments, source: call.source })),
+        });
+      }
+
+      // -------- 短路 1：ExecutionPlan 完成 + provider 说 stop --------
+      if (
+        allToolCalls.length === 0 &&
+        response.finishReason === 'stop' &&
+        response.text?.trim() &&
+        this.#executionPlanManager.isCompleted
+      ) {
+        const answer = isTerminationResponse(response.text)
+          ? extractFinalAnswer(response.text)
+          : response.text.trim();
+        this.#ui.debugEvent?.('Final answer emitted', {
+          iteration, totalDurationMs: Date.now() - runStartedAt,
+          reason: 'completed_plan_provider_stop_without_marker',
+          answerPreview: this.#preview(answer, 300),
+        });
+        this.#ui.finalAnswer?.(answer);
+        this.#sessionManager.addAssistantMessage(response.text);
+        return this.#completeRun({
+          success: true, status: 'completed', answer, reason: 'completed_plan_provider_stop_without_marker',
+          iterations: iteration, startedAt: runStartedAt,
+        });
+      }
+
+      // -------- 短路 2：工具语法纠正（LLM 返回不合法工具调用格式） --------
+      if (
+        allToolCalls.length === 0 &&
+        response.text?.trim() && toolUseCorrections < 2 &&
+        containsUnparsedSyntax(this.#textToolParser, response.text)
+      ) {
+        toolUseCorrections++;
+        this.#ui.debugEvent?.('Tool syntax correction requested', {
+          iteration, correction: toolUseCorrections,
+          responsePreview: this.#preview(response.text, 300),
+        });
+        this.#sessionManager.addAssistantMessage(response.text);
+        this.#sessionManager.addUserMessage(buildToolSyntaxCorrectionPrompt(this.#textToolParser, this.#toolRegistry, response.text));
+        continue;
+      }
+
+      // -------- 短路 3：工具使用纠正（LLM 说"我没有工具"） --------
+      if (
+        allToolCalls.length === 0 &&
+        response.text?.trim() && toolUseCorrections < 2 &&
+        shouldCorrectRefusal(this.#toolRegistry, userInput, response.text)
+      ) {
+        toolUseCorrections++;
+        this.#ui.debugEvent?.('Tool use correction requested', {
+          iteration, correction: toolUseCorrections,
+          responsePreview: this.#preview(response.text, 300),
+          userInputPreview: this.#preview(userInput, 160),
+        });
+        this.#sessionManager.addAssistantMessage(response.text);
+        this.#sessionManager.addUserMessage(buildToolUseCorrectionPrompt(this.#toolRegistry, userInput));
+        continue;
+      }
+
+      // -------- 短路 4：编码任务完成门（还没工具证据 / 没走完 plan 就说完成） --------
+      const shouldBlockFinal = allToolCalls.length === 0 &&
+        codingGateCorrections < 3 &&
+        shouldBlockCodingFinal(userInput, response.text, {
+          taskProfile,
+          toolEvents: this.#toolExecutor.events,
+          executionPlanIsCompleted: this.#executionPlanManager.isCompleted,
+          planSummary,
+        });
+
+      if (shouldBlockFinal.block) {
+        codingGateCorrections++;
+        this.#ui.debugEvent?.('Coding completion gate requested', {
+          iteration, correction: codingGateCorrections,
+          reason: shouldBlockFinal.reason,
+          evidence: shouldBlockFinal.evidence,
+          responsePreview: this.#preview(response.text, 300),
+        });
+        this.#sessionManager.addAssistantMessage(response.text);
+        this.#sessionManager.addUserMessage(
+          buildCodingCompletionGatePrompt(userInput, shouldBlockFinal)
+        );
+        continue;
+      }
+
+      // -------- 短路 5：FINAL_ANSWER 标记终止 --------
+      if (isTerminationResponse(response.text)) {
+        const answer = normalizeFinalAnswer(extractFinalAnswer(response.text));
+        this.#ui.debugEvent?.('Final answer emitted', {
+          iteration, totalDurationMs: Date.now() - runStartedAt,
+          answerPreview: this.#preview(answer, 300),
+        });
+        this.#ui.finalAnswer?.(answer);
+        this.#sessionManager.addAssistantMessage(response.text);
+        return this.#completeRun({
+          success: true, status: 'completed', answer, reason: 'final_answer_marker',
+          iterations: iteration, startedAt: runStartedAt,
+        });
+      }
+
+      // -------- 短路 6：无工具调用但 provider 说 stop → 视作最终回答 --------
+      if (allToolCalls.length === 0 && response.finishReason === 'stop' && response.text?.trim()) {
+        const answer = normalizeFinalAnswer(response.text);
+        this.#ui.debugEvent?.('Final answer emitted', {
+          iteration, totalDurationMs: Date.now() - runStartedAt,
+          answerPreview: this.#preview(answer, 300),
+          reason: 'provider_stop_no_tools',
+        });
+        this.#ui.finalAnswer?.(answer);
+        this.#sessionManager.addAssistantMessage(response.text);
+        return this.#completeRun({
+          success: true, status: 'completed', answer, reason: 'provider_stop_no_tools',
+          iterations: iteration, startedAt: runStartedAt,
+        });
+      }
+
+      // -------- 常规路径：执行工具调用 --------
+      this.#sessionManager.addAssistantMessage(response.text);
+
+      if (allToolCalls.length === 0) {
+        // provider 没触发 stop，也没有工具调用 → 轻推一下避免死循环
+        if (iteration >= maxIterations - 1) {
+          const answer = response.text.trim();
+          this.#ui.finalAnswer?.(answer);
+          return this.#completeRun({
+            success: true, status: 'completed', answer, reason: 'iteration_budget_exhausted',
+            iterations: iteration, startedAt: runStartedAt,
+          });
+        }
+        this.#sessionManager.addUserMessage(
+          'Please either provide a FINAL_ANSWER or call a tool to continue.'
+        );
+        continue;
+      }
+
+      // 执行每个工具调用（ToolExecutor 统一处理：安全策略、缓存、规范化）
+      for (const toolCall of allToolCalls) {
+        const execResult = await this.#toolExecutor.execute(
+          toolCall,
+          {
+            memoryManager: this.#memoryManager,
+            sessionManager: this.#sessionManager,
+            modelProvider: this.#modelProvider,
+            debug: this.#config.debug || false,
+          },
+          {
+            resultMode: 'tool',
+            emitObservation: (id, name, observation, _mode) => {
+              this.#sessionManager.addUserMessage(
+                `[Tool ${name}] ${observation}`
+              );
+            },
+          },
+        );
+
+        // 记录到停滞检测
+        this.#stagnationDetector.recordTool(execResult.name, toolCall.arguments, iteration, (name, _args) => {
+          const mutationNames = new Set([
+            'write_file', 'edit_file', 'delete_file', 'rename_file', 'git_apply_patch',
+            'git_commit', 'git_add', 'git_push', 'harness_replace', 'harness_insert', 'harness_delete',
+          ]);
+          return mutationNames.has(name);
+        });
+
+        // 工作区状态更新
+        if (this.#workspaceState && typeof this.#workspaceState.onToolEvent === 'function') {
+          this.#workspaceState.onToolEvent(execResult);
+        }
+
+        // 推进执行计划
+        if (this.#executionPlanManager.plan) {
+          this.#executionPlanManager.advance(execResult.name, toolCall.arguments, execResult.result);
+        }
+      }
+    }
+
+    // 达到迭代上限仍未完成
+    const lastText = response?.text?.trim() || '';
+    const fallback = lastText || 'Agent 达到迭代上限仍未完成任务。';
+    this.#ui.finalAnswer?.(fallback);
+    return this.#completeRun({
+      success: false, status: 'iteration_limit', answer: fallback,
+      reason: 'max_iterations_exceeded', iterations: maxIterations, startedAt: runStartedAt,
+    });
+  }
+
+  /** 中断当前 run（在下一次 while 循环检查时退出） */
+  stop() { this.#stopRequested = true; }
+
+  /** 最近一次 run 的结果 */
+  getRunResult() { return this.#lastRunResult ? { ...this.#lastRunResult } : null; }
+
+  /** 当前使用的路由工具名集合（用于调试 / UI 展示） */
+  getActiveToolNames() {
+    const profile = quickAssess('');
+    return selectToolsForRequest(this.#toolRegistry.getAll(), {
+      userInput: '', taskProfile: profile,
+      currentPhase: this.#phaseFromIteration(0, this.#config.maxIterations),
+    }).map(t => t.name);
+  }
+
+  /** 工作区摘要（调试 / UI 展示） */
+  getWorkspaceSummary() {
+    return {
+      state: this.#workspaceState.getSummary?.() ?? null,
+      criticalFacts: this.#workspaceState.getCriticalFacts?.() ?? [],
+      workspaceDescription: this.#observationSummarizer?.generateWorkspaceDescription?.() || '',
+    };
+  }
+
+  /** 释放资源 */
+  dispose() {
+    try { this.#modelProvider.dispose?.(); } catch {}
+    try { this.#workspaceIndex?.stopPeriodicSync?.(); } catch {}
+  }
+
+  // ============================================================
+  // 内部辅助
+  // ============================================================
+
+  #completeRun({ success, status, answer, reason, iterations, startedAt, error, userInputRequest }) {
+    try { this.#workspaceIndex?.stopPeriodicSync?.(); } catch {}
+    const result = {
+      success, status, answer, reason, iterations,
+      durationMs: Date.now() - startedAt,
+      toolEvents: this.#toolExecutor.events.map(event => ({ ...event })),
+    };
+    if (error) result.error = error;
+    if (userInputRequest) result.userInputRequest = userInputRequest;
+    this.#lastRunResult = result;
+    return result;
+  }
+
+  #preview(value, maxLength = 200) {
+    const text = value === null || value === undefined ? '' : String(value);
+    return text.length > maxLength ? text.substring(0, maxLength) + '... (truncated)' : text;
+  }
+
+  #phaseFromIteration(iteration, maxIterations) {
+    if (!this.#executionPlanManager.plan) return null;
+    const ratio = maxIterations > 0 ? iteration / maxIterations : 0;
+    if (ratio < 0.15) return 'exploration';
+    if (ratio < 0.35) return 'planning';
+    if (ratio < 0.65) return 'implementation';
+    if (ratio < 0.85) return 'inspection';
+    return 'verification';
+  }
+
+  #planSummary(plan) {
+    const tasks = plan.toJSON().tasks;
+    const byName = tasks.map(t => `  - ${t.id}: ${t.status}`).join('\n');
+    return `Tasks: ${tasks.length}\n${byName}`;
+  }
+}
+
+// 兼容 ReActAgent 类名（老代码 import 不破坏）
+export { AgentEngine as ReActAgent };
+export default AgentEngine;

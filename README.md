@@ -187,15 +187,15 @@ bun run start
 启动 Desktop 开发模式：
 
 ```bash
-npm run desktop:dev
+bun run desktop:dev
 ```
 
 构建发布产物：
 
 ```bash
-npm run build:cli
-npm run desktop:build:all
-npm run build:all
+bun run build:cli
+bun run desktop:build:all
+bun run build:all
 ```
 
 CLI 和 Desktop 的 release 产物会分别输出到独立目录，方便按平台分发。
@@ -258,7 +258,7 @@ AGENT_SANDBOX_NETWORK=false
 bun run lint
 bun test-integration.mjs
 bun test tests/e2e/desktop-integration.test.js
-npm run desktop:renderer:build
+bun run desktop:renderer:build
 ```
 
 代码主要分为两个入口：

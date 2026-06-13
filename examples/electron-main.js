@@ -513,7 +513,7 @@ async function main() {
     // 注意：实际运行需要 Electron 环境
     // 这里只是展示代码结构
     console.log('\n⚠️  注意: 实际运行需要安装 Electron');
-    console.log('   npm install electron');
+    console.log('   bun add -D electron  # 或: npm install electron');
     console.log('   然后使用 electron 命令运行此文件\n');
 
   } catch (error) {

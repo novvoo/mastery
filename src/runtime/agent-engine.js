@@ -149,10 +149,11 @@ export class AgentEngine {
       } : {}),
     });
 
-    // 4. 初始化智能推理引擎
+    // 4. 初始化智能推理引擎（委托给 IntentClassifier + tool-router）
     this.#intelligentReasoning = new IntelligentReasoning({
       toolRegistry: this.#toolRegistry,
       experienceMemory: this.#experienceMemory,
+      intentClassifier: this.#agent?.intentClassifier || null,
       config: {
         maxCandidates: 5,
         confidenceThreshold: 0.7

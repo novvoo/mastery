@@ -346,7 +346,7 @@ class ElectronMainApp {
       // 生产模式：加载打包后的文件
       const rendererEntry = path.join(__dirname, 'renderer', 'dist', 'index.html');
       if (!fs.existsSync(rendererEntry)) {
-        throw new Error(`找不到渲染进程入口文件: ${rendererEntry}。请先运行 npm run desktop:renderer:build。`);
+        throw new Error(`找不到渲染进程入口文件: ${rendererEntry}。请先运行 bun run desktop:renderer:build。`);
       }
       this.#mainWindow.loadFile(rendererEntry);
     }

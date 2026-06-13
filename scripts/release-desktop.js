@@ -40,7 +40,7 @@ async function publishDesktop() {
   
   try {
     info('Building Desktop renderer...');
-    execSync('npm run desktop:renderer:build', {
+    execSync('bun run desktop:renderer:build', {
       cwd: rootDir,
       stdio: 'inherit'
     });

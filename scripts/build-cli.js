@@ -43,13 +43,13 @@ async function buildCLI() {
   try {
     // 先运行测试
     info('Running tests...');
-    execSync('npm test', { 
+    execSync('bun run test', { 
       cwd: rootDir, 
       stdio: 'inherit' 
     });
     
     // 创建 tarball
-    info('Creating npm package...');
+    info('Creating package tarball...');
     mkdirSync(cliReleaseDir, { recursive: true });
     execSync(`npm pack --pack-destination ${JSON.stringify(cliReleaseDir)}`, {
       cwd: rootDir, 
@@ -75,7 +75,7 @@ async function main() {
     log('\n==============================================');
     log(`📦 CLI package built!`);
     log(`   Output: ${cliReleaseDir}/`);
-    log(`   Usage: npm install -g ./release/cli/ai-engineering-mastery-agent-*.tgz`);
+    log(`   Usage: npm install -g ./release/cli/ai-engineering-mastery-agent-*.tgz  # 或 bun install -g ...`);
   } else {
     process.exit(1);
   }

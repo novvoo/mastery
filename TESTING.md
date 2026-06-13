@@ -9,7 +9,7 @@
 ### 1. 启动应用
 
 ```bash
-npm start
+bun run start
 ```
 
 ### 2. 第一个问题：你好
@@ -80,7 +80,7 @@ exit
 运行集成测试：
 
 ```bash
-npm run test:integration
+bun test-integration.mjs
 ```
 
 ---
@@ -116,7 +116,7 @@ npm run test:integration
 如果不确定，可以先运行：
 
 ```bash
-npm run test:integration
+bun test-integration.mjs
 ```
 
 确保所有 34 个测试通过，然后再手动测试。

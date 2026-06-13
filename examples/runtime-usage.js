@@ -236,7 +236,7 @@ async function main() {
     console.log('📚 Next steps:');
     console.log('   1. See docs/architecture-migration-guide.md for migration guide');
     console.log('   2. Check src/runtime/ for the core runtime layer');
-    console.log('   3. Use npm run test:all to run all tests');
+    console.log('   3. Use bun run test:all to run all tests');
     console.log('   4. Check src/adapters/ for platform-specific adapters');
     console.log('\n');
     

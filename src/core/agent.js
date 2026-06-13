@@ -1,6 +1,13 @@
 /**
  * ReAct Agent Engine
  * Core reasoning loop: Thought -> Action -> Observation -> repeat
+ *
+ * 架构（v2 — 模块化拆分）:
+ *   ReActAgent（协调器）
+ *     ├─ AgentPlanner   — 执行计划创建/推进/阶段推导
+ *     ├─ AgentVerifier  — 完成门控/验证策略/证据检查
+ *     ├─ AgentRouter    — 工具调用执行/安全/缓存/去重
+ *     └─ AgentContext   — 上下文管理/工作区状态/停滞检测
  */
 
 import { SessionManager } from './session-manager.js';
@@ -9,7 +16,6 @@ import { classifyError, RetryStrategy, withTimeout } from '../errors/error-handl
 import { ui } from '../cli/ui.js';
 import { TextToolParser } from './text-tool-parser.js';
 import { IntentClassifier } from './intent-classifier.js';
-import { ExecutionPlan, TaskStatus } from '../planner/graph-planner.js';
 import { DynamicContextPruning } from './dynamic-context-pruning.js';
 import { WorkspaceIndex } from './workspace-index.js';
 import { selectToolsForRequest, shouldUseIntentClassifier } from './tool-router.js';
@@ -18,133 +24,63 @@ import { ObservationSummarizer } from './observation-summarizer.js';
 import { ContentAddressableStore, FileAnalyzer } from './harness/content-addressing.js';
 import { withRoutedToolContext } from './routed-tool-context.js';
 import { TokenScope } from './token-scope.js';
+import { MAX_ITERATIONS_DEFAULT, METHODOLOGY_TOOLS } from './agent-constants.js';
+import { TaskStatus } from '../planner/graph-planner.js';
+import { isMutationTool, isSemanticRiskReviewTool } from './execution-plan-manager.js';
 import {
-  buildCodingCompletionGatePrompt as buildCodingCompletionGatePromptText,
-  buildCodingTaskOperatingPrompt as buildCodingTaskOperatingPromptText,
-  buildSemanticRiskGuidance as buildSemanticRiskGuidanceText,
-} from './coding-prompts.js';
-import { quickAssess, deepAssess, mergeIntentProfile, computeIterationBudget as rbComputeIterationBudget, getCompletionGates } from './risk-budget.js';
-import { isMutationEvent as evIsMutationEvent, isRuntimeVerificationEvent, isSemanticRiskReviewEvent as evIsSemanticRiskReviewEvent, checkCompletionGates as evCheckCompletionGates, crossCheckVerifyClaim, finalAnswerMentionsVerification } from './evidence-verifier.js';
-import { MAX_ITERATIONS_DEFAULT } from './agent-constants.js';
-import { readFile, appendFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
+  isTermination as isTerminationResponse,
+  extractFinalAnswer,
+  normalizeFinalAnswer,
+  containsUnparsedToolSyntax as containsUnparsedSyntax,
+  shouldCorrectToolRefusal as shouldCorrectRefusal,
+  shouldBlockCodingFinal,
+  buildToolSyntaxCorrectionPrompt,
+  buildToolUseCorrectionPrompt,
+} from './prompt-builder.js';
 
-import {
-  INSPECTION_ONLY_TOOLS,
-  ITERATION_BUDGET,
-  MAX_STAGNATION_NUDGES,
-  METHODOLOGY_TOOLS,
-  MUTATION_TOOLS,
-  PROGRESS_CHECKPOINT_INTERVAL,
-  RUNTIME_VERIFICATION_COMMAND_PATTERNS,
-  RUNTIME_VERIFICATION_TOOLS,
-  SEMANTIC_RISK_DOMAINS,
-  STAGNATION_LOOKBACK,
-  STAGNATION_NO_MUTATION_LIMIT,
-  STAGNATION_SAME_TOOL_LIMIT,
-  TERMINATION_KEYWORDS,
-  VERIFICATION_TOOLS,
-} from './agent-constants.js';
-
-import { TaskClassifier } from './task-classifier.js';
-import { ExecutionPlanManager, isWorkspaceInspectionTool, isPlanningTool, isMutationTool, isChangeInspectionTool, isVerificationTool, isSemanticRiskReviewTool, isSuccessfulToolResult } from './execution-plan-manager.js';
-import { ToolExecutor } from './tool-executor.js';
-import { ContextManager } from './context-manager.js';
-import { buildToolSyntaxCorrectionPrompt, buildToolUseCorrectionPrompt, buildCodingTaskOperatingPrompt, buildCodingCompletionGatePrompt, buildSemanticRiskGuidance, suggestVerificationStrategy, isTermination as isTerminationResponse, extractFinalAnswer, normalizeFinalAnswer, containsUnparsedToolSyntax as containsUnparsedSyntax, shouldCorrectToolRefusal as shouldCorrectRefusal, shouldBlockCodingFinal } from './prompt-builder.js';
-import { StagnationDetector } from './termination-detector.js';
+// 新拆分的子模块
+import { AgentPlanner } from './agent-planner.js';
+import { AgentVerifier } from './agent-verifier.js';
+import { AgentRouter } from './agent-router.js';
+import { AgentContext } from './agent-context.js';
 
 export class ReActAgent {
-  /** @type {import('./tool-registry.js').ToolRegistry} */
   #modelProvider;
-  /** @type {import('./tool-registry.js').ToolRegistry} */
   #toolRegistry;
-  /** @type {SessionManager} */
   #sessionManager;
-  /** @type {MemoryManager} */
   #memoryManager;
-  /** @type {object} */
   #config;
-  /** @type {RetryStrategy} */
   #retryStrategy;
-  /** @type {object} */
   #ui;
 
-  // Deduplication tracking
+  // 停滞追踪（轻量，仅用于迭代预算降级判断）
+  #stagnationBudgetDowngrade = false;
+
+  // 运行态
   #lastResponse = '';
   #repeatCount = 0;
-  #stagnationWindow = [];
-  /** @type {number} */
-  #lastStagnationNudge = 0;
-  /** @type {number} */
-  #consecutiveSameTool = 0;
-  /** @type {number} */
-  #lastMutationIteration = 0;
-  /** @type {number} */
-  #activeProgressCheckpoints = 0;
-  /** @type {number} */
-  #iterationBudget = MAX_ITERATIONS_DEFAULT;
-
-  /** @type {string[]} */
-  #toolCallHistory = [];
-  /** @type {Map<string, string>} */
-  #toolResultCache = new Map();
-  #toolResultCachePath;
-  #toolResultCacheMaxSize = 500;
-  #toolResultCacheLoaded = false;
-  #toolResultCacheEnabled = true;
-  /** @type {TextToolParser} */
-  #textToolParser;
-  /** @type {IntentClassifier|null} */
-  #intentClassifier;
-  /** @type {Array<{name: string, success: boolean, args: object, resultPreview: string}>} */
-  #runToolEvents = [];
-  /** @type {object} */
-  #activeTaskProfile = null;
-  /** @type {ExecutionPlan|null} */
-  #activeExecutionPlan = null;
-  /** @type {Set<string>|null} */
-  #activeRoutedToolNames = null;
-  /** @type {Set<string>} */
-  #requiredMutationPaths = new Set();
-  /** @type {Set<string>} */
-  #completedMutationPaths = new Set();
-  #lastRunResult = null;
-  #contextPruner = null;
-  /** @type {object|null} */
-  #tokenJuice = null;
-  /** @type {WorkspaceIndex|null} */
-  #workspaceIndex = null;
-  /** @type {TokenScope} */
-  #tokenScope;
-  
-  // ============ 工作区状态追踪（新功能）============
-  /** @type {WorkspaceState|null} */
-  #workspaceState = null;
-  /** @type {ObservationSummarizer|null} */
-  #observationSummarizer = null;
-  /** @type {boolean} */
-  #workspaceStateEnabled = true;
-  /** @type {number} */
-  #lastWorkspaceHintUpdate = 0;
-  /** @type {string} */
-  #cachedWorkspaceHint = '';
-  /** @type {ContentAddressableStore|null} */
-  #contentStore = null;
-  /** @type {FileAnalyzer|null} */
-  #fileAnalyzer = null;
   #stopRequested = false;
+  #lastRunResult = null;
+  #activeTaskProfile = null;
+  #activeRoutedToolNames = null;
+  #runToolEvents = [];
 
-  // ============ 模块化子系统（模块化拆分 - 新模块引用 ============
-  /** @type {TaskClassifier|null} */
-  #taskClassifier = null;
-  /** @type {ExecutionPlanManager|null} */
-  #executionPlanManager = null;
-  /** @type {ToolExecutor|null} */
-  #toolExecutor = null;
-  /** @type {ContextManager|null} */
-  #contextManager = null;
-  /** @type {StagnationDetector|null} */
-  #stagnationDetector = null;
+  // 子系统
+  #textToolParser;
+  #intentClassifier;
+  #tokenScope;
+  #workspaceIndex;
+  #workspaceState;
+  #contentStore;
+  #fileAnalyzer;
+  #contextPruner;
+  #tokenJuice;
+
+  // 新拆分的子模块
+  #planner;
+  #verifier;
+  #router;
+  #agentContext;
 
   constructor(modelProvider, toolRegistry, memoryManager, config = {}, customUI = ui) {
     this.#modelProvider = modelProvider;
@@ -155,7 +91,7 @@ export class ReActAgent {
       workingDirectory: config.workingDirectory || process.cwd(),
       ...config,
     };
-    // 如果 config.session 是 SessionManager 实例，直接使用它
+
     if (config.session instanceof SessionManager) {
       this.#sessionManager = config.session;
     } else {
@@ -164,6 +100,7 @@ export class ReActAgent {
         model: config.session?.model || config.model,
       });
     }
+
     this.#retryStrategy = new RetryStrategy();
     this.#textToolParser = new TextToolParser(toolRegistry);
     this.#intentClassifier = config.intentClassification
@@ -174,96 +111,70 @@ export class ReActAgent {
     this.#tokenJuice = config.tokenJuice || null;
     this.#workspaceIndex = new WorkspaceIndex(this.#config.workingDirectory);
 
-    // Tool result cache: 跨进程持久化 (JSONL, 最多 500 条)
-    // workingDirectory 下 .agent-data/tool-cache.jsonl
-    // 可通过 config.toolResultCacheEnabled=false 或 TOOL_CACHE=false 环境变量关闭
-    this.#toolResultCacheEnabled = config.toolResultCacheEnabled !== false;
-    const agentDataDir = `${this.#config.workingDirectory}/.agent-data`;
-    this.#toolResultCachePath = this.#toolResultCacheEnabled ? `${agentDataDir}/tool-cache.jsonl` : null;
-    this.#toolResultCacheMaxSize = 500;
-    // lazy load: 在第一次工具调用时同步加载，避免启动时 I/O 阻塞
-    this.#toolResultCacheLoaded = false;
-
-    this.#tokenScope =
-      config.tokenScope ||
-      new TokenScope({
-        budgetLimits: config.tokenBudget
-          ? {
-              global: {
-                limit: config.tokenBudget,
-                warningThreshold: config.tokenBudgetWarningThreshold ?? 70,
-              },
-            }
-          : null,
-        onBudgetWarning: (info) => {
-          this.#debugEvent('Token budget warning', info);
+    this.#tokenScope = config.tokenScope || new TokenScope({
+      budgetLimits: config.tokenBudget ? {
+        global: {
+          limit: config.tokenBudget,
+          warningThreshold: config.tokenBudgetWarningThreshold ?? 70,
         },
-        onBudgetExceeded: (info) => {
-          this.#debugEvent('Token budget exceeded - stopping', info);
-          this.#stopRequested = true;
-        },
-      });
+      } : null,
+      onBudgetWarning: (info) => { this.#debugEvent('Token budget warning', info); },
+      onBudgetExceeded: (info) => {
+        this.#debugEvent('Token budget exceeded - stopping', info);
+        this.#stopRequested = true;
+      },
+    });
 
-    // Content-addressable store: session-scoped (not global singleton).
-    // Lives for the duration of this agent instance, is passed to all
-    // filesystem tool handlers so they can record anchors/blobs and detect
-    // concurrent modifications.
     this.#contentStore = new ContentAddressableStore();
     this.#fileAnalyzer = new FileAnalyzer(this.#contentStore);
+    this.#workspaceState = new WorkspaceState();
 
-    // 模块化子系统：任务分类、执行计划、工具执行、上下文管理、停滞检测
-    this.#taskClassifier = new TaskClassifier({ maxIterations: this.#config.maxIterations });
-    this.#executionPlanManager = new ExecutionPlanManager();
-    this.#toolExecutor = new ToolExecutor({
-      toolRegistry,
-      securityPolicy: this.#securityPolicy || null,
+    // ---- 初始化子模块 ----
+    const sharedDeps = {
+      debugEvent: (label, details) => this.#debugEvent(label, details),
+      sessionManager: this.#sessionManager,
+    };
+
+    this.#planner = new AgentPlanner(sharedDeps);
+
+    this.#verifier = new AgentVerifier({
+      ...sharedDeps,
+      toolRegistry: this.#toolRegistry,
+      preview: (v, n) => this.#preview(v, n),
+    });
+
+    this.#router = new AgentRouter({
+      ...sharedDeps,
+      toolRegistry: this.#toolRegistry,
       textToolParser: this.#textToolParser,
       ui: this.#ui,
       config: this.#config,
       contentStore: this.#contentStore,
       fileAnalyzer: this.#fileAnalyzer,
+      memoryManager: this.#memoryManager,
+      modelProvider: this.#modelProvider,
     });
-    this.#contextManager = null; // 在 run() 内懒创建（需要 sessionManager 就绪）
-    this.#stagnationDetector = new StagnationDetector();
 
-    // 初始化工作区状态追踪
-    this.#initializeWorkspaceState(config);
-  }
-  
-  /**
-   * 初始化工作区状态追踪
-   */
-  #initializeWorkspaceState(config) {
-    if (config.workspaceState instanceof WorkspaceState) {
-      // 允许外部注入
-      this.#workspaceState = config.workspaceState;
-    } else {
-      this.#workspaceState = new WorkspaceState();
-    }
-    
-    this.#observationSummarizer = new ObservationSummarizer(this.#workspaceState);
-    
-    this.#debugEvent('Workspace state initialized', {
-      enabled: this.#workspaceStateEnabled,
-      files: 0,
-      directories: 0,
+    const observationSummarizer = new ObservationSummarizer(this.#workspaceState);
+    this.#agentContext = new AgentContext({
+      ...sharedDeps,
+      contextPruner: this.#contextPruner,
+      workspaceState: this.#workspaceState,
+      observationSummarizer,
+      workspaceIndex: this.#workspaceIndex,
     });
   }
 
-  /**
-   * Run the agent with a user input
-   */
+  // ============================================================
+  // 主入口
+  // ============================================================
+
   async run(userInput) {
     const runStartedAt = Date.now();
     this.#stopRequested = false;
     this.#lastRunResult = {
-      success: false,
-      status: 'running',
-      answer: '',
-      reason: null,
-      iterations: 0,
-      durationMs: 0,
-      toolEvents: [],
+      success: false, status: 'running', answer: '', reason: null,
+      iterations: 0, durationMs: 0, toolEvents: [],
     };
     this.#debugEvent('Agent run started', {
       inputPreview: this.#preview(userInput, 240),
@@ -271,21 +182,12 @@ export class ReActAgent {
       maxIterations: this.#config.maxIterations,
     });
 
-    // Only set system prompt once at the first run
+    // 首次 run：设置 system prompt
     if (this.#sessionManager.length === 0) {
-      // Build and set system prompt
-      const systemPrompt = buildSystemPrompt(
-        this.#memoryManager,
-        this.#toolRegistry,
-        this.#config.workingDirectory
-      );
+      const systemPrompt = buildSystemPrompt(this.#memoryManager, this.#toolRegistry, this.#config.workingDirectory);
       this.#sessionManager.setSystemPrompt(systemPrompt);
-
-      // Add text-tool syntax only. The concrete tool list is injected per
-      // request after routing so the model never sees the full registry.
       const toolInstructions = this.#textToolParser.generateToolPrompt([]);
       this.#sessionManager.addSystemMessage(toolInstructions);
-
       this.#debugEvent('Session initialized', {
         toolCount: this.#toolRegistry.size,
         systemPromptChars: systemPrompt.length,
@@ -293,361 +195,260 @@ export class ReActAgent {
       });
     }
 
-    // 1. 先调用 LLM 意图识别（如果需要）
+    // Step 1: 意图识别
     const intent = this.#intentClassifier && shouldUseIntentClassifier(userInput)
       ? await this.#intentClassifier.classify(userInput, {
-        recentMessages: this.#sessionManager.getRecentExchanges(3),
-      })
+          recentMessages: this.#sessionManager.getRecentExchanges(3),
+        })
       : null;
 
     if (this.#intentClassifier && !intent) {
-      this.#debugEvent('Intent classifier skipped', {
-        reason: 'local_task_router',
-      });
+      this.#debugEvent('Intent classifier skipped', { reason: 'local_task_router' });
     }
     if (intent) {
       this.#debugEvent('Intent classified', {
-        intent: intent.intent,
-        confidence: intent.confidence,
-        normalizedTask: intent.normalizedTask,
-        requiresFreshData: intent.requiresFreshData,
-        recommendedTools: intent.recommendedTools,
-        firstActionHint: intent.firstActionHint,
+        intent: intent.intent, confidence: intent.confidence,
+        normalizedTask: intent.normalizedTask, requiresFreshData: intent.requiresFreshData,
+        recommendedTools: intent.recommendedTools, firstActionHint: intent.firstActionHint,
       });
     }
 
-    // 2. 然后做任务分类（传入 intent，让 mergeIntentProfile 决定最终判断）
-    const taskProfile = this.#classifyTask(userInput, intent);
+    // Step 2: 任务分类（合并进 IntentClassifier，消除一层路由）
+    const taskProfile = this.#intentClassifier?.classifyTask(userInput, intent);
 
-    // Add user message
+    // Step 3: 准备运行上下文
     this.#sessionManager.addUserMessage(userInput);
     const routingPrompt = this.#intentClassifier?.buildRoutingPrompt(intent);
-    if (routingPrompt) {
-      this.#sessionManager.addUserMessage(routingPrompt);
-    }
+    if (routingPrompt) { this.#sessionManager.addUserMessage(routingPrompt); }
 
-    // Reset tracking
+    // 重置运行态
     this.#lastResponse = '';
     this.#repeatCount = 0;
-
-    this.#toolCallHistory = [];
     this.#runToolEvents = [];
     this.#activeTaskProfile = taskProfile;
     this.#activeRoutedToolNames = null;
-    this.#requiredMutationPaths = this.#extractRequestedFilePaths(userInput);
-    this.#completedMutationPaths = new Set();
-    this.#activeExecutionPlan = this.#createAutomaticExecutionPlan(userInput, this.#activeTaskProfile);
+    this.#stagnationBudgetDowngrade = false;
 
-    // 基于任务复杂度计算自适应迭代预算
-    const maxIterations = this.#computeIterationBudget(taskProfile);
-    this.#stagnationWindow = [];
-    this.#lastStagnationNudge = 0;
-    this.#consecutiveSameTool = 0;
-    this.#lastMutationIteration = 0;
-    this.#activeProgressCheckpoints = 0;
+    this.#planner.reset();
+    this.#router.reset();
+    this.#agentContext.reset();
 
-    let iteration = 0;
+    // Step 4: 执行计划
+    const executionPlan = this.#planner.createIfNeeded(userInput, taskProfile);
+    const maxIterations = this.#verifier.computeIterationBudget(taskProfile, this.#config.maxIterations);
+
+    // Step 5: 编码任务增强
     let toolUseCorrections = 0;
     let codingGateCorrections = 0;
 
-    if (this.#activeTaskProfile.isCodingTask) {
-      this.#debugEvent('Coding task mode enabled', this.#activeTaskProfile);
-      const basePrompt = this.#buildCodingTaskOperatingPrompt(userInput);
-      const strategy = await this.#suggestVerificationStrategy(userInput);
+    if (taskProfile.isCodingTask) {
+      this.#debugEvent('Coding task mode enabled', taskProfile);
+      const basePrompt = this.#verifier.buildCodingTaskOperatingPrompt(userInput, taskProfile);
+      const strategy = await this.#verifier.suggestVerificationStrategy(userInput, this.#config.workingDirectory);
       this.#sessionManager.addUserMessage(`${basePrompt}\n\nVerification strategy:\n${strategy}`);
     }
 
-    if (this.#activeExecutionPlan) {
-      this.#debugEvent('Automatic task orchestration enabled', {
-        plan: this.#activeExecutionPlan.toJSON(),
-      });
-      this.#sessionManager.addUserMessage(this.#buildExecutionPlanPrompt(userInput));
+    if (executionPlan) {
+      this.#debugEvent('Automatic task orchestration enabled', { plan: executionPlan.toJSON() });
+      const semanticGuidance = this.#verifier.buildSemanticRiskGuidance(taskProfile);
+      this.#sessionManager.addUserMessage(this.#planner.buildPrompt(userInput, semanticGuidance));
     }
-    // 异步预热工作目录索引（不阻塞首轮迭代）
-    // 首次构建 1-3s，后续 <100ms。摘要在第 2-3 轮到达，
-    // 正好 Agent 还在探索阶段，不影响决策质量
+
+    // 异步预热工作目录索引
     if (this.#workspaceIndex && taskProfile.isCodingTask) {
-      this.#warmWorkspaceCache().then(summary => {
+      this.#agentContext.warmWorkspaceCache().then(summary => {
         if (summary && this.#sessionManager) {
           this.#sessionManager.addUserMessage(summary);
           try { this.#debugEvent('Workspace index warmed', {
-            files: this.#workspaceIndex.size,
-            summaryChars: summary.length,
-         }); } catch { /* ignore */ }
+            files: this.#workspaceIndex.size, summaryChars: summary.length,
+          }); } catch {}
         }
       }).catch(err => {
-         try { this.#debugEvent('Workspace index warm failed', { error: err.message }); } catch { /* ignore */ }
-     });
+        try { this.#debugEvent('Workspace index warm failed', { error: err.message }); } catch {}
+      });
       this.#workspaceIndex.startPeriodicSync();
     }
 
+    // ============================================================
+    // 主循环
+    // ============================================================
+    let iteration = 0;
 
     while (iteration < maxIterations) {
       iteration++;
       if (this.#stopRequested) {
-        this.#debugEvent('Stop requested - terminating run', { iteration });
         return this.#completeRun({
-          success: false,
-          status: 'cancelled',
-          answer: '',
-          reason: 'user_stop',
-          iterations: iteration,
-          startedAt: runStartedAt,
+          success: false, status: 'cancelled', answer: '', reason: 'user_stop',
+          iterations: iteration, startedAt: runStartedAt,
         });
       }
+
       this.#ui.iteration(iteration, maxIterations);
-        // 停滞检测：注入 nudge 或进度检查点
-        this.#injectStagnationNudge(iteration, maxIterations);
+
+      // 停滞检测 + 上下文管理
+      const planSummary = this.#planner.activePlan
+        ? this.#planner.buildPrompt('') // 简化的进度摘要
+        : null;
+      this.#agentContext.injectStagnationNudge(iteration, maxIterations, planSummary);
+      this.#agentContext.manageContextWindow(this.#modelProvider, maxIterations);
+
       this.#debugEvent('Iteration started', {
-        iteration,
-        maxIterations,
+        iteration, maxIterations,
         sessionMessages: this.#sessionManager.getHistory().length,
         estimatedTokens: this.#sessionManager.getTokenCount(),
       });
 
       try {
-        // Manage context window
-        this.#manageContextWindow();
-
-        // Get messages for LLM after context trimming so the request reflects
-        // the actual session state that will continue into later iterations.
+        // 工具路由
+        const currentPhase = this.#planner.deriveCurrentPhase();
         const routedTools = selectToolsForRequest(this.#toolRegistry.getAll(), {
-          userInput,
-          taskProfile: this.#activeTaskProfile,
-          intent,
-          currentPhase: this.#deriveCurrentPhase(iteration, maxIterations),
+          userInput, taskProfile: this.#activeTaskProfile, intent, currentPhase,
         });
         this.#activeRoutedToolNames = new Set(routedTools.map(tool => tool.name));
         const functions = this.#toolRegistry.toFunctionDefinitions(routedTools);
         const messages = withRoutedToolContext(
           this.#sessionManager.getMessages(),
           this.#textToolParser.generateToolPrompt(routedTools),
-          this.#deriveCurrentPhase(iteration, maxIterations)
+          currentPhase,
         );
 
-        // Call LLM with retry
-        const llmStartedAt = Date.now();
+        // LLM 调用
         this.#debugEvent('LLM request', {
           modelProvider: this.#modelProvider.constructor?.name || 'unknown',
           messageCount: messages.length,
           toolDefinitions: functions.length,
           registeredToolDefinitions: this.#toolRegistry.size,
           routedToolNames: functions.map(tool => tool.name),
-          currentPhase: this.#deriveCurrentPhase(iteration, maxIterations),
+          currentPhase,
           maxTokens: this.#config.maxTokens,
           lastUserMessage: this.#preview(
-            [...messages].reverse().find(message => message.role === 'user')?.content || '',
-            240
+            [...messages].reverse().find(m => m.role === 'user')?.content || '', 240
           ),
         });
 
         const response = await this.#retryStrategy.executeWithRetry(() =>
           withTimeout(
-            () => this.#modelProvider.chat(messages, {
-              functions,
-              maxTokens: this.#config.maxTokens,
-            }),
-            120000, // 2 minute timeout
-            'LLM call'
+            () => this.#modelProvider.chat(messages, { functions, maxTokens: this.#config.maxTokens }),
+            120000, 'LLM call'
           )
         );
 
         this.#debugEvent('LLM response', {
-          durationMs: Date.now() - llmStartedAt,
+          durationMs: Date.now() - Date.now(),
           finishReason: response.finishReason,
           textPreview: this.#preview(response.text, 300),
           nativeToolCalls: response.toolCalls?.length || 0,
         });
 
-        // TokenScope: record token cost for this LLM request. When provider
-        // returns usage we use it verbatim; otherwise we estimate based on
-        // character counts (roughly 1 token per 4 chars of English text).
-        try {
-          const modelName = this.#modelProvider.getModelName?.() || this.#modelProvider.constructor?.name || 'unknown';
-          let inputTokens;
-          let outputTokens;
-          if (response.usage && response.usage.inputTokens != null) {
-            inputTokens = response.usage.inputTokens;
-            outputTokens = response.usage.outputTokens || Math.ceil((response.text || '').length / 4);
-          } else {
-            let inputChars = 0;
-            for (const msg of messages) {
-              inputChars += (typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '')).length;
-            }
-            inputTokens = Math.ceil(inputChars / 4);
-            outputTokens = Math.ceil((response.text || '').length / 4);
-          }
-          this.#tokenScope.recordRequest({
-            model: modelName,
-            inputTokens,
-            outputTokens,
-            userId: 'global',
-            metadata: {
-              source: 'agent-run',
-              iteration: this.#lastRunResult?.iterations || 0,
-            },
-          });
-        } catch (err) {
-          // Token accounting is best-effort — never let it crash the run loop.
-        }
+        // Token 记账
+        this.#recordTokenUsage(messages, response);
 
         this.#debug(`Response: ${response.text.substring(0, 200)}...`);
-        
-        // Parse text-based tool calls for models that don't support function calling
+
+        // 解析工具调用
         const nativeToolCalls = response.toolCalls || [];
         const parsedToolCalls = nativeToolCalls.length === 0
           ? this.#textToolParser.parse(response.text)
           : [];
         const allToolCalls = [...nativeToolCalls, ...parsedToolCalls];
-        this.#debug(`Tool calls: ${allToolCalls.length} (${nativeToolCalls.length} native, ${parsedToolCalls.length} parsed)`);
-        if (allToolCalls.length > 0) {
-          this.#debugEvent('Tool calls detected', {
-            native: nativeToolCalls.map(call => ({ name: call.name, arguments: call.arguments })),
-            parsed: parsedToolCalls.map(call => ({ name: call.name, arguments: call.arguments, source: call.source })),
-          });
-        }
 
-        if (
-          allToolCalls.length === 0 &&
-          response.finishReason === 'stop' &&
-          response.text?.trim() &&
-          this.#activeExecutionPlan?.status === TaskStatus.COMPLETED
-        ) {
-          const answer = this.#isTermination(response.text)
-            ? this.#extractFinalAnswer(response.text)
+        // ---- 各种退出/纠正判断 ----
+
+        // Plan 完成 + provider stop + 无工具调用 → 直接返回
+        if (allToolCalls.length === 0 && response.finishReason === 'stop' && response.text?.trim()
+            && this.#planner.activePlan?.status === TaskStatus.COMPLETED) {
+          const answer = isTerminationResponse(response.text)
+            ? extractFinalAnswer(response.text)
             : response.text.trim();
-          this.#debugEvent('Final answer emitted', {
-            iteration,
-            totalDurationMs: Date.now() - runStartedAt,
-            reason: 'completed_plan_provider_stop_without_marker',
-            answerPreview: this.#preview(answer, 300),
-          });
           this.#ui.finalAnswer(answer);
           this.#sessionManager.addAssistantMessage(response.text);
           return this.#completeRun({
-            success: true,
-            status: 'completed',
-            answer,
+            success: true, status: 'completed', answer,
             reason: 'completed_plan_provider_stop_without_marker',
-            iterations: iteration,
-            startedAt: runStartedAt,
+            iterations: iteration, startedAt: runStartedAt,
           });
         }
 
-        if (
-          allToolCalls.length === 0 &&
-          response.text?.trim() &&
-          toolUseCorrections < 2 &&
-          this.#containsUnparsedToolSyntax(response.text)
-        ) {
+        // 工具语法纠正
+        if (allToolCalls.length === 0 && response.text?.trim() && toolUseCorrections < 2
+            && containsUnparsedSyntax(response.text)) {
           toolUseCorrections++;
-          this.#debugEvent('Tool syntax correction requested', {
-            iteration,
-            correction: toolUseCorrections,
-            responsePreview: this.#preview(response.text, 300),
-          });
+          this.#debugEvent('Tool syntax correction requested', { iteration, correction: toolUseCorrections });
           this.#sessionManager.addAssistantMessage(response.text);
-          this.#sessionManager.addUserMessage(this.#buildToolSyntaxCorrectionPrompt(response.text));
+          this.#sessionManager.addUserMessage(buildToolSyntaxCorrectionPrompt(response.text));
           continue;
         }
 
-        if (
-          allToolCalls.length === 0 &&
-          response.text?.trim() &&
-          toolUseCorrections < 2 &&
-          this.#shouldCorrectToolRefusal(userInput, response.text)
-        ) {
+        // 工具使用纠正（refusal correction）
+        if (allToolCalls.length === 0 && response.text?.trim() && toolUseCorrections < 2
+            && shouldCorrectRefusal(userInput, response.text)) {
           toolUseCorrections++;
-          this.#debugEvent('Tool use correction requested', {
-            iteration,
-            correction: toolUseCorrections,
-            responsePreview: this.#preview(response.text, 300),
-            userInputPreview: this.#preview(userInput, 160),
-          });
+          this.#debugEvent('Tool use correction requested', { iteration, correction: toolUseCorrections });
           this.#sessionManager.addAssistantMessage(response.text);
-          this.#sessionManager.addUserMessage(this.#buildToolUseCorrectionPrompt(userInput));
+          this.#sessionManager.addUserMessage(buildToolUseCorrectionPrompt(userInput));
           continue;
         }
 
-        const shouldBlockFinal = allToolCalls.length === 0 &&
-          codingGateCorrections < 3 &&
-          this.#shouldBlockCodingFinal(userInput, response.text);
+        // 编码完成门控
+        const gateResult = allToolCalls.length === 0 && codingGateCorrections < 3
+          ? this.#verifier.shouldBlockCodingFinal({
+              responseText: response.text,
+              taskProfile: this.#activeTaskProfile,
+              runToolEvents: this.#runToolEvents,
+              activePlan: this.#planner.activePlan,
+              activePlanManager: this.#planner,
+            })
+          : { block: false };
 
-        if (shouldBlockFinal.block) {
+        if (gateResult.block) {
           codingGateCorrections++;
           this.#debugEvent('Coding completion gate requested', {
-            iteration,
-            correction: codingGateCorrections,
-            reason: shouldBlockFinal.reason,
-            evidence: shouldBlockFinal.evidence,
-            responsePreview: this.#preview(response.text, 300),
+            iteration, correction: codingGateCorrections,
+            reason: gateResult.reason, evidence: gateResult.evidence,
           });
           this.#sessionManager.addAssistantMessage(response.text);
           this.#sessionManager.addUserMessage(
-            this.#buildCodingCompletionGatePrompt(userInput, shouldBlockFinal)
+            this.#verifier.buildCodingCompletionGatePrompt(userInput, gateResult, this.#activeTaskProfile)
           );
           continue;
         }
 
-        // Check for termination
-        if (this.#isTermination(response.text)) {
-          const answer = this.#normalizeFinalAnswer(this.#extractFinalAnswer(response.text));
+        // 终止检测
+        if (isTerminationResponse(response.text) || this.#isLocalTermination(response.text)) {
+          const answer = normalizeFinalAnswer(extractFinalAnswer(response.text));
           this.#debugEvent('Final answer emitted', {
-            iteration,
-            totalDurationMs: Date.now() - runStartedAt,
+            iteration, totalDurationMs: Date.now() - runStartedAt,
             answerPreview: this.#preview(answer, 300),
           });
           this.#ui.finalAnswer(answer);
           this.#sessionManager.addAssistantMessage(response.text);
           return this.#completeRun({
-            success: true,
-            status: 'completed',
-            answer,
+            success: true, status: 'completed', answer,
             reason: 'final_answer_marker',
-            iterations: iteration,
-            startedAt: runStartedAt,
+            iterations: iteration, startedAt: runStartedAt,
           });
         }
 
-        // OpenAI-compatible models often finish naturally without following the
-        // explicit FINAL_ANSWER marker. If the provider says the response is
-        // complete and no tool call is present, surface it instead of making a
-        // hidden continuation request that looks like a hang in the terminal.
-        // For coding tasks, never surface it only if at least one tool has been executed
-        // successfully — otherwise the agent could exit without creating/verifying any code.
-        const hasToolEvidence = this.#runToolEvents.some(event => event.success);
+        // Provider 自然停止
+        const hasToolEvidence = this.#runToolEvents.some(e => e.success);
         const isModificationTask = this.#activeTaskProfile?.isModificationTask;
         const allowProviderStop = allToolCalls.length === 0 &&
-          response.finishReason === 'stop' &&
-          response.text?.trim() &&
+          response.finishReason === 'stop' && response.text?.trim() &&
           (!isModificationTask || hasToolEvidence);
 
         if (allowProviderStop) {
-          const answer = this.#normalizeFinalAnswer(response.text);
-          this.#debugEvent('Final answer emitted', {
-            iteration,
-            totalDurationMs: Date.now() - runStartedAt,
-            reason: isModificationTask ? 'provider_stop_with_tool_evidence' : 'provider_stop_without_tool_calls',
-            answerPreview: this.#preview(answer, 300),
-          });
+          const answer = normalizeFinalAnswer(response.text);
           this.#ui.finalAnswer(answer);
           this.#sessionManager.addAssistantMessage(response.text);
           return this.#completeRun({
-            success: true,
-            status: 'completed',
-            answer,
+            success: true, status: 'completed', answer,
             reason: isModificationTask ? 'provider_stop_with_tool_evidence' : 'provider_stop_without_tool_calls',
-            iterations: iteration,
-            startedAt: runStartedAt,
+            iterations: iteration, startedAt: runStartedAt,
           });
         }
 
+        // 修改任务但无工具证据 → nudge 继续
         if (isModificationTask && allToolCalls.length === 0 && response.finishReason === 'stop' && response.text?.trim()) {
-          this.#debug('Modification task: LLM stopped but no tool evidence — nudging to continue');
-          this.#debugEvent('Continuation requested', {
-            reason: 'modification_task_requires_tool_evidence_before_finish',
-            responsePreview: this.#preview(response.text, 240),
-          });
           this.#sessionManager.addAssistantMessage(response.text);
           this.#sessionManager.addUserMessage(
             `This is a coding task and no tool has been executed yet. To complete this task, use the available tools to: (a) inspect the workspace with list_dir/read_file, (b) write code with write_file/edit_file, (c) verify with shell/verify. Do not finish until you have produced and verified real code changes.`
@@ -655,13 +456,8 @@ export class ReActAgent {
           continue;
         }
 
-        // If no tool calls and no termination, prompt to continue
+        // 无工具调用也无终止 → 提示继续
         if (allToolCalls.length === 0) {
-          this.#debug('No tool calls detected, prompting to continue...');
-          this.#debugEvent('Continuation requested', {
-            reason: 'no_tool_calls_and_no_final_answer',
-            responsePreview: this.#preview(response.text, 240),
-          });
           this.#sessionManager.addAssistantMessage(response.text);
           this.#sessionManager.addUserMessage(
             `No tool call detected in your response. To use a tool, output in one of these formats:\n` +
@@ -673,20 +469,21 @@ export class ReActAgent {
           continue;
         }
 
-        // Native provider tool calls must be preserved as tool_call/tool messages.
-        // Text-parsed CALL blocks are plain assistant text, so feed their results
-        // back as Observation text to avoid sending fabricated tool_calls history.
+        // ---- 工具执行 ----
         if (nativeToolCalls.length > 0) {
           this.#sessionManager.addAssistantMessage(response.text, nativeToolCalls);
           for (const toolCall of nativeToolCalls) {
-            const toolResult = await this.#executeToolCall(toolCall, { resultMode: 'tool' });
-            this.#recordToolCallForStagnation(toolResult, iteration);
+            const toolResult = await this.#router.executeToolCall(toolCall, {
+              resultMode: 'tool',
+              activeRoutedToolNames: this.#activeRoutedToolNames,
+              workspaceState: this.#workspaceState,
+            });
+            this.#recordToolEvent(toolResult);
+            this.#agentContext.recordToolCallForStagnation(toolResult, iteration,
+              (name, r) => isMutationTool(name, r?.args || {}));
+            this.#planner.advance(toolResult.name, toolResult.result?.args || {}, toolResult.result);
             if (this.#isUserInputRequest(toolResult?.result)) {
-              return this.#completeUserInputRequest(toolResult.result, {
-                iteration,
-                startedAt: runStartedAt,
-                reason: 'ask_user_tool',
-              });
+              return this.#completeUserInputRequest(toolResult.result, { iteration, startedAt: runStartedAt });
             }
           }
         } else {
@@ -694,42 +491,45 @@ export class ReActAgent {
         }
 
         for (const toolCall of parsedToolCalls) {
-          const toolResult = await this.#executeToolCall(toolCall, { resultMode: 'observation' });
-          this.#recordToolCallForStagnation(toolResult, iteration);
+          const toolResult = await this.#router.executeToolCall(toolCall, {
+            resultMode: 'observation',
+            activeRoutedToolNames: this.#activeRoutedToolNames,
+            workspaceState: this.#workspaceState,
+          });
+          this.#recordToolEvent(toolResult);
+          this.#agentContext.recordToolCallForStagnation(toolResult, iteration,
+            (name, r) => isMutationTool(name, r?.args || {}));
+
+          // 添加 Observation 到会话
+          if (!toolResult.skipped) {
+            const content = typeof toolResult.result === 'string' ? toolResult.result : JSON.stringify(toolResult.result);
+            const processedContent = this.#tokenJuice
+              ? (this.#tokenJuice.compressToolResult(content, { input: { toolName: toolResult.name } }).inlineText || content)
+              : content;
+            this.#sessionManager.addUserMessage(`Observation from ${toolResult.name}:\n${processedContent}`);
+          }
+
+          this.#planner.advance(toolResult.name, toolCall.arguments || {}, toolResult.result);
           if (this.#isUserInputRequest(toolResult?.result)) {
-            return this.#completeUserInputRequest(toolResult.result, {
-              iteration,
-              startedAt: runStartedAt,
-              reason: 'ask_user_tool',
-            });
+            return this.#completeUserInputRequest(toolResult.result, { iteration, startedAt: runStartedAt });
           }
         }
 
       } catch (error) {
         const agentError = classifyError(error);
         this.#debugEvent('Iteration error', {
-          iteration,
-          category: agentError.category,
-          severity: agentError.severity,
-          retryable: agentError.retryable,
-          message: agentError.message,
+          iteration, category: agentError.category, severity: agentError.severity,
+          retryable: agentError.retryable, message: agentError.message,
         });
         this.#ui.error(`Iteration ${iteration} error: ${agentError.message}`);
 
         if (agentError.severity === 'fatal') {
           this.#ui.error('Fatal error. Stopping agent.');
           return this.#completeRun({
-            success: false,
-            status: 'failed',
-            answer: '',
-            reason: 'fatal_error',
-            iterations: iteration,
-            startedAt: runStartedAt,
-            error: agentError.message,
+            success: false, status: 'failed', answer: '', reason: 'fatal_error',
+            iterations: iteration, startedAt: runStartedAt, error: agentError.message,
           });
         }
-
-        // Add error as observation and continue
         this.#sessionManager.addUserMessage(
           `Error occurred: ${agentError.message}. Please try a different approach or call a different tool.`
         );
@@ -738,816 +538,109 @@ export class ReActAgent {
 
     this.#ui.warn(`Reached maximum iterations (${maxIterations}). Stopping.`);
     this.#ui.info('The task may not be fully completed. Consider breaking it into smaller steps.');
-    this.#debugEvent('Agent run stopped at max iterations', {
-      maxIterations,
-      totalDurationMs: Date.now() - runStartedAt,
-    });
     return this.#completeRun({
-      success: false,
-      status: 'max_iterations',
-      answer: '',
-      reason: 'max_iterations',
-      iterations: maxIterations,
-      startedAt: runStartedAt,
+      success: false, status: 'max_iterations', answer: '', reason: 'max_iterations',
+      iterations: maxIterations, startedAt: runStartedAt,
     });
   }
 
-  /**
-   * Stop the currently running agent execution.
-   * Sets a flag that the main iteration loop checks at the beginning of each cycle.
-   * The agent will finish the current iteration's work-in-flight (LLM call already in
-   * progress) and then exit with a `cancelled` status on the next loop tick.
-   */
   stop() {
     this.#stopRequested = true;
     this.#debugEvent('Stop requested', { at: new Date().toISOString() });
   }
 
-  /**
-   * 从 JSONL 文件加载工具结果缓存。失败时静默忽略 — 只是损失缓存，不影响功能。
-   */
-  async #loadToolResultCache() {
-    if (this.#toolResultCacheLoaded) return;
-    this.#toolResultCacheLoaded = true;
-
-    if (!this.#toolResultCachePath) return;
-    try {
-      if (!existsSync(this.#toolResultCachePath)) return;
-      const content = await readFile(this.#toolResultCachePath, 'utf-8');
-      const lines = content.split('\n').filter(Boolean);
-      for (const line of lines.slice(-this.#toolResultCacheMaxSize)) {
-        try {
-          const { signature, result } = JSON.parse(line);
-          if (signature && typeof result === 'string') {
-            this.#toolResultCache.set(signature, result);
-          }
-        } catch {
-          // 单行 JSON 解析失败，跳过 — 文件可能被截断/损坏过
-        }
-      }
-    } catch (err) {
-      // cache 加载失败不阻断：只是下次会重新跑工具
-      try { console.warn('[ToolCache] 加载失败:', err.message); } catch {}
+  clearSession(clearWorkspace = false) {
+    this.#sessionManager.clear();
+    this.#lastResponse = '';
+    this.#repeatCount = 0;
+    this.#router.reset();
+    if (clearWorkspace && this.#workspaceState) {
+      this.#workspaceState.clear();
     }
+    this.#ui.info?.('Session cleared. Memory preserved.');
   }
 
-  /** 把一条新结果追加到 JSONL。失败时静默忽略。 */
-  async #flushToolResultCacheEntry(signature, result) {
-    if (!this.#toolResultCachePath) return;
-    try {
-      const dir = this.#toolResultCachePath.substring(0, this.#toolResultCachePath.lastIndexOf('/'));
-      if (!existsSync(dir)) {
-        await mkdir(dir, { recursive: true });
-      }
-      const line = JSON.stringify({
-        signature,
-        result,
-        createdAt: Date.now(),
-      }) + '\n';
-      await appendFile(this.#toolResultCachePath, line, 'utf-8');
-    } catch (err) {
-      // 写入失败不阻断：下次只是会重新跑工具
-      try { console.warn('[ToolCache] 写入失败:', err.message); } catch {}
-    }
+  getTools() { return this.#toolRegistry; }
+
+  setModelProvider(modelProvider, options = {}) {
+    this.#modelProvider = modelProvider;
+    if (options.model) { this.#sessionManager.setTokenizerModel(options.model); }
   }
 
-  /**
-   * Execute a single tool call
-   */
-  async #executeToolCall(toolCall, options = {}) {
-    const normalizedToolCall = this.#normalizeToolCall(toolCall);
-    const rewrittenToolCall = this.#rewriteShellRuntimeToolCall(normalizedToolCall) || normalizedToolCall;
-    const { id, name, arguments: args } = rewrittenToolCall;
-    const resultMode = options.resultMode || 'tool';
-    const startedAt = Date.now();
-
-    // Deduplication check (内存 + 持久化缓存双层检查)
-    const callSignature = `${name}:${JSON.stringify(args)}`;
-    // Step 1: 从 JSONL 加载持久化缓存（仅首次调用时加载，lazy）
-    await this.#loadToolResultCache();
-    // Step 2: 同一次 agent 运行内的重复（toolCallHistory）或跨进程复用（toolResultCache）
-    if (this.#toolCallHistory.includes(callSignature) || this.#toolResultCache.has(callSignature)) {
-      this.#ui.warn(`Duplicate tool call detected: ${name}. Skipping.`);
-      const cachedResult = this.#toolResultCache.get(callSignature);
-      this.#debugEvent('Tool call skipped', {
-        reason: 'duplicate',
-        tool: name,
-        arguments: args,
-        resultMode,
-        cachedResult: Boolean(cachedResult),
-      });
-      this.#addToolObservation(
-        id,
-        name,
-        cachedResult
-          ? `Duplicate call to ${name} skipped. Previous result:\n${cachedResult}\n\nUse this observation to provide the final answer.`
-          : `Warning: Duplicate call to ${name} skipped. Use the existing observations to provide the final answer.`,
-        resultMode
-      );
-      return { name, result: cachedResult || null, skipped: true };
-    }
-    this.#toolCallHistory.push(callSignature);
-    // Keep history manageable
-    if (this.#toolCallHistory.length > 50) {
-      this.#toolCallHistory = this.#toolCallHistory.slice(-25);
-    }
-
-    // ============ 基于工作区状态的智能预测（新功能）============
-    if (this.#workspaceStateEnabled && this.#workspaceState) {
-      const prediction = this.#workspaceState.predictToolResult(name, args);
-      if (prediction.canSkip) {
-        this.#ui.warn(`⚠️  Skipping ${name}: ${prediction.reason}`);
-        this.#debugEvent('Tool call skipped (workspace prediction)', {
-          tool: name,
-          arguments: args,
-          reason: prediction.reason,
-          prediction: prediction.type,
-        });
-        const observation = `Based on previous exploration:\n${prediction.reason}\n\nThis operation would fail. Consider a different approach or check workspace_knowledge first.`;
-        this.#addToolObservation(id, name, observation, resultMode);
-        
-        // 记录为失败的操作
-        this.#recordToolEvent(name, args, false, prediction.reason);
-        return { name, result: prediction.predicted || { error: prediction.reason }, skipped: true, predicted: true };
-      }
-    }
-
-    this.#ui.toolCall(name, args);
-
-    const tool = this.#toolRegistry.get(name);
-    if (!tool) {
-      const errorMsg = this.#formatToolNotFoundError(name);
-      this.#debugEvent('Tool lookup failed', {
-        tool: name,
-        arguments: args,
-        availableTools: this.#toolRegistry.getAll().map(item => item.name),
-      });
-      this.#ui.toolError(name, errorMsg);
-      this.#addToolObservation(id, name, errorMsg, resultMode);
-      return { name, result: errorMsg, error: errorMsg };
-    }
-
-    if (this.#activeRoutedToolNames && !this.#activeRoutedToolNames.has(name)) {
-      const availableToolNames = Array.from(this.#activeRoutedToolNames).join(', ') || '(none)';
-      const errorMsg = `Tool "${name}" is registered but not available in the current request phase. Available tools now: ${availableToolNames}.`;
-      this.#debugEvent('Tool call blocked by routing', {
-        tool: name,
-        arguments: args,
-        availableTools: Array.from(this.#activeRoutedToolNames),
-      });
-      this.#ui.toolError(name, errorMsg);
-      this.#addToolObservation(id, name, errorMsg, resultMode);
-      return { name, result: errorMsg, error: errorMsg };
-    }
-
-    // 参数 schema 校验 + coerce（非阻断）
-    // 有错误时只警告，agent 仍继续执行；常见错误（字符串 vs 数字）会被自动纠正
-    let effectiveArgs = args || {};
-    if (typeof this.#toolRegistry.validateAndCoerceArgs === 'function') {
-      const v = this.#toolRegistry.validateAndCoerceArgs(name, args);
-      if (!v.valid) {
-        this.#ui.warn(`[Tool args] ${name}: ${v.errors.join('; ')}`);
-        this.#debugEvent('Tool args validation issues', {
-          tool: name,
-          issues: v.errors,
-          originalArgs: args,
-          coercedArgs: v.coercedArgs,
-        });
-      }
-      effectiveArgs = v.coercedArgs;
-    }
-
-    // 验证必填参数（保持原逻辑 —— 对没定义 schema 的工具做兜底检查）
-    if (tool.required && Array.isArray(tool.required)) {
-      const missing = tool.required.filter(param => {
-        const value = effectiveArgs ? effectiveArgs[param] : undefined;
-        return value === undefined || value === null || value === '';
-      });
-      if (missing.length > 0) {
-        const errorMsg = `Missing required parameter(s): ${missing.join(', ')}. The "${name}" tool requires: ${tool.required.join(', ')}.`;
-        this.#debugEvent('Tool call missing required params', {
-          tool: name,
-          missing,
-          receivedArgs: args,
-        });
-        this.#ui.warn?.(errorMsg);
-        this.#addToolObservation(id, name, errorMsg, resultMode);
-        return { name, result: errorMsg, error: errorMsg };
-      }
-    }
-
-    const securityBlock = this.#enforceToolSecurity(name, args);
-    if (securityBlock) {
-      this.#debugEvent('Tool call blocked by security policy', {
-        tool: name,
-        arguments: args,
-        reason: securityBlock,
-      });
-      this.#ui.toolError(name, securityBlock);
-      this.#recordToolEvent(name, args, false, `Security policy blocked tool call: ${securityBlock}`);
-      this.#addToolObservation(id, name, `Error: Security policy blocked ${name}: ${securityBlock}`, resultMode);
-      return { name, result: `Error: Security policy blocked ${name}: ${securityBlock}`, error: securityBlock };
-    }
-
-    this.#debugEvent('Tool call started', {
-      id,
-      tool: name,
-      category: tool.category,
-      source: rewrittenToolCall.source || toolCall.source || 'native',
-      resultMode,
-      workingDirectory: this.#config.workingDirectory,
-      arguments: args,
-      purpose: tool.description,
-    });
-
-    try {
-      const context = {
-        workingDirectory: this.#config.workingDirectory,
-        memoryManager: this.#memoryManager,
-        sessionManager: this.#sessionManager,
-        modelProvider: this.#modelProvider,
-        debug: this.#isDebugEnabled(),
-        ui: this.#ui,
-        toolName: name,
-        subAgent: this.#config.subAgent,
-        // Content-addressable store: enables hash-anchored patch verification
-        // in filesystem tools (edit_file, write_file) and provides anchors.
-        contentStore: this.#contentStore,
-        fileAnalyzer: this.#fileAnalyzer,
-        // Snapshot of tool events so far, used by the `verify` tool to build
-        // an evidence-based report rather than trusting textual "evidence" args.
-        toolEventsSnapshot: this.#runToolEvents.map(event => ({ ...event })),
-      };
-
-      const result = await withTimeout(
-        () => tool.handler(effectiveArgs, context),
-        60000, // 1 minute timeout per tool
-        `Tool ${name}`
-      );
-
-      const finalResult = this.#applyToolSecurityResultPolicy(name, result);
-
-      this.#debugEvent('Tool call completed', {
-        tool: name,
-        durationMs: Date.now() - startedAt,
-        resultChars: this.#contentLength(finalResult),
-        resultPreview: this.#preview(typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult), 300),
-      });
-      this.#ui.toolResult(name, finalResult);
-      this.#recordToolEvent(name, args, true, finalResult);
-      this.#toolResultCache.set(callSignature, typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult));
-      this.#flushToolResultCacheEntry(callSignature, this.#toolResultCache.get(callSignature));
-      
-      // ============ 记录到工作区状态（新功能）============
-      if (this.#workspaceStateEnabled && this.#observationSummarizer) {
-        const processed = this.#observationSummarizer.processToolResult(name, args, finalResult);
-        this.#debugEvent('Workspace state updated', {
-          tool: name,
-          summary: processed.summary,
-          factsCount: processed.facts?.length || 0,
-        });
-        // 清除缓存的工作区提示
-        this.#cachedWorkspaceHint = '';
-      }
-      
-      this.#addToolObservation(id, name, finalResult, resultMode);
-      this.#advanceAutomaticPlan(name, args, finalResult);
-      return { name, result: finalResult };
-
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      this.#debugEvent('Tool call failed', {
-        tool: name,
-        durationMs: Date.now() - startedAt,
-        error: errorMsg,
-      });
-      this.#ui.toolError(name, errorMsg);
-      this.#recordToolEvent(name, args, false, `Error: ${errorMsg}`);
-      this.#toolResultCache.set(callSignature, `Error: ${errorMsg}`);
-      this.#flushToolResultCacheEntry(callSignature, `Error: ${errorMsg}`);
-      
-      // ============ 记录错误到工作区状态（新功能）============
-      if (this.#workspaceStateEnabled && this.#observationSummarizer) {
-        this.#observationSummarizer.processToolResult(name, args, { error: errorMsg });
-        this.#cachedWorkspaceHint = '';
-      }
-      
-      this.#addToolObservation(id, name, `Error: ${errorMsg}`, resultMode);
-      return { name, result: `Error: ${errorMsg}`, error: errorMsg };
-    }
+  setDebugMode(enabled) {
+    this.#config.debug = Boolean(enabled);
+    if (typeof this.#ui.setDebugMode === 'function') { this.#ui.setDebugMode(enabled); }
   }
 
-  #normalizeToolCall(toolCall) {
-    if (!toolCall || typeof toolCall !== 'object') {
-      return toolCall;
-    }
+  get memoryManager() { return this.#memoryManager; }
+  get sessionManager() { return this.#sessionManager; }
+  get workspaceState() { return this.#workspaceState; }
+  get intentClassifier() { return this.#intentClassifier; }
 
-    if (toolCall.name) {
-      return {
-        ...toolCall,
-        arguments: this.#parseToolArguments(toolCall.arguments),
-      };
-    }
-
-    if (toolCall.function?.name) {
-      return {
-        id: toolCall.id,
-        name: toolCall.function.name,
-        arguments: this.#parseToolArguments(toolCall.function.arguments),
-        source: toolCall.type || 'native_tool_call',
-        raw: toolCall,
-      };
-    }
-
-    return toolCall;
-  }
-
-  #parseToolArguments(args) {
-    if (!args) {
-      return {};
-    }
-    if (typeof args === 'object') {
-      return args;
-    }
-    if (typeof args !== 'string') {
-      return {};
-    }
-    try {
-      const parsed = JSON.parse(args);
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch {
-      return {};
-    }
-  }
-
-  #isUserInputRequest(result) {
-    if (!result || typeof result !== 'object') {
-      return false;
-    }
-    return result.requiresUserInput === true || result.type === 'user_input_required';
-  }
-
-  #completeUserInputRequest(result, { iteration, startedAt, reason }) {
-    const answer = result.answer || this.#formatUserInputRequestAnswer(result);
-    this.#debugEvent('User input requested', {
-      reason,
-      questions: result.questions || [],
-      blockingFacts: result.blockingFacts || [],
-    });
-    this.#ui.finalAnswer(answer);
-    this.#sessionManager.addAssistantMessage(`FINAL_ANSWER: ${answer}`);
-    return this.#completeRun({
-      success: true,
-      status: 'needs_user_input',
-      answer,
-      reason,
-      iterations: iteration,
-      startedAt,
-      userInputRequest: result,
-    });
-  }
-
-  #formatUserInputRequestAnswer(result) {
-    const questions = Array.isArray(result.questions) ? result.questions : [];
-    return [
-      '需要你补充一点信息后我才能继续。',
-      result.reason ? `原因：${result.reason}` : '',
-      questions.length > 0
-        ? `请回答：\n${questions.map((question, index) => `${index + 1}. ${question}`).join('\n')}`
-        : '',
-    ].filter(Boolean).join('\n\n');
-  }
-
-  #recordToolEvent(name, args, success, result) {
-    this.#runToolEvents.push({
-      name,
-      args,
-      success,
-      resultPreview: this.#preview(typeof result === 'string' ? result : JSON.stringify(result), 300),
-    });
-  }
-
-  #enforceToolSecurity(name, args) {
-    const policy = this.#config.securityPolicy;
-    if (!policy) {
-      return null;
-    }
-
-    if (typeof policy.requiresApproval === 'function' && policy.requiresApproval(name)) {
-      return 'approval_required';
-    }
-
-    if (typeof policy.validateToolCall === 'function') {
-      const result = policy.validateToolCall(name, args);
-      if (result === false) {
-        return 'denied';
-      }
-      if (result && result.allowed === false) {
-        return result.reason || 'denied';
-      }
-    }
-
-    return null;
-  }
-
-  #applyToolSecurityResultPolicy(name, result) {
-    const policy = this.#config.securityPolicy;
-    if (policy && typeof policy.truncateResult === 'function') {
-      return policy.truncateResult(name, result);
-    }
-    return result;
-  }
-
-  #createAutomaticExecutionPlan(userInput, profile) {
-    if (!profile?.requiresAutomaticPlanning) {
-      return null;
-    }
-
-    const plan = new ExecutionPlan({
-      name: 'Automatic coding task plan',
-      description: userInput,
-      context: {
-        source: 'react-agent',
-        generatedAt: new Date().toISOString(),
-      },
-    });
-
-    plan.addTask({
-      id: 'inspect_workspace',
-      name: 'Inspect workspace',
-      description: 'Discover the relevant project structure and existing files before reading or writing.',
-      dependencies: [],
-    });
-    plan.addTask({
-      id: 'plan_solution',
-      name: 'Plan solution',
-      description: 'Choose the implementation approach and file split for the requested change.',
-      dependencies: ['inspect_workspace'],
-    });
-    plan.addTask({
-      id: 'implement_changes',
-      name: 'Implement changes',
-      description: 'Create or edit the required files using the smallest necessary changes.',
-      dependencies: ['plan_solution'],
-    });
-    plan.addTask({
-      id: 'inspect_changes',
-      name: 'Inspect changes',
-      description: 'Read back or otherwise inspect the files that were created or edited.',
-      dependencies: ['implement_changes'],
-    });
-    if (profile.requiresSemanticRiskReview) {
-      plan.addTask({
-        id: 'semantic_risk_review',
-        name: 'Semantic/API risk review',
-        description: `Review the changed code against semantic risk domains: ${profile.semanticRiskDomains.map(domain => domain.label).join('; ')}.`,
-        dependencies: ['inspect_changes'],
-      });
-    }
-    plan.addTask({
-      id: 'verify_result',
-      name: 'Verify result',
-      description: 'Run an appropriate command/tool to verify the requested behavior.',
-      dependencies: profile.requiresSemanticRiskReview ? ['semantic_risk_review'] : ['inspect_changes'],
-    });
-
-    plan.status = TaskStatus.RUNNING;
-    plan.startedAt = Date.now();
-    plan.getTask('inspect_workspace')?.updateStatus(TaskStatus.RUNNING);
-    return plan;
-  }
-
-  #buildExecutionPlanPrompt(userInput) {
-    const plan = this.#activeExecutionPlan;
-    const tasks = plan.toJSON().tasks
-      .map(task => `- ${task.id}: ${task.name} [${task.status}] - ${task.description}`)
-      .join('\n');
-
-    return (
-      `Automatic task orchestration is active for this request:\n${userInput}\n\n` +
-      `Execute this DAG in dependency order. Do not skip ahead, and do not provide FINAL_ANSWER until every task is completed.\n` +
-      `${tasks}\n\n` +
-      `The DAG task ids are status labels, not tool names. Use real available tools such as list_dir, read_file, write_file, shell, and methodology tools.\n` +
-      `${this.#activeTaskProfile?.requiresSemanticRiskReview ? `${this.#buildSemanticRiskGuidance()}\n` : ''}` +
-      `Current task: inspect_workspace. Call list_dir or another filesystem discovery tool first, then continue through the plan.`
-    );
-  }
-
-  /**
-   * Derive the current execution phase from the active execution plan.
-   *
-   * 所有编码修改任务现在都有 ExecutionPlan，所以阶段总是从 plan 推导。
-   * 只读编码任务和非编码任务返回 null，由 tool-router 降级处理。
-   */
-  #deriveCurrentPhase(iteration, maxIterations) {
-    // 从 ExecutionPlan 推导
-    if (this.#activeExecutionPlan && this.#activeExecutionPlan.status === TaskStatus.RUNNING) {
-      const runningTask = Array.from(this.#activeExecutionPlan.tasks.values())
-        .find(task => task.status === TaskStatus.RUNNING);
-
-      if (runningTask) {
-        switch (runningTask.id) {
-          case 'inspect_workspace': return 'exploration';
-          case 'plan_solution': return 'planning';
-          case 'implement_changes': return 'implementation';
-          case 'inspect_changes': return 'inspection';
-          case 'semantic_risk_review':
-          case 'verify_result': return 'verification';
-        }
-      }
-
-      // 所有 task 都已完成但 plan 尚未关闭 → 验证阶段
-      const allCompleted = Array.from(this.#activeExecutionPlan.tasks.values())
-        .every(task => task.status === TaskStatus.COMPLETED);
-      if (allCompleted) {
-        return 'verification';
-      }
-    }
-
-    // 无 Plan（非修改类编码任务、非编码任务）→ 无阶段感知
-    return null;
-  }
-
-  #advanceAutomaticPlan(toolName, args, result) {
-    const plan = this.#activeExecutionPlan;
-    if (!plan || plan.status !== TaskStatus.RUNNING) {
-      return;
-    }
-    if (!this.#isSuccessfulToolResult(result)) {
-      return;
-    }
-
-    const before = this.#summarizePlanProgress(plan);
-    this.#completePlanTaskIf('inspect_workspace', () => this.#isWorkspaceInspectionTool(toolName, args));
-    this.#startReadyTasks(plan);
-    this.#completePlanTaskIf('plan_solution', () => this.#isPlanningTool(toolName));
-    this.#startReadyTasks(plan);
-    this.#completePlanTaskIf('plan_solution', () => this.#isMutationTool(toolName, args));
-    this.#startReadyTasks(plan);
-    this.#recordMutationPath(toolName, args);
-    this.#completePlanTaskIf('implement_changes', () => this.#isMutationTool(toolName, args) && this.#hasCompletedRequiredMutationPaths());
-    this.#startReadyTasks(plan);
-    this.#completePlanTaskIf('inspect_changes', () => this.#isChangeInspectionTool(toolName, args));
-    this.#startReadyTasks(plan);
-    this.#completePlanTaskIf('semantic_risk_review', () => this.#isSemanticRiskReviewTool(toolName, args));
-    this.#startReadyTasks(plan);
-    this.#completePlanTaskIf('verify_result', () => this.#isVerificationTool(toolName, args));
-    this.#startReadyTasks(plan);
-
-    if (Array.from(plan.tasks.values()).every(task => task.status === TaskStatus.COMPLETED)) {
-      plan.status = TaskStatus.COMPLETED;
-      plan.completedAt = Date.now();
-    }
-
-    const after = this.#summarizePlanProgress(plan);
-    if (after !== before) {
-      this.#debugEvent('Automatic task orchestration advanced', {
-        tool: toolName,
-        before,
-        after,
-      });
-      this.#sessionManager.addUserMessage(
-        `Automatic task orchestration update:\n${after}\n\n` +
-        `${plan.status === TaskStatus.COMPLETED
-          ? 'All orchestrated tasks are complete. You may now provide FINAL_ANSWER with the change and verification summary.'
-          : `Continue with the current ready task: ${this.#currentPlanTaskLabel(plan)}.`}`
-      );
-    }
-  }
-
-  #completePlanTaskIf(taskId, predicate) {
-    const task = this.#activeExecutionPlan?.getTask(taskId);
-    if (!task || task.status === TaskStatus.COMPLETED || !task.checkDependencies(this.#activeExecutionPlan.tasks)) {
-      return;
-    }
-    if (predicate()) {
-      task.updateStatus(TaskStatus.COMPLETED, { result: { completedBy: 'tool-observation' } });
-    }
-  }
-
-  #isSuccessfulToolResult(result) {
-    const text = typeof result === 'string' ? result : JSON.stringify(result);
-    return !/^(Error|Command failed|BLOCKED):/i.test(text.trim());
-  }
-
-  #extractRequestedFilePaths(text) {
-    const paths = new Set();
-    const regex = /\b((?:[\w.-]+\/)*[\w.-]+\.(?:html|js|css|ts|tsx|jsx|json|md|py|java|go|rs|c|cpp|h|hpp))\b/g;
-    let match;
-    while ((match = regex.exec(text)) !== null) {
-      paths.add(match[1]);
-    }
-    const basenamesWithDirectory = new Set(
-      Array.from(paths)
-        .filter(path => path.includes('/'))
-        .map(path => path.split('/').pop())
-    );
-    for (const path of Array.from(paths)) {
-      if (!path.includes('/') && basenamesWithDirectory.has(path)) {
-        paths.delete(path);
-      }
-    }
-    return paths;
-  }
-
-  #recordMutationPath(toolName, args) {
-    if (!['write_file', 'edit_file'].includes(toolName)) {
-      return;
-    }
-    const path = args?.path || args?.file_path || args?.file;
-    if (path) {
-      this.#completedMutationPaths.add(String(path));
-    }
-  }
-
-  #hasCompletedRequiredMutationPaths() {
-    if (this.#requiredMutationPaths.size === 0) {
-      return true;
-    }
-    for (const path of this.#requiredMutationPaths) {
-      if (!this.#completedMutationPaths.has(path)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  #startReadyTasks(plan) {
-    for (const task of plan.getReadyTasks()) {
-      if (task.status === TaskStatus.PENDING || task.status === TaskStatus.BLOCKED) {
-        task.updateStatus(TaskStatus.RUNNING);
-        return;
-      }
-    }
-  }
-
-  #rewriteShellRuntimeToolCall(toolCall) {
-    if (toolCall?.name !== 'shell') {
-      return null;
-    }
-
-    const command = String(toolCall.arguments?.command || '').trim();
-    if (!command) {
-      return null;
-    }
-
-    const parsed = this.#textToolParser
-      .parse(`\`\`\`bash\n${command}\n\`\`\``)
-      .filter(call => call.name !== 'shell');
-    if (parsed.length === 0) {
-      return null;
-    }
-
-    const replacement = parsed[0];
-    this.#debugEvent('Shell tool call rewritten to runtime tool', {
-      originalCommand: command,
-      replacementTool: replacement.name,
-      replacementArguments: replacement.arguments,
-    });
-
+  getWorkspaceSummary() {
+    if (!this.#workspaceState) return null;
+    const observationSummarizer = new ObservationSummarizer(this.#workspaceState);
     return {
-      ...replacement,
-      id: toolCall.id,
-      source: 'shell_runtime_tool_redirect',
+      state: this.#workspaceState.getSummary(),
+      criticalFacts: this.#workspaceState.getCriticalFacts().map(f => ({ type: f.type, value: f.value })),
+      workspaceDescription: observationSummarizer.generateWorkspaceDescription() || '',
     };
   }
 
-  #summarizePlanProgress(plan) {
-    return plan.toJSON().tasks
-      .map(task => `- ${task.id}: ${task.status}`)
-      .join('\n');
+  getLastRunResult() { return this.#lastRunResult ? { ...this.#lastRunResult } : null; }
+
+  dispose() { this.#modelProvider.dispose?.(); }
+
+  // ============================================================
+  // 私有方法
+  // ============================================================
+
+  #completeRun({ success, status, answer, reason, iterations, startedAt, error, userInputRequest }) {
+    this.#workspaceIndex?.stopPeriodicSync();
+    const result = {
+      success, status, answer, reason, iterations,
+      durationMs: Date.now() - startedAt,
+      toolEvents: this.#runToolEvents.map(e => ({ ...e })),
+    };
+    if (error) { result.error = error; }
+    if (userInputRequest) { result.userInputRequest = userInputRequest; }
+    this.#lastRunResult = result;
+    return result;
   }
 
-  #currentPlanTaskLabel(plan) {
-    const active = Array.from(plan.tasks.values())
-      .find(task => task.status === TaskStatus.RUNNING || task.status === TaskStatus.PENDING || task.status === TaskStatus.BLOCKED);
-    return active ? `${active.id} (${active.name})` : 'none';
-  }
-
-  #isWorkspaceInspectionTool(toolName, args) {
-    if (['list_dir', 'glob', 'search', 'semantic_search'].includes(toolName)) {
-      return true;
-    }
-    if (toolName === 'read_file') {
-      return true;
-    }
-    if (toolName === 'shell') {
-      const command = String(args?.command || '');
-      return /\b(pwd|ls|find|rg|grep|tree)\b/.test(command);
-    }
-    return false;
-  }
-
-  #isPlanningTool(toolName) {
-    return ['brainstorm', 'grill', 'zoom_out', 'tdd', 'to_prd', 'to_issues', 'architect'].includes(toolName);
-  }
-
-  #isMutationTool(toolName, args) {
-    if (['write_file', 'edit_file', 'git_apply_patch', 'git_commit', 'git_push'].includes(toolName)) {
-      return true;
-    }
-    if (toolName === 'shell') {
-      return this.#isShellMutationCommand(args);
-    }
-    return false;
-  }
-
-  #isChangeInspectionTool(toolName, args) {
-    if (['read_file', 'list_dir', 'glob', 'search'].includes(toolName)) {
-      return true;
-    }
-    if (toolName === 'shell') {
-      const command = String(args?.command || '');
-      return /\b(cat|sed|awk|ls|find|rg|grep|git\s+diff|git\s+status)\b/.test(command);
-    }
-    return false;
-  }
-
-  #isVerificationTool(toolName, args) {
-    if (['verify', 'review'].includes(toolName)) {
-      return true;
-    }
-    if (toolName === 'shell') {
-      const command = String(args?.command || '');
-      return this.#isShellVerificationCommand(args) || /\b(test|lint|build|check|typecheck|tsc|node)\b/.test(command);
-    }
-    return false;
-  }
-
-  #isSemanticRiskReviewTool(toolName, args) {
-    if (!this.#activeTaskProfile?.requiresSemanticRiskReview) {
-      return false;
-    }
-
-    const focusText = String(
-      args?.focus_areas ||
-      args?.criteria ||
-      args?.claim ||
-      args?.evidence ||
-      args?.command ||
-      args?.input ||
-      args?.text ||
-      ''
-    ).toLowerCase();
-    const mentionsSemanticReview = /semantic|api|unit|timing|time|fps|frame|state|behavior|behaviour|invariant|boundary|语义|单位|时间|速度|状态|行为|边界/.test(focusText);
-
-    if (toolName === 'review') {
-      return mentionsSemanticReview || !focusText;
-    }
-    if (toolName === 'verify') {
-      return mentionsSemanticReview;
-    }
-    if (toolName === 'shell') {
-      return mentionsSemanticReview && this.#isShellVerificationCommand(args);
-    }
-    return false;
-  }
-
-  #isShellMutationCommand(args) {
-    const command = String(args?.command || args?.input || args?.text || '').toLowerCase();
-    if (/\bmkdir\b/.test(command) && !/(^|\s)(touch|cp|mv|rm|sed|perl|cat|tee)\b|>|>>|apply_patch/.test(command)) {
-      return false;
-    }
-    return /(^|\s)(bun|npm|pnpm|yarn|npx|node|python|pytest|vitest|jest|eslint|tsc|git|touch|cp|mv|rm|sed|perl|tee)\b|>|>>|apply_patch/.test(command);
-  }
-
-  #isShellVerificationCommand(args) {
-    const command = String(args?.command || args?.input || args?.text || '').toLowerCase();
-    return /\b(test|lint|check|verify|build|typecheck|tsc|jest|vitest|pytest|bun|node|npm|pnpm|yarn)\b/.test(command);
-  }
-
-  /**
-   * Add tool output back to the conversation in the format expected by the call source.
-   */
-  #addToolObservation(toolCallId, toolName, result, mode) {
-    const content = typeof result === 'string' ? result : JSON.stringify(result);
-
-    // Apply TokenJuice compression if available
-    let processedContent = content;
-    if (this.#tokenJuice) {
-      const compressed = this.#tokenJuice.compressToolResult(content, {
-        input: { toolName },
+  #recordTokenUsage(messages, response) {
+    try {
+      const modelName = this.#modelProvider.getModelName?.() || this.#modelProvider.constructor?.name || 'unknown';
+      let inputTokens, outputTokens;
+      if (response.usage && response.usage.inputTokens != null) {
+        inputTokens = response.usage.inputTokens;
+        outputTokens = response.usage.outputTokens || Math.ceil((response.text || '').length / 4);
+      } else {
+        let inputChars = 0;
+        for (const msg of messages) {
+          inputChars += (typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '')).length;
+        }
+        inputTokens = Math.ceil(inputChars / 4);
+        outputTokens = Math.ceil((response.text || '').length / 4);
+      }
+      this.#tokenScope.recordRequest({
+        model: modelName, inputTokens, outputTokens, userId: 'global',
+        metadata: { source: 'agent-run', iteration: this.#lastRunResult?.iterations || 0 },
       });
-      processedContent = compressed.inlineText || content;
-    }
-
-    if (mode === 'tool') {
-      this.#sessionManager.addToolResult(toolCallId, toolName, processedContent);
-      return;
-    }
-
-    this.#sessionManager.addUserMessage(
-      `Observation from ${toolName}:\n${processedContent}`
-    );
+    } catch { /* best-effort */ }
   }
 
-  /**
-   * Check if the response indicates termination
-   */
-  #isTermination(response) {
-    // 委托给 Termination 模块的关键字检测 + 重复响应检测（保留本地逻辑）
-    if (isTerminationResponse(response)) return true;
-    // Repeated response detection (prevent infinite loops)
+  #recordToolEvent(toolResult) {
+    if (!toolResult?.name) return;
+    this.#runToolEvents.push({
+      name: toolResult.name,
+      args: toolResult.args || {},
+      success: !toolResult.error && !toolResult.skipped,
+      resultPreview: this.#preview(typeof toolResult.result === 'string' ? toolResult.result : JSON.stringify(toolResult.result || ''), 300),
+    });
+  }
+
+  #isLocalTermination(response) {
     if (this.#lastResponse === response) {
       this.#repeatCount++;
       if (this.#repeatCount >= 3) {
@@ -1561,285 +654,40 @@ export class ReActAgent {
     return false;
   }
 
-  /**
-   * Extract the final answer from a termination response
-   */
-  #extractFinalAnswer(response) {
-    return extractFinalAnswer(response);
+  #isUserInputRequest(result) {
+    if (!result || typeof result !== 'object') return false;
+    return result.requiresUserInput === true || result.type === 'user_input_required';
   }
 
-  #normalizeFinalAnswer(response) {
-    return normalizeFinalAnswer(response);
+  #completeUserInputRequest(result, { iteration, startedAt, reason }) {
+    const answer = result.answer || this.#formatUserInputRequestAnswer(result);
+    this.#debugEvent('User input requested', { reason, questions: result.questions || [] });
+    this.#ui.finalAnswer(answer);
+    this.#sessionManager.addAssistantMessage(`FINAL_ANSWER: ${answer}`);
+    return this.#completeRun({
+      success: true, status: 'needs_user_input', answer, reason,
+      iterations: iteration, startedAt, userInputRequest: result,
+    });
   }
 
-  /**
-   * Manage context window to prevent overflow
-   */
-  #manageContextWindow() {
-    const maxTokens = this.#modelProvider.getMaxContextTokens();
-    const currentTokens = this.#sessionManager.getTokenCount();
-    
-    // 根据迭代进度渐进式调整裁剪强度
-    // 早期：宽松保留上下文；后期：激进裁剪以腾出空间
-    const progress = this.#iterationBudget > 0 
-      ? this.#sessionManager.getHistory().length / (this.#iterationBudget * 1.5)
-      : 0.5;
-    
-    // 阈值：早期 70% 触发，后期 40% 触发
-    const thresholdBase = 0.7;    // 宽松基准
-    const thresholdMin = 0.4;     // 激进底线
-    const progressFactor = Math.min(progress, 1.0);
-    const threshold = maxTokens * (thresholdBase - (thresholdBase - thresholdMin) * progressFactor);
-    
-    // 保留的消息数：早期 10 条，后期 4 条
-    const preserveMessages = Math.max(4, Math.floor(10 - 6 * progressFactor));
-    // 目标 token：早期 60%，后期 35%
-    const targetRatio = 0.6 - 0.25 * progressFactor;
-    const targetTokens = Math.floor(maxTokens * targetRatio);
-    const minMessages = Math.max(2, Math.floor(5 - 2 * progressFactor));
-
-    if (currentTokens > threshold) {
-      this.#ui.warn(`Context window at ${Math.round(currentTokens / maxTokens * 100)}% (progress=${(progressFactor*100).toFixed(0)}%). Trimming.`);
-      this.#debugEvent('Context window trimming', {
-        currentTokens, maxTokens, threshold, targetTokens,
-        preserveRecentMessages: preserveMessages,
-        messagesBefore: this.#sessionManager.getHistory().length,
-      });
-      let stats = null;
-      if (this.#contextPruner) {
-        this.#contextPruner.updateConfig?.({ maxTokens, targetTokens, preserveRecentMessages: preserveMessages });
-        stats = this.#sessionManager.trimWithPruner(this.#contextPruner, {
-          maxTokens, targetTokens, preserveRecentMessages: preserveMessages, minMessages,
-        });
-      } else {
-        this.#sessionManager.trimToContextWindow(targetTokens, { minRecentMessages: preserveMessages });
-      }
-      this.#debugEvent('Context window trimmed', {
-        estimatedTokens: this.#sessionManager.getTokenCount(),
-        messagesAfter: this.#sessionManager.getHistory().length,
-        stats,
-      });
-      
-      // ============ 注入工作区状态摘要（新功能）============
-      // 在上下文裁剪后，注入工作区状态摘要，确保关键信息不会丢失
-      this.#injectWorkspaceStateSummary();
-    }
-  }
-  
-  /**
-   * 注入工作区状态摘要到会话上下文
-   * 确保在上下文裁剪后，关键的工作区发现仍然可用
-   */
-  #injectWorkspaceStateSummary() {
-    if (!this.#workspaceStateEnabled || !this.#workspaceState) {
-      return;
-    }
-    
-    // 检查是否需要更新缓存
-    const now = Date.now();
-    const cacheAge = now - this.#lastWorkspaceHintUpdate;
-    
-    if (cacheAge < 30000 && this.#cachedWorkspaceHint) {
-      // 30秒内使用缓存
-      if (this.#cachedWorkspaceHint) {
-        this.#sessionManager.addSystemMessage(this.#cachedWorkspaceHint);
-      }
-      return;
-    }
-    
-    // 生成新的摘要
-    const hint = this.#generateWorkspaceHint();
-    this.#cachedWorkspaceHint = hint;
-    this.#lastWorkspaceHintUpdate = now;
-    
-    if (hint) {
-      this.#sessionManager.addSystemMessage(hint);
-      this.#debugEvent('Workspace state hint injected', {
-        hintLength: hint.length,
-      });
-    }
-  }
-  
-  /**
-   * 生成工作区状态提示
-   */
-  #generateWorkspaceHint() {
-    if (!this.#workspaceState || !this.#observationSummarizer) {
-      return '';
-    }
-    
-    const summary = this.#workspaceState.getSummary();
-    
-    // 如果没有足够的探索数据，不生成提示
-    if (summary.trackedFiles === 0 && summary.trackedDirectories === 0) {
-      return '';
-    }
-    
-    const criticalFacts = this.#workspaceState.getCriticalFacts();
-    const knownNonExistent = criticalFacts
-      .filter(f => f.type === 'path_not_found')
-      .map(f => f.value?.path)
-      .filter(Boolean);
-    
-    const workspaceDescription = this.#observationSummarizer.generateWorkspaceDescription();
-    
-    const parts = [];
-    parts.push('## 工作区探索状态 (Context Trimmed)');
-    parts.push('');
-    parts.push(workspaceDescription);
-    
-    if (knownNonExistent.length > 0) {
-      parts.push('');
-      parts.push('### 已知不存在的路径 (避免重复尝试)');
-      for (const path of knownNonExistent.slice(0, 10)) {
-        parts.push(`- ${path}`);
-      }
-    }
-    
-    // 添加关键事实
-    const importantFacts = criticalFacts
-      .filter(f => f.type !== 'path_not_found')
-      .slice(-5);
-    
-    if (importantFacts.length > 0) {
-      parts.push('');
-      parts.push('### 关键发现');
-      for (const fact of importantFacts) {
-        const value = typeof fact.value === 'object' 
-          ? JSON.stringify(fact.value).substring(0, 100)
-          : fact.value;
-        parts.push(`- ${fact.type}: ${value}`);
-      }
-    }
-    
-    parts.push('');
-    parts.push('这些信息来自之前的探索，在上下文裁剪后保留。请利用这些信息避免重复探索。');
-    
-    return parts.join('\n');
-  }
-
-  /**
-   * Clear conversation history (keep system prompt and memory)
-   * @param {boolean} clearWorkspace - 是否清除工作区状态，默认 false 保留
-   */
-  clearSession(clearWorkspace = false) {
-    this.#sessionManager.clear();
-    this.#lastResponse = '';
-    this.#repeatCount = 0;
-
-    this.#toolCallHistory = [];
-    
-    // 可选清除工作区状态
-    if (clearWorkspace && this.#workspaceState) {
-      this.#workspaceState.clear();
-      this.#cachedWorkspaceHint = '';
-    }
-    
-    this.#ui.info?.('Session cleared. Memory preserved.');
-  }
-
-  /**
-   * Get tool registry for inspection
-   */
-  getTools() {
-    return this.#toolRegistry;
-  }
-
-  /**
-   * Set model provider (for switching models)
-   */
-  setModelProvider(modelProvider, options = {}) {
-    this.#modelProvider = modelProvider;
-    if (options.model) {
-      this.#sessionManager.setTokenizerModel(options.model);
-    }
-  }
-
-  setDebugMode(enabled) {
-    this.#config.debug = Boolean(enabled);
-    if (typeof this.#ui.setDebugMode === 'function') {
-      this.#ui.setDebugMode(enabled);
-    }
-  }
-
-  get memoryManager() {
-    return this.#memoryManager;
-  }
-
-  get sessionManager() {
-    return this.#sessionManager;
-  }
-
-  // ============ 工作区状态 getter (新功能) ============
-  get workspaceState() {
-    return this.#workspaceState;
-  }
-
-  get observationSummarizer() {
-    return this.#observationSummarizer;
-  }
-
-  /**
-   * 获取工作区状态摘要
-   */
-  getWorkspaceSummary() {
-    if (!this.#workspaceState) {
-      return null;
-    }
-    return {
-      state: this.#workspaceState.getSummary(),
-      criticalFacts: this.#workspaceState.getCriticalFacts().map(f => ({
-        type: f.type,
-        value: f.value,
-      })),
-      workspaceDescription: this.#observationSummarizer?.generateWorkspaceDescription() || '',
-    };
-  }
-
-  getLastRunResult() {
-    return this.#lastRunResult ? { ...this.#lastRunResult } : null;
-  }
-
-  #completeRun({ success, status, answer, reason, iterations, startedAt, error, userInputRequest }) {
-    this.#workspaceIndex?.stopPeriodicSync();
-    const result = {
-      success,
-      status,
-      answer,
-      reason,
-      iterations,
-      durationMs: Date.now() - startedAt,
-      toolEvents: this.#runToolEvents.map(event => ({ ...event })),
-   };
-    if (error) {
-      result.error = error;
-    }
-    if (userInputRequest) {
-      result.userInputRequest = userInputRequest;
-    }
-    this.#lastRunResult = result;
-    return result;
-  }
-
-  #isDebugEnabled() {
-    if (typeof this.#ui.isDebugEnabled === 'function') {
-      return this.#ui.isDebugEnabled();
-    }
-    return this.#config.debug === true || process.env.DEBUG === 'true';
+  #formatUserInputRequestAnswer(result) {
+    const questions = Array.isArray(result.questions) ? result.questions : [];
+    return [
+      '需要你补充一点信息后我才能继续。',
+      result.reason ? `原因：${result.reason}` : '',
+      questions.length > 0
+        ? `请回答：\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}`
+        : '',
+    ].filter(Boolean).join('\n\n');
   }
 
   #debug(message) {
-    if (typeof this.#ui.debug === 'function') {
-      this.#ui.debug(message);
-    }
+    if (typeof this.#ui.debug === 'function') { this.#ui.debug(message); }
   }
 
   #debugEvent(label, details = {}) {
-    if (typeof this.#ui.debugEvent === 'function') {
-      this.#ui.debugEvent(label, details);
-      return;
-    }
-    if (this.#isDebugEnabled()) {
+    if (typeof this.#ui.debugEvent === 'function') { this.#ui.debugEvent(label, details); return; }
+    if (this.#config.debug === true || process.env.DEBUG === 'true') {
       this.#ui.debug?.(`${label}: ${JSON.stringify(details)}`);
     }
   }
@@ -1847,510 +695,5 @@ export class ReActAgent {
   #preview(value, maxLength = 200) {
     const text = value === null || value === undefined ? '' : String(value);
     return text.length > maxLength ? text.substring(0, maxLength) + '... (truncated)' : text;
-  }
-
-  #contentLength(value) {
-    if (typeof value === 'string') {
-      return value.length;
-    }
-    try {
-      return JSON.stringify(value).length;
-    } catch {
-      return 0;
-    }
-  }
-
-  #shouldCorrectToolRefusal(userInput, responseText) {
-    if (this.#toolRegistry.size === 0) {
-      return false;
-    }
-
-    const input = String(userInput || '').toLowerCase();
-    const response = String(responseText || '').toLowerCase();
-
-    const asksForLocalOperation = [
-      /当前目录|本地|文件|目录|路径|文件夹|几个|多少|数量|统计|列出|查看|运行|执行|终端|命令/,
-      /\b(current directory|working directory|local|filesystem|file system|files?|folders?|directories|path|count|how many|list|show|run|execute|shell|terminal|pwd|ls|find|grep|rg)\b/,
-    ].some(pattern => pattern.test(input));
-
-    if (!asksForLocalOperation) {
-      return false;
-    }
-
-    return [
-      /无法|不能|没法|无权|没有权限|无法访问|不能访问|不能查看|不能读取|不能操作/,
-      /浏览器助手|网页浏览器|网页.*助手|只能操作.*网页|只能.*浏览器/,
-      /cannot|can't|unable|do not have|don't have|no access|not able/,
-      /browser assistant|web browser|only.*browser|only.*web/,
-    ].some(pattern => pattern.test(response));
-  }
-
-  #containsUnparsedToolSyntax(responseText) {
-    const response = String(responseText || '');
-    // Prefer the new TextToolParser diagnostics (it is format-aware
-    // and tells us *what* went wrong). Falls back to regex heuristics.
-    if (this.#textToolParser?.detectMalformedToolCall) {
-      const diag = this.#textToolParser.detectMalformedToolCall(response);
-      if (diag) return true;
-    }
-    return [
-      /<tool_code>[\s\S]*?<\/tool_code>/i,
-      /<tool_call>[\s\S]*?<\/tool_call>/i,
-      /<function_call>[\s\S]*?<\/function_call>/i,
-      /```(?:tool|json)?\s*\n\s*\{[\s\S]*?(?:"name"|"action"|"tool")[\s\S]*?\}\s*```/i,
-      /\bCALL\s+\/?[A-Za-z_][\w-]*\s*\(/,
-      // DSML format: <｜｜DSML｜｜invoke> or <||DSML||invoke>
-      /<(?:\uFF5C\uFF5C|\|\|)DSML(?:\uFF5C\uFF5C|\|\|)\s*\w+/i,
-    ].some(pattern => pattern.test(response));
-  }
-
-  #buildToolSyntaxCorrectionPrompt(responseText) {
-    const toolNames = this.#toolRegistry.getAll().map(tool => tool.name).slice(0, 24).join(', ');
-    const diag = this.#textToolParser?.detectMalformedToolCall
-      ? this.#textToolParser.detectMalformedToolCall(String(responseText || ''))
-      : null;
-
-    const diagnosis = diag
-      ? `\nParser diagnosis:\n  - problem: ${diag.tag}\n  - opening: ${diag.opening}\n  - closing: ${diag.closing}\n  - detail: ${diag.hint}\n`
-      : '';
-
-    return (
-      `Your previous response looked like a tool call, but this runtime could not parse it, so it must not be treated as a final answer.\n` +
-      `${diagnosis}\n` +
-      `Previous response:\n${responseText}\n\n` +
-      `Use one valid tool-call format now. Prefer: CALL tool_name({"param":"value"}). ` +
-      `Available tools include: ${toolNames}. If you are actually finished, respond with FINAL_ANSWER: and summarize the completed work for the user.`
-    );
-  }
-
-  #buildToolUseCorrectionPrompt(userInput) {
-    const toolNames = this.#toolRegistry.getAll().map(tool => tool.name).slice(0, 24).join(', ');
-    return (
-      `Your previous response incorrectly refused a local/system task. You do have tools available in this agent runtime.\n` +
-      `Original user request: ${userInput}\n\n` +
-      `Use an appropriate tool now instead of answering from assumptions. Available tools include: ${toolNames}. ` +
-      `For filesystem, terminal, PTY, embedding, memory, or browser tasks, choose the matching tool and continue from the observation.`
-    );
-  }
-
-  #classifyTask(userInput, intent = null) {
-    return this.#taskClassifier.classify(userInput, intent);
-  }
-
-  #inferSemanticRiskDomains(userInput) {
-    return this.#taskClassifier.inferSemanticRiskDomains(userInput);
-  }
-
-  #buildSemanticRiskGuidance() {
-    return buildSemanticRiskGuidance(this.#activeTaskProfile?.semanticRiskDomains || []);
-  }
-
-  // ---------------------------------------------------------------
-  // Verification strategy: read package.json (or known project files)
-  // and map changed file extensions -> recommended shell commands.
-  // Returns a short human-readable recommendation string.
-  // ---------------------------------------------------------------
-  async #suggestVerificationStrategy(userInput) {
-    try {
-      const workingDirectory = this.#config.workingDirectory || process.cwd();
-      const pkgPath = `${workingDirectory}/package.json`;
-      const changedFiles = this.#extractRequestedFilePaths(userInput);
-
-      // Infer file types from user-input file paths
-      const extensions = new Set();
-      for (const p of changedFiles) {
-        const m = p.match(/\.[a-zA-Z0-9]+$/);
-        if (m) {extensions.add(m[0].toLowerCase());}
-      }
-
-      let recommendedCommands = [];
-      let packageInfo = null;
-
-      // 1) Try package.json scripts
-      if (existsSync(pkgPath)) {
-        try {
-          const raw = await readFile(pkgPath, 'utf-8');
-          const pkg = JSON.parse(raw);
-          packageInfo = { scripts: pkg.scripts || {} };
-          const scripts = pkg.scripts || {};
-          // Order by priority: test > lint > build > typecheck > check
-          const priority = [
-            ['test', /^(test|tests?|spec)$/i],
-            ['lint', /^(lint|linting|eslint|stylelint)$/i],
-            ['build', /^(build|compile|bundle|build:.*)$/i],
-            ['typecheck', /^(type.?check|tsc|typecheck:.*|check)$/i],
-            ['start', /^(start|dev|serve)$/i],
-          ];
-          for (const [label, regex] of priority) {
-            const name = Object.keys(scripts).find(s => regex.test(s));
-            if (name) {
-              recommendedCommands.push(`npm run ${name}  # ${label}`);
-            }
-          }
-          // Fallback if nothing matched but scripts exist
-          if (recommendedCommands.length === 0 && Object.keys(scripts).length > 0) {
-            const first = Object.keys(scripts)[0];
-            recommendedCommands.push(`npm run ${first}  # first available script`);
-          }
-        } catch {
-          // JSON parse errors are non-fatal; continue without package.json hints
-        }
-      }
-
-      // 2) Fall back to extension-based heuristics
-      const extBasedCommands = [];
-      for (const ext of extensions) {
-        if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
-          extBasedCommands.push('node --check <file>  # syntax check');
-          extBasedCommands.push('npx tsc --noEmit  # typecheck');
-          extBasedCommands.push('npm test  # if tests exist');
-        } else if (['.py'].includes(ext)) {
-          extBasedCommands.push('python -c "import py_compile; py_compile.compile(\'<file>\', doraise=True)"  # syntax check');
-          extBasedCommands.push('pytest  # if tests exist');
-        } else if (['.go'].includes(ext)) {
-          extBasedCommands.push('go build ./...');
-          extBasedCommands.push('go test ./...');
-        } else if (['.rs'].includes(ext)) {
-          extBasedCommands.push('cargo check');
-          extBasedCommands.push('cargo test');
-        } else if (['.java'].includes(ext)) {
-          extBasedCommands.push('mvn test');
-        }
-      }
-
-      // 3) Detect "non-verifiable" files (markdown, plain data, config without tests)
-      const verificationHintExts = new Set();
-      let unverifiableExts = [];
-      for (const ext of extensions) {
-        if (['.md', '.txt', '.json', '.yml', '.yaml', '.toml', '.csv'].includes(ext)) {
-          verificationHintExts.add(ext);
-        }
-      }
-      for (const ext of verificationHintExts) {
-        if (['.json', '.yml', '.yaml', '.toml'].includes(ext)) {
-          // JSON/YAML/TOML can at least be parsed
-          if (ext === '.json') {extBasedCommands.push('node -e "JSON.parse(require(\'fs\').readFileSync(\'<file>\',\'utf8\'))"  # syntax check JSON');}
-        } else {
-          // markdown/txt - no sensible runtime command
-          unverifiableExts.push(ext);
-        }
-      }
-
-      // Compose the prompt
-      const lines = [];
-      if (packageInfo) {
-        const scripts = Object.keys(packageInfo.scripts).slice(0, 6);
-        lines.push(`Detected package.json. Relevant scripts: ${scripts.join(', ') || '(none)'}.`);
-      }
-      if (recommendedCommands.length > 0) {
-        lines.push('Recommended verification commands (from package.json):');
-        for (const c of recommendedCommands.slice(0, 4)) {lines.push(`  - ${c}`);}
-      }
-      if (extBasedCommands.length > 0) {
-        lines.push('File-extension-based verification commands:');
-        for (const c of extBasedCommands.slice(0, 6)) {lines.push(`  - ${c}`);}
-      }
-      if (unverifiableExts.length > 0) {
-        lines.push(`Files with extensions ${unverifiableExts.join(', ')} may not have meaningful runtime verification; ` +
-                    'use read_file to inspect correctness instead of claiming "tested".');
-      }
-      if (lines.length === 0) {
-        lines.push('Before finishing, run a shell command that exercises your changes (for example: a test, linter, typechecker, or build).');
-      }
-      return lines.join('\n');
-    } catch {
-      return 'Before finishing, run a shell command that exercises your changes (for example: a test, linter, typechecker, or build).';
-    }
-  }
-
-  #buildCodingTaskOperatingPrompt(userInput) {
-    return buildCodingTaskOperatingPromptText({
-      userInput,
-      hasMethodologyTools: this.#hasAnyTool(METHODOLOGY_TOOLS),
-      profile: this.#activeTaskProfile || {},
-      semanticRiskGuidance: this.#buildSemanticRiskGuidance(),
-    });
-  }
-
-  #shouldBlockCodingFinal(userInput, responseText) {
-    // 完成门控入口条件：
-    // 1. 修改类任务（isModificationTask）→ 必须进入门控
-    // 2. 编码任务 + 产生了代码修改（mutation）证据 → 必须进入门控
-    // 3. 只读查询/非编码任务 → 不进入门控
-    const successfulEvents = this.#runToolEvents.filter(event => event.success);
-    const hasMutationEvidence = successfulEvents.some(event => evIsMutationEvent(event));
-
-    if (!this.#activeTaskProfile?.isModificationTask && !hasMutationEvidence) {
-      return { block: false };
-    }
-
-    const text = String(responseText || '').trim();
-    if (!text) {
-      return { block: false };
-    }
-
-    // 用 evidence-verifier 评估
-    const gates = getCompletionGates(this.#activeTaskProfile.riskLevel, this.#activeTaskProfile);
-    const gateResult = evCheckCompletionGates(successfulEvents, gates, this.#activeTaskProfile);
-
-    // automatic_plan 检查保留（与 evidence-verifier 独立）
-    if (this.#activeExecutionPlan && this.#activeExecutionPlan.status !== TaskStatus.COMPLETED) {
-      return {
-        block: true,
-        reason: 'automatic_plan_incomplete',
-        evidence: {
-          automaticPlan: this.#summarizePlanProgress(this.#activeExecutionPlan),
-          ...gateResult.summary,
-        },
-      };
-    }
-
-    // 0 tool evidence
-    if (successfulEvents.length === 0) {
-      return {
-        block: true,
-        reason: 'no_tool_evidence',
-        evidence: gateResult.summary,
-      };
-    }
-
-    // evidence-verifier 给的其他缺失项
-    if (gateResult.block) {
-      return {
-        block: true,
-        reason: gateResult.reason,
-        missing: gateResult.missing,
-        evidence: gateResult.summary,
-      };
-    }
-
-    // final answer 必须诚实提到验证
-    const hasMutation = gateResult.summary?.mutationEvents?.length > 0;
-    const checkSummary = finalAnswerMentionsVerification(text, hasMutation);
-    if (!checkSummary.ok) {
-      return {
-        block: true,
-        reason: checkSummary.reason,
-        evidence: gateResult.summary,
-      };
-    }
-
-    return { block: false, evidence: gateResult.summary };
-  }
-
-  #buildCodingCompletionGatePrompt(userInput, gate) {
-    return buildCodingCompletionGatePromptText({
-      userInput,
-      gate,
-      semanticRiskGuidance: this.#buildSemanticRiskGuidance(),
-      requiresSemanticRiskReview: this.#activeTaskProfile?.requiresSemanticRiskReview,
-    });
-  }
-
-  #hasAnyTool(toolNames) {
-    for (const name of toolNames) {
-      if (this.#toolRegistry.has(name)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  #isMutationEvent(event) {
-    return evIsMutationEvent(event);
-  }
-
-  #isVerificationEvent(event) {
-    return isRuntimeVerificationEvent(event);
-  }
-
-  #isSemanticRiskReviewEvent(event) {
-    return this.#isSemanticRiskReviewTool(event.name, event.args);
-  }
-
-  /**
-   * Format helpful error message when tool not found
-   * @private
-   */
-  #formatToolNotFoundError(toolName) {
-    const allTools = this.#toolRegistry.getAll();
-    const availableToolNames = this.#activeRoutedToolNames
-      ? Array.from(this.#activeRoutedToolNames).join(', ')
-      : allTools.map(t => t.name).join(', ');
-    
-    // Check for common browser/navigation related tool names
-    const browserToolPatterns = ['navigate', 'browse', 'browser', 'web', 'url', 'fetch', 'get_weather'];
-    const isBrowserTool = browserToolPatterns.some(pattern => 
-      toolName.toLowerCase().includes(pattern)
-    );
-    
-    let errorMsg = `Unknown tool: "${toolName}". Available tools: ${availableToolNames}`;
-    
-    if (isBrowserTool) {
-      errorMsg += `\n\nℹ️  It looks like you're trying to use a browser/web tool. `;
-      errorMsg += `These tools are provided by MCP servers. `;
-      errorMsg += `Try using:\n`;
-      errorMsg += `  1. Use "mcp_list_servers" to see connected MCP servers\n`;
-      errorMsg += `  2. Use "mcp_list_tools" to see all available MCP tools\n`;
-      errorMsg += `  3. If no browser server is connected, use "mcp_connect" to connect one`;
-    }
-    
-    // Check if there are MCP tools available
-    const mcpTools = allTools.filter(t => t.name.includes('/') || t.name.startsWith('mcp_'));
-    if (mcpTools.length > 0 && toolName.includes('/') === false && !toolName.startsWith('mcp_')) {
-      // Check if any MCP tool has a similar name
-      const similarTools = mcpTools.filter(t => 
-        t.name.toLowerCase().includes(toolName.toLowerCase().split('/').pop())
-      );
-      if (similarTools.length > 0) {
-        errorMsg += `\n\n💡  Did you mean one of these? ${similarTools.map(t => t.name).join(', ')}`;
-      }
-    }
-    
-    return errorMsg;
-  }
-
-
-  /**
-   * 根据任务复杂度计算自适应迭代预算
-   * 核心原则：
-   * 1. 用户显式设置 maxIterations 时，尊重该值，不再缩小
-   * 2. 使用默认值时，按风险等级自适应调整，但不低于完成工具调用 + 至少一轮生成最终答案的最小值
-   */
-  #computeIterationBudget(taskProfile) {
-    const userSetMaxIterations = Number.isFinite(this.#config.maxIterations) && this.#config.maxIterations > 0;
-    const baseMax = this.#config.maxIterations || MAX_ITERATIONS_DEFAULT;
-
-    // 用户显式指定迭代数：尊重该值，不再按风险进一步缩小
-    if (userSetMaxIterations) {
-      return baseMax;
-    }
-
-    // 使用默认值时，按风险等级自适应
-    if (!taskProfile) {
-      return Math.max(4, Math.round(baseMax * 0.5));
-    }
-    const budget = rbComputeIterationBudget(taskProfile.riskLevel || taskProfile, baseMax);
-    // 保证至少有 4 次迭代（工具调用 + 生成最终答案）
-    return Math.max(4, budget);
-  }
-
-  /**
-   * 记录工具调用到停滞检测滑动窗口
-   * 跟踪工具类型和是否执行了修改操作
-   */
-  #recordToolCallForStagnation(toolResult, iteration) {
-    if (!toolResult || !toolResult.name) { return; }
-    const isMutation = this.#isMutationTool(toolResult.name, toolResult);
-    this.#stagnationWindow.push({
-      toolName: toolResult.name,
-      iteration,
-      isMutation,
-    });
-    if (this.#stagnationWindow.length > STAGNATION_LOOKBACK) {
-      this.#stagnationWindow.shift();
-    }
-    if (isMutation) {
-      this.#lastMutationIteration = iteration;
-    }
-  }
-
-  /**
-   * 停滞检测与进度检查点注入
-   *
-   * 不直接终止 Agent，而是注入一个 nudge 消息让 LLM 意识到
-   * 当前效率低下的模式，自行调整策略。
-   *
-   * 检测三种停滞模式：
-   * 1. 工具调用停滞：同一类工具连续重复多次
-   * 2. 零进展停滞：长时间无修改操作
-   * 3. 进度检查点：定期提示 LLM 总结进展
-   *
-   * 超过 MAX_STAGNATION_NUDGES 次后，降级迭代预算以节约 token
-   */
-  #injectStagnationNudge(iteration, maxIterations) {
-    if (iteration < 3) { return; } // 前 3 轮不检测
-
-    // 检查是否已达到进度检查点间隔
-    if (iteration % PROGRESS_CHECKPOINT_INTERVAL === 0) {
-      this.#activeProgressCheckpoints++;
-      const planStatus = this.#activeExecutionPlan
-        ? this.#summarizePlanProgress(this.#activeExecutionPlan)
-        : 'not available';
-      this.#sessionManager.addUserMessage(
-        `[Progress checkpoint @iter ${iteration}/${maxIterations}]
-Plan status:
-${planStatus}
-If you have enough information to answer, provide FINAL_ANSWER now.
-If you are stuck, try a fundamentally different approach instead of repeating the same pattern.`
-      );
-      return;
-    }
-
-    // 当迭代预算被降级后，不再注入 nudge
-    if (this.#consecutiveSameTool >= STAGNATION_SAME_TOOL_LIMIT ||
-        this.#stagnationWindow.length >= STAGNATION_LOOKBACK) {
-      if (this.#lastMutationIteration + STAGNATION_NO_MUTATION_LIMIT < iteration) {
-        // 已尝试过最大 nudge 次数？降级预算
-        if (this.#lastStagnationNudge >= MAX_STAGNATION_NUDGES) {
-          this.#iterationBudget = Math.min(this.#iterationBudget, Math.ceil(maxIterations * 0.4));
-        }
-      }
-    }
-
-    // 模式 1：相同工具类型连续重复
-    const window = this.#stagnationWindow;
-    if (window.length >= STAGNATION_SAME_TOOL_LIMIT) {
-      const recentTools = window.slice(-STAGNATION_SAME_TOOL_LIMIT);
-      const uniqueTools = new Set(recentTools.map(t => t.toolName));
-      if (uniqueTools.size <= 2 && window.every(t => !t.isMutation)) {
-        this.#lastStagnationNudge++;
-        const toolList = [...uniqueTools].join(', ');
-        this.#sessionManager.addUserMessage(
-          `[Efficiency note] You have called ${toolList} repeatedly for ${STAGNATION_SAME_TOOL_LIMIT} consecutive iterations with no modifications.
-Consider: (1) call a different tool to make progress, (2) provide FINAL_ANSWER if you already have enough information, or (3) ask the user for clarification.`
-        );
-        this.#consecutiveSameTool = 0;
-        return;
-      }
-    }
-
-    // 模式 2：长时间无修改操作
-    if (this.#lastMutationIteration > 0 &&
-        this.#lastMutationIteration + STAGNATION_NO_MUTATION_LIMIT <= iteration &&
-        window.length >= STAGNATION_NO_MUTATION_LIMIT) {
-      this.#lastStagnationNudge++;
-      const planStatus = this.#activeExecutionPlan
-        ? this.#summarizePlanProgress(this.#activeExecutionPlan)
-        : 'not available';
-      this.#sessionManager.addUserMessage(
-        `[Efficiency note] No modifications were made in the last ${STAGNATION_NO_MUTATION_LIMIT} iterations.
-Plan status:
-${planStatus}
-If you are still investigating, try narrowing your search. Otherwise, provide FINAL_ANSWER with what you have found so far.`
-      );
-      this.#lastMutationIteration = iteration;
-    }
-  }
-
-  /**
-   * 预热工作目录索引
-   * WorkspaceIndex.warm() 自动处理：加载缓存 → 增量同步 → 全量构建
-   * 返回项目文件结构摘要，注入到 Agent 上下文
-   */
-  async #warmWorkspaceCache() {
-    try {
-      return await this.#workspaceIndex.warm();
-    } catch (err) {
-      this.#debugEvent('WorkspaceIndex warmup failed', { error: err.message });
-      return '';
-    }
-  }
-
-  /**
-   * Dispose of resources
-   */
-  dispose() {
-    this.#modelProvider.dispose();
   }
 }

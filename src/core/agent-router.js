@@ -1,0 +1,352 @@
+/**
+ * AgentRouter — 工具调用执行、安全策略、去重、缓存
+ *
+ * 从 ReActAgent 拆出的职责：
+ *   - 工具调用规范化、安全校验、执行
+ *   - 工具结果缓存（内存 + JSONL 持久化）
+ *   - 去重检查
+ *   - 工作区状态预测
+ *   - Shell 运行时工具重写
+ *   - 工具未找到时的友好错误
+ */
+
+import { withTimeout } from '../errors/error-handler.js';
+import { existsSync } from 'fs';
+import { readFile, appendFile, mkdir } from 'fs/promises';
+
+export class AgentRouter {
+  #debugEvent;
+  #toolRegistry;
+  #textToolParser;
+  #ui;
+  #config;
+  #contentStore;
+  #fileAnalyzer;
+  #memoryManager;
+  #sessionManager;
+  #modelProvider;
+
+  // 去重
+  #toolCallHistory = [];
+  // 持久化缓存
+  #toolResultCache = new Map();
+  #toolResultCachePath;
+  #toolResultCacheMaxSize = 500;
+  #toolResultCacheLoaded = false;
+  #toolResultCacheEnabled = true;
+
+  constructor({
+    debugEvent, toolRegistry, textToolParser, ui, config,
+    contentStore, fileAnalyzer, memoryManager, sessionManager, modelProvider,
+  }) {
+    this.#debugEvent = debugEvent;
+    this.#toolRegistry = toolRegistry;
+    this.#textToolParser = textToolParser;
+    this.#ui = ui;
+    this.#config = config;
+    this.#contentStore = contentStore;
+    this.#fileAnalyzer = fileAnalyzer;
+    this.#memoryManager = memoryManager;
+    this.#sessionManager = sessionManager;
+    this.#modelProvider = modelProvider;
+
+    this.#toolResultCacheEnabled = config.toolResultCacheEnabled !== false;
+    const agentDataDir = `${config.workingDirectory}/.agent-data`;
+    this.#toolResultCachePath = this.#toolResultCacheEnabled ? `${agentDataDir}/tool-cache.jsonl` : null;
+    this.#toolResultCacheMaxSize = 500;
+    this.#toolResultCacheLoaded = false;
+  }
+
+  /** 重置每次 run 的状态 */
+  reset() {
+    this.#toolCallHistory = [];
+  }
+
+  /**
+   * 执行单个工具调用
+   * @param {object} toolCall
+   * @param {object} options - { resultMode, activeRoutedToolNames, workspaceState, observationSummarizer }
+   * @returns {Promise<{name:string, result:any, error?:string, skipped?:boolean}>}
+   */
+  async executeToolCall(toolCall, options = {}) {
+    const normalizedToolCall = this.#normalizeToolCall(toolCall);
+    const rewrittenToolCall = this.#rewriteShellRuntimeToolCall(normalizedToolCall) || normalizedToolCall;
+    const { id, name, arguments: args } = rewrittenToolCall;
+    const resultMode = options.resultMode || 'tool';
+    const startedAt = Date.now();
+
+    // 去重
+    const callSignature = `${name}:${JSON.stringify(args)}`;
+    await this.#loadToolResultCache();
+    if (this.#toolCallHistory.includes(callSignature) || this.#toolResultCache.has(callSignature)) {
+      this.#ui.warn(`Duplicate tool call detected: ${name}. Skipping.`);
+      const cachedResult = this.#toolResultCache.get(callSignature);
+      this.#debugEvent('Tool call skipped', {
+        reason: 'duplicate',
+        tool: name,
+        arguments: args,
+        resultMode,
+        cachedResult: Boolean(cachedResult),
+      });
+      return { name, result: cachedResult || null, skipped: true };
+    }
+    this.#toolCallHistory.push(callSignature);
+    if (this.#toolCallHistory.length > 50) {
+      this.#toolCallHistory = this.#toolCallHistory.slice(-25);
+    }
+
+    // 工作区状态预测
+    const { workspaceState, observationSummarizer } = options;
+    if (workspaceState) {
+      const prediction = workspaceState.predictToolResult(name, args);
+      if (prediction.canSkip) {
+        this.#ui.warn(`⚠️  Skipping ${name}: ${prediction.reason}`);
+        this.#debugEvent('Tool call skipped (workspace prediction)', {
+          tool: name, arguments: args, reason: prediction.reason, prediction: prediction.type,
+        });
+        return { name, result: prediction.predicted || { error: prediction.reason }, skipped: true, predicted: true };
+      }
+    }
+
+    this.#ui.toolCall(name, args);
+
+    // 工具查找
+    const tool = this.#toolRegistry.get(name);
+    if (!tool) {
+      const errorMsg = this.#formatToolNotFoundError(name, options.activeRoutedToolNames);
+      this.#debugEvent('Tool lookup failed', { tool: name, arguments: args });
+      this.#ui.toolError(name, errorMsg);
+      return { name, result: errorMsg, error: errorMsg };
+    }
+
+    // 路由检查
+    if (options.activeRoutedToolNames && !options.activeRoutedToolNames.has(name)) {
+      const availableToolNames = Array.from(options.activeRoutedToolNames).join(', ') || '(none)';
+      const errorMsg = `Tool "${name}" is registered but not available in the current request phase. Available tools now: ${availableToolNames}.`;
+      this.#debugEvent('Tool call blocked by routing', { tool: name, arguments: args });
+      this.#ui.toolError(name, errorMsg);
+      return { name, result: errorMsg, error: errorMsg };
+    }
+
+    // 参数校验
+    let effectiveArgs = args || {};
+    if (typeof this.#toolRegistry.validateAndCoerceArgs === 'function') {
+      const v = this.#toolRegistry.validateAndCoerceArgs(name, args);
+      if (!v.valid) {
+        this.#ui.warn(`[Tool args] ${name}: ${v.errors.join('; ')}`);
+      }
+      effectiveArgs = v.coercedArgs;
+    }
+
+    // 必填参数检查
+    if (tool.required && Array.isArray(tool.required)) {
+      const missing = tool.required.filter(param => {
+        const value = effectiveArgs ? effectiveArgs[param] : undefined;
+        return value === undefined || value === null || value === '';
+      });
+      if (missing.length > 0) {
+        const errorMsg = `Missing required parameter(s): ${missing.join(', ')}. The "${name}" tool requires: ${tool.required.join(', ')}.`;
+        this.#debugEvent('Tool call missing required params', { tool: name, missing });
+        this.#ui.warn?.(errorMsg);
+        return { name, result: errorMsg, error: errorMsg };
+      }
+    }
+
+    // 安全策略
+    const securityBlock = this.#enforceToolSecurity(name, args);
+    if (securityBlock) {
+      this.#debugEvent('Tool call blocked by security policy', { tool: name, reason: securityBlock });
+      this.#ui.toolError(name, securityBlock);
+      return { name, result: `Error: Security policy blocked ${name}: ${securityBlock}`, error: securityBlock };
+    }
+
+    this.#debugEvent('Tool call started', {
+      id, tool: name, category: tool.category, source: rewrittenToolCall.source || toolCall.source || 'native',
+      resultMode, workingDirectory: this.#config.workingDirectory, arguments: args, purpose: tool.description,
+    });
+
+    try {
+      const context = {
+        workingDirectory: this.#config.workingDirectory,
+        memoryManager: this.#memoryManager,
+        sessionManager: this.#sessionManager,
+        modelProvider: this.#modelProvider,
+        debug: this.#isDebugEnabled(),
+        ui: this.#ui,
+        toolName: name,
+        subAgent: this.#config.subAgent,
+        contentStore: this.#contentStore,
+        fileAnalyzer: this.#fileAnalyzer,
+      };
+
+      const result = await withTimeout(
+        () => tool.handler(effectiveArgs, context),
+        60000,
+        `Tool ${name}`
+      );
+
+      const finalResult = this.#applyToolSecurityResultPolicy(name, result);
+
+      this.#debugEvent('Tool call completed', {
+        tool: name, durationMs: Date.now() - startedAt,
+        resultPreview: this.#preview(typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult), 300),
+      });
+      this.#ui.toolResult(name, finalResult);
+      this.#toolResultCache.set(callSignature, typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult));
+      this.#flushToolResultCacheEntry(callSignature, this.#toolResultCache.get(callSignature));
+
+      return { name, result: finalResult };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.#debugEvent('Tool call failed', { tool: name, durationMs: Date.now() - startedAt, error: errorMsg });
+      this.#ui.toolError(name, errorMsg);
+      this.#toolResultCache.set(callSignature, `Error: ${errorMsg}`);
+      this.#flushToolResultCacheEntry(callSignature, `Error: ${errorMsg}`);
+      return { name, result: `Error: ${errorMsg}`, error: errorMsg };
+    }
+  }
+
+  // ---- 缓存 ----
+
+  async #loadToolResultCache() {
+    if (this.#toolResultCacheLoaded) return;
+    this.#toolResultCacheLoaded = true;
+    if (!this.#toolResultCachePath) return;
+    try {
+      if (!existsSync(this.#toolResultCachePath)) return;
+      const content = await readFile(this.#toolResultCachePath, 'utf-8');
+      const lines = content.split('\n').filter(Boolean);
+      for (const line of lines.slice(-this.#toolResultCacheMaxSize)) {
+        try {
+          const { signature, result } = JSON.parse(line);
+          if (signature && typeof result === 'string') {
+            this.#toolResultCache.set(signature, result);
+          }
+        } catch { /* skip malformed line */ }
+      }
+    } catch (err) {
+      try { console.warn('[ToolCache] 加载失败:', err.message); } catch {}
+    }
+  }
+
+  async #flushToolResultCacheEntry(signature, result) {
+    if (!this.#toolResultCachePath) return;
+    try {
+      const dir = this.#toolResultCachePath.substring(0, this.#toolResultCachePath.lastIndexOf('/'));
+      if (!existsSync(dir)) { await mkdir(dir, { recursive: true }); }
+      const line = JSON.stringify({ signature, result, createdAt: Date.now() }) + '\n';
+      await appendFile(this.#toolResultCachePath, line, 'utf-8');
+    } catch (err) {
+      try { console.warn('[ToolCache] 写入失败:', err.message); } catch {}
+    }
+  }
+
+  // ---- 工具调用规范化 ----
+
+  #normalizeToolCall(toolCall) {
+    if (!toolCall || typeof toolCall !== 'object') return toolCall;
+    if (toolCall.name) {
+      return { ...toolCall, arguments: this.#parseToolArguments(toolCall.arguments) };
+    }
+    if (toolCall.function?.name) {
+      return {
+        id: toolCall.id,
+        name: toolCall.function.name,
+        arguments: this.#parseToolArguments(toolCall.function.arguments),
+        source: toolCall.type || 'native_tool_call',
+        raw: toolCall,
+      };
+    }
+    return toolCall;
+  }
+
+  #parseToolArguments(args) {
+    if (!args) return {};
+    if (typeof args === 'object') return args;
+    if (typeof args !== 'string') return {};
+    try {
+      const parsed = JSON.parse(args);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch { return {}; }
+  }
+
+  #rewriteShellRuntimeToolCall(toolCall) {
+    if (toolCall?.name !== 'shell') return null;
+    const command = String(toolCall.arguments?.command || '').trim();
+    if (!command) return null;
+    const parsed = this.#textToolParser
+      .parse(`\`\`\`bash\n${command}\n\`\`\``)
+      .filter(call => call.name !== 'shell');
+    if (parsed.length === 0) return null;
+    const replacement = parsed[0];
+    this.#debugEvent('Shell tool call rewritten to runtime tool', {
+      originalCommand: command, replacementTool: replacement.name, replacementArguments: replacement.arguments,
+    });
+    return { ...replacement, id: toolCall.id, source: 'shell_runtime_tool_redirect' };
+  }
+
+  // ---- 安全 ----
+
+  #enforceToolSecurity(name, args) {
+    const policy = this.#config.securityPolicy;
+    if (!policy) return null;
+    if (typeof policy.requiresApproval === 'function' && policy.requiresApproval(name)) {
+      return 'approval_required';
+    }
+    if (typeof policy.validateToolCall === 'function') {
+      const result = policy.validateToolCall(name, args);
+      if (result === false) return 'denied';
+      if (result && result.allowed === false) return result.reason || 'denied';
+    }
+    return null;
+  }
+
+  #applyToolSecurityResultPolicy(name, result) {
+    const policy = this.#config.securityPolicy;
+    if (policy && typeof policy.truncateResult === 'function') {
+      return policy.truncateResult(name, result);
+    }
+    return result;
+  }
+
+  // ---- 错误格式化 ----
+
+  #formatToolNotFoundError(toolName, activeRoutedToolNames) {
+    const allTools = this.#toolRegistry.getAll();
+    const availableToolNames = activeRoutedToolNames
+      ? Array.from(activeRoutedToolNames).join(', ')
+      : allTools.map(t => t.name).join(', ');
+
+    const browserToolPatterns = ['navigate', 'browse', 'browser', 'web', 'url', 'fetch', 'get_weather'];
+    const isBrowserTool = browserToolPatterns.some(pattern => toolName.toLowerCase().includes(pattern));
+
+    let errorMsg = `Unknown tool: "${toolName}". Available tools: ${availableToolNames}`;
+    if (isBrowserTool) {
+      errorMsg += `\n\nℹ️  It looks like you're trying to use a browser/web tool. `;
+      errorMsg += `These tools are provided by MCP servers. Try using:\n`;
+      errorMsg += `  1. Use "mcp_list_servers" to see connected MCP servers\n`;
+      errorMsg += `  2. Use "mcp_list_tools" to see all available MCP tools\n`;
+      errorMsg += `  3. If no browser server is connected, use "mcp_connect" to connect one`;
+    }
+
+    const mcpTools = allTools.filter(t => t.name.includes('/') || t.name.startsWith('mcp_'));
+    if (mcpTools.length > 0 && toolName.includes('/') === false && !toolName.startsWith('mcp_')) {
+      const similarTools = mcpTools.filter(t =>
+        t.name.toLowerCase().includes(toolName.toLowerCase().split('/').pop())
+      );
+      if (similarTools.length > 0) {
+        errorMsg += `\n\n💡  Did you mean one of these? ${similarTools.map(t => t.name).join(', ')}`;
+      }
+    }
+    return errorMsg;
+  }
+
+  #isDebugEnabled() {
+    return this.#config.debug === true || process.env.DEBUG === 'true';
+  }
+
+  #preview(value, maxLength = 200) {
+    const text = value === null || value === undefined ? '' : String(value);
+    return text.length > maxLength ? text.substring(0, maxLength) + '... (truncated)' : text;
+  }
+}

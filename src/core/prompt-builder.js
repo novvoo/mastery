@@ -118,13 +118,13 @@ export async function suggestVerificationStrategy(userInput, { workingDirectory 
       const matched = [];
       for (const [label, regex] of priority) {
         const name = Object.keys(scripts).find(s => regex.test(s));
-        if (name) matched.push(`npm run ${name}  # ${label}`);
+        if (name) matched.push(`bun run ${name}  # ${label} (npm run ${name} 作为备选)`);
       }
       if (matched.length > 0) {
         lines.push('Detected package.json. Recommended verification commands:');
         for (const c of matched.slice(0, 4)) lines.push(`  - ${c}`);
       } else if (Object.keys(scripts).length > 0) {
-        lines.push(`package.json scripts exist. Consider: npm run ${Object.keys(scripts)[0]}`);
+        lines.push(`package.json scripts exist. Consider: bun run ${Object.keys(scripts)[0]}`);
       }
     } catch { /* ignore */ }
   }
@@ -134,7 +134,7 @@ export async function suggestVerificationStrategy(userInput, { workingDirectory 
   if ([...extensions].some(ext => ['.ts', '.tsx', '.js', '.jsx'].includes(ext))) {
     extBased.push('node --check <file>  # syntax check');
     extBased.push('npx tsc --noEmit  # typecheck');
-    extBased.push('npm test  # if tests exist');
+    extBased.push('bun test  # if tests exist (npm test 作为备选)');
   }
   if (extensions.has('.py')) {
     extBased.push('python -c "import py_compile; py_compile.compile(\'<file>\', doraise=True)"  # syntax check');
