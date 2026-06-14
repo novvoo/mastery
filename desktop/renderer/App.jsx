@@ -829,6 +829,10 @@ function App() {
     await handleSubmitAgentInput(chatInput);
   }, [chatInput, handleSubmitAgentInput]);
 
+  const handleContinueAgentInput = useCallback(async (input) => {
+    await handleSubmitAgentInput(input, { clearInput: false });
+  }, [handleSubmitAgentInput]);
+
   const handleAskAgentFromMessage = useCallback(async (message) => {
     const prompt = createAgentErrorPrompt(message);
     await handleSubmitAgentInput(prompt);
@@ -1105,6 +1109,7 @@ function App() {
           onFocus={() => setInputFocused(true)}
           onBlur={() => setInputFocused(false)}
           onSendMessage={handleSendMessage}
+          onContinue={handleContinueAgentInput}
           onExport={handleExport}
           onOpenPreview={() => {
             setSummaryPanelVisible(true);

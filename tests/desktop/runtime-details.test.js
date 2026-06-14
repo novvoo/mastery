@@ -4,6 +4,7 @@ import {
   getFileStatusLabel,
 } from '../../desktop/renderer/components/message-log/activity-summary.js';
 import {
+  buildThinkingSummary,
   buildRuntimeDetailsExportData,
   createConversationGroups,
   createRuntimeDetailId,
@@ -17,6 +18,7 @@ import {
 describe('runtime details helpers', () => {
   test('classifies runtime detail and primary messages', () => {
     expect(isRuntimeDetailMessage({ event: 'tool:call' })).toBe(true);
+    expect(isRuntimeDetailMessage({ event: 'agent:thinking' })).toBe(true);
     expect(isRuntimeDetailMessage({ type: 'tool_result' })).toBe(true);
     expect(isRuntimeDetailMessage({ type: 'user' })).toBe(false);
     expect(isStatusUpdateMessage({ event: 'status:update' })).toBe(true);
@@ -43,6 +45,7 @@ describe('runtime details helpers', () => {
     const messages = [
       { id: 'u1', type: 'user', content: 'run task' },
       { id: 's1', event: 'status:update', type: 'event', message: 'starting' },
+      { id: 'r1', event: 'agent:thinking', type: 'thinking', summary: 'checking the plan' },
       { id: 't1', event: 'tool:call', type: 'tool', toolName: 'shell' },
       { id: 'a1', type: 'agent', content: 'done' },
       { id: 'c1', event: 'agent:complete', type: 'success', content: 'final answer' },
@@ -55,7 +58,21 @@ describe('runtime details helpers', () => {
 
     expect(groups).toHaveLength(1);
     expect(groups[0].messages.map(msg => msg.id)).toEqual(['u1', 'a1', 'c1']);
-    expect(groups[0].runtimeDetails.map(msg => msg.id)).toEqual(['s1', 't1']);
+    expect(groups[0].runtimeDetails.map(msg => msg.id)).toEqual(['s1', 'r1', 't1']);
+  });
+
+  test('builds thinking summaries across iterations', () => {
+    const summary = buildThinkingSummary([
+      { id: 'r1', event: 'agent:thinking', type: 'thinking', iteration: 1, summary: '读上下文', thinkingText: '先读取上下文。' },
+      { id: 'r2', event: 'agent:thinking', type: 'thinking', iteration: 2, summary: '验证结果', thinkingText: '再验证结果。' },
+      { id: 't1', event: 'tool:call', type: 'tool' },
+    ]);
+
+    expect(summary.count).toBe(2);
+    expect(summary.iterationCount).toBe(2);
+    expect(summary.summary).toBe('验证结果');
+    expect(summary.fullText).toContain('先读取上下文');
+    expect(summary.fullText).toContain('再验证结果');
   });
 
   test('creates collision-resistant ids and export data', () => {

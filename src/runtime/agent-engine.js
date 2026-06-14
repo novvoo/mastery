@@ -635,6 +635,9 @@ export class AgentEngine {
           data 
         });
       },
+      thinking: (thinking) => {
+        eventBus.emit(RuntimeEvent.AGENT_THINKING, thinking);
+      },
       toolCall: (name, args) => {
         const activity = describeToolActivity(name, args, 'running');
         eventBus.emit(RuntimeEvent.TOOL_CALL, { toolName: name, args, activity });

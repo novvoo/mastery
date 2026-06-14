@@ -34,6 +34,35 @@ export function describeToolActivity(toolName, args = {}, phase = 'running', res
   };
 }
 
+/**
+ * 创建工具进度活动描述（用于心跳/进度推送）
+ * @param {string} toolName - 工具名称
+ * @param {Object} args - 工具参数
+ * @param {number} progress - 进度百分比 (0-100)
+ * @param {string} [statusText] - 自定义状态文本
+ */
+export function describeToolProgress(toolName, args = {}, progress = 0, statusText = null) {
+  const name = String(toolName || 'unknown');
+  const target = inferTarget(name, args);
+  const intent = inferIntent(name, args);
+  const subject = target || toolDisplayName(name, args);
+  const clampedProgress = Math.max(0, Math.min(100, Math.round(progress)));
+
+  return {
+    id: activityId(name, args),
+    kind: 'tool_activity',
+    phase: 'running',
+    intent,
+    toolName: name,
+    target,
+    progress: clampedProgress,
+    title: `正在${subject ? ` ${subject}` : ''}`,
+    statusText: statusText || `进度: ${clampedProgress}%`,
+    detail: detailText(name, args, null),
+    timestamp: Date.now(),
+  };
+}
+
 export function summarizeActivityForCLI(activity) {
   if (!activity) {
     return '';

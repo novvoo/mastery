@@ -11,10 +11,14 @@
  */
 
 import { EventEmitter } from 'events';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { RuntimeEvent } from '../../runtime/types.js';
 import { buildSlashCommandSuggestions } from '../../cli/slash-command-suggestions.js';
 import { handleDocumentBatchAdd, handleDocumentCommand, parseDocumentCommand } from '../../runtime/document-command.js';
 import { listPreviews, startPreview, stopPreview } from '../../core/preview-server.js';
+
+const execFileAsync = promisify(execFile);
 
 /**
  * IPC 消息类型定义
@@ -489,7 +493,9 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
    * 设置 IPC 处理器（幂等：只注册一次，避免 Electron 抛出重复 handler 错误）
    */
   #setupIPCHandlers() {
-    if (this.#handlersSetup) return;
+    if (this.#handlersSetup) {
+      return;
+    }
     this.#handlersSetup = true;
 
     // 处理连接请求
@@ -568,6 +574,10 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
       'app:openExternal',
       'workspace:setWorkingDirectory',
       'workspace:listDirectory',
+      'workspace:getFileDiff',
+      'activity:undo',
+      'activity:review',
+      'activity:approve',
       'preview:start',
       'preview:list',
       'preview:stop',
@@ -669,6 +679,18 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
         case 'agent:getStats':
         case 'system:getStats':
           return this.createResponse(message, this.getStats());
+
+        case 'workspace:getFileDiff':
+          return this.createResponse(message, await this.#handleFileDiff(message.payload));
+
+        case 'activity:undo':
+          return this.createResponse(message, await this.#handleActivityUndo(message.payload));
+
+        case 'activity:review':
+          return this.createResponse(message, await this.#handleActivityReview(message.payload));
+
+        case 'activity:approve':
+          return this.createResponse(message, await this.#handleActivityApprove(message.payload));
 
         default:
           // 自定义处理器
@@ -792,6 +814,86 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
       command: '/preview',
       content: `Preview ready: ${preview.url}`,
     };
+  }
+
+  async #handleFileDiff(payload = {}) {
+    const filePath = String(payload?.path || payload?.target || '').trim();
+    if (!filePath) {
+      return { success: false, error: 'Missing file path.' };
+    }
+
+    const workingDirectory = this.#engine?.getConfig?.().workingDirectory || process.cwd();
+    try {
+      const { stdout } = await execFileAsync('git', ['diff', '--', filePath], {
+        cwd: workingDirectory,
+        maxBuffer: 1024 * 1024,
+      });
+      return {
+        success: true,
+        path: filePath,
+        diff: stdout || '',
+        hasDiff: Boolean(stdout && stdout.trim()),
+      };
+    } catch (error) {
+      return {
+        success: false,
+        path: filePath,
+        error: error.message,
+        diff: error.stdout || '',
+      };
+    }
+  }
+
+  async #handleActivityUndo(payload = {}) {
+    const activity = payload?.activity || payload || {};
+    const target = String(activity.target || payload?.target || '').trim();
+    const diff = target ? await this.#handleFileDiff({ path: target }) : null;
+    const result = {
+      success: true,
+      action: 'undo',
+      mode: payload?.confirm === true ? 'not_implemented' : 'prepare',
+      requiresConfirmation: payload?.confirm !== true,
+      activity,
+      target,
+      diff: diff?.diff || '',
+      hasDiff: Boolean(diff?.hasDiff),
+      message: payload?.confirm === true
+        ? '结构化撤销通道已接收确认，但自动写回尚未启用。'
+        : '已准备撤销信息，请确认后再执行写回。',
+    };
+    this.broadcast('activity:undo', result);
+    return result;
+  }
+
+  async #handleActivityReview(payload = {}) {
+    const activity = payload?.activity || payload || {};
+    const target = String(activity.target || payload?.target || '').trim();
+    const diff = target ? await this.#handleFileDiff({ path: target }) : null;
+    const result = {
+      success: true,
+      action: 'review',
+      activity,
+      target,
+      diff: diff?.diff || '',
+      hasDiff: Boolean(diff?.hasDiff),
+      message: diff?.hasDiff ? '已获取文件 diff，可在 UI 中审核。' : '没有可显示的未提交 diff。',
+    };
+    this.broadcast('activity:review', result);
+    return result;
+  }
+
+  async #handleActivityApprove(payload = {}) {
+    const activity = payload?.activity || payload || {};
+    const input = String(payload?.input || payload?.answer || '').trim() || '我确认继续。';
+    const result = this.#engine
+      ? await this.#engine.processInput(input, {
+        continuation: true,
+        activityAction: 'approve',
+        activity,
+      })
+      : { success: false, error: '引擎未初始化' };
+    this.broadcast('activity:approve', { success: result?.success !== false, action: 'approve', activity, result });
+    return result;
   }
 
   /**

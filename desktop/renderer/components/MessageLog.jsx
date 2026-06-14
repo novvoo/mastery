@@ -17,6 +17,7 @@ import { styles } from './MessageLog.styles.js';
 import { useIPC } from '../hooks/useIPC.js';
 import { RuntimeDetailsPanel } from './message-log/RuntimeDetailsPanel.jsx';
 import {
+  buildThinkingSummary,
   buildRuntimeDetailsExportData,
   createConversationGroups,
   isPrimaryMessage,
@@ -96,10 +97,12 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   const [expandedRuntimePanels, setExpandedRuntimePanels] = useState(new Set());
   const [largeRuntimePanels, setLargeRuntimePanels] = useState(new Set());
   const [expandedRuntimeDetails, setExpandedRuntimeDetails] = useState(new Set());
+  const [expandedThinkingPanels, setExpandedThinkingPanels] = useState(new Set());
   
   // 引用
   const listRef = useRef(null);
   const runtimeDetailsRefs = useRef(new Map());
+  const thinkingPanelRefs = useRef(new Map());
   const searchRef = useRef(null);
   
   // 自动滚动到底部
@@ -170,6 +173,11 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       const panelRef = runtimeDetailsRefs.current.get(group.id);
       if (panelRef) {
         panelRef.scrollTop = panelRef.scrollHeight;
+      }
+
+      const thinkingRef = thinkingPanelRefs.current.get(group.id);
+      if (thinkingRef) {
+        thinkingRef.scrollTop = thinkingRef.scrollHeight;
       }
     }
   }, [conversationGroups]);
@@ -252,6 +260,21 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     });
   }, []);
 
+  const handleThinkingPanelToggle = useCallback((panelId, isRunningGroup) => {
+    if (isRunningGroup) {
+      return;
+    }
+    setExpandedThinkingPanels(prev => {
+      const next = new Set(prev);
+      if (next.has(panelId)) {
+        next.delete(panelId);
+      } else {
+        next.add(panelId);
+      }
+      return next;
+    });
+  }, []);
+
   /**
    * 导出运行详情为 JSON 文件
    */
@@ -282,6 +305,14 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       runtimeDetailsRefs.current.delete(groupId);
     }
   }, []);
+
+  const handleThinkingPanelRefChange = useCallback((groupId, node) => {
+    if (node) {
+      thinkingPanelRefs.current.set(groupId, node);
+    } else {
+      thinkingPanelRefs.current.delete(groupId);
+    }
+  }, []);
   
   // 处理自动滚动变更
   const handleAutoScrollChange = useCallback(() => {
@@ -304,6 +335,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     setExpandedRuntimePanels(new Set());
     setLargeRuntimePanels(new Set());
     setExpandedRuntimeDetails(new Set());
+    setExpandedThinkingPanels(new Set());
   }, [onClear]);
   
   // 处理消息折叠/展开
@@ -355,26 +387,32 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     }
   }, [onAskAgent]);
 
-  const handleActivityAction = useCallback((action, activity) => {
-    if (!onAskAgent || !activity) {
+  const handleActivityAction = useCallback(async (action, activity) => {
+    if (!activity) {
       return;
     }
 
-    const target = activity.target ? ` ${activity.target}` : '';
-    const prompt = action === 'undo'
-      ? `请检查并准备撤销这次变更：${activity.statusText || activity.title || activity.toolName}${target}。先说明会撤销什么，再等待我确认。`
-      : action === 'continue'
-        ? '我确认继续。请基于当前等待交互状态继续执行下一步。'
-        : `请审核这次变更：${activity.statusText || activity.title || activity.toolName}${target}。检查 diff、潜在风险和需要补测的地方。`;
-
-    onAskAgent({
-      type: 'event',
-      event: `activity:${action}`,
-      content: prompt,
-      activity,
-      timestamp: Date.now(),
-    });
-  }, [onAskAgent]);
+    try {
+      if (action === 'undo') {
+        await ipc.undoActivity?.(activity, { confirm: false });
+      } else if (action === 'continue' || action === 'approve') {
+        await ipc.approveActivity?.(activity);
+      } else {
+        await ipc.reviewActivity?.(activity);
+      }
+    } catch (error) {
+      console.error(`[MessageLog] activity:${action} 失败:`, error);
+      if (onAskAgent) {
+        onAskAgent({
+          type: 'error',
+          event: `activity:${action}:error`,
+          content: `结构化活动操作失败: ${error.message}`,
+          activity,
+          timestamp: Date.now(),
+        });
+      }
+    }
+  }, [ipc, onAskAgent]);
 
   const isActionableErrorMessage = useCallback((msg) => (
     msg?.type === 'error' || msg?.level === 'error' || msg?.event === 'tool:error'
@@ -414,6 +452,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         return { ...styles.messageType, ...styles.typeUser };
       case 'agent':
         return { ...styles.messageType, ...styles.typeAgent };
+      case 'thinking':
+        return { ...styles.messageType, ...styles.typeThinking };
       default:
         return styles.messageType;
     }
@@ -444,6 +484,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         return { icon: '👤', text: '用户' };
       case 'agent':
         return { icon: 'AI', text: 'Agent' };
+      case 'thinking':
+        return { icon: '思', text: '思考' };
       default:
         return { icon: '📄', text: '消息' };
     }
@@ -660,6 +702,67 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     />
   );
 
+  const renderThinkingPanel = (group, isActiveGroup = false) => {
+    const thinkingSummary = buildThinkingSummary(group.runtimeDetails);
+    if (thinkingSummary.count === 0) {
+      return null;
+    }
+
+    const isRunningGroup = status === 'running' && isActiveGroup;
+    const isExpanded = isRunningGroup || expandedThinkingPanels.has(group.id);
+    const latestIteration = thinkingSummary.latest?.iteration;
+    const summaryText = thinkingSummary.summary || '模型正在整理思路';
+
+    return (
+      <div style={styles.thinkingPanel}>
+        <button
+          type="button"
+          style={styles.thinkingHeader}
+          onClick={() => handleThinkingPanelToggle(group.id, isRunningGroup)}
+          title={isExpanded ? '收起思考过程' : '展开思考过程'}
+        >
+          <span style={styles.thinkingTitle}>
+            <span style={{
+              ...styles.thinkingPulse,
+              ...(isRunningGroup ? styles.thinkingPulseRunning : {})
+            }}>
+              {isRunningGroup ? '...' : 'OK'}
+            </span>
+            <span>{isRunningGroup ? '思考中' : '思考摘要'}</span>
+          </span>
+          <span style={styles.thinkingMeta}>
+            {latestIteration ? `第 ${latestIteration} 轮` : `${thinkingSummary.count} 条`}
+            {thinkingSummary.iterationCount > 1 ? ` / 共 ${thinkingSummary.iterationCount} 轮` : ''}
+            <span>{isExpanded ? '收起' : '展开'}</span>
+          </span>
+        </button>
+
+        {!isExpanded && (
+          <div style={styles.thinkingSummaryText}>{summaryText}</div>
+        )}
+
+        {isExpanded && (
+          <div
+            ref={(node) => handleThinkingPanelRefChange(group.id, node)}
+            style={styles.thinkingScroll}
+          >
+            {thinkingSummary.messages.map((msg, index) => (
+              <div key={msg.id || `${group.id}_thinking_${index}`} style={styles.thinkingStep}>
+                <div style={styles.thinkingStepHeader}>
+                  <span>{msg.iteration ? `第 ${msg.iteration} 轮` : `片段 ${index + 1}`}</span>
+                  {msg.timestamp && <span>{new Date(msg.timestamp).toLocaleTimeString()}</span>}
+                </div>
+                <div style={styles.thinkingStepContent}>
+                  {msg.thinkingText || msg.summary || msg.content || '模型正在思考'}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderConversationGroup = (group, groupIndex) => {
     const isActiveGroup = groupIndex === conversationGroups.length - 1;
     const [firstMessage, ...restMessages] = group.messages;
@@ -667,6 +770,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     return (
       <React.Fragment key={group.id}>
         {firstMessage && renderMessage(firstMessage, `${group.id}_0`)}
+        {renderThinkingPanel(group, isActiveGroup)}
         {renderRuntimeDetailsPanel(group, isActiveGroup)}
         {restMessages.map((msg, index) => renderMessage(msg, `${group.id}_${index + 1}`))}
       </React.Fragment>
@@ -761,6 +865,10 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         .markdown li {
           margin: 2px 0;
           line-height: 1.4;
+        }
+        @keyframes thinkingPulse {
+          0%, 100% { opacity: 0.58; }
+          50% { opacity: 1; }
         }
       `}</style>
       {/* 头部 */}

@@ -4,23 +4,26 @@
  * Extracted from agent-app.js
  */
 
-import { select, input } from '@inquirer/prompts';
-import {
-  assertSupportedProvider,
-  createModelProviderForSwitch,
-} from './model-provider-factory.js';
-
 import { ToolCategory } from '../core/types.js';
 import { Embedder } from '../core/embedder.js';
 import { enhancedUI } from './enhanced-ui.js';
 import { COMMAND_HELP, COMMAND_HELP_ALIASES } from './command-help.js';
+import { handlePreviewCommand } from './agent-app-preview-commands.js';
+import { handleModelCommand } from './agent-app-model-commands.js';
 import {
   chooseDocumentFile,
   extractDocumentReferences,
   formatBytes,
   stripWrappingQuotes,
 } from './document-command-utils.js';
-import { listPreviews, startPreview, stopPreview } from '../core/preview-server.js';
+
+export { handlePreviewCommand } from './agent-app-preview-commands.js';
+export {
+  handleModelCommand,
+  interactiveModelSwitch,
+  showCurrentModel,
+  switchModel,
+} from './agent-app-model-commands.js';
 
 // ---------------------------------------------------------------------------
 // processCommand – top-level slash command router
@@ -470,69 +473,6 @@ async function handleDocumentInitCommand() {
 }
 
 // ---------------------------------------------------------------------------
-// Preview command
-// ---------------------------------------------------------------------------
-
-export async function handlePreviewCommand(agent, argsText = '') {
-  const args = parseArgs(argsText || '');
-  const subcommand = (args[0] || 'start').toLowerCase();
-
-  if (['help', '--help', '-h'].includes(subcommand)) {
-    showBuiltInCommandHelp('preview');
-    return;
-  }
-
-  if (subcommand === 'list') {
-    const previews = listPreviews();
-    if (previews.length === 0) {
-      enhancedUI.info('No active preview sessions.');
-      return;
-    }
-    for (const preview of previews) {
-      enhancedUI.info(`${preview.session_id} ${preview.mode} ${preview.url}`);
-    }
-    return;
-  }
-
-  if (subcommand === 'stop') {
-    const sessionId = args[1];
-    if (!sessionId) {
-      enhancedUI.info('Usage: /preview stop <session-id>');
-      return;
-    }
-    const result = stopPreview(sessionId);
-    if (result.success) {
-      enhancedUI.success(`Preview stopped: ${sessionId}`);
-    } else {
-      enhancedUI.warning(result.error);
-    }
-    return;
-  }
-
-  const kind = ['static', 'node', 'auto'].includes(subcommand) ? subcommand : 'auto';
-  const target = ['static', 'node', 'auto'].includes(subcommand)
-    ? (args[1] || '.')
-    : (args[0] || '.');
-  const command = kind === 'node' && args.length > 2 ? args.slice(2).join(' ') : undefined;
-  const spinner = enhancedUI.spinner('Starting preview...');
-  spinner.start();
-  try {
-    const preview = await startPreview({
-      workingDirectory: agent.workingDir,
-      target,
-      kind,
-      command,
-    });
-    spinner.stop();
-    enhancedUI.success(`Preview ready: ${preview.url}`);
-    enhancedUI.info(`Session: ${preview.session_id} (${preview.mode})`);
-  } catch (error) {
-    spinner.stop();
-    enhancedUI.error(`Preview failed: ${error.message}`);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Compress command
 // ---------------------------------------------------------------------------
 
@@ -600,175 +540,6 @@ async function handleDebugCommand(agent, argsText) {
     console.log('📋 No more debug information will be shown.');
   }
   console.log('');
-}
-
-// ---------------------------------------------------------------------------
-// Model command
-// ---------------------------------------------------------------------------
-
-export async function handleModelCommand(agent, args) {
-  if (!args || args === 'list') {
-    showCurrentModel(agent);
-    return;
-  }
-
-  if (args === 'switch' || args === 'change') {
-    await interactiveModelSwitch(agent);
-    return;
-  }
-
-  // Try to parse as provider:model format
-  const parts = args.split(':');
-  if (parts.length === 2) {
-    const [provider, model] = parts;
-    await switchModel(agent, provider.trim(), model.trim());
-    return;
-  }
-
-  // Try to parse as just model name (keep current provider)
-  await switchModel(agent, agent.config.provider, args.trim());
-}
-
-export function showCurrentModel(agent) {
-  console.log(enhancedUI.createHeader('Current Model'));
-
-  const table = enhancedUI.createTable({
-    colWidths: [20, 50],
-  });
-
-  table.push(
-    [enhancedUI.theme.primaryBold('Provider'), agent.config.provider],
-    [enhancedUI.theme.primaryBold('Model'), agent.config.model],
-    [enhancedUI.theme.primaryBold('Temperature'), agent.config.temperature],
-    [enhancedUI.theme.primaryBold('Max Iterations'), agent.config.maxIterations],
-  );
-
-  console.log(table.toString());
-  console.log('');
-  console.log(enhancedUI.theme.dim('Use /model switch for interactive selection'));
-  console.log(enhancedUI.theme.dim('Use /model <provider>:<model> to switch directly'));
-  console.log(enhancedUI.theme.dim('Examples:'));
-  console.log(enhancedUI.theme.dim('  /model openai:gpt-4'));
-  console.log(enhancedUI.theme.dim('  /model openai:gpt-3.5-turbo'));
-  console.log(enhancedUI.theme.dim('  /model zhipu:glm-4'));
-  console.log(enhancedUI.theme.dim('  /model deepseek:deepseek-chat'));
-  console.log(enhancedUI.theme.dim('  /model openrouter:anthropic/claude-3-opus'));
-  console.log(enhancedUI.theme.dim('  /model gpt-4 (keeps current provider)'));
-  console.log('');
-}
-
-export async function interactiveModelSwitch(agent) {
-  const provider = await select({
-    message: 'Select provider:',
-    choices: [
-      { name: '🔵 OpenAI', value: 'openai' },
-      { name: '🦙 Llama (Local)', value: 'llama' },
-      { name: '🇨🇳 Zhipu AI (智谱清言)', value: 'zhipu' },
-      { name: '🔮 DeepSeek', value: 'deepseek' },
-      { name: '🌐 OpenRouter', value: 'openrouter' },
-    ],
-    default: agent.config.provider,
-  });
-
-  let modelChoices = [];
-  if (provider === 'openai') {
-    modelChoices = [
-      { name: 'GPT-4', value: 'gpt-4' },
-      { name: 'GPT-4 Turbo', value: 'gpt-4-turbo-preview' },
-      { name: 'GPT-3.5 Turbo', value: 'gpt-3.5-turbo' },
-      { name: 'GPT-3.5 Turbo 16k', value: 'gpt-3.5-turbo-16k' },
-      { name: 'Custom...', value: 'custom' },
-    ];
-  } else if (provider === 'llama') {
-    modelChoices = [
-      { name: 'Llama 2 7B', value: 'llama-2-7b' },
-      { name: 'Llama 2 13B', value: 'llama-2-13b' },
-      { name: 'Llama 2 70B', value: 'llama-2-70b' },
-      { name: 'Code Llama', value: 'codellama' },
-      { name: 'Custom...', value: 'custom' },
-    ];
-  } else if (provider === 'zhipu') {
-    modelChoices = [
-      { name: 'GLM-4', value: 'glm-4' },
-      { name: 'GLM-4V (Vision)', value: 'glm-4v' },
-      { name: 'GLM-4-Flash', value: 'glm-4-flash' },
-      { name: 'GLM-3-Turbo', value: 'glm-3-turbo' },
-      { name: 'Custom...', value: 'custom' },
-    ];
-  } else if (provider === 'deepseek') {
-    modelChoices = [
-      { name: 'DeepSeek Chat', value: 'deepseek-chat' },
-      { name: 'DeepSeek Coder', value: 'deepseek-coder' },
-      { name: 'Custom...', value: 'custom' },
-    ];
-  } else if (provider === 'openrouter') {
-    modelChoices = [
-      { name: 'OpenAI GPT-4', value: 'openai/gpt-4' },
-      { name: 'OpenAI GPT-4 Turbo', value: 'openai/gpt-4-turbo' },
-      { name: 'OpenAI GPT-4o', value: 'openai/gpt-4o' },
-      { name: 'Anthropic Claude 3 Opus', value: 'anthropic/claude-3-opus' },
-      { name: 'Anthropic Claude 3 Sonnet', value: 'anthropic/claude-3-sonnet' },
-      { name: 'Google Gemini Pro', value: 'google/gemini-pro' },
-      { name: 'Meta Llama 3 70B', value: 'meta-llama/llama-3-70b-instruct' },
-      { name: 'Mistral Large', value: 'mistralai/mistral-large' },
-      { name: 'DeepSeek Chat', value: 'deepseek/deepseek-chat' },
-      { name: 'Custom...', value: 'custom' },
-    ];
-  }
-
-  const model = await select({
-    message: 'Select model:',
-    choices: modelChoices,
-    default: agent.config.model,
-  });
-
-  let finalModel = model;
-  if (model === 'custom') {
-    const customModel = await input({
-      message: 'Enter model name:',
-      validate: (input) => input.trim() !== '' || 'Model name is required',
-    });
-    finalModel = customModel.trim();
-  }
-
-  await switchModel(agent, provider, finalModel);
-}
-
-export async function switchModel(agent, provider, model) {
-  const spinner = enhancedUI.spinner('Switching model...');
-  spinner.start();
-
-  try {
-    assertSupportedProvider(provider);
-    const newProvider = createModelProviderForSwitch(provider, model, {
-      temperature: agent.config.temperature,
-      debug: agent.debugMode,
-    });
-
-    // Update config
-    agent.config.provider = provider;
-    agent.config.model = model;
-
-    // Update engine's model provider
-    agent.engine.attachModelProvider(newProvider);
-
-    // Update scheduler engine's model provider for new subagents
-    if (agent.schedulerEngine) {
-      agent.schedulerEngine.modelProvider = newProvider;
-    }
-
-    // Update our model provider reference
-    agent.modelProvider = newProvider;
-
-    spinner.stop();
-    enhancedUI.success(`Switched to ${provider}:${model}`);
-    console.log('');
-
-  } catch (error) {
-    spinner.stop();
-    enhancedUI.error(`Failed to switch model: ${error.message}`);
-    console.log('');
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1369,10 +1140,6 @@ function getToolRequiredParams(tool) {
 // ---------------------------------------------------------------------------
 // Utility helpers
 // ---------------------------------------------------------------------------
-
-function parseArgs(text) {
-  return text.split(/\s+/).filter(Boolean);
-}
 
 function documentToolContext(agent) {
   return {

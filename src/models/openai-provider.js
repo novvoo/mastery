@@ -4,6 +4,7 @@
  */
 
 import { getLocalModelCapabilities, isLongContextCapabilities } from './model-capabilities.js';
+import { extractReasoningFromChoice } from './reasoning-response.js';
 
 const DEFAULT_API_TIMEOUT_MS = 5 * 60 * 1000; // 默认5分钟超时
 const MAX_RETRIES = 3; // 最多重试3次
@@ -79,15 +80,18 @@ export class OpenAIModelProvider {
 
           const data = await response.json();
 
+          const choice = data.choices?.[0] || {};
+          const reasoning = extractReasoningFromChoice(choice);
+
           if (traceEnabled) {
-            const choice = data.choices?.[0];
-            console.log(`🔍 [model:${requestId}] parsed finishReason=${choice?.finish_reason ?? 'none'} contentChars=${choice?.message?.content?.length ?? 0} toolCalls=${choice?.message?.tool_calls?.length ?? 0}`);
+            console.log(`🔍 [model:${requestId}] parsed finishReason=${choice?.finish_reason ?? 'none'} contentChars=${choice?.message?.content?.length ?? 0} reasoningChars=${reasoning?.text?.length ?? 0} toolCalls=${choice?.message?.tool_calls?.length ?? 0}`);
           }
 
           return {
-            text: data.choices[0]?.message?.content || '',
-            toolCalls: data.choices[0]?.message?.tool_calls || [],
-            finishReason: data.choices[0]?.finish_reason,
+            text: choice?.message?.content || '',
+            toolCalls: choice?.message?.tool_calls || [],
+            finishReason: choice?.finish_reason,
+            reasoning,
             usage: data.usage
               ? {
                   inputTokens: data.usage.prompt_tokens,

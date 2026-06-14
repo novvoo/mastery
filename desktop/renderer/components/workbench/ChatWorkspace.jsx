@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import CommandSuggestions from '../CommandSuggestions.jsx';
 import MessageLog from '../MessageLog.jsx';
 import { Button } from '../ui/index.js';
@@ -18,6 +18,7 @@ export function ChatWorkspace({
   onFocus,
   onBlur,
   onSendMessage,
+  onContinue,
   onExport,
   onOpenPreview,
   onToggleInspector,
@@ -25,6 +26,18 @@ export function ChatWorkspace({
   workingDirectory,
   fileServerUrl,
 }) {
+  const [continuationInput, setContinuationInput] = useState('');
+  const needsUserInput = runtime.status === 'needs_user_input';
+
+  const handleContinue = async () => {
+    const value = continuationInput.trim();
+    if (!value) {
+      return;
+    }
+    await onContinue?.(value);
+    setContinuationInput('');
+  };
+
   return (
     <div style={styles.chatArea}>
       <div style={styles.chatHeader}>
@@ -58,6 +71,39 @@ export function ChatWorkspace({
       </div>
 
       <div style={styles.inputArea}>
+        {needsUserInput && (
+          <div style={styles.userInputRequestPanel}>
+            <div style={styles.userInputRequestHeader}>
+              <span>等待补充信息</span>
+              <span style={styles.userInputRequestMeta}>继续当前 Agent 回合</span>
+            </div>
+            <div style={styles.userInputRequestBody}>
+              <textarea
+                style={styles.userInputRequestTextarea}
+                value={continuationInput}
+                onChange={(event) => setContinuationInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                    event.preventDefault();
+                    handleContinue();
+                  }
+                }}
+                placeholder="输入补充信息..."
+              />
+              <button
+                type="button"
+                style={{
+                  ...styles.userInputRequestButton,
+                  ...(!continuationInput.trim() ? styles.userInputRequestButtonDisabled : {})
+                }}
+                onClick={handleContinue}
+                disabled={!continuationInput.trim()}
+              >
+                继续
+              </button>
+            </div>
+          </div>
+        )}
         <div style={styles.inputWrapper}>
           {showSuggestions && (
             <CommandSuggestions

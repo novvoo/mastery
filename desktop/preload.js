@@ -38,6 +38,10 @@ const ALLOWED_CHANNELS = {
     'app:openExternal',
     'workspace:setWorkingDirectory',
     'workspace:listDirectory',
+    'workspace:getFileDiff',
+    'activity:undo',
+    'activity:review',
+    'activity:approve',
     'preview:start',
     'preview:list',
     'preview:stop',
@@ -65,15 +69,21 @@ const ALLOWED_CHANNELS = {
     'app:projectCreated',
     'app:projectOpened',
     'workspace:changed',
+    'activity:undo',
+    'activity:review',
+    'activity:approve',
     'preview:started',
     'preview:stopped',
     'agent:start',
     'agent:complete',
     'agent:error',
+    'agent:thinking',
     'tool:call',
     'tool:result',
     'tool:error',
     'tool:activity',
+    'tool:progress',
+    'agent:stream',
     'status:update',
     'window:state'
   ]
@@ -483,6 +493,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   stopPreview: async (sessionId) => {
     return await ipcRenderer.invoke('preview:stop', sessionId);
+  },
+
+  getFileDiff: async (path) => {
+    return await ipcRenderer.invoke('workspace:getFileDiff', { path });
+  },
+
+  undoActivity: async (activity, options = {}) => {
+    return await ipcRenderer.invoke('activity:undo', { activity, ...options });
+  },
+
+  reviewActivity: async (activity) => {
+    return await ipcRenderer.invoke('activity:review', { activity });
+  },
+
+  approveActivity: async (activity, input = '') => {
+    return await ipcRenderer.invoke('activity:approve', { activity, input });
   },
 
   onPreviewStarted: (callback) => {

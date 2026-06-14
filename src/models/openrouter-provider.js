@@ -4,6 +4,7 @@
  */
 
 import { getLocalModelCapabilities, isLongContextCapabilities } from './model-capabilities.js';
+import { extractReasoningFromChoice } from './reasoning-response.js';
 
 export class OpenRouterModelProvider {
   #apiKey;
@@ -42,10 +43,13 @@ export class OpenRouterModelProvider {
 
     const data = await response.json();
 
+    const choice = data.choices?.[0] || {};
+
     return {
-      text: data.choices[0]?.message?.content || '',
-      toolCalls: data.choices[0]?.message?.tool_calls || [],
-      finishReason: data.choices[0]?.finish_reason,
+      text: choice?.message?.content || '',
+      toolCalls: choice?.message?.tool_calls || [],
+      finishReason: choice?.finish_reason,
+      reasoning: extractReasoningFromChoice(choice),
       usage: data.usage
         ? {
             inputTokens: data.usage.prompt_tokens,

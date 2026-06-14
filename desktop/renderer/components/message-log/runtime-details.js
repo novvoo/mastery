@@ -8,6 +8,7 @@ export function isRuntimeDetailMessage(msg) {
     msg.event === 'agent:complete' ||
     msg.event === 'agent:error' ||
     msg.event === 'agent:stop' ||
+    msg.event === 'agent:thinking' ||
     msg.event === 'status:update' ||
     msg.event === 'tool:call' ||
     msg.event === 'tool:result' ||
@@ -15,6 +16,10 @@ export function isRuntimeDetailMessage(msg) {
     msg.event === 'tool:activity' ||
     ['tool', 'tool_result', 'debug', 'event'].includes(msg.type)
   );
+}
+
+export function isThinkingMessage(msg) {
+  return msg?.type === 'thinking' || msg?.event === 'agent:thinking';
 }
 
 export function isStatusUpdateMessage(msg) {
@@ -100,6 +105,40 @@ export function getRuntimeDetailContent(msg) {
   ));
 
   return sections.join('\n\n') || fallbackText || '(无内容)';
+}
+
+export function buildThinkingSummary(runtimeDetails = []) {
+  const thinkingMessages = runtimeDetails.filter(isThinkingMessage);
+  const iterations = thinkingMessages.map(msg => msg.iteration).filter(value => value !== null && value !== undefined);
+  const latest = thinkingMessages.at(-1);
+  const fullText = thinkingMessages
+    .map(msg => msg.thinkingText || msg.content || msg.message || '')
+    .filter(Boolean)
+    .join('\n\n');
+  const summaries = thinkingMessages
+    .map(msg => msg.summary || msg.content || '')
+    .filter(Boolean);
+  const summary = latest?.summary || summarizeText(summaries.join(' '), 180);
+
+  return {
+    messages: thinkingMessages,
+    count: thinkingMessages.length,
+    iterationCount: new Set(iterations).size,
+    latest,
+    summary,
+    fullText,
+  };
+}
+
+function summarizeText(text = '', limit = 180) {
+  const clean = String(text).replace(/\s+/g, ' ').trim();
+  if (!clean) {
+    return '';
+  }
+  if (clean.length <= limit) {
+    return clean;
+  }
+  return `${clean.slice(0, Math.max(0, limit - 3))}...`;
 }
 
 export function getRuntimeDetailPreviewText(msg) {

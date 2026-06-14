@@ -397,6 +397,57 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
           activity: payload,
         },
       };
+    case 'tool:progress':
+      return {
+        message: {
+          ...base,
+          type: 'event',
+          runtimeDetail: true,
+          content: payload?.statusText || `进度: ${payload?.progress ?? 0}%`,
+          toolName: payload?.toolName,
+          activity: {
+            kind: 'tool_activity',
+            id: payload?.id || `progress:${payload?.toolName}`,
+            phase: 'running',
+            intent: 'tool',
+            toolName: payload?.toolName,
+            progress: payload?.progress,
+            statusText: payload?.statusText || `进度: ${payload?.progress ?? 0}%`,
+            target: payload?.target,
+            detail: payload?.detail,
+            timestamp: Date.now(),
+          },
+        },
+      };
+    case 'agent:stream':
+      return {
+        message: {
+          ...base,
+          type: 'agent',
+          runtimeDetail: true,
+          content: payload?.chunk || payload?.text || '',
+          streamId: payload?.streamId,
+          isStream: true,
+        },
+      };
+    case 'agent:thinking': {
+      const thinkingText = payload?.text || payload?.reasoning || payload?.content || '';
+      const summary = payload?.summary || createThinkingSummary(thinkingText);
+      return {
+        message: {
+          ...base,
+          type: 'thinking',
+          runtimeDetail: true,
+          content: summary || '模型正在思考',
+          thinkingText,
+          summary,
+          details: payload?.details || [],
+          iteration: payload?.iteration,
+          maxIterations: payload?.maxIterations,
+          finishReason: payload?.finishReason,
+        },
+      };
+    }
     case 'status:update':
       return {
         message: {
@@ -418,6 +469,17 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
         },
       };
   }
+}
+
+function createThinkingSummary(text = '') {
+  const clean = String(text).replace(/\s+/g, ' ').trim();
+  if (!clean) {
+    return '';
+  }
+  if (clean.length <= 160) {
+    return clean;
+  }
+  return `${clean.slice(0, 157)}...`;
 }
 
 function extractAgentAnswer(data) {

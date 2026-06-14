@@ -547,6 +547,72 @@ export const styles = {
     position: 'relative',
     zIndex: 50
   },
+
+  userInputRequestPanel: {
+    marginBottom: '10px',
+    borderRadius: '8px',
+    border: '1px solid rgba(250, 204, 21, 0.2)',
+    backgroundColor: 'rgba(250, 204, 21, 0.055)',
+    overflow: 'hidden'
+  },
+
+  userInputRequestHeader: {
+    minHeight: '32px',
+    padding: '0 10px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '8px',
+    borderBottom: '1px solid rgba(250, 204, 21, 0.14)',
+    color: 'var(--text-color)',
+    fontSize: '12px',
+    fontWeight: 700
+  },
+
+  userInputRequestMeta: {
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 500
+  },
+
+  userInputRequestBody: {
+    display: 'grid',
+    gridTemplateColumns: '1fr auto',
+    gap: '8px',
+    padding: '8px'
+  },
+
+  userInputRequestTextarea: {
+    minHeight: '54px',
+    maxHeight: '120px',
+    resize: 'vertical',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '6px',
+    backgroundColor: 'rgba(0, 0, 0, 0.18)',
+    color: 'var(--text-color)',
+    padding: '8px',
+    fontSize: '13px',
+    fontFamily: 'inherit',
+    lineHeight: 1.4,
+    outline: 'none'
+  },
+
+  userInputRequestButton: {
+    width: '64px',
+    minHeight: '54px',
+    border: 'none',
+    borderRadius: '6px',
+    backgroundColor: 'var(--warning-color)',
+    color: '#101011',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: 800
+  },
+
+  userInputRequestButtonDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed'
+  },
   
   inputTextarea: {
     flex: 1,

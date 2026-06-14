@@ -257,6 +257,22 @@ export function useIPC() {
     return invoke('preview:stop', sessionId);
   }, [invoke]);
 
+  const getFileDiff = useCallback(async (path) => {
+    return invoke('workspace:getFileDiff', { path });
+  }, [invoke]);
+
+  const undoActivity = useCallback(async (activity, options = {}) => {
+    return invoke('activity:undo', { activity, ...options });
+  }, [invoke]);
+
+  const reviewActivity = useCallback(async (activity) => {
+    return invoke('activity:review', { activity });
+  }, [invoke]);
+
+  const approveActivity = useCallback(async (activity, input = '') => {
+    return invoke('activity:approve', { activity, input });
+  }, [invoke]);
+
   // 获取 LLM 配置状态
   const getLLMConfigStatus = useCallback(async () => {
     return invoke('llm:getConfigStatus');
@@ -431,6 +447,10 @@ export function useIPC() {
     startPreview,
     listPreviews,
     stopPreview,
+    getFileDiff,
+    undoActivity,
+    reviewActivity,
+    approveActivity,
 
     // LLM 配置
     getLLMConfigStatus,

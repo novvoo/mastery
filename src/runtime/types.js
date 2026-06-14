@@ -21,12 +21,15 @@ export const RuntimeEvent = {
   AGENT_STOP: 'agent:stop',
   AGENT_ERROR: 'agent:error',
   AGENT_COMPLETE: 'agent:complete',
+  AGENT_STREAM: 'agent:stream',
+  AGENT_THINKING: 'agent:thinking',
   
   // 工具相关事件
   TOOL_CALL: 'tool:call',
   TOOL_RESULT: 'tool:result',
   TOOL_ERROR: 'tool:error',
   TOOL_ACTIVITY: 'tool:activity',
+  TOOL_PROGRESS: 'tool:progress',
   TOOL_LOADED: 'tool:loaded',
   TOOL_UNLOADED: 'tool:unloaded',
   

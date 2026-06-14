@@ -343,8 +343,20 @@ export class ReActAgent {
           durationMs: Date.now() - Date.now(),
           finishReason: response.finishReason,
           textPreview: this.#preview(response.text, 300),
+          reasoningPreview: this.#preview(response.reasoning?.summary || response.reasoning?.text || '', 300),
           nativeToolCalls: response.toolCalls?.length || 0,
         });
+
+        if (response.reasoning?.text || response.reasoning?.summary || response.reasoning?.details?.length) {
+          this.#ui.thinking?.({
+            iteration,
+            maxIterations,
+            text: response.reasoning.text || '',
+            summary: response.reasoning.summary || '',
+            details: response.reasoning.details || [],
+            finishReason: response.finishReason,
+          });
+        }
 
         // Token 记账
         this.#recordTokenUsage(messages, response);

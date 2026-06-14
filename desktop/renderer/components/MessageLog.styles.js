@@ -606,6 +606,120 @@ export const styles = {
     color: 'var(--primary-color)',
     border: 'none'
   },
+
+  typeThinking: {
+    backgroundColor: 'rgba(96, 165, 250, 0.12)',
+    color: 'var(--info-color)',
+    border: 'none'
+  },
+
+  thinkingPanel: {
+    margin: '0 0 10px 0',
+    borderRadius: '8px',
+    border: '1px solid rgba(96, 165, 250, 0.16)',
+    backgroundColor: 'rgba(96, 165, 250, 0.055)',
+    overflow: 'hidden'
+  },
+
+  thinkingHeader: {
+    width: '100%',
+    minHeight: '36px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '8px',
+    padding: '0 10px',
+    border: 'none',
+    borderBottom: '1px solid rgba(96, 165, 250, 0.12)',
+    backgroundColor: 'rgba(16, 16, 17, 0.42)',
+    color: 'var(--text-color)',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: 700
+  },
+
+  thinkingTitle: {
+    minWidth: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '7px'
+  },
+
+  thinkingPulse: {
+    width: '24px',
+    height: '18px',
+    borderRadius: '5px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(96, 165, 250, 0.12)',
+    color: 'var(--info-color)',
+    fontSize: '10px',
+    fontWeight: 800,
+    flexShrink: 0
+  },
+
+  thinkingPulseRunning: {
+    animation: 'thinkingPulse 1.2s ease-in-out infinite'
+  },
+
+  thinkingMeta: {
+    minWidth: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: '8px',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 600,
+    whiteSpace: 'nowrap'
+  },
+
+  thinkingSummaryText: {
+    padding: '8px 10px',
+    color: 'var(--text-muted)',
+    fontSize: '12px',
+    lineHeight: 1.45,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
+  },
+
+  thinkingScroll: {
+    maxHeight: '220px',
+    overflowY: 'auto',
+    padding: '8px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    scrollBehavior: 'smooth'
+  },
+
+  thinkingStep: {
+    padding: '8px',
+    borderRadius: '6px',
+    backgroundColor: 'rgba(245, 240, 235, 0.04)',
+    border: '1px solid rgba(245, 240, 235, 0.05)'
+  },
+
+  thinkingStepHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '8px',
+    marginBottom: '4px',
+    color: 'var(--text-dark)',
+    fontSize: '11px',
+    fontWeight: 700
+  },
+
+  thinkingStepContent: {
+    color: 'var(--text-muted)',
+    fontSize: '12px',
+    lineHeight: 1.5,
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word'
+  },
   
   messageTime: {
     fontSize: '11px',

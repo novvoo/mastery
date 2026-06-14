@@ -25,6 +25,10 @@ export function buildActivitySummary(runtimeDetails = []) {
       ...activity,
       startedAt: previous?.startedAt || detail.timestamp || activity.timestamp,
       updatedAt: detail.timestamp || activity.timestamp || Date.now(),
+      // 保留最高进度值
+      progress: activity.progress != null
+        ? Math.max(previous?.progress || 0, activity.progress)
+        : previous?.progress,
     };
     byKey.set(key, next);
   }
@@ -173,4 +177,40 @@ export function getFileStatusLabel(status) {
     failed: '失败',
     pending: '待处理',
   }[status] || status;
+}
+
+/**
+ * 根据文件扩展名返回类型图标文字
+ */
+export function getFileTypeIcon(filePath) {
+  if (!filePath || typeof filePath !== 'string') return '🗎';
+  const ext = filePath.split('.').pop().toLowerCase();
+  const iconMap = {
+    js: 'JS', jsx: 'JX', ts: 'TS', tsx: 'TX', mjs: 'MJ', cjs: 'CJ',
+    json: '{}', jsonc: '{}', json5: '{}',
+    html: 'HT', htm: 'HT', css: 'CS', scss: 'SC', less: 'LS',
+    md: 'MD', mdx: 'MX', txt: 'TX', csv: 'CV',
+    py: 'PY', rb: 'RB', go: 'GO', rs: 'RS', java: 'JV', kt: 'KT',
+    sh: 'SH', bash: 'SH', zsh: 'SH', fish: 'SH',
+    yml: 'YL', yaml: 'YL', toml: 'TM', ini: 'IN', env: 'EN',
+    sql: 'SQ', graphql: 'GQ', prisma: 'PR',
+    png: 'IM', jpg: 'IM', jpeg: 'IM', gif: 'IM', svg: 'SV', webp: 'IM', ico: 'IM',
+    woff: 'WF', woff2: 'WF', ttf: 'TF', eot: 'TF',
+    zip: 'ZP', tar: 'ZP', gz: 'ZP', rar: 'ZP',
+    lock: 'LK', log: 'LG', map: 'MP',
+    dockerfile: 'DK', gitignore: 'GI',
+  };
+  return iconMap[ext] || '🗎';
+}
+
+/**
+ * 格式化时长（毫秒 → 可读字符串）
+ */
+export function formatDuration(ms) {
+  if (ms == null || ms < 0) return '';
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  const min = Math.floor(ms / 60000);
+  const sec = Math.floor((ms % 60000) / 1000);
+  return `${min}m${sec > 0 ? ` ${sec}s` : ''}`;
 }
