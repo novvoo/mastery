@@ -61,13 +61,13 @@ export function buildCodingCompletionGatePrompt({
     missing_semantic_risk_review: 'This task touches high-risk behavior semantics but has no semantic/API risk review evidence yet.',
     final_answer_missing_verification_summary: 'Your final answer claims completion but does not summarize verification.',
     automatic_plan_incomplete: 'The automatic task orchestration plan is not complete yet.',
-  }[gate.reason] || gate.reason;
+  }[gate?.reason] || gate?.reason || 'insufficient evidence';
 
   return (
     `Coding completion gate blocked the final answer.\n` +
     `Original user request: ${userInput}\n` +
     `Reason: ${reasonText}\n` +
-    `Evidence so far: ${JSON.stringify(gate.evidence)}\n\n` +
+    `Evidence so far: ${JSON.stringify(gate?.evidence || [])}\n\n` +
     `${requiresSemanticRiskReview ? `${semanticRiskGuidance}\n` : ''}` +
     `Continue working now. If this task creates or modifies a file and write_file/edit_file is available, call write_file or edit_file next to make the change. Inspect your own changes, run a relevant verification command or verify tool, and only then answer with FINAL_ANSWER including what changed and what passed.`
   );

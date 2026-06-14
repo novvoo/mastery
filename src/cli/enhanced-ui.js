@@ -14,6 +14,24 @@ import chalk from 'chalk';
 import ora from 'ora';
 import boxen from 'boxen';
 import Table from 'cli-table3';
+import {
+  buildActivitySummary,
+  getActivityTone,
+  getFileStatusLabel,
+  getFileTypeIcon,
+  formatDuration as formatDurationCore,
+} from '../core/activity-summary.js';
+import {
+  isRuntimeDetailMessage,
+  isThinkingMessage,
+  isStatusUpdateMessage,
+  isPrimaryMessage,
+  getRuntimeDetailContent,
+  getRuntimeDetailPreviewText,
+  buildThinkingSummary,
+  createConversationGroups,
+} from '../core/runtime-details.js';
+import { getRuntimeStatusText } from '../core/runtime-status.js';
 
 let debugEnabled = process.env.DEBUG === 'true';
 
@@ -473,6 +491,180 @@ export const enhancedUI = {
     });
     
     console.log(theme.dim('─'.repeat(60)));
+  },
+
+  // ============================================================
+  // RUNTIME INTEGRATION: Activity Summary & Runtime Details
+  // ============================================================
+
+  /**
+   * Display an activity summary panel from runtime details
+   * Uses buildActivitySummary from src/core/activity-summary.js
+   * @param {Array} runtimeDetails - Array of runtime detail messages
+   * @param {Object} options - { compact, maxFiles, lastStatusText }
+   */
+  activitySummaryPanel(runtimeDetails = [], options = {}) {
+    const { compact = false, maxFiles = 8, lastStatusText = '' } = options;
+    const summary = buildActivitySummary(runtimeDetails);
+
+    if (summary.total === 0) {
+      if (!compact) {
+        console.log(theme.dim('\n  暂无活动记录\n'));
+      }
+      return summary;
+    }
+
+    if (compact) {
+      // 单行摘要
+      const tone = getActivityTone(summary);
+      const mark = tone === 'positive' ? '✅' : tone === 'negative' ? '❌' : '⏳';
+      console.log(theme.dim(`  ${mark} ${summary.progress}% | ${summary.completed}/${summary.total} done | ${summary.files.length} files`));
+      return summary;
+    }
+
+    console.log('\n' + theme.dim('┌' + '─'.repeat(58) + '┐'));
+
+    // 状态行
+    const statusText = lastStatusText || (summary.failed > 0 ? '部分失败' : summary.running > 0 ? '运行中' : '已完成');
+    console.log(theme.dim('│') + theme.primaryBold('  📊 ACTIVITY SUMMARY') + theme.dim(' '.repeat(37) + '│'));
+    console.log(theme.dim('│') + `  Status: ${theme.white(statusText)}` + theme.dim(' '.repeat(Math.max(0, 48 - statusText.length - 10)) + '│'));
+
+    // 进度条
+    const barWidth = 30;
+    const filled = Math.floor((summary.progress / 100) * barWidth);
+    const bar = theme.success('█'.repeat(filled)) + theme.dim('░'.repeat(barWidth - filled));
+    console.log(theme.dim('│') + `  ${bar} ${summary.progress}%` + theme.dim(' '.repeat(Math.max(0, 24)) + '│'));
+
+    // 计数
+    const counts = `${theme.success('✓' + summary.completed)} ${theme.primary('▶' + summary.running)} ${theme.error('✗' + summary.failed)} ${theme.muted('·' + summary.pending)}`;
+    console.log(theme.dim('│') + `  ${counts}` + theme.dim(' '.repeat(Math.max(0, 30)) + '│'));
+
+    // 任务阶段
+    if (summary.taskStages.length > 0) {
+      console.log(theme.dim('│') + theme.secondaryBold('  Stages:') + theme.dim(' '.repeat(47) + '│'));
+      summary.taskStages.slice(0, 5).forEach(stage => {
+        const mark = stage.status === 'completed' ? theme.success('✓') : stage.status === 'failed' ? theme.error('✗') : stage.status === 'running' ? theme.primary('…') : theme.muted('·');
+        const text = truncate(stage.label, 45);
+        console.log(theme.dim(`│     ${mark} ${text}`) + theme.dim(' '.repeat(Math.max(0, 49 - text.length)) + '│'));
+      });
+    }
+
+    // 文件列表
+    if (summary.files.length > 0) {
+      console.log(theme.dim('│') + theme.secondaryBold(`  Files (${summary.fileCount}):`) + theme.dim(' '.repeat(Math.max(0, 44 - String(summary.fileCount).length)) + '│'));
+      summary.files.slice(0, maxFiles).forEach(file => {
+        const icon = getFileTypeIcon(file.path);
+        const status = getFileStatusLabel(file.status);
+        const text = truncate(`${icon} ${file.path}`, 42);
+        console.log(theme.dim(`│     ${text} ${theme.dim(status)}`) + theme.dim(' '.repeat(Math.max(0, 46 - text.length - status.length)) + '│'));
+      });
+      if (summary.files.length > maxFiles) {
+        console.log(theme.dim(`│     ${theme.muted(`... +${summary.files.length - maxFiles} more`)}`) + theme.dim(' '.repeat(40) + '│'));
+      }
+    }
+
+    // 耗时
+    if (summary.elapsedMs > 0) {
+      const elapsed = formatDurationCore(summary.elapsedMs);
+      console.log(theme.dim('│') + `  ⏱  Elapsed: ${theme.white(elapsed)}` + theme.dim(' '.repeat(Math.max(0, 42 - elapsed.length)) + '│'));
+    }
+
+    console.log(theme.dim('└' + '─'.repeat(58) + '┘'));
+    return summary;
+  },
+
+  /**
+   * Classify and display a runtime detail message
+   * Uses message classification from src/core/runtime-details.js
+   * @param {Object} message - A runtime detail message
+   * @param {Object} options - { verbose, showThinking }
+   */
+  runtimeDetailMessage(message, options = {}) {
+    const { verbose = false, showThinking = false } = options;
+    if (!message) {return;}
+
+    // 分类
+    if (isThinkingMessage(message)) {
+      if (showThinking || verbose) {
+        const summary = buildThinkingSummary(message);
+        if (summary) {
+          console.log(theme.info('  💭 ') + theme.dim(truncate(summary, 120)));
+        }
+      }
+      return 'thinking';
+    }
+
+    if (isStatusUpdateMessage(message)) {
+      const text = getRuntimeStatusText(message) || getRuntimeDetailContent(message);
+      if (text) {
+        console.log(theme.primary('  ℹ️  ') + theme.dim(truncate(text, 120)));
+      }
+      return 'status';
+    }
+
+    if (isRuntimeDetailMessage(message)) {
+      const preview = getRuntimeDetailPreviewText(message);
+      if (preview) {
+        console.log(theme.secondary('  📎 ') + theme.dim(truncate(preview, 120)));
+      }
+      return 'detail';
+    }
+
+    // 主消息
+    if (isPrimaryMessage(message)) {
+      const content = getRuntimeDetailContent(message);
+      if (content) {
+        console.log(theme.white('  │ ') + truncate(content, 120));
+      }
+      return 'primary';
+    }
+
+    return 'unknown';
+  },
+
+  /**
+   * Display grouped conversation from runtime details
+   * Uses createConversationGroups from src/core/runtime-details.js
+   * @param {Array} messages - Array of messages to group and display
+   * @param {Object} options - { showThinking, showStatus, compact }
+   */
+  conversationView(messages = [], options = {}) {
+    const { showThinking = false, showStatus = true, compact = false } = options;
+
+    if (messages.length === 0) {
+      console.log(theme.dim('\n  暂无消息\n'));
+      return;
+    }
+
+    const groups = createConversationGroups(messages);
+    console.log('');
+
+    for (const group of groups) {
+      if (group.type === 'thinking' && !showThinking) {continue;}
+      if (group.type === 'status' && !showStatus) {continue;}
+
+      // 组标题
+      const typeIcon = group.type === 'thinking' ? '💭' :
+                       group.type === 'status' ? 'ℹ️' :
+                       group.type === 'tool' ? '🔧' : '💬';
+      const typeLabel = group.type === 'thinking' ? 'Thinking' :
+                        group.type === 'status' ? 'Status' :
+                        group.type === 'tool' ? 'Tool Call' : 'Message';
+      const msgCount = group.messages.length;
+
+      if (!compact) {
+        console.log(theme.dim(`  ${typeIcon} ${theme.secondary(typeLabel)} (${msgCount})`));
+      }
+
+      // 显示组内消息
+      for (const msg of group.messages) {
+        this.runtimeDetailMessage(msg, { showThinking, verbose: !compact });
+      }
+
+      if (!compact) {
+        console.log(theme.dim('  ' + '─'.repeat(50)));
+      }
+    }
   },
 
   // ============================================================

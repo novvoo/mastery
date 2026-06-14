@@ -67,7 +67,7 @@ export function buildCodingTaskOperatingPrompt(userInput, extra = {}) {
 
 export function buildCodingCompletionGatePrompt(userInput, gate) {
   if (typeof buildCodingCompletionGatePromptText === 'function') {
-    return buildCodingCompletionGatePromptText(userInput, gate);
+    return buildCodingCompletionGatePromptText({ userInput, gate: gate || {} });
   }
   return (
     `Before providing a final answer for this coding task, reconsider:\n` +

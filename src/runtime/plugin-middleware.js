@@ -70,7 +70,8 @@ export class ToolMiddleware {
         try {
           await middleware.before(middlewareContext);
         } catch (error) {
-          console.error(`[ToolMiddleware] before hook error in ${middleware.name}:`, error);
+          const msg = (error && error.message) ? error.message : String(error);
+          console.error(`[ToolMiddleware] before hook error in ${middleware.name}: ${msg}`);
         }
       }
     }
@@ -87,7 +88,8 @@ export class ToolMiddleware {
           try {
             await middleware.after(middlewareContext);
           } catch (error) {
-            console.error(`[ToolMiddleware] after hook error in ${middleware.name}:`, error);
+            const msg = (error && error.message) ? error.message : String(error);
+            console.error(`[ToolMiddleware] after hook error in ${middleware.name}: ${msg}`);
           }
         }
       }
@@ -102,7 +104,8 @@ export class ToolMiddleware {
           try {
             await middleware.error(error, middlewareContext);
           } catch (handlerError) {
-            console.error(`[ToolMiddleware] error hook error in ${middleware.name}:`, handlerError);
+            const msg = (handlerError && handlerError.message) ? handlerError.message : String(handlerError);
+            console.error(`[ToolMiddleware] error hook error in ${middleware.name}: ${msg}`);
           }
         }
       }
@@ -314,7 +317,8 @@ export class ToolLoader {
 
       return tools;
     } catch (error) {
-      console.error('加载工具失败:', error);
+      const msg = (error && error.message) ? error.message : String(error);
+      console.error(`加载工具失败: ${msg}`);
       throw error;
     }
   }

@@ -17,7 +17,8 @@ export const LoggerPlugin = createPlugin({
       console.log(`[Logger] 调用工具: ${toolName}`, args);
     },
     [HOOKS.ON_TOOL_ERROR]: async (toolName, error) => {
-      console.error(`[Logger] 工具 ${toolName} 执行失败:`, error);
+      const msg = (error && error.message) ? error.message : String(error);
+      console.error(`[Logger] 工具 ${toolName} 执行失败: ${msg}`);
     },
     [HOOKS.ON_CONFIG_CHANGE]: async (key, value) => {
       console.log(`[Logger] 配置变更: ${key} =`, value);

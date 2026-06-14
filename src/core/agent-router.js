@@ -70,6 +70,13 @@ export class AgentRouter {
    */
   async executeToolCall(toolCall, options = {}) {
     const normalizedToolCall = this.#normalizeToolCall(toolCall);
+    if (!normalizedToolCall || typeof normalizedToolCall !== 'object') {
+      return {
+        name: 'unknown',
+        result: null,
+        error: 'Invalid tool call: null or invalid input',
+      };
+    }
     const rewrittenToolCall = this.#rewriteShellRuntimeToolCall(normalizedToolCall) || normalizedToolCall;
     const { id, name, arguments: args } = rewrittenToolCall;
     const resultMode = options.resultMode || 'tool';

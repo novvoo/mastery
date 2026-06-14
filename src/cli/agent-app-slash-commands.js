@@ -156,6 +156,28 @@ export async function processCommand(agent, input) {
     return true;
   }
 
+  // Activity summary — 展示当前会话的工具活动摘要
+  if (['/summary', '/activity'].includes(commandName)) {
+    if (agent.uiAdapter && typeof agent.uiAdapter.printActivitySummary === 'function') {
+      agent.uiAdapter.printActivitySummary();
+    } else {
+      enhancedUI.info('暂无活动摘要（需要先执行任务）');
+    }
+    return true;
+  }
+
+  // Workspace — 列出工作目录文件
+  if (['/workspace', '/files', '/ls'].includes(commandName)) {
+    await handleWorkspaceCommand(agent, argsText);
+    return true;
+  }
+
+  // Session — 会话管理
+  if (['/session', '/sessions'].includes(commandName)) {
+    await handleSessionCommand(agent, argsText);
+    return true;
+  }
+
   // Tools list
   if (['/tools', '/list'].includes(commandName)) {
     showTools(agent);
@@ -1147,4 +1169,102 @@ function documentToolContext(agent) {
     debug: agent.debugMode,
     ui: enhancedUI,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Workspace command — 列出工作目录文件
+// ---------------------------------------------------------------------------
+
+async function handleWorkspaceCommand(agent, argsText) {
+  const { listWorkspaceDirectory } = await import('../core/workspace-watcher.js');
+  const subPath = argsText.trim() || '';
+  const result = listWorkspaceDirectory(agent.workingDir, { path: subPath });
+
+  if (!result.success) {
+    enhancedUI.error(result.error);
+    return;
+  }
+
+  console.log(enhancedUI.createHeader(`Workspace: ${result.root}${result.path ? '/' + result.path : ''}`));
+
+  if (result.entries.length === 0) {
+    enhancedUI.info('目录为空');
+    return;
+  }
+
+  const directories = result.entries.filter(e => e.type === 'directory');
+  const files = result.entries.filter(e => e.type === 'file');
+
+  if (directories.length > 0) {
+    console.log(enhancedUI.theme.primaryBold('  Directories:'));
+    for (const dir of directories.slice(0, 20)) {
+      const hidden = dir.hidden ? enhancedUI.theme.dim(' (hidden)') : '';
+      console.log(`    📁 ${dir.name}${hidden}`);
+    }
+    if (directories.length > 20) {
+      console.log(enhancedUI.theme.dim(`    ... +${directories.length - 20} more`));
+    }
+  }
+
+  if (files.length > 0) {
+    console.log(enhancedUI.theme.primaryBold('  Files:'));
+    for (const file of files.slice(0, 20)) {
+      const sizeStr = file.size > 0 ? enhancedUI.theme.dim(` (${(file.size / 1024).toFixed(1)}KB)`) : '';
+      console.log(`    📄 ${file.name}${sizeStr}`);
+    }
+    if (files.length > 20) {
+      console.log(enhancedUI.theme.dim(`    ... +${files.length - 20} more`));
+    }
+  }
+
+  if (result.truncated) {
+    console.log(enhancedUI.theme.dim(`\n  (显示前 ${result.entries.length} 项，共 ${result.total} 项)`));
+  }
+  console.log('');
+}
+
+// ---------------------------------------------------------------------------
+// Session command — 会话管理
+// ---------------------------------------------------------------------------
+
+async function handleSessionCommand(agent, argsText) {
+  const subcommand = (argsText || '').trim().toLowerCase().split(/\s+/)[0] || 'list';
+
+  const { createFileSystemStorageAdapter, getAgentSessionTitle } = await import('../core/session-store.js');
+  const { getUserConfigDir } = await import('../core/runtime-config.js');
+  const fs = await import('fs');
+  const path = await import('path');
+
+  const configDir = getUserConfigDir();
+  const adapter = createFileSystemStorageAdapter(configDir, fs, path);
+
+  if (subcommand === 'list' || subcommand === 'ls') {
+    const sessions = adapter.readSessions();
+    if (sessions.length === 0) {
+      enhancedUI.info('暂无会话记录');
+      return;
+    }
+    console.log(enhancedUI.createHeader('会话历史'));
+    for (const session of sessions.slice(0, 15)) {
+      const title = getAgentSessionTitle(session.input, session.messages);
+      const time = session.updatedAt ? new Date(session.updatedAt).toLocaleString() : '';
+      const msgCount = session.messages?.length || 0;
+      console.log(`  ${session.id}  ${title}`);
+      console.log(`    ${time}  ${msgCount} messages`);
+    }
+    if (sessions.length > 15) {
+      console.log(enhancedUI.theme.dim(`  ... +${sessions.length - 15} more`));
+    }
+    console.log('');
+    return;
+  }
+
+  if (subcommand === 'clear') {
+    adapter.writeSessions([]);
+    adapter.writeHistory([]);
+    enhancedUI.success('会话历史已清除');
+    return;
+  }
+
+  enhancedUI.info('用法: /session list | clear');
 }

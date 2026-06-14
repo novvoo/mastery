@@ -4,6 +4,9 @@ import { dirname, join, resolve } from 'path';
 import { homedir, platform } from 'os';
 
 export const APP_NAME = 'ai-engineering-mastery-agent';
+export const APP_DISPLAY_NAME = 'AI Agent Desktop';
+export const APP_COPYRIGHT = 'Copyright © 2024 AI Agent Team';
+export const APP_CREDITS = 'AI Engineering Mastery Agent';
 
 const PROVIDER_CONFIG = {
   openai: {

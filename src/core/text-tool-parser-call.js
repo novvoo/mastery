@@ -161,7 +161,7 @@ export function recoverCallArguments(rawContent, extractRecoveredValue) {
 
   // Work on the text inside the outer braces.
   const endBrace = findMatchingBrace(content, 0);
-  const innerEnd = endBrace === -1 ? content.length : endBrace;
+  const innerEnd = endBrace === -1 ? content.length : endBrace - 1;
   const inner = content.slice(1, innerEnd);
 
   // Find top-level `"key"` markers followed by `:` or `=`.
@@ -175,7 +175,8 @@ export function recoverCallArguments(rawContent, extractRecoveredValue) {
       : inner.length;
     // Extract the value slice between this key's `:` and the next
     // key (or the end of the inner text).
-    const valueRaw = inner.slice(keyEnd, nextStart).trim();
+    let valueRaw = inner.slice(keyEnd, nextStart).trim();
+    if (valueRaw.endsWith(',')) { valueRaw = valueRaw.slice(0, -1).trim(); }
     const value = extractRecoveredValue(valueRaw);
     if (value !== null && value !== undefined) {
       result[key] = value;
@@ -209,7 +210,7 @@ export function findMatchingBrace(text, openIdx) {
     if (ch === '{' || ch === '[') {depth++; continue;}
     if (ch === '}' || ch === ']') {
       depth--;
-      if (depth === 0 && ch === '}') {return i;}
+      if (depth === 0 && ch === '}') {return i + 1;}
     }
   }
   return -1;
@@ -236,27 +237,19 @@ export function findTopLevelKeyPositions(text) {
       continue;
     }
     if (ch === '"' || ch === "'") {
-      // Potential key start: a "..." or '...' that ends with `:` or `=`.
+      if (depth > 0) {continue;}
       const quoteChar = ch;
       const afterOpen = i + 1;
       const closeIdx = findNextUnescapedQuote(text, afterOpen, quoteChar);
       if (closeIdx === -1) {
-        // No matching quote — treat this as an interior quote and
-        // continue scanning; it will be absorbed into an outer value.
         continue;
       }
-      const candidateKey = text.slice(afterOpen, closeIdx);
-      // Only recognise ASCII identifier-style keys (with dashes &
-      // underscores). Anything else is a quote inside a value.
+      const candidateKey = text.slice(afterOpen, closeIdx - 1);
       if (!/^[A-Za-z_][\w-]*$/.test(candidateKey)) {
-        // Not a key candidate — but still consume up to closeIdx
-        // so the scanner stays aware of the quote balance.
-        i = closeIdx;
+        i = closeIdx - 1;
         continue;
       }
-      // After the closing quote, skip whitespace; there must be
-      // a `:` or `=` to call this a key.
-      let j = closeIdx + 1;
+      let j = closeIdx;
       while (j < text.length && /\s/.test(text[j])) {j++;}
       if (j < text.length && (text[j] === ':' || text[j] === '=')) {
         positions.push({
@@ -267,8 +260,7 @@ export function findTopLevelKeyPositions(text) {
         i = j;
         continue;
       }
-      // Not a key — treat as value interior, advance past close quote.
-      i = closeIdx;
+      i = closeIdx - 1;
       continue;
     }
     if (ch === '{' || ch === '[') {depth++; continue;}
@@ -290,7 +282,7 @@ export function findNextUnescapedQuote(text, start, quoteChar) {
     const ch = text[i];
     if (escaped) {escaped = false; continue;}
     if (ch === '\\') {escaped = true; continue;}
-    if (ch === quoteChar) {return i;}
+    if (ch === quoteChar) {return i + 1;}
   }
   return -1;
 }
@@ -319,7 +311,7 @@ export function findMatchingBracket(text, openIdx) {
     if (ch === '[' || ch === '{') {depth++; continue;}
     if (ch === ']' || ch === '}') {
       depth--;
-      if (depth === 0 && ch === ']') {return i;}
+      if (depth === 0 && ch === ']') {return i + 1;}
     }
   }
   return -1;
@@ -355,7 +347,7 @@ export function extractRecoveredValue(raw, safeJSONParse) {
     const closed = value.startsWith('{')
       ? findMatchingBrace(value, 0)
       : findMatchingBracket(value, 0);
-    const sliceEnd = closed === -1 ? value.length : closed + 1;
+    const sliceEnd = closed === -1 ? value.length : closed;
     const candidate = value.slice(0, sliceEnd);
     return safeJSONParse(candidate) || candidate;
   }

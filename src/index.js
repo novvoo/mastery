@@ -83,7 +83,62 @@ export {
   getProviderRequirement,
   getUserEnvPath,
   writeUserEnv,
+  APP_NAME,
+  APP_DISPLAY_NAME,
+  APP_COPYRIGHT,
+  APP_CREDITS,
 } from './core/runtime-config.js';
+export {
+  listWorkspaceDirectory,
+  createWorkspaceWatcher,
+  DEFAULT_IGNORED_WATCH_DIRECTORIES,
+} from './core/workspace-watcher.js';
+export {
+  buildActivitySummary,
+  getActivityTone,
+  getFileStatusLabel,
+  getFileTypeIcon,
+  formatDuration,
+} from './core/activity-summary.js';
+export {
+  isRuntimeDetailMessage,
+  isThinkingMessage,
+  isStatusUpdateMessage,
+  isPrimaryMessage,
+  formatRuntimeDetailValue,
+  compactToolResult,
+  getRuntimeDetailContent,
+  buildThinkingSummary,
+  getRuntimeDetailPreviewText,
+  getStatusUpdateText,
+  createConversationGroups,
+  createRuntimeDetailId,
+  buildRuntimeDetailsExportData,
+} from './core/runtime-details.js';
+export {
+  normalizePreviewUrlInput,
+  formatPreviewUrlInput,
+} from './core/preview-url.js';
+export {
+  RUNTIME_STATUS_META,
+  getRuntimeStatusMeta,
+  getRuntimeStatusText,
+} from './core/runtime-status.js';
+export {
+  createAgentSessionId,
+  getAgentSessionTitle,
+  findAgentSession,
+  upsertAgentSession,
+  saveAgentInputHistory,
+  normalizeRagDocuments,
+  mergeRagDocuments,
+  getDocumentDisplayName,
+  createAgentErrorPrompt,
+  createLocalStorageAdapter,
+  createFileSystemStorageAdapter,
+  MAX_AGENT_HISTORY_ITEMS,
+  MAX_AGENT_SESSIONS,
+} from './core/session-store.js';
 export {
   createAgentEngine,
   createRuntime,

@@ -24,7 +24,8 @@ export class PluginManager {
     this.#config = options.config || {};
 
     this.#hookManager.setErrorHandler('*', (error, context) => {
-      console.error(`[HookManager] 钩子执行错误 (${context.hookName}):`, error);
+      const msg = (error && error.message) ? error.message : String(error);
+      console.error(`[HookManager] 钩子执行错误 (${context.hookName}): ${msg}`);
     });
   }
 
@@ -98,7 +99,8 @@ export class PluginManager {
         pluginInstance.state = PluginState.INITIALIZED;
       } catch (error) {
         pluginInstance.state = PluginState.ERROR;
-        console.error(`插件 "${plugin.name}" 初始化失败:`, error);
+        const msg = (error && error.message) ? error.message : String(error);
+        console.error(`插件 "${plugin.name}" 初始化失败: ${msg}`);
         this.#plugins.delete(plugin.name);
         this.#dependencyGraph.delete(plugin.name);
         throw error;
@@ -157,7 +159,8 @@ export class PluginManager {
       try {
         await pluginInstance.plugin.cleanup();
       } catch (error) {
-        console.error(`插件 "${pluginName}" 清理失败:`, error);
+        const msg = (error && error.message) ? error.message : String(error);
+        console.error(`插件 "${pluginName}" 清理失败: ${msg}`);
       }
     }
 
@@ -233,7 +236,8 @@ export class PluginManager {
       try {
         await this.unregister(pluginName);
       } catch (error) {
-        console.error(`清理插件 "${pluginName}" 失败:`, error);
+        const msg = (error && error.message) ? error.message : String(error);
+        console.error(`清理插件 "${pluginName}" 失败: ${msg}`);
       }
     }
 

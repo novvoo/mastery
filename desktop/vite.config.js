@@ -31,5 +31,9 @@ export default defineConfig(({ command }) => ({
     port: 5173,
     open: false,
     cors: true,
+    fs: {
+      // 允许访问 renderer 目录 + 项目根目录下的 src/core/ 下沉模块
+      allow: [rendererRoot, path.resolve(__dirname, '../src')],
+    },
   },
 }));

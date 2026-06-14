@@ -8521,7 +8521,7 @@ const adapterUnitTests = new TestRunner("Adapter \u0026 Desktop Unit Tests");
 
 adapterUnitTests.test("tests/adapters/cli.test.js passes all tests", async () => {
   return new Promise((resolve, reject) => {
-    const child = spawn("bun", ["test", "tests/adapters/cli.test.js"], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("bun", ["test", "--isolate", "--timeout", "15000", "tests/adapters/cli.test.js"], { stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     child.stdout.on("data", (d) => { output += d.toString(); });
     child.stderr.on("data", (d) => { output += d.toString(); });
@@ -8535,7 +8535,7 @@ adapterUnitTests.test("tests/adapters/cli.test.js passes all tests", async () =>
 
 adapterUnitTests.test("tests/adapters/desktop.test.js passes all tests", async () => {
   return new Promise((resolve, reject) => {
-    const child = spawn("bun", ["test", "tests/adapters/desktop.test.js"], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("bun", ["test", "--isolate", "--timeout", "15000", "tests/adapters/desktop.test.js"], { stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     child.stdout.on("data", (d) => { output += d.toString(); });
     child.stderr.on("data", (d) => { output += d.toString(); });
@@ -8549,7 +8549,7 @@ adapterUnitTests.test("tests/adapters/desktop.test.js passes all tests", async (
 
 adapterUnitTests.test("desktop/tests/desktop.test.js passes all tests", async () => {
   return new Promise((resolve, reject) => {
-    const child = spawn("bun", ["test", "desktop/tests/desktop.test.js"], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("bun", ["test", "--isolate", "--timeout", "15000", "desktop/tests/desktop.test.js"], { stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     child.stdout.on("data", (d) => { output += d.toString(); });
     child.stderr.on("data", (d) => { output += d.toString(); });
@@ -8563,7 +8563,7 @@ adapterUnitTests.test("desktop/tests/desktop.test.js passes all tests", async ()
 
 adapterUnitTests.test("tests/runtime/dsml-parser.test.js passes all tests", async () => {
   return new Promise((resolve, reject) => {
-    const child = spawn("bun", ["test", "tests/runtime/dsml-parser.test.js"], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("bun", ["test", "--isolate", "--timeout", "15000", "tests/runtime/dsml-parser.test.js"], { stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     child.stdout.on("data", (d) => { output += d.toString(); });
     child.stderr.on("data", (d) => { output += d.toString(); });
@@ -8577,7 +8577,7 @@ adapterUnitTests.test("tests/runtime/dsml-parser.test.js passes all tests", asyn
 
 adapterUnitTests.test("tests/runtime/call-format-nested-braces.test.js passes all tests", async () => {
   return new Promise((resolve, reject) => {
-    const child = spawn("bun", ["test", "tests/runtime/call-format-nested-braces.test.js"], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("bun", ["test", "--isolate", "--timeout", "15000", "tests/runtime/call-format-nested-braces.test.js"], { stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     child.stdout.on("data", (d) => { output += d.toString(); });
     child.stderr.on("data", (d) => { output += d.toString(); });

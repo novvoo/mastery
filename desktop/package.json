@@ -10,7 +10,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "test": "bun test tests/desktop.test.js",
+    "test": "bun test --isolate tests/desktop.test.js",
     "dev:vite": "vite --config vite.config.js",
     "build": "npx electron-builder",
     "build:win": "npx electron-builder --win",

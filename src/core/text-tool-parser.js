@@ -345,7 +345,7 @@ export class TextToolParser {
     }
     if (value.startsWith('{') || value.startsWith('[')) {
       const closed = value.startsWith('{') ? findMatchingBrace(value, 0) : this.#findMatchingBracket(value, 0);
-      const sliceEnd = closed === -1 ? value.length : closed + 1;
+      const sliceEnd = closed === -1 ? value.length : closed;
       const candidate = value.slice(0, sliceEnd);
       try { return JSON.parse(candidate); } catch { return candidate; }
     }
@@ -360,7 +360,7 @@ export class TextToolParser {
       if (inString) { if (escaped) {escaped = false; continue;} if (ch === '\\') {escaped = true; continue;} if (ch === stringChar) {inString = false;} continue; }
       if (ch === '"' || ch === "'") {inString = true; stringChar = ch; continue;}
       if (ch === '[' || ch === '{') {depth++; continue;}
-      if (ch === ']' || ch === '}') { depth--; if (depth === 0 && ch === ']') {return i;} }
+      if (ch === ']' || ch === '}') { depth--; if (depth === 0 && ch === ']') {return i + 1;} }
     }
     return -1;
   }

@@ -47,8 +47,23 @@ export class AgentVerifier {
     const successfulEvents = runToolEvents.filter(event => event.success);
     const hasMutationEvidence = successfulEvents.some(event => evIsMutationEvent(event));
 
-    if (!taskProfile?.isModificationTask && !hasMutationEvidence) {
-      return { block: false };
+    if (!taskProfile?.isModificationTask) {
+      const text = String(responseText || '').trim();
+      if (!text) {
+        return { block: false };
+      }
+      if (!hasMutationEvidence) {
+        return { block: false };
+      }
+      const checkSummary = finalAnswerMentionsVerification(text, hasMutationEvidence);
+      if (!checkSummary.ok) {
+        return {
+          block: true,
+          reason: checkSummary.reason,
+          evidence: { hasMutationEvidence, verificationMentioned: false },
+        };
+      }
+      return { block: false, evidence: { hasMutationEvidence } };
     }
 
     const text = String(responseText || '').trim();
