@@ -22,7 +22,7 @@ const styles = {
     paddingRight: '12px',
     paddingBottom: '8px',
     paddingLeft: '12px',
-    backgroundColor: '#141922'
+    backgroundColor: 'var(--bg-depth-2)'
   },
 
   sectionTitle: {
@@ -48,7 +48,7 @@ const styles = {
     paddingRight: '8px',
     paddingBottom: '8px',
     paddingLeft: '8px',
-    backgroundColor: '#11161e'
+    backgroundColor: 'var(--bg-depth-1)'
   },
 
   activityItem: {
@@ -58,7 +58,7 @@ const styles = {
     paddingLeft: '10px',
     borderRadius: '8px',
     border: 'none',
-    backgroundColor: '#151a23',
+    backgroundColor: 'var(--bg-depth-3)',
     marginBottom: '8px'
   },
 
@@ -117,7 +117,7 @@ const styles = {
     paddingRight: '12px',
     paddingBottom: '10px',
     paddingLeft: '12px',
-    backgroundColor: '#141922',
+    backgroundColor: 'var(--bg-depth-2)',
     borderBottom: '1px solid var(--border-subtle)'
   },
 
@@ -136,7 +136,7 @@ const styles = {
     paddingLeft: '10px',
     borderRadius: '6px',
     border: 'none',
-    backgroundColor: '#11161e',
+    backgroundColor: 'var(--bg-depth-1)',
     color: 'var(--text-color)',
     fontSize: '12px',
     outline: 'none'
@@ -147,7 +147,7 @@ const styles = {
     height: '32px',
     borderRadius: '6px',
     border: 'none',
-    backgroundColor: '#11161e',
+    backgroundColor: 'var(--bg-depth-1)',
     color: 'var(--text-color)',
     fontSize: '12px'
   },
@@ -167,7 +167,7 @@ const styles = {
     paddingBottom: '11px',
     paddingLeft: '12px',
     borderRadius: '8px',
-    backgroundColor: '#151a23',
+    backgroundColor: 'var(--bg-depth-3)',
     marginBottom: '8px',
     cursor: 'pointer',
     transition: 'border-color 0.15s, background-color 0.15s',
@@ -205,7 +205,7 @@ const styles = {
     paddingBottom: '2px',
     paddingLeft: '6px',
     borderRadius: '4px',
-    backgroundColor: '#11161e',
+    backgroundColor: 'var(--bg-depth-1)',
     color: 'var(--text-muted)',
     border: 'none'
   },
@@ -235,7 +235,7 @@ const styles = {
     paddingBottom: '10px',
     paddingLeft: '10px',
     borderRadius: '6px',
-    backgroundColor: '#0f141c',
+    backgroundColor: 'var(--bg-depth-0)',
     border: 'none'
   },
 

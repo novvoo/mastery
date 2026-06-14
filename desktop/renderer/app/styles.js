@@ -5,7 +5,7 @@ export const styles = {
     display: 'flex',
     flexDirection: 'column',
     height: '100vh',
-    background: 'linear-gradient(180deg, #181719 0%, var(--background-color) 42%, #101012 100%)',
+    background: 'linear-gradient(180deg, var(--container-gradient-start) 0%, var(--background-color) 42%, var(--container-gradient-end) 100%)',
     color: 'var(--text-color)',
     fontFamily: 'var(--font-family)',
     overflow: 'hidden'
@@ -17,10 +17,10 @@ export const styles = {
     alignItems: 'center',
     minHeight: `${LAYOUT.headerHeight}px`,
     padding: '0 var(--spacing-md)',
-    backgroundColor: 'rgba(20, 20, 22, 0.94)',
-    borderBottom: '1px solid rgba(232, 120, 74, 0.12)',
+    backgroundColor: 'var(--surface-warm)',
+    borderBottom: '1px solid var(--primary-soft)',
     gap: 'var(--spacing-sm)',
-    boxShadow: '0 1px 0 rgba(245, 240, 235, 0.03), 0 10px 30px rgba(0, 0, 0, 0.18)'
+    boxShadow: 'var(--shadow-sm)'
   },
 
   topBarBrand: {
@@ -151,7 +151,7 @@ export const styles = {
   activityRail: {
     width: `${LAYOUT.activityRailWidth}px`,
     flexShrink: 0,
-    backgroundColor: '#101012',
+    backgroundColor: 'var(--bg-depth-0)',
     borderRight: '1px solid rgba(245, 240, 235, 0.07)',
     display: 'flex',
     flexDirection: 'column',
@@ -455,7 +455,7 @@ export const styles = {
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    background: 'linear-gradient(180deg, rgba(232, 120, 74, 0.055) 0%, rgba(20, 20, 22, 0) 170px), var(--background-color)'
+    background: 'linear-gradient(180deg, var(--primary-faint) 0%, transparent 170px), var(--background-color)'
   },
   
   chatHeader: {
@@ -463,8 +463,8 @@ export const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '12px var(--spacing-xl)',
-    borderBottom: '1px solid rgba(245, 240, 235, 0.075)',
-    backgroundColor: 'rgba(20, 20, 22, 0.74)'
+    borderBottom: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-warm)'
   },
   
   chatTitle: {
@@ -535,9 +535,9 @@ export const styles = {
   // ================== 输入区域 ==================
   inputArea: {
     padding: '12px var(--spacing-xl) 14px',
-    backgroundColor: 'rgba(20, 20, 22, 0.92)',
-    borderTop: '1px solid rgba(232, 120, 74, 0.12)',
-    boxShadow: '0 -18px 40px rgba(0, 0, 0, 0.22)'
+    backgroundColor: 'var(--surface-warm)',
+    borderTop: '1px solid var(--primary-soft)',
+    boxShadow: '0 -8px 24px rgba(0, 0, 0, 0.06)'
   },
   
   inputWrapper: {
@@ -551,8 +551,8 @@ export const styles = {
   userInputRequestPanel: {
     marginBottom: '10px',
     borderRadius: '8px',
-    border: '1px solid rgba(250, 204, 21, 0.2)',
-    backgroundColor: 'rgba(250, 204, 21, 0.055)',
+    border: '1px solid var(--primary-soft)',
+    backgroundColor: 'var(--primary-faint)',
     overflow: 'hidden'
   },
 
@@ -563,7 +563,7 @@ export const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: '8px',
-    borderBottom: '1px solid rgba(250, 204, 21, 0.14)',
+    borderBottom: '1px solid var(--primary-soft)',
     color: 'var(--text-color)',
     fontSize: '12px',
     fontWeight: 700
@@ -588,7 +588,7 @@ export const styles = {
     resize: 'vertical',
     border: '1px solid var(--border-subtle)',
     borderRadius: '6px',
-    backgroundColor: 'rgba(0, 0, 0, 0.18)',
+    backgroundColor: 'var(--surface-input)',
     color: 'var(--text-color)',
     padding: '8px',
     fontSize: '13px',
@@ -603,7 +603,7 @@ export const styles = {
     border: 'none',
     borderRadius: '6px',
     backgroundColor: 'var(--warning-color)',
-    color: '#101011',
+    color: 'var(--text-on-warning)',
     cursor: 'pointer',
     fontSize: '12px',
     fontWeight: 800
@@ -621,7 +621,7 @@ export const styles = {
     padding: '12px 14px',
     borderRadius: '8px',
     border: '1px solid rgba(245, 240, 235, 0.1)',
-    backgroundColor: '#101011',
+    backgroundColor: 'var(--surface-input)',
     color: 'var(--text-color)',
     fontSize: '14px',
     fontFamily: 'inherit',
@@ -633,7 +633,7 @@ export const styles = {
   
   inputTextareaFocused: {
     border: '1px solid rgba(232, 120, 74, 0.45)',
-    backgroundColor: '#131314',
+    backgroundColor: 'var(--surface-input-focused)',
     boxShadow: '0 0 0 3px var(--primary-soft)'
   },
   
@@ -643,7 +643,7 @@ export const styles = {
     borderRadius: '8px',
     border: '1px solid rgba(245, 240, 235, 0.12)',
     backgroundColor: 'var(--primary-color)',
-    color: '#141416',
+    color: 'var(--text-on-primary)',
     cursor: 'pointer',
     fontSize: '18px',
     display: 'flex',
@@ -699,7 +699,7 @@ export const styles = {
   
   // ================== 底部状态栏 ==================
   footer: {
-    backgroundColor: '#121214',
+    backgroundColor: 'var(--surface-footer)',
     borderTop: '1px solid var(--border-subtle)'
   },
   
@@ -707,7 +707,7 @@ export const styles = {
   modalBackdrop: {
     position: 'fixed',
     inset: 0,
-    backgroundColor: 'rgba(10, 10, 12, 0.78)',
+    backgroundColor: 'rgba(10, 10, 12, 0.45)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -764,8 +764,8 @@ export const styles = {
     width: '100%',
     height: '36px',
     borderRadius: '6px',
-    border: 'none',
-    backgroundColor: '#111113',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-modal-body)',
     color: 'var(--text-color)',
     padding: '0 10px'
   },
@@ -776,8 +776,8 @@ export const styles = {
     alignItems: 'center',
     gap: '12px',
     padding: '14px 20px',
-    borderTop: 'none',
-    backgroundColor: '#151416'
+    borderTop: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-modal-footer)'
   },
   
   modalActions: {
@@ -804,7 +804,7 @@ export const styles = {
     borderRadius: '6px',
     border: 'none',
     backgroundColor: 'var(--primary-color)',
-    color: '#141416',
+    color: 'var(--text-on-primary)',
     fontWeight: '700',
     cursor: 'pointer',
     minWidth: '108px',

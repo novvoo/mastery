@@ -13,7 +13,7 @@ const styles = {
     justifyContent: 'space-between',
     minHeight: '44px',
     padding: '6px 14px',
-    backgroundColor: '#141922',
+    backgroundColor: 'var(--bg-depth-2)',
     borderBottom: 'none'
   },
   

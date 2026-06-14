@@ -21,13 +21,13 @@ const VARIANTS = {
   },
   primary: {
     backgroundColor: 'var(--primary-color)',
-    color: '#141416',
-    border: '1px solid rgba(245, 240, 235, 0.14)',
+    color: 'var(--text-on-primary)',
+    border: '1px solid var(--primary-soft)',
   },
   danger: {
     backgroundColor: 'var(--error-color)',
-    color: '#fff',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
+    color: 'var(--text-on-primary)',
+    border: '1px solid var(--primary-soft)',
   },
   ghost: {
     backgroundColor: 'transparent',
@@ -35,7 +35,7 @@ const VARIANTS = {
     border: 'none',
   },
   icon: {
-    backgroundColor: 'rgba(245, 240, 235, 0.055)',
+    backgroundColor: 'var(--primary-faint)',
     color: 'var(--text-muted)',
     border: '1px solid var(--border-subtle)',
   },

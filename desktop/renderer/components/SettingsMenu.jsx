@@ -58,7 +58,7 @@ export function SettingsMenu({
         <span style={{fontSize:'11px',color:'var(--text-muted)',whiteSpace:'nowrap'}}>Max iterations</span>
         <input type="number" value={agentOptions.maxIterations}
           onChange={(e)=>setAgentOptions(p=>({...p,maxIterations:parseInt(e.target.value)||60}))}
-          style={{width:'56px',height:'24px',borderRadius:'4px',border:'none',backgroundColor:'#11161e',color:'var(--text-color)',padding:'0 6px',fontSize:'11px'}}
+          style={{width:'56px',height:'24px',borderRadius:'4px',border:'none',backgroundColor:'var(--surface-input)',color:'var(--text-color)',padding:'0 6px',fontSize:'11px'}}
           min={1} max={500}/>
       </div>
 

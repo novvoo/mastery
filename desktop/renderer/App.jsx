@@ -59,8 +59,14 @@ import './index.css';
 /**
  * 主应用组件
  */
+const DESKTOP_THEME_STORAGE_KEY = 'ai-agent-desktop-theme';
+
 function App() {
   // 状态管理
+  const [theme, setTheme] = useState(() => {
+    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(DESKTOP_THEME_STORAGE_KEY) : null;
+    return stored || 'light';
+  });
   const [activeTab, setActiveTab] = useState('agent');
   const [workingDirectory, setWorkingDirectory] = useState('');
   const [fileServerUrl, setFileServerUrl] = useState('');
@@ -147,6 +153,17 @@ function App() {
       inspectorExpanded
     }));
   }, [activeInspectorTab, inspectorExpanded, inspectorPanelWidth, sidebarCollapsed, summaryPanelVisible]);
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem(DESKTOP_THEME_STORAGE_KEY, theme);
+    }
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  }, []);
 
   useEffect(() => {
     if (!activePreviewUrl) return;

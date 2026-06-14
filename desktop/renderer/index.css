@@ -11,15 +11,31 @@
   --primary-faint: rgba(232, 120, 74, 0.07);
   --secondary-color: #24211f;
   --accent-color: #191715;
+  --bg-depth-0: #101012;
+  --bg-depth-1: #11161e;
+  --bg-depth-2: #141922;
+  --bg-depth-3: #151a23;
   --background-color: #141416;
   --surface-color: #19191b;
   --surface-raised: #202023;
   --surface-hover: #292623;
+  --surface-input: #101011;
+  --surface-input-focused: #131314;
+  --surface-base: #141416;
+  --surface-card: #101011;
+  --surface-modal-body: #111113;
+  --surface-modal-footer: #151416;
+  --surface-footer: #121214;
+  --surface-warm: #181719;
   --border-color: rgba(245, 240, 235, 0.14);
   --border-subtle: rgba(245, 240, 235, 0.08);
   --text-color: #F5F0EB;
   --text-muted: #B6AEA7;
   --text-dark: #8A8580;
+  --text-on-primary: #141416;
+  --text-on-warning: #101011;
+  --container-gradient-start: #181719;
+  --container-gradient-end: #101012;
   
   /* 状态颜色 */
   --success-color: #88D4A2;
@@ -71,15 +87,60 @@
   --z-toast: 300;
 
   /* 面板背景层级 (从深到浅) */
-  --bg-depth-0: #0d0d0f;   /* 活动栏/最深层 */
-  --bg-depth-1: #141416;   /* 主背景/聊天区 */
-  --bg-depth-2: #181719;   /* 面板头部 */
-  --bg-depth-3: #1b1a1c;   /* 面板主体 */
-  --bg-depth-4: #242224;   /* 面板内容/浮起 */
+  --bg-depth-0: #0d0d0f;
+  --bg-depth-1: #141416;
+  --bg-depth-2: #181719;
+  --bg-depth-3: #1b1a1c;
+  --bg-depth-4: #242224;
 
   /* 焦点环 */
   --focus-ring: 0 0 0 2px var(--primary-color);
   --focus-ring-soft: 0 0 0 3px var(--primary-soft);
+}
+
+/* 亮色主题 */
+[data-theme="light"] {
+  --primary-color: #E07145;
+  --primary-dark: #C85A2F;
+  --primary-soft: rgba(224, 113, 69, 0.14);
+  --primary-faint: rgba(224, 113, 69, 0.06);
+  --secondary-color: #F2EEEA;
+  --accent-color: #FAF7F4;
+  --background-color: #FAF7F4;
+  --surface-color: #FFFFFF;
+  --surface-raised: #F6F2ED;
+  --surface-hover: #EFE9E2;
+  --surface-input: #FFFFFF;
+  --surface-input-focused: #FFFFFF;
+  --surface-base: #FAF7F4;
+  --surface-card: #FFFFFF;
+  --surface-modal-body: #FFFFFF;
+  --surface-modal-footer: #F6F2ED;
+  --surface-footer: #F2EEEA;
+  --surface-warm: #FFF8F2;
+  --border-color: rgba(20, 20, 22, 0.12);
+  --border-subtle: rgba(20, 20, 22, 0.07);
+  --text-color: #1A1A1C;
+  --text-muted: #6B645C;
+  --text-dark: #9A948C;
+  --text-on-primary: #FFFFFF;
+  --text-on-warning: #1A1A1C;
+  --container-gradient-start: #FFF8F2;
+  --container-gradient-end: #F2EEEA;
+
+  --success-color: #2FA95E;
+  --warning-color: #E5A62A;
+  --error-color: #D94A4A;
+  --info-color: #3D7AB8;
+
+  --shadow-sm: 0 1px 2px rgba(20, 20, 22, 0.08);
+  --shadow-md: 0 10px 28px rgba(20, 20, 22, 0.12);
+  --shadow-lg: 0 20px 48px rgba(20, 20, 22, 0.16);
+
+  --bg-depth-0: #EDE6DD;
+  --bg-depth-1: #F2ECE4;
+  --bg-depth-2: #F6F2ED;
+  --bg-depth-3: #FAF7F4;
 }
 
 /* 全局重置 */
@@ -122,7 +183,7 @@ select {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3a3530;
+  background: var(--border-color);
   border-radius: var(--radius-sm);
 }
 
@@ -130,19 +191,23 @@ select {
   background: var(--primary-color);
 }
 
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(20, 20, 22, 0.18);
+}
+
 /* 选择文本 */
 ::selection {
   background: var(--primary-color);
-  color: #141416;
+  color: var(--text-on-primary);
 }
 
 /* 输入框样式 */
 input, textarea, select {
   font-family: inherit;
   font-size: inherit;
-  background-color: #111113;
+  background-color: var(--surface-modal-body);
   color: var(--text-color);
-  border: none;
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: var(--spacing-sm) var(--spacing-md);
   transition: border-color var(--transition-fast);
@@ -183,7 +248,7 @@ button:disabled {
 
 button.primary {
   background-color: var(--primary-color);
-  color: #141416;
+  color: var(--text-on-primary);
 }
 
 button.primary:hover:not(:disabled) {

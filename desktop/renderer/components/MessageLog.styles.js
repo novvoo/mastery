@@ -48,7 +48,7 @@ export const styles = {
     padding: '0 9px',
     borderRadius: '6px',
     border: 'none',
-    backgroundColor: '#101011',
+    backgroundColor: 'var(--surface-card)',
     color: 'var(--text-color)',
     fontSize: '12px',
     transition: 'width 0.2s ease'
@@ -84,7 +84,7 @@ export const styles = {
     gap: '2px',
     padding: '2px',
     borderRadius: '7px',
-    backgroundColor: '#101011',
+    backgroundColor: 'var(--surface-card)',
     border: 'none'
   },
   
@@ -794,7 +794,7 @@ export const styles = {
   detailPanel: {
     marginTop: '8px',
     padding: '12px',
-    backgroundColor: '#101011',
+    backgroundColor: 'var(--surface-card)',
     borderRadius: '6px',
     border: '1px solid var(--border-subtle)',
     fontSize: '12px',

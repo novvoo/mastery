@@ -97,7 +97,7 @@ const styles = {
     gap: '8px',
     padding: '9px 10px',
     borderRadius: '6px',
-    backgroundColor: '#11161e',
+    backgroundColor: 'var(--bg-depth-1)',
     border: 'none'
   },
   
@@ -131,7 +131,7 @@ const styles = {
     marginTop: '8px',
     borderRadius: '6px',
     border: 'none',
-    backgroundColor: '#11161e',
+    backgroundColor: 'var(--bg-depth-1)',
     overflow: 'hidden'
   },
   projectExplorerHeader: {
@@ -230,7 +230,7 @@ const styles = {
     position: 'relative',
     borderRadius: '8px',
     border: 'none',
-    backgroundColor: '#11161e',
+    backgroundColor: 'var(--bg-depth-1)',
     boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.025)',
     transition: 'border-color 0.2s, box-shadow 0.2s'
   },
@@ -367,7 +367,7 @@ const styles = {
   },
   
   disabledButton: {
-    backgroundColor: '#151a23',
+    backgroundColor: 'var(--bg-depth-3)',
     border: 'none',
     color: 'var(--text-dark)',
     cursor: 'not-allowed'

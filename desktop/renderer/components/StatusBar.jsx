@@ -14,7 +14,7 @@ const styles = {
     alignItems: 'center',
     minHeight: '32px',
     padding: '0 14px',
-    backgroundColor: '#11161e',
+    backgroundColor: 'var(--surface-footer)',
     borderTop: '1px solid var(--border-subtle)'
   },
   

@@ -66,7 +66,7 @@ const styles = {
     alignItems: 'center',
     padding: '10px 12px',
     borderBottom: 'none',
-    backgroundColor: '#141922'
+    backgroundColor: 'var(--bg-depth-2)'
   },
   
   title: {
@@ -129,7 +129,7 @@ const styles = {
   footer: {
     padding: '8px 12px',
     borderTop: 'none',
-    backgroundColor: '#141922',
+    backgroundColor: 'var(--bg-depth-2)',
     display: 'flex',
     gap: '16px',
     fontSize: '11px',
