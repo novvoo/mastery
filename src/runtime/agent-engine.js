@@ -37,6 +37,9 @@ import { MCPClient } from '../mcp/mcp-client.js';
 // Import scheduler - 调度器导入
 import { SchedulerEngine } from '../scheduler/SchedulerEngine.js';
 
+// Import graph planner - 图规划器导入
+import GraphPlanner from '../planner/graph-planner.js';
+
 export class AgentEngine {
   // 核心配置和状态
   #config;
@@ -64,6 +67,7 @@ export class AgentEngine {
   #toolLoader;
   #mcpClient;
   #schedulerEngine;
+  #graphPlanner;
   
   // 工具调用包装状态
   #toolCallsWrapped;
@@ -83,6 +87,11 @@ export class AgentEngine {
     this.#toolGroups = new Map();
     this.#toolCallsWrapped = false;
     this.#uiAdapter = null;
+    this.#graphPlanner = new GraphPlanner({
+      maxConcurrency: 5,
+      enableRetry: true,
+      enableDynamicPlanning: true,
+    });
   }
 
   /**
@@ -517,6 +526,50 @@ export class AgentEngine {
       timestamp: this.#state.startTime
     });
 
+    // 高级图规划：为当前任务创建执行计划
+    // 使用 GraphPlanner 进行任务分解和依赖管理
+    let executionPlan = null;
+    try {
+      const taskName = input.substring(0, 48).trim();
+      executionPlan = this.#graphPlanner.createPlan(
+        taskName,
+        input,
+        { workingDirectory: this.#config.workingDirectory }
+      );
+      
+      // 根据任务描述分解为子任务（使用模板匹配）
+      const lowerInput = input.toLowerCase();
+      let template = 'default';
+      if (lowerInput.includes('review') || lowerInput.includes('审查') || lowerInput.includes('review')) {
+        template = 'code_review';
+      } else if (lowerInput.includes('refactor') || lowerInput.includes('重构')) {
+        template = 'refactor';
+      }
+      
+      const subtasks = this.#graphPlanner.decomposeTask(
+        executionPlan.id,
+        input,
+        { template }
+      );
+      
+      executionPlan.subtasks = subtasks;
+      this.#state.currentPlanId = executionPlan.id;
+      
+      this.#eventBus.emit(RuntimeEvent.EXECUTION_PLAN_CREATED, {
+        planId: executionPlan.id,
+        taskCount: subtasks.length,
+        plan: executionPlan
+      });
+      
+      if (this.#config.debug) {
+        console.log(`[GraphPlanner] 创建执行计划: ${executionPlan.id}, ${subtasks.length} 个子任务`);
+      }
+    } catch (planError) {
+      // 规划失败不影响主流程，降级为线性执行
+      try { console.warn('[GraphPlanner] 任务规划失败，降级为线性执行:', planError.message); } catch {}
+      this.#state.currentPlanId = null;
+    }
+
     // 创建 UI 门面（使用传入的 UI 适配器或默认门面）
     const uiFacade = this.#uiAdapter || this.#createUIFacade();
 
@@ -785,6 +838,7 @@ export class AgentEngine {
   getEmbedder() { return this.#embedder; }
   getMcpClient() { return this.#mcpClient; }
   getSchedulerEngine() { return this.#schedulerEngine; }
+  getGraphPlanner() { return this.#graphPlanner; }
   getEventBus() { return this.#eventBus; }
   getModelProvider() { return this.#modelProvider; }
   isInitialized() { return this.#isInitialized; }

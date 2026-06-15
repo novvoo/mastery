@@ -48,6 +48,7 @@ import {
   upsertAgentSession,
 } from './app/session-storage.js';
 import { styles } from './app/styles.js';
+import { getI18n, t as i18nT } from './i18n.js';
 import './index.css';
 
 // Codex 2026 风格布局常量
@@ -67,6 +68,8 @@ function App() {
     const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(DESKTOP_THEME_STORAGE_KEY) : null;
     return stored || 'light';
   });
+  const [language, setLanguage] = useState(() => getI18n().getLanguage());
+  const [, forceUpdate] = useState(0);
   const [activeTab, setActiveTab] = useState('agent');
   const [workingDirectory, setWorkingDirectory] = useState('');
   const [fileServerUrl, setFileServerUrl] = useState('');
@@ -163,6 +166,22 @@ function App() {
 
   const toggleTheme = useCallback(() => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  }, []);
+
+  // I18n 订阅 — 监听语言变化并重新渲染
+  useEffect(() => {
+    const i18n = getI18n();
+    const unsub = i18n.subscribe((lang) => {
+      setLanguage(lang);
+      forceUpdate((n) => n + 1);
+    });
+    return unsub;
+  }, []);
+
+  const handleLanguageChange = useCallback((lang) => {
+    const i18n = getI18n();
+    i18n.setLanguage(lang);
+    setLanguage(lang);
   }, []);
 
   useEffect(() => {
@@ -1185,8 +1204,12 @@ function App() {
         <SettingsMenu
           agentOptions={agentOptions}
           setAgentOptions={setAgentOptions}
+          theme={theme}
+          onToggleTheme={toggleTheme}
           onClose={() => setShowSettings(false)}
           onOpenLLMSetup={() => setShowLLMSetup(true)}
+          language={language}
+          onChangeLanguage={handleLanguageChange}
         />
       )}
       {showLLMSetup && (

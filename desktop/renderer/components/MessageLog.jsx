@@ -16,6 +16,7 @@ import { MarkdownMessageContent } from './MarkdownMessageContent.jsx';
 import { styles } from './MessageLog.styles.js';
 import { useIPC } from '../hooks/useIPC.js';
 import { RuntimeDetailsPanel } from './message-log/RuntimeDetailsPanel.jsx';
+import { t } from '../i18n.js';
 import {
   buildThinkingSummary,
   buildRuntimeDetailsExportData,
@@ -579,7 +580,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         {/* 对于事件类型，在消息流中显示简要负载，方便直接查看 */}
         {!isCollapsed && msg.type === 'event' && msg.payloadSummary && (
           <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
-            <div style={{ marginBottom: '6px', color: 'var(--text-muted)' }}>事件负载预览</div>
+            <div style={{ marginBottom: '6px', color: 'var(--text-muted)' }}>{t('msg.payload')}</div>
             <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--text-color)', backgroundColor: 'transparent', borderRadius: '4px' }}>{msg.payloadSummary}</pre>
           </div>
         )}
@@ -596,9 +597,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
               e.stopPropagation();
               handleAskAgent(msg);
             }}
-            title="把错误消息交给 Agent 分析处理"
+            title={t('msg.hand_to_agent_hint')}
           >
-            交给 Agent
+            {t('msg.hand_to_agent')}
           </button>
         )}
 
@@ -608,9 +609,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             e.stopPropagation();
             handleCopyMessage(msg);
           }}
-          title="复制内容"
+          title={t('msg.copy_hint')}
         >
-          📋 复制
+          📋 {t('msg.copy')}
         </button>
         
         <button
@@ -619,9 +620,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             e.stopPropagation();
             handleToggleDetails(msgId);
           }}
-          title="查看详情"
+          title={t('msg.details')}
         >
-          {showDetail ? '📖 隐藏详情' : '📖 详情'}
+          {showDetail ? `📖 ${t('msg.hide_details')}` : `📖 ${t('msg.details')}`}
         </button>
         
         <button
@@ -630,7 +631,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             e.stopPropagation();
             handleToggleCollapse(msgId);
           }}
-          title="折叠/展开"
+          title={t('msg.expand')}
         >
           {isCollapsed ? '▶' : '▼'}
         </button>
@@ -639,42 +640,42 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       {/* 详情面板 */}
       {showDetail && !isCollapsed && (
         <div style={styles.detailPanel}>
-          <div style={styles.detailTitle}>消息详情</div>
+          <div style={styles.detailTitle}>{t('msg.message_details')}</div>
           <div style={styles.detailRow}>
-            <span>消息ID:</span>
+            <span>{t('msg.message_id')}</span>
             <span style={styles.detailValue}>{msgId}</span>
           </div>
           <div style={styles.detailRow}>
-            <span>类型:</span>
+            <span>{t('msg.type')}</span>
             <span style={styles.detailValue}>{msg.type}</span>
           </div>
           <div style={styles.detailRow}>
-            <span>时间:</span>
+            <span>{t('msg.time')}</span>
             <span style={styles.detailValue}>
               {msg.timestamp ? new Date(msg.timestamp).toISOString() : 'N/A'}
             </span>
           </div>
           {msg.toolName && (
             <div style={styles.detailRow}>
-              <span>工具名称:</span>
+              <span>{t('msg.tool_name_label')}</span>
               <span style={styles.detailValue}>{msg.toolName}</span>
             </div>
           )}
           {msg.duration && (
             <div style={styles.detailRow}>
-              <span>执行耗时:</span>
+              <span>{t('msg.duration_label')}</span>
               <span style={styles.detailValue}>{msg.duration}ms</span>
             </div>
           )}
           {msg.payload && (
             <div style={{ marginTop: '8px' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>负载 (payload)</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>{t('msg.payload')}</div>
               <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--text-color)', backgroundColor: 'transparent', borderRadius: '4px' }}>{typeof msg.payload === 'string' ? msg.payload : JSON.stringify(msg.payload, null, 2)}</pre>
             </div>
           )}
           {msg.raw && (
             <div style={{ marginTop: '8px' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>原始数据</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>{t('msg.raw_data')}</div>
               <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--text-color)', backgroundColor: 'transparent', borderRadius: '4px' }}>{typeof msg.raw === 'string' ? msg.raw : JSON.stringify(msg.raw, null, 2)}</pre>
             </div>
           )}
@@ -711,7 +712,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     const isRunningGroup = status === 'running' && isActiveGroup;
     const isExpanded = isRunningGroup || expandedThinkingPanels.has(group.id);
     const latestIteration = thinkingSummary.latest?.iteration;
-    const summaryText = thinkingSummary.summary || '模型正在整理思路';
+    const summaryText = thinkingSummary.summary || t('msg.thinking_summary');
 
     return (
       <div style={styles.thinkingPanel}>
@@ -719,7 +720,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           type="button"
           style={styles.thinkingHeader}
           onClick={() => handleThinkingPanelToggle(group.id, isRunningGroup)}
-          title={isExpanded ? '收起思考过程' : '展开思考过程'}
+          title={isExpanded ? t('msg.collapse_thinking') : t('msg.expand_thinking')}
         >
           <span style={styles.thinkingTitle}>
             <span style={{
@@ -728,12 +729,12 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             }}>
               {isRunningGroup ? '...' : 'OK'}
             </span>
-            <span>{isRunningGroup ? '思考中' : '思考摘要'}</span>
+            <span>{isRunningGroup ? t('msg.thinking_in_progress') : t('msg.thinking_summary_label')}</span>
           </span>
           <span style={styles.thinkingMeta}>
-            {latestIteration ? `第 ${latestIteration} 轮` : `${thinkingSummary.count} 条`}
-            {thinkingSummary.iterationCount > 1 ? ` / 共 ${thinkingSummary.iterationCount} 轮` : ''}
-            <span>{isExpanded ? '收起' : '展开'}</span>
+            {latestIteration ? t('msg.iteration_x', { n: latestIteration }) : t('msg.count_messages', { count: thinkingSummary.count })}
+            {thinkingSummary.iterationCount > 1 ? t('msg.iteration_x_of_y', { n: latestIteration, total: thinkingSummary.iterationCount }).replace(/^[^/]+\//, ' / ') : ''}
+            <span>{isExpanded ? t('msg.collapse') : t('msg.expand')}</span>
           </span>
         </button>
 
@@ -792,10 +793,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       <div style={styles.container}>
         <div style={styles.emptyContainer}>
           <div style={styles.emptyIcon}>AI</div>
-          <div style={styles.emptyText}>开始与 AI Agent 对话</div>
+          <div style={styles.emptyText}>{t('ui.root')}</div>
           <div style={styles.emptyHint}>
-            在中间输入框输入您的任务描述，点击发送或按 Ctrl+Enter 开始。
-            Agent 将自动分析任务并调用相应工具完成。
+            {t('chat.placeholder')}
           </div>
           
           {/* 快捷提示 */}
@@ -806,9 +806,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             flexWrap: 'wrap',
             justifyContent: 'center'
           }}>
-            <span style={styles.emptyChip}>输入任务描述</span>
-            <span style={styles.emptyChip}>点击执行</span>
-            <span style={styles.emptyChip}>查看结果</span>
+            <span style={styles.emptyChip}>{t('ui.root')}</span>
+            <span style={styles.emptyChip}>{t('msg.tool')}</span>
+            <span style={styles.emptyChip}>{t('msg.result')}</span>
           </div>
         </div>
       </div>
@@ -829,7 +829,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           transition: background-color 0.15s;
         }
         .markdown a:hover {
-          background-color: rgba(74, 158, 255, 0.12);
+          background-color: var(--primary-faint);
           text-decoration: underline;
         }
         .markdown code {
@@ -841,7 +841,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         }
         .markdown pre {
           background-color: var(--surface-color, #1a1f2e);
-          border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.15));
+          border: 1px solid var(--border-subtle);
           border-radius: 6px;
           padding: 12px;
           overflow-x: auto;
@@ -874,7 +874,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       {/* 头部 */}
       <div style={styles.header}>
         <div style={styles.title}>
-          <span>消息日志</span>
+          <span>{t('msg.message_details')}</span>
           <span style={{
             fontSize: '12px',
             color: 'var(--text-muted)',
@@ -896,7 +896,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
                 }}
                 value={searchQuery}
                 onChange={handleSearch}
-                placeholder="搜索消息..."
+                placeholder={t('msg.search_messages')}
                 onBlur={() => {
                   if (!searchQuery) setSearchExpanded(false);
                 }}
@@ -905,7 +905,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             <button
               style={styles.button}
               onClick={handleSearchToggle}
-              title="搜索消息"
+              title={t('msg.search_hint')}
             >
               🔍
             </button>
@@ -919,7 +919,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
                 ...(viewMode === 'list' ? styles.viewButtonActive : {})
               }}
               onClick={() => handleViewChange('list')}
-              title="列表视图"
+              title={t('msg.list_view')}
             >
               📋
             </button>
@@ -929,7 +929,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
                 ...(viewMode === 'timeline' ? styles.viewButtonActive : {})
               }}
               onClick={() => handleViewChange('timeline')}
-              title="时间线视图"
+              title={t('msg.timeline_view')}
             >
               📅
             </button>
@@ -945,13 +945,13 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             value={filter}
             onChange={(e) => handleFilterChange(e.target.value)}
           >
-            <option value="all">全部</option>
-            <option value="user">👤 用户</option>
-            <option value="info">ℹ️ 信息</option>
-            <option value="success">✅ 成功</option>
-            <option value="error">❌ 错误</option>
-            <option value="tool">🔧 工具</option>
-            <option value="result">📊 结果</option>
+            <option value="all">{t('ui.root')}</option>
+            <option value="user">👤 {t('msg.user')}</option>
+            <option value="info">ℹ️ {t('msg.info')}</option>
+            <option value="success">✅ {t('msg.success')}</option>
+            <option value="error">❌ {t('msg.error')}</option>
+            <option value="tool">🔧 {t('msg.tool')}</option>
+            <option value="result">📊 {t('msg.result')}</option>
           </select>
           
           {/* 自动滚动按钮 */}
@@ -961,18 +961,18 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
               ...(autoScroll ? styles.buttonActive : {})
             }}
             onClick={handleAutoScrollChange}
-            title={autoScroll ? '停止自动滚动' : '启用自动滚动'}
+            title={autoScroll ? t('msg.auto_scroll_stop') : t('msg.auto_scroll_start')}
           >
-            {autoScroll ? '📍 自动' : '📌 手动'}
+            {autoScroll ? '📍' : '📌'}
           </button>
           
           {/* 清空按钮 */}
           <button
             style={styles.button}
             onClick={handleClear}
-            title="清空消息"
+            title={t('msg.clear_hint')}
           >
-            🗑️ 清空
+            🗑️
           </button>
         </div>
       </div>
@@ -1001,9 +1001,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         {primaryMessages.length === 0 && runtimeDetailMessages.length === 0 && messages.length > 0 && (
           <div style={styles.emptyContainer}>
             <div style={styles.emptyIcon}>🔍</div>
-            <div style={styles.emptyText}>没有找到匹配的消息</div>
+            <div style={styles.emptyText}>{t('status.not_set')}</div>
             <div style={styles.emptyHint}>
-              尝试更改过滤条件或搜索关键词
+              {t('msg.search_messages')}
             </div>
           </div>
         )}

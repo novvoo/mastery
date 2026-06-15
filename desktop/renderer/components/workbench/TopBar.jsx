@@ -1,6 +1,7 @@
 import React from 'react';
 import { Badge, Button } from '../ui/index.js';
 import { styles } from '../../app/styles.js';
+import { t } from '../../i18n.js';
 
 export function TopBar({
   platformInfo,
@@ -39,8 +40,8 @@ export function TopBar({
           variant="ghost"
           size="sm"
           onClick={onToggleSidebar}
-          title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-          ariaLabel={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+          title={sidebarCollapsed ? t('window.expand_sidebar') : t('window.collapse_sidebar')}
+          ariaLabel={sidebarCollapsed ? t('window.expand_sidebar') : t('window.collapse_sidebar')}
         >
           {sidebarCollapsed ? '☰' : '×'}
         </Button>
@@ -54,11 +55,11 @@ export function TopBar({
 
         {!platformInfo?.isMac && (
           <div style={{ display: 'flex', gap: 'var(--spacing-xs)', marginLeft: 'var(--spacing-sm)' }}>
-            <Button variant="ghost" size="sm" onClick={onMinimize} title="最小化">−</Button>
-            <Button variant="ghost" size="sm" onClick={onMaximize} title={windowState.isMaximized ? '还原' : '最大化'}>
+            <Button variant="ghost" size="sm" onClick={onMinimize} title={t('window.minimize')}>−</Button>
+            <Button variant="ghost" size="sm" onClick={onMaximize} title={windowState.isMaximized ? t('window.restore') : t('window.maximize')}>
               {windowState.isMaximized ? '❐' : '□'}
             </Button>
-            <Button variant="ghost" size="sm" onClick={onClose} title="关闭" style={{ color: 'var(--error-color)' }}>×</Button>
+            <Button variant="ghost" size="sm" onClick={onClose} title={t('window.close')} style={{ color: 'var(--error-color)' }}>×</Button>
           </div>
         )}
       </div>

@@ -3,6 +3,7 @@ import AgentControl from '../AgentControl.jsx';
 import ToolPanel from '../ToolPanel.jsx';
 import { Button, Panel, PanelHeader } from '../ui/index.js';
 import { LAYOUT } from '../../app/config.js';
+import { t } from '../../i18n.js';
 
 export function SidebarPanel({
   activeTab,
@@ -45,15 +46,15 @@ export function SidebarPanel({
   );
 
   return (
-    <Panel variant="sidebar" width={LAYOUT.sidebarWidth} ariaLabel="侧边栏">
+    <Panel variant="sidebar" width={LAYOUT.sidebarWidth} ariaLabel="sidebar">
       <PanelHeader
-        title={activeTab === 'tools' ? '工具' : '会话'}
+        title={activeTab === 'tools' ? t('sidebar.tools') : t('sidebar.sessions')}
         actions={
           <>
             {activeTab !== 'tools' && (
-              <Button variant="icon" size="sm" onClick={onNewTask} title="新对话" ariaLabel="新对话">+</Button>
+              <Button variant="icon" size="sm" onClick={onNewTask} title="new" ariaLabel="new">+</Button>
             )}
-            <Button variant="icon" size="sm" onClick={onCollapse} title="收起侧边栏" ariaLabel="收起侧边栏">×</Button>
+            <Button variant="icon" size="sm" onClick={onCollapse} title="collapse" ariaLabel="collapse">×</Button>
           </>
         }
       />

@@ -61,31 +61,31 @@ const styles = {
   },
   
   statusRunning: {
-    backgroundColor: 'rgba(246, 200, 95, 0.12)',
+    backgroundColor: 'var(--warning-soft)',
     color: 'var(--warning-color)',
     border: 'none'
   },
   
   statusIdle: {
-    backgroundColor: 'rgba(93, 211, 158, 0.12)',
+    backgroundColor: 'var(--success-soft)',
     color: 'var(--success-color)',
     border: 'none'
   },
   
   statusError: {
-    backgroundColor: 'rgba(255, 107, 122, 0.12)',
+    backgroundColor: 'var(--error-soft)',
     color: 'var(--error-color)',
     border: 'none'
   },
   
   statusCompleted: {
-    backgroundColor: 'rgba(125, 211, 252, 0.12)',
+    backgroundColor: 'var(--info-soft)',
     color: 'var(--info-color)',
     border: 'none'
   },
 
   statusWaiting: {
-    backgroundColor: 'rgba(246, 200, 95, 0.12)',
+    backgroundColor: 'var(--warning-soft)',
     color: 'var(--warning-color)',
     border: 'none'
   },
@@ -96,9 +96,9 @@ const styles = {
     alignItems: 'center',
     gap: '8px',
     padding: '9px 10px',
-    borderRadius: '6px',
-    backgroundColor: 'var(--bg-depth-1)',
-    border: 'none'
+    borderRadius: '8px',
+    backgroundColor: 'var(--glass-bg-light)',
+    border: '1px solid var(--glass-border)'
   },
   
   directoryIcon: {
@@ -118,20 +118,20 @@ const styles = {
   },
   
   changeButton: {
-    padding: '4px 8px',
-    borderRadius: '4px',
-    border: 'none',
-    backgroundColor: 'var(--surface-hover)',
+    padding: '4px 10px',
+    borderRadius: '6px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
     color: 'var(--text-color)',
     cursor: 'pointer',
     fontSize: '11px',
-    transition: 'all 0.2s'
+    transition: 'all var(--transition-fast)'
   },
   projectExplorer: {
     marginTop: '8px',
-    borderRadius: '6px',
-    border: 'none',
-    backgroundColor: 'var(--bg-depth-1)',
+    borderRadius: '10px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
     overflow: 'hidden'
   },
   projectExplorerHeader: {
@@ -140,7 +140,7 @@ const styles = {
     justifyContent: 'space-between',
     gap: '8px',
     padding: '8px 10px',
-    borderBottom: 'none'
+    borderBottom: '1px solid var(--glass-border)'
   },
   projectExplorerTitle: {
     minWidth: 0,
@@ -154,9 +154,9 @@ const styles = {
   projectExplorerButton: {
     width: '24px',
     height: '24px',
-    borderRadius: '4px',
-    border: 'none',
-    backgroundColor: 'var(--surface-hover)',
+    borderRadius: '6px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
     color: 'var(--text-muted)',
     cursor: 'pointer',
     fontSize: '12px',
@@ -228,16 +228,18 @@ const styles = {
   
   textareaWrapper: {
     position: 'relative',
-    borderRadius: '8px',
-    border: 'none',
-    backgroundColor: 'var(--bg-depth-1)',
-    boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.025)',
-    transition: 'border-color 0.2s, box-shadow 0.2s'
+    borderRadius: '10px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg)',
+    backdropFilter: 'blur(12px) saturate(150%)',
+    WebkitBackdropFilter: 'blur(12px) saturate(150%)',
+    boxShadow: 'var(--glass-inner-hl), var(--shadow-inset)',
+    transition: 'all var(--transition-fast)'
   },
   
   textareaWrapperFocused: {
-    border: 'none',
-    boxShadow: '0 0 0 3px var(--primary-soft)'
+    border: '1px solid var(--primary-strong)',
+    boxShadow: '0 0 0 3px var(--primary-soft), var(--glass-inner-hl)'
   },
   
   textarea: {
@@ -293,12 +295,14 @@ const styles = {
     bottom: '100%',
     left: '0',
     right: '0',
-    backgroundColor: 'var(--surface-color)',
-    border: 'none',
-    borderRadius: '6px',
+    backgroundColor: 'var(--glass-bg-strong)',
+    backdropFilter: 'blur(20px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+    border: '1px solid var(--glass-border)',
+    borderRadius: '10px',
     maxHeight: '150px',
     overflowY: 'auto',
-    boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.2)',
+    boxShadow: 'var(--glass-shadow-lg)',
     zIndex: 10
   },
   
@@ -307,14 +311,14 @@ const styles = {
     cursor: 'pointer',
     fontSize: '13px',
     color: 'var(--text-color)',
-    transition: 'background-color 0.15s',
+    transition: 'all var(--transition-fast)',
     display: 'flex',
     alignItems: 'center',
     gap: '8px'
   },
   
   suggestionItemActive: {
-    backgroundColor: 'var(--border-color)'
+    backgroundColor: 'var(--glass-bg-light)'
   },
   
   suggestionIcon: {
@@ -345,14 +349,14 @@ const styles = {
     flex: 1,
     height: '36px',
     padding: '0 12px',
-    borderRadius: '6px',
-    border: 'none',
-    backgroundColor: 'var(--surface-hover)',
+    borderRadius: '8px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
     color: 'var(--text-color)',
     cursor: 'pointer',
     fontSize: '14px',
     fontWeight: '500',
-    transition: 'all 0.2s',
+    transition: 'all var(--transition-fast)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -362,12 +366,12 @@ const styles = {
   
   primaryButton: {
     backgroundColor: 'var(--primary-color)',
-    border: 'none',
-    color: '#061018'
+    border: '1px solid var(--primary-color)',
+    color: 'var(--text-on-primary)'
   },
   
   disabledButton: {
-    backgroundColor: 'var(--bg-depth-3)',
+    backgroundColor: 'var(--glass-bg-light)',
     border: 'none',
     color: 'var(--text-dark)',
     cursor: 'not-allowed'
@@ -411,7 +415,7 @@ const styles = {
   },
   
   historyItemHover: {
-    backgroundColor: 'var(--surface-color)',
+    backgroundColor: 'var(--glass-bg-light)',
     border: 'none'
   },
   
@@ -450,10 +454,11 @@ const styles = {
   
   // 模板面板
   templatesPanel: {
-    backgroundColor: 'var(--surface-color)',
-    borderRadius: '6px',
+    backgroundColor: 'var(--glass-bg-light)',
+    borderRadius: '10px',
     padding: '8px',
-    marginTop: '8px'
+    marginTop: '8px',
+    border: '1px solid var(--glass-border)'
   },
   
   templatesHeader: {
@@ -663,7 +668,7 @@ function AgentControl({
         return {
           ...styles.statusBadge,
           color: statusMeta.tone === 'muted' ? 'var(--text-muted)' : 'var(--text-color)',
-          backgroundColor: 'var(--surface-hover)',
+          backgroundColor: 'var(--glass-bg-light)',
         };
     }
   };
@@ -766,8 +771,8 @@ function AgentControl({
             style={styles.changeButton}
             onClick={onWorkingDirectoryChange}
             title="更改工作目录"
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--glass-bg-strong)'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--glass-bg-light)'}
           >
             更改
           </button>
@@ -828,8 +833,8 @@ function AgentControl({
                   key={index}
                   style={styles.templateItem}
                   onClick={() => handleTemplateClick(template)}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--background-color)'}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--glass-bg-strong)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--glass-bg-light)'}
                 >
                   <span style={styles.templateIcon}>{template.icon}</span>
                   <span style={styles.templateName}>{template.name}</span>

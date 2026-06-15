@@ -8,7 +8,8 @@ export const styles = {
     background: 'linear-gradient(180deg, var(--container-gradient-start) 0%, var(--background-color) 42%, var(--container-gradient-end) 100%)',
     color: 'var(--text-color)',
     fontFamily: 'var(--font-family)',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    position: 'relative'
   },
   
   // ================== 顶部菜单栏 ==================
@@ -17,10 +18,13 @@ export const styles = {
     alignItems: 'center',
     minHeight: `${LAYOUT.headerHeight}px`,
     padding: '0 var(--spacing-md)',
-    backgroundColor: 'var(--surface-warm)',
-    borderBottom: '1px solid var(--primary-soft)',
+    backgroundColor: 'var(--glass-bg)',
+    backdropFilter: 'blur(20px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+    borderBottom: '1px solid var(--glass-border)',
     gap: 'var(--spacing-sm)',
-    boxShadow: 'var(--shadow-sm)'
+    boxShadow: 'var(--glass-inner-hl)',
+    zIndex: 20
   },
 
   topBarBrand: {
@@ -38,9 +42,9 @@ export const styles = {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'linear-gradient(145deg, rgba(232, 120, 74, 0.22), rgba(232, 120, 74, 0.07))',
+    background: 'var(--gradient-brand)',
     color: 'var(--text-color)',
-    border: '1px solid rgba(232, 120, 74, 0.35)',
+    border: '1px solid var(--primary-strong)',
     fontSize: '11px',
     fontWeight: 800,
     letterSpacing: 0
@@ -83,7 +87,7 @@ export const styles = {
   },
   
   menuItemHover: {
-    backgroundColor: 'var(--surface-hover)',
+    backgroundColor: 'var(--glass-bg-light)',
     color: 'var(--text-color)'
   },
   
@@ -97,10 +101,12 @@ export const styles = {
     top: '100%',
     left: 0,
     minWidth: '200px',
-    backgroundColor: 'var(--surface-color)',
-    border: 'none',
-    borderRadius: '8px',
-    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'var(--glass-bg-strong)',
+    backdropFilter: 'blur(20px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+    border: '1px solid var(--glass-border)',
+    borderRadius: '10px',
+    boxShadow: 'var(--glass-shadow-lg)',
     padding: '6px 0',
     zIndex: 1000
   },
@@ -117,7 +123,7 @@ export const styles = {
     cursor: 'pointer',
     fontSize: '13px',
     textAlign: 'left',
-    transition: 'background-color 0.1s'
+    transition: 'all var(--transition-fast)'
   },
   
   menuDropdownShortcut: {
@@ -128,7 +134,7 @@ export const styles = {
   
   menuDivider: {
     height: '1px',
-    backgroundColor: 'var(--border-subtle)',
+    backgroundColor: 'var(--glass-border)',
     margin: '6px 0'
   },
   
@@ -151,20 +157,23 @@ export const styles = {
   activityRail: {
     width: `${LAYOUT.activityRailWidth}px`,
     flexShrink: 0,
-    backgroundColor: 'var(--bg-depth-0)',
-    borderRight: '1px solid rgba(245, 240, 235, 0.07)',
+    backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(12px) saturate(150%)',
+    WebkitBackdropFilter: 'blur(12px) saturate(150%)',
+    borderRight: '1px solid var(--glass-border)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     padding: 'var(--spacing-sm) 6px',
-    gap: '6px'
+    gap: '6px',
+    boxShadow: 'var(--glass-inner-hl)'
   },
 
   activityButton: {
     width: '38px',
     height: '38px',
     borderRadius: '8px',
-    border: 'none',
+    border: '1px solid transparent',
     backgroundColor: 'transparent',
     color: 'var(--text-dark)',
     cursor: 'pointer',
@@ -173,35 +182,40 @@ export const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 0
+    padding: 0,
+    transition: 'all var(--transition-fast)'
   },
 
   activityButtonActive: {
     backgroundColor: 'var(--primary-soft)',
-    border: '1px solid rgba(232, 120, 74, 0.24)',
-    color: 'var(--primary-color)'
+    border: '1px solid var(--primary-strong)',
+    color: 'var(--primary-color)',
+    boxShadow: 'var(--shadow-inset)'
   },
   
   // ================== 左侧工具面板 ==================
   leftSidebar: {
     width: `${LAYOUT.sidebarWidth}px`,
-    backgroundColor: 'var(--bg-depth-3)',
-    borderRight: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--glass-bg)',
+    backdropFilter: 'blur(16px) saturate(160%)',
+    WebkitBackdropFilter: 'blur(16px) saturate(160%)',
+    borderRight: '1px solid var(--glass-border)',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    transition: 'width var(--transition-normal)'
+    transition: 'width var(--transition-normal)',
+    boxShadow: 'var(--glass-shadow)'
   },
 
   sidebarHeader: {
     minHeight: '42px',
     padding: '0 var(--spacing-md)',
-    borderBottom: 'none',
+    borderBottom: '1px solid var(--glass-border)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 'var(--spacing-sm)',
-    backgroundColor: 'var(--bg-depth-2)'
+    backgroundColor: 'var(--glass-bg-light)'
   },
 
   sidebarTitle: {
@@ -213,12 +227,15 @@ export const styles = {
   
   // ================== 右侧 Inspector 面板 ==================
   summaryPanel: {
-    backgroundColor: 'var(--bg-depth-3)',
-    borderLeft: 'none',
+    backgroundColor: 'var(--glass-bg)',
+    backdropFilter: 'blur(16px) saturate(160%)',
+    WebkitBackdropFilter: 'blur(16px) saturate(160%)',
+    borderLeft: '1px solid var(--glass-border)',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    position: 'relative'
+    position: 'relative',
+    boxShadow: 'var(--glass-shadow)'
   },
 
   inspectorResizeHandle: {
@@ -237,14 +254,14 @@ export const styles = {
     alignItems: 'center',
     gap: '6px',
     padding: 'var(--spacing-sm)',
-    borderBottom: '1px solid var(--border-subtle)',
-    backgroundColor: 'var(--bg-depth-2)'
+    borderBottom: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)'
   },
 
   previewHeader: {
     minHeight: '42px',
     padding: '8px 10px',
-    borderBottom: '1px solid var(--border-subtle)',
+    borderBottom: '1px solid var(--glass-border)',
     display: 'flex',
     alignItems: 'center',
     gap: '8px'
@@ -261,26 +278,28 @@ export const styles = {
   inspectorTab: {
     height: '30px',
     borderRadius: '6px',
-    border: 'none',
+    border: '1px solid transparent',
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',
     cursor: 'pointer',
     fontSize: '12px',
-    fontWeight: '700'
+    fontWeight: '700',
+    transition: 'all var(--transition-fast)'
   },
 
   inspectorTabActive: {
-    backgroundColor: 'var(--primary-soft)',
-    border: 'none',
-    color: 'var(--primary-color)'
+    backgroundColor: 'var(--glass-bg-light)',
+    border: '1px solid var(--glass-border)',
+    color: 'var(--text-color)',
+    boxShadow: 'var(--glass-inner-hl)'
   },
 
   iconButton: {
     width: '30px',
     height: '30px',
     borderRadius: '6px',
-    border: 'none',
-    backgroundColor: 'var(--surface-hover)',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
     color: 'var(--text-muted)',
     cursor: 'pointer',
     fontSize: '13px',
@@ -288,7 +307,8 @@ export const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     padding: 0,
-    flex: '0 0 auto'
+    flex: '0 0 auto',
+    transition: 'all var(--transition-fast)'
   },
 
   previewFrame: {
@@ -319,8 +339,9 @@ export const styles = {
     alignItems: 'flex-start',
     gap: '8px',
     padding: '8px 10px',
-    borderRadius: '6px',
-    backgroundColor: 'var(--background-color)',
+    borderRadius: '8px',
+    backgroundColor: 'var(--glass-bg-light)',
+    border: '1px solid var(--glass-border)',
     marginBottom: '6px',
     fontSize: '12px'
   },
@@ -355,10 +376,10 @@ export const styles = {
     gap: '8px',
     padding: '9px 10px',
     borderRadius: '8px',
-    backgroundColor: 'var(--background-color)',
+    backgroundColor: 'var(--glass-bg-light)',
     marginBottom: '6px',
     fontSize: '12px',
-    border: '1px solid var(--border-subtle)'
+    border: '1px solid var(--glass-border)'
   },
 
   inspectorDocumentName: {
@@ -402,24 +423,25 @@ export const styles = {
     display: 'flex',
     gap: '8px',
     padding: '8px 10px',
-    borderBottom: '1px solid var(--border-subtle)'
+    borderBottom: '1px solid var(--glass-border)'
   },
 
   previewUrlInput: {
     flex: 1,
     minWidth: 0,
-    height: '30px',
-    borderRadius: '6px',
-    border: '1px solid var(--border-subtle)',
-    backgroundColor: 'var(--background-color)',
+    height: '32px',
+    borderRadius: '8px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
     color: 'var(--text-color)',
     padding: '0 10px',
-    fontSize: '12px'
+    fontSize: '12px',
+    boxShadow: 'var(--glass-inner-hl)'
   },
 
   previewPipeline: {
     padding: '8px 10px',
-    borderBottom: '1px solid var(--border-subtle)',
+    borderBottom: '1px solid var(--glass-border)',
     display: 'flex',
     gap: '6px',
     overflowX: 'auto'
@@ -428,9 +450,10 @@ export const styles = {
   previewPipelineStage: {
     flex: '0 0 auto',
     maxWidth: '180px',
-    padding: '5px 8px',
-    borderRadius: '6px',
-    border: '1px solid var(--border-subtle)',
+    padding: '5px 10px',
+    borderRadius: '8px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
     fontSize: '11px',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
@@ -440,12 +463,15 @@ export const styles = {
   button: {
     height: '32px',
     padding: '0 10px',
-    borderRadius: '6px',
-    border: '1px solid var(--border-subtle)',
-    backgroundColor: 'rgba(245, 240, 235, 0.055)',
+    borderRadius: '8px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(8px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
     color: 'var(--text-color)',
     cursor: 'pointer',
-    fontSize: '13px'
+    fontSize: '13px',
+    transition: 'all var(--transition-fast)'
   },
   
   // ================== 聊天区域 ==================
@@ -455,7 +481,7 @@ export const styles = {
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    background: 'linear-gradient(180deg, var(--primary-faint) 0%, transparent 170px), var(--background-color)'
+    background: 'linear-gradient(180deg, var(--primary-faint) 0%, transparent 170px), transparent'
   },
   
   chatHeader: {
@@ -463,8 +489,10 @@ export const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '12px var(--spacing-xl)',
-    borderBottom: '1px solid var(--border-subtle)',
-    backgroundColor: 'var(--surface-warm)'
+    borderBottom: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(12px) saturate(150%)',
+    WebkitBackdropFilter: 'blur(12px) saturate(150%)'
   },
   
   chatTitle: {
@@ -485,9 +513,9 @@ export const styles = {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'linear-gradient(145deg, rgba(232, 120, 74, 0.24), rgba(232, 120, 74, 0.08))',
+    background: 'linear-gradient(145deg, rgba(61, 139, 139, 0.24), rgba(61, 139, 139, 0.08))',
     color: 'var(--text-color)',
-    border: '1px solid rgba(232, 120, 74, 0.3)',
+    border: '1px solid rgba(61, 139, 139, 0.3)',
     fontSize: '10px',
     fontWeight: 800
   },
@@ -513,13 +541,13 @@ export const styles = {
   },
   
   statusReady: {
-    backgroundColor: 'rgba(93, 211, 158, 0.12)',
+    backgroundColor: 'var(--success-soft)',
     border: 'none',
     color: 'var(--success-color)'
   },
   
   statusRunning: {
-    backgroundColor: 'rgba(246, 200, 95, 0.12)',
+    backgroundColor: 'var(--warning-soft)',
     border: 'none',
     color: 'var(--warning-color)'
   },
@@ -535,9 +563,11 @@ export const styles = {
   // ================== 输入区域 ==================
   inputArea: {
     padding: '12px var(--spacing-xl) 14px',
-    backgroundColor: 'var(--surface-warm)',
-    borderTop: '1px solid var(--primary-soft)',
-    boxShadow: '0 -8px 24px rgba(0, 0, 0, 0.06)'
+    backgroundColor: 'var(--glass-bg)',
+    backdropFilter: 'blur(16px) saturate(160%)',
+    WebkitBackdropFilter: 'blur(16px) saturate(160%)',
+    borderTop: '1px solid var(--glass-border)',
+    boxShadow: 'var(--shadow-overlay)'
   },
   
   inputWrapper: {
@@ -550,9 +580,12 @@ export const styles = {
 
   userInputRequestPanel: {
     marginBottom: '10px',
-    borderRadius: '8px',
-    border: '1px solid var(--primary-soft)',
-    backgroundColor: 'var(--primary-faint)',
+    borderRadius: '10px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(10px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(10px) saturate(140%)',
+    boxShadow: 'var(--glass-inner-hl)',
     overflow: 'hidden'
   },
 
@@ -563,7 +596,7 @@ export const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: '8px',
-    borderBottom: '1px solid var(--primary-soft)',
+    borderBottom: '1px solid var(--glass-border)',
     color: 'var(--text-color)',
     fontSize: '12px',
     fontWeight: 700
@@ -586,27 +619,29 @@ export const styles = {
     minHeight: '54px',
     maxHeight: '120px',
     resize: 'vertical',
-    border: '1px solid var(--border-subtle)',
-    borderRadius: '6px',
-    backgroundColor: 'var(--surface-input)',
+    border: '1px solid var(--glass-border)',
+    borderRadius: '8px',
+    backgroundColor: 'var(--glass-bg-light)',
     color: 'var(--text-color)',
     padding: '8px',
     fontSize: '13px',
     fontFamily: 'inherit',
     lineHeight: 1.4,
-    outline: 'none'
+    outline: 'none',
+    boxShadow: 'var(--glass-inner-hl)'
   },
 
   userInputRequestButton: {
     width: '64px',
     minHeight: '54px',
-    border: 'none',
-    borderRadius: '6px',
-    backgroundColor: 'var(--warning-color)',
-    color: 'var(--text-on-warning)',
+    border: '1px solid var(--glass-border)',
+    borderRadius: '8px',
+    backgroundColor: 'var(--primary-color)',
+    color: 'var(--text-on-primary)',
     cursor: 'pointer',
     fontSize: '12px',
-    fontWeight: 800
+    fontWeight: 800,
+    transition: 'all var(--transition-fast)'
   },
 
   userInputRequestButtonDisabled: {
@@ -619,29 +654,32 @@ export const styles = {
     minHeight: '48px',
     maxHeight: '200px',
     padding: '12px 14px',
-    borderRadius: '8px',
-    border: '1px solid rgba(245, 240, 235, 0.1)',
-    backgroundColor: 'var(--surface-input)',
+    borderRadius: '10px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg)',
+    backdropFilter: 'blur(10px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(10px) saturate(140%)',
     color: 'var(--text-color)',
     fontSize: '14px',
     fontFamily: 'inherit',
     resize: 'none',
     outline: 'none',
     lineHeight: 1.5,
-    transition: 'border-color 0.2s, box-shadow 0.2s, background-color 0.2s'
+    boxShadow: 'var(--glass-inner-hl)',
+    transition: 'all var(--transition-fast)'
   },
   
   inputTextareaFocused: {
-    border: '1px solid rgba(232, 120, 74, 0.45)',
-    backgroundColor: 'var(--surface-input-focused)',
-    boxShadow: '0 0 0 3px var(--primary-soft)'
+    border: '1px solid var(--primary-color)',
+    backgroundColor: 'var(--glass-bg-strong)',
+    boxShadow: '0 0 0 3px var(--primary-soft), var(--glass-inner-hl)'
   },
   
   sendButton: {
     width: '44px',
     height: '44px',
-    borderRadius: '8px',
-    border: '1px solid rgba(245, 240, 235, 0.12)',
+    borderRadius: '10px',
+    border: '1px solid var(--glass-border)',
     backgroundColor: 'var(--primary-color)',
     color: 'var(--text-on-primary)',
     cursor: 'pointer',
@@ -653,8 +691,9 @@ export const styles = {
   },
   
   sendButtonDisabled: {
-    backgroundColor: 'var(--border-subtle)',
-    color: 'var(--text-dark)',
+    backgroundColor: 'var(--glass-bg-light)',
+    border: '1px solid var(--glass-border)',
+    color: 'var(--text-muted)',
     cursor: 'not-allowed'
   },
   
@@ -699,15 +738,20 @@ export const styles = {
   
   // ================== 底部状态栏 ==================
   footer: {
-    backgroundColor: 'var(--surface-footer)',
-    borderTop: '1px solid var(--border-subtle)'
+    backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(16px) saturate(150%)',
+    WebkitBackdropFilter: 'blur(16px) saturate(150%)',
+    borderTop: '1px solid var(--glass-border)',
+    boxShadow: 'var(--glass-inner-hl)'
   },
   
   // ================== 模态框样式 ==================
   modalBackdrop: {
     position: 'fixed',
     inset: 0,
-    backgroundColor: 'rgba(10, 10, 12, 0.45)',
+    backgroundColor: 'var(--overlay-soft)',
+    backdropFilter: 'blur(8px) saturate(150%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(150%)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -717,10 +761,12 @@ export const styles = {
   
   modal: {
     width: 'min(560px, 100%)',
-    backgroundColor: 'var(--surface-color)',
-    border: '1px solid rgba(245, 240, 235, 0.1)',
-    borderRadius: '8px',
-    boxShadow: 'var(--shadow-lg)',
+    backgroundColor: 'var(--glass-bg-strong)',
+    backdropFilter: 'blur(24px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+    border: '1px solid var(--glass-border)',
+    borderRadius: '12px',
+    boxShadow: 'var(--glass-shadow-lg)',
     overflow: 'hidden'
   },
   
@@ -763,11 +809,14 @@ export const styles = {
   formInput: {
     width: '100%',
     height: '36px',
-    borderRadius: '6px',
-    border: '1px solid var(--border-subtle)',
-    backgroundColor: 'var(--surface-modal-body)',
+    borderRadius: '8px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
     color: 'var(--text-color)',
-    padding: '0 10px'
+    padding: '0 10px',
+    boxShadow: 'var(--shadow-inset)',
+    transition: 'all var(--transition-fast)',
+    outline: 'none'
   },
   
   modalFooter: {
@@ -776,8 +825,8 @@ export const styles = {
     alignItems: 'center',
     gap: '12px',
     padding: '14px 20px',
-    borderTop: '1px solid var(--border-subtle)',
-    backgroundColor: 'var(--surface-modal-footer)'
+    borderTop: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)'
   },
   
   modalActions: {

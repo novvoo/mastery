@@ -52,7 +52,7 @@ const styles = {
     backgroundColor: 'var(--surface-color)',
     border: 'none',
     borderRadius: '10px',
-    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+    boxShadow: 'var(--shadow-panel)',
     maxHeight: '280px',
     overflow: 'hidden',
     zIndex: 100,
@@ -277,11 +277,11 @@ function CommandSuggestions({ input, tools = [], onSelect, onClose }) {
   const getSourceStyle = (source) => {
     switch (source) {
       case 'builtin': 
-        return { backgroundColor: 'rgba(93, 211, 158, 0.12)', color: 'var(--success-color)' };
+        return { backgroundColor: 'var(--success-soft)', color: 'var(--success-color)' };
       case 'skill': 
         return { backgroundColor: 'var(--primary-soft)', color: 'var(--primary-color)' };
       case 'builtin_subcommand': 
-        return { backgroundColor: 'rgba(125, 211, 252, 0.12)', color: 'var(--info-color)' };
+        return { backgroundColor: 'var(--info-soft)', color: 'var(--info-color)' };
       default:
         return {};
     }

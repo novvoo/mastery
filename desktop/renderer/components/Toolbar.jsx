@@ -98,19 +98,19 @@ const styles = {
   },
   
   statusReady: {
-    backgroundColor: 'rgba(93, 211, 158, 0.12)',
+    backgroundColor: 'var(--success-soft)',
     border: 'none',
     color: 'var(--success-color)'
   },
   
   statusRunning: {
-    backgroundColor: 'rgba(246, 200, 95, 0.12)',
+    backgroundColor: 'var(--warning-soft)',
     border: 'none',
     color: 'var(--warning-color)'
   },
   
   statusError: {
-    backgroundColor: 'rgba(255, 107, 122, 0.12)',
+    backgroundColor: 'var(--error-soft)',
     border: 'none',
     color: 'var(--error-color)'
   }

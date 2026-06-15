@@ -3,6 +3,7 @@ import CommandSuggestions from '../CommandSuggestions.jsx';
 import MessageLog from '../MessageLog.jsx';
 import { Button } from '../ui/index.js';
 import { styles } from '../../app/styles.js';
+import { t } from '../../i18n.js';
 
 export function ChatWorkspace({
   runtime,
@@ -43,23 +44,23 @@ export function ChatWorkspace({
       <div style={styles.chatHeader}>
         <div style={styles.chatTitle}>
           <span style={styles.chatTitleMark}>AI</span>
-          <span>对话</span>
+          <span>{t('chat.title')}</span>
           <span style={styles.chatMessageCount}>
-            {runtime.messages.length} 条消息
+            {t('chat.message_count', { count: runtime.messages.length })}
           </span>
         </div>
 
         <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-          <Button variant="ghost" size="sm" onClick={onExport} title="导出对话" ariaLabel="导出对话">导出</Button>
-          <Button variant="ghost" size="sm" onClick={onOpenPreview} title="打开预览" ariaLabel="打开预览">Preview</Button>
-          <Button variant="ghost" size="sm" onClick={onToggleInspector} title="切换 Inspector" ariaLabel="切换 Inspector">
-            {summaryPanelVisible ? '隐藏' : '显示'} Inspector
+          <Button variant="ghost" size="sm" onClick={onExport} title="export" ariaLabel="export">{t('chat.export')}</Button>
+          <Button variant="ghost" size="sm" onClick={onOpenPreview} title="preview" ariaLabel="preview">{t('chat.preview')}</Button>
+          <Button variant="ghost" size="sm" onClick={onToggleInspector} title="toggle-inspector" ariaLabel="toggle-inspector">
+            {summaryPanelVisible ? t('chat.hide_inspector') : t('chat.show_inspector')}
           </Button>
-          <Button variant="ghost" size="sm" onClick={runtime.clearMessages} title="清除对话" ariaLabel="清除对话">清除</Button>
+          <Button variant="ghost" size="sm" onClick={runtime.clearMessages} title="clear" ariaLabel="clear">{t('chat.clear_messages')}</Button>
         </div>
       </div>
 
-      <div style={styles.messageContainer} role="log" aria-label="对话消息" aria-live="polite" tabIndex={0}>
+      <div style={styles.messageContainer} role="log" aria-label={t('ui.root')} aria-live="polite" tabIndex={0}>
         <MessageLog
           messages={runtime.messages}
           status={runtime.status}
@@ -74,8 +75,8 @@ export function ChatWorkspace({
         {needsUserInput && (
           <div style={styles.userInputRequestPanel}>
             <div style={styles.userInputRequestHeader}>
-              <span>等待补充信息</span>
-              <span style={styles.userInputRequestMeta}>继续当前 Agent 回合</span>
+              <span>{t('chat.waiting_input')}</span>
+              <span style={styles.userInputRequestMeta}>{t('chat.continue_round')}</span>
             </div>
             <div style={styles.userInputRequestBody}>
               <textarea
@@ -88,7 +89,7 @@ export function ChatWorkspace({
                     handleContinue();
                   }
                 }}
-                placeholder="输入补充信息..."
+                placeholder={t('chat.supplementary')}
               />
               <button
                 type="button"
@@ -99,7 +100,7 @@ export function ChatWorkspace({
                 onClick={handleContinue}
                 disabled={!continuationInput.trim()}
               >
-                继续
+                {t('chat.continue')}
               </button>
             </div>
           </div>
@@ -125,7 +126,7 @@ export function ChatWorkspace({
             onKeyDown={onChatKeyDown}
             onFocus={onFocus}
             onBlur={onBlur}
-            placeholder="输入消息... (Ctrl+Enter 发送 | 输入 / 查看命令)"
+            placeholder={t('chat.placeholder')}
             disabled={runtime.status === 'running'}
           />
           <button
@@ -139,14 +140,14 @@ export function ChatWorkspace({
             }}
             onClick={runtime.status === 'running' ? () => runtime.stop() : onSendMessage}
             disabled={runtime.status !== 'running' && !chatInput.trim()}
-            title={runtime.status === 'running' ? '停止执行 (Cmd+Ctrl+.)' : '发送消息 (Ctrl+Enter)'}
-            aria-label={runtime.status === 'running' ? '停止执行' : '发送消息'}
+            title={runtime.status === 'running' ? t('chat.stop_running') : t('chat.send_message')}
+            aria-label={runtime.status === 'running' ? t('ui.stop') : t('ui.send_message')}
           >
             {runtime.status === 'running' ? '■' : '↑'}
           </button>
         </div>
         <div style={styles.inputHint}>
-          按 <kbd className="kbd-hint">Ctrl+Enter</kbd> 发送 | 输入 <kbd className="kbd-hint">/技能名</kbd> 快速调用技能
+          {t('chat.hint')}
         </div>
       </div>
     </div>

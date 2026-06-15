@@ -1,4 +1,5 @@
 import React from 'react';
+import { t } from '../../i18n.js';
 import { Button, Panel } from '../ui/index.js';
 import { TabGroup, TabItem } from '../ui/Tab.jsx';
 import { LAYOUT } from '../../app/config.js';
@@ -17,26 +18,26 @@ function RagTab({
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
       <div style={styles.summarySection}>
-        <div style={styles.summarySectionTitle}>RAG 初始化</div>
+        <div style={styles.summarySectionTitle}>{t('inspector.rag_title')}</div>
         <div style={styles.inspectorHelpText}>
-          使用检索增强生成（RAG）之前，请上传/选择要索引的文档，并执行索引初始化。
+          {t('inspector.rag_title')}
         </div>
 
         <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-          <button style={styles.button} onClick={onAddDocuments}>上传文档</button>
-          <button style={styles.button} onClick={onInitializeIndex} disabled={ragDocs.length === 0}>初始化索引</button>
+          <button style={styles.button} onClick={onAddDocuments}>{t('common.upload')}</button>
+          <button style={styles.button} onClick={onInitializeIndex} disabled={ragDocs.length === 0}>{t('common.init')}</button>
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <div style={{ fontSize: '12px' }}>状态:</div>
+          <div style={{ fontSize: '12px' }}>{t('common.status')}:</div>
           <div style={{ fontSize: '12px', fontWeight: 600 }}>{ragStatus}</div>
         </div>
       </div>
 
       <div style={styles.summarySection}>
-        <div style={styles.summarySectionTitle}>已加载文档</div>
+        <div style={styles.summarySectionTitle}>{t('inspector.sessions')}</div>
         {ragDocs.length === 0 ? (
-          <div style={{ ...styles.summaryItem, ...styles.summaryItemEmpty }}>尚未上传文档</div>
+          <div style={{ ...styles.summaryItem, ...styles.summaryItemEmpty }}>{t('status.not_set')}</div>
         ) : (
           ragDocs.map((doc, index) => (
             <div key={`${doc.id || doc.path}-${index}`} style={styles.inspectorDocumentItem}>
@@ -49,7 +50,7 @@ function RagTab({
                 style={styles.button}
                 onClick={() => onRemoveDocument(doc, index)}
               >
-                移除
+                ×
               </button>
             </div>
           ))
@@ -57,10 +58,10 @@ function RagTab({
       </div>
 
       <div style={styles.summarySection}>
-        <div style={styles.summarySectionTitle}>操作</div>
+        <div style={styles.summarySectionTitle}>{t('common.ok')}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <button style={styles.button} onClick={onInsertDocSearch}>快速创建文档搜索命令</button>
-          <button style={styles.button} onClick={onResetRag} disabled={!ipc.processInput && ragDocs.length === 0}>重置 RAG</button>
+          <button style={styles.button} onClick={onInsertDocSearch}>Doc Search</button>
+          <button style={styles.button} onClick={onResetRag} disabled={!ipc.processInput && ragDocs.length === 0}>Reset</button>
         </div>
       </div>
     </div>
@@ -87,7 +88,7 @@ function PreviewTab({
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={styles.previewHeader}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={styles.inspectorKicker}>预览</div>
+          <div style={styles.inspectorKicker}>{t('chat.preview')}</div>
           <div style={styles.previewUrlLine}>
             {activePreviewUrl ? (
               <a
@@ -99,29 +100,29 @@ function PreviewTab({
                 target="_blank"
                 rel="noopener noreferrer"
                 style={styles.previewUrlLink}
-                title="点击在外部浏览器中打开"
+                title={t('inspector.open_external')}
               >
                 {activePreviewUrl}
               </a>
             ) : (
-              previewStatus === 'starting' ? '正在启动...' : '尚未启动'
+              previewStatus === 'starting' ? t('common.loading') : t('status.not_set')
             )}
           </div>
         </div>
-        <button style={styles.button} onClick={onRefreshFrame} disabled={!activePreviewUrl}>刷新</button>
-        <button style={styles.button} onClick={() => activePreviewUrl && onOpenExternal(activePreviewUrl)} disabled={!activePreviewUrl}>浏览器</button>
+        <button style={styles.button} onClick={onRefreshFrame} disabled={!activePreviewUrl}>{t('common.refresh')}</button>
+        <button style={styles.button} onClick={() => activePreviewUrl && onOpenExternal(activePreviewUrl)} disabled={!activePreviewUrl}>{t('common.browser')}</button>
         <button
           style={styles.iconButton}
           onClick={onExpandToggle}
-          title={inspectorExpanded ? '还原预览区域' : '放大预览区域'}
-          aria-label={inspectorExpanded ? '还原预览区域' : '放大预览区域'}
+          title={inspectorExpanded ? t('inspector.restore') : t('inspector.expand')}
+          aria-label={inspectorExpanded ? t('inspector.restore') : t('inspector.expand')}
         >
           {inspectorExpanded ? '↙' : '⛶'}
         </button>
         {previewSession?.session_id ? (
-          <button style={styles.button} onClick={onStopPreview}>停止</button>
+          <button style={styles.button} onClick={onStopPreview}>{t('ui.stop')}</button>
         ) : (
-          <button style={styles.button} onClick={() => onStartPreview('.')}>启动</button>
+          <button style={styles.button} onClick={() => onStartPreview('.')}>{t('common.start')}</button>
         )}
       </div>
 
@@ -130,9 +131,9 @@ function PreviewTab({
           style={styles.previewUrlInput}
           value={previewUrlDraft}
           onChange={(event) => onPreviewUrlDraftChange(event.target.value)}
-          placeholder="127.0.0.1:41730"
+          placeholder={t('inspector.preview_url_placeholder')}
         />
-        <button style={styles.button} type="submit">前往</button>
+        <button style={styles.button} type="submit">Go</button>
       </form>
 
       {previewSession?.pipeline?.length ? (
@@ -169,8 +170,8 @@ function PreviewTab({
           fontSize: '13px'
         }}>
           {previewStatus === 'error'
-            ? '预览启动失败，请查看对话中的错误消息。'
-            : '点击启动，或在对话里输入 /preview index.html。'}
+            ? t('common.failed')
+            : t('status.not_set')}
         </div>
       )}
     </div>
@@ -209,7 +210,7 @@ export function InspectorPanel({
       variant="inspector"
       collapsed={false}
       width={inspectorPanelWidth}
-      ariaLabel="Inspector 面板"
+      ariaLabel="inspector-panel"
       style={{
         minWidth: `${LAYOUT.inspectorMinWidth}px`,
         maxWidth: `${LAYOUT.inspectorMaxWidth}px`,
@@ -218,7 +219,7 @@ export function InspectorPanel({
       <div
         style={styles.inspectorResizeHandle}
         onPointerDown={onResizeStart}
-        title="拖拽调整 Inspector 宽度"
+        title={t('inspector.drag_resize')}
         role="separator"
         aria-orientation="vertical"
       />
@@ -231,8 +232,8 @@ export function InspectorPanel({
           variant="icon"
           size="sm"
           onClick={onExpandToggle}
-          title={inspectorExpanded ? '还原预览区域' : '放大预览区域'}
-          ariaLabel={inspectorExpanded ? '还原预览区域' : '放大预览区域'}
+          title={inspectorExpanded ? t('inspector.restore') : t('inspector.expand')}
+          ariaLabel={inspectorExpanded ? t('inspector.restore') : t('inspector.expand')}
         >
           {inspectorExpanded ? '↙' : '⛶'}
         </Button>

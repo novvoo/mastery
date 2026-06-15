@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { getRuntimeStatusMeta } from '../runtime-status.js';
+import { t } from '../i18n.js';
 
 // 样式定义
 const styles = {
@@ -127,14 +128,19 @@ function StatusBar({ status, workingDirectory, toolCount, isConnected, stats }) 
       : { ...styles.statusDot, ...styles.dotDisconnected };
   };
   
-  // 获取状态文本
+  // 获取状态文本（使用 i18n）
   const getStatusText = () => {
-    return getRuntimeStatusMeta(status).text;
+    const meta = getRuntimeStatusMeta(status);
+    // 用翻译文本覆盖原来的中文文本
+    const key = 'status.' + status;
+    const translated = t(key);
+    // 若 key 不存在，t 会返回 key 本身，这种情况回退到 meta.text
+    return translated === key ? meta.text : translated;
   };
   
   // 格式化工作目录（显示最后两级）
   const formatWorkingDirectory = () => {
-    if (!workingDirectory) return '未设置';
+    if (!workingDirectory) return t('status.not_set');
     
     const parts = workingDirectory.split('/');
     if (parts.length <= 2) return workingDirectory;
@@ -160,7 +166,7 @@ function StatusBar({ status, workingDirectory, toolCount, isConnected, stats }) 
         <div style={styles.statusItem}>
           <div style={getConnectDotStyle()}></div>
           <span style={styles.statusText}>
-            IPC: {isConnected ? '已连接' : '未连接'}
+            {t('status.ipc', { state: isConnected ? t('status.connected') : t('status.disconnected') })}
           </span>
         </div>
         
@@ -178,7 +184,7 @@ function StatusBar({ status, workingDirectory, toolCount, isConnected, stats }) 
         {/* 工具数量 */}
         <div style={styles.statusItem}>
           <span style={styles.statusText}>
-            {toolCount} 工具
+            {t('status.tools_count', { count: toolCount })}
           </span>
         </div>
       </div>
@@ -190,7 +196,7 @@ function StatusBar({ status, workingDirectory, toolCount, isConnected, stats }) 
           <>
             <div style={styles.statusItem}>
               <span style={styles.statusText}>
-                消息: {stats.messageCount || 0}
+                {t('status.message_count', { count: stats.messageCount || 0 })}
               </span>
             </div>
             
@@ -198,7 +204,7 @@ function StatusBar({ status, workingDirectory, toolCount, isConnected, stats }) 
             
             <div style={styles.statusItem}>
               <span style={styles.statusText}>
-                工具调用: {stats.toolCalls || 0}
+                {t('status.tool_calls', { count: stats.toolCalls || 0 })}
               </span>
             </div>
           </>

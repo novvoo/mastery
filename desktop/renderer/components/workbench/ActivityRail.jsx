@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '../ui/index.js';
 import { styles } from '../../app/styles.js';
+import { t } from '../../i18n.js';
 
 export function ActivityRail({
   activeTab,
@@ -10,13 +11,13 @@ export function ActivityRail({
   onToggleSettings,
 }) {
   return (
-    <nav style={styles.activityRail} aria-label="工作区导航">
+    <nav style={styles.activityRail} aria-label="workspace-nav">
       <Button
         variant="icon"
         size="md"
         onClick={onShowAgent}
         title="Agent"
-        ariaLabel="Agent 面板"
+        ariaLabel={t('inspector.agent_panel')}
         style={activeTab === 'agent' && !sidebarCollapsed ? styles.activityButtonActive : {}}
       >
         AG
@@ -25,8 +26,8 @@ export function ActivityRail({
         variant="icon"
         size="md"
         onClick={onShowTools}
-        title="工具"
-        ariaLabel="工具面板"
+        title={t('inspector.tools_title')}
+        ariaLabel={t('inspector.tools_panel')}
         style={activeTab === 'tools' && !sidebarCollapsed ? styles.activityButtonActive : {}}
       >
         TL
@@ -35,8 +36,8 @@ export function ActivityRail({
         variant="icon"
         size="md"
         onClick={onToggleSettings}
-        title="设置"
-        ariaLabel="设置"
+        title={t('inspector.settings_title')}
+        ariaLabel={t('inspector.settings_title')}
         style={{ marginTop: 'auto' }}
       >
         ⚙

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { styles } from '../MessageLog.styles.js';
 import { useIPC } from '../../hooks/useIPC.js';
+import { t } from '../../i18n.js';
 import {
   createRuntimeDetailId,
   getRuntimeDetailContent,
@@ -13,10 +14,10 @@ import { buildActivitySummary, getActivityTone, getFileStatusLabel, getFileTypeI
 
 // ===== Tab 定义 =====
 const TABS = [
-  { id: 'overview', label: '概览', icon: '◉' },
-  { id: 'files', label: '文件', icon: '🖹' },
-  { id: 'activity', label: '活动', icon: '⚡' },
-  { id: 'log', label: '日志', icon: '☰' },
+  { id: 'overview', key: 'exec.overview', icon: '◉' },
+  { id: 'files', key: 'exec.tools_used', icon: '🖹' },
+  { id: 'activity', key: 'exec.activity_log', icon: '⚡' },
+  { id: 'log', key: 'ui.root', icon: '☰' },
 ];
 
 // ===== 文件状态颜色 =====
@@ -44,22 +45,22 @@ function progressFillColor(summary, isRunning) {
 
 // ===== 活动 intent 过滤选项 =====
 const INTENT_FILTERS = [
-  { value: 'all', label: '全部' },
-  { value: 'read', label: '读取' },
-  { value: 'write', label: '写入' },
-  { value: 'edit', label: '编辑' },
-  { value: 'delete', label: '删除' },
-  { value: 'verify', label: '验证' },
-  { value: 'command', label: '命令' },
-  { value: 'interaction', label: '交互' },
+  { value: 'all', key: 'ui.root' },
+  { value: 'read', key: 'exec.file_read' },
+  { value: 'write', key: 'exec.file_write' },
+  { value: 'edit', key: 'exec.file_edit' },
+  { value: 'delete', key: 'exec.file_delete' },
+  { value: 'verify', key: 'exec.verify' },
+  { value: 'command', key: 'exec.command' },
+  { value: 'interaction', key: 'exec.interaction' },
 ];
 
 const PHASE_FILTERS = [
-  { value: 'all', label: '全部' },
-  { value: 'running', label: '进行中' },
-  { value: 'completed', label: '已完成' },
-  { value: 'failed', label: '失败' },
-  { value: 'waiting', label: '等待' },
+  { value: 'all', key: 'ui.root' },
+  { value: 'running', key: 'status.running' },
+  { value: 'completed', key: 'status.completed' },
+  { value: 'failed', key: 'status.failed' },
+  { value: 'waiting', key: 'status.not_set' },
 ];
 
 export function RuntimeDetailsPanel({
@@ -199,10 +200,10 @@ export function RuntimeDetailsPanel({
             ...(activeTab === tab.id ? localStyles.tabButtonActive : {}),
           }}
           onClick={(e) => { e.stopPropagation(); setActiveTab(tab.id); }}
-          title={tab.label}
+          title={t(tab.key)}
         >
           <span style={localStyles.tabIcon}>{tab.icon}</span>
-          <span>{tab.label}</span>
+          <span>{t(tab.key)}</span>
           {tab.id === 'files' && activitySummary.files.length > 0 && (
             <span style={localStyles.tabBadge}>{activitySummary.files.length}</span>
           )}
@@ -243,38 +244,38 @@ export function RuntimeDetailsPanel({
       <div style={localStyles.overviewRow}>
         <span style={localStyles.overviewStat}>
           <span style={localStyles.overviewStatValue}>{activitySummary.fileCount}</span>
-          <span style={localStyles.overviewStatLabel}>文件</span>
+          <span style={localStyles.overviewStatLabel}>{t('exec.tools_used')}</span>
         </span>
         <span style={localStyles.overviewStat}>
           <span style={localStyles.overviewStatValue}>{activitySummary.completed}</span>
-          <span style={localStyles.overviewStatLabel}>完成</span>
+          <span style={localStyles.overviewStatLabel}>{t('msg.success')}</span>
         </span>
         <span style={localStyles.overviewStat}>
           <span style={{ ...localStyles.overviewStatValue, color: activitySummary.reviewable > 0 ? 'var(--warning-color)' : 'var(--text-muted)' }}>{activitySummary.reviewable}</span>
-          <span style={localStyles.overviewStatLabel}>审核</span>
+          <span style={localStyles.overviewStatLabel}>{t('exec.review_change')}</span>
         </span>
         <span style={localStyles.overviewStat}>
           <span style={{ ...localStyles.overviewStatValue, color: activitySummary.undoable > 0 ? 'var(--info-color)' : 'var(--text-muted)' }}>{activitySummary.undoable}</span>
-          <span style={localStyles.overviewStatLabel}>可撤销</span>
+          <span style={localStyles.overviewStatLabel}>{t('exec.ask_revert')}</span>
         </span>
         {activitySummary.waitingForUser && (
           <span style={{ ...localStyles.overviewStat, color: 'var(--warning-color)' }}>
-            <span>等待确认</span>
+            <span>{t('common.confirm')}</span>
             <button
               type="button"
               style={styles.activityActionButton}
-              title="确认继续执行"
+              title={t('exec.confirm_continue')}
               onClick={(event) => {
                 event.stopPropagation();
                 onActivityAction?.('continue', {
                   kind: 'tool_activity',
                   phase: 'waiting',
                   intent: 'interaction',
-                  statusText: '等待用户确认',
+                  statusText: t('exec.confirm_continue'),
                 });
               }}
             >
-              确认继续
+              {t('chat.continue')}
             </button>
           </span>
         )}
@@ -319,7 +320,7 @@ export function RuntimeDetailsPanel({
               style={localStyles.showMoreButton}
               onClick={(e) => { e.stopPropagation(); setActiveTab('files'); }}
             >
-              +{activitySummary.files.length - 4} 个文件
+              +{activitySummary.files.length - 4}
             </button>
           )}
         </div>
@@ -331,7 +332,7 @@ export function RuntimeDetailsPanel({
   const renderFiles = () => (
     <>
       <div style={localStyles.fileListHeader}>
-        <span style={localStyles.fileListCount}>{activitySummary.files.length} 个文件</span>
+        <span style={localStyles.fileListCount}>{activitySummary.files.length}</span>
         <div style={localStyles.fileFilterGroup}>
           {['all', 'read', 'edited', 'created', 'deleted'].map(filter => (
             <button
@@ -343,7 +344,7 @@ export function RuntimeDetailsPanel({
               }}
               onClick={(e) => { e.stopPropagation(); setActivityIntentFilter(filter); }}
             >
-              {filter === 'all' ? '全部' : getFileStatusLabel(filter)}
+              {filter === 'all' ? t('ui.root') : getFileStatusLabel(filter)}
             </button>
           ))}
         </div>
@@ -363,7 +364,7 @@ export function RuntimeDetailsPanel({
                   event.stopPropagation();
                   toggleFileDiff(file.path);
                 }}
-                title={isDiffExpanded ? '收起 diff' : '展开 diff'}
+                title={isDiffExpanded ? t('exec.collapse_diff') : t('exec.expand_diff')}
               >
                 <span style={localStyles.fileTypeIcon}>{getFileTypeIcon(file.path)}</span>
                 <span style={localStyles.filePath} title={file.path}>{file.path}</span>
@@ -379,12 +380,12 @@ export function RuntimeDetailsPanel({
               </button>
               {isDiffExpanded && (
                 <div style={localStyles.fileDiffPanel}>
-                  {isDiffLoading && <div style={localStyles.fileDiffEmpty}>正在读取 diff...</div>}
+                  {isDiffLoading && <div style={localStyles.fileDiffEmpty}>{t('common.loading')}</div>}
                   {!isDiffLoading && diffResult?.success === false && (
-                    <div style={localStyles.fileDiffEmpty}>{diffResult.error || '无法读取 diff'}</div>
+                    <div style={localStyles.fileDiffEmpty}>{diffResult.error || t('common.error')}</div>
                   )}
                   {!isDiffLoading && diffResult?.success !== false && !diffResult?.hasDiff && (
-                    <div style={localStyles.fileDiffEmpty}>没有未提交 diff</div>
+                    <div style={localStyles.fileDiffEmpty}>{t('status.completed')}</div>
                   )}
                   {!isDiffLoading && diffResult?.diff && (
                     <pre style={localStyles.fileDiffPre}>{diffResult.diff}</pre>
@@ -401,7 +402,7 @@ export function RuntimeDetailsPanel({
           style={localStyles.showMoreButton}
           onClick={(e) => { e.stopPropagation(); setShowAllFiles(true); }}
         >
-          显示全部 {activitySummary.files.length} 个文件
+          {activitySummary.files.length}
         </button>
       )}
       {showAllFiles && hasMoreFiles && (
@@ -410,11 +411,11 @@ export function RuntimeDetailsPanel({
           style={localStyles.showMoreButton}
           onClick={(e) => { e.stopPropagation(); setShowAllFiles(false); }}
         >
-          收起
+          {t('msg.collapse')}
         </button>
       )}
       {activitySummary.files.length === 0 && (
-        <div style={localStyles.emptyTab}>暂无文件操作记录</div>
+        <div style={localStyles.emptyTab}>{t('status.not_set')}</div>
       )}
     </>
   );
@@ -427,7 +428,7 @@ export function RuntimeDetailsPanel({
         <input
           type="text"
           style={localStyles.activitySearch}
-          placeholder="搜索活动..."
+          placeholder={t('exec.search_activity')}
           value={activitySearch}
           onChange={(e) => { e.stopPropagation(); setActivitySearch(e.target.value); }}
           onClick={(e) => e.stopPropagation()}
@@ -442,9 +443,9 @@ export function RuntimeDetailsPanel({
                 ...(activityIntentFilter === f.value ? localStyles.filterChipActive : {}),
               }}
               onClick={(e) => { e.stopPropagation(); setActivityIntentFilter(f.value); }}
-              title={`筛选: ${f.label}`}
+              title={t(f.key)}
             >
-              {f.label}
+              {t(f.key)}
             </button>
           ))}
         </div>
@@ -458,9 +459,9 @@ export function RuntimeDetailsPanel({
                 ...(activityPhaseFilter === f.value ? localStyles.filterChipActive : {}),
               }}
               onClick={(e) => { e.stopPropagation(); setActivityPhaseFilter(f.value); }}
-              title={`状态: ${f.label}`}
+              title={t(f.key)}
             >
-              {f.label}
+              {t(f.key)}
             </button>
           ))}
         </div>
@@ -510,9 +511,9 @@ export function RuntimeDetailsPanel({
                         type="button"
                         style={localStyles.expandDetailButton}
                         onClick={(e) => { e.stopPropagation(); toggleActivityExpand(activity.id || index); }}
-                        title={isExpandedDetail ? '收起详情' : '展开详情'}
+                        title={isExpandedDetail ? t('msg.hide_details') : t('msg.details')}
                       >
-                        {isExpandedDetail ? '▾' : '▸'} 详情
+                        {isExpandedDetail ? '▾' : '▸'}
                       </button>
                     )}
                   </div>
@@ -522,26 +523,26 @@ export function RuntimeDetailsPanel({
                     <button
                       type="button"
                       style={styles.activityActionButton}
-                      title="让 Agent 准备撤销这次变更"
+                      title={t('exec.ask_revert')}
                       onClick={(event) => {
                         event.stopPropagation();
                         onActivityAction?.('undo', activity);
                       }}
                     >
-                      撤销
+                      {t('common.undo')}
                     </button>
                   )}
                   {activity.canReview && (
                     <button
                       type="button"
                       style={styles.activityActionButton}
-                      title="审核这次文件变更"
+                      title={t('exec.review_change')}
                       onClick={(event) => {
                         event.stopPropagation();
                         onActivityAction?.('review', activity);
                       }}
                     >
-                      审核
+                      {t('exec.review_change')}
                     </button>
                   )}
                 </div>
@@ -563,7 +564,7 @@ export function RuntimeDetailsPanel({
           style={localStyles.showMoreButton}
           onClick={(e) => { e.stopPropagation(); setShowAllActivities(true); }}
         >
-          显示全部 {filteredActivities.length} 条活动
+          {filteredActivities.length}
         </button>
       )}
       {showAllActivities && hasMoreActivities && (
@@ -572,12 +573,12 @@ export function RuntimeDetailsPanel({
           style={localStyles.showMoreButton}
           onClick={(e) => { e.stopPropagation(); setShowAllActivities(false); }}
         >
-          收起
+          {t('msg.collapse')}
         </button>
       )}
       {filteredActivities.length === 0 && (
         <div style={localStyles.emptyTab}>
-          {activitySearch ? '没有匹配的活动' : '暂无活动记录'}
+          {activitySearch ? t('status.not_set') : t('status.not_set')}
         </div>
       )}
     </>
@@ -603,7 +604,7 @@ export function RuntimeDetailsPanel({
         const isDebug = msg.type === 'debug';
         const content = detailExpanded ? getRuntimeDetailContent(msg) : '';
         const firstLine = detailExpanded
-          ? (content ? content.split('\n')[0].trim() : '(无内容)')
+          ? (content ? content.split('\n')[0].trim() : t('status.not_set'))
           : getRuntimeDetailPreviewText(msg);
         const scoreInfo = msg.type === 'tool_result' && typeof msg.result === 'string'
           ? ((m) => m ? { file: m[1], score: parseInt(m[2]) } : null)(msg.result.match(/^\[(.+?)\] → (\d+)% match/))
@@ -619,7 +620,7 @@ export function RuntimeDetailsPanel({
               ...(detailExpanded ? {} : { padding: '3px 8px' }),
             }}
             onClick={() => onRuntimeDetailToggle(runtimeDetailId)}
-            title={detailExpanded ? '收起' : '展开'}
+            title={detailExpanded ? t('msg.collapse') : t('msg.expand')}
           >
             <div style={{
               display: 'flex',
@@ -680,10 +681,10 @@ export function RuntimeDetailsPanel({
         );
       })}
       {visibleRuntimeDetails.length === 0 && runtimeDetails.length > 0 && (
-        <div style={localStyles.emptyTab}>运行日志已过滤（仅显示工具调用与结果）</div>
+        <div style={localStyles.emptyTab}>{t('ui.root')}</div>
       )}
       {visibleRuntimeDetails.length === 0 && runtimeDetails.length === 0 && (
-        <div style={localStyles.emptyTab}>暂无运行日志</div>
+        <div style={localStyles.emptyTab}>{t('status.not_set')}</div>
       )}
     </div>
   );
@@ -708,21 +709,21 @@ export function RuntimeDetailsPanel({
           ...styles.runtimeDetailsHeaderInteractive,
         }}
         onClick={() => onRuntimeDetailsToggle(group.id)}
-        title={isExpanded ? '收起运行详情' : '展开运行详情'}
+        title={isExpanded ? t('msg.hide_details') : t('msg.details')}
       >
         <span style={styles.runtimeDetailsTitle}>
           {isRunningGroup && <span style={styles.spinner}></span>}
-          <span>{isRunningGroup ? '执行过程' : '执行摘要'}</span>
+          <span>{isRunningGroup ? t('exec.activity_log') : t('exec.summary')}</span>
         </span>
         <span style={styles.runtimeDetailsActions}>
           <span style={styles.runtimeStatusChip} title={statusText}>{statusText}</span>
-          <span>{activitySummary.total || visibleRuntimeDetails.length} 项</span>
+          <span>{activitySummary.total || visibleRuntimeDetails.length} {t('ui.root')}</span>
           {visibleRuntimeDetails.length > 0 && (
             <button
               type="button"
               style={styles.runtimeDetailsToggle}
-              title="导出运行详情为 JSON"
-              aria-label="导出运行详情"
+              title={t('common.export')}
+              aria-label={t('common.export')}
               onClick={(event) => {
                 event.stopPropagation();
                 onExport(group);
@@ -734,8 +735,8 @@ export function RuntimeDetailsPanel({
           <button
             type="button"
             style={styles.runtimeDetailsToggle}
-            title={isLarge ? '还原执行过程窗口' : '放大执行过程窗口'}
-            aria-label={isLarge ? '还原执行过程窗口' : '放大执行过程窗口'}
+            title={isLarge ? t('msg.collapse') : t('msg.expand')}
+            aria-label={isLarge ? t('msg.collapse') : t('msg.expand')}
             onClick={(event) => {
               event.stopPropagation();
               onPanelSizeToggle(group.id);
@@ -746,8 +747,8 @@ export function RuntimeDetailsPanel({
           <button
             type="button"
             style={styles.runtimeDetailsToggle}
-            title={isExpanded ? '收起运行详情' : '展开运行详情'}
-            aria-label={isExpanded ? '收起运行详情' : '展开运行详情'}
+            title={isExpanded ? t('msg.hide_details') : t('msg.details')}
+            aria-label={isExpanded ? t('msg.hide_details') : t('msg.details')}
             onClick={(event) => {
               event.stopPropagation();
               onRuntimeDetailsToggle(group.id);
@@ -775,7 +776,7 @@ const localStyles = {
     display: 'flex',
     gap: '0',
     borderBottom: '1px solid var(--border-subtle)',
-    backgroundColor: 'rgba(16, 16, 17, 0.5)',
+    backgroundColor: 'var(--glass-bg-light)',
   },
   tabButton: {
     flex: 1,
@@ -796,7 +797,7 @@ const localStyles = {
   tabButtonActive: {
     color: 'var(--primary-color)',
     borderBottomColor: 'var(--primary-color)',
-    backgroundColor: 'rgba(232, 120, 74, 0.04)',
+    backgroundColor: 'rgba(61, 139, 139, 0.08)',
   },
   tabIcon: {
     fontSize: '11px',
@@ -804,7 +805,7 @@ const localStyles = {
   tabBadge: {
     padding: '0 5px',
     borderRadius: '999px',
-    backgroundColor: 'rgba(245, 240, 235, 0.08)',
+    backgroundColor: 'var(--neutral-faint)',
     color: 'var(--text-dark)',
     fontSize: '10px',
     fontWeight: 700,
@@ -902,7 +903,7 @@ const localStyles = {
     minHeight: '28px',
     padding: '2px 8px',
     borderRadius: '6px',
-    backgroundColor: 'rgba(0, 0, 0, 0.14)',
+    backgroundColor: 'var(--surface-subtle)',
   },
   fileItemButton: {
     width: '100%',
@@ -913,7 +914,7 @@ const localStyles = {
     padding: '2px 8px',
     borderRadius: '6px',
     border: 'none',
-    backgroundColor: 'rgba(0, 0, 0, 0.14)',
+    backgroundColor: 'var(--surface-subtle)',
     color: 'inherit',
     cursor: 'pointer',
     textAlign: 'left',
@@ -928,7 +929,7 @@ const localStyles = {
     fontWeight: 800,
     flexShrink: 0,
     borderRadius: '3px',
-    backgroundColor: 'rgba(245, 240, 235, 0.06)',
+    backgroundColor: 'var(--neutral-faint)',
     color: 'var(--text-muted)',
   },
   filePath: {
@@ -959,7 +960,7 @@ const localStyles = {
     margin: '4px 0 4px 26px',
     borderRadius: '6px',
     border: '1px solid var(--border-subtle)',
-    backgroundColor: 'rgba(0, 0, 0, 0.22)',
+    backgroundColor: 'var(--glass-bg-light)',
     overflow: 'hidden',
   },
   fileDiffPre: {
@@ -992,7 +993,7 @@ const localStyles = {
     padding: '0 8px',
     borderRadius: '5px',
     border: '1px solid var(--border-subtle)',
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    backgroundColor: 'var(--glass-bg-light)',
     color: 'var(--text-color)',
     fontSize: '11px',
     outline: 'none',
@@ -1006,7 +1007,7 @@ const localStyles = {
     padding: '2px 7px',
     borderRadius: '999px',
     border: '1px solid transparent',
-    backgroundColor: 'rgba(245, 240, 235, 0.06)',
+    backgroundColor: 'var(--neutral-faint)',
     color: 'var(--text-muted)',
     cursor: 'pointer',
     fontSize: '10px',
@@ -1016,7 +1017,7 @@ const localStyles = {
   filterChipActive: {
     backgroundColor: 'var(--primary-soft)',
     color: 'var(--primary-color)',
-    borderColor: 'rgba(232, 120, 74, 0.3)',
+    borderColor: 'rgba(61, 139, 139, 0.3)',
   },
   activityList: {
     padding: '6px 10px',
@@ -1045,20 +1046,20 @@ const localStyles = {
     fontSize: '10px',
     fontWeight: 800,
     flexShrink: 0,
-    backgroundColor: 'rgba(245, 240, 235, 0.08)',
+    backgroundColor: 'var(--neutral-faint)',
     color: 'var(--text-muted)',
     marginTop: '1px',
   },
   checkMarkDone: {
-    backgroundColor: 'rgba(52, 211, 153, 0.15)',
+    backgroundColor: 'var(--success-soft)',
     color: 'var(--success-color)',
   },
   checkMarkFail: {
-    backgroundColor: 'rgba(248, 113, 113, 0.15)',
+    backgroundColor: 'var(--error-soft)',
     color: 'var(--error-color)',
   },
   checkMarkWait: {
-    backgroundColor: 'rgba(96, 165, 250, 0.15)',
+    backgroundColor: 'var(--info-soft)',
     color: 'var(--info-color)',
     animation: 'pulse 1s infinite',
   },
@@ -1078,7 +1079,7 @@ const localStyles = {
     fontWeight: 600,
     padding: '0 4px',
     borderRadius: '3px',
-    backgroundColor: 'rgba(245, 240, 235, 0.06)',
+    backgroundColor: 'var(--neutral-faint)',
   },
   expandDetailButton: {
     border: 'none',
@@ -1091,7 +1092,7 @@ const localStyles = {
   },
   activityDetailExpanded: {
     padding: '6px 8px',
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    backgroundColor: 'var(--glass-bg-light)',
     borderRadius: '4px',
     margin: '2px 0 4px 26px',
   },

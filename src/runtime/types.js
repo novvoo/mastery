@@ -49,7 +49,12 @@ export const RuntimeEvent = {
   PLUGIN_REGISTER: 'plugin:register',
   PLUGIN_UNREGISTER: 'plugin:unregister',
   PLUGIN_ENABLE: 'plugin:enable',
-  PLUGIN_DISABLE: 'plugin:disable'
+  PLUGIN_DISABLE: 'plugin:disable',
+
+  // 规划事件
+  EXECUTION_PLAN_CREATED: 'plan:created',
+  PLAN_DECOMPOSED: 'plan:decomposed',
+  PLAN_EXECUTED: 'plan:executed'
 };
 
 /**
@@ -118,6 +123,7 @@ export class AgentState {
   constructor() {
     this.status = 'idle'; // idle, running, completed, error
     this.currentTask = null;
+    this.currentPlanId = null;  // GraphPlanner 的执行计划ID
     this.iteration = 0;
     this.startTime = null;
     this.lastActivity = null;
@@ -151,6 +157,7 @@ export class AgentState {
   reset() {
     this.status = 'idle';
     this.currentTask = null;
+    this.currentPlanId = null;
     this.iteration = 0;
     this.startTime = null;
     this.lastActivity = null;

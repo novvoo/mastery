@@ -16,8 +16,8 @@ export const styles = {
     alignItems: 'center',
     minHeight: '32px',
     padding: '0 10px',
-    borderBottom: '1px solid var(--border-subtle)',
-    backgroundColor: 'rgba(20, 20, 22, 0.76)'
+    borderBottom: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)'
   },
   
   title: {
@@ -47,8 +47,8 @@ export const styles = {
     height: '28px',
     padding: '0 9px',
     borderRadius: '6px',
-    border: 'none',
-    backgroundColor: 'var(--surface-card)',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
     color: 'var(--text-color)',
     fontSize: '12px',
     transition: 'width 0.2s ease'
@@ -62,8 +62,8 @@ export const styles = {
     height: '28px',
     padding: '0 9px',
     borderRadius: '6px',
-    border: 'none',
-    backgroundColor: 'rgba(245, 240, 235, 0.055)',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
     color: 'var(--text-color)',
     cursor: 'pointer',
     fontSize: '12px',
@@ -84,8 +84,8 @@ export const styles = {
     gap: '2px',
     padding: '2px',
     borderRadius: '7px',
-    backgroundColor: 'var(--surface-card)',
-    border: 'none'
+    backgroundColor: 'var(--glass-bg-light)',
+    border: '1px solid var(--glass-border)'
   },
   
   viewButton: {
@@ -100,7 +100,7 @@ export const styles = {
   },
   
   viewButtonActive: {
-    backgroundColor: 'var(--surface-hover)',
+    backgroundColor: 'var(--glass-bg-strong)',
     color: 'var(--text-color)'
   },
   
@@ -115,9 +115,11 @@ export const styles = {
 
   runtimeDetailsPanel: {
     marginBottom: '12px',
-    borderRadius: '8px',
-    border: '1px solid var(--border-subtle)',
-    backgroundColor: 'rgba(16, 16, 17, 0.78)',
+    borderRadius: '10px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg)',
+    backdropFilter: 'blur(12px) saturate(150%)',
+    WebkitBackdropFilter: 'blur(12px) saturate(150%)',
     overflow: 'visible',
     position: 'relative',
     zIndex: 2
@@ -129,7 +131,7 @@ export const styles = {
     justifyContent: 'space-between',
     minHeight: '42px',
     padding: '0 12px',
-    borderBottom: '1px solid var(--border-subtle)',
+    borderBottom: '1px solid var(--glass-border)',
     borderRadius: '8px 8px 0 0',
     color: 'var(--text-muted)',
     fontSize: '12px',
@@ -163,10 +165,10 @@ export const styles = {
   },
 
   runtimeDetailsToggle: {
-    border: 'none',
-    backgroundColor: 'rgba(148, 163, 184, 0.08)',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
     color: 'var(--text-muted)',
-    borderRadius: '5px',
+    borderRadius: '6px',
     width: '24px',
     height: '24px',
     padding: 0,
@@ -179,7 +181,7 @@ export const styles = {
 
   runtimeProgress: {
     padding: '8px 10px 10px',
-    borderBottom: '1px solid var(--border-subtle)'
+    borderBottom: '1px solid var(--glass-border)'
   },
 
   runtimeProgressText: {
@@ -221,7 +223,7 @@ export const styles = {
   runtimeDetailItem: {
     borderRadius: '6px',
     border: 'none',
-    backgroundColor: 'rgba(245, 240, 235, 0.045)',
+    backgroundColor: 'var(--surface-subtle)',
     padding: '8px',
     color: 'var(--text-muted)',
     fontSize: '12px',
@@ -234,12 +236,12 @@ export const styles = {
 
   runtimeDetailItemDebug: {
     border: 'none',
-    backgroundColor: 'rgba(138, 133, 128, 0.08)'
+    backgroundColor: 'var(--neutral-soft)',
   },
 
   runtimeDetailItemStatus: {
     border: 'none',
-    backgroundColor: 'rgba(232, 120, 74, 0.06)'
+    backgroundColor: 'var(--primary-faint)'
   },
 
   runtimeDetailMeta: {
@@ -272,7 +274,7 @@ export const styles = {
   activityPanel: {
     padding: '10px',
     borderBottom: '1px solid var(--border-subtle)',
-    backgroundColor: 'rgba(245, 240, 235, 0.025)'
+    backgroundColor: 'var(--surface-subtle)',
   },
 
   activitySummaryRow: {
@@ -300,29 +302,29 @@ export const styles = {
     gap: '6px',
     padding: '0 8px',
     borderRadius: '6px',
-    backgroundColor: 'rgba(245, 240, 235, 0.035)',
+    backgroundColor: 'var(--surface-subtle)',
     color: 'var(--text-muted)',
     fontSize: '11px',
     fontWeight: 700
   },
 
   taskStageCompleted: {
-    backgroundColor: 'rgba(52, 211, 153, 0.08)',
+    backgroundColor: 'var(--success-faint)',
     color: 'var(--text-color)'
   },
 
   taskStageRunning: {
-    backgroundColor: 'rgba(96, 165, 250, 0.08)',
+    backgroundColor: 'var(--info-faint)',
     color: 'var(--text-color)'
   },
 
   taskStageWaiting: {
-    backgroundColor: 'rgba(250, 204, 21, 0.08)',
+    backgroundColor: 'var(--warning-faint)',
     color: 'var(--text-color)'
   },
 
   taskStageFailed: {
-    backgroundColor: 'rgba(248, 113, 113, 0.09)',
+    backgroundColor: 'var(--error-faint)',
     color: 'var(--text-color)'
   },
 
@@ -333,7 +335,7 @@ export const styles = {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(245, 240, 235, 0.08)',
+    backgroundColor: 'var(--glass-border)',
     flexShrink: 0
   },
 
@@ -359,7 +361,8 @@ export const styles = {
     minHeight: '28px',
     padding: '0 8px',
     borderRadius: '6px',
-    backgroundColor: 'rgba(0, 0, 0, 0.14)'
+    backgroundColor: 'var(--glass-bg-light)',
+    border: '1px solid var(--glass-border)'
   },
 
   fileStatusPath: {
@@ -393,23 +396,23 @@ export const styles = {
     gap: '8px',
     padding: '6px 8px',
     borderRadius: '6px',
-    backgroundColor: 'rgba(245, 240, 235, 0.04)',
-    border: '1px solid transparent'
+    backgroundColor: 'var(--glass-bg-light)',
+    border: '1px solid var(--glass-border)'
   },
 
   activityItemCompleted: {
-    backgroundColor: 'rgba(52, 211, 153, 0.065)',
-    borderColor: 'rgba(52, 211, 153, 0.12)'
+    backgroundColor: 'var(--success-faint)',
+    borderColor: 'var(--success-soft)'
   },
 
   activityItemFailed: {
-    backgroundColor: 'rgba(248, 113, 113, 0.075)',
-    borderColor: 'rgba(248, 113, 113, 0.16)'
+    backgroundColor: 'var(--error-faint)',
+    borderColor: 'var(--error-soft)'
   },
 
   activityItemWaiting: {
-    backgroundColor: 'rgba(96, 165, 250, 0.07)',
-    borderColor: 'rgba(96, 165, 250, 0.16)'
+    backgroundColor: 'var(--info-faint)',
+    borderColor: 'var(--info-soft)'
   },
 
   activityMain: {
@@ -450,7 +453,7 @@ export const styles = {
     padding: '0 8px',
     borderRadius: '5px',
     border: '1px solid var(--border-subtle)',
-    backgroundColor: 'rgba(245, 240, 235, 0.06)',
+    backgroundColor: 'var(--border-subtle)',
     color: 'var(--text-color)',
     cursor: 'pointer',
     fontSize: '11px',
@@ -513,14 +516,14 @@ export const styles = {
   messageBubble: {
     borderRadius: '8px',
     padding: '10px 12px',
-    backgroundColor: 'rgba(245, 240, 235, 0.055)',
-    border: '1px solid rgba(245, 240, 235, 0.07)',
+    backgroundColor: 'var(--surface-subtle)',
+    border: '1px solid var(--border-card)',
     maxWidth: '85%'
   },
 
   messageBubbleUser: {
-    backgroundColor: 'rgba(232, 120, 74, 0.12)',
-    borderColor: 'rgba(232, 120, 74, 0.22)',
+    backgroundColor: 'var(--primary-soft)',
+    borderColor: 'var(--primary-border)',
     borderRadius: '8px 8px 3px 8px',
     maxWidth: '80%'
   },
@@ -549,31 +552,31 @@ export const styles = {
   },
   
   typeInfo: {
-    backgroundColor: 'rgba(157, 183, 212, 0.12)',
+    backgroundColor: 'var(--info-muted)',
     color: 'var(--info-color)',
     border: 'none'
   },
   
   typeSuccess: {
-    backgroundColor: 'rgba(93, 211, 158, 0.12)',
+    backgroundColor: 'var(--success-soft)',
     color: 'var(--success-color)',
     border: 'none'
   },
   
   typeError: {
-    backgroundColor: 'rgba(255, 107, 122, 0.12)',
+    backgroundColor: 'var(--error-soft)',
     color: 'var(--error-color)',
     border: 'none'
   },
   
   typeWarning: {
-    backgroundColor: 'rgba(246, 200, 95, 0.12)',
+    backgroundColor: 'var(--warning-soft)',
     color: 'var(--warning-color)',
     border: 'none'
   },
   
   typeDebug: {
-    backgroundColor: 'rgba(138, 133, 128, 0.16)',
+    backgroundColor: 'var(--neutral-muted)',
     color: 'var(--text-dark)',
     border: 'none'
   },
@@ -585,19 +588,19 @@ export const styles = {
   },
   
   typeEvent: {
-    backgroundColor: 'rgba(255, 193, 7, 0.14)',
+    backgroundColor: 'var(--warning-strong)',
     color: 'var(--warning-color)',
     border: 'none'
   },
   
   typeResult: {
-    backgroundColor: 'rgba(157, 183, 212, 0.12)',
+    backgroundColor: 'var(--info-muted)',
     color: 'var(--info-color)',
     border: 'none'
   },
   
   typeUser: {
-    backgroundColor: 'rgba(148, 163, 184, 0.12)',
+    backgroundColor: 'var(--neutral-soft)',
     color: 'var(--text-color)',
     border: 'none'
   },
@@ -609,7 +612,7 @@ export const styles = {
   },
 
   typeThinking: {
-    backgroundColor: 'rgba(96, 165, 250, 0.12)',
+    backgroundColor: 'var(--info-soft)',
     color: 'var(--info-color)',
     border: 'none'
   },
@@ -617,8 +620,8 @@ export const styles = {
   thinkingPanel: {
     margin: '0 0 10px 0',
     borderRadius: '8px',
-    border: '1px solid rgba(96, 165, 250, 0.16)',
-    backgroundColor: 'rgba(96, 165, 250, 0.055)',
+    border: '1px solid var(--info-border)',
+    backgroundColor: 'var(--info-faint)',
     overflow: 'visible'
   },
 
@@ -631,9 +634,9 @@ export const styles = {
     gap: '8px',
     padding: '0 10px',
     border: 'none',
-    borderBottom: '1px solid rgba(96, 165, 250, 0.12)',
+    borderBottom: '1px solid var(--info-soft)',
     borderRadius: '8px 8px 0 0',
-    backgroundColor: 'rgba(16, 16, 17, 0.42)',
+    backgroundColor: 'var(--info-faint)',
     color: 'var(--text-color)',
     cursor: 'pointer',
     fontSize: '12px',
@@ -654,7 +657,7 @@ export const styles = {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(96, 165, 250, 0.12)',
+    backgroundColor: 'var(--info-soft)',
     color: 'var(--info-color)',
     fontSize: '10px',
     fontWeight: 800,
@@ -700,8 +703,8 @@ export const styles = {
   thinkingStep: {
     padding: '8px',
     borderRadius: '6px',
-    backgroundColor: 'rgba(245, 240, 235, 0.04)',
-    border: '1px solid rgba(245, 240, 235, 0.05)'
+    backgroundColor: 'var(--surface-subtle)',
+    border: '1px solid var(--border-divider)'
   },
 
   thinkingStepHeader: {
@@ -783,7 +786,7 @@ export const styles = {
 
   emptyChip: {
     padding: '5px 12px',
-    backgroundColor: 'rgba(245, 240, 235, 0.06)',
+    backgroundColor: 'var(--border-subtle)',
     border: 'none',
     borderRadius: '999px',
     fontSize: '12px',
@@ -833,7 +836,7 @@ export const styles = {
     color: 'var(--text-muted)',
     textAlign: 'center',
     padding: '32px',
-    background: 'linear-gradient(180deg, rgba(232, 120, 74, 0.06), transparent 44%)'
+    background: 'var(--gradient-primary)'
   },
   
   emptyIcon: {
@@ -902,7 +905,7 @@ export const styles = {
     alignItems: 'center',
     gap: '8px',
     padding: '6px 10px',
-    backgroundColor: 'rgba(245, 240, 235, 0.07)',
+    backgroundColor: 'var(--border-card)',
     borderRadius: '4px',
     marginBottom: '4px',
     marginTop: '8px',
@@ -932,10 +935,10 @@ export const styles = {
     right: '20px',
     padding: '8px 16px',
     backgroundColor: 'var(--success-color)',
-    color: '#141416',
+    color: 'var(--text-on-success)',
     borderRadius: '4px',
     fontSize: '12px',
-    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
+    boxShadow: 'var(--shadow-toast)',
     animation: 'fadeIn 0.2s ease-out',
     zIndex: 1000
   }

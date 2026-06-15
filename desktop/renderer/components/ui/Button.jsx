@@ -15,29 +15,33 @@ import React from 'react';
 
 const VARIANTS = {
   default: {
-    backgroundColor: 'var(--surface-hover)',
+    backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(8px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
     color: 'var(--text-color)',
-    border: '1px solid var(--border-subtle)',
+    border: '1px solid var(--glass-border)',
   },
   primary: {
     backgroundColor: 'var(--primary-color)',
     color: 'var(--text-on-primary)',
-    border: '1px solid var(--primary-soft)',
+    border: '1px solid var(--primary-strong)',
   },
   danger: {
     backgroundColor: 'var(--error-color)',
     color: 'var(--text-on-primary)',
-    border: '1px solid var(--primary-soft)',
+    border: '1px solid var(--error-color)',
   },
   ghost: {
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',
-    border: 'none',
+    border: '1px solid transparent',
   },
   icon: {
-    backgroundColor: 'var(--primary-faint)',
+    backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(8px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
     color: 'var(--text-muted)',
-    border: '1px solid var(--border-subtle)',
+    border: '1px solid var(--glass-border)',
   },
 };
 
@@ -76,15 +80,63 @@ export default function Button({
         justifyContent: 'center',
         gap: '4px',
         cursor: disabled ? 'not-allowed' : 'pointer',
-        fontWeight: 500,
+        fontWeight: 600,
         lineHeight: 1,
         whiteSpace: 'nowrap',
         transition: 'all var(--transition-fast)',
         opacity: disabled ? 0.5 : 1,
-        boxShadow: variant === 'ghost' ? 'none' : '0 1px 0 rgba(245, 240, 235, 0.04)',
+        boxShadow: variant === 'ghost' ? 'none' : 'var(--shadow-button)',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        ':hover': {
+          transform: 'translateY(-1px)',
+          boxShadow: variant === 'ghost' ? 'none' : 'var(--shadow-button-hover)'
+        },
+        ':active': {
+          transform: 'translateY(0)',
+          boxShadow: variant === 'ghost' ? 'none' : 'var(--shadow-button)'
+        },
         ...sizeStyles,
         ...variantStyles,
         ...style,
+      }}
+      onMouseEnter={(e) => {
+        if (!disabled) {
+          e.currentTarget.style.transform = 'translateY(-1px)';
+          if (variant !== 'ghost') {
+            e.currentTarget.style.boxShadow = 'var(--shadow-button-hover)';
+          }
+          if (variant === 'ghost') {
+            e.currentTarget.style.backgroundColor = 'var(--glass-bg-light)';
+            e.currentTarget.style.color = 'var(--text-color)';
+          }
+        }
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = 'translateY(0)';
+        if (variant !== 'ghost') {
+          e.currentTarget.style.boxShadow = 'var(--shadow-button)';
+        }
+        if (variant === 'ghost') {
+          e.currentTarget.style.backgroundColor = 'transparent';
+          e.currentTarget.style.color = 'var(--text-muted)';
+        }
+      }}
+      onMouseDown={(e) => {
+        if (!disabled) {
+          e.currentTarget.style.transform = 'translateY(0)';
+          if (variant !== 'ghost') {
+            e.currentTarget.style.boxShadow = 'var(--shadow-inset)';
+          }
+        }
+      }}
+      onMouseUp={(e) => {
+        if (!disabled) {
+          e.currentTarget.style.transform = 'translateY(-1px)';
+          if (variant !== 'ghost') {
+            e.currentTarget.style.boxShadow = 'var(--shadow-button-hover)';
+          }
+        }
       }}
       disabled={disabled}
       title={title}

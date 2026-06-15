@@ -12,17 +12,26 @@ import React from 'react';
 
 const VARIANTS = {
   sidebar: {
-    backgroundColor: 'rgba(25, 25, 27, 0.96)',
-    borderRight: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--glass-bg)',
+    backdropFilter: 'blur(16px) saturate(160%)',
+    WebkitBackdropFilter: 'blur(16px) saturate(160%)',
+    borderRight: '1px solid var(--glass-border)',
+    boxShadow: 'var(--glass-shadow)',
   },
   inspector: {
-    backgroundColor: 'rgba(25, 25, 27, 0.96)',
-    borderLeft: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--glass-bg)',
+    backdropFilter: 'blur(16px) saturate(160%)',
+    WebkitBackdropFilter: 'blur(16px) saturate(160%)',
+    borderLeft: '1px solid var(--glass-border)',
+    boxShadow: 'var(--glass-shadow)',
   },
   card: {
-    backgroundColor: 'var(--surface-color)',
-    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--glass-bg)',
+    backdropFilter: 'blur(12px) saturate(150%)',
+    WebkitBackdropFilter: 'blur(12px) saturate(150%)',
+    border: '1px solid var(--glass-border)',
     borderRadius: 'var(--radius-lg)',
+    boxShadow: 'var(--glass-inner-hl)',
   },
 };
 
@@ -32,12 +41,12 @@ export function PanelHeader({ title, actions, style }) {
       style={{
         minHeight: '42px',
         padding: '0 var(--spacing-md)',
-        borderBottom: '1px solid var(--border-subtle)',
+        borderBottom: '1px solid var(--glass-border)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: 'var(--spacing-sm)',
-        backgroundColor: 'rgba(20, 20, 22, 0.82)',
+        backgroundColor: 'var(--glass-bg-light)',
         ...style,
       }}
     >

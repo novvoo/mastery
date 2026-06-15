@@ -7,12 +7,12 @@
 import React from 'react';
 
 const VARIANTS = {
-  default: { backgroundColor: 'rgba(245, 240, 235, 0.06)', color: 'var(--text-muted)' },
+  default: { backgroundColor: 'var(--neutral-faint)', color: 'var(--text-muted)' },
   primary: { backgroundColor: 'var(--primary-soft)', color: 'var(--primary-color)' },
-  success: { backgroundColor: 'rgba(93, 211, 158, 0.12)', color: 'var(--success-color)' },
-  warning: { backgroundColor: 'rgba(246, 200, 95, 0.12)', color: 'var(--warning-color)' },
-  error: { backgroundColor: 'rgba(255, 107, 122, 0.12)', color: 'var(--error-color)' },
-  info: { backgroundColor: 'rgba(157, 183, 212, 0.12)', color: 'var(--info-color)' },
+  success: { backgroundColor: 'var(--success-soft)', color: 'var(--success-color)' },
+  warning: { backgroundColor: 'var(--warning-soft)', color: 'var(--warning-color)' },
+  error: { backgroundColor: 'var(--error-soft)', color: 'var(--error-color)' },
+  info: { backgroundColor: 'var(--info-soft)', color: 'var(--info-color)' },
 };
 
 const SIZES = {
