@@ -35,6 +35,8 @@ import { quickAssess, computeIterationBudget } from './risk-budget.js';
 import { ExecutionPlanManager } from './execution-plan-manager.js';
 import { ToolExecutor } from './tool-executor.js';
 import { ContextManager } from './context-manager.js';
+import { metricsSink } from './metrics-sink.js';
+import { MemoryManager } from '../memory/memory-manager.js';
 import {
   buildToolSyntaxCorrectionPrompt,
   buildToolUseCorrectionPrompt,
@@ -98,7 +100,11 @@ export class AgentEngine {
   constructor({ modelProvider, toolRegistry, memoryManager, config, ui }) {
     this.#modelProvider = modelProvider;
     this.#toolRegistry = toolRegistry;
-    this.#memoryManager = memoryManager;
+    // memoryManager 可选：没传时创建一个默认的空实例，避免 buildSystemPrompt 崩溃
+    this.#memoryManager = memoryManager || (() => {
+      try { return new MemoryManager(config?.workingDirectory || process.cwd()); }
+      catch { return null; }
+    })();
     this.#config = {
       maxIterations: config.maxIterations || MAX_ITERATIONS_DEFAULT,
       workingDirectory: config.workingDirectory || process.cwd(),
@@ -169,8 +175,10 @@ export class AgentEngine {
    */
   async run(userInput) {
     const runStartedAt = Date.now();
-    this.#stopRequested = false;
+    // —— Metrics: 会话级标记（每次 run 都有独立的 runId）——
+    const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
     this.#lastRunResult = {
+      runId,
       success: false,
       status: 'running',
       answer: '',
@@ -179,6 +187,8 @@ export class AgentEngine {
       durationMs: 0,
       toolEvents: [],
     };
+    try { metricsSink.startRun(runId); } catch (_) { /* 忽略 */ }
+    this.#stopRequested = false;
     this.#ui.debugEvent?.('Agent run started', {
       inputPreview: this.#preview(userInput, 240),
       workingDirectory: this.#config.workingDirectory,
@@ -197,6 +207,15 @@ export class AgentEngine {
         systemPromptChars: systemPrompt.length,
         toolInstructionChars: toolInstructions.length,
       });
+
+      // —— 注入初始工作区上下文（多文件聚合）——
+      if (this.#workspaceState && typeof this.#workspaceState.aggregateContext === 'function') {
+        const wsCtx = this.#workspaceState.aggregateContext({ maxFiles: 5, maxCharsPerFile: 400, maxTotalChars: 2000 });
+        if (wsCtx && wsCtx.files && wsCtx.files.length > 0) {
+          const prefix = `<!-- workspace-context: files=${wsCtx.files.join(',')} -->\n${wsCtx.summary || ''}`;
+          this.#sessionManager.addSystemMessage(prefix);
+        }
+      }
     }
 
     // ========== Step 1：意图识别（仅当显式开启时才调用 LLM 预分类） ==========
@@ -319,8 +338,34 @@ export class AgentEngine {
         currentPhase,
       );
 
+      // —— 注入本轮工作区上下文（多文件聚合快照）——
+      if (this.#workspaceState && typeof this.#workspaceState.aggregateContext === 'function') {
+        const wsCtx = this.#workspaceState.aggregateContext({ maxFiles: 6, maxCharsPerFile: 500, maxTotalChars: 2400 });
+        if (wsCtx && wsCtx.files && wsCtx.files.length > 0) {
+          messages.push({
+            role: 'system',
+            content: `<!-- workspace-context: files=${wsCtx.files.join(',')} -->\n${wsCtx.summary || ''}`,
+          });
+        }
+      }
+
       // ========== Step 6：LLM 调用（带重试 + 超时） ==========
+      if (!this.#modelProvider || typeof this.#modelProvider.chat !== 'function') {
+        this.#ui.warn?.('缺少 modelProvider，请在初始化时传入。engine.attachModelProvider() 可在运行时绑定');
+        return this.#completeRun({
+          success: false,
+          status: 'error',
+          answer: null,
+          reason: '未配置 modelProvider — 无法调用 LLM。请在初始化时传入 modelProvider，或通过 engine.attachModelProvider() 注入。',
+          iterations: 0,
+          startedAt: runStartedAt,
+          userInputRequest: userInput,
+        });
+      }
       const llmStartedAt = Date.now();
+      const llmAttemptsStart = 0;
+      let llmAttempts = 0;
+      let llmError = null;
       this.#ui.debugEvent?.('LLM request', {
         modelProvider: this.#modelProvider.constructor?.name || 'unknown',
         messageCount: messages.length,
@@ -330,23 +375,58 @@ export class AgentEngine {
         maxTokens: this.#config.maxTokens,
       });
 
-      const response = await this.#retryStrategy.executeWithRetry(() =>
-        withTimeout(
-          () => this.#modelProvider.chat(messages, {
-            functions,
-            maxTokens: this.#config.maxTokens,
-          }),
-          120000, // 2 分钟超时
-          'LLM call',
-        ),
-      );
+      let response;
+      try {
+        response = await this.#retryStrategy.executeWithRetry(async () => {
+          llmAttempts++;
+          return withTimeout(
+            () => this.#modelProvider.chat(messages, {
+              functions,
+              maxTokens: this.#config.maxTokens,
+            }),
+            120000, // 2 分钟超时
+            'LLM call',
+          );
+        });
+        // —— LLM 成功 metrics ——
+        try {
+          const modelName = this.#modelProvider.getModelName?.() || this.#modelProvider.constructor?.name || 'unknown';
+          metricsSink.recordLLMRequest({
+            runId: this.#lastRunResult?.runId,
+            model: modelName,
+            durationMs: Date.now() - llmStartedAt,
+            tokensIn: response.usage?.inputTokens,
+            tokensOut: response.usage?.outputTokens,
+            success: true,
+            attempt: llmAttempts,
+          });
+        } catch (_) { /* 忽略 */ }
+      } catch (error) {
+        llmError = error instanceof Error ? error.message : String(error);
+        // —— LLM 失败 metrics ——
+        try {
+          metricsSink.recordLLMRequest({
+            runId: this.#lastRunResult?.runId,
+            model: this.#modelProvider.getModelName?.() || this.#modelProvider.constructor?.name || 'unknown',
+            durationMs: Date.now() - llmStartedAt,
+            success: false,
+            error: llmError,
+            attempt: llmAttempts,
+          });
+        } catch (_) { /* 忽略 */ }
+        throw error;
+      }
       lastResponseText = response?.text || '';
 
       this.#ui.debugEvent?.('LLM response', {
         durationMs: Date.now() - llmStartedAt,
+        attempts: llmAttempts,
+        failureReason: llmError,
         finishReason: response.finishReason,
         textPreview: this.#preview(response.text, 300),
         nativeToolCalls: response.toolCalls?.length || 0,
+        inputTokens: response.usage?.inputTokens,
+        outputTokens: response.usage?.outputTokens,
       });
 
       // TokenScope: 记录 token 成本
@@ -520,6 +600,7 @@ export class AgentEngine {
 
       // 执行每个工具调用（ToolExecutor 统一处理：安全策略、缓存、规范化）
       for (const toolCall of allToolCalls) {
+        const toolStart = Date.now();
         const execResult = await this.#toolExecutor.execute(
           toolCall,
           {
@@ -537,6 +618,28 @@ export class AgentEngine {
             },
           },
         );
+        const toolDuration = Date.now() - toolStart;
+        if (typeof execResult === 'object' && execResult !== null) {
+          execResult.durationMs = toolDuration;
+        }
+        this.#ui.debugEvent?.('tool_result', {
+          toolName: execResult.name,
+          success: !execResult.error && !execResult.skipped,
+          durationMs: toolDuration,
+          error: execResult.error ? String(execResult.error).substring(0, 200) : null,
+        });
+
+        // —— 工具调用 metrics ——
+        try {
+          metricsSink.recordToolCall({
+            runId: this.#lastRunResult?.runId,
+            toolName: execResult.name,
+            durationMs: toolDuration,
+            success: !execResult.error && !execResult.skipped,
+            error: execResult.error ? String(execResult.error) : null,
+            skipped: !!execResult.skipped,
+          });
+        } catch (_) { /* 忽略 */ }
 
         // 记录到停滞检测
         this.#stagnationDetector.recordTool(execResult.name, toolCall.arguments, iteration, (name, _args) => {
@@ -572,6 +675,18 @@ export class AgentEngine {
   /** 中断当前 run（在下一次 while 循环检查时退出） */
   stop() { this.#stopRequested = true; }
 
+  /** 挂载 modelProvider（支持两步初始化：先构造引擎，再连模型） */
+  attachModelProvider(provider) { this.#modelProvider = provider; }
+
+  /** 访问当前 ToolRegistry（用于调试 / 动态注册） */
+  getToolRegistry() { return this.#toolRegistry; }
+
+  /** 访问当前 SecurityPolicy（用于只读展示） */
+  getSecurityPolicy() { return this.#config.securityPolicy || null; }
+
+  /** 访问当前 WorkspaceState（用于外部订阅 / 聚和上下文） */
+  getWorkspaceState() { return this.#workspaceState; }
+
   /** 最近一次 run 的结果 */
   getRunResult() { return this.#lastRunResult ? { ...this.#lastRunResult } : null; }
 
@@ -593,6 +708,73 @@ export class AgentEngine {
     };
   }
 
+  // ============================================================
+  // 兼容层：供 DesktopCore / CLI / IPC 调用
+  // ============================================================
+
+  /** 幂等初始化（DesktopCore 在 initialize() 中调用） */
+  initialize() { return this; }
+
+  /** 引擎是否已初始化（兼容旧 API） */
+  isInitialized() {
+    return true;
+  }
+
+  /** 返回引擎状态（idle / running / stopped / error） */
+  getState() {
+    return {
+      state: this.#stopRequested ? 'stopped' : (this.#lastRunResult?.status || 'idle'),
+      workingDirectory: this.#config.workingDirectory,
+      maxIterations: this.#config.maxIterations,
+      toolCount: this.#toolRegistry.size,
+    };
+  }
+
+  /** 返回所有已注册工具的名称列表 */
+  getTools() {
+    try { return this.#toolRegistry.getAll?.().map(t => t.name) || []; }
+    catch { return []; }
+  }
+
+  /** 注册单个工具（直接转发到 toolRegistry） */
+  registerTool(tool) {
+    try { this.#toolRegistry.register(tool); } catch (_) {}
+    return this;
+  }
+
+  /** 批量注册工具 */
+  registerTools(tools) {
+    if (!Array.isArray(tools)) return this;
+    for (const t of tools) this.registerTool(t);
+    return this;
+  }
+
+  /** 与旧 API 兼容：processInput 等价于 run */
+  async processInput(input, options = {}) {
+    const text = (typeof input === 'string') ? input : (input?.text || JSON.stringify(input));
+    return this.run(text);
+  }
+
+  /** 返回最近一次 modelProvider（可能为 null） */
+  getModelProvider() { return this.#modelProvider || null; }
+
+  /** 返回工具分组（兼容旧 API：按 tool name 的前缀分组） */
+  getToolGroups() {
+    try {
+      const tools = this.#toolRegistry.getAll?.() || [];
+      const groups = new Map();
+      for (const t of tools) {
+        const name = typeof t === 'string' ? t : (t.name || 'tool');
+        const prefix = name.includes('_') ? name.split('_')[0] : 'misc';
+        if (!groups.has(prefix)) groups.set(prefix, { group: prefix, tools: [] });
+        groups.get(prefix).tools.push(name);
+      }
+      return Array.from(groups.values());
+    } catch (_) {
+      return [];
+    }
+  }
+
   /** 释放资源 */
   dispose() {
     try { this.#modelProvider.dispose?.(); } catch {}
@@ -605,14 +787,26 @@ export class AgentEngine {
 
   #completeRun({ success, status, answer, reason, iterations, startedAt, error, userInputRequest }) {
     try { this.#workspaceIndex?.stopPeriodicSync?.(); } catch {}
+    const durationMs = Date.now() - startedAt;
+    const toolEvents = this.#toolExecutor.events.map(event => ({ ...event }));
     const result = {
+      runId: this.#lastRunResult?.runId,
       success, status, answer, reason, iterations,
-      durationMs: Date.now() - startedAt,
-      toolEvents: this.#toolExecutor.events.map(event => ({ ...event })),
+      durationMs,
+      toolEvents,
     };
     if (error) result.error = error;
     if (userInputRequest) result.userInputRequest = userInputRequest;
     this.#lastRunResult = result;
+
+    // —— Metrics: 会话结束标记 ——
+    try {
+      metricsSink.finishRun(result.runId, {
+        success, iterations, durationMs,
+        reason: error ? String(error) : reason,
+        toolCount: toolEvents.length,
+      });
+    } catch (_) { /* 忽略 */ }
     return result;
   }
 

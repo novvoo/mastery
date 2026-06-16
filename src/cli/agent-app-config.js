@@ -21,6 +21,13 @@ import {
 } from '../runtime/index.js';
 
 import {
+  bootstrapRuntime,
+  ensureMetricsSink,
+  initializeMCPServersFromEnv,
+  registerMCPTools as registerMCPToolsInBootstrap,
+} from '../core/runtime-bootstrap.js';
+
+import {
   applyRuntimeValues,
   buildMissingConfigMessage,
   getMissingRequiredConfig,
@@ -140,7 +147,6 @@ export async function createEngine(config) {
   const workingDir = config.workingDir;
   const debugMode = config.debug;
 
-  // Ensure working directory exists
   if (!existsSync(workingDir)) {
     mkdirSync(workingDir, { recursive: true });
   }
@@ -157,7 +163,58 @@ export async function createEngine(config) {
     toolResultCacheEnabled: config.toolResultCacheEnabled,
   });
 
+  // —— CLI 也启用 metrics + workspaceState（与 Desktop 一致）
+  ensureMetricsSink({
+    enabled: config.metrics?.enabled !== false,
+    logDir: config.metrics?.logDir || null,
+    workingDirectory: workingDir,
+  });
+
   return engine;
+}
+
+/**
+ * 使用 runtime-bootstrap 创建内核 engine（不走旧的 runtime 层）。
+ * 用于 tests 和新入口。返回 { engine, toolRegistry, securityPolicy,
+ * workspaceState, metricsSink, mcpClient, workingDirectory }。
+ */
+export async function createBootstrappedRuntime(config = {}) {
+  const workingDir = config.workingDir || process.cwd();
+  if (!existsSync(workingDir)) {
+    mkdirSync(workingDir, { recursive: true });
+  }
+
+  const rt = await bootstrapRuntime({
+    workingDirectory: workingDir,
+    maxIterations: config.maxIterations || 60,
+    debug: !!config.debug,
+    securityPolicy: config.securityPolicy || 'full',
+    metrics: {
+      enabled: config.metrics?.enabled !== false,
+      logDir: config.metrics?.logDir || null,
+    },
+    tokenBudget: config.tokenBudget,
+    tokenBudgetWarningThreshold: config.tokenBudgetWarningThreshold,
+    toolResultCacheEnabled: config.toolResultCacheEnabled,
+    maxTokens: config.maxTokens,
+    temperature: config.temperature,
+    ui: config.ui || null,
+    memoryManager: config.memoryManager || null,
+    modelProvider: config.modelProvider || null,
+  });
+
+  // 可选：自动初始化 MCP
+  if (config.autoInitMCP !== false) {
+    try {
+      await initializeMCPServersFromEnv(
+        rt.mcpClient,
+        rt.toolRegistry,
+        config.debug ? (m) => console.log(m) : null,
+      );
+    } catch (_) {}
+  }
+
+  return rt;
 }
 
 /**

@@ -11,6 +11,9 @@
 const MAX_DIRECTORY_ENTRIES = 500;
 const MAX_FACTS = 200;
 const MAX_FAILED_PATHS = 100;
+const MAX_SNAPSHOT_FILES = 30;           // 最多缓存多少个文件的内容
+const MAX_SNAPSHOT_BYTES_PER_FILE = 64 * 1024; // 每个文件的缓存上限
+const MAX_AGGREGATE_CHARS = 4000;        // 聚合摘要时的字符上限
 
 export class WorkspaceState {
   constructor() {
@@ -28,6 +31,11 @@ export class WorkspaceState {
     
     // Shell 命令结果: 用于推断环境状态
     this._shellKnowledge = [];
+
+    // 文件内容快照: 规范化路径 -> { content, size, updatedAt, truncated, source }
+    this._fileSnapshots = new Map();
+    // 最近引用: 规范化路径 -> { timestamp, count, refs: [...] }
+    this._recentReferences = new Map();
   }
 
   // ============ 目录追踪 ============
@@ -126,16 +134,98 @@ export class WorkspaceState {
         timestamp: Date.now(),
         source: 'read_file',
       });
-      
+
       this._addFact({
         type: 'file_readable',
         value: { path: normalized },
         source: 'read_file',
         priority: 'high',
       });
+
+      // 可选地缓存文件内容（如果结果里带 text/content 字段）
+      const text = result?.text ?? result?.content ?? result?.data ?? null;
+      if (typeof text === 'string' && text.length > 0) {
+        this._cacheFileContent(normalized, text, 'read_file');
+      }
     } else {
       this.recordPathNotFound(filePath, result?.error || 'File not found');
     }
+  }
+
+  /** 缓存一个文件的内容快照（用于多文件上下文聚合） */
+  _cacheFileContent(normalizedPath, content, source = 'manual') {
+    const truncated = content.length > MAX_SNAPSHOT_BYTES_PER_FILE;
+    const text = truncated ? content.slice(0, MAX_SNAPSHOT_BYTES_PER_FILE) : content;
+
+    // LRU 淘汰：超过上限时删除时间戳最旧的项
+    if (!this._fileSnapshots.has(normalizedPath) &&
+        this._fileSnapshots.size >= MAX_SNAPSHOT_FILES) {
+      let oldestKey = null;
+      let oldestTs = Infinity;
+      for (const [k, v] of this._fileSnapshots) {
+        if (v.updatedAt < oldestTs) { oldestTs = v.updatedAt; oldestKey = k; }
+      }
+      if (oldestKey != null) this._fileSnapshots.delete(oldestKey);
+    }
+
+    this._fileSnapshots.set(normalizedPath, {
+      content: text,
+      size: text.length,
+      originalSize: content.length,
+      updatedAt: Date.now(),
+      truncated,
+      source,
+    });
+  }
+
+  /** 外部写入文件后同步更新快照（避免重复读磁盘） */
+  setFileSnapshot(filePath, content, source = 'write_file') {
+    if (typeof content !== 'string') return;
+    const normalized = this._normalizePath(filePath);
+    this._files.set(normalized, { exists: true, timestamp: Date.now(), source });
+    this._cacheFileContent(normalized, content, source);
+  }
+
+  /** 获取一个已缓存的文件内容快照（不读磁盘） */
+  getFileSnapshot(filePath) {
+    const normalized = this._normalizePath(filePath);
+    const snap = this._fileSnapshots.get(normalized);
+    return snap ? { ...snap } : null;
+  }
+
+  listSnapshots() {
+    return Array.from(this._fileSnapshots.entries()).map(([p, v]) => ({
+      path: p,
+      size: v.size,
+      originalSize: v.originalSize,
+      updatedAt: v.updatedAt,
+      truncated: v.truncated,
+    }));
+  }
+
+  /** 记录一次"引用"：用户或 Agent 提到某个路径（用于最近文件排序） */
+  recordReference(filePath, context = 'mention') {
+    if (!filePath) return;
+    const normalized = this._normalizePath(filePath);
+    const existing = this._recentReferences.get(normalized) || { count: 0, refs: [], _order: 0 };
+    existing.count++;
+    existing.refs.push({ timestamp: Date.now(), context });
+    if (existing.refs.length > 20) existing.refs = existing.refs.slice(-20);
+    existing.timestamp = Date.now();
+    existing._order = (this._referenceOrderCounter = (this._referenceOrderCounter || 0) + 1);
+    this._recentReferences.set(normalized, existing);
+  }
+
+  /** 返回最近引用的文件列表（按引用时间倒序） */
+  getRecentlyReferenced(limit = 10) {
+    return Array.from(this._recentReferences.entries())
+      .sort((a, b) => {
+        const ts = (b[1].timestamp || 0) - (a[1].timestamp || 0);
+        if (ts !== 0) return ts;
+        return (b[1]._order || 0) - (a[1]._order || 0);
+      })
+      .slice(0, limit)
+      .map(([p, v]) => ({ path: p, count: v.count, lastReferencedAt: v.timestamp }));
   }
 
   /**
@@ -401,6 +491,74 @@ export class WorkspaceState {
   // ============ 状态管理 ============
 
   /**
+   * 多文件上下文聚合：以"最近读/写 + 最近引用"的顺序，将若干文件的关键
+   * 片段拼装成一个紧凑的文本块，供 LLM 作为工作区上下文。
+   * @param {object} opts
+   * @param {number} [opts.maxFiles=8] - 最多包含多少个文件
+   * @param {number} [opts.maxCharsPerFile=600] - 每个文件最多截取多少字符（头部）
+   * @param {number} [opts.maxTotalChars=MAX_AGGREGATE_CHARS]
+   * @param {string[]} [opts.hintPaths=[]] - 额外提示用户关注的路径，优先
+   */
+  aggregateContext(opts = {}) {
+    const maxFiles = opts.maxFiles || 8;
+    const maxCharsPerFile = opts.maxCharsPerFile || 600;
+    const maxTotalChars = opts.maxTotalChars || MAX_AGGREGATE_CHARS;
+    const hintPaths = (opts.hintPaths || []).filter(Boolean).map(p => this._normalizePath(p));
+
+    const seen = new Set();
+    const pickPath = (p) => {
+      if (!p || seen.has(p)) return false;
+      seen.add(p);
+      return true;
+    };
+
+    const ordered = [];
+    // 1. 提示路径（如果已缓存）
+    for (const p of hintPaths) if (this._fileSnapshots.has(p) && pickPath(p)) ordered.push(p);
+    // 2. 按快照时间倒序（最近写入/读取优先）
+    const bySnapshot = Array.from(this._fileSnapshots.keys()).sort((a, b) => {
+      const ta = this._fileSnapshots.get(a)?.updatedAt || 0;
+      const tb = this._fileSnapshots.get(b)?.updatedAt || 0;
+      return tb - ta;
+    });
+    for (const p of bySnapshot) if (pickPath(p)) ordered.push(p);
+    // 3. 最近引用的路径
+    for (const item of this.getRecentlyReferenced(maxFiles)) if (pickPath(item.path)) ordered.push(item.path);
+
+    const blocks = [];
+    let totalChars = 0;
+    for (const p of ordered) {
+      if (blocks.length >= maxFiles) break;
+      const snap = this._fileSnapshots.get(p);
+      if (!snap) {
+        // 没有快照：只记录路径与是否已知存在
+        blocks.push(`- ${p}${this._files.has(p) ? ' (known file)' : ''}`);
+        continue;
+      }
+      const head = snap.content.slice(0, maxCharsPerFile);
+      const truncated = snap.content.length > head.length;
+      const block = `## ${p}${snap.truncated || truncated ? ' (truncated)' : ''}\n${head}${truncated ? '\n...' : ''}`;
+      if (totalChars + block.length > maxTotalChars) {
+        const remaining = Math.max(0, maxTotalChars - totalChars - 32);
+        if (remaining > 32) {
+          blocks.push(`## ${p} (truncated)\n${snap.content.slice(0, remaining)}\n...`);
+        }
+        break;
+      }
+      totalChars += block.length;
+      blocks.push(block);
+    }
+
+    return {
+      files: ordered,
+      totalChars,
+      summary: blocks.length
+        ? `# Workspace context (${ordered.length} files)\n${blocks.join('\n\n')}`
+        : '',
+    };
+  }
+
+  /**
    * 清除所有状态
    */
   clear() {
@@ -409,6 +567,8 @@ export class WorkspaceState {
     this._facts = [];
     this._failedPaths.clear();
     this._shellKnowledge = [];
+    this._fileSnapshots.clear();
+    this._recentReferences.clear();
   }
 
   /**
@@ -420,6 +580,8 @@ export class WorkspaceState {
       trackedDirectories: this._directories.size,
       knownNotFound: this._failedPaths.size,
       facts: this._facts.length,
+      snapshots: this._fileSnapshots.size,
+      recentReferences: this._recentReferences.size,
       recentFacts: this._facts.slice(-5).map(f => ({
         type: f.type,
         value: typeof f.value === 'object' ? JSON.stringify(f.value).slice(0, 100) : f.value,

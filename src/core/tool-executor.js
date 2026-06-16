@@ -157,6 +157,23 @@ export class ToolExecutor {
       return { name, result: `Error: Security policy blocked ${name}: ${securityBlock}`, error: securityBlock };
     }
 
+    // ============ write_file 审批（若配置了 writeFileApproval） ============
+    if (name === 'write_file' && typeof this.#config.writeFileApproval === 'function') {
+      const approved = await this.#config.writeFileApproval({
+        args: effectiveArgs,
+        workingDirectory: this.#config.workingDirectory || process.cwd(),
+      });
+      if (approved === false) {
+        const reason = 'write_file: 人工审批未通过，跳过本次写入';
+        options.emitObservation?.(id, name, reason, resultMode);
+        this.#recordEvent(name, effectiveArgs, false, reason);
+        return { name, result: reason, skipped: true };
+      }
+      if (approved && typeof approved === 'object' && typeof approved.content === 'string') {
+        effectiveArgs = { ...(effectiveArgs || {}), content: approved.content };
+      }
+    }
+
     // ============ 执行工具 ============
     const executionContext = {
       workingDirectory: this.#config.workingDirectory || process.cwd(),

@@ -9,6 +9,8 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import http from 'http';
 import { APP_COPYRIGHT, APP_CREDITS, APP_NAME } from './app-metadata.js';
+import { commandCatalog } from '../src/core/command-catalog.js';
+import { metricsSink } from '../src/core/metrics-sink.js';
 
 // 获取当前目录
 const __filename = fileURLToPath(import.meta.url);
@@ -34,6 +36,15 @@ import { createApplicationMenu } from './menu.js';
 import { listPreviews, startPreview, stopAllPreviews, stopPreview } from '../src/core/preview-server.js';
 
 const { app, BrowserWindow, ipcMain, dialog, Notification, Menu, Tray, shell } = electron;
+
+// CORS 白名单：允许本地文件服务器响应的 Origin
+const ALLOWED_LOCALHOST_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/.*)?$/i;
+function isAllowedFileServerOrigin(origin) {
+  if (!origin) return true;
+  if (origin === 'null' || origin === 'file://') return true;
+  if (ALLOWED_LOCALHOST_PATTERN.test(origin)) return true;
+  return false;
+}
 app?.setName?.(APP_NAME);
 
 /**
@@ -139,8 +150,30 @@ class ElectronMainApp {
 
       const root = path.resolve(this.#config.workingDirectory);
       const server = http.createServer((req, res) => {
+        if (req.method === 'OPTIONS') {
+          const origin = req.headers.origin;
+          if (!isAllowedFileServerOrigin(origin)) {
+            res.writeHead(403); res.end('Forbidden'); return;
+          }
+          res.writeHead(204, {
+            'Access-Control-Allow-Origin': origin,
+            'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Max-Age': '86400',
+            Vary: 'Origin',
+          });
+          res.end();
+          return;
+        }
+
         if (req.method !== 'GET' && req.method !== 'HEAD') {
           res.writeHead(405); res.end('Method Not Allowed'); return;
+        }
+
+        // 来源校验：仅允许 app origin / localhost / null (file://)
+        const origin = req.headers.origin;
+        if (!isAllowedFileServerOrigin(origin)) {
+          res.writeHead(403); res.end('Forbidden'); return;
         }
 
         try {
@@ -172,7 +205,8 @@ class ElectronMainApp {
           res.writeHead(200, {
             'Content-Type': mime,
             'Cache-Control': 'no-store',
-            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Origin': origin || 'null',
+            Vary: 'Origin',
           });
 
           if (req.method === 'HEAD') { res.end(); return; }
@@ -475,13 +509,46 @@ class ElectronMainApp {
   async #initializeDesktopCore() {
     console.log('🔧 初始化 Desktop Core...');
 
+    // —— write_file 审批：通过 IPC 让用户在写文件前预览 diff ——
+    // 若 IPC 尚未连接或未注册，默认允许写入（避免阻塞 CLI / 无头场景）。
+    const writeFileApproval = async ({ args, workingDirectory }) => {
+      const ipc = this.#ipcAdapter;
+      if (!ipc || typeof ipc.request !== 'function') return true;
+
+      const path = args?.path || args?.file_path || '';
+      const newContent = typeof args?.content === 'string' ? args.content : '';
+
+      // 先尝试从已连接的 renderer 拿旧内容（若无，则认为是新文件）
+      let oldContent = '';
+      try {
+        const fs = await import('node:fs');
+        const full = path && path.startsWith('/') ? path : `${workingDirectory}/${path}`;
+        if (fs.existsSync(full)) oldContent = fs.readFileSync(full, 'utf8');
+      } catch (_) {}
+
+      try {
+        const resp = await ipc.request('write-file:approve', {
+          path,
+          oldContent,
+          newContent,
+        });
+        if (resp && resp.apply === false) return false;
+        if (resp && typeof resp.content === 'string') return { content: resp.content };
+        return true;
+      } catch (_) {
+        // 没有 renderer 订阅 -> 默认通过
+        return true;
+      }
+    };
+
     this.#desktopCore = createDesktopCore({
       workingDirectory: this.#config.workingDirectory,
       debug: this.#config.debug,
       maxIterations: this.#config.runtime.maxIterations,
       autoDownloadModels: this.#config.runtime.autoDownloadModels,
       hookTimeout: this.#config.runtime.hookTimeout,
-      ipc: this.#config.ipc
+      ipc: this.#config.ipc,
+      writeFileApproval,
     });
 
     await this.#desktopCore.initialize();
@@ -597,6 +664,9 @@ class ElectronMainApp {
 
     // 注册自定义 IPC 处理器
     this.#registerCustomHandlers();
+
+    // 注册 ⌘K 命令面板（跨进程共享的 CommandCatalog）
+    this.#registerCommandPalette();
 
     // 监听 IPC 事件
     this.#setupIPCListeners();
@@ -778,6 +848,119 @@ class ElectronMainApp {
 
     if (this.#config.debug) {
       console.log('   注册了自定义 IPC 处理器');
+    }
+  }
+
+  /**
+   * ⌘K 命令面板 — 把 Desktop 常见操作注册到共享的 CommandCatalog。
+   * 渲染侧通过 IPC 调用 `command:list` / `command:run` 来读写命令并执行。
+   */
+  #registerCommandPalette() {
+    const app = this;
+
+    // —— 窗口 & UI ——
+    commandCatalog.register({
+      id: 'app.window.minimize', title: '最小化窗口', category: '窗口',
+      handler: async () => { app.#mainWindow?.minimize(); return { success: true }; },
+    });
+    commandCatalog.register({
+      id: 'app.window.toggle-max', title: '切换最大化', category: '窗口',
+      handler: async () => {
+        const w = app.#mainWindow;
+        if (!w) return { success: false, message: 'no-window' };
+        if (w.isMaximized()) w.unmaximize(); else w.maximize();
+        return { success: true };
+      },
+    });
+    commandCatalog.register({
+      id: 'app.window.toggle-devtools', title: '开发者工具', category: '调试',
+      keywords: ['devtools', 'inspect'],
+      handler: async () => {
+        const w = app.#mainWindow;
+        if (!w) return { success: false, message: 'no-window' };
+        if (w.webContents.isDevToolsOpened()) w.webContents.closeDevTools();
+        else w.webContents.openDevTools({ mode: 'detach' });
+        return { success: true };
+      },
+    });
+
+    // —— 会话 & 运行 ——
+    commandCatalog.register({
+      id: 'app.session.clear', title: '清空会话', category: '会话',
+      keywords: ['reset', 'clear', 'session'],
+      handler: async () => {
+        const core = app.#desktopCore;
+        if (core?.agent?.reset) await core.agent.reset(true);
+        return { success: true, message: 'session cleared' };
+      },
+    });
+    commandCatalog.register({
+      id: 'app.session.stop', title: '停止 Agent 执行', category: '会话',
+      keywords: ['stop', 'cancel', 'abort'],
+      handler: async () => {
+        const core = app.#desktopCore;
+        if (core?.agent?.requestStop) core.agent.requestStop();
+        return { success: true, message: 'stop requested' };
+      },
+    });
+
+    // —— 预览服务 ——
+    commandCatalog.register({
+      id: 'app.preview.list', title: '列出正在运行的预览', category: '预览',
+      handler: async () => {
+        const previews = await listPreviews();
+        return { success: true, data: previews };
+      },
+    });
+    commandCatalog.register({
+      id: 'app.preview.stop-all', title: '停止所有预览服务器', category: '预览',
+      handler: async () => {
+        await stopAllPreviews();
+        return { success: true, message: 'all previews stopped' };
+      },
+    });
+
+    // —— 工作区 ——
+    commandCatalog.register({
+      id: 'app.workspace.reload', title: '重新扫描工作区', category: '工作区',
+      keywords: ['reload', 'refresh', 'scan'],
+      handler: async () => {
+        const core = app.#desktopCore;
+        if (core?.agent?.workspaceState) core.agent.workspaceState.clear();
+        return { success: true, message: 'workspace state reloaded' };
+      },
+    });
+    commandCatalog.register({
+      id: 'app.workspace.status', title: '显示工作区状态', category: '工作区',
+      handler: async () => {
+        const core = app.#desktopCore;
+        const ws = core?.agent?.workspaceState;
+        if (!ws) return { success: false, message: 'no-workspace-state' };
+        return { success: true, data: ws.getSummary() };
+      },
+    });
+
+    // —— 通过 IPC 把 CommandCatalog + MetricsSink 暴露给渲染进程 ——
+    if (this.#ipcAdapter && typeof this.#ipcAdapter.registerHandler === 'function') {
+      this.#ipcAdapter.registerHandler('command:list', async (payload) => {
+        const q = payload?.query || '';
+        return { success: true, commands: commandCatalog.filter(q).map(cmd => ({
+          id: cmd.id, title: cmd.title, category: cmd.category,
+          description: cmd.description, shortcut: cmd.shortcut,
+        })) };
+      });
+      this.#ipcAdapter.registerHandler('command:run', async (payload) => {
+        if (!payload?.id) return { success: false, message: 'missing id' };
+        const r = await commandCatalog.run(payload.id, payload.payload || null);
+        return r;
+      });
+      this.#ipcAdapter.registerHandler('metrics:snapshot', async () => {
+        try {
+          return { success: true, data: metricsSink.latestSnapshot() };
+        } catch (e) {
+          return { success: false, message: e.message };
+        }
+      });
     }
   }
 

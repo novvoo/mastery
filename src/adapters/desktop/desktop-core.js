@@ -10,18 +10,18 @@
  * - 生命周期管理
  */
 
-import {
-  createAgentEngine,
-  PlatformType,
-  getEventBus,
-  RuntimeEvent,
-  HOOKS
-} from '../../runtime/index.js';
+import { getEventBus, RuntimeEvent, HOOKS } from '../../runtime/index.js';
 import { createPlugin } from '../../runtime/plugin-system.js';
+import {
+  bootstrapRuntime,
+  attachModelProvider as attachRuntimeModelProvider,
+  initializeMCPServersFromEnv,
+} from '../../core/runtime-bootstrap.js';
 import {
   createMainProcessIPCAdapter,
   createRendererProcessIPCAdapter
 } from './ipc-adapter.js';
+import { metricsSink } from '../../core/metrics-sink.js';
 
 /**
  * Desktop 状态类型
@@ -70,6 +70,7 @@ const DEFAULT_DESKTOP_CONFIG = {
 export class DesktopCore {
   #config;
   #engine;
+  #runtime;   // runtime-bootstrap 产物：{ engine, toolRegistry, securityPolicy, workspaceState, metricsSink, mcpClient }
   #eventBus;
   #ipcAdapter;
   #uiBridge;
@@ -121,20 +122,41 @@ export class DesktopCore {
         console.log('[DesktopCore] 开始初始化...');
       }
 
-      // 创建并初始化 Agent Engine
-      this.#engine = createAgentEngine({
-        platform: PlatformType.DESKTOP,
-        ...this.#config
-      });
+      const uiAdapter = this.#createUiAdapter();
 
-      await this.#engine.initialize();
-      
+      this.#runtime = await bootstrapRuntime({
+        workingDirectory: this.#config.workingDirectory,
+        maxIterations: this.#config.maxIterations || 60,
+        debug: !!this.#config.debug,
+        securityPolicy: this.#config.securityPolicy || 'full',
+        metrics: {
+          enabled: this.#config.metrics?.enabled !== false,
+          logDir: this.#config.metrics?.logDir || null,
+        },
+        modelProvider: this.#config.modelProvider || null,
+        memoryManager: this.#config.memoryManager || null,
+        ui: uiAdapter,
+      });
+      this.#engine = this.#runtime.engine;
+
+      // MCP：自动发现 & 注册
+      try {
+        await initializeMCPServersFromEnv(
+          this.#runtime.mcpClient,
+          this.#runtime.toolRegistry,
+        );
+      } catch (err) {
+        if (this.#config.debug) {
+          console.log('[DesktopCore] MCP 初始化跳过:', err.message);
+        }
+      }
+
       // 设置事件转发
       this.#setupEventForwarding();
-      
+
       // 设置状态监听
       this.#setupStateMonitoring();
-      
+
       this.#isInitialized = true;
       this.#setState(DesktopState.READY);
       
@@ -148,6 +170,91 @@ export class DesktopCore {
       this.#handleError(error, 'initialize');
       throw error;
     }
+  }
+
+  /**
+   * 创建 UI 适配器：把 agent-engine 的 ui 回调转成 EventBus 事件，
+   * 再由 #setupEventForwarding() 转发到 IPC。这是"运行详情面板"
+   * 能收到 tool_call / tool_result / final_answer 等事件的关键。
+   */
+  #createUiAdapter() {
+    const eventBus = this.#eventBus;
+    const isDebug = !!this.#config.debug;
+
+    return {
+      toolCall(name, args) {
+        const eventData = {
+          name,
+          arguments: args,
+          timestamp: Date.now(),
+        };
+        if (isDebug) console.log('[UiAdapter] tool:call', name);
+        eventBus.emit(RuntimeEvent.TOOL_CALL, eventData);
+      },
+      toolResult(name, result) {
+        const eventData = {
+          name,
+          result: typeof result === 'string' ? result : (result?.result ?? result),
+          timestamp: Date.now(),
+        };
+        if (isDebug) console.log('[UiAdapter] tool:result', name);
+        eventBus.emit(RuntimeEvent.TOOL_RESULT, eventData);
+      },
+      toolError(name, error) {
+        const eventData = {
+          name,
+          error: typeof error === 'string' ? error : (error?.message ?? String(error)),
+          timestamp: Date.now(),
+        };
+        if (isDebug) console.log('[UiAdapter] tool:error', name, eventData.error);
+        eventBus.emit(RuntimeEvent.TOOL_ERROR, eventData);
+      },
+      iteration(iteration, maxIterations) {
+        const eventData = {
+          iteration,
+          maxIterations,
+          timestamp: Date.now(),
+        };
+        eventBus.emit(RuntimeEvent.STATUS_UPDATE, eventData);
+      },
+      finalAnswer(answer) {
+        if (isDebug) console.log('[UiAdapter] agent:complete');
+        eventBus.emit(RuntimeEvent.AGENT_COMPLETE, { answer, timestamp: Date.now() });
+        eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
+          status: 'completed',
+          answer,
+          timestamp: Date.now(),
+        });
+      },
+      warn(message) {
+        eventBus.emit(RuntimeEvent.AGENT_ERROR, {
+          level: 'warn',
+          message: typeof message === 'string' ? message : (message?.message ?? String(message)),
+          timestamp: Date.now(),
+        });
+      },
+      debug(message) {
+        eventBus.emit(RuntimeEvent.AGENT_THINKING, {
+          message: typeof message === 'string' ? message : String(message),
+          timestamp: Date.now(),
+        });
+      },
+      debugEvent(name, data) {
+        if (name === 'Agent run started') {
+          eventBus.emit(RuntimeEvent.AGENT_START, {
+            ...(data || {}),
+            timestamp: Date.now(),
+          });
+          if (isDebug) console.log('[UiAdapter] agent:start');
+        } else {
+          eventBus.emit(RuntimeEvent.AGENT_THINKING, {
+            eventName: name,
+            data: data || null,
+            timestamp: Date.now(),
+          });
+        }
+      },
+    };
   }
 
   /**
@@ -545,9 +652,17 @@ export class DesktopCore {
    */
   attachModelProvider(modelProvider) {
     if (this.#engine) {
-      this.#engine.attachModelProvider(modelProvider);
+      attachRuntimeModelProvider(this.#engine, modelProvider);
     }
   }
+
+  /** 访问 runtime-bootstrap 产物（只读） */
+  getRuntime() { return this.#runtime; }
+  getWorkspaceState() { return this.#runtime?.workspaceState; }
+  getMetricsSink() { return metricsSink; }
+  getMcpClient() { return this.#runtime?.mcpClient; }
+  getSecurityPolicy() { return this.#runtime?.securityPolicy; }
+  getToolRegistry() { return this.#runtime?.toolRegistry; }
 
   /**
    * 添加状态监听器

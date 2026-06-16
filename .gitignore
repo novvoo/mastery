@@ -41,3 +41,4 @@ test*.json
 *.cer
 .agent-data/
 desktop/renderer/dist/
+.agent-logs/

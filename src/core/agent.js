@@ -27,6 +27,7 @@ import { TokenScope } from './token-scope.js';
 import { MAX_ITERATIONS_DEFAULT, METHODOLOGY_TOOLS } from './agent-constants.js';
 import { TaskStatus } from '../planner/graph-planner.js';
 import { isMutationTool, isSemanticRiskReviewTool } from './execution-plan-manager.js';
+import { metricsSink } from './metrics-sink.js';
 import {
   isTermination as isTerminationResponse,
   extractFinalAnswer,
@@ -171,13 +172,16 @@ export class ReActAgent {
 
   async run(userInput) {
     const runStartedAt = Date.now();
+    const runId = `run-${runStartedAt}-${Math.random().toString(36).slice(2, 8)}`;
+    metricsSink.startRun(runId);
+
     this.#stopRequested = false;
     this.#lastRunResult = {
       success: false, status: 'running', answer: '', reason: null,
-      iterations: 0, durationMs: 0, toolEvents: [],
+      iterations: 0, durationMs: 0, toolEvents: [], runId,
     };
     this.#debugEvent('Agent run started', {
-      inputPreview: this.#preview(userInput, 240),
+      runId, inputPreview: this.#preview(userInput, 240),
       workingDirectory: this.#config.workingDirectory,
       maxIterations: this.#config.maxIterations,
     });
@@ -226,6 +230,23 @@ export class ReActAgent {
     this.#sessionManager.addUserMessage(userInput);
     const routingPrompt = this.#intentClassifier?.buildRoutingPrompt(intent);
     if (routingPrompt) { this.#sessionManager.addUserMessage(routingPrompt); }
+
+    // Step 3b: 注入多文件上下文聚合（最近引用的文件 + 最近读写的文件）
+    if (this.#workspaceState) {
+      const ctx = this.#workspaceState.aggregateContext({
+        maxFiles: 6,
+        maxCharsPerFile: 500,
+        maxTotalChars: 2400,
+      });
+      if (ctx && ctx.summary && ctx.files.length > 0) {
+        this.#sessionManager.addSystemMessage(
+          `<!-- workspace-context: files=${ctx.files.join(',')} -->\n${ctx.summary}`,
+        );
+        this.#debugEvent('Workspace context injected', {
+          files: ctx.files, totalChars: ctx.totalChars,
+        });
+      }
+    }
 
     // 重置运行态
     this.#lastResponse = '';
@@ -319,6 +340,9 @@ export class ReActAgent {
         );
 
         // LLM 调用
+        const llmStartedAt = Date.now();
+        let llmAttempts = 0;
+        let llmError = null;
         this.#debugEvent('LLM request', {
           modelProvider: this.#modelProvider.constructor?.name || 'unknown',
           messageCount: messages.length,
@@ -332,20 +356,51 @@ export class ReActAgent {
           ),
         });
 
-        const response = await this.#retryStrategy.executeWithRetry(() =>
-          withTimeout(
-            () => this.#modelProvider.chat(messages, { functions, maxTokens: this.#config.maxTokens }),
-            120000, 'LLM call'
-          )
-        );
+        let response;
+        try {
+          response = await this.#retryStrategy.executeWithRetry(async () => {
+            llmAttempts++;
+            return withTimeout(
+              () => this.#modelProvider.chat(messages, { functions, maxTokens: this.#config.maxTokens }),
+              120000, 'LLM call'
+            );
+          });
+        } catch (error) {
+          llmError = error instanceof Error ? error.message : String(error);
+          try {
+            metricsSink.recordLLMRequest({
+              runId,
+              model: this.#modelProvider.getModelName?.() || this.#modelProvider.constructor?.name || 'unknown',
+              durationMs: Date.now() - llmStartedAt,
+              success: false, error: llmError, attempt: llmAttempts,
+            });
+          } catch (_) {}
+          throw error;
+        }
 
         this.#debugEvent('LLM response', {
-          durationMs: Date.now() - Date.now(),
+          durationMs: Date.now() - llmStartedAt,
+          attempts: llmAttempts,
           finishReason: response.finishReason,
           textPreview: this.#preview(response.text, 300),
           reasoningPreview: this.#preview(response.reasoning?.summary || response.reasoning?.text || '', 300),
           nativeToolCalls: response.toolCalls?.length || 0,
+          inputTokens: response.usage?.inputTokens,
+          outputTokens: response.usage?.outputTokens,
+          failureReason: llmError,
         });
+        try {
+          const modelName = this.#modelProvider.getModelName?.() || this.#modelProvider.constructor?.name || 'unknown';
+          metricsSink.recordLLMRequest({
+            runId,
+            model: modelName,
+            durationMs: Date.now() - llmStartedAt,
+            tokensIn: response.usage?.inputTokens,
+            tokensOut: response.usage?.outputTokens,
+            success: true,
+            attempt: llmAttempts,
+          });
+        } catch (_) { /* 打点失败不影响主流程 */ }
 
         if (response.reasoning?.text || response.reasoning?.summary || response.reasoning?.details?.length) {
           this.#ui.thinking?.({
@@ -491,12 +546,13 @@ export class ReActAgent {
         if (nativeToolCalls.length > 0) {
           this.#sessionManager.addAssistantMessage(response.text, nativeToolCalls);
           for (const toolCall of nativeToolCalls) {
+            const toolStart = Date.now();
             const toolResult = await this.#router.executeToolCall(toolCall, {
               resultMode: 'tool',
               activeRoutedToolNames: this.#activeRoutedToolNames,
               workspaceState: this.#workspaceState,
             });
-            this.#recordToolEvent(toolResult);
+            this.#recordToolEvent(toolResult, { durationMs: Date.now() - toolStart });
             this.#agentContext.recordToolCallForStagnation(toolResult, iteration,
               (name, r) => isMutationTool(name, r?.args || {}));
             this.#planner.advance(toolResult.name, toolResult.result?.args || {}, toolResult.result);
@@ -509,12 +565,13 @@ export class ReActAgent {
         }
 
         for (const toolCall of parsedToolCalls) {
+          const toolStart = Date.now();
           const toolResult = await this.#router.executeToolCall(toolCall, {
             resultMode: 'observation',
             activeRoutedToolNames: this.#activeRoutedToolNames,
             workspaceState: this.#workspaceState,
           });
-          this.#recordToolEvent(toolResult);
+          this.#recordToolEvent(toolResult, { durationMs: Date.now() - toolStart });
           this.#agentContext.recordToolCallForStagnation(toolResult, iteration,
             (name, r) => isMutationTool(name, r?.args || {}));
 
@@ -615,14 +672,23 @@ export class ReActAgent {
 
   #completeRun({ success, status, answer, reason, iterations, startedAt, error, userInputRequest }) {
     this.#workspaceIndex?.stopPeriodicSync();
+    const durationMs = Date.now() - startedAt;
+    const toolEvents = this.#runToolEvents.map(e => ({ ...e }));
     const result = {
       success, status, answer, reason, iterations,
-      durationMs: Date.now() - startedAt,
-      toolEvents: this.#runToolEvents.map(e => ({ ...e })),
+      durationMs, toolEvents,
     };
     if (error) { result.error = error; }
     if (userInputRequest) { result.userInputRequest = userInputRequest; }
     this.#lastRunResult = result;
+
+    try {
+      metricsSink.finishRun(this.#lastRunResult?.runId, {
+        success, iterations, durationMs, reason: error ? String(error) : reason,
+        toolCount: toolEvents.length,
+      });
+    } catch (_) { /* 忽略 */ }
+
     return result;
   }
 
@@ -648,14 +714,33 @@ export class ReActAgent {
     } catch { /* best-effort */ }
   }
 
-  #recordToolEvent(toolResult) {
+  #recordToolEvent(toolResult, { durationMs = null } = {}) {
     if (!toolResult?.name) return;
-    this.#runToolEvents.push({
+    const payload = {
       name: toolResult.name,
       args: toolResult.args || {},
       success: !toolResult.error && !toolResult.skipped,
-      resultPreview: this.#preview(typeof toolResult.result === 'string' ? toolResult.result : JSON.stringify(toolResult.result || ''), 300),
-    });
+      resultPreview: this.#preview(
+        typeof toolResult.result === 'string' ? toolResult.result : JSON.stringify(toolResult.result || ''),
+        300
+      ),
+    };
+    if (typeof durationMs === 'number') payload.durationMs = durationMs;
+    if (toolResult.error) payload.error = String(toolResult.error).substring(0, 300);
+    this.#runToolEvents.push(payload);
+
+    // —— 同步到 metrics sink ——
+    try {
+      metricsSink.recordToolCall({
+        runId: this.#lastRunResult?.runId,
+        toolName: toolResult.name,
+        durationMs: typeof durationMs === 'number' ? durationMs : null,
+        success: payload.success,
+        error: toolResult.error ? String(toolResult.error) : null,
+        predicted: !!toolResult.predicted,
+        skipped: !!toolResult.skipped,
+      });
+    } catch (_) { /* 忽略 */ }
   }
 
   #isLocalTermination(response) {

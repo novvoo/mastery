@@ -235,7 +235,95 @@ export function createMCPTools(mcpClient) {
         }
       },
     },
+
+    {
+      name: 'mcp_discover',
+      description: '在工作区内自动扫描常见的 MCP 配置文件，并返回可一键连接的 servers 列表',
+      category: ToolCategory.SYSTEM,
+      parameters: {
+        type: 'object',
+        properties: {
+          rootDir: {
+            type: 'string',
+            description: '扫描根目录（默认为工作区根）',
+          },
+        },
+      },
+      handler: async ({ rootDir } = {}) => {
+        try {
+          const root = rootDir || (typeof process !== 'undefined' ? process.cwd() : '.');
+          const candidates = [
+            `${root}/mcp.json`,
+            `${root}/mcp-config.json`,
+            `${root}/config/mcp.json`,
+            `${root}/.mcp/servers.json`,
+            `${root}/.mcp/config.json`,
+            `${root}/claude_desktop_config.json`,
+          ];
+
+          const found = [];
+          if (typeof mcpClient.readTextFile === 'function') {
+            for (const p of candidates) {
+              try {
+                const text = await mcpClient.readTextFile(p);
+                if (!text) continue;
+                const parsed = parseMCPConfig(text);
+                if (parsed && parsed.servers.length) {
+                  found.push({ path: p, ...parsed });
+                }
+              } catch (_) { /* 找不到就跳过 */ }
+            }
+          }
+
+          const all = [];
+          for (const item of found) {
+            for (const s of item.servers) all.push({ source: item.path, ...s });
+          }
+          return {
+            success: true,
+            count: all.length,
+            servers: all,
+            scanned: candidates,
+          };
+        } catch (error) {
+          return { success: false, error: error.message };
+        }
+      },
+    },
   ];
+}
+
+function parseMCPConfig(text) {
+  try {
+    const json = JSON.parse(text);
+    const mcpServers = json?.mcpServers;
+    const servers = json?.servers;
+    const raw = Array.isArray(servers) ? servers
+      : (mcpServers && typeof mcpServers === 'object') ? Object.entries(mcpServers).map(([name, cfg]) => ({
+          name,
+          command: cfg.command,
+          args: cfg.args || [],
+          env: cfg.env || {},
+        })) : [];
+    return {
+      servers: raw
+        .filter(s => typeof s.command === 'string' || typeof s.transport === 'object')
+        .map(s => ({
+          name: s.name || deriveName(s.command),
+          command: s.command,
+          args: s.args || [],
+          env: s.env || {},
+          transport: s.transport || null,
+        })),
+    };
+  } catch (_) {
+    return null;
+  }
+}
+function deriveName(command) {
+  if (!command) return 'server';
+  const parts = String(command).split(/[\\\/]/);
+  return parts[parts.length - 1] || 'server';
 }
 
 export default createMCPTools;

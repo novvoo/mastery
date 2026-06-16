@@ -186,6 +186,26 @@ export class AgentRouter {
         fileAnalyzer: this.#fileAnalyzer,
       };
 
+      // —— write_file 预览审批：若注册了 writeFileApproval 回调，先让用户确认 ——
+      if (name === 'write_file' && typeof this.#config.writeFileApproval === 'function') {
+        const approved = await this.#config.writeFileApproval({
+          args: effectiveArgs,
+          workingDirectory: this.#config.workingDirectory,
+          context,
+        });
+        if (approved === false) {
+          return {
+            name,
+            result: 'write_file: 用户取消了本次写入（diff 预览阶段拒绝）。',
+            skipped: true,
+          };
+        }
+        // 若审批返回了一个对象 { content?: string }，用它覆盖 original args.content
+        if (approved && typeof approved === 'object' && typeof approved.content === 'string') {
+          effectiveArgs = { ...(effectiveArgs || {}), content: approved.content };
+        }
+      }
+
       const result = await withTimeout(
         () => tool.handler(effectiveArgs, context),
         60000,
@@ -193,6 +213,11 @@ export class AgentRouter {
       );
 
       const finalResult = this.#applyToolSecurityResultPolicy(name, result);
+
+      // ---- WorkspaceState 自动 hook：读/写文件后更新快照与最近引用 ----
+      if (workspaceState) {
+        this.#updateWorkspaceState(name, effectiveArgs, finalResult, workspaceState);
+      }
 
       this.#debugEvent('Tool call completed', {
         tool: name, durationMs: Date.now() - startedAt,
@@ -355,5 +380,49 @@ export class AgentRouter {
   #preview(value, maxLength = 200) {
     const text = value === null || value === undefined ? '' : String(value);
     return text.length > maxLength ? text.substring(0, maxLength) + '... (truncated)' : text;
+  }
+
+  // ---- WorkspaceState hook：读/写/列举文件后自动同步 ----
+  #updateWorkspaceState(toolName, args, result, ws) {
+    if (!ws || !args) return;
+    const filePath = args.path || args.file_path || args.file || args.target || null;
+
+    // 1) 任何"带 path 的文件操作"都把该路径标记为"最近引用"
+    if (filePath && typeof filePath === 'string') {
+      try { ws.recordReference(filePath, toolName); } catch (_) {}
+    }
+
+    // 2) read_file / read_file_lines → 缓存文件内容快照
+    if ((toolName === 'read_file' || toolName === 'file_read' || toolName === 'cat_file')
+        && filePath) {
+      try {
+        if (result && typeof result === 'object') {
+          const text = result.text ?? result.content ?? result.data ?? null;
+          if (typeof text === 'string' && text.length > 0) {
+            ws.setFileSnapshot(filePath, text, toolName);
+          }
+        } else if (typeof result === 'string') {
+          ws.setFileSnapshot(filePath, result, toolName);
+        }
+      } catch (_) {}
+    }
+
+    // 3) write_file → 缓存写入的内容
+    if ((toolName === 'write_file' || toolName === 'file_write') && filePath) {
+      const content = args.content ?? args.text ?? null;
+      if (typeof content === 'string' && content.length > 0) {
+        try { ws.setFileSnapshot(filePath, content, toolName); } catch (_) {}
+      }
+    }
+
+    // 4) list_dir / glob → 同步标记目录存在（recordDirectoryListing
+    if (toolName === 'list_dir' || toolName === 'glob_search' || toolName === 'glob') {
+      try {
+        const entries = Array.isArray(result?.entries) ? result.entries
+          : Array.isArray(result?.files) ? result.files
+          : Array.isArray(result) ? result : [];
+        if (filePath) ws.recordDirectoryListing(filePath, entries.map(String), toolName);
+      } catch (_) {}
+    }
   }
 }

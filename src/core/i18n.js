@@ -26,8 +26,8 @@ export const SupportedLanguages = Object.freeze({
   AR: 'ar',
 });
 
-// 默认语言
-const DEFAULT_LANGUAGE = 'en';
+// 默认语言 - 简体中文
+export const DEFAULT_LANGUAGE = 'zh-CN';
 
 // 内置翻译
 const TRANSLATIONS = {
