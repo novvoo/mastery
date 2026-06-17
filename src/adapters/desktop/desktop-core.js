@@ -656,6 +656,17 @@ export class DesktopCore {
     }
   }
 
+  /**
+   * 动态更新工作目录。下一次 processInput 将使用新路径。
+   */
+  setWorkingDirectory(directory) {
+    if (!directory || typeof directory !== 'string') return;
+    this.#config.workingDirectory = directory;
+    if (this.#engine && typeof this.#engine.setWorkingDirectory === 'function') {
+      this.#engine.setWorkingDirectory(directory);
+    }
+  }
+
   /** 访问 runtime-bootstrap 产物（只读） */
   getRuntime() { return this.#runtime; }
   getWorkspaceState() { return this.#runtime?.workspaceState; }

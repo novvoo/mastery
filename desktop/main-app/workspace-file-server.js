@@ -176,20 +176,17 @@ export async function setWorkingDirectory(ctx, directory) {
   ctx.config.workingDirectory = directory;
   startFileServer(ctx);
 
-  if (ctx.desktopCore) {
-    await ctx.desktopCore.dispose();
+  if (ctx.desktopCore && typeof ctx.desktopCore.setWorkingDirectory === 'function') {
+    ctx.desktopCore.setWorkingDirectory(directory);
   }
 
-  if (typeof ctx.createDesktopCore === 'function') {
-    ctx.desktopCore = ctx.createDesktopCore({
-      workingDirectory: directory,
-      debug: ctx.config.debug,
-      ...ctx.config.runtime
-    });
-    await ctx.desktopCore.initialize();
+  if (ctx.ipcAdapter && typeof ctx.ipcAdapter.attachEngine === 'function' && ctx.desktopCore?.getEngine) {
+    ctx.ipcAdapter.attachEngine(ctx.desktopCore.getEngine());
   }
 
   startWorkspaceWatcher(ctx);
+
+  broadcastWorkspaceChange(ctx, { workingDirectory: directory, fileServerUrl: ctx.fileServerUrl });
 
   return { success: true, workingDirectory: directory, fileServerUrl: ctx.fileServerUrl };
 }

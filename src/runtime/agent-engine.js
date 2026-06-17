@@ -287,6 +287,12 @@ export class AgentEngine {
 
   setUIAdapter(adapter) { return setUIAdapter(this.#ctx(), adapter); }
 
+  setWorkingDirectory(directory) {
+    if (this.#config && typeof directory === 'string' && directory.trim()) {
+      this.#config.workingDirectory = directory;
+    }
+  }
+
   // ——— 内存与配置 ———
   async updateMemory(operation, data) { return updateMemory(this.#ctx(), operation, data); }
   async clearMemory() { return clearMemory(this.#ctx()); }
