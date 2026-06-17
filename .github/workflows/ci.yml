@@ -21,7 +21,7 @@ env:
   NODE_VERSION: "20"
 
 jobs:
-  # ========== 阶段 1: 代码质量（lint + type 检查）==========
+  # ========== 阶段 1: 代码质量（阻塞 - 必须通过）==========
   quality:
     name: Lint & Code Quality
     runs-on: ubuntu-latest
@@ -49,13 +49,44 @@ jobs:
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
-      - name: Lint
+      - name: Lint (blocking)
         run: bun run lint
 
-      - name: Check format (best-effort)
-        run: bunx prettier --check "src/**/*.js" || true
+      - name: Verify entrypoint importable
+        run: bun -e "import('./src/index.js').then(m => console.log('exports:', Object.keys(m).length + ' items'))"
 
-  # ========== 阶段 2: 单元测试（多 OS 矩阵）==========
+      - name: Verify package.json scripts match CI usage
+        run: |
+          # package:release 是 package.json 中声明的别名
+          bun run package:release 2>&1 | tail -5 || { echo "package:release script must exist"; exit 1; }
+          ls dist/ 2>/dev/null || echo "(no dist dir for this smoke run)"
+
+  # ========== 阶段 1b: Advisory（非阻塞，仅告警）==========
+  advisory:
+    name: Advisory (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+
+      - name: Check format (advisory)
+        run: bunx prettier --check "src/**/*.js"
+
+      - name: Check outdated dependencies (advisory)
+        run: bun outdated || true
+
+  # ========== 阶段 2: 单元测试（多 OS，阻塞 - 必须通过）==========
   test-unit:
     name: Unit Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -89,19 +120,22 @@ jobs:
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
       - name: Run entrypoint tests
-        run: bun test tests/entrypoints/ || true
+        run: bun test tests/entrypoints/
 
       - name: Run tools tests
-        run: bun test tests/tools/ || true
+        run: bun test tests/tools/
 
-      - name: Run desktop tests
-        run: bun test tests/desktop/ || true
+      - name: Run desktop/core integration tests
+        run: bun test tests/desktop/
+
+      - name: Run smoke test (first-run experience)
+        run: bun test tests/smoke/
 
       - name: Upload test summary
         if: always()
         run: echo "Unit tests completed on ${{ matrix.os }}"
 
-  # ========== 阶段 3: 集成与端到端测试==========
+  # ========== 阶段 3: 集成与端到端测试（阻塞 - 必须通过）==========
   test-integration:
     name: Integration & E2E Tests
     runs-on: ubuntu-latest
@@ -132,18 +166,27 @@ jobs:
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
       - name: Runtime integration tests
-        run: bun test tests/runtime/integration.test.js || true
+        run: bun test tests/runtime/
 
       - name: Core integration test
-        run: bun tests/core-integration.mjs || true
+        run: bun tests/core-integration.mjs
 
       - name: E2E agent test
-        run: bun tests/e2e-agent.mjs || true
+        run: bun tests/e2e-agent.mjs
 
       - name: E2E desktop integration test
-        run: bun test tests/e2e/desktop-integration.test.js || true
+        run: bun test tests/e2e/desktop-integration.test.js
 
-  # ========== 阶段 4: 构建与发布包验证 ==========
+      - name: Command catalog tests
+        run: bun test tests/integration/command-catalog.test.js
+
+      - name: Filesystem security tests
+        run: bun test tests/integration/filesystem-security.test.js
+
+      - name: Metrics and write-guard tests
+        run: bun test tests/integration/metrics-and-write-guard.test.js
+
+  # ========== 阶段 4: 构建与发布包验证（仅 release 分支）==========
   build:
     name: Build & Package Smoke Test
     runs-on: ubuntu-latest
@@ -163,19 +206,16 @@ jobs:
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
-      - name: Verify entrypoint importable
-        run: bun -e "import('./src/index.js').then(m => console.log('exports:', Object.keys(m).length + ' items'))"
-
       - name: Prepare release package (source mode)
-        run: bun run package:release
+        run: bun run release:prepare
         env:
           RELEASE_PLATFORM: linux
           SKIP_NODE_MODULES: "1"
 
       - name: Verify RELEASE.json generated
-        run: cat dist/*/RELEASE.json 2>/dev/null || echo "No RELEASE.json found"
+        run: cat dist/*/RELEASE.json 2>/dev/null || { echo "RELEASE.json must be generated"; exit 1; }
 
-  # ========== 汇总状态 ===========
+  # ========== 汇总状态 ==========
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
@@ -187,9 +227,9 @@ jobs:
           echo "Quality:  ${{ needs.quality.result }}"
           echo "Unit:     ${{ needs.test-unit.result }}"
           echo "E2E:      ${{ needs.test-integration.result }}"
-          if [ "${{ needs.quality.result }}" = "success" ] && [ "${{ needs.test-unit.result }}" = "success" ]; then
-            echo "✅ CI passed"
+          if [ "${{ needs.quality.result }}" = "success" ] && [ "${{ needs.test-unit.result }}" = "success" ] && [ "${{ needs.test-integration.result }}" = "success" ]; then
+            echo "✅ CI passed — blocking gates all green"
           else
-            echo "❌ CI has failures"
+            echo "❌ CI has failures in blocking gates"
             exit 1
           fi

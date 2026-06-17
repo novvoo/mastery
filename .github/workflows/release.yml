@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   validate-source:
@@ -66,7 +67,8 @@ jobs:
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
       - name: Prepare release package
-        run: bun run package:release
+        # release:prepare 是 package.json 中声明的标准脚本
+        run: bun run release:prepare
         env:
           RELEASE_PLATFORM: ${{ matrix.platform }}
           RELEASE_STANDALONE: bun
@@ -83,6 +85,15 @@ jobs:
           echo "name=${NAME}" >> "$GITHUB_OUTPUT"
           echo "arch=${ARCH}" >> "$GITHUB_OUTPUT"
           echo "package_name=${PACKAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify RELEASE.json
+        shell: bash
+        run: |
+          if [ ! -f "dist/${{ steps.meta.outputs.package_name }}/RELEASE.json" ]; then
+            echo "ERROR: RELEASE.json missing after package:release"
+            exit 1
+          fi
+          cat "dist/${{ steps.meta.outputs.package_name }}/RELEASE.json"
 
       - name: Create Debian package
         if: matrix.package_ext == 'deb'
@@ -152,7 +163,7 @@ jobs:
           cat > /usr/local/bin/agent <<'WRAPPER'
           #!/bin/sh
           exec "/usr/local/lib/$NAME/bin/agent" "\$@"
-          WRAPPER
+          WRAPPER"
           chmod 755 /usr/local/bin/agent
           exit 0
           EOF
@@ -211,7 +222,7 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Install dependencies
+      - name: Install dependencies (Node desktop target)
         run: npm ci
 
       - name: Install macOS DMG helper
@@ -230,7 +241,8 @@ jobs:
 
       - name: Build desktop package
         shell: bash
-        run: node scripts/build-desktop.js --${{ matrix.target }}
+        # desktop:build 是 package.json 中声明的标准脚本（build-desktop.js 会调用
+        run: bun run desktop:build --${{ matrix.target }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

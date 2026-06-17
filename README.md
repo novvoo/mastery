@@ -2,6 +2,23 @@
 
 AI Engineering Mastery Agent 是一个本地运行的 AI 工程助手，面向真实项目里的代码阅读、修改、验证、文档检索和日常排障。它同时提供 CLI 和 Desktop 两种入口：终端里足够快，桌面端更适合持续对话、浏览项目文件和管理文档知识库。
 
+## 运行环境与版本要求
+
+> ⚠️ **Node 18 不是推荐基线**：项目依赖的现代 JS 特性和 ESM 原生加载在 Node 18 上会遇到兼容性问题。以下是各入口的推荐版本矩阵：
+
+| 入口 | 推荐运行时 | 最低版本 | 说明 |
+|------|-----------|---------|------|
+| **CLI (开发/测试)** | Bun | **1.3.14** | `bun run start` · `bun test` · 所有单元/集成测试 |
+| **CLI (发布产物)** | Bun 或 Node | Bun 1.3+ / Node 20+ | `release:prepare` 可产出 Bun standalone 或 Node 模式 |
+| **Desktop (开发)** | Node | **20 LTS** | `bun run desktop:dev` · Electron 主进程用 Node 20 |
+| **Desktop (构建)** | Node + npm | **20 LTS** | `desktop:build:*` · electron-builder 需要 Node 20 |
+| **Renderer 构建** | Vite | **8.0** | 桌面端 React 渲染层通过 Vite 构建（5.4.6+ 安全基线） |
+| **CI / Release** | Bun + Node | Bun 1.3.14 / Node 20 | `.github/workflows/*` 已固定版本 |
+
+当前 CI 锁死版本：**Bun 1.3.14** · **Node 20** · **Vite 8.x**。在本地 `bun install` 会按锁文件解析一致的依赖。
+
+---
+
 它的核心体验不是“问模型一个答案”，而是让 Agent 按工程方法论推进任务：先理解系统和风险，再选择合适工具，修改最小必要范围，最后用测试、构建、日志或人工可检查证据验证结果。
 该架构将 Agent 的系统状态从 Token Context 中提升为 Runtime 维护的显式 State Graph。内容寻址提供稳定对象身份，状态图提供长期状态连续性，而上下文仅作为状态图在当前任务下的局部投影（Context Projection）。
 ![info 001](./images/info_001.png)

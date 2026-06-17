@@ -19,6 +19,7 @@
     "test:debug": "bun --inspect-brk tests/core-integration.mjs",
     "test:runtime": "bun test --isolate tests/runtime/integration.test.js",
     "test:adapters": "bun test --isolate tests/adapters/cli.test.js",
+    "test:smoke": "bun test --isolate tests/smoke/",
     "test:coverage": "bun test --isolate tests/ --coverage && node tests/core-integration.mjs && node tests/e2e-agent.mjs",
     "lint": "eslint src tests",
     "lint:src": "eslint src",
@@ -44,6 +45,7 @@
     "release:cli": "bun scripts/release-cli.js",
     "release:desktop": "bun scripts/release-desktop.js",
     "release:all": "bun scripts/release-all.js",
+    "package:release": "bun scripts/prepare-release-package.mjs",
     "publish": "bun run release:all"
   },
   "keywords": [
@@ -86,14 +88,14 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.1",
-    "electron": "^28.3.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^42.4.1",
     "electron-builder": "^24.13.3",
     "eslint": "^8.57.1",
     "framer-motion": "^11.3.19",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "vite": "^5.4.0"
+    "vite": "^7.0.10"
   },
   "build": {
     "appId": "com.ai-engineering-mastery.agent",
