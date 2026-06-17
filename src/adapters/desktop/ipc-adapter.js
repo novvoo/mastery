@@ -582,7 +582,15 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
       'preview:list',
       'preview:stop',
       'llm:getConfigStatus',
-      'llm:saveConfig'
+      'llm:saveConfig',
+      'llm:list-models',
+      'llm:save-model',
+      'llm:save-all-models',
+      'llm:delete-model',
+      'llm:toggle-model',
+      'command:list',
+      'command:run',
+      'metrics:snapshot',
     ];
 
     for (const channel of directInvokeChannels) {
@@ -925,11 +933,32 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
   }
 
   /**
-   * 注册自定义处理器
+   * 注册自定义处理器 —— 同时注册到 IPC handler Map 与 ipcMain.handle
+   * 确保渲染进程可用 ipcRenderer.invoke(channel, ...args) 直接调用。
    */
   registerHandler(channel, handler) {
     this.#handlers.set(channel, handler);
-    
+
+    if (this.#ipcMain && typeof this.#ipcMain.handle === 'function') {
+      if (typeof this.#ipcMain.removeHandler === 'function') {
+        try {
+          this.#ipcMain.removeHandler(channel);
+        } catch (e) {
+          // 忽略未注册时的错误
+        }
+      }
+      this.#ipcMain.handle(channel, async (event, ...args) => {
+        try {
+          const payload = args.length <= 1 ? (args[0] ?? {}) : args;
+          const result = await handler(payload, event.sender);
+          return result !== undefined ? result : { success: true };
+        } catch (error) {
+          console.error(`[MainProcessIPC] invoke ${channel} 失败:`, error);
+          throw error;
+        }
+      });
+    }
+
     if (this.config.debug) {
       console.log(`[MainProcessIPC] 注册处理器: ${channel}`);
     }
@@ -940,6 +969,13 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
    */
   unregisterHandler(channel) {
     this.#handlers.delete(channel);
+    if (this.#ipcMain && typeof this.#ipcMain.removeHandler === 'function') {
+      try {
+        this.#ipcMain.removeHandler(channel);
+      } catch (e) {
+        // 忽略未注册 handler 的情况
+      }
+    }
   }
 
   /**

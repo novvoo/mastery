@@ -18,7 +18,7 @@
   --primary-faint: rgba(61, 139, 139, 0.08);
   --secondary-color: #1F2A2A;
   --accent-color: #162020;
-  --background-color: #0F1414;
+  --background-color: #0A0D0D;
   --surface-color: #151B1B;
   --surface-raised: #1C2323;
   --surface-hover: #242C2C;
@@ -37,8 +37,8 @@
   --text-dark: #8A9696;
   --text-on-primary: #FFFFFF;
   --text-on-warning: #0B0F0F;
-  --container-gradient-start: #121717;
-  --container-gradient-end: #0C1010;
+  --container-gradient-start: #0C1010;
+  --container-gradient-end: #070909;
 
   /* 状态色 - 深色 */
   --success-color: #7BD3B8;
@@ -162,7 +162,7 @@
   --primary-faint: rgba(61, 139, 139, 0.06);
   --secondary-color: #F5F2ED;
   --accent-color: #FAF8F4;
-  --background-color: #FAF8F4;
+  --background-color: #FDFBF7;
   --surface-color: #FFFFFF;
   --surface-raised: #F2EFE8;
   --surface-hover: #E8E5DC;
@@ -181,8 +181,8 @@
   --text-dark: #B5BDBD;
   --text-on-primary: #FFFFFF;
   --text-on-warning: #2A3535;
-  --container-gradient-start: #FAF8F4;
-  --container-gradient-end: #F2EFE8;
+  --container-gradient-start: #FFFFFF;
+  --container-gradient-end: #FDFBF7;
 
   /* 状态色 - 亮色：奶白色系背景 */
   --success-color: #2E8B6A;
@@ -205,10 +205,10 @@
   --neutral-soft: #EDEBE5;
   --neutral-faint: #F4F1EB;
 
-  /* 毛玻璃 (glassmorphism) — 亮色主题（更高透明度，真正的玻璃质感） */
-  --glass-bg: rgba(255, 255, 255, 0.38);
-  --glass-bg-strong: rgba(255, 255, 255, 0.55);
-  --glass-bg-light: rgba(255, 255, 255, 0.22);
+  /* 毛玻璃 (glassmorphism) — 亮色主题（使用奶白色调而非纯白，避免 blur 后出现灰色感） */
+  --glass-bg: rgba(250, 248, 244, 0.72);
+  --glass-bg-strong: rgba(250, 248, 244, 0.88);
+  --glass-bg-light: rgba(250, 248, 244, 0.55);
   --glass-border: rgba(82, 110, 110, 0.12);
   --glass-border-strong: rgba(82, 110, 110, 0.2);
   --glass-blur: 22px;

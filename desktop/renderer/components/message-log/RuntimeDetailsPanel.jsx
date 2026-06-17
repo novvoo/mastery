@@ -797,7 +797,7 @@ const localStyles = {
   tabButtonActive: {
     color: 'var(--primary-color)',
     borderBottomColor: 'var(--primary-color)',
-    backgroundColor: 'rgba(61, 139, 139, 0.08)',
+    backgroundColor: 'var(--primary-faint)',
   },
   tabIcon: {
     fontSize: '11px',
@@ -1017,7 +1017,7 @@ const localStyles = {
   filterChipActive: {
     backgroundColor: 'var(--primary-soft)',
     color: 'var(--primary-color)',
-    borderColor: 'rgba(61, 139, 139, 0.3)',
+    borderColor: 'var(--primary-border)',
   },
   activityList: {
     padding: '6px 10px',

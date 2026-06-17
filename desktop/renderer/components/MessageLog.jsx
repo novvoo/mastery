@@ -820,7 +820,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       {/* 消息容器内部链接样式：确保 ReactMarkdown 生成的 <a> 标签有明确的链接外观 */}
       <style>{`
         .markdown a {
-          color: var(--primary-color, #4a9eff);
+          color: var(--primary-color);
           text-decoration: underline;
           cursor: pointer;
           word-break: break-all;
@@ -833,14 +833,14 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           text-decoration: underline;
         }
         .markdown code {
-          background-color: var(--surface-color, #1a1f2e);
+          background-color: var(--surface-color);
           border-radius: 4px;
           padding: 2px 6px;
           font-size: 12px;
-          color: var(--text-color, #e6e9ef);
+          color: var(--text-color);
         }
         .markdown pre {
-          background-color: var(--surface-color, #1a1f2e);
+          background-color: var(--surface-color);
           border: 1px solid var(--border-subtle);
           border-radius: 6px;
           padding: 12px;
@@ -855,7 +855,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           margin: 4px 0;
           line-height: 1.5;
           font-size: 13px;
-          color: var(--text-color, #e6e9ef);
+          color: var(--text-color);
         }
         .markdown ul, .markdown ol {
           margin: 4px 0;

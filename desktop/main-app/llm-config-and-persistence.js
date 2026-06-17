@@ -207,3 +207,63 @@ export async function handleSaveConfig(ctx) {
     dialog.showErrorBox('保存失败', error.message);
   }
 }
+
+/**
+ * 多模型配置持久化
+ * 将模型配置列表保存到用户数据目录下的 models.json 文件
+ */
+
+function getModelConfigsPath(ctx) {
+  const { app } = ctx.electron;
+  return path.join(app.getPath('userData'), 'models.json');
+}
+
+export function readAllModelConfigs(ctx) {
+  try {
+    const configPath = getModelConfigsPath(ctx);
+    if (!fs.existsSync(configPath)) return [];
+    const raw = fs.readFileSync(configPath, 'utf8');
+    return JSON.parse(raw);
+  } catch (err) {
+    console.warn('读取模型配置失败:', err.message);
+    return [];
+  }
+}
+
+export function saveAllModelConfigs(ctx, configs) {
+  try {
+    const configPath = getModelConfigsPath(ctx);
+    const dir = path.dirname(configPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify(configs, null, 2));
+    return { success: true };
+  } catch (err) {
+    console.error('保存模型配置失败:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+export function saveSingleModelConfig(ctx, config) {
+  const configs = readAllModelConfigs(ctx);
+  const idx = configs.findIndex(c => c.id === config.id);
+  if (idx >= 0) {
+    configs[idx] = { ...configs[idx], ...config };
+  } else {
+    configs.push(config);
+  }
+  return saveAllModelConfigs(ctx, configs);
+}
+
+export function deleteModelConfig(ctx, id) {
+  const configs = readAllModelConfigs(ctx);
+  const filtered = configs.filter(c => c.id !== id);
+  return saveAllModelConfigs(ctx, filtered);
+}
+
+export function toggleModelConfig(ctx, id, enabled) {
+  const configs = readAllModelConfigs(ctx);
+  const updated = configs.map(c =>
+    c.id === id ? { ...c, enabled: enabled !== undefined ? enabled : !c.enabled } : c
+  );
+  return saveAllModelConfigs(ctx, updated);
+}

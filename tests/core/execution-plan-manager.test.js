@@ -28,15 +28,25 @@ mock.module('../../src/planner/graph-planner.js', () => {
       }
 
       addTask(task) {
+        const deps = Array.isArray(task.dependencies) ? task.dependencies : [];
         const t = {
           id: task.id,
           name: task.name,
           description: task.description || '',
-          dependencies: task.dependencies || [],
+          dependencies: new Set(deps),
+          dependents: new Set(),
           status: TaskStatus.PENDING,
           updateStatus(status, data) {
             this.status = status;
             if (data?.result) this.result = data.result;
+          },
+          checkDependencies(taskMap) {
+            if (this.dependencies.size === 0) return true;
+            for (const depId of this.dependencies) {
+              const dep = taskMap.get(depId);
+              if (!dep || dep.status !== TaskStatus.COMPLETED) return false;
+            }
+            return true;
           },
         };
         this.tasks.set(task.id, t);
@@ -60,10 +70,15 @@ mock.module('../../src/planner/graph-planner.js', () => {
             name: t.name,
             description: t.description,
             status: t.status,
-            dependencies: t.dependencies,
+            dependencies: Array.from(t.dependencies || []),
           })),
         };
       }
+    },
+    default: class GraphPlanner {
+      constructor() { this._latestPlanId = null; }
+      createPlan() { this._latestPlanId = 'mock-plan'; }
+      decomposeTask() { return []; }
     },
   };
 });

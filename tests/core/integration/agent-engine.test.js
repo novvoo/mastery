@@ -164,9 +164,73 @@ mock.module('../../../src/core/agent-constants.js', () => ({
   MAX_ITERATIONS_DEFAULT: 10,
 }));
 
-mock.module('../../../src/planner/graph-planner.js', () => ({
-  TaskStatus: { PENDING: 'pending', RUNNING: 'running', DONE: 'done' },
-}));
+mock.module('../../../src/planner/graph-planner.js', () => {
+  const TaskStatus = {
+    PENDING: 'pending',
+    BLOCKED: 'blocked',
+    READY: 'ready',
+    RUNNING: 'running',
+    COMPLETED: 'completed',
+    FAILED: 'failed',
+    SKIPPED: 'skipped',
+    CANCELLED: 'cancelled',
+  };
+  return {
+    TaskStatus,
+    ExecutionPlan: class ExecutionPlan {
+      constructor(opts) {
+        this.name = opts?.name || '';
+        this.description = opts?.description || '';
+        this.context = opts?.context || {};
+        this.status = TaskStatus.PENDING;
+        this.startedAt = null;
+        this.completedAt = null;
+        this.tasks = new Map();
+      }
+      addTask(task) {
+        const deps = Array.isArray(task.dependencies) ? task.dependencies : [];
+        this.tasks.set(task.id, {
+          id: task.id,
+          name: task.name,
+          description: task.description || '',
+          dependencies: new Set(deps),
+          dependents: new Set(),
+          status: TaskStatus.PENDING,
+          updateStatus(status, data) {
+            this.status = status;
+            if (data?.result) this.result = data.result;
+          },
+          checkDependencies(taskMap) {
+            if (this.dependencies.size === 0) return true;
+            for (const depId of this.dependencies) {
+              const dep = taskMap.get(depId);
+              if (!dep || dep.status !== TaskStatus.COMPLETED) return false;
+            }
+            return true;
+          },
+        });
+      }
+      getTask(id) { return this.tasks.get(id); }
+      getReadyTasks() {
+        return Array.from(this.tasks.values()).filter(t => t.status === TaskStatus.PENDING || t.status === TaskStatus.BLOCKED);
+      }
+      toJSON() {
+        return {
+          name: this.name,
+          status: this.status,
+          tasks: Array.from(this.tasks.values()).map(t => ({
+            id: t.id, status: t.status, dependencies: Array.from(t.dependencies || []),
+          })),
+        };
+      }
+    },
+    default: class GraphPlanner {
+      constructor() { this._latestPlanId = null; }
+      createPlan() { this._latestPlanId = 'mock-plan'; }
+      decomposeTask() { return []; }
+    },
+  };
+});
 
 mock.module('../../../src/core/risk-budget.js', () => ({
   quickAssess: () => ({ risk: 'low', type: 'general' }),

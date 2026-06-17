@@ -202,6 +202,27 @@ export function registerCustomHandlers(ctx) {
     return typeof ctx.saveLLMConfig ? await ctx.saveLLMConfig(config) : { success: false };
   });
 
+  // 多模型管理
+  ipc.registerHandler('llm:list-models', async () => {
+    return typeof ctx.readAllModelConfigs ? ctx.readAllModelConfigs() : [];
+  });
+
+  ipc.registerHandler('llm:save-model', async (config) => {
+    return typeof ctx.saveSingleModelConfig ? ctx.saveSingleModelConfig(config) : { success: false };
+  });
+
+  ipc.registerHandler('llm:save-all-models', async (configs) => {
+    return typeof ctx.saveAllModelConfigs ? ctx.saveAllModelConfigs(configs) : { success: false };
+  });
+
+  ipc.registerHandler('llm:delete-model', async (id) => {
+    return typeof ctx.deleteModelConfig ? ctx.deleteModelConfig(id) : { success: false };
+  });
+
+  ipc.registerHandler('llm:toggle-model', async ({ id, enabled }) => {
+    return typeof ctx.toggleModelConfig ? ctx.toggleModelConfig(id, enabled) : { success: false };
+  });
+
   if (ctx.config.debug) {
     console.log('   注册了自定义 IPC 处理器');
   }

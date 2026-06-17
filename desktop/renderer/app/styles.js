@@ -101,9 +101,7 @@ export const styles = {
     top: '100%',
     left: 0,
     minWidth: '200px',
-    backgroundColor: 'var(--glass-bg-strong)',
-    backdropFilter: 'blur(20px) saturate(180%)',
-    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+    backgroundColor: 'var(--surface-color)',
     border: '1px solid var(--glass-border)',
     borderRadius: '10px',
     boxShadow: 'var(--glass-shadow-lg)',
@@ -215,7 +213,10 @@ export const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 'var(--spacing-sm)',
-    backgroundColor: 'var(--glass-bg-light)'
+    backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(8px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
+    boxShadow: 'var(--glass-inner-hl)'
   },
 
   sidebarTitle: {
@@ -255,7 +256,10 @@ export const styles = {
     gap: '6px',
     padding: 'var(--spacing-sm)',
     borderBottom: '1px solid var(--glass-border)',
-    backgroundColor: 'var(--glass-bg-light)'
+    backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(8px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
+    boxShadow: 'var(--glass-inner-hl)'
   },
 
   previewHeader: {
@@ -289,6 +293,8 @@ export const styles = {
 
   inspectorTabActive: {
     backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(8px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
     border: '1px solid var(--glass-border)',
     color: 'var(--text-color)',
     boxShadow: 'var(--glass-inner-hl)'
@@ -300,6 +306,8 @@ export const styles = {
     borderRadius: '6px',
     border: '1px solid var(--glass-border)',
     backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(8px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
     color: 'var(--text-muted)',
     cursor: 'pointer',
     fontSize: '13px',
@@ -308,7 +316,8 @@ export const styles = {
     justifyContent: 'center',
     padding: 0,
     flex: '0 0 auto',
-    transition: 'all var(--transition-fast)'
+    transition: 'all var(--transition-fast)',
+    boxShadow: 'var(--glass-inner-hl)'
   },
 
   previewFrame: {
@@ -433,6 +442,8 @@ export const styles = {
     borderRadius: '8px',
     border: '1px solid var(--glass-border)',
     backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(8px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
     color: 'var(--text-color)',
     padding: '0 10px',
     fontSize: '12px',
@@ -454,6 +465,9 @@ export const styles = {
     borderRadius: '8px',
     border: '1px solid var(--glass-border)',
     backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(6px) saturate(130%)',
+    WebkitBackdropFilter: 'blur(6px) saturate(130%)',
+    boxShadow: 'var(--glass-inner-hl)',
     fontSize: '11px',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
@@ -471,7 +485,8 @@ export const styles = {
     color: 'var(--text-color)',
     cursor: 'pointer',
     fontSize: '13px',
-    transition: 'all var(--transition-fast)'
+    transition: 'all var(--transition-fast)',
+    boxShadow: 'var(--glass-inner-hl)'
   },
   
   // ================== 聊天区域 ==================
@@ -492,7 +507,8 @@ export const styles = {
     borderBottom: '1px solid var(--glass-border)',
     backgroundColor: 'var(--glass-bg-light)',
     backdropFilter: 'blur(12px) saturate(150%)',
-    WebkitBackdropFilter: 'blur(12px) saturate(150%)'
+    WebkitBackdropFilter: 'blur(12px) saturate(150%)',
+    boxShadow: 'var(--glass-inner-hl)'
   },
   
   chatTitle: {
@@ -513,9 +529,9 @@ export const styles = {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'linear-gradient(145deg, rgba(61, 139, 139, 0.24), rgba(61, 139, 139, 0.08))',
+    background: 'linear-gradient(145deg, var(--primary-strong), var(--primary-faint))',
     color: 'var(--text-color)',
-    border: '1px solid rgba(61, 139, 139, 0.3)',
+    border: '1px solid var(--primary-border)',
     fontSize: '10px',
     fontWeight: 800
   },
@@ -622,6 +638,8 @@ export const styles = {
     border: '1px solid var(--glass-border)',
     borderRadius: '8px',
     backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(8px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
     color: 'var(--text-color)',
     padding: '8px',
     fontSize: '13px',
@@ -761,9 +779,7 @@ export const styles = {
   
   modal: {
     width: 'min(560px, 100%)',
-    backgroundColor: 'var(--glass-bg-strong)',
-    backdropFilter: 'blur(24px) saturate(180%)',
-    WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+    backgroundColor: 'var(--surface-color)',
     border: '1px solid var(--glass-border)',
     borderRadius: '12px',
     boxShadow: 'var(--glass-shadow-lg)',
@@ -812,9 +828,11 @@ export const styles = {
     borderRadius: '8px',
     border: '1px solid var(--glass-border)',
     backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(8px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
     color: 'var(--text-color)',
     padding: '0 10px',
-    boxShadow: 'var(--shadow-inset)',
+    boxShadow: 'var(--glass-inner-hl)',
     transition: 'all var(--transition-fast)',
     outline: 'none'
   },
@@ -826,7 +844,10 @@ export const styles = {
     gap: '12px',
     padding: '14px 20px',
     borderTop: '1px solid var(--glass-border)',
-    backgroundColor: 'var(--glass-bg-light)'
+    backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(8px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
+    boxShadow: 'var(--glass-inner-hl)'
   },
   
   modalActions: {
@@ -872,5 +893,298 @@ export const styles = {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap'
-  }
+  },
+
+  // ================== 管理页面 ==================
+  managementOverlay: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 2000,
+    backgroundColor: 'rgba(20, 20, 22, 0.45)',
+    backdropFilter: 'blur(8px) saturate(150%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(150%)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  managementContainer: {
+    display: 'flex',
+    width: '90vw',
+    maxWidth: '800px',
+    height: '80vh',
+    maxHeight: '600px',
+    backgroundColor: 'var(--surface-color)',
+    border: '1px solid var(--glass-border)',
+    borderRadius: '14px',
+    boxShadow: 'var(--glass-shadow-lg)',
+    overflow: 'hidden',
+  },
+
+  managementSidebar: {
+    display: 'flex',
+    flexDirection: 'column',
+    width: '180px',
+    minWidth: '180px',
+    backgroundColor: 'var(--glass-bg)',
+    backdropFilter: 'blur(16px) saturate(160%)',
+    WebkitBackdropFilter: 'blur(16px) saturate(160%)',
+    borderRight: '1px solid var(--glass-border)',
+    boxShadow: 'var(--glass-inner-hl)',
+    paddingTop: '12px',
+  },
+
+  managementSidebarHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '8px 12px 14px',
+    color: 'var(--text-color)',
+    borderBottom: '1px solid var(--glass-border)',
+    marginBottom: '4px',
+  },
+
+  managementTab: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    width: '100%',
+    height: '36px',
+    padding: '0 14px',
+    border: 'none',
+    backgroundColor: 'transparent',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: 500,
+    textAlign: 'left',
+    transition: 'all var(--transition-fast)',
+  },
+
+  managementTabActive: {
+    backgroundColor: 'var(--primary-soft)',
+    color: 'var(--primary-color)',
+    fontWeight: 700,
+  },
+
+  managementContent: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+
+  managementCloseBtn: {
+    position: 'absolute',
+    top: '10px',
+    right: '10px',
+    width: '28px',
+    height: '28px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: '1px solid var(--glass-border)',
+    borderRadius: '6px',
+    backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(8px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    fontSize: '13px',
+    zIndex: 1,
+    transition: 'all var(--transition-fast)',
+    boxShadow: 'var(--glass-inner-hl)'
+  },
+
+  mgmtContentInner: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '20px',
+  },
+
+  mgmtContentHeader: {
+    marginBottom: '16px',
+    paddingBottom: '12px',
+    borderBottom: '1px solid var(--glass-border)',
+  },
+
+  mgmtSection: {
+    marginBottom: '16px',
+  },
+
+  mgmtSectionTitle: {
+    fontSize: '11px',
+    fontWeight: 700,
+    color: 'var(--text-muted)',
+    textTransform: 'uppercase',
+    padding: '0 12px 6px',
+  },
+
+  mgmtCheckboxRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '6px 12px',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '12px',
+  },
+
+  mgmtCheckbox: {
+    width: '14px',
+    height: '14px',
+    accentColor: 'var(--primary-color)',
+    cursor: 'pointer',
+  },
+
+  // ================== 模型管理 ==================
+  modelGroup: {
+    marginBottom: '8px',
+    borderRadius: '8px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(8px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
+    boxShadow: 'var(--glass-inner-hl)',
+    overflow: 'hidden',
+  },
+
+  modelGroupHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    width: '100%',
+    padding: '10px 12px',
+    border: 'none',
+    backgroundColor: 'transparent',
+    color: 'var(--text-color)',
+    cursor: 'pointer',
+    fontSize: '13px',
+    textAlign: 'left',
+  },
+
+  modelGroupBody: {
+    borderTop: '1px solid var(--glass-border)',
+    padding: '8px',
+  },
+
+  modelCard: {
+    border: '1px solid var(--glass-border)',
+    borderRadius: '8px',
+    marginBottom: '6px',
+    backgroundColor: 'var(--glass-bg)',
+    backdropFilter: 'blur(10px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(10px) saturate(140%)',
+    boxShadow: 'var(--glass-inner-hl)',
+    overflow: 'hidden',
+  },
+
+  modelCardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '8px 12px',
+  },
+
+  modelCardInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    flex: 1,
+    minWidth: 0,
+  },
+
+  modelCardName: {
+    fontWeight: 600,
+    fontSize: '13px',
+    color: 'var(--text-color)',
+  },
+
+  modelCardActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    flexShrink: 0,
+  },
+
+  modelActionBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '24px',
+    height: '24px',
+    border: '1px solid var(--glass-border)',
+    borderRadius: '4px',
+    backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(8px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    fontSize: '11px',
+    transition: 'all var(--transition-fast)',
+    boxShadow: 'var(--glass-inner-hl)'
+  },
+
+  modelAddBtn: {
+    display: 'block',
+    width: '100%',
+    padding: '8px',
+    border: '1px dashed var(--glass-border-strong)',
+    borderRadius: '6px',
+    backgroundColor: 'transparent',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: 500,
+    transition: 'all var(--transition-fast)',
+  },
+
+  modelForm: {
+    padding: '12px',
+    borderTop: '1px solid var(--glass-border)',
+  },
+
+  modelFormActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: '8px',
+    marginTop: '12px',
+  },
+
+  modelNameInput: {
+    height: '28px',
+    padding: '0 8px',
+    borderRadius: '6px',
+    border: '1px solid var(--primary-soft)',
+    backgroundColor: 'var(--glass-bg-light)',
+    color: 'var(--text-color)',
+    fontSize: '12px',
+    width: '160px',
+  },
+
+  // ================== MCP 管理 ==================
+  mcpServerCard: {
+    border: '1px solid var(--glass-border)',
+    borderRadius: '8px',
+    marginBottom: '8px',
+    backgroundColor: 'var(--glass-bg)',
+    backdropFilter: 'blur(10px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(10px) saturate(140%)',
+    boxShadow: 'var(--glass-inner-hl)',
+    overflow: 'hidden',
+  },
+
+  mcpServerHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '10px 12px',
+  },
+
+  mcpServerInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  },
 };

@@ -133,7 +133,7 @@ export function ChatWorkspace({
             style={{
               ...styles.sendButton,
               ...(runtime.status === 'running'
-                ? { backgroundColor: 'var(--warning-color)', color: '#000' }
+                ? { backgroundColor: 'var(--warning-color)', color: 'var(--text-on-primary)' }
                 : !chatInput.trim()
                   ? styles.sendButtonDisabled
                   : {})

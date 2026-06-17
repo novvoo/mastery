@@ -26,9 +26,7 @@ export function SettingsMenu({
   return (
     <div style={{
       position: 'fixed', left: '56px', bottom: '44px',
-      width: '260px', backgroundColor: 'var(--glass-bg-strong)',
-      backdropFilter: 'blur(20px) saturate(180%)',
-      WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+      width: '260px', backgroundColor: 'var(--surface-color)',
       border: '1px solid var(--glass-border)',
       borderRadius: '12px',
       boxShadow: 'var(--glass-shadow-lg)', zIndex: 1000,

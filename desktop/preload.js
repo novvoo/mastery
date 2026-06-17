@@ -46,7 +46,15 @@ const ALLOWED_CHANNELS = {
     'preview:list',
     'preview:stop',
     'llm:getConfigStatus',
-    'llm:saveConfig'
+    'llm:saveConfig',
+    'llm:list-models',
+    'llm:save-model',
+    'llm:save-all-models',
+    'llm:delete-model',
+    'llm:toggle-model',
+    'command:list',
+    'command:run',
+    'metrics:snapshot',
   ],
   
   // 发送频道（使用 send）

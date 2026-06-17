@@ -145,7 +145,7 @@ function PreviewTab({
               style={{
                 ...styles.previewPipelineStage,
                 color: stage.status === 'failed' ? 'var(--error-color)' : 'var(--text-muted)',
-                backgroundColor: stage.status === 'running' ? 'rgba(79, 140, 255, 0.08)' : 'var(--surface-color)',
+                backgroundColor: stage.status === 'running' ? 'var(--info-faint)' : 'var(--surface-color)',
               }}
             >
               {stage.name}: {stage.status}

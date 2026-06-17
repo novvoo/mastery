@@ -67,6 +67,11 @@ import {
   getLLMConfigStatus,
   saveLLMConfig,
   handleSaveConfig,
+  readAllModelConfigs,
+  saveAllModelConfigs,
+  saveSingleModelConfig,
+  deleteModelConfig,
+  toggleModelConfig,
 } from './main-app/llm-config-and-persistence.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -161,6 +166,11 @@ class ElectronMainApp {
     ctx.listWorkspaceDirectory = (p, opts) => listWorkspaceDirectory(ctx, p, opts);
     ctx.getLLMConfigStatus = () => getLLMConfigStatus(ctx);
     ctx.saveLLMConfig = (cfg) => saveLLMConfig(ctx, cfg);
+    ctx.readAllModelConfigs = () => readAllModelConfigs(ctx);
+    ctx.saveAllModelConfigs = (configs) => saveAllModelConfigs(ctx, configs);
+    ctx.saveSingleModelConfig = (config) => saveSingleModelConfig(ctx, config);
+    ctx.deleteModelConfig = (id) => deleteModelConfig(ctx, id);
+    ctx.toggleModelConfig = (id, enabled) => toggleModelConfig(ctx, id, enabled);
 
     // 预览服务绑定
     bindPreviewFuncs(ctx);

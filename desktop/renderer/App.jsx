@@ -13,6 +13,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import StatusBar from './components/StatusBar.jsx';
 import { SettingsMenu } from './components/SettingsMenu.jsx';
 import { LLMSetupModal } from './components/LLMSetupModal.jsx';
+import { ManagementPage } from './components/management/ManagementPage.jsx';
 import { ActivityRail } from './components/workbench/ActivityRail.jsx';
 import { ChatWorkspace } from './components/workbench/ChatWorkspace.jsx';
 import { InspectorPanel } from './components/workbench/InspectorPanel.jsx';
@@ -75,6 +76,7 @@ function App() {
   const [fileServerUrl, setFileServerUrl] = useState('');
   const [llmConfigStatus, setLLMConfigStatus] = useState(null);
   const [showLLMSetup, setShowLLMSetup] = useState(false);
+  const [showManagement, setShowManagement] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [llmForm, setLLMForm] = useState({
     provider: 'openai',
@@ -84,6 +86,8 @@ function App() {
   });
   const [llmSetupError, setLLMSetupError] = useState('');
   const [llmSetupSaving, setLLMSetupSaving] = useState(false);
+  const [modelConfigs, setModelConfigs] = useState([]);
+  const [mcpServers, setMcpServers] = useState([]);
   const [platformInfo, setPlatformInfo] = useState(null);
   const [windowState, setWindowState] = useState({
     isFullScreen: false,
@@ -418,6 +422,13 @@ function App() {
       }).catch(error => {
         console.error('[App] 获取 LLM 配置状态失败:', error);
       });
+
+      // 加载多模型配置
+      ipc.invoke('llm:list-models').then(configs => {
+        if (isMounted && Array.isArray(configs) && configs.length > 0) {
+          setModelConfigs(configs);
+        }
+      }).catch(() => {});
       
       // 获取工具列表
       runtime.loadTools();
@@ -446,6 +457,13 @@ function App() {
       ipc.disconnect();
     };
   }, []);
+
+  // 模型配置变更时持久化保存
+  useEffect(() => {
+    if (modelConfigs.length > 0 && ipc.isConnected) {
+      ipc.invoke('llm:save-all-models', modelConfigs).catch(() => {});
+    }
+  }, [modelConfigs, ipc.isConnected]);
   
   // 处理工作目录变更
   const handleWorkingDirectoryChange = useCallback(async () => {
@@ -977,6 +995,46 @@ function App() {
     }
   }, [ipc, llmForm]);
 
+  // ===== 模型管理 Handlers =====
+  const handleAddModel = useCallback((config) => {
+    setModelConfigs(prev => [...prev, config]);
+  }, []);
+
+  const handleUpdateModel = useCallback((id, updated) => {
+    setModelConfigs(prev => prev.map(c => c.id === id ? { ...c, ...updated } : c));
+  }, []);
+
+  const handleDeleteModel = useCallback((id) => {
+    setModelConfigs(prev => prev.filter(c => c.id !== id));
+  }, []);
+
+  const handleToggleModel = useCallback((id) => {
+    setModelConfigs(prev => prev.map(c =>
+      c.id === id ? { ...c, enabled: !c.enabled } : c
+    ));
+  }, []);
+
+  // ===== MCP 管理 Handlers =====
+  const handleAddMcpServer = useCallback((server) => {
+    setMcpServers(prev => [...prev, server]);
+  }, []);
+
+  const handleDeleteMcpServer = useCallback((id) => {
+    setMcpServers(prev => prev.filter(s => s.id !== id));
+  }, []);
+
+  const handleToggleMcpServer = useCallback((id) => {
+    setMcpServers(prev => prev.map(s =>
+      s.id === id ? { ...s, status: s.status === 'connected' ? 'disconnected' : 'connected' } : s
+    ));
+  }, []);
+
+  const handleConnectMcpServer = useCallback((id) => {
+    setMcpServers(prev => prev.map(s =>
+      s.id === id ? { ...s, status: 'connecting' } : s
+    ));
+  }, []);
+
   const handleInsertText = useCallback((text) => {
     setChatInput(text);
     setShowSuggestions(text.trimStart().startsWith('/'));
@@ -1100,7 +1158,7 @@ function App() {
             setActiveTab('tools');
             setSidebarCollapsed(false);
           }}
-          onToggleSettings={() => setShowSettings(prev => !prev)}
+          onToggleSettings={() => setShowManagement(prev => !prev)}
         />
 
         {!sidebarCollapsed && (
@@ -1199,19 +1257,29 @@ function App() {
         />
       </footer>
 
-      {/* 设置下拉菜单 */}
-      {showSettings && (
-        <SettingsMenu
+      {/* 管理设置页面 */}
+      {showManagement && (
+        <ManagementPage
           agentOptions={agentOptions}
           setAgentOptions={setAgentOptions}
           theme={theme}
           onToggleTheme={toggleTheme}
-          onClose={() => setShowSettings(false)}
-          onOpenLLMSetup={() => setShowLLMSetup(true)}
           language={language}
           onChangeLanguage={handleLanguageChange}
+          modelConfigs={modelConfigs}
+          onAddModel={handleAddModel}
+          onUpdateModel={handleUpdateModel}
+          onDeleteModel={handleDeleteModel}
+          onToggleModel={handleToggleModel}
+          mcpServers={mcpServers}
+          onAddMcpServer={handleAddMcpServer}
+          onDeleteMcpServer={handleDeleteMcpServer}
+          onToggleMcpServer={handleToggleMcpServer}
+          onConnectMcpServer={handleConnectMcpServer}
+          onClose={() => setShowManagement(false)}
         />
       )}
+      {/* LLM 设置弹窗 (保留备用) */}
       {showLLMSetup && (
         <LLMSetupModal
           llmConfigStatus={llmConfigStatus}
