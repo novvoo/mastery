@@ -678,6 +678,16 @@ export class AgentEngine {
   /** 挂载 modelProvider（支持两步初始化：先构造引擎，再连模型） */
   attachModelProvider(provider) { this.#modelProvider = provider; }
 
+  /** 动态更新工作目录。下次 run/processInput 将使用新路径 */
+  setWorkingDirectory(directory) {
+    if (this.#config && typeof directory === 'string' && directory.trim()) {
+      this.#config.workingDirectory = directory;
+    }
+  }
+
+  /** 访问当前配置（只读，工作目录等信息可用于 UI 展示） */
+  getConfig() { return this.#config; }
+
   /** 访问当前 ToolRegistry（用于调试 / 动态注册） */
   getToolRegistry() { return this.#toolRegistry; }
 
