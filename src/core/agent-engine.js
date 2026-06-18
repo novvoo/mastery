@@ -680,8 +680,17 @@ export class AgentEngine {
 
   /** 动态更新工作目录。下次 run/processInput 将使用新路径 */
   setWorkingDirectory(directory) {
-    if (this.#config && typeof directory === 'string' && directory.trim()) {
-      this.#config.workingDirectory = directory;
+    if (!this.#config || typeof directory !== 'string' || !directory.trim()) return;
+    this.#config.workingDirectory = directory;
+
+    // 同步更新依赖组件，确保目录切换后所有子系统都在新目录下工作
+    if (typeof this.#workspaceIndex?.setWorkingDirectory === 'function') {
+      this.#workspaceIndex.setWorkingDirectory(directory);
+    }
+
+    // 重置 ToolExecutor 缓存状态，确保下次工具调用从新目录加载缓存
+    if (typeof this.#toolExecutor?.reset === 'function') {
+      this.#toolExecutor.reset();
     }
   }
 

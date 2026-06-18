@@ -93,19 +93,34 @@ function inferKind(relPath, ext) {
 
 export class WorkspaceIndex {
   #workingDir;
-  #indexDir;
-  #indexPath;
   #index;
   #lastSyncAt;
   #syncTimer;
 
   constructor(workingDir) {
     this.#workingDir = workingDir;
-    this.#indexDir = join(workingDir, '.agent-data', 'workspace-index');
-    this.#indexPath = join(this.#indexDir, 'index.json');
     this.#index = new Map();
     this.#lastSyncAt = 0;
     this.#syncTimer = null;
+  }
+
+  /** 动态计算索引目录 — 确保工作目录切换后使用新目录 */
+  get #indexDir() {
+    return join(this.#workingDir, '.agent-data', 'workspace-index');
+  }
+
+  /** 动态计算索引文件路径 */
+  get #indexPath() {
+    return join(this.#indexDir, 'index.json');
+  }
+
+  /** 动态更新工作目录。切换目录时会清空现有索引。 */
+  setWorkingDirectory(workingDir) {
+    if (!workingDir || typeof workingDir !== 'string') return;
+    if (this.#workingDir === workingDir) return;
+    this.#workingDir = workingDir;
+    this.#index.clear();
+    this.#lastSyncAt = 0;
   }
 
   // ─── 持久化 ───

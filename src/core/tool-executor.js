@@ -30,7 +30,6 @@ export class ToolExecutor {
   #config;
   #callHistory = new Set();
   #resultCache = new Map();
-  #resultCachePath;
   #cacheLoaded = false;
   #events = [];
   #observerHooks = [];
@@ -46,12 +45,16 @@ export class ToolExecutor {
     this.#config = config || {};
     this.#contentStore = contentStore || null;
     this.#fileAnalyzer = fileAnalyzer || null;
-    this.#resultCachePath = this.#config.toolResultCacheEnabled !== false
-      ? `${this.#config.workingDirectory || process.cwd()}/.agent-data/tool-cache.jsonl`
-      : null;
   }
 
   // ============== 公共 API ==============
+
+  /** 动态计算缓存路径 — 确保工作目录切换后使用新目录 */
+  get #toolResultCachePath() {
+    if (this.#config.toolResultCacheEnabled === false) return null;
+    const workingDir = this.#config.workingDirectory || process.cwd();
+    return `${workingDir}/.agent-data/tool-cache.jsonl`;
+  }
 
   get events() { return this.#events.slice(); }
 
@@ -249,10 +252,10 @@ export class ToolExecutor {
   async #loadResultCache() {
     if (this.#cacheLoaded) return;
     this.#cacheLoaded = true;
-    if (!this.#resultCachePath) return;
+    if (!this.#toolResultCachePath) return;
     try {
-      if (!existsSync(this.#resultCachePath)) return;
-      const content = await readFile(this.#resultCachePath, 'utf8');
+      if (!existsSync(this.#toolResultCachePath)) return;
+      const content = await readFile(this.#toolResultCachePath, 'utf8');
       const lines = content.split('\n').filter(Boolean);
       for (const line of lines.slice(-TOOL_RESULT_CACHE_MAX)) {
         try {
@@ -264,12 +267,12 @@ export class ToolExecutor {
   }
 
   async #flushCacheEntry(signature, result) {
-    if (!this.#resultCachePath) return;
+    if (!this.#toolResultCachePath) return;
     try {
-      const dir = this.#resultCachePath.substring(0, this.#resultCachePath.lastIndexOf('/'));
+      const dir = this.#toolResultCachePath.substring(0, this.#toolResultCachePath.lastIndexOf('/'));
       if (!existsSync(dir)) await mkdir(dir, { recursive: true });
       await appendFile(
-        this.#resultCachePath,
+        this.#toolResultCachePath,
         JSON.stringify({ signature, result, createdAt: Date.now() }) + '\n',
         'utf8'
       );
