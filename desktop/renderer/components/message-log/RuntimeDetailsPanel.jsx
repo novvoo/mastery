@@ -13,13 +13,11 @@ import {
 } from './runtime-details.js';
 import { buildActivitySummary, getActivityTone, getFileStatusLabel, getFileTypeIcon, formatDuration } from './activity-summary.js';
 
-// ===== Tab 定义 =====
+// ===== Tab 定义（3 Tab：概览 / 文件 / 活动） =====
 const TABS = [
   { id: 'overview', key: 'exec.overview', icon: '◉' },
-  { id: 'reasoning', key: 'msg.thinking_summary_label', icon: '◇' },
-  { id: 'files', key: 'exec.tools_used', icon: '🖹' },
+  { id: 'files', key: 'exec.tools_used', icon: '🗂' },
   { id: 'activity', key: 'exec.activity_log', icon: '⚡' },
-  { id: 'log', key: 'ui.root', icon: '☰' },
 ];
 
 // ===== 文件状态颜色 =====
@@ -97,12 +95,20 @@ export function RuntimeDetailsPanel({
   const [showAllFiles, setShowAllFiles] = useState(false);
   // 活动列表展开状态
   const [showAllActivities, setShowAllActivities] = useState(false);
-  // 活动 intent 过滤
+  // 文件 intent 过滤（files Tab 专用，与 activity 分离避免互相干扰）
+  const [fileIntentFilter, setFileIntentFilter] = useState('all');
+  // 活动 intent 过滤（activity Tab 专用）
   const [activityIntentFilter, setActivityIntentFilter] = useState('all');
   // 活动 phase 过滤
   const [activityPhaseFilter, setActivityPhaseFilter] = useState('all');
   // 活动搜索
   const [activitySearch, setActivitySearch] = useState('');
+  // activity Tab 视图模式：'structured' 结构化 checklist | 'raw' 原始日志
+  const [activityViewMode, setActivityViewMode] = useState('structured');
+  // 概览 Tab 中的思考摘要折叠状态
+  const [showOverviewReasoning, setShowOverviewReasoning] = useState(false);
+  // 活动 Tab 中的 reasoning 折叠状态
+  const [showActivityReasoning, setShowActivityReasoning] = useState(false);
   // 展开的活动详情
   const [expandedActivities, setExpandedActivities] = useState(new Set());
   const [expandedFileDiffs, setExpandedFileDiffs] = useState(new Set());
@@ -256,34 +262,10 @@ export function RuntimeDetailsPanel({
     </div>
   );
 
-  const renderReasoning = () => {
-    if (thinkingSummary.count === 0) {
-      return <div style={localStyles.emptyTab}>{t('status.not_set')}</div>;
-    }
-
-    return (
-      <div style={localStyles.reasoningList}>
-        {thinkingSummary.messages.map((msg, index) => {
-          const title = msg.payload?.eventName || msg.summary || (msg.iteration ? t('msg.iteration_x', { n: msg.iteration }) : t('msg.fragment_n', { n: index + 1 }));
-          const detail = msg.thinkingText || msg.summary || msg.payload?.message || msg.payload?.data?.textPreview || msg.content || t('msg.model_thinking');
-          return (
-            <div key={msg.id || `${group.id}_reasoning_${index}`} style={localStyles.reasoningItem}>
-              <div style={localStyles.reasoningHeader}>
-                <span style={localStyles.reasoningTitle}>{title}</span>
-                {msg.timestamp && <span style={localStyles.reasoningTime}>{new Date(msg.timestamp).toLocaleTimeString()}</span>}
-              </div>
-              <div style={localStyles.reasoningText}>{detail}</div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  // ===== 概览 Tab =====
+  // ===== 概览 Tab：进度 + 统计 + 任务阶段 + 迷你文件 + 迷你活动 + 思考摘要 =====
   const renderOverview = () => (
     <>
-      {/* 进度条 - 始终显示 */}
+      {/* 进度条 */}
       <div style={styles.runtimeProgress}>
         <div style={styles.runtimeProgressText}>
           <span style={styles.runtimeProgressLabel}>{statusText}</span>
@@ -302,7 +284,7 @@ export function RuntimeDetailsPanel({
         </div>
       </div>
 
-      {/* 活动摘要行 */}
+      {/* 统计摘要 */}
       <div style={localStyles.overviewRow}>
         <span style={localStyles.overviewStat}>
           <span style={localStyles.overviewStatValue}>{activitySummary.fileCount}</span>
@@ -367,7 +349,7 @@ export function RuntimeDetailsPanel({
       {/* 迷你文件列表 */}
       {activitySummary.files.length > 0 && (
         <div style={localStyles.miniFileList}>
-          {activitySummary.files.slice(0, 4).map(file => (
+          {activitySummary.files.slice(0, 3).map(file => (
             <div key={file.path} style={localStyles.miniFileItem}>
               <span style={localStyles.fileTypeIcon}>{getFileTypeIcon(file.path)}</span>
               <span style={localStyles.miniFilePath} title={file.path}>{file.path}</span>
@@ -376,19 +358,94 @@ export function RuntimeDetailsPanel({
               </span>
             </div>
           ))}
-          {activitySummary.files.length > 4 && (
+          {activitySummary.files.length > 3 && (
             <button
               type="button"
               style={localStyles.showMoreButton}
               onClick={(e) => { e.stopPropagation(); setActiveTab('files'); }}
             >
-              +{activitySummary.files.length - 4}
+              +{activitySummary.files.length - 3} 个文件 →
             </button>
           )}
         </div>
       )}
 
-      {activitySummary.files.length === 0 && (
+      {/* 迷你活动列表（最后 3 个，点击跳转到活动 Tab） */}
+      {activitySummary.activities.length > 0 && (
+        <div style={localStyles.miniActivityList}>
+          {activitySummary.activities.slice(-3).map((activity, idx) => {
+            const tone = getActivityTone(activity);
+            return (
+              <div key={`${activity.id || activity.toolName}_${idx}`} style={localStyles.miniActivityItem}>
+                <span style={{
+                  ...localStyles.miniActivityMark,
+                  ...(tone === 'completed' ? localStyles.miniActivityMarkDone : {}),
+                  ...(tone === 'failed' ? localStyles.miniActivityMarkFail : {}),
+                  ...(tone === 'waiting' ? localStyles.miniActivityMarkWait : {}),
+                }}>
+                  {tone === 'completed' ? '✓' : tone === 'failed' ? '✗' : tone === 'waiting' ? '?' : '…'}
+                </span>
+                <span style={localStyles.miniActivityText} title={activity.statusText || activity.title}>
+                  {activity.statusText || activity.title}
+                </span>
+              </div>
+            );
+          })}
+          {activitySummary.activities.length > 3 && (
+            <button
+              type="button"
+              style={localStyles.showMoreButton}
+              onClick={(e) => { e.stopPropagation(); setActiveTab('activity'); }}
+            >
+              +{activitySummary.activities.length - 3} 个活动 →
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* 思考摘要（折叠） */}
+      {thinkingSummary.count > 0 && (
+        <div style={localStyles.overviewReasoningWrap}>
+          <button
+            type="button"
+            style={localStyles.overviewReasoningHeader}
+            onClick={(e) => { e.stopPropagation(); setShowOverviewReasoning(v => !v); }}
+          >
+            <span style={localStyles.overviewReasoningIcon}>◇</span>
+            <span style={localStyles.overviewReasoningTitle}>
+              {t('msg.thinking_summary_label')} ({thinkingSummary.count})
+            </span>
+            <span style={{ color: 'var(--text-muted)' }}>
+              {showOverviewReasoning ? '▾' : '▸'}
+            </span>
+          </button>
+          {showOverviewReasoning && (
+            <div style={localStyles.reasoningList}>
+              {thinkingSummary.messages.slice(0, 3).map((msg, index) => (
+                <div key={msg.id || `${group.id}_overview_thinking_${index}`} style={localStyles.reasoningItem}>
+                  <div style={localStyles.reasoningHeader}>
+                    <span style={localStyles.reasoningTitle}>
+                      {msg.payload?.eventName || msg.summary || (msg.iteration ? t('msg.iteration_x', { n: msg.iteration }) : t('msg.fragment_n', { n: index + 1 }))}
+                    </span>
+                    {msg.timestamp && <span style={localStyles.reasoningTime}>{new Date(msg.timestamp).toLocaleTimeString()}</span>}
+                  </div>
+                  <div style={localStyles.reasoningText}>
+                    {msg.thinkingText || msg.summary || msg.payload?.message || msg.payload?.data?.textPreview || msg.content || t('msg.model_thinking')}
+                  </div>
+                </div>
+              ))}
+              {thinkingSummary.messages.length > 3 && (
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '10px', padding: '4px' }}>
+                  还有 {thinkingSummary.messages.length - 3} 条
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 无文件无活动时显示亮点 */}
+      {activitySummary.files.length === 0 && activitySummary.activities.length === 0 && (
         <div style={localStyles.overviewHighlights}>
           {overviewHighlights.map(item => (
             <div
@@ -409,11 +466,20 @@ export function RuntimeDetailsPanel({
     </>
   );
 
-  // ===== 文件 Tab =====
+  // ===== 文件 Tab：完整文件列表 + diff + 独立过滤（不与 activity 共享） =====
+  const fileListFiltered = useMemo(() => {
+    if (fileIntentFilter === 'all') return activitySummary.files;
+    return activitySummary.files.filter(f => f.status === fileIntentFilter);
+  }, [activitySummary.files, fileIntentFilter]);
+
   const renderFiles = () => (
     <>
       <div style={localStyles.fileListHeader}>
-        <span style={localStyles.fileListCount}>{activitySummary.files.length}</span>
+        <span style={localStyles.fileListCount}>
+          {fileIntentFilter !== 'all'
+            ? `${fileListFiltered.length} / ${activitySummary.files.length}`
+            : activitySummary.files.length}
+        </span>
         <div style={localStyles.fileFilterGroup}>
           {['all', 'read', 'edited', 'created', 'deleted'].map(filter => (
             <button
@@ -421,9 +487,9 @@ export function RuntimeDetailsPanel({
               type="button"
               style={{
                 ...localStyles.filterChip,
-                ...(activityIntentFilter === filter && filter !== 'all' ? localStyles.filterChipActive : {}),
+                ...(fileIntentFilter === filter ? localStyles.filterChipActive : {}),
               }}
-              onClick={(e) => { e.stopPropagation(); setActivityIntentFilter(filter); }}
+              onClick={(e) => { e.stopPropagation(); setFileIntentFilter(filter); }}
             >
               {filter === 'all' ? t('ui.root') : getFileStatusLabel(filter)}
             </button>
@@ -431,7 +497,7 @@ export function RuntimeDetailsPanel({
         </div>
       </div>
       <div style={localStyles.fileList}>
-        {displayedFiles.map(file => {
+        {(showAllFiles ? fileListFiltered : fileListFiltered.slice(0, 8)).map(file => {
           const isDiffExpanded = expandedFileDiffs.has(file.path);
           const diffResult = fileDiffs[file.path];
           const isDiffLoading = loadingDiffs.has(file.path);
@@ -477,16 +543,16 @@ export function RuntimeDetailsPanel({
           );
         })}
       </div>
-      {hasMoreFiles && !showAllFiles && (
+      {fileListFiltered.length > 8 && !showAllFiles && (
         <button
           type="button"
           style={localStyles.showMoreButton}
           onClick={(e) => { e.stopPropagation(); setShowAllFiles(true); }}
         >
-          {activitySummary.files.length}
+          {fileListFiltered.length}
         </button>
       )}
-      {showAllFiles && hasMoreFiles && (
+      {showAllFiles && fileListFiltered.length > 8 && (
         <button
           type="button"
           style={localStyles.showMoreButton}
@@ -501,283 +567,342 @@ export function RuntimeDetailsPanel({
     </>
   );
 
-  // ===== 活动 Tab =====
+  // ===== 活动 Tab：视图切换（结构化 checklist | 原始日志）+ 顶部 reasoning 折叠 =====
   const renderActivity = () => (
     <>
-      {/* 过滤栏 */}
-      <div style={localStyles.activityFilterBar}>
-        <input
-          type="text"
-          style={localStyles.activitySearch}
-          placeholder={t('exec.search_activity')}
-          value={activitySearch}
-          onChange={(e) => { e.stopPropagation(); setActivitySearch(e.target.value); }}
-          onClick={(e) => e.stopPropagation()}
-        />
-        <div style={localStyles.filterGroup}>
-          {INTENT_FILTERS.map(f => (
-            <button
-              key={`intent-${f.value}`}
-              type="button"
-              style={{
-                ...localStyles.filterChip,
-                ...(activityIntentFilter === f.value ? localStyles.filterChipActive : {}),
-              }}
-              onClick={(e) => { e.stopPropagation(); setActivityIntentFilter(f.value); }}
-              title={t(f.key)}
-            >
-              {t(f.key)}
-            </button>
-          ))}
-        </div>
-        <div style={localStyles.filterGroup}>
-          {PHASE_FILTERS.map(f => (
-            <button
-              key={`phase-${f.value}`}
-              type="button"
-              style={{
-                ...localStyles.filterChip,
-                ...(activityPhaseFilter === f.value ? localStyles.filterChipActive : {}),
-              }}
-              onClick={(e) => { e.stopPropagation(); setActivityPhaseFilter(f.value); }}
-              title={t(f.key)}
-            >
-              {t(f.key)}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 活动 checklist 列表 */}
-      <div style={localStyles.activityList}>
-        {displayedActivities.map((activity, index) => {
-          const tone = getActivityTone(activity);
-          const isExpandedDetail = expandedActivities.has(activity.id || index);
-          const duration = activity.startedAt && activity.updatedAt
-            ? activity.updatedAt - activity.startedAt
-            : null;
-
-          return (
-            <div key={`${activity.id || activity.toolName}_${index}`}>
-              <div
-                style={{
-                  ...styles.activityItem,
-                  ...(tone === 'completed' ? styles.activityItemCompleted : {}),
-                  ...(tone === 'failed' ? styles.activityItemFailed : {}),
-                  ...(tone === 'waiting' ? styles.activityItemWaiting : {}),
-                }}
-              >
-                <div style={localStyles.activityCheckRow}>
-                  {/* Checklist 标记 */}
-                  <span style={{
-                    ...localStyles.checkMark,
-                    ...(tone === 'completed' ? localStyles.checkMarkDone : {}),
-                    ...(tone === 'failed' ? localStyles.checkMarkFail : {}),
-                    ...(tone === 'waiting' ? localStyles.checkMarkWait : {}),
-                  }}>
-                    {tone === 'completed' ? '✓' : tone === 'failed' ? '✗' : tone === 'waiting' ? '?' : '…'}
+      {/* 视图切换栏：顶部有 reasoning 折叠和 结构化/原始日志 切换 */}
+      <div style={localStyles.activityTopBar}>
+        {/* 顶部 reasoning 折叠 */}
+        {thinkingSummary.count > 0 && (
+          <button
+            type="button"
+            style={localStyles.activityReasoningToggle}
+            onClick={(e) => { e.stopPropagation(); setShowActivityReasoning(v => !v); }}
+          >
+            <span style={localStyles.activityReasoningIcon}>◇</span>
+            <span style={localStyles.activityReasoningTitle}>
+              {t('msg.thinking_summary_label')} ({thinkingSummary.count})
+            </span>
+            <span style={{ color: 'var(--text-muted)', marginLeft: 'auto' }}>
+              {showActivityReasoning ? '▾' : '▸'}
+            </span>
+          </button>
+        )}
+        {showActivityReasoning && thinkingSummary.count > 0 && (
+          <div style={localStyles.reasoningList}>
+            {thinkingSummary.messages.map((msg, index) => (
+              <div key={msg.id || `${group.id}_activity_thinking_${index}`} style={localStyles.reasoningItem}>
+                <div style={localStyles.reasoningHeader}>
+                  <span style={localStyles.reasoningTitle}>
+                    {msg.payload?.eventName || msg.summary || (msg.iteration ? t('msg.iteration_x', { n: msg.iteration }) : t('msg.fragment_n', { n: index + 1 }))}
                   </span>
-                  <div style={localStyles.activityMainContent}>
-                    <div style={localStyles.activityTitleRow}>
-                      <span style={styles.activityTitle} title={activity.statusText || activity.title}>
-                        {activity.statusText || activity.title}
-                      </span>
-                      {duration !== null && (
-                        <span style={localStyles.activityDuration}>{formatDuration(duration)}</span>
-                      )}
-                    </div>
-                    {/* 展开按钮 */}
-                    {activity.detail && (
-                      <button
-                        type="button"
-                        style={localStyles.expandDetailButton}
-                        onClick={(e) => { e.stopPropagation(); toggleActivityExpand(activity.id || index); }}
-                        title={isExpandedDetail ? t('msg.hide_details') : t('msg.details')}
-                      >
-                        {isExpandedDetail ? '▾' : '▸'}
-                      </button>
-                    )}
-                  </div>
+                  {msg.timestamp && <span style={localStyles.reasoningTime}>{new Date(msg.timestamp).toLocaleTimeString()}</span>}
                 </div>
-                <div style={styles.activityActions}>
-                  {activity.canUndo && (
-                    <button
-                      type="button"
-                      style={styles.activityActionButton}
-                      title={t('exec.ask_revert')}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onActivityAction?.('undo', activity);
-                      }}
-                    >
-                      {t('common.undo')}
-                    </button>
-                  )}
-                  {activity.canReview && (
-                    <button
-                      type="button"
-                      style={styles.activityActionButton}
-                      title={t('exec.review_change')}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onActivityAction?.('review', activity);
-                      }}
-                    >
-                      {t('exec.review_change')}
-                    </button>
-                  )}
+                <div style={localStyles.reasoningText}>
+                  {msg.thinkingText || msg.summary || msg.payload?.message || msg.payload?.data?.textPreview || msg.content || t('msg.model_thinking')}
                 </div>
               </div>
-              {/* 展开的详情 */}
-              {isExpandedDetail && activity.detail && (
-                <div style={localStyles.activityDetailExpanded}>
-                  <pre style={localStyles.activityDetailPre}>{activity.detail}</pre>
-                </div>
-              )}
-            </div>
-          );
-        })}
+            ))}
+          </div>
+        )}
+
+        {/* 视图切换：结构化 checklist | 原始日志 */}
+        <div style={localStyles.activityViewSwitcher}>
+          <button
+            type="button"
+            style={{
+              ...localStyles.viewTab,
+              ...(activityViewMode === 'structured' ? localStyles.viewTabActive : {}),
+            }}
+            onClick={(e) => { e.stopPropagation(); setActivityViewMode('structured'); }}
+          >
+            ☑ 结构化 ({activitySummary.total || filteredActivities.length})
+          </button>
+          <button
+            type="button"
+            style={{
+              ...localStyles.viewTab,
+              ...(activityViewMode === 'raw' ? localStyles.viewTabActive : {}),
+            }}
+            onClick={(e) => { e.stopPropagation(); setActivityViewMode('raw'); }}
+          >
+            ☰ 原始日志 ({visibleRuntimeDetails.length})
+          </button>
+        </div>
       </div>
 
-      {hasMoreActivities && !showAllActivities && (
-        <button
-          type="button"
-          style={localStyles.showMoreButton}
-          onClick={(e) => { e.stopPropagation(); setShowAllActivities(true); }}
-        >
-          {filteredActivities.length}
-        </button>
-      )}
-      {showAllActivities && hasMoreActivities && (
-        <button
-          type="button"
-          style={localStyles.showMoreButton}
-          onClick={(e) => { e.stopPropagation(); setShowAllActivities(false); }}
-        >
-          {t('msg.collapse')}
-        </button>
-      )}
-      {filteredActivities.length === 0 && (
-        <div style={localStyles.emptyTab}>
-          {activitySearch ? t('status.not_set') : t('status.not_set')}
-        </div>
-      )}
-    </>
-  );
+      {/* 结构化视图：搜索 + 过滤 + checklist */}
+      {activityViewMode === 'structured' && (
+        <>
+          <div style={localStyles.activityFilterBar}>
+            <input
+              type="text"
+              style={localStyles.activitySearch}
+              placeholder={t('exec.search_activity')}
+              value={activitySearch}
+              onChange={(e) => { e.stopPropagation(); setActivitySearch(e.target.value); }}
+              onClick={(e) => e.stopPropagation()}
+            />
+            <div style={localStyles.filterGroup}>
+              {INTENT_FILTERS.map(f => (
+                <button
+                  key={`intent-${f.value}`}
+                  type="button"
+                  style={{
+                    ...localStyles.filterChip,
+                    ...(activityIntentFilter === f.value ? localStyles.filterChipActive : {}),
+                  }}
+                  onClick={(e) => { e.stopPropagation(); setActivityIntentFilter(f.value); }}
+                  title={t(f.key)}
+                >
+                  {t(f.key)}
+                </button>
+              ))}
+            </div>
+            <div style={localStyles.filterGroup}>
+              {PHASE_FILTERS.map(f => (
+                <button
+                  key={`phase-${f.value}`}
+                  type="button"
+                  style={{
+                    ...localStyles.filterChip,
+                    ...(activityPhaseFilter === f.value ? localStyles.filterChipActive : {}),
+                  }}
+                  onClick={(e) => { e.stopPropagation(); setActivityPhaseFilter(f.value); }}
+                  title={t(f.key)}
+                >
+                  {t(f.key)}
+                </button>
+              ))}
+            </div>
+          </div>
 
-  // ===== 日志 Tab =====
-  const renderLog = () => (
-    <div
-      ref={(node) => onRefChange(group.id, node)}
-      style={{
-        ...styles.runtimeDetailsList,
-        ...(isLarge
-          ? styles.runtimeDetailsListLarge
-          : isExpanded
-            ? styles.runtimeDetailsListExpanded
-            : styles.runtimeDetailsListCollapsed),
-      }}
-    >
-      {visibleRuntimeDetails.map((msg, index) => {
-        const runtimeDetailId = createRuntimeDetailId(group.id, msg, index);
-        const detailExpanded = expandedRuntimeDetails.has(runtimeDetailId);
-        const typeDisplay = getTypeDisplay(msg.type);
-        const isDebug = msg.type === 'debug';
-        const content = detailExpanded ? getRuntimeDetailContent(msg) : '';
-        const firstLine = detailExpanded
-          ? (content ? content.split('\n')[0].trim() : t('status.not_set'))
-          : getRuntimeDetailPreviewText(msg);
-        const scoreInfo = msg.type === 'tool_result' && typeof msg.result === 'string'
-          ? ((m) => m ? { file: m[1], score: parseInt(m[2]) } : null)(msg.result.match(/^\[(.+?)\] → (\d+)% match/))
-          : null;
+          <div style={localStyles.activityList}>
+            {displayedActivities.map((activity, index) => {
+              const tone = getActivityTone(activity);
+              const isExpandedDetail = expandedActivities.has(activity.id || index);
+              const duration = activity.startedAt && activity.updatedAt
+                ? activity.updatedAt - activity.startedAt
+                : null;
 
-        return (
-          <div
-            key={runtimeDetailId}
-            style={{
-              ...styles.runtimeDetailItem,
-              ...styles.runtimeDetailItemInteractive,
-              ...(isDebug ? styles.runtimeDetailItemDebug : styles.runtimeDetailItemStatus),
-              ...(detailExpanded ? {} : { padding: '3px 8px' }),
-            }}
-            onClick={() => onRuntimeDetailToggle(runtimeDetailId)}
-            title={detailExpanded ? t('msg.collapse') : t('msg.expand')}
-          >
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: '8px',
-              color: 'var(--text-dark)',
-              fontSize: '11px',
-              ...(detailExpanded ? { marginBottom: '4px' } : {}),
-            }}>
-              <span style={{
-                flex: detailExpanded ? '0 0 auto' : 1,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-              }}>
-                <span style={{ flexShrink: 0 }}>{typeDisplay.text}</span>
-                {scoreInfo && (
-                  <span style={{ padding: '1px 6px', borderRadius: '3px', backgroundColor: 'var(--primary-soft)', color: 'var(--primary-color)', fontSize: '10px', fontWeight: '700', flexShrink: 0, marginRight: '2px' }}>
-                    {scoreInfo.score}%
-                  </span>
-                )}
-                {!detailExpanded && (
+              return (
+                <div key={`${activity.id || activity.toolName}_${index}`}>
+                  <div
+                    style={{
+                      ...styles.activityItem,
+                      ...(tone === 'completed' ? styles.activityItemCompleted : {}),
+                      ...(tone === 'failed' ? styles.activityItemFailed : {}),
+                      ...(tone === 'waiting' ? styles.activityItemWaiting : {}),
+                    }}
+                  >
+                    <div style={localStyles.activityCheckRow}>
+                      <span style={{
+                        ...localStyles.checkMark,
+                        ...(tone === 'completed' ? localStyles.checkMarkDone : {}),
+                        ...(tone === 'failed' ? localStyles.checkMarkFail : {}),
+                        ...(tone === 'waiting' ? localStyles.checkMarkWait : {}),
+                      }}>
+                        {tone === 'completed' ? '✓' : tone === 'failed' ? '✗' : tone === 'waiting' ? '?' : '…'}
+                      </span>
+                      <div style={localStyles.activityMainContent}>
+                        <div style={localStyles.activityTitleRow}>
+                          <span style={styles.activityTitle} title={activity.statusText || activity.title}>
+                            {activity.statusText || activity.title}
+                          </span>
+                          {duration !== null && (
+                            <span style={localStyles.activityDuration}>{formatDuration(duration)}</span>
+                          )}
+                        </div>
+                        {activity.detail && (
+                          <button
+                            type="button"
+                            style={localStyles.expandDetailButton}
+                            onClick={(e) => { e.stopPropagation(); toggleActivityExpand(activity.id || index); }}
+                            title={isExpandedDetail ? t('msg.hide_details') : t('msg.details')}
+                          >
+                            {isExpandedDetail ? '▾' : '▸'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div style={styles.activityActions}>
+                      {activity.canUndo && (
+                        <button
+                          type="button"
+                          style={styles.activityActionButton}
+                          title={t('exec.ask_revert')}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onActivityAction?.('undo', activity);
+                          }}
+                        >
+                          {t('common.undo')}
+                        </button>
+                      )}
+                      {activity.canReview && (
+                        <button
+                          type="button"
+                          style={styles.activityActionButton}
+                          title={t('exec.review_change')}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onActivityAction?.('review', activity);
+                          }}
+                        >
+                          {t('exec.review_change')}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {isExpandedDetail && activity.detail && (
+                    <div style={localStyles.activityDetailExpanded}>
+                      <pre style={localStyles.activityDetailPre}>{activity.detail}</pre>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {hasMoreActivities && !showAllActivities && (
+            <button
+              type="button"
+              style={localStyles.showMoreButton}
+              onClick={(e) => { e.stopPropagation(); setShowAllActivities(true); }}
+            >
+              {filteredActivities.length}
+            </button>
+          )}
+          {showAllActivities && hasMoreActivities && (
+            <button
+              type="button"
+              style={localStyles.showMoreButton}
+              onClick={(e) => { e.stopPropagation(); setShowAllActivities(false); }}
+            >
+              {t('msg.collapse')}
+            </button>
+          )}
+          {filteredActivities.length === 0 && (
+            <div style={localStyles.emptyTab}>
+              {activitySearch ? t('status.not_set') : t('status.not_set')}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* 原始日志视图：完整 runtime details */}
+      {activityViewMode === 'raw' && (
+        <div
+          ref={(node) => onRefChange(group.id, node)}
+          style={{
+            ...styles.runtimeDetailsList,
+            ...(isLarge
+              ? styles.runtimeDetailsListLarge
+              : isExpanded
+                ? styles.runtimeDetailsListExpanded
+                : styles.runtimeDetailsListCollapsed),
+          }}
+        >
+          {visibleRuntimeDetails.map((msg, index) => {
+            const runtimeDetailId = createRuntimeDetailId(group.id, msg, index);
+            const detailExpanded = expandedRuntimeDetails.has(runtimeDetailId);
+            const typeDisplay = getTypeDisplay(msg.type);
+            const isDebug = msg.type === 'debug';
+            const content = detailExpanded ? getRuntimeDetailContent(msg) : '';
+            const firstLine = detailExpanded
+              ? (content ? content.split('\n')[0].trim() : t('status.not_set'))
+              : getRuntimeDetailPreviewText(msg);
+            const scoreInfo = msg.type === 'tool_result' && typeof msg.result === 'string'
+              ? ((m) => m ? { file: m[1], score: parseInt(m[2]) } : null)(msg.result.match(/^\[(.+?)\] → (\d+)% match/))
+              : null;
+
+            return (
+              <div
+                key={runtimeDetailId}
+                style={{
+                  ...styles.runtimeDetailItem,
+                  ...styles.runtimeDetailItemInteractive,
+                  ...(isDebug ? styles.runtimeDetailItemDebug : styles.runtimeDetailItemStatus),
+                  ...(detailExpanded ? {} : { padding: '3px 8px' }),
+                }}
+                onClick={() => onRuntimeDetailToggle(runtimeDetailId)}
+                title={detailExpanded ? t('msg.collapse') : t('msg.expand')}
+              >
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '8px',
+                  color: 'var(--text-dark)',
+                  fontSize: '11px',
+                  ...(detailExpanded ? { marginBottom: '4px' } : {}),
+                }}>
                   <span style={{
-                    marginLeft: '4px',
-                    color: 'var(--text-muted)',
-                    fontWeight: 400,
-                    fontSize: '11px',
+                    flex: detailExpanded ? '0 0 auto' : 1,
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
                   }}>
-                    {firstLine.substring(0, 120)}
+                    <span style={{ flexShrink: 0 }}>{typeDisplay.text}</span>
+                    {scoreInfo && (
+                      <span style={{ padding: '1px 6px', borderRadius: '3px', backgroundColor: 'var(--primary-soft)', color: 'var(--primary-color)', fontSize: '10px', fontWeight: '700', flexShrink: 0, marginRight: '2px' }}>
+                        {scoreInfo.score}%
+                      </span>
+                    )}
+                    {!detailExpanded && (
+                      <span style={{
+                        marginLeft: '4px',
+                        color: 'var(--text-muted)',
+                        fontWeight: 400,
+                        fontSize: '11px',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {firstLine.substring(0, 120)}
+                      </span>
+                    )}
                   </span>
+                  <span style={{ flexShrink: 0 }}>
+                    {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
+                    <span style={{ marginLeft: '6px', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                      {detailExpanded ? '▾' : '▸'}
+                    </span>
+                  </span>
+                </div>
+                {detailExpanded && (
+                  <div
+                    style={{
+                      ...styles.runtimeDetailContent,
+                      ...styles.runtimeDetailContentExpanded,
+                    }}
+                  >
+                    {content || '(无内容)'}
+                  </div>
                 )}
-              </span>
-              <span style={{ flexShrink: 0 }}>
-                {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
-                <span style={{ marginLeft: '6px', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                  {detailExpanded ? '▾' : '▸'}
-                </span>
-              </span>
-            </div>
-            {detailExpanded && (
-              <div
-                style={{
-                  ...styles.runtimeDetailContent,
-                  ...styles.runtimeDetailContentExpanded,
-                }}
-              >
-                {content || '(无内容)'}
               </div>
-            )}
-          </div>
-        );
-      })}
-      {visibleRuntimeDetails.length === 0 && runtimeDetails.length > 0 && (
-        <div style={localStyles.emptyTab}>{t('ui.root')}</div>
+            );
+          })}
+          {visibleRuntimeDetails.length === 0 && runtimeDetails.length > 0 && (
+            <div style={localStyles.emptyTab}>{t('ui.root')}</div>
+          )}
+          {visibleRuntimeDetails.length === 0 && runtimeDetails.length === 0 && (
+            <div style={localStyles.emptyTab}>{t('status.not_set')}</div>
+          )}
+        </div>
       )}
-      {visibleRuntimeDetails.length === 0 && runtimeDetails.length === 0 && (
-        <div style={localStyles.emptyTab}>{t('status.not_set')}</div>
-      )}
-    </div>
+    </>
   );
 
   // ===== 渲染 Tab 内容 =====
   const renderTabContent = () => {
     switch (activeTab) {
       case 'overview': return renderOverview();
-      case 'reasoning': return renderReasoning();
       case 'files': return renderFiles();
       case 'activity': return renderActivity();
-      case 'log': return renderLog();
       default: return renderOverview();
     }
   };
@@ -878,7 +1003,7 @@ const localStyles = {
   },
   tabButtonActive: {
     color: 'var(--primary-color)',
-    borderBottomColor: 'var(--primary-color)',
+    borderBottom: '2px solid var(--primary-color)',
     backgroundColor: 'var(--primary-faint)',
   },
   tabIcon: {
@@ -923,6 +1048,85 @@ const localStyles = {
   overviewStatLabel: {
     fontSize: '10px',
     fontWeight: 500,
+  },
+
+  // 概览：迷你活动列表
+  miniActivityList: {
+    padding: '6px 10px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '3px',
+  },
+  miniActivityItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    minHeight: '22px',
+  },
+  miniActivityMark: {
+    width: '16px',
+    height: '16px',
+    borderRadius: '50%',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '9px',
+    fontWeight: 700,
+    flexShrink: 0,
+    backgroundColor: 'var(--neutral-faint)',
+    color: 'var(--text-muted)',
+  },
+  miniActivityMarkDone: {
+    backgroundColor: 'var(--success-soft)',
+    color: 'var(--success-color)',
+  },
+  miniActivityMarkFail: {
+    backgroundColor: 'var(--error-soft)',
+    color: 'var(--error-color)',
+  },
+  miniActivityMarkWait: {
+    backgroundColor: 'var(--info-soft)',
+    color: 'var(--info-color)',
+    animation: 'pulse 1s infinite',
+  },
+  miniActivityText: {
+    flex: 1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: 'var(--text-color)',
+    fontSize: '11px',
+    fontWeight: 500,
+  },
+
+  // 概览：reasoning 折叠
+  overviewReasoningWrap: {
+    margin: '6px 10px',
+    borderRadius: '6px',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-subtle)',
+    overflow: 'hidden',
+  },
+  overviewReasoningHeader: {
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '6px 8px',
+    border: 'none',
+    backgroundColor: 'transparent',
+    color: 'var(--text-dark)',
+    fontSize: '11px',
+    fontWeight: 700,
+    cursor: 'pointer',
+    textAlign: 'left',
+  },
+  overviewReasoningIcon: {
+    fontSize: '10px',
+    color: 'var(--info-color)',
+  },
+  overviewReasoningTitle: {
+    fontSize: '11px',
   },
 
   // 迷你文件列表
@@ -1152,7 +1356,58 @@ const localStyles = {
     fontSize: '11px',
   },
 
-  // 活动 Tab
+  // 活动 Tab：顶部栏 + 视图切换
+  activityTopBar: {
+    padding: '6px 10px',
+    borderBottom: '1px solid var(--border-subtle)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+  },
+  activityReasoningToggle: {
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '4px 8px',
+    border: '1px solid var(--info-border)',
+    borderRadius: '5px',
+    backgroundColor: 'var(--info-faint)',
+    color: 'var(--text-dark)',
+    fontSize: '11px',
+    fontWeight: 700,
+    cursor: 'pointer',
+    textAlign: 'left',
+  },
+  activityReasoningIcon: {
+    fontSize: '10px',
+    color: 'var(--info-color)',
+  },
+  activityReasoningTitle: {
+    fontSize: '11px',
+  },
+  activityViewSwitcher: {
+    display: 'flex',
+    gap: '4px',
+  },
+  viewTab: {
+    flex: 1,
+    padding: '5px 8px',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '5px',
+    backgroundColor: 'var(--glass-bg-light)',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+  },
+  viewTabActive: {
+    backgroundColor: 'var(--primary-faint)',
+    borderColor: 'var(--primary-border)',
+    color: 'var(--primary-color)',
+    fontWeight: 700,
+  },
   activityFilterBar: {
     padding: '8px 10px',
     borderBottom: '1px solid var(--border-subtle)',

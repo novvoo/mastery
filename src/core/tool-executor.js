@@ -21,6 +21,11 @@ import { TextToolParser } from './text-tool-parser.js';
 import { Decision } from './security-policy.js';
 
 const TOOL_RESULT_CACHE_MAX = 500;
+const TOOL_RESULT_CACHE_TTL_MS = 5 * 60 * 1000;
+const READ_ONLY_TOOLS = new Set([
+  'list_dir', 'read_file', 'glob', 'tree', 'stat_file', 'search_codebase',
+  'file_analyzer', 'view_patch', 'workspace_knowledge',
+]);
 
 export class ToolExecutor {
   #toolRegistry;
@@ -89,9 +94,13 @@ export class ToolExecutor {
     const startedAt = Date.now();
     const callSignature = `${name}:${JSON.stringify(args)}`;
 
-    // ============ 去重：内存 + 持久化缓存 ============
+    // ============ 去重：内存 + 持久化缓存（读工具不使用持久化缓存，失败调用不阻止重试） ============
     await this.#loadResultCache();
-    if (this.#callHistory.has(callSignature) || this.#resultCache.has(callSignature)) {
+    const isReadOnly = READ_ONLY_TOOLS.has(name);
+    const cacheHit = this.#callHistory.has(callSignature)
+      || (!isReadOnly && this.#resultCache.has(callSignature));
+
+    if (cacheHit) {
       this.#ui.warn?.(`Duplicate tool call detected: ${name}. Skipping.`);
       const cachedResult = this.#resultCache.get(callSignature);
       const observation = cachedResult
@@ -99,10 +108,6 @@ export class ToolExecutor {
         : `Warning: Duplicate call to ${name} skipped. Use the existing observations to provide the final answer.`;
       options.emitObservation?.(id, name, observation, resultMode);
       return { name, result: cachedResult || null, skipped: true, cached: !!cachedResult };
-    }
-    this.#callHistory.add(callSignature);
-    if (this.#callHistory.size > 50) {
-      // keep bounded
     }
 
     // ============ 基于工作区状态的智能预测（若提供） ============
@@ -201,8 +206,18 @@ export class ToolExecutor {
       );
       finalResult = this.#applySecurityResultPolicy(name, rawResult);
       this.#recordEvent(name, effectiveArgs, true, finalResult);
-      this.#resultCache.set(callSignature, typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult));
-      this.#flushCacheEntry(callSignature, this.#resultCache.get(callSignature));
+      // 仅成功执行的调用才加入历史，避免失败后无法重试
+      this.#callHistory.add(callSignature);
+      if (this.#callHistory.size > 50) {
+        const oldest = this.#callHistory.values().next().value;
+        this.#callHistory.delete(oldest);
+      }
+      // 读工具不写持久化缓存（文件系统会变化），写工具才持久化
+      if (!isReadOnly) {
+        const cachedValue = typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult);
+        this.#resultCache.set(callSignature, cachedValue);
+        this.#flushCacheEntry(callSignature, cachedValue);
+      }
       this.#ui.toolResult?.(name, finalResult, effectiveArgs);
       options.emitObservation?.(id, name, finalResult, resultMode);
       return { name, result: finalResult, durationMs: Date.now() - startedAt };
@@ -255,10 +270,16 @@ export class ToolExecutor {
       if (!existsSync(this.#toolResultCachePath)) return;
       const content = await readFile(this.#toolResultCachePath, 'utf8');
       const lines = content.split('\n').filter(Boolean);
+      const now = Date.now();
       for (const line of lines.slice(-TOOL_RESULT_CACHE_MAX)) {
         try {
-          const { signature, result } = JSON.parse(line);
-          if (signature && typeof result === 'string') this.#resultCache.set(signature, result);
+          const { signature, result, createdAt } = JSON.parse(line);
+          if (signature && typeof result === 'string') {
+            // 超过 TTL 的条目忽略
+            if (!createdAt || now - createdAt < TOOL_RESULT_CACHE_TTL_MS) {
+              this.#resultCache.set(signature, result);
+            }
+          }
         } catch { /* ignore */ }
       }
     } catch { /* ignore */ }
