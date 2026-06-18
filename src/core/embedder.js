@@ -30,7 +30,7 @@ const DEFAULT_MAX_TOKENS = 512; // gte-multilingual-base official max sequence l
 
 export function getDefaultEmbeddingModelPath() {
   return join(
-    process.env.AEMA_MODEL_CACHE_DIR || join(homedir(), '.cache', 'ai-engineering-mastery-agent'),
+    process.env.AEMA_MODEL_CACHE_DIR || join(homedir(), '.cache', 'mastery'),
     'models',
     DEFAULT_EMBEDDING_REPO,
     DEFAULT_EMBEDDING_REVISION,

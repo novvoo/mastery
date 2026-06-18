@@ -108,7 +108,7 @@ export const styles = {
     flex: 1,
     overflowY: 'auto',
     padding: '10px 8px 14px',
-    scrollBehavior: 'smooth',
+    scrollBehavior: 'auto',
     display: 'flex',
     flexDirection: 'column'
   },
@@ -269,6 +269,96 @@ export const styles = {
   runtimeDetailContentExpanded: {
     maxHeight: '300px',
     overflowY: 'auto'
+  },
+
+  planCard: {
+    borderRadius: '8px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--surface-subtle)',
+    padding: '10px',
+    color: 'var(--text-color)'
+  },
+
+  planCardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    marginBottom: '8px'
+  },
+
+  planIconBox: {
+    backgroundColor: 'var(--neutral-soft)',
+    color: 'var(--text-dark)'
+  },
+
+  planProgressBadge: {
+    marginLeft: 'auto',
+    fontSize: '12px',
+    fontWeight: 700,
+    fontVariantNumeric: 'tabular-nums'
+  },
+
+  planProgressTrack: {
+    height: '5px',
+    borderRadius: '999px',
+    backgroundColor: 'var(--glass-bg-light)',
+    overflow: 'hidden',
+    marginBottom: '8px'
+  },
+
+  planProgressFill: {
+    height: '100%',
+    borderRadius: '999px',
+    transition: 'width 0.2s ease'
+  },
+
+  planTaskList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px'
+  },
+
+  planTaskRow: {
+    display: 'grid',
+    gridTemplateColumns: '12px minmax(0, 1fr) auto',
+    alignItems: 'center',
+    gap: '8px',
+    minHeight: '24px',
+    fontSize: '12px',
+    color: 'var(--text-muted)'
+  },
+
+  planTaskDot: {
+    width: '8px',
+    height: '8px',
+    borderRadius: '999px',
+    backgroundColor: 'var(--glass-border)'
+  },
+
+  planTaskDotDone: {
+    backgroundColor: 'var(--success-color)'
+  },
+
+  planTaskDotRunning: {
+    backgroundColor: 'var(--warning-color)',
+    boxShadow: '0 0 0 3px var(--warning-soft)'
+  },
+
+  planTaskDotFailed: {
+    backgroundColor: 'var(--error-color)'
+  },
+
+  planTaskName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: 'var(--text-color)'
+  },
+
+  planTaskStatus: {
+    color: 'var(--text-muted)',
+    fontSize: '11px'
   },
 
   activityPanel: {
@@ -941,5 +1031,301 @@ export const styles = {
     boxShadow: 'var(--shadow-toast)',
     animation: 'fadeIn 0.2s ease-out',
     zIndex: 1000
+  },
+
+  // ─── 优雅 Action / 工具调用卡片 ───
+
+  actionCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    padding: '14px 16px',
+    borderRadius: '10px',
+    backgroundColor: 'var(--surface-subtle)',
+    border: '1px solid var(--border-card)',
+    overflow: 'hidden',
+    maxWidth: '85%'
+  },
+
+  actionCardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    paddingBottom: '10px',
+    borderBottom: '1px solid var(--border-subtle)'
+  },
+
+  actionIconBox: {
+    width: '30px',
+    height: '30px',
+    borderRadius: '8px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '15px',
+    flexShrink: 0
+  },
+
+  actionIconBoxTool: {
+    backgroundColor: 'var(--primary-soft)',
+    color: 'var(--primary-color)'
+  },
+
+  actionIconBoxResult: {
+    backgroundColor: 'var(--success-soft)',
+    color: 'var(--success-color)'
+  },
+
+  actionIconBoxError: {
+    backgroundColor: 'var(--error-soft)',
+    color: 'var(--error-color)'
+  },
+
+  actionTitleWrap: {
+    flex: 1,
+    minWidth: 0
+  },
+
+  actionName: {
+    fontSize: '14px',
+    fontWeight: 600,
+    color: 'var(--text-color)',
+    lineHeight: 1.3,
+    marginBottom: '2px'
+  },
+
+  actionSubtitle: {
+    fontSize: '12px',
+    color: 'var(--text-muted)',
+    fontWeight: 400
+  },
+
+  actionDurationBadge: {
+    fontSize: '11px',
+    color: 'var(--text-muted)',
+    backgroundColor: 'var(--border-subtle)',
+    padding: '3px 8px',
+    borderRadius: '999px',
+    fontWeight: 500,
+    flexShrink: 0
+  },
+
+  // 参数键值对列表
+  actionArgs: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    fontSize: '12px',
+    lineHeight: 1.55
+  },
+
+  actionArgRow: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '8px',
+    padding: '4px 0'
+  },
+
+  actionArgKey: {
+    minWidth: '72px',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 500,
+    flexShrink: 0,
+    paddingTop: '1px'
+  },
+
+  actionArgValue: {
+    color: 'var(--text-color)',
+    fontSize: '12px',
+    flex: 1,
+    wordBreak: 'break-word',
+    fontFamily: 'var(--font-mono)',
+    minWidth: 0
+  },
+
+  actionArgValueString: {
+    color: 'var(--info-color)'
+  },
+
+  actionArgValueNumber: {
+    color: 'var(--warning-color)'
+  },
+
+  // 结果摘要区
+  actionResultSummary: {
+    fontSize: '12px',
+    color: 'var(--text-dark)',
+    lineHeight: 1.6,
+    padding: '8px 10px',
+    backgroundColor: 'var(--border-subtle)',
+    borderRadius: '6px'
+  },
+
+  // 错误区
+  actionErrorBody: {
+    fontSize: '12px',
+    color: 'var(--error-color)',
+    lineHeight: 1.6,
+    padding: '8px 10px',
+    backgroundColor: 'var(--error-soft)',
+    borderRadius: '6px',
+    borderLeft: '3px solid var(--error-color)'
+  },
+
+  // 思考卡片（折叠式）
+  thinkingCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    padding: '12px 14px',
+    borderRadius: '10px',
+    backgroundColor: 'var(--info-faint)',
+    border: '1px solid var(--info-border)',
+    fontSize: '13px',
+    color: 'var(--text-dark)',
+    lineHeight: 1.7
+  },
+
+  thinkingCardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    color: 'var(--info-color)',
+    fontSize: '12px',
+    fontWeight: 500
+  },
+
+  // Agent 普通文本气泡增强
+  enhancedMessageBubble: {
+    padding: '14px 16px',
+    borderRadius: '8px',
+    border: '1px solid var(--border-card)',
+    backgroundColor: 'var(--surface-subtle)',
+    fontSize: '14px',
+    lineHeight: 1.7,
+    maxWidth: '85%',
+    minWidth: '120px'
+  },
+
+  enhancedMessageBubbleAgent: {
+    borderRadius: '4px 8px 8px 8px'
+  },
+
+  assistantMarkdownBubble: {
+    width: 'min(760px, 88%)',
+    maxWidth: '88%',
+    backgroundColor: 'var(--surface-subtle)',
+    borderColor: 'var(--border-card)',
+    boxShadow: 'var(--glass-inner-hl)',
+  },
+
+  enhancedMessageBubbleUser: {
+    backgroundColor: 'var(--primary-soft)',
+    borderColor: 'var(--primary-border)',
+    borderRadius: '8px 4px 8px 8px'
+  },
+
+  emptyAssistantMessage: {
+    minHeight: '24px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '8px',
+    color: 'var(--text-muted)',
+    fontSize: '13px',
+    fontWeight: 600
+  },
+
+  emptyAssistantDot: {
+    width: '7px',
+    height: '7px',
+    borderRadius: '50%',
+    backgroundColor: 'var(--text-muted)',
+    boxShadow: '0 0 0 4px var(--neutral-faint)'
+  },
+
+  streamingBubble: {
+    width: 'min(760px, 88%)',
+    minWidth: '220px',
+    padding: '12px 14px',
+    borderRadius: '4px 8px 8px 8px',
+    border: '1px solid var(--primary-border)',
+    backgroundColor: 'var(--glass-bg-light)',
+    boxShadow: 'var(--glass-inner-hl)',
+    fontSize: '14px',
+    lineHeight: 1.68,
+    animation: 'streamingEdge 1.8s ease-in-out infinite'
+  },
+
+  streamingBubbleActive: {
+    backgroundColor: 'var(--surface-subtle)',
+    borderColor: 'var(--border-card)'
+  },
+
+  streamingStatus: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '7px',
+    marginBottom: '10px',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 700,
+    letterSpacing: 0
+  },
+
+  streamingStatusDot: {
+    width: '7px',
+    height: '7px',
+    borderRadius: '50%',
+    backgroundColor: 'var(--primary-color)',
+    boxShadow: '0 0 0 4px var(--primary-faint)'
+  },
+
+  streamingDots: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '3px',
+    marginLeft: '1px'
+  },
+
+  streamingDot: {
+    width: '3px',
+    height: '3px',
+    borderRadius: '50%',
+    backgroundColor: 'var(--text-muted)',
+    animation: 'streamingDot 1.1s ease-in-out infinite'
+  },
+
+  streamingSkeleton: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    padding: '2px 0 4px'
+  },
+
+  streamingSkeletonLine: {
+    display: 'block',
+    height: '9px',
+    borderRadius: '999px',
+    backgroundColor: 'var(--neutral-faint)',
+    animation: 'streamingSkeleton 1.2s ease-in-out infinite'
+  },
+
+  // 分隔线
+  subtleDivider: {
+    height: '1px',
+    backgroundColor: 'var(--border-subtle)',
+    margin: '8px 0'
+  },
+
+  // 小型芯片样式
+  smallChip: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '2px 8px',
+    fontSize: '11px',
+    borderRadius: '6px',
+    gap: '4px',
+    fontWeight: 500
   }
 };

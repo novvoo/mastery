@@ -23,7 +23,12 @@ export const RuntimeEvent = {
   AGENT_COMPLETE: 'agent:complete',
   AGENT_STREAM: 'agent:stream',
   AGENT_THINKING: 'agent:thinking',
-  
+
+  // 流式增量事件（打字机效果）
+  AGENT_TEXT_DELTA: 'agent:text_delta',
+  AGENT_REASONING_DELTA: 'agent:reasoning_delta',
+  AGENT_TOOL_CALL_DELTA: 'agent:tool_call_delta',
+
   // 工具相关事件
   TOOL_CALL: 'tool:call',
   TOOL_RESULT: 'tool:result',
@@ -53,6 +58,7 @@ export const RuntimeEvent = {
 
   // 规划事件
   EXECUTION_PLAN_CREATED: 'plan:created',
+  EXECUTION_PLAN_UPDATED: 'plan:updated',
   PLAN_DECOMPOSED: 'plan:decomposed',
   PLAN_EXECUTED: 'plan:executed'
 };

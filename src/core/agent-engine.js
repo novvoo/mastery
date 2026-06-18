@@ -69,6 +69,76 @@ export function createAgentEngine({ modelProvider, toolRegistry, memoryManager =
   return new AgentEngine({ modelProvider, toolRegistry, memoryManager, config, ui });
 }
 
+function createEmptyToolRegistry() {
+  return {
+    size: 0,
+    get() { return null; },
+    getAll() { return []; },
+    toFunctionDefinitions() { return []; },
+  };
+}
+
+function normalizeModelResponse(response = {}) {
+  const text = typeof response.text === 'string'
+    ? response.text
+    : typeof response.content === 'string'
+      ? response.content
+      : typeof response.answer === 'string'
+        ? response.answer
+        : '';
+
+  // 支持两种字段命名：toolCalls (camelCase) 和 tool_calls (OpenAI snake_case)
+  const rawToolCalls = Array.isArray(response.toolCalls) && response.toolCalls.length > 0
+    ? response.toolCalls
+    : Array.isArray(response.tool_calls) && response.tool_calls.length > 0
+      ? response.tool_calls
+      : [];
+
+  // 统一归一化：将 OpenAI 原生格式 { id, type, function: { name, arguments } }
+  // 转换为简化格式 { name, arguments }，便于下游 ToolExecutor 统一处理
+  const toolCalls = rawToolCalls.map(call => {
+    if (!call || typeof call !== 'object') return call;
+
+    // 简化格式：已有 name 字段
+    if (call.name) {
+      let args = call.arguments;
+      if (typeof args === 'string') {
+        try { args = JSON.parse(args); } catch { args = {}; }
+      }
+      return { ...call, arguments: args || {} };
+    }
+
+    // OpenAI 原生格式：function.name + function.arguments
+    if (call.function?.name) {
+      let args = {};
+      if (call.function.arguments) {
+        if (typeof call.function.arguments === 'object') {
+          args = call.function.arguments;
+        } else if (typeof call.function.arguments === 'string') {
+          try { args = JSON.parse(call.function.arguments); } catch { args = {}; }
+        }
+      }
+      return {
+        id: call.id,
+        name: call.function.name,
+        arguments: args,
+        source: call.type || 'native_tool_call',
+        raw: call,
+      };
+    }
+
+    return call;
+  }).filter(call => call && (call.name || (call.function && call.function.name)));
+
+  return {
+    ...response,
+    text,
+    content: typeof response.content === 'string' ? response.content : text,
+    toolCalls,
+    finishReason: response.finishReason || response.finish_reason || 'stop',
+  };
+}
+
 export class AgentEngine {
   // ============ 子系统 ============
   #modelProvider;
@@ -99,7 +169,7 @@ export class AgentEngine {
 
   constructor({ modelProvider, toolRegistry, memoryManager, config, ui }) {
     this.#modelProvider = modelProvider;
-    this.#toolRegistry = toolRegistry;
+    this.#toolRegistry = toolRegistry || createEmptyToolRegistry();
     // memoryManager 可选：没传时创建一个默认的空实例，避免 buildSystemPrompt 崩溃
     this.#memoryManager = memoryManager || (() => {
       try { return new MemoryManager(config?.workingDirectory || process.cwd()); }
@@ -120,14 +190,15 @@ export class AgentEngine {
       toolCall: () => {}, toolResult: () => {}, toolError: () => {},
       iteration: () => {}, finalAnswer: () => {},
       warn: () => {}, debug: () => {}, debugEvent: () => {},
+      onTextDelta: () => {}, onReasoningDelta: () => {}, onToolCallDelta: () => {},
     };
 
     // ============ 子系统初始化 ============
     this.#sessionManager = new SessionManager({ model: this.#config.session?.model });
     this.#retryStrategy = new RetryStrategy();
-    this.#textToolParser = new TextToolParser(toolRegistry);
+    this.#textToolParser = new TextToolParser(this.#toolRegistry);
     this.#intentClassifier = this.#config.intentClassification
-      ? new IntentClassifier(modelProvider, toolRegistry, this.#config.intentClassifier || {})
+      ? new IntentClassifier(modelProvider, this.#toolRegistry, this.#config.intentClassifier || {})
       : null;
     this.#executionPlanManager = new ExecutionPlanManager();
     this.#contextPruner = new DynamicContextPruning();
@@ -245,6 +316,7 @@ export class AgentEngine {
     if (routingPrompt) this.#sessionManager.addUserMessage(routingPrompt);
 
     this.#stagnationDetector.reset();
+    this.#toolExecutor.reset();
     this.#executionPlanManager.plan; // 触发 plan 初始化（下面会实际创建）
 
     const executionPlan = this.#executionPlanManager.createIfNeeded(userInput, taskProfile);
@@ -273,6 +345,10 @@ export class AgentEngine {
 
     if (executionPlan) {
       this.#ui.debugEvent?.('Automatic task orchestration enabled', { plan: executionPlan.toJSON() });
+      this.#ui.debugEvent?.('Execution plan created', {
+        plan: executionPlan.toJSON(),
+        summary: this.#planSummary(executionPlan),
+      });
       this.#sessionManager.addUserMessage(this.#executionPlanManager.buildPrompt());
     }
 
@@ -377,17 +453,68 @@ export class AgentEngine {
 
       let response;
       try {
-        response = await this.#retryStrategy.executeWithRetry(async () => {
-          llmAttempts++;
-          return withTimeout(
-            () => this.#modelProvider.chat(messages, {
+        const supportsStreaming = typeof this.#modelProvider.chatStream === 'function'
+          && process.env.AGENT_DISABLE_STREAMING !== 'true';
+
+        let streamResult = null;
+        if (supportsStreaming) {
+          try {
+            streamResult = await this.#modelProvider.chatStream(messages, {
               functions,
               maxTokens: this.#config.maxTokens,
-            }),
-            120000, // 2 分钟超时
-            'LLM call',
-          );
-        });
+            });
+          } catch (_) {
+            streamResult = null;
+          }
+        }
+        const hasValidStream = streamResult
+          && typeof streamResult.stream === 'function'
+          && typeof streamResult.finalize === 'function';
+
+        if (hasValidStream) {
+          // ===== 优先走流式分支：逐 token 推送增量到 UI =====
+          response = await this.#retryStrategy.executeWithRetry(async () => {
+            llmAttempts++;
+            return await withTimeout(
+              async () => {
+                // 迭代增量事件，转发到 UI
+                for await (const evt of streamResult.stream()) {
+                  if (!evt) continue;
+                  if (evt.type === 'text_delta' && evt.text) {
+                    this.#ui.onTextDelta?.(evt.text);
+                  } else if (evt.type === 'reasoning_delta' && evt.text) {
+                    this.#ui.onReasoningDelta?.(evt.text);
+                  } else if (evt.type === 'tool_call_delta') {
+                    this.#ui.onToolCallDelta?.({
+                      index: evt.index,
+                      name: evt.name,
+                      arguments: evt.arguments,
+                    });
+                  }
+                  // usage / finish 不转发 UI
+                }
+                // finalize() 返回 chat() 同结构的完整响应
+                return await streamResult.finalize();
+              },
+              120000,
+              'LLM streaming call',
+            );
+          });
+        } else {
+          // ===== 原有非流式分支 =====
+          response = await this.#retryStrategy.executeWithRetry(async () => {
+            llmAttempts++;
+            return withTimeout(
+              () => this.#modelProvider.chat(messages, {
+                functions,
+                maxTokens: this.#config.maxTokens,
+              }),
+              120000,
+              'LLM call',
+            );
+          });
+        }
+        response = normalizeModelResponse(response);
         // —— LLM 成功 metrics ——
         try {
           const modelName = this.#modelProvider.getModelName?.() || this.#modelProvider.constructor?.name || 'unknown';
@@ -657,7 +784,15 @@ export class AgentEngine {
 
         // 推进执行计划
         if (this.#executionPlanManager.plan) {
-          this.#executionPlanManager.advance(execResult.name, toolCall.arguments, execResult.result);
+          const planUpdate = this.#executionPlanManager.advance(execResult.name, toolCall.arguments, execResult.result);
+          if (planUpdate) {
+            this.#ui.debugEvent?.('Execution plan updated', {
+              toolName: execResult.name,
+              update: planUpdate,
+              plan: this.#executionPlanManager.plan.toJSON(),
+              summary: this.#planSummary(this.#executionPlanManager.plan),
+            });
+          }
         }
       }
     }

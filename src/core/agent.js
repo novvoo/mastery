@@ -427,9 +427,30 @@ export class ReActAgent {
 
         // ---- 各种退出/纠正判断 ----
 
-        // Plan 完成 + provider stop + 无工具调用 → 直接返回
+        // Plan 完成 + provider stop + 无工具调用 → 先检查 completion gate
         if (allToolCalls.length === 0 && response.finishReason === 'stop' && response.text?.trim()
             && this.#planner.activePlan?.status === TaskStatus.COMPLETED) {
+          // 即使 plan 标记为完成，也要检查是否有真实的验证证据
+          const gateForCompletedPlan = this.#verifier.shouldBlockCodingFinal({
+            responseText: response.text,
+            taskProfile: this.#activeTaskProfile,
+            runToolEvents: this.#runToolEvents,
+            activePlan: this.#planner.activePlan,
+            activePlanManager: this.#planner,
+          });
+          if (gateForCompletedPlan.block) {
+            codingGateCorrections++;
+            this.#ui.debugEvent?.('Coding completion gate requested (completed plan)', {
+              iteration, correction: codingGateCorrections,
+              reason: gateForCompletedPlan.reason, evidence: gateForCompletedPlan.evidence,
+            });
+            this.#sessionManager.addAssistantMessage(response.text);
+            this.#sessionManager.addUserMessage(
+              this.#verifier.buildCodingCompletionGatePrompt(userInput, gateForCompletedPlan, this.#activeTaskProfile)
+            );
+            continue;
+          }
+
           const answer = isTerminationResponse(response.text)
             ? extractFinalAnswer(response.text)
             : response.text.trim();
@@ -503,11 +524,20 @@ export class ReActAgent {
         }
 
         // Provider 自然停止
-        const hasToolEvidence = this.#runToolEvents.some(e => e.success);
         const isModificationTask = this.#activeTaskProfile?.isModificationTask;
+        // 对于修改任务，必须有真实的验证证据（不只是写了文件）
+        const gateForProviderStop = isModificationTask
+          ? this.#verifier.shouldBlockCodingFinal({
+              responseText: response.text,
+              taskProfile: this.#activeTaskProfile,
+              runToolEvents: this.#runToolEvents,
+              activePlan: this.#planner.activePlan,
+              activePlanManager: this.#planner,
+            })
+          : null;
         const allowProviderStop = allToolCalls.length === 0 &&
           response.finishReason === 'stop' && response.text?.trim() &&
-          (!isModificationTask || hasToolEvidence);
+          (!isModificationTask || !gateForProviderStop?.block);
 
         if (allowProviderStop) {
           const answer = normalizeFinalAnswer(response.text);

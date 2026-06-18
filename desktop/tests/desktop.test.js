@@ -9,6 +9,12 @@
  */
 
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const DESKTOP_ROOT = dirname(dirname(__filename));
+const REPO_ROOT = dirname(DESKTOP_ROOT);
 
 // ── 模拟辅助 ──────────────────────────────────────────────────────
 
@@ -103,7 +109,7 @@ describe('Desktop IPC Initialization Order', () => {
 
     await adapter.initialize();
 
-    // 这些是渲染进程 preload 调用的关键频道，必须全部注册
+      // 这些是渲染进程 preload 调用的关键频道，必须全部注册
     const expectedChannels = [
       'agent:processInput',
       'agent:stop',
@@ -364,6 +370,161 @@ describe('Desktop Event Forwarding', () => {
 
     await core.dispose();
     adapter.disconnect();
+  });
+});
+
+describe('Desktop App Config Persistence', () => {
+  test('saveAppConfig persists and readAppConfig restores workingDirectory', async () => {
+    const os = await import('os');
+    const fs = await import('fs');
+    const path = await import('path');
+    const { saveAppConfig, readAppConfig } = await import('../main-app/llm-config-and-persistence.js');
+
+    const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mastery-desktop-config-'));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mastery-workspace-'));
+    const electron = {
+      app: {
+        getPath(name) {
+          if (name !== 'userData') {
+            throw new Error(`unexpected path: ${name}`);
+          }
+          return userDataDir;
+        }
+      }
+    };
+    const ctx = {
+      electron,
+      config: {
+        workingDirectory: workspaceDir,
+        window: { width: 1200, height: 800 },
+        runtime: { maxIterations: 42 }
+      },
+      mainWindow: {
+        getSize: () => [1440, 900]
+      }
+    };
+
+    const saved = saveAppConfig(ctx);
+    expect(saved.success).toBe(true);
+
+    const restored = readAppConfig(electron);
+    expect(restored.workingDirectory).toBe(workspaceDir);
+    expect(restored.window).toMatchObject({ width: 1440, height: 900 });
+    expect(restored.runtime).toMatchObject({ maxIterations: 42 });
+  });
+});
+
+describe('Desktop IPC Preload Bridge', () => {
+  test('ElectronMainApp always points BrowserWindow preload at CommonJS preload-entry', async () => {
+    const path = await import('path');
+    const fs = await import('fs');
+
+    const source = fs.readFileSync(path.join(DESKTOP_ROOT, 'main-app.js'), 'utf8');
+    const preloadEntryRefs = source.match(/path\.join\(__dirname, 'preload-entry', 'index\.js'\)/g) || [];
+    expect(preloadEntryRefs.length).toBeGreaterThanOrEqual(2);
+    expect(source).not.toContain("preload: path.join(__dirname, 'preload.js')");
+    expect(source).toContain('nodeIntegration: false');
+    expect(source).toContain('contextIsolation: true');
+  });
+
+  test('desktop packaging includes only the active preload entry plus shared preload script', async () => {
+    const path = await import('path');
+    const fs = await import('fs');
+
+    const rootPackage = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
+    const electronBuilder = JSON.parse(fs.readFileSync(path.join(DESKTOP_ROOT, 'electron-builder.json'), 'utf8'));
+    const verifyScript = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'verify-desktop-package.mjs'), 'utf8');
+
+    expect(rootPackage.build.files).toContain('desktop/preload-entry/**/*');
+    expect(rootPackage.build.files).toContain('desktop/preload.js');
+    expect(rootPackage.build.files).not.toContain('desktop/preload.cjs');
+
+    expect(electronBuilder.files).toContain('preload-entry/**/*');
+    expect(electronBuilder.files).toContain('preload.js');
+    expect(electronBuilder.files).not.toContain('preload.cjs');
+
+    expect(verifyScript).toContain('/desktop/preload-entry/index.js');
+    expect(verifyScript).toContain('/desktop/preload-entry/package.json');
+    expect(verifyScript).not.toContain('/desktop/preload.cjs');
+  });
+
+  test('preload-entry seeds Electron bridge globals before running preload.js', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+
+    const entryPath = path.join(DESKTOP_ROOT, 'preload-entry', 'index.js');
+    const entrySource = fs.readFileSync(entryPath, 'utf8');
+
+    expect(entrySource).toContain("const electron = require('electron')");
+    expect(entrySource).toContain('const { contextBridge, ipcRenderer } = electron');
+    expect(entrySource).toContain("Object.defineProperty(globalThis, 'contextBridge'");
+    expect(entrySource).toContain("Object.defineProperty(globalThis, 'ipcRenderer'");
+    expect(entrySource).toContain('runPreload(require, process, console');
+    expect(entrySource).toContain('[IPC-DIAG][preload-entry] bootstrap start');
+  });
+
+  test('preload exposes diagnostic APIs and allows ipc:diagnose', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+
+    const preloadSource = fs.readFileSync(path.join(DESKTOP_ROOT, 'preload.js'), 'utf8');
+
+    expect(preloadSource).toContain("'ipc:diagnose'");
+    expect(preloadSource).toContain('diagnose: () =>');
+    expect(preloadSource).toContain('diagnoseMain: async () =>');
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('electronAPI'");
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('__masteryPreloadDiag'");
+  });
+
+  test('registerCustomHandlers registers ipc:diagnose for preload diagnostics', async () => {
+    const path = await import('path');
+    const { registerCustomHandlers } = await import('../main-app/ipc-router.js');
+
+    const mockIpcMain = createMockIpcMain();
+    const handlers = new Map();
+    const ipcAdapter = {
+      getStats: () => ({ isConnected: true, pendingRequests: 0 }),
+      registerHandler(channel, handler) {
+        handlers.set(channel, handler);
+        mockIpcMain.handle(channel, async (event, payload) => handler(payload, event.sender));
+      }
+    };
+    const webContents = {
+      id: 7,
+      getURL: () => 'http://127.0.0.1:5173/'
+    };
+    const ctx = {
+      ipcAdapter,
+      config: {
+        debug: true,
+        workingDirectory: REPO_ROOT,
+        window: {
+          webPreferences: {
+            preload: path.join(DESKTOP_ROOT, 'preload-entry', 'index.js')
+          }
+        }
+      },
+      mainWindow: { webContents },
+      electron: {
+        BrowserWindow: {
+          getAllWindows: () => [{ webContents }],
+          fromWebContents: () => ({ isDestroyed: () => false })
+        },
+        dialog: {},
+        Notification: function Notification() {},
+        shell: {},
+        app: {}
+      }
+    };
+
+    registerCustomHandlers(ctx);
+
+    expect(handlers.has('ipc:diagnose')).toBe(true);
+    const result = await handlers.get('ipc:diagnose')({}, webContents);
+    expect(result.success).toBe(true);
+    expect(result.preload.exists).toBe(true);
+    expect(result.window.senderMatchesMainWindow).toBe(true);
+    expect(result.ipc.isConnected).toBe(true);
   });
 });
 

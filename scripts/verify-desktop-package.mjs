@@ -13,6 +13,8 @@ const desktopReleaseDir = process.argv[2] || join(rootDir, 'release', 'desktop')
 
 const requiredAsarEntries = [
   '/desktop/main.js',
+  '/desktop/preload-entry/index.js',
+  '/desktop/preload-entry/package.json',
   '/desktop/preload.js',
   '/desktop/workspace.js',
   '/src/adapters/desktop/desktop-core.js',

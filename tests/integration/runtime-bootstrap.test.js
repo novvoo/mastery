@@ -48,6 +48,37 @@ describe('runtime-bootstrap', () => {
     expect(rt.workingDirectory).toBe(dir);
   });
 
+  it('默认工具集不暴露实验编辑工具，避免 list/write 能力重复', async () => {
+    const rt = await bootstrapRuntime({
+      workingDirectory: dir,
+      metrics: { enabled: false },
+      autoInitMCP: false,
+    });
+
+    const names = rt.toolRegistry.getAll().map(tool => tool.name);
+    expect(names).toContain('list_dir');
+    expect(names).toContain('tree');
+    expect(names).toContain('write_file');
+    expect(names).toContain('edit_file');
+    expect(names.some(name => name.startsWith('harness_'))).toBe(false);
+    expect(names.some(name => name.startsWith('sg_'))).toBe(false);
+  });
+
+  it('includeExperimentalTools=true 时仍可显式启用实验编辑工具', async () => {
+    const rt = await bootstrapRuntime({
+      workingDirectory: dir,
+      metrics: { enabled: false },
+      autoInitMCP: false,
+      includeExperimentalTools: true,
+    });
+
+    const names = rt.toolRegistry.getAll().map(tool => tool.name);
+    expect(names).toContain('harness_analyze');
+    expect(names).toContain('harness_replace');
+    expect(names).toContain('sg_index');
+    expect(names).toContain('sg_edit');
+  });
+
   it('metrics.enabled=true 时 metricsSink 写盘', async () => {
     const rt = await bootstrapRuntime({
       workingDirectory: dir,

@@ -13,7 +13,7 @@ export function LLMSetupModal({
   onSave,
 }) {
   const formatEnvPath = (path) => {
-    if (!path) return '~/.config/ai-engineering-mastery-agent/.env';
+    if (!path) return '~/.config/mastery/.env';
     return path.replace(/^\/Users\/[^/]+/, '~');
   };
 
@@ -23,7 +23,7 @@ export function LLMSetupModal({
         <div style={styles.modalHeader}>
           <h2 style={styles.modalTitle}>配置模型服务</h2>
           <p style={styles.modalSubtitle}>
-            Desktop 需要 LLM 配置后才能执行 Agent 任务。配置会保存到 CLI 共用的用户 .env 文件中。
+            Desktop 需要 LLM 配置后才能执行智能任务。配置会保存到 CLI 共用的用户 .env 文件中。
           </p>
         </div>
 

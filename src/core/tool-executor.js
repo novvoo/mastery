@@ -209,8 +209,6 @@ export class ToolExecutor {
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       this.#recordEvent(name, effectiveArgs, false, `Error: ${errorMsg}`);
-      this.#resultCache.set(callSignature, `Error: ${errorMsg}`);
-      this.#flushCacheEntry(callSignature, `Error: ${errorMsg}`);
       this.#ui.toolError?.(name, errorMsg, effectiveArgs);
       options.emitObservation?.(id, name, `Error: ${errorMsg}`, resultMode);
       return { name, result: `Error: ${errorMsg}`, error: errorMsg };

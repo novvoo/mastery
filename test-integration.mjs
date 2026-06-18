@@ -7651,7 +7651,7 @@ productionReadinessTests.test('Release packages declare stable upgrade and repla
     'UpgradeCode="5E892847-5AD4-4E84-B7D6-5F34C8DB62E0"',
     '<MajorUpgrade',
     'AllowSameVersionUpgrades="yes"',
-    'DowngradeErrorMessage="A newer version of ai-engineering-mastery-agent is already installed."',
+    'DowngradeErrorMessage="A newer version of mastery is already installed."',
     'Name="PATH"',
     'Value="[INSTALLFOLDER]bin"',
   ]) {

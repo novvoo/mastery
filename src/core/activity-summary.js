@@ -2,6 +2,7 @@
  * Activity summary builder - aggregates runtime events into structured activity summaries.
  * 纯数据转换模块，不依赖 React/Electron，可被 Desktop 和 CLI 共享。
  */
+import { describeToolActivity } from './tool-activity.js';
 
 export function buildActivitySummary(runtimeDetails = []) {
   const activities = [];
@@ -18,7 +19,7 @@ export function buildActivitySummary(runtimeDetails = []) {
       waitingForUser = true;
     }
 
-    const activity = detail.activity || detail.payload?.activity || (detail.event === 'tool:activity' ? detail.payload : null);
+    const activity = getActivityFromDetail(detail);
     if (!activity || activity.kind !== 'tool_activity') {
       continue;
     }
@@ -71,6 +72,37 @@ export function buildActivitySummary(runtimeDetails = []) {
     waitingForUser,
     total: activities.length,
   };
+}
+
+function getActivityFromDetail(detail) {
+  const explicitActivity = detail?.activity || detail?.payload?.activity || (detail?.event === 'tool:activity' ? detail.payload : null);
+  if (explicitActivity?.kind === 'tool_activity') {
+    return explicitActivity;
+  }
+
+  const toolName = detail?.toolName || detail?.name || detail?.payload?.toolName || detail?.payload?.name;
+  if (!toolName) {
+    return null;
+  }
+
+  if (detail?.event === 'tool:error') {
+    return describeToolActivity(toolName, getToolArgs(detail), 'failed', detail?.error ?? detail?.payload?.error);
+  }
+
+  if (detail?.event === 'tool:call' || detail?.type === 'tool') {
+    return describeToolActivity(toolName, getToolArgs(detail), 'running');
+  }
+
+  if (detail?.event === 'tool:result' || detail?.type === 'tool_result') {
+    return describeToolActivity(toolName, getToolArgs(detail), 'completed', detail?.result ?? detail?.payload?.result);
+  }
+
+  return null;
+}
+
+function getToolArgs(detail) {
+  const args = detail?.args ?? detail?.arguments ?? detail?.payload?.args ?? detail?.payload?.arguments;
+  return args && typeof args === 'object' ? args : {};
 }
 
 export function getActivityTone(activity) {

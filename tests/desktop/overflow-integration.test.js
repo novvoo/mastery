@@ -266,7 +266,7 @@ describe('overflow 链路集成测试', () => {
     const fs = await import('fs');
     const path = await import('path');
     const content = fs.readFileSync(
-      path.resolve('/Users/jingslunt/apps/ai-engineering-mastery-agent/desktop/renderer/components/message-log/RuntimeDetailsPanel.jsx'),
+      path.resolve('/Users/jingslunt/apps/mastery/desktop/renderer/components/message-log/RuntimeDetailsPanel.jsx'),
       'utf-8'
     );
 

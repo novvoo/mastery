@@ -105,7 +105,7 @@ export default function handoff() {
         .join('\n');
 
       // Save HANDOFF.md to OS temp directory so session artifacts do not pollute the repo.
-      const handoffDir = resolve(tmpdir(), 'ai-engineering-mastery-agent', 'handoffs');
+      const handoffDir = resolve(tmpdir(), 'mastery', 'handoffs');
       const handoffPath = join(handoffDir, `HANDOFF-${sessionId}-${timestamp.replace(/[:.]/g, '-')}.md`);
       await mkdir(handoffDir, { recursive: true });
       await writeFile(handoffPath, doc, 'utf-8');

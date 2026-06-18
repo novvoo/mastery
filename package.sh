@@ -10,7 +10,7 @@ echo ""
 
 # 版本号
 VERSION=$(node -p "require('./package.json').version")
-PACKAGE_NAME="ai-engineering-mastery-agent"
+PACKAGE_NAME="mastery"
 BUILD_DIR="./dist"
 ARCHIVE_NAME="${PACKAGE_NAME}-v${VERSION}.tar.gz"
 

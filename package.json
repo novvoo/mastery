@@ -1,5 +1,5 @@
 {
-  "name": "ai-engineering-mastery-agent",
+  "name": "mastery",
   "version": "1.0.32",
   "description": "AI Engineering Mastery Agent - A standalone ReAct agent with 12 professional coding skills, sandbox execution, graph planning, 3-layer memory, and MCP protocol support",
   "author": "novvoo",
@@ -17,6 +17,8 @@
     "dev:inspect": "bun --inspect --watch src/index.js",
     "test": "bun test --isolate --timeout 15000 && node tests/core-integration.mjs && node tests/e2e-agent.mjs",
     "test:debug": "bun --inspect-brk tests/core-integration.mjs",
+    "test:desktop": "bun test --isolate desktop/tests/desktop.test.js",
+    "test:desktop:ipc": "bun test --isolate desktop/tests/desktop.test.js",
     "test:runtime": "bun test --isolate tests/runtime/integration.test.js",
     "test:adapters": "bun test --isolate tests/adapters/cli.test.js",
     "test:smoke": "bun test --isolate tests/smoke/",
@@ -62,7 +64,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/novvoo/ai-engineering-mastery-agent.git"
+    "url": "git+https://github.com/novvoo/mastery.git"
   },
   "files": [
     "src/",
@@ -98,7 +100,7 @@
     "vite": "^7.0.10"
   },
   "build": {
-    "appId": "com.ai-engineering-mastery.agent",
+    "appId": "com.mastery.agent",
     "productName": "AI Engineering Mastery Agent",
     "copyright": "Copyright © 2024 AI Engineering Mastery Agent",
     "directories": {
@@ -110,6 +112,7 @@
     },
     "files": [
       "desktop/main.js",
+      "desktop/preload-entry/**/*",
       "desktop/preload.js",
       "desktop/workspace.js",
       "desktop/renderer/**/*",
@@ -211,12 +214,12 @@
         }
       ],
       "category": "Development",
-      "maintainer": "ai-engineering@example.com",
+      "maintainer": "Mastery@example.com",
       "desktop": {
         "Name": "AI Engineering Mastery Agent",
         "Comment": "AI Engineering Mastery Agent - Desktop Application",
         "Categories": "Development;IDE;AI",
-        "StartupWMClass": "ai-engineering-mastery-agent"
+        "StartupWMClass": "mastery"
       },
       "artifactName": "desktop-${productName}-${version}-${arch}.${ext}"
     },

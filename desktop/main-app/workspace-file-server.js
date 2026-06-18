@@ -13,6 +13,8 @@ import path from 'path';
 import fs from 'fs';
 import http from 'http';
 import { createWorkspaceWatcher, listWorkspaceDirectory as _listWorkspaceDirectory } from '../workspace.js';
+import { saveAppConfig } from './llm-config-and-persistence.js';
+import { writeUserEnv, applyRuntimeValues } from '../../src/core/runtime-config.js';
 
 const ALLOWED_LOCALHOST_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/.*)?$/i;
 
@@ -169,15 +171,41 @@ export function broadcastWorkspaceChange(ctx, change) {
 }
 
 export async function setWorkingDirectory(ctx, directory) {
-  if (!directory || !fs.existsSync(directory)) {
+  const nextDirectory = directory ? path.resolve(directory) : '';
+  if (!nextDirectory || !fs.existsSync(nextDirectory)) {
     return { success: false, error: '目录不存在' };
   }
 
-  ctx.config.workingDirectory = directory;
+  if (!fs.statSync(nextDirectory).isDirectory()) {
+    return { success: false, error: '路径不是目录' };
+  }
+
+  ctx.config.workingDirectory = nextDirectory;
+  let persistence = { success: true };
+  let envPersistence = { success: true };
+  try {
+    persistence = saveAppConfig(ctx);
+  } catch (error) {
+    persistence = { success: false, error: error.message };
+    console.warn(`⚠️  保存工作目录到 config.json 失败: ${error.message}`);
+  }
+
+  try {
+    const envPath = writeUserEnv(
+      { WORKING_DIRECTORY: nextDirectory },
+      { envPath: ctx.userEnvPath }
+    );
+    applyRuntimeValues({ WORKING_DIRECTORY: nextDirectory });
+    envPersistence = { success: true, envPath };
+  } catch (error) {
+    envPersistence = { success: false, error: error.message };
+    console.warn(`⚠️  保存工作目录到 .env 失败: ${error.message}`);
+  }
+
   startFileServer(ctx);
 
   if (ctx.desktopCore && typeof ctx.desktopCore.setWorkingDirectory === 'function') {
-    ctx.desktopCore.setWorkingDirectory(directory);
+    ctx.desktopCore.setWorkingDirectory(nextDirectory);
   }
 
   if (ctx.ipcAdapter && typeof ctx.ipcAdapter.attachEngine === 'function' && ctx.desktopCore?.getEngine) {
@@ -186,9 +214,17 @@ export async function setWorkingDirectory(ctx, directory) {
 
   startWorkspaceWatcher(ctx);
 
-  broadcastWorkspaceChange(ctx, { workingDirectory: directory, fileServerUrl: ctx.fileServerUrl });
+  broadcastWorkspaceChange(ctx, { workingDirectory: nextDirectory, fileServerUrl: ctx.fileServerUrl });
 
-  return { success: true, workingDirectory: directory, fileServerUrl: ctx.fileServerUrl };
+  return {
+    success: true,
+    workingDirectory: nextDirectory,
+    fileServerUrl: ctx.fileServerUrl,
+    persisted: persistence.success && envPersistence.success,
+    configPath: persistence.configPath,
+    envPath: envPersistence.envPath,
+    persistenceError: persistence.error || envPersistence.error
+  };
 }
 
 export async function handleNewProject(ctx) {

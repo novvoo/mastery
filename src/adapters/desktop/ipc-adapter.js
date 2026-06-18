@@ -947,16 +947,20 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
           // 忽略未注册时的错误
         }
       }
-      this.#ipcMain.handle(channel, async (event, ...args) => {
-        try {
-          const payload = args.length <= 1 ? (args[0] ?? {}) : args;
-          const result = await handler(payload, event.sender);
-          return result !== undefined ? result : { success: true };
-        } catch (error) {
-          console.error(`[MainProcessIPC] invoke ${channel} 失败:`, error);
-          throw error;
-        }
-      });
+      try {
+        this.#ipcMain.handle(channel, async (event, ...args) => {
+          try {
+            const payload = args.length <= 1 ? (args[0] ?? {}) : args;
+            const result = await handler(payload, event.sender);
+            return result !== undefined ? result : { success: true };
+          } catch (error) {
+            console.error(`[MainProcessIPC] invoke ${channel} 失败:`, error);
+            throw error;
+          }
+        });
+      } catch (registerError) {
+        console.warn(`[MainProcessIPC] registerHandler ${channel} ipcMain.handle 失败，将通过 #handleRequest 降级处理:`, registerError?.message);
+      }
     }
 
     if (this.config.debug) {

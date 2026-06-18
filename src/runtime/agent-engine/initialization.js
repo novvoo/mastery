@@ -103,7 +103,7 @@ export async function runInitialization(ctx, registerAllToolsFn, wrapToolCallsFn
 
   ctx.eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
     status: 'initializing',
-    message: '正在初始化 AI Agent...'
+    message: '正在初始化运行环境...'
   });
 
   // 1. 核心组件
@@ -209,6 +209,6 @@ export async function runInitialization(ctx, registerAllToolsFn, wrapToolCallsFn
 
   ctx.eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
     status: 'ready',
-    message: 'AI Agent 已就绪'
+    message: '智能助手已就绪'
   });
 }

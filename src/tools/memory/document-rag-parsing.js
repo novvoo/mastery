@@ -12,7 +12,7 @@ import { normalizeText, cleanHTML } from './document-rag-utils.js';
 
 /* ─── constants ─────────────────────────────────────────────────────── */
 export const MAX_DOCUMENT_BYTES = 15 * 1024 * 1024;
-const USER_AGENT = 'AI-Engineering-Agent/1.0 (+document-rag)';
+const USER_AGENT = 'Mastery-Agent/1.0 (+document-rag)';
 
 /* ─── public API ────────────────────────────────────────────────────── */
 export async function loadDocument({ source, content, title }, ctx) {

@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "ai-engineering-mastery-agent",
+      "name": "mastery",
       "dependencies": {
         "@huggingface/tokenizers": "^0.1.3",
         "boxen": "^8.0.1",

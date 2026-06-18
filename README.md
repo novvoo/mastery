@@ -188,7 +188,7 @@ Agent 会尽量按照工程任务的节奏工作：
 
 ```bash
 git clone <repo-url>
-cd ai-engineering-mastery-agent
+cd mastery
 bun install
 cp .env.example .env
 ```

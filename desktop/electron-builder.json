@@ -9,6 +9,7 @@
   },
   "files": [
     "main.js",
+    "preload-entry/**/*",
     "preload.js",
     "renderer/**/*",
     "build/**/*",

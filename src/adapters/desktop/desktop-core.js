@@ -11,6 +11,7 @@
  */
 
 import { getEventBus, RuntimeEvent, HOOKS } from '../../runtime/index.js';
+import { PlatformType } from '../../runtime/types.js';
 import { createPlugin } from '../../runtime/plugin-system.js';
 import {
   bootstrapRuntime,
@@ -246,6 +247,18 @@ export class DesktopCore {
             timestamp: Date.now(),
           });
           if (isDebug) console.log('[UiAdapter] agent:start');
+        } else if (name === 'Execution plan created') {
+          eventBus.emit(RuntimeEvent.EXECUTION_PLAN_CREATED, {
+            ...(data || {}),
+            eventName: name,
+            timestamp: Date.now(),
+          });
+        } else if (name === 'Execution plan updated') {
+          eventBus.emit(RuntimeEvent.EXECUTION_PLAN_UPDATED, {
+            ...(data || {}),
+            eventName: name,
+            timestamp: Date.now(),
+          });
         } else {
           eventBus.emit(RuntimeEvent.AGENT_THINKING, {
             eventName: name,
@@ -253,6 +266,15 @@ export class DesktopCore {
             timestamp: Date.now(),
           });
         }
+      },
+      onTextDelta(text) {
+        eventBus.emit(RuntimeEvent.AGENT_TEXT_DELTA, { text, timestamp: Date.now() });
+      },
+      onReasoningDelta(text) {
+        eventBus.emit(RuntimeEvent.AGENT_REASONING_DELTA, { text, timestamp: Date.now() });
+      },
+      onToolCallDelta(delta) {
+        eventBus.emit(RuntimeEvent.AGENT_TOOL_CALL_DELTA, { ...delta, timestamp: Date.now() });
       },
     };
   }
@@ -270,6 +292,11 @@ export class DesktopCore {
       RuntimeEvent.AGENT_COMPLETE,
       RuntimeEvent.AGENT_ERROR,
       RuntimeEvent.AGENT_THINKING,
+      RuntimeEvent.AGENT_TEXT_DELTA,
+      RuntimeEvent.AGENT_REASONING_DELTA,
+      RuntimeEvent.AGENT_TOOL_CALL_DELTA,
+      RuntimeEvent.EXECUTION_PLAN_CREATED,
+      RuntimeEvent.EXECUTION_PLAN_UPDATED,
       RuntimeEvent.TOOL_CALL,
       RuntimeEvent.TOOL_RESULT,
       RuntimeEvent.TOOL_ERROR,

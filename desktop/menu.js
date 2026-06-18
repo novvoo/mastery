@@ -123,13 +123,13 @@ export function createApplicationMenu({
         {
           label: '文档',
           click: async () => {
-            await shell.openExternal('https://github.com/novvoo/ai-engineering-mastery-agent#readme');
+            await shell.openExternal('https://github.com/novvoo/mastery#readme');
           }
         },
         {
           label: '报告问题',
           click: async () => {
-            await shell.openExternal('https://github.com/novvoo/ai-engineering-mastery-agent/issues');
+            await shell.openExternal('https://github.com/novvoo/mastery/issues');
           }
         },
         { type: 'separator' },

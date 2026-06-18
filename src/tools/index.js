@@ -49,13 +49,15 @@ export const SKILL_TOOL_CREATORS = [
   createSetupTool,
 ];
 
-export function createCoreTools({ workingDirectory = null, mcpClient = null } = {}) {
-  return [
+export function createCoreTools({
+  workingDirectory = null,
+  mcpClient = null,
+  includeExperimentalTools = false,
+} = {}) {
+  const tools = [
     ...createFileSystemTools(),
     createShellTool(),
     ...createWorkspaceKnowledgeTools(null),
-    ...createStateCentricTools(),
-    ...createStateGraphTools(),
     ...createContextExpansionTools(workingDirectory),
     ...createPtyTools(),
     createSemanticSearchTool(),
@@ -65,6 +67,15 @@ export function createCoreTools({ workingDirectory = null, mcpClient = null } = 
     ...createPreviewTools(),
     ...(mcpClient ? createMCPTools(mcpClient) : []),
   ];
+
+  if (includeExperimentalTools) {
+    tools.push(
+      ...createStateCentricTools(),
+      ...createStateGraphTools(),
+    );
+  }
+
+  return tools;
 }
 
 export function createSchedulerTools(schedulerEngine) {

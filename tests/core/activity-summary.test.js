@@ -60,6 +60,40 @@ describe('activity-summary (src/core)', () => {
     expect(summary.undoable).toBe(1);
   });
 
+  test('buildActivitySummary synthesizes activities from plain tool events', () => {
+    const summary = buildActivitySummary([
+      {
+        event: 'tool:call',
+        type: 'tool',
+        timestamp: 1,
+        toolName: 'read_file',
+        args: { path: 'src/app.js' },
+      },
+      {
+        event: 'tool:result',
+        type: 'tool_result',
+        timestamp: 2,
+        toolName: 'read_file',
+        args: { path: 'src/app.js' },
+        result: 'file content',
+      },
+      {
+        event: 'tool:error',
+        type: 'tool_result',
+        timestamp: 3,
+        toolName: 'write_file',
+        args: { path: 'src/out.js' },
+        error: 'permission denied',
+      },
+    ]);
+
+    expect(summary.activities.length).toBe(2);
+    expect(summary.completed).toBe(1);
+    expect(summary.failed).toBe(1);
+    expect(summary.files.map(file => file.path)).toContain('src/app.js');
+    expect(summary.files.find(file => file.path === 'src/out.js')?.status).toBe('failed');
+  });
+
   test('buildActivitySummary builds task stages', () => {
     const details = [
       {

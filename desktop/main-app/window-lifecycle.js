@@ -17,6 +17,27 @@ import { createApplicationMenu } from '../menu.js';
 
 export function setupAppProperties(ctx) {
   const { app } = ctx.electron;
+
+  // 防御性 GPU 配置：在沙箱或受限环境下，GPU 进程可能崩溃导致整个应用退出
+  const shouldDisableGpu =
+    process.env.DISABLE_GPU === '1' ||
+    process.env.ELECTRON_DISABLE_GPU === '1' ||
+    process.argv.includes('--disable-gpu') ||
+    process.env.TRAE_SANDBOX === '1' ||
+    process.env.SANDBOX_INIT === '1' ||
+    // 在某些 CI / 容器环境下默认禁用 GPU，避免 GPU 沙箱初始化失败
+    (process.env.NODE_ENV === 'test');
+
+  if (shouldDisableGpu) {
+    try { app.commandLine.appendSwitch('disable-gpu'); } catch (_) {}
+    try { app.commandLine.appendSwitch('disable-software-rasterizer'); } catch (_) {}
+    try { app.commandLine.appendSwitch('disable-gpu-compositing'); } catch (_) {}
+    console.log('🖥️  GPU 已禁用（避免 GPU 沙箱初始化失败）');
+  } else {
+    // 即便不禁用 GPU，也添加一些常见的容错开关
+    try { app.commandLine.appendSwitch('disable-gpu-sandbox'); } catch (_) {}
+  }
+
   app.setName(APP_NAME);
   app.setAboutPanelOptions({
     applicationName: APP_NAME,
@@ -45,6 +66,23 @@ export function createMainWindow(ctx) {
   console.log('📦 创建主窗口...');
   const { BrowserWindow } = ctx.electron;
 
+  const preloadPath = ctx.config.window?.webPreferences?.preload;
+  try {
+    console.log(`🔍 preload 路径: ${preloadPath}`);
+    console.log(`🔍 preload 文件存在: ${fs.existsSync(preloadPath)}`);
+    console.log('[IPC-DIAG][main] expected preload entry active:', String(preloadPath || '').endsWith(path.join('preload-entry', 'index.js')));
+    console.log('[IPC-DIAG][main] BrowserWindow webPreferences:', sanitizeWebPreferences(ctx.config.window?.webPreferences));
+    if (preloadPath && fs.existsSync(preloadPath)) {
+      const stat = fs.statSync(preloadPath);
+      console.log('[IPC-DIAG][main] preload file stat:', {
+        size: stat.size,
+        mtime: stat.mtime?.toISOString?.()
+      });
+    }
+  } catch (e) {
+    console.log(`🔍 preload 路径检查失败: ${preloadPath}`, e.message);
+  }
+
   ctx.mainWindow = new BrowserWindow({
     width: ctx.config.window.width,
     height: ctx.config.window.height,
@@ -59,6 +97,7 @@ export function createMainWindow(ctx) {
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default'
   });
 
+  attachIpcDiagnostics(ctx);
   loadPage(ctx);
 
   ctx.mainWindow.once('ready-to-show', () => {
@@ -70,6 +109,93 @@ export function createMainWindow(ctx) {
   });
 
   setupWindowEvents(ctx);
+}
+
+function sanitizeWebPreferences(webPreferences = {}) {
+  return {
+    preload: webPreferences.preload,
+    nodeIntegration: webPreferences.nodeIntegration,
+    contextIsolation: webPreferences.contextIsolation,
+    sandbox: webPreferences.sandbox,
+    webSecurity: webPreferences.webSecurity,
+    partition: webPreferences.partition,
+    additionalArguments: webPreferences.additionalArguments
+  };
+}
+
+function attachIpcDiagnostics(ctx) {
+  const webContents = ctx.mainWindow?.webContents;
+  if (!webContents) {
+    return;
+  }
+
+  const logRendererSnapshot = async (stage) => {
+    try {
+      const snapshot = await webContents.executeJavaScript(`
+        (() => ({
+          href: location.href,
+          readyState: document.readyState,
+          hasElectronAPI: !!window.electronAPI,
+          electronAPIType: typeof window.electronAPI,
+          connectFn: typeof window.electronAPI?.connect,
+          invokeFn: typeof window.electronAPI?.invoke,
+          diag: window.electronAPI?.__diag || null,
+          exposedDiag: window.__masteryPreloadDiag?.get?.() || null,
+          userAgent: navigator.userAgent
+        }))()
+      `, true);
+      console.log(`[IPC-DIAG][main] renderer snapshot @${stage}:`, snapshot);
+    } catch (error) {
+      console.warn(`[IPC-DIAG][main] renderer snapshot failed @${stage}:`, error?.message);
+    }
+  };
+
+  webContents.on('preload-error', (_event, preloadPath, error) => {
+    console.error('[IPC-DIAG][main] preload-error:', {
+      preloadPath,
+      message: error?.message,
+      stack: error?.stack
+    });
+  });
+
+  webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    const text = String(message || '');
+    if (
+      text.includes('[Preload]') ||
+      text.includes('[IPC-DIAG]') ||
+      text.includes('[useIPC]') ||
+      text.includes('electronAPI')
+    ) {
+      console.log('[IPC-DIAG][renderer-console]', {
+        level,
+        message,
+        line,
+        sourceId
+      });
+    }
+  });
+
+  webContents.on('did-start-loading', () => {
+    console.log('[IPC-DIAG][main] did-start-loading');
+  });
+  webContents.on('dom-ready', () => {
+    console.log('[IPC-DIAG][main] dom-ready');
+    logRendererSnapshot('dom-ready');
+  });
+  webContents.on('did-finish-load', () => {
+    console.log('[IPC-DIAG][main] did-finish-load');
+    logRendererSnapshot('did-finish-load');
+  });
+  webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error('[IPC-DIAG][main] did-fail-load:', {
+      errorCode,
+      errorDescription,
+      validatedURL
+    });
+  });
+  webContents.on('render-process-gone', (_event, details) => {
+    console.error('[IPC-DIAG][main] render-process-gone:', details);
+  });
 }
 
 export function loadPage(ctx) {
@@ -332,7 +458,7 @@ export function showAboutDialog(ctx) {
     buttons: ['确定', '查看文档']
   }).then(result => {
     if (result.response === 1) {
-      shell.openExternal('https://github.com/novvoo/ai-engineering-mastery-agent#readme');
+      shell.openExternal('https://github.com/novvoo/mastery#readme');
     }
   });
 }

@@ -18,6 +18,16 @@ describe('TextToolParser: detectMalformedToolCall', () => {
     expect(p.detectMalformedToolCall(res)).toBeNull();
   });
 
+  it('parses action string objects inside <action> tags', () => {
+    const p = new TextToolParser(makeRegistry(['web_search']));
+    const res = '<action>{"action":"web_search","query":"厦门天气 2026-06-18 气温","max_results":5}</action>';
+    const parsed = p.parse(res).filter(c => c.source !== 'natural_language');
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].name).toBe('web_search');
+    expect(parsed[0].arguments.query).toBe('厦门天气 2026-06-18 气温');
+    expect(parsed[0].arguments.max_results).toBe(5);
+  });
+
   it('returns null for well-formed CALL ...({...})', () => {
     const p = new TextToolParser(makeRegistry(['shell']));
     const res = 'CALL shell({"command": "ls -la"})';

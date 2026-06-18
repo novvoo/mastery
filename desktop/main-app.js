@@ -67,6 +67,7 @@ import {
   getLLMConfigStatus,
   saveLLMConfig,
   handleSaveConfig,
+  readAppConfig,
   readAllModelConfigs,
   saveAllModelConfigs,
   saveSingleModelConfig,
@@ -91,21 +92,29 @@ class ElectronMainApp {
 
   constructor(config = {}) {
     this.#userEnvPath = config.userEnvPath || getUserEnvPath();
+
+    // 解析传入 window 配置（来自 savedConfig 等）——深层合并以避免覆盖安全设置
+    const inputWindow = config.window || {};
+    const inputWebPrefs = inputWindow.webPreferences || {};
+
     this.#config = {
       workingDirectory: config.workingDirectory || this.#getDefaultWorkingDirectory(),
       debug: config.debug || process.env.NODE_ENV === 'development' || process.argv.includes('--dev'),
 
       window: {
-        width: config.windowWidth || 1400,
-        height: config.windowHeight || 900,
-        minWidth: config.minWindowWidth || 800,
-        minHeight: config.minWindowHeight || 600,
+        width: inputWindow.width || config.windowWidth || 1400,
+        height: inputWindow.height || config.windowHeight || 900,
+        minWidth: inputWindow.minWidth || config.minWindowWidth || 800,
+        minHeight: inputWindow.minHeight || config.minWindowHeight || 600,
         webPreferences: {
+          // 这些是安全设置，不允许从外部传入覆盖——始终使用硬编码默认
           nodeIntegration: false,
           contextIsolation: true,
-          preload: path.join(__dirname, 'preload.js'),
-          sandbox: true,
-          webSecurity: true
+          preload: path.join(__dirname, 'preload-entry', 'index.js'),
+          sandbox: false,
+          webSecurity: true,
+          // 允许外部传入覆盖额外字段（但不覆盖上面的安全项）
+          ...inputWebPrefs
         }
       },
 
@@ -127,6 +136,16 @@ class ElectronMainApp {
       autoStart: config.autoStart || false,
 
       ...config
+    };
+
+    // 再次确保 window.webPreferences 的安全设置不被 ...config 覆盖
+    this.#config.window.webPreferences = {
+      ...(this.#config.window.webPreferences || {}),
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload-entry', 'index.js'),
+      sandbox: false,
+      webSecurity: true
     };
   }
 
@@ -286,21 +305,23 @@ async function main() {
     });
     console.log(`🔐 已加载运行配置: ${userEnvPath}, ${process.cwd()}`);
 
-    let savedConfig = {};
-    try {
-      const configPath = path.join(electron.app.getPath('userData'), 'config.json');
-      if (fs.existsSync(configPath)) {
-        savedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const savedConfig = readAppConfig(electron);
+    if (savedConfig.workingDirectory && !fs.existsSync(savedConfig.workingDirectory)) {
+      console.warn(`⚠️  已保存的工作目录不存在，使用默认目录: ${savedConfig.workingDirectory}`);
+      delete savedConfig.workingDirectory;
+    }
+
+    let envWorkingDirectory = null;
+    if (process.env.WORKING_DIRECTORY) {
+      envWorkingDirectory = path.resolve(process.env.WORKING_DIRECTORY);
+      if (!fs.existsSync(envWorkingDirectory)) {
+        fs.mkdirSync(envWorkingDirectory, { recursive: true });
       }
-    } catch (err) {
-      console.log('未找到保存的配置，使用默认配置');
     }
 
     const electronApp = new ElectronMainApp({
       ...savedConfig,
-      ...(process.env.WORKING_DIRECTORY ? {
-        workingDirectory: path.resolve(process.env.WORKING_DIRECTORY)
-      } : {}),
+      ...(envWorkingDirectory ? { workingDirectory: envWorkingDirectory } : {}),
       userEnvPath,
       debug: process.env.NODE_ENV === 'development' || process.argv.includes('--dev')
     });

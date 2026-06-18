@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import CommandSuggestions from '../CommandSuggestions.jsx';
 import MessageLog from '../MessageLog.jsx';
 import { Button } from '../ui/index.js';
+import { InteractionConsole } from './InteractionConsole.jsx';
+import { getSendButtonMotionClass } from '../../app/animation-system.js';
 import { styles } from '../../app/styles.js';
 import { t } from '../../i18n.js';
 
@@ -9,6 +11,7 @@ export function ChatWorkspace({
   runtime,
   chatInput,
   chatInputRef,
+  inputNotice,
   inputFocused,
   showSuggestions,
   onAskAgentFromMessage,
@@ -105,6 +108,13 @@ export function ChatWorkspace({
             </div>
           </div>
         )}
+        <InteractionConsole
+          status={runtime.status}
+          messages={runtime.messages}
+          tools={runtime.tools}
+          inputNotice={inputNotice}
+          inputValue={chatInput}
+        />
         <div style={styles.inputWrapper}>
           {showSuggestions && (
             <CommandSuggestions
@@ -130,6 +140,7 @@ export function ChatWorkspace({
             disabled={runtime.status === 'running'}
           />
           <button
+            className={getSendButtonMotionClass(runtime.status, chatInput)}
             style={{
               ...styles.sendButton,
               ...(runtime.status === 'running'
@@ -145,9 +156,6 @@ export function ChatWorkspace({
           >
             {runtime.status === 'running' ? '■' : '↑'}
           </button>
-        </div>
-        <div style={styles.inputHint}>
-          {t('chat.hint')}
         </div>
       </div>
     </div>

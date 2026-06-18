@@ -128,11 +128,12 @@ export function createAgentErrorPrompt(message) {
 export function createLocalStorageAdapter(storageKey, sessionsKey, historyKey) {
   const SESSIONS_KEY = sessionsKey || 'agentConversationSessions';
   const HISTORY_KEY = historyKey || 'agentHistory';
+  const storage = storageKey || globalThis.localStorage;
 
   return {
     readSessions() {
       try {
-        const raw = localStorage.getItem(SESSIONS_KEY);
+        const raw = storage?.getItem(SESSIONS_KEY);
         if (!raw) return [];
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : [];
@@ -141,11 +142,11 @@ export function createLocalStorageAdapter(storageKey, sessionsKey, historyKey) {
       }
     },
     writeSessions(sessions) {
-      localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+      storage?.setItem(SESSIONS_KEY, JSON.stringify(sessions));
     },
     readHistory() {
       try {
-        const raw = localStorage.getItem(HISTORY_KEY);
+        const raw = storage?.getItem(HISTORY_KEY);
         if (!raw) return [];
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : [];
@@ -154,7 +155,7 @@ export function createLocalStorageAdapter(storageKey, sessionsKey, historyKey) {
       }
     },
     writeHistory(history) {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+      storage?.setItem(HISTORY_KEY, JSON.stringify(history));
     },
   };
 }

@@ -228,7 +228,9 @@ export function createFileSystemTools() {
             const content = await readFile(safe.fullPath, 'utf-8');
             const numbered = content.split('\n').map((line, i) => `${i + 1}: ${line}`).join('\n');
             results.push(`=== ${path} ===\n${numbered}\n`);
-            await ctx.memoryManager.updateFileMap(path, 'read');
+            if (ctx.memoryManager && typeof ctx.memoryManager.updateFileMap === 'function') {
+              ctx.memoryManager.updateFileMap(path, 'read').catch(() => {});
+            }
           } catch (error) {
             results.push(`=== ${path} ===\nError: ${error instanceof Error ? error.message : error}\n`);
           }
@@ -267,8 +269,9 @@ export function createFileSystemTools() {
             content = lines.map((line, i) => `${i + 1}: ${line}`).join('\n');
           }
 
-          // Update file map
-          await ctx.memoryManager.updateFileMap(path, 'read');
+          if (ctx.memoryManager && typeof ctx.memoryManager.updateFileMap === 'function') {
+            ctx.memoryManager.updateFileMap(path, 'read').catch(() => {});
+          }
 
           return content;
         } catch (error) {
@@ -301,16 +304,13 @@ export function createFileSystemTools() {
           const b64Result = tryDecodeBase64(content);
           if (b64Result.isBase64 && b64Result.decoded) {
             const decodedBuffer = b64Result.decoded;
-            // 判断是纯文本还是二进制 — 如果是有效的 UTF-8 文本，用 'utf-8'
             let contentInfo;
             try {
               const asText = decodedBuffer.toString('utf-8');
-              // 如果重新编码一致，作为文本处理
               if (Buffer.from(asText, 'utf-8').equals(decodedBuffer)) {
                 await writeFile(fullPath, asText, 'utf-8');
                 contentInfo = `${asText.split('\n').length} lines (decoded from base64)`;
               } else {
-                // 二进制内容，直接写 buffer
                 await writeFile(fullPath, decodedBuffer);
                 contentInfo = `${decodedBuffer.length} bytes (binary, decoded from base64)`;
               }
@@ -318,24 +318,25 @@ export function createFileSystemTools() {
               await writeFile(fullPath, decodedBuffer);
               contentInfo = `${decodedBuffer.length} bytes (binary, decoded from base64)`;
             }
-            await ctx.memoryManager.updateFileMap(path, 'created/modified');
+            if (ctx.memoryManager && typeof ctx.memoryManager.updateFileMap === 'function') {
+              ctx.memoryManager.updateFileMap(path, 'created/modified').catch(() => {});
+            }
             return `File written successfully: ${path} (${contentInfo})`;
           }
 
           await writeFile(fullPath, content, 'utf-8');
-          await ctx.memoryManager.updateFileMap(path, 'created/modified');
+          if (ctx.memoryManager && typeof ctx.memoryManager.updateFileMap === 'function') {
+            ctx.memoryManager.updateFileMap(path, 'created/modified').catch(() => {});
+          }
 
-          // --- Record in harness ContentAddressableStore (if available) ---
           if (ctx.contentStore) {
             try {
               const blobHash = ctx.contentStore.storeBlob(content);
               ctx.contentStore.setRef(`file:${path}`, blobHash);
-              // Auto-analyze: create line-level anchors via the injected fileAnalyzer.
               if (ctx.fileAnalyzer && typeof ctx.fileAnalyzer.analyzeFile === 'function') {
                 ctx.fileAnalyzer.analyzeFile(path, content);
               }
             } catch {
-              // Non-fatal: contentStore is optional extension surface.
             }
           }
 
@@ -405,7 +406,9 @@ export function createFileSystemTools() {
           const diff = generateUnifiedDiff(content, newContent, path);
 
           await writeFile(fullPath, newContent, 'utf-8');
-          await ctx.memoryManager.updateFileMap(path, 'edited');
+          if (ctx.memoryManager && typeof ctx.memoryManager.updateFileMap === 'function') {
+            ctx.memoryManager.updateFileMap(path, 'edited').catch(() => {});
+          }
 
           // --- Record edit in the harness ContentAddressableStore (if available) ---
           if (ctx.contentStore) {
@@ -413,12 +416,10 @@ export function createFileSystemTools() {
               ctx.contentStore.storeAnchor(path, matchOffset, matchOffset + old_text.length, old_text);
               const newBlobHash = ctx.contentStore.storeBlob(newContent);
               ctx.contentStore.setRef(`file:${path}`, newBlobHash);
-              // Re-analyze the modified file so new anchors reflect the new content.
               if (ctx.fileAnalyzer && typeof ctx.fileAnalyzer.analyzeFile === 'function') {
                 ctx.fileAnalyzer.analyzeFile(path, newContent);
               }
             } catch {
-              // Non-fatal: contentStore is optional extension surface.
             }
           }
 

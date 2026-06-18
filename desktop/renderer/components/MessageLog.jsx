@@ -18,7 +18,6 @@ import { useIPC } from '../hooks/useIPC.js';
 import { RuntimeDetailsPanel } from './message-log/RuntimeDetailsPanel.jsx';
 import { t } from '../i18n.js';
 import {
-  buildThinkingSummary,
   buildRuntimeDetailsExportData,
   createConversationGroups,
   isPrimaryMessage,
@@ -85,9 +84,52 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     ),
   }), []);
 
+  const getMessageDisplayText = useCallback((msg = {}) => {
+    const candidates = [
+      msg.content,
+      msg.message,
+      msg.answer,
+      msg.text,
+      msg.response,
+      msg.result,
+      msg.result?.answer,
+      msg.result?.response,
+      msg.result?.text,
+      msg.resultMeta?.answer,
+      msg.resultMeta?.content,
+      msg.resultMeta?.result,
+      msg.resultMeta?.result?.answer,
+      msg.resultMeta?.result?.response,
+      msg.resultMeta?.result?.text,
+      msg.payload?.answer,
+      msg.payload?.content,
+      msg.payload?.message,
+      msg.payload?.text,
+      msg.payload?.chunk,
+      msg.payload?.result?.answer,
+      msg.payload?.result?.response,
+      msg.payload?.result?.text,
+    ];
+
+    for (const value of candidates) {
+      if (typeof value === 'string' && value.trim()) {
+        return value;
+      }
+    }
+
+    if (msg.event === 'agent:complete' || msg.streamComplete) {
+      return '任务执行完成';
+    }
+
+    if (msg.isStreaming || msg.type === 'assistant_stream') {
+      return '';
+    }
+
+    return '';
+  }, []);
+
   // 状态
   const [filter, setFilter] = useState('all');
-  const [autoScroll, setAutoScroll] = useState(true);
   const [viewMode, setViewMode] = useState('list'); // 'list' | 'timeline'
   const [searchQuery, setSearchQuery] = useState('');
   const [searchExpanded, setSearchExpanded] = useState(false);
@@ -106,19 +148,61 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   const thinkingPanelRefs = useRef(new Map());
   const searchRef = useRef(null);
   
-  // 自动滚动到底部
+  // 自动滚动状态 — 基于用户滚动位置智能判断
+  // autoScroll = true 时跟随新内容滚动到底部；false 时锁定当前位置
+  const [autoScroll, setAutoScroll] = useState(true);
+  const autoScrollRef = useRef(true);  // 用 ref 避免在滚动事件处理器中读到旧状态
+
+  // 同步 ref 和 state
+  useEffect(() => {
+    autoScrollRef.current = autoScroll;
+  }, [autoScroll]);
+
+  // 判断是否接近底部（阈值 80px）
+  const isNearBottom = useCallback((el) => {
+    if (!el) return false;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    return distanceFromBottom < 80;
+  }, []);
+
+  // 主消息列表滚动事件：根据用户滚动行为智能切换 autoScroll
+  const handleListScroll = useCallback((e) => {
+    const el = e.target;
+    if (!el) return;
+    const nearBottom = isNearBottom(el);
+    // 用户主动滚动时切换 — 滚到附近底部→开启跟随；远离底部→停止跟随
+    if (nearBottom && !autoScrollRef.current) {
+      setAutoScroll(true);
+    } else if (!nearBottom && autoScrollRef.current) {
+      // 只在向上滚动/明显远离底部时才停止跟随
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (distanceFromBottom > 150) {
+        setAutoScroll(false);
+      }
+    }
+  }, [isNearBottom]);
+
+  // 自动滚动到底部 — 仅当用户希望自动跟随且不是结果类消息时才滚动
   useEffect(() => {
     if (!listRef.current) return;
+    if (!autoScroll) return;  // 用户主动查看历史，不滚动
 
     const lastMessage = messages.filter(msg => !isRuntimeDetailMessage(msg)).at(-1);
     // 不因 Agent 回答结果而滚动（保持运行详情可见）
     const isAnswerMessage = lastMessage?.type === 'result' || lastMessage?.type === 'success';
-    const shouldScroll = !isAnswerMessage && (autoScroll || lastMessage?.type === 'event');
+    const shouldScroll = !isAnswerMessage;
 
     if (shouldScroll) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
   }, [messages, autoScroll]);
+
+  // 智能滚动：子面板也使用同样策略
+  const handleSubPanelScroll = useCallback((e) => {
+    const el = e.target;
+    if (!el) return;
+    // 子面板也遵循：用户离开底部后不强制跟随
+  }, []);
 
   function messageMatchesFilter(msg) {
     return filter === 'all' || msg?.type === filter;
@@ -171,17 +255,19 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       if (group.runtimeDetails.length === 0) {
         continue;
       }
+      // 运行时详情面板 — 仅当用户在底部附近时才跟随滚动
       const panelRef = runtimeDetailsRefs.current.get(group.id);
-      if (panelRef) {
+      if (panelRef && isNearBottom(panelRef)) {
         panelRef.scrollTop = panelRef.scrollHeight;
       }
 
+      // 思考面板 — 同样策略
       const thinkingRef = thinkingPanelRefs.current.get(group.id);
-      if (thinkingRef) {
+      if (thinkingRef && isNearBottom(thinkingRef)) {
         thinkingRef.scrollTop = thinkingRef.scrollHeight;
       }
     }
-  }, [conversationGroups]);
+  }, [conversationGroups, isNearBottom]);
   
   // 按时间分组消息（时间线视图）
   const groupedMessages = useMemo(() => {
@@ -455,6 +541,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         return { ...styles.messageType, ...styles.typeAgent };
       case 'thinking':
         return { ...styles.messageType, ...styles.typeThinking };
+      case 'assistant_stream':
+        return { ...styles.messageType, ...styles.typeAgent };
       default:
         return styles.messageType;
     }
@@ -484,9 +572,13 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       case 'user':
         return { icon: '👤', text: '用户' };
       case 'agent':
-        return { icon: 'AI', text: 'Agent' };
+        return { icon: 'AI', text: t('msg.assistant') };
       case 'thinking':
         return { icon: '思', text: '思考' };
+      case 'plan':
+        return { icon: '▦', text: '计划' };
+      case 'assistant_stream':
+        return { icon: '✨', text: '生成中' };
       default:
         return { icon: '📄', text: '消息' };
     }
@@ -501,7 +593,386 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     const typeDisplay = getTypeDisplay(msg.type);
     const isActionableError = isActionableErrorMessage(msg);
     const isUser = msg.type === 'user';
-    const isAgent = msg.type === 'agent';
+    const isAgent = msg.type === 'agent' || msg.type === 'assistant_stream' || msg.type === 'result' || msg.type === 'success';
+    const isStreaming = msg.type === 'assistant_stream' || msg.isStreaming;
+    const isAssistantMarkdownMessage = !msg.toolName && (
+      msg.type === 'agent' ||
+      msg.type === 'assistant' ||
+      msg.type === 'assistant_stream' ||
+      msg.type === 'result' ||
+      msg.streamComplete === true ||
+      (msg.event === 'agent:complete' && ['success', 'result'].includes(msg.type))
+    );
+
+    const renderAssistantBubble = ({ streaming = false } = {}) => {
+      const content = getMessageDisplayText(msg);
+
+      if (!content && streaming) {
+        return renderStreamingCard();
+      }
+
+      return (
+        <div style={{
+          ...styles.enhancedMessageBubble,
+          ...styles.enhancedMessageBubbleAgent,
+          ...styles.assistantMarkdownBubble,
+        }}>
+          {content ? (
+            <MarkdownMessageContent
+              text={content}
+              isCollapsed={isCollapsed}
+              isStreaming={streaming}
+              workingDirectory={workingDirectory}
+              fileServerUrl={fileServerUrl}
+              markdownComponents={markdownComponents}
+              onLinkClick={handleMessageContainerClick}
+            />
+          ) : (
+            <div style={styles.emptyAssistantMessage}>
+              <span style={styles.emptyAssistantDot} />
+              <span>暂无回复内容</span>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // ── 工具调用卡片渲染 ───────────────────────────
+    const renderToolCard = () => {
+      const toolName = msg.toolName || msg.name || (msg.content && msg.content.length < 80 ? msg.content : '未知工具');
+      const toolIcon = msg.toolName?.includes('write') ? '✍️'
+        : msg.toolName?.includes('subagent') ? '◫'
+        : msg.toolName?.includes('read') || msg.toolName?.includes('cat') ? '📄'
+        : msg.toolName?.includes('shell') || msg.toolName?.includes('exec') || msg.toolName?.includes('bash') ? '💻'
+        : msg.toolName?.includes('search') || msg.toolName?.includes('find') || msg.toolName?.includes('glob') ? '🔎'
+        : msg.toolName?.includes('ask_human') || msg.toolName?.includes('human') ? '🙋'
+        : msg.toolName?.includes('file') ? '📁'
+        : '🔧';
+
+      let args = null;
+      if (msg.args && typeof msg.args === 'object' && Object.keys(msg.args).length > 0) {
+        args = msg.args;
+      } else if (msg.content && msg.content.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(msg.content);
+          if (parsed && typeof parsed === 'object') args = parsed;
+        } catch (e) {}
+      }
+
+      return (
+        <div style={styles.actionCard}>
+          <div style={styles.actionCardHeader}>
+            <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxTool }}>{toolIcon}</div>
+            <div style={styles.actionTitleWrap}>
+              <div style={styles.actionName}>{toolName}</div>
+              <div style={styles.actionSubtitle}>
+                {toolName.includes('subagent') ? '子代理任务' : '执行工具调用'}
+              </div>
+            </div>
+            {msg.duration && (
+              <span style={styles.actionDurationBadge}>{msg.duration}ms</span>
+            )}
+          </div>
+
+          {args && !isCollapsed && (
+            <div style={styles.actionArgs}>
+              {Object.entries(args).map(([key, value], idx) => (
+                <div key={idx} style={styles.actionArgRow}>
+                  <span style={styles.actionArgKey}>{key}</span>
+                  <span style={{
+                    ...styles.actionArgValue,
+                    ...(typeof value === 'string' ? styles.actionArgValueString : {}),
+                    ...(typeof value === 'number' ? styles.actionArgValueNumber : {})
+                  }}>
+                    {typeof value === 'string'
+                      ? (value.length > 200 ? value.slice(0, 200) + '…' : value)
+                      : JSON.stringify(value)
+                    }
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!args && msg.content && msg.content.length > 0 && !isCollapsed && (
+            <div style={styles.actionResultSummary}>
+              <MarkdownMessageContent
+                text={msg.content || ''}
+                isCollapsed={isCollapsed}
+                workingDirectory={workingDirectory}
+                fileServerUrl={fileServerUrl}
+                markdownComponents={markdownComponents}
+                onLinkClick={handleMessageContainerClick}
+              />
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // ── 结果/成功卡片渲染 ───────────────────────────
+    const renderResultCard = () => {
+      if (isAssistantMarkdownMessage) {
+        return renderAssistantBubble();
+      }
+
+      const summary = msg.content || msg.message || msg.result || msg.payload || '执行成功';
+      const hasContent = summary && summary.length > 0;
+      const displayText = typeof summary === 'string' ? summary : JSON.stringify(summary, null, 2);
+
+      return (
+        <div style={{ ...styles.actionCard, borderColor: 'var(--success-color)' }}>
+          <div style={styles.actionCardHeader}>
+            <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxResult }}>✓</div>
+            <div style={styles.actionTitleWrap}>
+              <div style={styles.actionName}>工具执行完成</div>
+              <div style={styles.actionSubtitle}>{msg.toolName || '操作结果'}</div>
+            </div>
+            {msg.duration && (
+              <span style={styles.actionDurationBadge}>{msg.duration}ms</span>
+            )}
+          </div>
+
+          {hasContent && !isCollapsed && (
+            <div style={styles.actionResultSummary}>
+              <MarkdownMessageContent
+                text={displayText}
+                isCollapsed={isCollapsed}
+                workingDirectory={workingDirectory}
+                fileServerUrl={fileServerUrl}
+                markdownComponents={markdownComponents}
+                onLinkClick={handleMessageContainerClick}
+              />
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // ── 错误卡片渲染 ───────────────────────────
+    const renderErrorCard = () => {
+      const errorMsg = msg.content || msg.message || msg.error || msg.payload || '操作失败';
+      const displayMsg = typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg, null, 2);
+
+      return (
+        <div style={{ ...styles.actionCard, borderColor: 'var(--error-border)' }}>
+          <div style={styles.actionCardHeader}>
+            <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxError }}>!</div>
+            <div style={styles.actionTitleWrap}>
+              <div style={{ ...styles.actionName, color: 'var(--error-color)' }}>
+                {msg.event === 'tool:error' ? '工具执行失败' : '错误'}
+              </div>
+              <div style={styles.actionSubtitle}>可将此错误交由助手分析处理</div>
+            </div>
+          </div>
+
+          {!isCollapsed && (
+            <div style={styles.actionErrorBody}>
+              <pre style={{
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                margin: 0,
+                fontSize: '12px',
+                lineHeight: 1.6,
+                color: 'var(--error-color)'
+              }}>
+                {displayMsg.length > 500 ? displayMsg.slice(0, 500) + '…' : displayMsg}
+              </pre>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // ── 思考卡片渲染 ───────────────────────────
+    const renderThinkingCard = () => {
+      const content = getMessageDisplayText(msg);
+      if (!content) return null;
+
+      return (
+        <div style={styles.thinkingCard}>
+          <div style={styles.thinkingCardHeader}>
+            <span>💭</span>
+            <span>{t('msg.thinking_in_progress')}</span>
+          </div>
+          {!isCollapsed && (
+            <div style={{ fontSize: '13px', color: 'var(--text-dark)', lineHeight: 1.7 }}>
+              <MarkdownMessageContent
+                text={content}
+                isCollapsed={isCollapsed}
+                workingDirectory={workingDirectory}
+                fileServerUrl={fileServerUrl}
+                markdownComponents={markdownComponents}
+                onLinkClick={handleMessageContainerClick}
+              />
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    const renderStreamingCard = () => {
+      const content = getMessageDisplayText(msg);
+
+      return (
+        <div style={{
+          ...styles.streamingBubble,
+          ...(content ? styles.streamingBubbleActive : {})
+        }}>
+          <div style={styles.streamingStatus}>
+            <span style={styles.streamingStatusDot} />
+            <span>{content ? '正在生成回复' : '正在组织回复'}</span>
+            <span style={styles.streamingDots} aria-hidden="true">
+              <span style={styles.streamingDot} />
+              <span style={styles.streamingDot} />
+              <span style={styles.streamingDot} />
+            </span>
+          </div>
+
+          {content ? (
+            <MarkdownMessageContent
+              text={content}
+              isCollapsed={isCollapsed}
+              isStreaming
+              workingDirectory={workingDirectory}
+              fileServerUrl={fileServerUrl}
+              markdownComponents={markdownComponents}
+              onLinkClick={handleMessageContainerClick}
+            />
+          ) : (
+            <div style={styles.streamingSkeleton}>
+              <span style={{ ...styles.streamingSkeletonLine, width: '72%' }} />
+              <span style={{ ...styles.streamingSkeletonLine, width: '92%' }} />
+              <span style={{ ...styles.streamingSkeletonLine, width: '48%' }} />
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    const renderPlanCard = () => {
+      const tasks = Array.isArray(msg.planTasks) ? msg.planTasks : [];
+      const progress = msg.planProgress || {};
+      const title = msg.content || '执行计划';
+      const statusTone = progress.failed > 0 ? 'var(--error-color)'
+        : progress.completed === progress.total && progress.total > 0 ? 'var(--success-color)'
+        : 'var(--warning-color)';
+
+      const taskLabel = (task) => task.name || task.id || 'Task';
+      const taskStatus = (task) => String(task.status || 'pending').toLowerCase();
+      const taskStatusText = (statusValue) => {
+        switch (statusValue) {
+          case 'completed': return '完成';
+          case 'running': return '进行中';
+          case 'failed': return '失败';
+          case 'blocked': return '等待';
+          default: return '待执行';
+        }
+      };
+
+      return (
+        <div style={styles.planCard}>
+          <div style={styles.planCardHeader}>
+            <div style={{ ...styles.actionIconBox, ...styles.planIconBox }}>▦</div>
+            <div style={styles.actionTitleWrap}>
+              <div style={styles.actionName}>{title}</div>
+              <div style={styles.actionSubtitle}>
+                {progress.completed || 0}/{progress.total || tasks.length} 完成
+                {msg.toolName ? ` · 由 ${msg.toolName} 推进` : ''}
+              </div>
+            </div>
+            <span style={{ ...styles.planProgressBadge, color: statusTone }}>
+              {progress.progress ?? 0}%
+            </span>
+          </div>
+
+          <div style={styles.planProgressTrack}>
+            <div
+              style={{
+                ...styles.planProgressFill,
+                width: `${Math.max(4, progress.progress || 0)}%`,
+                backgroundColor: statusTone,
+              }}
+            />
+          </div>
+
+          {!isCollapsed && tasks.length > 0 && (
+            <div style={styles.planTaskList}>
+              {tasks.map((task, taskIndex) => {
+                const statusValue = taskStatus(task);
+                return (
+                  <div key={task.id || taskIndex} style={styles.planTaskRow}>
+                    <span
+                      style={{
+                        ...styles.planTaskDot,
+                        ...(statusValue === 'completed' ? styles.planTaskDotDone : {}),
+                        ...(statusValue === 'running' ? styles.planTaskDotRunning : {}),
+                        ...(statusValue === 'failed' ? styles.planTaskDotFailed : {}),
+                      }}
+                    />
+                    <span style={styles.planTaskName}>{taskLabel(task)}</span>
+                    <span style={styles.planTaskStatus}>{taskStatusText(statusValue)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // ── 根据消息类型渲染内容 ──────────────────────
+    const renderBody = () => {
+      if (isCollapsed) {
+        const preview = (getMessageDisplayText(msg) || msg.toolName || msg.name || '')
+          .toString().slice(0, 60);
+        return (
+          <div style={{
+            ...styles.messageBubble,
+            ...(isUser ? styles.messageBubbleUser : {}),
+            ...(isAgent ? styles.messageBubbleAgent : {})
+          }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+              {preview}{preview.length >= 60 ? '…' : ''}
+            </span>
+          </div>
+        );
+      }
+
+      if (msg.type === 'tool') return renderToolCard();
+      if (isAssistantMarkdownMessage && !isStreaming) return renderAssistantBubble();
+      if (msg.type === 'result' || msg.type === 'success' || msg.type === 'tool_result') return renderResultCard();
+      if (msg.type === 'error') return renderErrorCard();
+      if (msg.type === 'thinking') return renderThinkingCard();
+      if (msg.type === 'plan') return renderPlanCard();
+      if (isStreaming) return renderStreamingCard();
+
+      const content = getMessageDisplayText(msg);
+      return (
+        <div style={{
+          ...styles.enhancedMessageBubble,
+          ...(isUser ? styles.enhancedMessageBubbleUser : styles.enhancedMessageBubbleAgent)
+        }}>
+          {content ? (
+            <MarkdownMessageContent
+              text={content}
+              isCollapsed={isCollapsed}
+              isUser={isUser}
+              isStreaming={isStreaming}
+              workingDirectory={workingDirectory}
+              fileServerUrl={fileServerUrl}
+              markdownComponents={markdownComponents}
+              onLinkClick={handleMessageContainerClick}
+            />
+          ) : (
+            <div style={styles.emptyAssistantMessage}>
+              <span style={styles.emptyAssistantDot} />
+              <span>等待响应内容</span>
+            </div>
+          )}
+        </div>
+      );
+    };
     
     return (
       <div 
@@ -550,32 +1021,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           </div>
         </div>
         
-        {/* 消息气泡 */}
-        <div style={{
-          ...styles.messageBubble,
-          ...(isUser ? styles.messageBubbleUser : {}),
-          ...(isAgent ? styles.messageBubbleAgent : {})
-        }}>
-          {/* 消息内容 */}
-          <MarkdownMessageContent
-            text={msg.content || msg.message || ''}
-            isCollapsed={isCollapsed}
-            isUser={isUser}
-            workingDirectory={workingDirectory}
-            fileServerUrl={fileServerUrl}
-            markdownComponents={markdownComponents}
-            onLinkClick={handleMessageContainerClick}
-          />
-        </div>
-        
-        {/* 元数据 */}
-        {!isCollapsed && msg.toolName && (
-          <div style={styles.messageMeta}>
-            <span>🔧 工具: {msg.toolName}</span>
-            {msg.args && <span>📝 参数: {JSON.stringify(msg.args).slice(0, 50)}...</span>}
-            {msg.duration && <span>⏱️ 耗时: {msg.duration}ms</span>}
-          </div>
-        )}
+        {/* 渲染消息主体 */}
+        {renderBody()}
 
         {/* 对于事件类型，在消息流中显示简要负载，方便直接查看 */}
         {!isCollapsed && msg.type === 'event' && msg.payloadSummary && (
@@ -584,7 +1031,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--text-color)', backgroundColor: 'transparent', borderRadius: '4px' }}>{msg.payloadSummary}</pre>
           </div>
         )}
-        
+
         {/* 操作按钮 */}
         <div style={{
           ...styles.messageActions,
@@ -754,7 +1201,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
                   {msg.timestamp && <span>{new Date(msg.timestamp).toLocaleTimeString()}</span>}
                 </div>
                 <div style={styles.thinkingStepContent}>
-                  {msg.thinkingText || msg.summary || msg.content || '模型正在思考'}
+                  {msg.thinkingText || msg.summary || msg.content || t('msg.model_thinking')}
                 </div>
               </div>
             ))}
@@ -771,7 +1218,6 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     return (
       <React.Fragment key={group.id}>
         {firstMessage && renderMessage(firstMessage, `${group.id}_0`)}
-        {renderThinkingPanel(group, isActiveGroup)}
         {renderRuntimeDetailsPanel(group, isActiveGroup)}
         {restMessages.map((msg, index) => renderMessage(msg, `${group.id}_${index + 1}`))}
       </React.Fragment>
@@ -846,29 +1292,135 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           padding: 12px;
           overflow-x: auto;
           font-size: 12px;
+          margin: 10px 0;
         }
         .markdown pre code {
           background: transparent;
           padding: 0;
         }
+        .markdown .markup-block {
+          position: relative;
+          margin: 0;
+          padding: 28px 12px 12px;
+          overflow-x: auto;
+          white-space: pre;
+          word-break: normal;
+          border: 1px solid var(--border-subtle);
+          border-radius: 7px;
+          background-color: var(--surface-color);
+          color: var(--text-color);
+          font-family: var(--font-mono);
+          font-size: 12px;
+          line-height: 1.62;
+        }
+        .markdown .markup-block::before {
+          content: attr(data-language);
+          position: absolute;
+          top: 7px;
+          right: 10px;
+          color: var(--text-muted);
+          font-family: var(--font-family);
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+        }
+        .markdown .markup-block code {
+          background: transparent;
+          padding: 0;
+          white-space: inherit;
+        }
         .markdown p {
-          margin: 4px 0;
-          line-height: 1.5;
+          margin: 8px 0;
+          line-height: 1.65;
           font-size: 13px;
           color: var(--text-color);
+          padding: 0;
         }
-        .markdown ul, .markdown ol {
-          margin: 4px 0;
-          padding-left: 20px;
+        .markdown p:first-child,
+        .markdown ul:first-child,
+        .markdown ol:first-child,
+        .markdown pre:first-child,
+        .markdown blockquote:first-child {
+          margin-top: 0;
+        }
+        .markdown p:last-child,
+        .markdown ul:last-child,
+        .markdown ol:last-child,
+        .markdown pre:last-child,
+        .markdown blockquote:last-child {
+          margin-bottom: 0;
+        }
+        .markdown blockquote {
+          margin: 10px 0;
+          padding: 8px 14px;
+          border-left: 3px solid var(--primary-color);
+          background-color: var(--surface-subtle);
+          border-radius: 0 6px 6px 0;
+          color: var(--text-muted);
           font-size: 13px;
+          line-height: 1.6;
+        }
+        .markdown h1, .markdown h2, .markdown h3, .markdown h4 {
+          margin: 16px 0 8px;
+          padding-bottom: 6px;
+          border-bottom: 1px solid var(--border-subtle);
+          font-weight: 600;
+          color: var(--text-color);
+        }
+        .markdown h1 { font-size: 18px; }
+        .markdown h2 { font-size: 16px; }
+        .markdown h3 { font-size: 14px; }
+        .markdown h4 { font-size: 13px; border-bottom: none; }
+        .markdown ul, .markdown ol {
+          margin: 10px 0;
+          padding-left: 24px;
+          font-size: 13px;
+          line-height: 1.7;
         }
         .markdown li {
-          margin: 2px 0;
-          line-height: 1.4;
+          margin: 4px 0;
+          line-height: 1.65;
+        }
+        .markdown hr {
+          border: none;
+          border-top: 1px dashed var(--border-subtle);
+          margin: 14px 0;
+        }
+        .markdown table {
+          border-collapse: collapse;
+          margin: 10px 0;
+          font-size: 12px;
+          width: 100%;
+        }
+        .markdown th, .markdown td {
+          border: 1px solid var(--border-subtle);
+          padding: 6px 10px;
+          text-align: left;
+        }
+        .markdown th {
+          background-color: var(--surface-subtle);
+          font-weight: 600;
         }
         @keyframes thinkingPulse {
           0%, 100% { opacity: 0.58; }
           50% { opacity: 1; }
+        }
+        @keyframes streamingCursor {
+          0%, 45% { opacity: 1; }
+          50%, 100% { opacity: 0; }
+        }
+        @keyframes streamingDot {
+          0%, 80%, 100% { transform: translateY(0); opacity: 0.45; }
+          40% { transform: translateY(-3px); opacity: 1; }
+        }
+        @keyframes streamingSkeleton {
+          0% { opacity: 0.45; }
+          50% { opacity: 0.95; }
+          100% { opacity: 0.45; }
+        }
+        @keyframes streamingEdge {
+          0%, 100% { border-color: var(--primary-border); }
+          50% { border-color: var(--primary-strong); }
         }
       `}</style>
       {/* 头部 */}
@@ -954,16 +1506,21 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             <option value="result">📊 {t('msg.result')}</option>
           </select>
           
-          {/* 自动滚动按钮 */}
+          {/* 自动滚动按钮 — 跟随模式/锁定模式 */}
           <button
             style={{
               ...styles.button,
-              ...(autoScroll ? styles.buttonActive : {})
+              ...(autoScroll ? styles.buttonActive : {}),
+              ...(!autoScroll ? {
+                color: 'var(--warning-color)',
+                borderColor: 'var(--warning-color)',
+                fontWeight: '500',
+              } : {})
             }}
             onClick={handleAutoScrollChange}
-            title={autoScroll ? t('msg.auto_scroll_stop') : t('msg.auto_scroll_start')}
+            title={autoScroll ? '跟随新内容 (点击锁定当前位置)' : '已锁定 — 点击恢复跟随滚动'}
           >
-            {autoScroll ? '📍' : '📌'}
+            {autoScroll ? '📍 跟随' : '已锁定'}
           </button>
           
           {/* 清空按钮 */}
@@ -978,7 +1535,11 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       </div>
       
       {/* 消息列表 */}
-      <div ref={listRef} style={styles.messageList}>
+      <div
+        ref={listRef}
+        style={styles.messageList}
+        onScroll={handleListScroll}
+      >
         {/* 时间线视图 */}
         {viewMode === 'timeline' && groupedMessages && (
           <div style={styles.timelineView}>

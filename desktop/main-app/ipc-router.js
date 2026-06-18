@@ -18,6 +18,15 @@ import { commandCatalog } from '../../src/core/command-catalog.js';
 import { metricsSink } from '../../src/core/metrics-sink.js';
 import { getMissingRequiredConfig } from '../../src/core/runtime-config.js';
 import { createConfiguredModelProvider } from '../../src/cli/model-provider-factory.js';
+import fs from 'fs';
+
+async function fileExists(filePath) {
+  try {
+    return fs.existsSync(filePath);
+  } catch (_) {
+    return false;
+  }
+}
 
 export async function initializeIPCAdapter(ctx) {
   console.log('🔗 初始化 IPC 适配器...');
@@ -39,6 +48,40 @@ export async function initializeIPCAdapter(ctx) {
 export function registerCustomHandlers(ctx) {
   const ipc = ctx.ipcAdapter;
   const { BrowserWindow, dialog, Notification, shell, app } = ctx.electron;
+
+  ipc.registerHandler('ipc:diagnose', async (_payload, sender) => {
+    const preloadPath = ctx.config.window?.webPreferences?.preload;
+    const senderWindow = sender ? BrowserWindow.fromWebContents(sender) : null;
+    const handlerStats = ctx.ipcAdapter?.getStats?.() || null;
+    return {
+      success: true,
+      timestamp: new Date().toISOString(),
+      main: {
+        pid: process.pid,
+        platform: process.platform,
+        node: process.versions?.node,
+        electron: process.versions?.electron,
+        chrome: process.versions?.chrome,
+        cwd: process.cwd(),
+        debug: ctx.config.debug
+      },
+      preload: {
+        path: preloadPath,
+        exists: preloadPath ? await fileExists(preloadPath) : false
+      },
+      window: {
+        windowCount: BrowserWindow.getAllWindows().length,
+        senderId: sender?.id,
+        senderUrl: sender?.getURL?.(),
+        mainWindowId: ctx.mainWindow?.webContents?.id,
+        mainWindowUrl: ctx.mainWindow?.webContents?.getURL?.(),
+        senderMatchesMainWindow: Boolean(sender && ctx.mainWindow?.webContents === sender),
+        senderWindowDestroyed: senderWindow?.isDestroyed?.() || false
+      },
+      ipc: handlerStats,
+      workingDirectory: ctx.config.workingDirectory
+    };
+  });
 
   ipc.registerHandler('window:minimize', async () => {
     if (ctx.mainWindow) ctx.mainWindow.minimize();

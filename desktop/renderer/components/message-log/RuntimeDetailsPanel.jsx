@@ -3,6 +3,7 @@ import { styles } from '../MessageLog.styles.js';
 import { useIPC } from '../../hooks/useIPC.js';
 import { t } from '../../i18n.js';
 import {
+  buildThinkingSummary,
   createRuntimeDetailId,
   getRuntimeDetailContent,
   getRuntimeDetailPreviewText,
@@ -15,6 +16,7 @@ import { buildActivitySummary, getActivityTone, getFileStatusLabel, getFileTypeI
 // ===== Tab 定义 =====
 const TABS = [
   { id: 'overview', key: 'exec.overview', icon: '◉' },
+  { id: 'reasoning', key: 'msg.thinking_summary_label', icon: '◇' },
   { id: 'files', key: 'exec.tools_used', icon: '🖹' },
   { id: 'activity', key: 'exec.activity_log', icon: '⚡' },
   { id: 'log', key: 'ui.root', icon: '☰' },
@@ -82,6 +84,7 @@ export function RuntimeDetailsPanel({
   const runtimeDetails = group?.runtimeDetails || [];
   const visibleRuntimeDetails = runtimeDetails.filter(msg => !isStatusUpdateMessage(msg) && !isThinkingMessage(msg));
   const latestStatusUpdate = [...runtimeDetails].reverse().find(isStatusUpdateMessage);
+  const thinkingSummary = buildThinkingSummary(runtimeDetails);
   const activitySummary = buildActivitySummary(runtimeDetails);
   const isRunningGroup = status === 'running' && isActiveGroup;
   const statusText = isRunningGroup || latestStatusUpdate
@@ -181,6 +184,38 @@ export function RuntimeDetailsPanel({
   const displayedActivities = showAllActivities ? filteredActivities : filteredActivities.slice(-8);
   const hasMoreFiles = activitySummary.files.length > 6;
   const hasMoreActivities = filteredActivities.length > 8;
+  const overviewHighlights = useMemo(() => {
+    const items = runtimeDetails
+      .filter(msg => !isThinkingMessage(msg))
+      .filter(msg => msg.event || msg.type || msg.content || msg.message || msg.toolName)
+      .slice(-4)
+      .map((msg, index) => {
+        const label = msg.toolName || (isThinkingMessage(msg) ? t('msg.thinking_in_progress') : msg.event || msg.type || t('msg.message'));
+        const text = isStatusUpdateMessage(msg)
+          ? getStatusUpdateText(msg)
+          : getRuntimeDetailPreviewText(msg);
+        return {
+          id: msg.id || `${msg.event || msg.type || 'runtime'}_${msg.timestamp || index}`,
+          label,
+          text,
+          tone: msg.type === 'error' || msg.event === 'tool:error' ? 'error'
+            : msg.event === 'tool:result' || msg.event === 'agent:complete' ? 'success'
+              : msg.event === 'agent:thinking' ? 'thinking'
+                : 'neutral',
+        };
+      });
+
+    if (items.length > 0) {
+      return items;
+    }
+
+    return [{
+      id: 'ready',
+      label: t('common.status'),
+      text: isRunningGroup ? '正在等待运行事件' : statusText,
+      tone: 'neutral',
+    }];
+  }, [runtimeDetails, isRunningGroup, statusText]);
 
   // 使用 runtimeDetails（而非 visibleRuntimeDetails）判断，避免完成后过滤掉 thinking/status 消息导致面板消失
   // 必须在所有 Hooks 之后才能条件返回，否则违反 Rules of Hooks
@@ -210,6 +245,9 @@ export function RuntimeDetailsPanel({
           {tab.id === 'activity' && activitySummary.activities.length > 0 && (
             <span style={localStyles.tabBadge}>{activitySummary.activities.length}</span>
           )}
+          {tab.id === 'reasoning' && thinkingSummary.count > 0 && (
+            <span style={localStyles.tabBadge}>{thinkingSummary.count}</span>
+          )}
           {tab.id === 'log' && visibleRuntimeDetails.length > 0 && (
             <span style={localStyles.tabBadge}>{visibleRuntimeDetails.length}</span>
           )}
@@ -217,6 +255,30 @@ export function RuntimeDetailsPanel({
       ))}
     </div>
   );
+
+  const renderReasoning = () => {
+    if (thinkingSummary.count === 0) {
+      return <div style={localStyles.emptyTab}>{t('status.not_set')}</div>;
+    }
+
+    return (
+      <div style={localStyles.reasoningList}>
+        {thinkingSummary.messages.map((msg, index) => {
+          const title = msg.payload?.eventName || msg.summary || (msg.iteration ? t('msg.iteration_x', { n: msg.iteration }) : t('msg.fragment_n', { n: index + 1 }));
+          const detail = msg.thinkingText || msg.summary || msg.payload?.message || msg.payload?.data?.textPreview || msg.content || t('msg.model_thinking');
+          return (
+            <div key={msg.id || `${group.id}_reasoning_${index}`} style={localStyles.reasoningItem}>
+              <div style={localStyles.reasoningHeader}>
+                <span style={localStyles.reasoningTitle}>{title}</span>
+                {msg.timestamp && <span style={localStyles.reasoningTime}>{new Date(msg.timestamp).toLocaleTimeString()}</span>}
+              </div>
+              <div style={localStyles.reasoningText}>{detail}</div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   // ===== 概览 Tab =====
   const renderOverview = () => (
@@ -323,6 +385,25 @@ export function RuntimeDetailsPanel({
               +{activitySummary.files.length - 4}
             </button>
           )}
+        </div>
+      )}
+
+      {activitySummary.files.length === 0 && (
+        <div style={localStyles.overviewHighlights}>
+          {overviewHighlights.map(item => (
+            <div
+              key={item.id}
+              style={{
+                ...localStyles.overviewHighlightItem,
+                ...(item.tone === 'success' ? localStyles.overviewHighlightSuccess : {}),
+                ...(item.tone === 'error' ? localStyles.overviewHighlightError : {}),
+                ...(item.tone === 'thinking' ? localStyles.overviewHighlightThinking : {}),
+              }}
+            >
+              <span style={localStyles.overviewHighlightLabel}>{item.label}</span>
+              <span style={localStyles.overviewHighlightText}>{item.text || t('status.not_set')}</span>
+            </div>
+          ))}
         </div>
       )}
     </>
@@ -693,6 +774,7 @@ export function RuntimeDetailsPanel({
   const renderTabContent = () => {
     switch (activeTab) {
       case 'overview': return renderOverview();
+      case 'reasoning': return renderReasoning();
       case 'files': return renderFiles();
       case 'activity': return renderActivity();
       case 'log': return renderLog();
@@ -869,6 +951,97 @@ const localStyles = {
     flexShrink: 0,
     fontSize: '10px',
     fontWeight: 700,
+  },
+  overviewHighlights: {
+    padding: '8px 10px 10px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+  },
+  overviewHighlightItem: {
+    minHeight: '30px',
+    display: 'grid',
+    gridTemplateColumns: 'minmax(76px, auto) minmax(0, 1fr)',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '6px 8px',
+    borderRadius: '6px',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-subtle)',
+  },
+  overviewHighlightSuccess: {
+    borderColor: 'var(--success-border)',
+    backgroundColor: 'var(--success-faint)',
+  },
+  overviewHighlightError: {
+    borderColor: 'var(--error-border)',
+    backgroundColor: 'var(--error-faint)',
+  },
+  overviewHighlightThinking: {
+    borderColor: 'var(--info-border)',
+    backgroundColor: 'var(--info-faint)',
+  },
+  overviewHighlightLabel: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: 'var(--text-dark)',
+    fontSize: '11px',
+    fontWeight: 800,
+  },
+  overviewHighlightText: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 600,
+  },
+  reasoningList: {
+    padding: '8px 10px 10px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+  },
+  reasoningItem: {
+    padding: '8px 9px',
+    borderRadius: '6px',
+    border: '1px solid var(--info-border)',
+    backgroundColor: 'var(--info-faint)',
+  },
+  reasoningHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '8px',
+    marginBottom: '4px',
+  },
+  reasoningTitle: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: 'var(--text-color)',
+    fontSize: '11px',
+    fontWeight: 800,
+  },
+  reasoningTime: {
+    flexShrink: 0,
+    color: 'var(--text-muted)',
+    fontSize: '10px',
+    fontWeight: 600,
+  },
+  reasoningText: {
+    color: 'var(--text-dark)',
+    fontSize: '11px',
+    lineHeight: 1.55,
+    display: '-webkit-box',
+    WebkitLineClamp: 3,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+    wordBreak: 'break-word',
   },
 
   // 文件 Tab

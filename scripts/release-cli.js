@@ -62,7 +62,7 @@ async function main() {
   if (success) {
     log('\n======================');
     log('📦 Published to npm!');
-    log('   https://www.npmjs.com/package/ai-engineering-mastery-agent');
+    log('   https://www.npmjs.com/package/mastery');
   } else {
     process.exit(1);
   }

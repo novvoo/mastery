@@ -1,246 +1,334 @@
 /**
- * IPC Hook
- * 提供 Electron IPC 通信的封装方法
+ * Electron IPC — 纯函数核心（不依赖 React Hook，便于测试 & SSR）
+ *
+ * 设计原则：
+ *   - 所有对 window.electronAPI 的直接访问都封装在
+ *     getWindowObject / getElectronAPI / hasElectronAPI / waitForElectronAPI 中
+ *   - connectElectronAPI / invokeElectronAPI 是两条真正的"运行路径"，
+ *     生产代码和测试代码共用同一份实现——保证"能测出来"
+ *   - React Hook (useIPC) 仅做状态同步 & 生命周期管理，不重复实现逻辑
  */
+
+function getWindowObject() {
+  return (typeof window !== 'undefined' && window != null) ? window : null;
+}
+
+export function getElectronAPI() {
+  const win = getWindowObject();
+  return win && win.electronAPI ? win.electronAPI : null;
+}
+
+export function hasElectronAPI() {
+  return !!getElectronAPI();
+}
+
+export function waitForElectronAPI(timeoutMs = 3000, pollIntervalMs = 50) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const check = () => {
+      if (hasElectronAPI()) {
+        resolve(true);
+        return;
+      }
+      if (Date.now() - start >= timeoutMs) {
+        resolve(false);
+        return;
+      }
+      setTimeout(check, pollIntervalMs);
+    };
+    check();
+  });
+}
+
+function makeUnavailableError() {
+  const win = getWindowObject();
+  const detail = win
+    ? `window.electronAPI=${typeof win.electronAPI}, url=${win.location?.href}`
+    : '无 window 对象';
+  return new Error(`electronAPI 不可用：请在 Electron 环境中运行此应用 (${detail})`);
+}
+
+export async function connectElectronAPI(ctx = {}) {
+  const { isConnectedRef, connectionInfoRef, onConnected } = ctx;
+  if (isConnectedRef && isConnectedRef.current) {
+    return connectionInfoRef ? connectionInfoRef.current : null;
+  }
+
+  let api = null;
+
+  if (!hasElectronAPI()) {
+    console.log('[useIPC] window.electronAPI 暂不可用，轮询等待 3000ms...');
+    try {
+      console.log('[IPC-DIAG][renderer] before wait:', diagnoseIPC());
+    } catch (_) {}
+    const apiAvailable = await waitForElectronAPI(3000);
+    if (!apiAvailable) {
+      console.warn('[useIPC] electronAPI 不可用，可能不在 Electron 环境中');
+      try {
+        console.log('[IPC-DIAG][renderer] after wait timeout:', diagnoseIPC());
+      } catch (_) {}
+      if (isConnectedRef) isConnectedRef.current = false;
+      return null;
+    }
+    console.log('[useIPC] window.electronAPI 轮询成功，可以连接');
+  }
+
+  api = getElectronAPI();
+  if (!api) {
+    console.warn('[useIPC] electronAPI 不可用，可能不在 Electron 环境中');
+    if (isConnectedRef) isConnectedRef.current = false;
+    return null;
+  }
+
+  try {
+    console.log('[useIPC] 调用 electronAPI.connect() ...');
+    const result = await api.connect();
+    if (isConnectedRef) isConnectedRef.current = true;
+    if (connectionInfoRef) connectionInfoRef.current = result;
+    if (typeof onConnected === 'function') onConnected(result);
+
+    console.log('[useIPC] 已连接到主进程:', result);
+    return result;
+  } catch (err) {
+    console.error('[useIPC] 连接失败:', err);
+    if (isConnectedRef) isConnectedRef.current = false;
+    return null;
+  }
+}
+
+export function diagnoseIPC() {
+  const win = getWindowObject();
+  const api = win?.electronAPI;
+  const preloadDiag = (() => {
+    try {
+      if (typeof win?.__masteryPreloadDiag?.get === 'function') {
+        return win.__masteryPreloadDiag.get();
+      }
+      return win?.__masteryPreloadDiag || null;
+    } catch (error) {
+      return { error: error?.message || '读取 preload 诊断失败' };
+    }
+  })();
+  const apiKeys = (() => {
+    try {
+      return api ? Object.keys(api).sort() : [];
+    } catch (_) {
+      return [];
+    }
+  })();
+  const result = {
+    hasWindow: !!win,
+    hasElectronAPI: hasElectronAPI(),
+    electronAPIType: typeof api,
+    electronAPIKeys: apiKeys,
+    connectFn: typeof api?.connect,
+    invokeFn: typeof api?.invoke,
+    diagFn: typeof api?.diagnose,
+    diag: api?.__diag || null,
+    apiDiagnose: typeof api?.diagnose === 'function' ? api.diagnose() : null,
+    preloadDiag,
+    url: win?.location?.href || null,
+    protocol: win?.location?.protocol || null,
+    origin: win?.location?.origin || null,
+    readyState: win?.document?.readyState || null,
+    userAgent: win?.navigator?.userAgent || null,
+    isElectronUA: /Electron/i.test(win?.navigator?.userAgent || ''),
+    timestamp: new Date().toISOString()
+  };
+  console.log('[useIPC] IPC 诊断:', result);
+  return result;
+}
+
+export async function invokeElectronAPI(channel, ...args) {
+  if (!hasElectronAPI()) {
+    const apiAvailable = await waitForElectronAPI(3000);
+    if (!apiAvailable) {
+      throw makeUnavailableError();
+    }
+  }
+
+  const api = getElectronAPI();
+  if (!api) {
+    throw makeUnavailableError();
+  }
+
+  try {
+    return await api.invoke(channel, ...args);
+  } catch (err) {
+    console.error(`[useIPC] invoke ${channel} 失败:`, err);
+    throw err;
+  }
+}
+
+// ============================================================
+// React Hook 薄包装层（同步 React state + 生命周期管理）
+// ============================================================
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 
-/**
- * IPC Hook
- * 管理 Electron IPC 连接和通信
- * @returns {Object} IPC 状态和方法
- */
 export function useIPC() {
-  // 状态
   const [isConnected, setIsConnected] = useState(false);
   const [connectionInfo, setConnectionInfo] = useState(null);
   const [error, setError] = useState(null);
-  
-  // 引用
+
   const subscriptionsRef = useRef([]);
   const isConnectedRef = useRef(false);
-  
-  // 检查 electronAPI 是否可用
-  const hasElectronAPI = useCallback(() => {
-    return typeof window !== 'undefined' && window.electronAPI;
-  }, []);
-  
-  // 连接到主进程
+  const connectionInfoRef = useRef(null);
+
   const connect = useCallback(async () => {
-    if (!hasElectronAPI()) {
-      console.warn('[useIPC] electronAPI 不可用，可能不在 Electron 环境中');
-      isConnectedRef.current = false;
+    const result = await connectElectronAPI({
+      isConnectedRef,
+      connectionInfoRef,
+      onConnected: (info) => {
+        setIsConnected(true);
+        setConnectionInfo(info);
+        setError(null);
+      },
+    });
+
+    if (result === null) {
       setIsConnected(false);
-      return null;
+      try { diagnoseIPC(); } catch (e) { /* ignore */ }
     }
-    
-    try {
-      const result = await window.electronAPI.connect();
-      
-      isConnectedRef.current = true;
-      setIsConnected(true);
-      setConnectionInfo(result);
-      setError(null);
-      
-      console.log('[useIPC] 已连接到主进程:', result);
-      
-      return result;
-    } catch (err) {
-      console.error('[useIPC] 连接失败:', err);
-      
-      isConnectedRef.current = false;
-      setIsConnected(false);
-      setError(err.message);
-      
-      throw err;
-    }
-  }, [hasElectronAPI]);
-  
-  // 断开连接
+    return result;
+  }, []);
+
   const disconnect = useCallback(() => {
-    if (!hasElectronAPI()) return;
-    
+    const api = getElectronAPI();
+    if (!api) return;
     try {
-      window.electronAPI.disconnect();
-      
-      // 清理所有订阅
-      subscriptionsRef.current.forEach(unsub => {
-        if (typeof unsub === 'function') {
-          unsub();
-        }
+      api.disconnect();
+      subscriptionsRef.current.forEach((unsub) => {
+        if (typeof unsub === 'function') unsub();
       });
       subscriptionsRef.current = [];
-      
       isConnectedRef.current = false;
       setIsConnected(false);
       setConnectionInfo(null);
-      
       console.log('[useIPC] 已断开连接');
     } catch (err) {
       console.error('[useIPC] 断开连接失败:', err);
     }
-  }, [hasElectronAPI]);
-  
-  // 发送请求（invoke）
+  }, []);
+
   const invoke = useCallback(async (channel, ...args) => {
-    if (!hasElectronAPI()) {
-      throw new Error('electronAPI 不可用');
-    }
-    
-    if (!isConnectedRef.current) {
-      throw new Error('未连接到主进程');
-    }
-    
-    try {
-      return await window.electronAPI.invoke(channel, ...args);
-    } catch (err) {
-      console.error(`[useIPC] invoke ${channel} 失败:`, err);
-      throw err;
-    }
-  }, [hasElectronAPI]);
-  
-  // 发送消息（send）
+    return invokeElectronAPI(channel, ...args);
+  }, []);
+
   const send = useCallback((channel, data) => {
-    if (!hasElectronAPI()) {
+    const api = getElectronAPI();
+    if (!api) {
       console.warn('[useIPC] electronAPI 不可用');
       return;
     }
-    
     try {
-      window.electronAPI.send(channel, data);
+      api.send(channel, data);
     } catch (err) {
       console.error(`[useIPC] send ${channel} 失败:`, err);
     }
-  }, [hasElectronAPI]);
-  
-  // 订阅事件
+  }, []);
+
   const subscribe = useCallback((channel, callback) => {
-    if (!hasElectronAPI()) {
+    const api = getElectronAPI();
+    if (!api) {
       console.warn('[useIPC] electronAPI 不可用');
       return () => {};
     }
-    
     try {
-      const unsub = window.electronAPI.on(channel, callback);
-      
-      // 保存订阅引用
+      const unsub = api.on(channel, callback);
       subscriptionsRef.current.push(unsub);
-      
       return unsub;
     } catch (err) {
       console.error(`[useIPC] subscribe ${channel} 失败:`, err);
       return () => {};
     }
-  }, [hasElectronAPI]);
-  
-  // 订阅一次性事件
+  }, []);
+
   const once = useCallback((channel, callback) => {
-    if (!hasElectronAPI()) {
+    const api = getElectronAPI();
+    if (!api) {
       console.warn('[useIPC] electronAPI 不可用');
       return Promise.resolve(null);
     }
-    
-    return window.electronAPI.once(channel, callback);
-  }, [hasElectronAPI]);
-  
-  // ==================== 便捷方法 ====================
-  
-  // 处理用户输入
+    return api.once(channel, callback);
+  }, []);
+
   const processInput = useCallback(async (input, options = {}) => {
     return invoke('agent:processInput', { input, options });
   }, [invoke]);
-  
-  // 停止 Agent
+
   const stop = useCallback(async () => {
     return invoke('agent:stop');
   }, [invoke]);
-  
-  // 获取状态
+
   const getState = useCallback(async () => {
     return invoke('agent:getState');
   }, [invoke]);
-  
-  // 获取工具列表
+
   const getTools = useCallback(async () => {
     return invoke('agent:getTools');
   }, [invoke]);
-  
-  // 获取统计信息
+
   const getStats = useCallback(async () => {
-    return invoke('agent:getStats');
+    return invoke('system:getStats');
   }, [invoke]);
-  
-  // 最小化窗口
+
   const minimizeWindow = useCallback(async () => {
     return invoke('window:minimize');
   }, [invoke]);
-  
-  // 最大化窗口
+
   const maximizeWindow = useCallback(async () => {
     return invoke('window:maximize');
   }, [invoke]);
-  
-  // 关闭窗口
+
   const closeWindow = useCallback(async () => {
     return invoke('window:close');
   }, [invoke]);
-  
-  // 显示窗口
+
   const showWindow = useCallback(async () => {
     return invoke('window:show');
   }, [invoke]);
-  
-  // 隐藏窗口
+
   const hideWindow = useCallback(async () => {
     return invoke('window:hide');
   }, [invoke]);
 
-  // 获取窗口状态
   const getWindowState = useCallback(async () => {
     return invoke('window:getState');
   }, [invoke]);
-  
-  // 打开文件对话框
+
   const openFileDialog = useCallback(async (options = {}) => {
     return invoke('dialog:openFile', options);
   }, [invoke]);
-  
-  // 保存文件对话框
+
   const saveFileDialog = useCallback(async (options = {}) => {
     return invoke('dialog:saveFile', options);
   }, [invoke]);
-  
-  // 打开目录对话框
+
   const openDirectoryDialog = useCallback(async (options = {}) => {
     return invoke('dialog:openDirectory', options);
   }, [invoke]);
-  
-  // 显示通知
+
   const showNotification = useCallback(async (options = {}) => {
     return invoke('notification:show', options);
   }, [invoke]);
-  
-  // 获取应用信息
+
   const getAppInfo = useCallback(async () => {
     return invoke('app:getInfo');
   }, [invoke]);
-  
-  // 获取应用路径
+
   const getAppPath = useCallback(async (name) => {
     return invoke('app:getPath', name);
   }, [invoke]);
 
-  // 打开外部链接
   const openExternal = useCallback(async (url) => {
     return invoke('app:openExternal', url);
   }, [invoke]);
-  
-  // 设置工作目录
+
   const setWorkingDirectory = useCallback(async (directory) => {
     return invoke('workspace:setWorkingDirectory', directory);
   }, [invoke]);
 
-  // 列出工作目录内容
   const listDirectory = useCallback(async (path = '') => {
     return invoke('workspace:listDirectory', { path });
   }, [invoke]);
@@ -273,175 +361,141 @@ export function useIPC() {
     return invoke('activity:approve', { activity, input });
   }, [invoke]);
 
-  // 获取 LLM 配置状态
   const getLLMConfigStatus = useCallback(async () => {
     return invoke('llm:getConfigStatus');
   }, [invoke]);
 
-  // 保存 LLM 配置
   const saveLLMConfig = useCallback(async (config) => {
     return invoke('llm:saveConfig', config);
   }, [invoke]);
-  
-  // ==================== 事件订阅便捷方法 ====================
-  
-  // 订阅 Agent 启动事件
+
   const onAgentStart = useCallback((callback) => {
     return subscribe('agent:start', callback);
   }, [subscribe]);
-  
-  // 订阅 Agent 完成事件
+
   const onAgentComplete = useCallback((callback) => {
     return subscribe('agent:complete', callback);
   }, [subscribe]);
-  
-  // 订阅 Agent 错误事件
+
   const onAgentError = useCallback((callback) => {
     return subscribe('agent:error', callback);
   }, [subscribe]);
-  
-  // 订阅工具调用事件
+
   const onToolCall = useCallback((callback) => {
     return subscribe('tool:call', callback);
   }, [subscribe]);
-  
-  // 订阅工具结果事件
+
   const onToolResult = useCallback((callback) => {
     return subscribe('tool:result', callback);
   }, [subscribe]);
-  
-  // 订阅状态更新事件
+
   const onStatusUpdate = useCallback((callback) => {
     return subscribe('status:update', callback);
   }, [subscribe]);
 
-  // 订阅窗口状态变化事件
   const onWindowStateChange = useCallback((callback) => {
-    if (!hasElectronAPI() || !window.electronAPI.onWindowStateChange) {
+    const api = getElectronAPI();
+    if (!api || !api.onWindowStateChange) {
       return subscribe('window:state', callback);
     }
-
-    const unsub = window.electronAPI.onWindowStateChange(callback);
+    const unsub = api.onWindowStateChange(callback);
     subscriptionsRef.current.push(unsub);
     return unsub;
-  }, [hasElectronAPI, subscribe]);
+  }, [subscribe]);
 
   const onWorkspaceChanged = useCallback((callback) => {
-    if (!hasElectronAPI() || !window.electronAPI.onWorkspaceChanged) {
+    const api = getElectronAPI();
+    if (!api || !api.onWorkspaceChanged) {
       return subscribe('workspace:changed', callback);
     }
-
-    const unsub = window.electronAPI.onWorkspaceChanged(callback);
+    const unsub = api.onWorkspaceChanged(callback);
     subscriptionsRef.current.push(unsub);
     return unsub;
-  }, [hasElectronAPI, subscribe]);
+  }, [subscribe]);
 
   const onPreviewStarted = useCallback((callback) => {
-    if (!hasElectronAPI() || !window.electronAPI.onPreviewStarted) {
+    const api = getElectronAPI();
+    if (!api || !api.onPreviewStarted) {
       return subscribe('preview:started', callback);
     }
-
-    const unsub = window.electronAPI.onPreviewStarted(callback);
+    const unsub = api.onPreviewStarted(callback);
     subscriptionsRef.current.push(unsub);
     return unsub;
-  }, [hasElectronAPI, subscribe]);
+  }, [subscribe]);
 
   const onPreviewStopped = useCallback((callback) => {
-    if (!hasElectronAPI() || !window.electronAPI.onPreviewStopped) {
+    const api = getElectronAPI();
+    if (!api || !api.onPreviewStopped) {
       return subscribe('preview:stopped', callback);
     }
-
-    const unsub = window.electronAPI.onPreviewStopped(callback);
+    const unsub = api.onPreviewStopped(callback);
     subscriptionsRef.current.push(unsub);
     return unsub;
-  }, [hasElectronAPI, subscribe]);
-  
-  // ==================== 平台信息 ====================
-  
-  // 获取平台信息
+  }, [subscribe]);
+
   const getPlatform = useCallback(() => {
-    if (!hasElectronAPI()) {
-      return {
-        platform: 'web',
-        arch: 'unknown',
-        isWindows: false,
-        isMac: false,
-        isLinux: false
-      };
+    const api = getElectronAPI();
+    if (!api) {
+      return { platform: 'web', arch: 'unknown', isWindows: false, isMac: false, isLinux: false };
     }
-    
-    return window.electronAPI.getPlatform();
-  }, [hasElectronAPI]);
-  
-  // 获取版本信息
+    return api.getPlatform();
+  }, []);
+
   const getVersions = useCallback(() => {
-    if (!hasElectronAPI()) {
-      return {
-        electron: 'unknown',
-        node: 'unknown',
-        chrome: 'unknown',
-        v8: 'unknown'
-      };
+    const api = getElectronAPI();
+    if (!api) {
+      return { electron: 'unknown', node: 'unknown', chrome: 'unknown', v8: 'unknown' };
     }
-    
-    return window.electronAPI.getVersions();
-  }, [hasElectronAPI]);
-  
-  // 清理订阅
+    return api.getVersions();
+  }, []);
+
   useEffect(() => {
     return () => {
-      subscriptionsRef.current.forEach(unsub => {
-        if (typeof unsub === 'function') {
-          unsub();
-        }
+      subscriptionsRef.current.forEach((unsub) => {
+        if (typeof unsub === 'function') unsub();
       });
       subscriptionsRef.current = [];
     };
   }, []);
-  
+
   return {
-    // 状态
     isConnected,
     connectionInfo,
     error,
-    
-    // 核心方法
+
     connect,
     disconnect,
     invoke,
     send,
     subscribe,
     once,
-    
-    // Agent 操作
+    hasElectronAPI,
+    waitForElectronAPI,
+    diagnose: diagnoseIPC,
+
     processInput,
     stop,
     getState,
     getTools,
     getStats,
-    
-    // 窗口控制
+
     minimizeWindow,
     maximizeWindow,
     closeWindow,
     showWindow,
     hideWindow,
     getWindowState,
-    
-    // 文件对话框
+
     openFileDialog,
     saveFileDialog,
     openDirectoryDialog,
-    
-    // 通知
+
     showNotification,
-    
-    // 应用信息
+
     getAppInfo,
     getAppPath,
     openExternal,
-    
-    // 工作空间
+
     setWorkingDirectory,
     listDirectory,
     startPreview,
@@ -452,11 +506,9 @@ export function useIPC() {
     reviewActivity,
     approveActivity,
 
-    // LLM 配置
     getLLMConfigStatus,
     saveLLMConfig,
-    
-    // 事件订阅
+
     onAgentStart,
     onAgentComplete,
     onAgentError,
@@ -467,13 +519,9 @@ export function useIPC() {
     onWorkspaceChanged,
     onPreviewStarted,
     onPreviewStopped,
-    
-    // 平台信息
+
     getPlatform,
     getVersions,
-    
-    // 检查方法
-    hasElectronAPI
   };
 }
 

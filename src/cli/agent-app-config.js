@@ -161,6 +161,14 @@ export async function createEngine(config) {
     tokenBudget: config.tokenBudget,
     tokenBudgetWarningThreshold: config.tokenBudgetWarningThreshold,
     toolResultCacheEnabled: config.toolResultCacheEnabled,
+    // ====== CLI 流式 UI 回调（打字机效果）======
+    ui: {
+      onTextDelta: (text) => enhancedUI.onTextDelta(text),
+      onReasoningDelta: (text) => enhancedUI.onReasoningDelta(text),
+      onToolCallDelta: (delta) => enhancedUI.onToolCallDelta(delta),
+      finalAnswer: (text) => enhancedUI.finalAnswer(text),
+      debugEvent: (label, details) => enhancedUI.debugEvent(label, details),
+    },
   });
 
   // —— CLI 也启用 metrics + workspaceState（与 Desktop 一致）

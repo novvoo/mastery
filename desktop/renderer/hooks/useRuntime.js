@@ -29,6 +29,86 @@ export function useRuntime() {
   const messageBufferRef = useRef([]);
   const statsRef = useRef(stats);
   const lastAnswerRef = useRef('');
+  const completedByEventRef = useRef(false);
+  const streamingMessageIdRef = useRef(null);     // 追踪当前流式文本消息
+  const streamingTextRef = useRef('');            // 同步记录当前 assistant 文本，避免最终结果重复入列
+  const streamingReasoningIdRef = useRef(null);  // 追踪当前 reasoning 消息
+  const recentRuntimeEventSignaturesRef = useRef(new Map());
+  const pendingMessageDeltasRef = useRef(new Map());
+  const pendingMessageDeltaTimerRef = useRef(null);
+
+  const flushMessageDeltas = useCallback(() => {
+    if (pendingMessageDeltaTimerRef.current) {
+      clearTimeout(pendingMessageDeltaTimerRef.current);
+      pendingMessageDeltaTimerRef.current = null;
+    }
+
+    if (pendingMessageDeltasRef.current.size === 0) {
+      return;
+    }
+
+    const pending = pendingMessageDeltasRef.current;
+    pendingMessageDeltasRef.current = new Map();
+
+    setMessages(prev => prev.map(msg => {
+      const delta = pending.get(msg.id);
+      if (!delta) return msg;
+      return {
+        ...msg,
+        type: delta.type || msg.type,
+        content: (msg.content || '') + delta.text,
+        ...(delta.toolName ? { toolName: delta.toolName } : {}),
+      };
+    }));
+  }, []);
+
+  const queueMessageDelta = useCallback((messageId, textToAppend, updates = {}) => {
+    if (!messageId || !textToAppend) return;
+
+    if (messageId === streamingMessageIdRef.current) {
+      streamingTextRef.current += textToAppend;
+    }
+
+    const existing = pendingMessageDeltasRef.current.get(messageId) || { text: '' };
+    pendingMessageDeltasRef.current.set(messageId, {
+      ...existing,
+      ...updates,
+      text: existing.text + textToAppend,
+    });
+
+    if (!pendingMessageDeltaTimerRef.current) {
+      pendingMessageDeltaTimerRef.current = setTimeout(flushMessageDeltas, 32);
+    }
+  }, [flushMessageDeltas]);
+
+  const isDuplicateRuntimeEvent = useCallback((eventName, payload = {}) => {
+    if (!['tool:call', 'tool:result', 'tool:error'].includes(eventName)) {
+      return false;
+    }
+
+    const activityId = payload?.activity?.id || payload?.id || '';
+    const signature = [
+      eventName,
+      activityId,
+      payload?.toolName || payload?.name || '',
+      safeStringify(payload?.args || payload?.arguments || '', { maxChars: 500 }),
+      safeStringify(payload?.result || payload?.error || '', { maxChars: 500 }),
+    ].join('|');
+    const now = Date.now();
+    const recent = recentRuntimeEventSignaturesRef.current;
+
+    for (const [key, timestamp] of recent.entries()) {
+      if (now - timestamp > 1500) {
+        recent.delete(key);
+      }
+    }
+
+    if (recent.has(signature)) {
+      return true;
+    }
+    recent.set(signature, now);
+    return false;
+  }, []);
   
   // 添加消息
   const addMessage = useCallback((message) => {
@@ -55,6 +135,12 @@ export function useRuntime() {
   
   // 清空消息
   const clearMessages = useCallback(() => {
+    pendingMessageDeltasRef.current = new Map();
+    if (pendingMessageDeltaTimerRef.current) {
+      clearTimeout(pendingMessageDeltaTimerRef.current);
+      pendingMessageDeltaTimerRef.current = null;
+    }
+    recentRuntimeEventSignaturesRef.current = new Map();
     messageBufferRef.current = [];
     setMessages([]);
     setStats(prev => ({
@@ -64,6 +150,12 @@ export function useRuntime() {
   }, []);
 
   const restoreMessages = useCallback((nextMessages = []) => {
+    pendingMessageDeltasRef.current = new Map();
+    if (pendingMessageDeltaTimerRef.current) {
+      clearTimeout(pendingMessageDeltaTimerRef.current);
+      pendingMessageDeltaTimerRef.current = null;
+    }
+    recentRuntimeEventSignaturesRef.current = new Map();
     const restoredMessages = Array.isArray(nextMessages)
       ? nextMessages.map((message) => ({
         ...message,
@@ -91,7 +183,7 @@ export function useRuntime() {
     
     try {
       // 通过 IPC 获取工具列表
-      if (window.electronAPI) {
+      if (typeof window !== 'undefined' && window != null && window.electronAPI) {
         const toolList = await window.electronAPI.getTools();
         setTools(toolList || []);
       } else {
@@ -112,7 +204,7 @@ export function useRuntime() {
   // 刷新状态
   const refreshState = useCallback(async () => {
     try {
-      if (window.electronAPI) {
+      if (typeof window !== 'undefined' && window != null && window.electronAPI) {
         const state = await window.electronAPI.getState();
         setStatus(state.status || 'idle');
         setStats(prev => ({
@@ -125,6 +217,12 @@ export function useRuntime() {
     }
   }, []);
   
+  // 追加到指定消息内容（流式增量）
+  const appendToMessage = useCallback((messageId, textToAppend, newType) => {
+    if (!textToAppend) return;
+    queueMessageDelta(messageId, textToAppend, newType ? { type: newType } : {});
+  }, [queueMessageDelta]);
+
   // 处理用户输入
   const processInput = useCallback(async (input, options = {}) => {
     if (!input) {
@@ -143,6 +241,13 @@ export function useRuntime() {
       endTime: null
     }));
     
+    // 重置流式消息追踪
+    completedByEventRef.current = false;
+    recentRuntimeEventSignaturesRef.current = new Map();
+    streamingMessageIdRef.current = null;
+    streamingTextRef.current = '';
+    streamingReasoningIdRef.current = null;
+    
     // 添加用户输入消息
     lastAnswerRef.current = '';
     addMessage({
@@ -151,24 +256,73 @@ export function useRuntime() {
     });
     
     try {
+      // 创建一个"占位"流式消息（收到第一个增量时会显示）
+      const now = Date.now();
+      const placeholderId = `msg_stream_${now}_${Math.random().toString(36).substr(2, 9)}`;
+      streamingMessageIdRef.current = placeholderId;
+      streamingTextRef.current = '';
+      setMessages(prev => [...prev, {
+        id: placeholderId,
+        type: 'assistant_stream',
+        content: '',
+        timestamp: now,
+        isStreaming: true,
+      }]);
+      
       // 通过 IPC 发送输入
-      if (window.electronAPI) {
+      if (typeof window !== 'undefined' && window != null && window.electronAPI) {
         const result = await window.electronAPI.processInput(input, options);
         const answer = extractAgentAnswer(result);
         const needsUserInput = result?.status === 'needs_user_input';
+        const shouldAddFinalAnswer = answer && answer !== lastAnswerRef.current;
         
-        // 添加结果消息
-        if (answer && answer !== lastAnswerRef.current) {
+        // 收口流式消息：优先复用同一个气泡，避免“生成中 + 最终结果”重复出现
+        // 注意：agent:complete 事件订阅者也可能已经提前收口并设置了 lastAnswerRef
+        const streamMsgId = streamingMessageIdRef.current;
+        const eventAlreadyHandled = completedByEventRef.current;
+        const answerUnchanged = answer && answer === lastAnswerRef.current;
+
+        if (streamMsgId) {
+          flushMessageDeltas();
+          const streamedText = streamingTextRef.current.trim();
+          const finalText = answer || streamedText;
+          setMessages(prev => {
+            if (!finalText) {
+              return prev.filter(msg => msg.id !== streamMsgId);
+            }
+            return prev.map(msg =>
+              msg.id === streamMsgId
+                ? {
+                  ...msg,
+                  type: needsUserInput ? 'warning' : 'agent',
+                  content: finalText,
+                  isStreaming: false,
+                  streamComplete: true,
+                  ...(result && typeof result === 'object' ? { resultMeta: result } : {}),
+                }
+                : msg
+            );
+          });
+          streamingMessageIdRef.current = null;
+          streamingTextRef.current = '';
+        }
+
+        if (answer) {
           lastAnswerRef.current = answer;
+        }
+
+        // 只有当流消息没有被事件订阅者处理过、且答案不是重复值时，才添加新的结果消息
+        if (!streamMsgId && !eventAlreadyHandled && shouldAddFinalAnswer) {
           addMessage({
             type: needsUserInput ? 'warning' : 'result',
             content: answer,
             ...result
           });
-        } else if (!answer) {
+        } else if (!answer && !streamMsgId && !eventAlreadyHandled) {
+          // 需要用户输入时，添加“需要你补充信息后继续”的消息
           addMessage({
-            type: 'success',
-            content: '执行完成',
+            type: needsUserInput ? 'warning' : 'success',
+            content: needsUserInput ? '需要你补充信息后继续' : '执行完成',
             ...result
           });
         }
@@ -187,6 +341,17 @@ export function useRuntime() {
     } catch (error) {
       console.error('[useRuntime] 执行失败:', error);
       
+      // 清理流式标记
+      const streamMsgId = streamingMessageIdRef.current;
+      if (streamMsgId) {
+        flushMessageDeltas();
+        setMessages(prev => prev.map(msg =>
+          msg.id === streamMsgId ? { ...msg, isStreaming: false } : msg
+        ));
+        streamingMessageIdRef.current = null;
+        streamingTextRef.current = '';
+      }
+      
       addMessage({
         type: 'error',
         content: `执行失败: ${error.message}`
@@ -200,12 +365,12 @@ export function useRuntime() {
       
       throw error;
     }
-  }, [addMessage]);
+  }, [addMessage, appendToMessage, flushMessageDeltas]);
   
   // 停止执行
   const stop = useCallback(async () => {
     try {
-      if (window.electronAPI) {
+      if (typeof window !== 'undefined' && window != null && window.electronAPI) {
         await window.electronAPI.stop();
       }
       
@@ -230,7 +395,51 @@ export function useRuntime() {
   
   // 订阅 IPC 事件
   useEffect(() => {
-    if (!window.electronAPI) return;
+    if (!(typeof window !== 'undefined' && window != null && window.electronAPI)) return;
+
+    // ===== 切断当前流式消息（让下一个 delta 创建新的消息气泡）=====
+    const cutoffStream = (messageIdRef, newType) => {
+      const msgId = messageIdRef.current;
+      if (!msgId) return null;
+
+      // flush 已有增量
+      if (pendingMessageDeltasRef.current.size > 0) {
+        const pending = pendingMessageDeltasRef.current;
+        pendingMessageDeltasRef.current = new Map();
+        setMessages(prev => prev.map(msg => {
+          const delta = pending.get(msg.id);
+          if (!delta) return msg;
+          return {
+            ...msg,
+            type: delta.type || msg.type,
+            content: (msg.content || '') + delta.text,
+            ...(delta.toolName ? { toolName: delta.toolName } : {}),
+          };
+        }));
+      }
+
+      // 关闭 isStreaming 标记，并更新类型（如从 assistant_stream -> agent）
+      setMessages(prev => prev.map(msg => {
+        if (msg.id !== msgId) return msg;
+        return {
+          ...msg,
+          isStreaming: false,
+          ...(newType ? { type: newType } : {}),
+        };
+      }));
+
+      // 清空 ID，下一个 delta 将创建新消息
+      messageIdRef.current = null;
+      if (messageIdRef === streamingMessageIdRef) {
+        const closed = {
+          id: msgId,
+          text: streamingTextRef.current,
+        };
+        streamingTextRef.current = '';
+        return closed;
+      }
+      return { id: msgId, text: '' };
+    };
     
     // 订阅通用 IPC 事件
     const unsubIpcEvent = window.electronAPI.on('ipc:event', (data) => {
@@ -238,9 +447,74 @@ export function useRuntime() {
       const eventName = data?.metadata?.eventName || data?.payload?.event || data?.payload?.name || 'ipc:event';
       const payload = data?.payload ?? data;
 
-      console.debug('[useRuntime] 收到 ipc:event ->', { eventName, payload });
+      // ===== 1) 切断事件：在处理这些事件前先关闭当前流 =====
+      const isCutoffEvent = eventName === 'tool:call'
+        || eventName === 'tool:result'
+        || eventName === 'tool:error'
+        || eventName === 'agent:complete'
+        || eventName === 'agent:stop'
+        || eventName === 'agent:error'
+        || eventName === 'agent:thinking';
+
+      let closedTextStream = null;
+      if (isCutoffEvent) {
+        closedTextStream = cutoffStream(streamingMessageIdRef, 'agent');
+        cutoffStream(streamingReasoningIdRef, 'thinking');
+      }
+
+      // ===== 2) 流式增量事件（打字机效果）=====
+      if (eventName === 'agent:text_delta') {
+        const msgId = streamingMessageIdRef.current;
+        if (payload?.text) {
+          if (!msgId) {
+            // 当前没有活跃的流消息 → 创建新的消息气泡
+            const now = Date.now();
+            const newId = `msg_stream_${now}_${Math.random().toString(36).substr(2, 9)}`;
+            streamingMessageIdRef.current = newId;
+            streamingTextRef.current = payload.text;
+            setMessages(prev => [...prev, {
+              id: newId,
+              type: 'assistant_stream',
+              content: payload.text,
+              timestamp: now,
+              isStreaming: true,
+            }]);
+          } else {
+            queueMessageDelta(msgId, payload.text, { type: 'assistant_stream' });
+          }
+        }
+        return;
+      }
+      if (eventName === 'agent:reasoning_delta') {
+        const reasonId = streamingReasoningIdRef.current;
+        if (payload?.text) {
+          if (!reasonId) {
+            const now = Date.now();
+            const newId = `msg_reason_${now}_${Math.random().toString(36).substr(2, 9)}`;
+            streamingReasoningIdRef.current = newId;
+            setMessages(prev => [...prev, {
+              id: newId,
+              type: 'thinking',
+              content: payload.text,
+              timestamp: now,
+              isStreaming: true,
+            }]);
+          } else {
+            queueMessageDelta(reasonId, payload.text);
+          }
+        }
+        return;
+      }
+      if (eventName === 'agent:tool_call_delta') {
+        // Tool-call deltas are partial protocol frames. The formal tool:call event
+        // renders the visible card, so showing deltas here creates duplicate tools.
+        return;
+      }
 
       const normalized = normalizeRuntimeEventMessage(eventName, payload);
+      if (isDuplicateRuntimeEvent(eventName, payload)) {
+        return;
+      }
       if (normalized.stats?.toolCall) {
         setStats(prev => ({
           ...prev,
@@ -261,13 +535,38 @@ export function useRuntime() {
         }
 
         if (eventName === 'agent:complete') {
+          completedByEventRef.current = true;
           const answer = extractAgentAnswer(payload);
+          // 1) 有流式消息 + 有答案：原地收口为 agent 消息（不额外添加 result 消息）
+          if (answer && closedTextStream?.id) {
+            lastAnswerRef.current = answer;
+            setMessages(prev => prev.map(msg =>
+              msg.id === closedTextStream.id
+                ? {
+                  ...msg,
+                  type: 'agent',
+                  content: answer,
+                  isStreaming: false,
+                  streamComplete: true,
+                }
+                : msg
+            ));
+            return;
+          }
+          // 2) 有流式消息 + 无答案 + 无内容：删除空的流式消息
+          if (!answer && closedTextStream?.id && !closedTextStream.text?.trim()) {
+            setMessages(prev => prev.filter(msg => msg.id !== closedTextStream.id));
+            return;
+          }
+          // 3) 重复答案：忽略
           if (answer && answer === lastAnswerRef.current) {
             return;
           }
+          // 4) 记录答案，后续由 processInput 统一添加结果消息（避免重复）
           if (answer) {
             lastAnswerRef.current = answer;
           }
+          return;
         }
 
         addMessage(normalized.message);
@@ -276,9 +575,10 @@ export function useRuntime() {
     
     // 清理订阅
     return () => {
+      flushMessageDeltas();
       unsubIpcEvent?.();
     };
-  }, [addMessage]);
+  }, [addMessage, flushMessageDeltas, isDuplicateRuntimeEvent, queueMessageDelta]);
   
   return {
     // 状态
@@ -300,12 +600,10 @@ export function useRuntime() {
 }
 
 export function normalizeRuntimeEventMessage(eventName, payload = {}) {
-  const payloadSummary = typeof payload === 'object'
-    ? JSON.stringify(payload).slice(0, 500)
-    : String(payload);
+  const payloadSummary = safeStringify(payload, { maxChars: 500 });
   const base = {
     raw: payload,
-    details: typeof payload === 'object' ? JSON.stringify(payload, null, 2) : String(payload),
+    details: safeStringify(payload, { space: 2, maxChars: 20000 }),
     event: eventName,
     payload,
     payloadSummary,
@@ -318,7 +616,7 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
         message: {
           ...base,
           type: 'agent',
-          content: `Agent 启动${payload?.task ? `: ${payload.task}` : ''}`,
+          content: `任务开始${payload?.task ? `: ${payload.task}` : ''}`,
         },
       };
     case 'agent:complete': {
@@ -329,7 +627,7 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
           ...base,
           type: needsUserInput ? 'warning' : (answer ? 'result' : 'success'),
           runtimeDetail: true,
-          content: answer || (needsUserInput ? '需要你补充信息后继续' : 'Agent 执行完成'),
+          content: answer || (needsUserInput ? '需要你补充信息后继续' : '任务执行完成'),
         },
       };
     }
@@ -339,7 +637,7 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
           ...base,
           type: 'error',
           runtimeDetail: true,
-          content: `Agent 错误: ${payload?.error || payload?.message || '未知错误'}`,
+          content: `运行错误: ${payload?.error || payload?.message || '未知错误'}`,
         },
       };
     case 'agent:stop':
@@ -348,7 +646,7 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
           ...base,
           type: 'warning',
           runtimeDetail: true,
-          content: 'Agent 已停止',
+          content: '任务已停止',
         },
       };
     case 'tool:call':
@@ -419,6 +717,29 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
           },
         },
       };
+    case 'plan:created':
+    case 'plan:updated': {
+      const plan = payload?.plan || payload;
+      const tasks = normalizePlanTasks(plan?.tasks);
+      const completed = tasks.filter(task => task.status === 'completed').length;
+      const running = tasks.filter(task => task.status === 'running').length;
+      const failed = tasks.filter(task => task.status === 'failed').length;
+      const total = tasks.length;
+      const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+      return {
+        message: {
+          ...base,
+          type: 'plan',
+          content: eventName === 'plan:created' ? '执行计划已创建' : '执行计划已更新',
+          plan,
+          planTasks: tasks,
+          planSummary: payload?.summary || payload?.update?.after || '',
+          planUpdate: payload?.update || null,
+          planProgress: { total, completed, running, failed, progress },
+          toolName: payload?.toolName,
+        },
+      };
+    }
     case 'agent:stream':
       return {
         message: {
@@ -438,7 +759,7 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
           ...base,
           type: 'thinking',
           runtimeDetail: true,
-          content: summary || '模型正在思考',
+          content: summary || '正在分析上下文',
           thinkingText,
           summary,
           details: payload?.details || [],
@@ -449,6 +770,17 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
       };
     }
     case 'status:update':
+      if (typeof payload?.answer === 'string' && payload.answer.trim()) {
+        return {
+          message: {
+            ...base,
+            event: 'agent:complete',
+            type: 'result',
+            runtimeDetail: true,
+            content: payload.answer,
+          },
+        };
+      }
       return {
         message: {
           ...base,
@@ -471,6 +803,59 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
   }
 }
 
+function normalizePlanTasks(tasks) {
+  if (!tasks) {
+    return [];
+  }
+  if (Array.isArray(tasks)) {
+    return tasks;
+  }
+  if (tasks && typeof tasks === 'object') {
+    return Object.entries(tasks).map(([id, task]) => ({
+      id,
+      ...(task && typeof task === 'object' ? task : { name: String(task) }),
+    }));
+  }
+  return [];
+}
+
+export function safeStringify(value, { space = 0, maxChars = 20000 } = {}) {
+  let text;
+  try {
+    if (typeof value === 'string') {
+      text = value;
+    } else {
+      const seen = new WeakSet();
+      text = JSON.stringify(value, (key, current) => {
+        if (typeof current === 'bigint') {
+          return current.toString();
+        }
+        if (typeof current === 'function') {
+          return `[Function ${current.name || 'anonymous'}]`;
+        }
+        if (current && typeof current === 'object') {
+          if (seen.has(current)) {
+            return '[Circular]';
+          }
+          seen.add(current);
+        }
+        return current;
+      }, space);
+    }
+  } catch (error) {
+    text = String(value);
+  }
+
+  if (text == null) {
+    text = '';
+  }
+
+  if (text.length > maxChars) {
+    return `${text.slice(0, maxChars)}… [truncated ${text.length - maxChars} chars]`;
+  }
+  return text;
+}
+
 function createThinkingSummary(text = '') {
   const clean = String(text).replace(/\s+/g, ' ').trim();
   if (!clean) {
@@ -491,6 +876,30 @@ function extractAgentAnswer(data) {
 
   if (typeof data.answer === 'string' && data.answer.trim()) {
     return data.answer;
+  }
+
+  if (typeof data.content === 'string' && data.content.trim()) {
+    return data.content;
+  }
+
+  if (typeof data.text === 'string' && data.text.trim()) {
+    return data.text;
+  }
+
+  if (typeof data.response === 'string' && data.response.trim()) {
+    return data.response;
+  }
+
+  if (typeof data.message?.content === 'string' && data.message.content.trim()) {
+    return data.message.content;
+  }
+
+  if (typeof data.choices?.[0]?.message?.content === 'string' && data.choices[0].message.content.trim()) {
+    return data.choices[0].message.content;
+  }
+
+  if (typeof data.choices?.[0]?.delta?.content === 'string' && data.choices[0].delta.content.trim()) {
+    return data.choices[0].delta.content;
   }
 
   if (data.localCommand && typeof data.content === 'string' && data.content.trim()) {

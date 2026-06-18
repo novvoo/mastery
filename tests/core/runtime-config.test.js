@@ -16,7 +16,7 @@ import {
 
 describe('runtime-config (src/core)', () => {
   test('exports APP_NAME', () => {
-    expect(APP_NAME).toBe('ai-engineering-mastery-agent');
+    expect(APP_NAME).toBe('mastery');
   });
 
   test('exports APP_DISPLAY_NAME', () => {

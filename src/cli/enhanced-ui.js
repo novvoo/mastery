@@ -35,6 +35,19 @@ import { getRuntimeStatusText } from '../core/runtime-status.js';
 
 let debugEnabled = process.env.DEBUG === 'true';
 
+// =====================
+// Streaming state（打字机效果）
+// =====================
+const streamingState = {
+  active: false,
+  firstDelta: true,
+  text: '',
+  reasoning: '',
+  toolCalls: [],
+  lineBuffer: '',
+  tokenCount: 0,
+};
+
 // 颜色主题
 const theme = {
   primary: chalk.cyan,
@@ -808,8 +821,107 @@ export const enhancedUI = {
     console.log(theme.dim(`  ⏳ Iteration ${current}/${max}`));
   },
 
+  // 流式增量缓冲区（打字机效果）
+  // startStreaming / onTextDelta / onReasoningDelta / onToolCallDelta / stopStreaming
+  // 维护在闭包中的一个可变对象上
+  // ============================================================
+
+  startStreaming(mode = 'text') {
+    if (streamingState.active) return;
+    streamingState.active = true;
+    streamingState.text = '';
+    streamingState.reasoning = '';
+    streamingState.toolCalls = [];
+    streamingState.lineBuffer = '';
+    streamingState.firstDelta = true;
+    streamingState.tokenCount = 0;
+
+    if (mode === 'text') {
+      console.log('');
+      process.stdout.write(theme.successBold('  ✨ ') + theme.white('AI: '));
+    } else if (mode === 'reasoning') {
+      console.log('');
+      process.stdout.write(theme.dim('  🤔 思考: '));
+    } else if (mode === 'tool_call') {
+      console.log('');
+      process.stdout.write(theme.warning('  🔧 工具: '));
+    }
+  },
+
+  onTextDelta(text) {
+    if (!text) return;
+    if (!streamingState.active) this.startStreaming('text');
+
+    streamingState.text += text;
+    streamingState.tokenCount += text.length;
+    streamingState.lineBuffer += text;
+
+    // 实时逐字符输出（只输出新 token）
+    process.stdout.write(theme.white(text));
+
+    if (text.includes('\n')) {
+      streamingState.lineBuffer = '';
+    }
+    streamingState.firstDelta = false;
+  },
+
+  onReasoningDelta(text) {
+    if (!text) return;
+    if (!streamingState.active) this.startStreaming('reasoning');
+
+    streamingState.reasoning += text;
+    process.stdout.write(theme.dim(text));
+    streamingState.firstDelta = false;
+  },
+
+  onToolCallDelta(delta) {
+    if (!delta || (!delta.name && !delta.arguments)) return;
+
+    if (streamingState.firstDelta || !streamingState.active) {
+      this.startStreaming('tool_call');
+    }
+
+    if (delta.name) {
+      streamingState.toolCalls = streamingState.toolCalls || [];
+      streamingState.toolCalls.push({
+        index: delta.index ?? streamingState.toolCalls.length,
+        name: delta.name,
+        arguments: '',
+      });
+      process.stdout.write(theme.warning(delta.name));
+    }
+    if (delta.arguments) {
+      const last = streamingState.toolCalls?.[streamingState.toolCalls.length - 1];
+      if (last) last.arguments += delta.arguments;
+      process.stdout.write(theme.dim(delta.arguments));
+    }
+    streamingState.firstDelta = false;
+  },
+
+  stopStreaming(reason = 'done') {
+    if (!streamingState.active) return;
+    streamingState.active = false;
+    if (this.isDebugEnabled()) {
+      console.log('');
+      console.log(theme.dim(`     (streaming ${reason}, ${streamingState.tokenCount} tokens)`));
+    } else {
+      console.log('');
+    }
+    console.log('');
+  },
+
+  getStreamingBuffer() {
+    return {
+      text: streamingState.text,
+      reasoning: streamingState.reasoning,
+      toolCalls: [...(streamingState.toolCalls || [])],
+      tokenCount: streamingState.tokenCount,
+    };
+  },
+
   // 最终答案显示
   finalAnswer(text) {
+    if (streamingState.active) this.stopStreaming('final');
     console.log('');
     console.log(createBox(text, { 
       title: 'Final Answer',

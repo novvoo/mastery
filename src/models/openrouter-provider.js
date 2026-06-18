@@ -27,7 +27,7 @@ export class OpenRouterModelProvider {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.#apiKey}`,
-        'HTTP-Referer': 'https://github.com/novvoo/ai-engineering-mastery-agent',
+        'HTTP-Referer': 'https://github.com/novvoo/mastery',
         'X-Title': 'AI Engineering Mastery Agent',
       },
       body: JSON.stringify({

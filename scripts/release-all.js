@@ -112,7 +112,7 @@ async function main() {
   if (cliSuccess && desktopSuccess) {
     success('All releases published successfully!');
     log('\n📦 Release artifacts:');
-    log('   - npm: https://www.npmjs.com/package/ai-engineering-mastery-agent');
+    log('   - npm: https://www.npmjs.com/package/mastery');
     log('   - GitHub Releases: Check your repository');
   } else {
     logError('Some releases failed');

@@ -253,6 +253,42 @@ describe('DesktopCore - 运行详情事件转发', () => {
       await desktopCore.dispose();
     }
   });
+
+  test('plan events are forwarded to UIBridge', async () => {
+    const desktopCore = createDesktopCore({
+      workingDirectory: process.cwd(),
+      debug: false
+    });
+
+    try {
+      await desktopCore.initialize();
+
+      const received = [];
+      desktopCore.attachUIBridge({
+        onMessage: (message) => received.push(message),
+        attachCoreRef: () => {},
+        disconnect: () => {}
+      });
+
+      const eventBus = desktopCore.getEventBus();
+      const plan = {
+        name: 'Automatic coding task plan',
+        tasks: [
+          { id: 'inspect_workspace', name: 'Inspect workspace', status: 'running' }
+        ]
+      };
+
+      eventBus.emit(RuntimeEvent.EXECUTION_PLAN_CREATED, { plan });
+      eventBus.emit(RuntimeEvent.EXECUTION_PLAN_UPDATED, { plan, update: { after: '- inspect_workspace: completed' } });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(received.some(m => m.type === RuntimeEvent.EXECUTION_PLAN_CREATED)).toBe(true);
+      expect(received.some(m => m.type === RuntimeEvent.EXECUTION_PLAN_UPDATED)).toBe(true);
+    } finally {
+      await desktopCore.dispose();
+    }
+  });
 });
 
 describe('bootstrapRuntime 基础功能验证', () => {
@@ -311,5 +347,157 @@ describe('bootstrapRuntime 基础功能验证', () => {
     expect(result).toBeDefined();
     expect(typeof result).toBe('object');
     expect(typeof result.status).toBe('string');
+  });
+});
+
+describe('DesktopCore - 流式事件转发', () => {
+
+  test('agent:text_delta 事件通过 eventBus 转发', async () => {
+    const desktopCore = createDesktopCore({
+      workingDirectory: process.cwd(),
+      debug: false
+    });
+
+    try {
+      await desktopCore.initialize();
+
+      const received = [];
+      const uiBridge = {
+        onMessage: (message) => { received.push(message); },
+        attachCoreRef: () => {},
+        disconnect: () => {}
+      };
+      desktopCore.attachUIBridge(uiBridge);
+
+      const eventBus = desktopCore.getEventBus();
+      eventBus.emit(RuntimeEvent.AGENT_TEXT_DELTA, { text: 'Hello', timestamp: Date.now() });
+      eventBus.emit(RuntimeEvent.AGENT_TEXT_DELTA, { text: ' World', timestamp: Date.now() });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const textDeltaEvents = received.filter(m => m.type === RuntimeEvent.AGENT_TEXT_DELTA);
+      expect(textDeltaEvents.length).toBeGreaterThanOrEqual(2);
+      expect(textDeltaEvents[0].data.text).toBe('Hello');
+      expect(textDeltaEvents[1].data.text).toBe(' World');
+    } finally {
+      await desktopCore.dispose();
+    }
+  });
+
+  test('agent:reasoning_delta 事件通过 eventBus 转发', async () => {
+    const desktopCore = createDesktopCore({
+      workingDirectory: process.cwd(),
+      debug: false
+    });
+
+    try {
+      await desktopCore.initialize();
+
+      const received = [];
+      const uiBridge = {
+        onMessage: (message) => { received.push(message); },
+        attachCoreRef: () => {},
+        disconnect: () => {}
+      };
+      desktopCore.attachUIBridge(uiBridge);
+
+      const eventBus = desktopCore.getEventBus();
+      eventBus.emit(RuntimeEvent.AGENT_REASONING_DELTA, { text: '思考中', timestamp: Date.now() });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const reasoningDeltaEvents = received.filter(m => m.type === RuntimeEvent.AGENT_REASONING_DELTA);
+      expect(reasoningDeltaEvents.length).toBe(1);
+      expect(reasoningDeltaEvents[0].data.text).toBe('思考中');
+    } finally {
+      await desktopCore.dispose();
+    }
+  });
+
+  test('agent:tool_call_delta 事件通过 eventBus 转发', async () => {
+    const desktopCore = createDesktopCore({
+      workingDirectory: process.cwd(),
+      debug: false
+    });
+
+    try {
+      await desktopCore.initialize();
+
+      const received = [];
+      const uiBridge = {
+        onMessage: (message) => { received.push(message); },
+        attachCoreRef: () => {},
+        disconnect: () => {}
+      };
+      desktopCore.attachUIBridge(uiBridge);
+
+      const eventBus = desktopCore.getEventBus();
+      eventBus.emit(RuntimeEvent.AGENT_TOOL_CALL_DELTA, { index: 0, name: 'read_file', arguments: '{"path":"a.txt"}', timestamp: Date.now() });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const toolCallDeltaEvents = received.filter(m => m.type === RuntimeEvent.AGENT_TOOL_CALL_DELTA);
+      expect(toolCallDeltaEvents.length).toBe(1);
+      expect(toolCallDeltaEvents[0].data.name).toBe('read_file');
+      expect(toolCallDeltaEvents[0].data.arguments).toBe('{"path":"a.txt"}');
+    } finally {
+      await desktopCore.dispose();
+    }
+  });
+
+  test('DesktopCore UI 适配器提供流式回调实现', () => {
+    const eventBus = getEventBus();
+
+    const receivedEvents = [];
+    const unsubText = eventBus.subscribe(RuntimeEvent.AGENT_TEXT_DELTA, (d) => receivedEvents.push({ ...d, __type: 'text_delta' }));
+    const unsubReasoning = eventBus.subscribe(RuntimeEvent.AGENT_REASONING_DELTA, (d) => receivedEvents.push({ ...d, __type: 'reasoning_delta' }));
+    const unsubToolCall = eventBus.subscribe(RuntimeEvent.AGENT_TOOL_CALL_DELTA, (d) => receivedEvents.push({ ...d, __type: 'tool_call_delta' }));
+
+    try {
+      const uiAdapter = {
+        onTextDelta: (text) => eventBus.emit(RuntimeEvent.AGENT_TEXT_DELTA, { text }),
+        onReasoningDelta: (text) => eventBus.emit(RuntimeEvent.AGENT_REASONING_DELTA, { text }),
+        onToolCallDelta: (delta) => eventBus.emit(RuntimeEvent.AGENT_TOOL_CALL_DELTA, delta),
+      };
+
+      uiAdapter.onTextDelta('你');
+      uiAdapter.onTextDelta('好');
+      uiAdapter.onReasoningDelta('正在思考');
+      uiAdapter.onToolCallDelta({ index: 0, name: 'foo', arguments: '{}' });
+
+      const textEvents = receivedEvents.filter(e => e.__type === 'text_delta');
+      const reasoningEvents = receivedEvents.filter(e => e.__type === 'reasoning_delta');
+      const toolCallEvents = receivedEvents.filter(e => e.__type === 'tool_call_delta');
+
+      expect(textEvents.length).toBe(2);
+      expect(textEvents[0].text).toBe('你');
+      expect(textEvents[1].text).toBe('好');
+      expect(reasoningEvents.length).toBe(1);
+      expect(reasoningEvents[0].text).toBe('正在思考');
+      expect(toolCallEvents.length).toBe(1);
+      expect(toolCallEvents[0].name).toBe('foo');
+    } finally {
+      unsubText && unsubText();
+      unsubReasoning && unsubReasoning();
+      unsubToolCall && unsubToolCall();
+    }
+  });
+});
+
+describe('RuntimeEvent - 流式事件常量', () => {
+  test('流式事件常量在 RuntimeEvent 中定义', () => {
+    expect(RuntimeEvent.AGENT_TEXT_DELTA).toBeDefined();
+    expect(RuntimeEvent.AGENT_REASONING_DELTA).toBeDefined();
+    expect(RuntimeEvent.AGENT_TOOL_CALL_DELTA).toBeDefined();
+    expect(typeof RuntimeEvent.AGENT_TEXT_DELTA).toBe('string');
+    expect(typeof RuntimeEvent.AGENT_REASONING_DELTA).toBe('string');
+    expect(typeof RuntimeEvent.AGENT_TOOL_CALL_DELTA).toBe('string');
+  });
+
+  test('流式事件值格式为 agent:xxx_delta', () => {
+    expect(RuntimeEvent.AGENT_TEXT_DELTA).toContain('agent:');
+    expect(RuntimeEvent.AGENT_TEXT_DELTA).toContain('delta');
+    expect(RuntimeEvent.AGENT_REASONING_DELTA).toContain('agent:');
+    expect(RuntimeEvent.AGENT_TOOL_CALL_DELTA).toContain('agent:');
   });
 });

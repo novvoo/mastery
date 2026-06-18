@@ -17,6 +17,9 @@ import {
   buildSemanticRiskGuidance as buildSemanticRiskGuidanceText,
 } from './coding-prompts.js';
 import { TERMINATION_KEYWORDS } from './agent-constants.js';
+import {
+  isMutationEvent,
+} from './evidence-verifier.js';
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 
@@ -221,6 +224,7 @@ export function containsUnparsedToolSyntax(toolParser, responseText) {
   }
   const patterns = [
     /<tool_code>[\s\S]*?<\/tool_code>/i,
+    /<action>[\s\S]*?<\/action>/i,
     /<tool_call>[\s\S]*?<\/tool_call>/i,
     /<function_call>[\s\S]*?<\/function_call>/i,
     /```(?:tool|json)?\s*\n\s*\{[\s\S]*?(?:"name"|"action"|"tool")[\s\S]*?\}\s*```/i,
@@ -254,13 +258,27 @@ export function shouldCorrectToolRefusal(toolRegistry, userInput, responseText) 
 
 export function shouldBlockCodingFinal(userInput, responseText, { taskProfile, toolEvents } = {}) {
   if (!taskProfile?.isModificationTask) return { block: false };
-  const hasToolEvidence = (toolEvents || []).some(e => e.success);
-  if (hasToolEvidence) return { block: false };
-  return {
-    block: true,
-    reason: 'modification_task_requires_tool_evidence_before_finish',
-    evidence: (toolEvents || []).slice(-3).map(e => `[${e.success ? 'ok' : 'fail'}] ${e.name}`),
-  };
+
+  const events = Array.isArray(toolEvents) ? toolEvents : [];
+  const successfulEvents = events.filter(e => e.success);
+
+  // 1) 完全没有工具调用 → 对于修改任务，必须阻塞（不能凭空声称完成了编码任务）
+  if (successfulEvents.length === 0) {
+    return {
+      block: true,
+      reason: 'no_tool_evidence_for_modification_task',
+      evidence: { hasMutation: false, hasVerification: false },
+    };
+  }
+
+  // 2) 有工具调用但只有读操作（没有代码修改）→ 不阻塞（Agent 可能只是在探索阶段）
+  const hasMutation = successfulEvents.some(e => isMutationEvent(e));
+  if (!hasMutation) return { block: false };
+
+  // 3) 有代码修改 → 允许通过
+  //    更严格的验证（runtime verification / methodology tool）由 agent-verifier.js 负责
+  //    prompt-builder.js 只做基础证据检查
+  return { block: false, evidence: { hasMutation: true } };
 }
 
 // ============== 工厂：便于按名称调用 ==============

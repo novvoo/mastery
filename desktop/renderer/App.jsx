@@ -41,6 +41,7 @@ import {
   normalizeRagDocuments,
   PREVIEW_URL_STORAGE_KEY,
   PROJECT_TREE_REFRESH_CONCURRENCY,
+  readAgentHistory,
   readAgentSessions,
   readDesktopLayout,
   readStoredInspectorTab,
@@ -48,6 +49,10 @@ import {
   saveAgentInputHistory,
   upsertAgentSession,
 } from './app/session-storage.js';
+import {
+  createComposerInteractionState,
+  handleComposerKey,
+} from './app/interaction-model.js';
 import { styles } from './app/styles.js';
 import { getI18n, t as i18nT } from './i18n.js';
 import './index.css';
@@ -93,7 +98,8 @@ function App() {
     isFullScreen: false,
     isMaximized: false
   });
-  
+  const [ipcDiagnostic, setIpcDiagnostic] = useState(null);
+
   // Codex 风格新状态 — 默认折叠侧边栏和 Inspector，突出聊天区
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const stored = readDesktopLayout().sidebarCollapsed;
@@ -107,6 +113,7 @@ function App() {
   const [inspectorPanelWidth, setInspectorPanelWidth] = useState(() => clampInspectorWidth(readDesktopLayout().inspectorPanelWidth));
   const [inspectorExpanded, setInspectorExpanded] = useState(() => Boolean(readDesktopLayout().inspectorExpanded));
   const [chatInput, setChatInput] = useState('');
+  const [inputNotice, setInputNotice] = useState(null);
   const [inputFocused, setInputFocused] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [agentOptions, setAgentOptions] = useState({
@@ -142,6 +149,7 @@ function App() {
   const runtimeStatusMeta = getRuntimeStatusMeta(runtime.status);
   const ipc = useIPC();
   const chatInputRef = useRef(null);
+  const composerInteractionRef = useRef(createComposerInteractionState());
   const workspaceRefreshTimerRef = useRef(null);
   const directoryChildrenRef = useRef(directoryChildren);
   const skipNextSessionPersistRef = useRef(false);
@@ -318,7 +326,21 @@ function App() {
 
     // 连接到主进程
     ipc.connect().then((connection) => {
-      if (!isMounted || !connection) {
+      if (!isMounted) {
+        return;
+      }
+
+      if (!connection) {
+        // electronAPI 不可用 — 记录诊断信息供 UI 渲染降级横幅
+        try {
+          const diag = typeof ipc.diagnose === 'function'
+            ? ipc.diagnose()
+            : { hasElectronAPI: false, url: typeof window !== 'undefined' ? window.location?.href : null };
+          console.warn('[App] IPC 诊断:', diag);
+          setIpcDiagnostic(diag);
+        } catch (_) {
+          setIpcDiagnostic({ hasElectronAPI: false, reason: 'preload 未暴露 electronAPI' });
+        }
         return;
       }
 
@@ -473,8 +495,12 @@ function App() {
     
     if (!result.canceled && result.filePaths.length > 0) {
       const newDir = result.filePaths[0];
-      await ipc.setWorkingDirectory(newDir);
-      setWorkingDirectory(newDir);
+      const workspaceResult = await ipc.setWorkingDirectory(newDir);
+      const nextDirectory = workspaceResult?.workingDirectory || newDir;
+      setWorkingDirectory(nextDirectory);
+      if (workspaceResult?.fileServerUrl) {
+        setFileServerUrl(workspaceResult.fileServerUrl);
+      }
       setDirectoryChildren({});
       setExpandedDirectories(new Set(['']));
       setProjectTreeError('');
@@ -815,7 +841,7 @@ function App() {
   // 处理导出
   const handleExport = useCallback(() => {
     const lines = [
-      '# AI Agent Conversation',
+      '# 对话记录',
       '',
       `- Exported: ${new Date().toISOString()}`,
       `- Working directory: ${workingDirectory || '未设置'}`,
@@ -874,6 +900,8 @@ function App() {
       if (options.clearInput !== false) {
         setChatInput('');
       }
+      setInputNotice(null);
+      composerInteractionRef.current = createComposerInteractionState();
     } catch (error) {
       console.error('[App] 发送消息失败:', error);
     }
@@ -894,6 +922,12 @@ function App() {
 
   const handleChatInputChange = useCallback((value) => {
     setChatInput(value);
+    setInputNotice(null);
+    composerInteractionRef.current = {
+      ...composerInteractionRef.current,
+      historyIndex: -1,
+      notice: null
+    };
     setShowSuggestions(value.trimStart().startsWith('/'));
   }, []);
 
@@ -909,16 +943,46 @@ function App() {
   }, []);
 
   const handleChatKeyDown = useCallback((e) => {
-    // Ctrl+Enter 发送消息
-    if (e.key === 'Enter' && e.ctrlKey) {
+    const interaction = handleComposerKey(e, composerInteractionRef.current, {
+      value: chatInput,
+      status: runtime.status,
+      history: readAgentHistory(),
+      now: Date.now()
+    });
+
+    composerInteractionRef.current = interaction.state;
+    setInputNotice(interaction.state.notice);
+
+    if (interaction.action === 'submit') {
       e.preventDefault();
       handleSendMessage();
+      return;
     }
+
+    if (interaction.action === 'clear') {
+      e.preventDefault();
+      setChatInput('');
+      setShowSuggestions(false);
+      return;
+    }
+
+    if (interaction.action === 'replace_input') {
+      e.preventDefault();
+      setChatInput(interaction.value || '');
+      setShowSuggestions(String(interaction.value || '').trimStart().startsWith('/'));
+      return;
+    }
+
+    if (interaction.action === 'notice') {
+      e.preventDefault();
+      return;
+    }
+
     // 隐藏命令提示当按下 Escape 或 Enter(非 Ctrl)
     if (e.key === 'Escape' || (e.key === 'Enter' && !e.ctrlKey && !showSuggestions)) {
       setShowSuggestions(false);
     }
-  }, [handleSendMessage, showSuggestions]);
+  }, [chatInput, handleSendMessage, runtime.status, showSuggestions]);
 
   const handleInspectorResizeStart = useCallback((event) => {
     event.preventDefault();
@@ -1058,8 +1122,8 @@ function App() {
 
   const handleAddRagDocuments = useCallback(async () => {
     try {
-      if (!window.electronAPI) return;
-      const result = await window.electronAPI.openFileDialog({ properties: ['openFile', 'multiSelections'] });
+      if (!ipc.hasElectronAPI()) return;
+      const result = await ipc.openFileDialog({ properties: ['openFile', 'multiSelections'] });
       const paths = result?.filePaths || result || [];
       const files = (paths || []).map(path => ({
         name: getDocumentDisplayName(path),
@@ -1070,7 +1134,7 @@ function App() {
     } catch (error) {
       console.error('选择文件失败', error);
     }
-  }, []);
+  }, [ipc]);
 
   const handleInitializeRagIndex = useCallback(async () => {
     if (ragDocs.length === 0) return;
@@ -1146,6 +1210,48 @@ function App() {
         onClose={handleClose}
       />
 
+      {ipcDiagnostic && !ipcDiagnostic.hasElectronAPI && (
+        <div style={{
+          background: 'linear-gradient(90deg, #8a6d3b, #b98b3c)',
+          color: '#f8f4e8',
+          padding: '8px 16px',
+          fontSize: 13,
+          borderBottom: '1px solid rgba(0,0,0,0.15)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+        }}>
+          <div style={{ flex: 1 }}>
+            <strong>⚠️ IPC 连接不可用：</strong>
+            preload 脚本未能成功暴露 <code>window.electronAPI</code>，所有与主进程的通信功能将不可用。
+            <div style={{
+              marginTop: 4,
+              fontSize: 12,
+              opacity: 0.9,
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              wordBreak: 'break-all',
+            }}>
+              诊断: {JSON.stringify(ipcDiagnostic)}
+            </div>
+          </div>
+          <button
+            onClick={() => setIpcDiagnostic(null)}
+            style={{
+              background: 'transparent',
+              border: '1px solid rgba(255,255,255,0.4)',
+              color: 'inherit',
+              padding: '4px 10px',
+              borderRadius: 4,
+              fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            关闭
+          </button>
+        </div>
+      )}
+
       <main style={styles.mainContent}>
         <ActivityRail
           activeTab={activeTab}
@@ -1193,6 +1299,7 @@ function App() {
           runtime={runtime}
           chatInput={chatInput}
           chatInputRef={chatInputRef}
+          inputNotice={inputNotice}
           inputFocused={inputFocused}
           showSuggestions={showSuggestions}
           onAskAgentFromMessage={handleAskAgentFromMessage}

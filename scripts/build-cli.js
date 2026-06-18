@@ -75,7 +75,7 @@ async function main() {
     log('\n==============================================');
     log(`📦 CLI package built!`);
     log(`   Output: ${cliReleaseDir}/`);
-    log(`   Usage: npm install -g ./release/cli/ai-engineering-mastery-agent-*.tgz  # 或 bun install -g ...`);
+    log(`   Usage: npm install -g ./release/cli/mastery-*.tgz  # 或 bun install -g ...`);
   } else {
     process.exit(1);
   }

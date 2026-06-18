@@ -585,6 +585,191 @@ export const styles = {
     borderTop: '1px solid var(--glass-border)',
     boxShadow: 'var(--shadow-overlay)'
   },
+
+  interactionConsole: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    marginBottom: '10px',
+    padding: '8px',
+    borderRadius: '8px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
+    backdropFilter: 'blur(10px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(10px) saturate(140%)',
+    boxShadow: 'var(--glass-inner-hl)'
+  },
+
+  interactionStages: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: '6px'
+  },
+
+  interactionStage: {
+    minWidth: 0,
+    minHeight: '34px',
+    display: 'grid',
+    gridTemplateColumns: '8px minmax(0, auto) minmax(0, 1fr)',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '6px 8px',
+    borderRadius: '6px',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--neutral-faint)',
+    color: 'var(--text-muted)',
+    transition: 'all var(--transition-fast)'
+  },
+
+  interactionStageActive: {
+    border: '1px solid var(--warning-strong)',
+    backgroundColor: 'var(--warning-faint)',
+    color: 'var(--warning-color)'
+  },
+
+  interactionStageDone: {
+    border: '1px solid var(--primary-border)',
+    backgroundColor: 'var(--success-faint)',
+    color: 'var(--success-color)'
+  },
+
+  interactionStageAttention: {
+    border: '1px solid var(--warning-strong)',
+    backgroundColor: 'var(--warning-soft)',
+    color: 'var(--warning-color)'
+  },
+
+  interactionStageError: {
+    border: '1px solid var(--error-soft)',
+    backgroundColor: 'var(--error-faint)',
+    color: 'var(--error-color)'
+  },
+
+  interactionStageDot: {
+    width: '7px',
+    height: '7px',
+    borderRadius: '50%',
+    backgroundColor: 'currentColor',
+    boxShadow: '0 0 0 3px var(--neutral-faint)'
+  },
+
+  interactionStageLabel: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '11px',
+    fontWeight: 800
+  },
+
+  interactionStageDetail: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '11px',
+    color: 'var(--text-dark)'
+  },
+
+  interactionMetaRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    minWidth: 0
+  },
+
+  interactionMetaPill: {
+    flex: '0 0 auto',
+    minHeight: '22px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '0 8px',
+    borderRadius: '999px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg)',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 700
+  },
+
+  interactionRiskPill: {
+    flex: '0 0 auto',
+    minHeight: '22px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '0 8px',
+    borderRadius: '999px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--neutral-faint)',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 800
+  },
+
+  interactionRiskLow: {
+    border: '1px solid var(--primary-border)',
+    backgroundColor: 'var(--success-faint)',
+    color: 'var(--success-color)'
+  },
+
+  interactionRiskMedium: {
+    border: '1px solid var(--warning-strong)',
+    backgroundColor: 'var(--warning-faint)',
+    color: 'var(--warning-color)'
+  },
+
+  interactionRiskHigh: {
+    border: '1px solid var(--error-soft)',
+    backgroundColor: 'var(--error-faint)',
+    color: 'var(--error-color)'
+  },
+
+  interactionRunNarrative: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 600
+  },
+
+  interactionShortcut: {
+    flex: '0 0 auto',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    color: 'var(--text-dark)',
+    fontSize: '11px'
+  },
+
+  interactionShortcutKey: {
+    minHeight: '18px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '0 5px',
+    borderRadius: '4px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg)',
+    color: 'var(--text-muted)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '10px',
+    fontWeight: 700
+  },
+  
+  interactionAssistText: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: 'var(--text-dark)',
+    fontSize: '11px'
+  },
+
+  interactionAssistWarning: {
+    color: 'var(--warning-color)',
+    fontWeight: 700
+  },
   
   inputWrapper: {
     display: 'flex',

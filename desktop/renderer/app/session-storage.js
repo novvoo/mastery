@@ -17,7 +17,7 @@ import {
 import { normalizePreviewUrlInput } from '../../../src/core/preview-url.js';
 import { LAYOUT } from './config.js';
 
-export const REPOSITORY_URL = 'https://github.com/novvoo/ai-engineering-mastery-agent';
+export const REPOSITORY_URL = 'https://github.com/novvoo/mastery';
 export const PROJECT_TREE_REFRESH_CONCURRENCY = 12;
 export const AGENT_HISTORY_STORAGE_KEY = 'agentHistory';
 export const AGENT_HISTORY_UPDATED_EVENT = 'agent-history-updated';

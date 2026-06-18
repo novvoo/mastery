@@ -183,19 +183,9 @@ export async function saveLLMConfig(ctx, config = {}) {
 
 export async function handleSaveConfig(ctx) {
   const { dialog, app } = ctx.electron;
-  const configPath = path.join(app.getPath('userData'), 'config.json');
 
   try {
-    const configData = {
-      workingDirectory: ctx.config.workingDirectory,
-      window: {
-        width: ctx.mainWindow?.getSize()[0] || ctx.config.window.width,
-        height: ctx.mainWindow?.getSize()[1] || ctx.config.window.height
-      },
-      runtime: ctx.config.runtime
-    };
-
-    fs.writeFileSync(configPath, JSON.stringify(configData, null, 2));
+    saveAppConfig(ctx);
 
     dialog.showMessageBox(ctx.mainWindow, {
       type: 'info',
@@ -206,6 +196,57 @@ export async function handleSaveConfig(ctx) {
   } catch (error) {
     dialog.showErrorBox('保存失败', error.message);
   }
+}
+
+export function getAppConfigPath(electronOrCtx) {
+  const electronRef = electronOrCtx?.electron || electronOrCtx;
+  const { app } = electronRef;
+  return path.join(app.getPath('userData'), 'config.json');
+}
+
+export function readAppConfig(electronOrCtx) {
+  try {
+    const configPath = getAppConfigPath(electronOrCtx);
+    if (!fs.existsSync(configPath)) {
+      return {};
+    }
+    return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  } catch (err) {
+    console.warn('读取应用配置失败:', err.message);
+    return {};
+  }
+}
+
+export function saveAppConfig(ctx, overrides = {}) {
+  const configPath = getAppConfigPath(ctx);
+  const dir = path.dirname(configPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  const existing = readAppConfig(ctx);
+  const [width, height] = ctx.mainWindow?.getSize?.() || [];
+  const configData = {
+    ...existing,
+    workingDirectory: ctx.config.workingDirectory,
+    window: {
+      ...existing.window,
+      width: width || ctx.config.window?.width,
+      height: height || ctx.config.window?.height
+    },
+    runtime: {
+      ...existing.runtime,
+      ...ctx.config.runtime
+    },
+    ...overrides
+  };
+
+  fs.writeFileSync(configPath, JSON.stringify(configData, null, 2));
+  return {
+    success: true,
+    configPath,
+    config: configData
+  };
 }
 
 /**

@@ -120,6 +120,10 @@ describe('containsUnparsedToolSyntax', () => {
     expect(containsUnparsedToolSyntax(null, '<tool_code>test</tool_code>')).toBe(true);
   });
 
+  test('detects action tags', () => {
+    expect(containsUnparsedToolSyntax(null, '<action>{"action":"web_search","query":"厦门天气"}</action>')).toBe(true);
+  });
+
   test('returns false for normal text', () => {
     expect(containsUnparsedToolSyntax(null, 'Hello World')).toBe(false);
   });

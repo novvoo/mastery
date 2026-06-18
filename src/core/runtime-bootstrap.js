@@ -89,9 +89,13 @@ export function ensureMetricsSink({ enabled = true, logDir, workingDirectory } =
 /**
  * 创建 ToolRegistry 并注册 core tools（文件读写 / shell / memory 等）
  */
-export function createDefaultToolRegistry({ workingDirectory = null, mcpClient = null } = {}) {
+export function createDefaultToolRegistry({
+  workingDirectory = null,
+  mcpClient = null,
+  includeExperimentalTools = false,
+} = {}) {
   const registry = new ToolRegistry();
-  const coreTools = createCoreTools({ workingDirectory, mcpClient });
+  const coreTools = createCoreTools({ workingDirectory, mcpClient, includeExperimentalTools });
   for (const tool of coreTools) {
     try { registry.register(tool); } catch (_) { /* 重复注册忽略 */ }
   }
@@ -136,7 +140,11 @@ export async function bootstrapRuntime(options = {}) {
   const mcpClient = new MCPClient(options.mcp || {});
 
   // 3) ToolRegistry
-  const toolRegistry = createDefaultToolRegistry({ workingDirectory, mcpClient });
+  const toolRegistry = createDefaultToolRegistry({
+    workingDirectory,
+    mcpClient,
+    includeExperimentalTools: options.includeExperimentalTools === true,
+  });
 
   // 4) WorkspaceState & Metrics
   const workspaceState = new WorkspaceState();

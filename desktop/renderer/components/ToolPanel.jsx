@@ -392,7 +392,7 @@ function ToolPanel({ tools = [], loading, messages = [] }) {
             ))
           ) : (
             <div style={styles.emptyActivity}>
-              工具会由 Agent 在对话执行中自动选择和调用；开始任务后，这里会显示本轮调用轨迹。
+              工具会在任务执行中自动选择和调用；开始任务后，这里会显示本轮调用轨迹。
             </div>
           )}
         </div>

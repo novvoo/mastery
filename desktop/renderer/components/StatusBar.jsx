@@ -152,11 +152,11 @@ function StatusBar({ status, workingDirectory, toolCount, isConnected, stats }) 
     <div style={styles.container}>
       {/* 左侧状态 */}
       <div style={styles.leftSection}>
-        {/* Agent 状态 */}
+        {/* 运行状态 */}
         <div style={styles.statusItem}>
           <div style={getStatusDotStyle()}></div>
           <span style={styles.statusText}>
-            Agent: {getStatusText()}
+            运行状态: {getStatusText()}
           </span>
         </div>
         

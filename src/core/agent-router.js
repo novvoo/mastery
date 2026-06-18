@@ -60,6 +60,8 @@ export class AgentRouter {
   /** 重置每次 run 的状态 */
   reset() {
     this.#toolCallHistory = [];
+    this.#toolResultCache = new Map();
+    this.#toolResultCacheLoaded = false;
   }
 
   /**
@@ -232,8 +234,6 @@ export class AgentRouter {
       const errorMsg = error instanceof Error ? error.message : String(error);
       this.#debugEvent('Tool call failed', { tool: name, durationMs: Date.now() - startedAt, error: errorMsg });
       this.#ui.toolError(name, errorMsg);
-      this.#toolResultCache.set(callSignature, `Error: ${errorMsg}`);
-      this.#flushToolResultCacheEntry(callSignature, `Error: ${errorMsg}`);
       return { name, result: `Error: ${errorMsg}`, error: errorMsg };
     }
   }
