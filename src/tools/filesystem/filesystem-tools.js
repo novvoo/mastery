@@ -76,23 +76,32 @@ function safeResolvePath(workingDirectory, userPath) {
   }
 
   const trimmed = userPath.trim();
+  const normalizedWorkingDir = resolve(workingDirectory).replace(/[\\/]+$/, '') + sep;
+
+  // If an absolute path is supplied AND it sits inside the working directory,
+  // auto-convert it to the equivalent relative path so downstream checks pass.
+  let effectivePath = trimmed;
   if (isAbsolute(trimmed)) {
-    return { ok: false, error: `Error: Absolute paths are not allowed: ${trimmed}` };
+    const resolved = resolve(trimmed);
+    if (resolved.startsWith(normalizedWorkingDir) || resolved === normalizedWorkingDir.slice(0, -1)) {
+      effectivePath = resolved.slice(normalizedWorkingDir.length);
+    } else {
+      return { ok: false, error: `Error: Absolute path is outside working directory: ${trimmed}` };
+    }
   }
 
   // Reject any path that contains an explicit ".." segment.  Normalization via
   // path.resolve below is the definitive check, but failing fast here gives a
   // clearer error message.
-  const segments = trimmed.split(/[/\\]/);
+  const segments = effectivePath.split(/[/\\]/);
   if (segments.includes('..')) {
-    return { ok: false, error: `Error: Path traversal ("..") is not allowed: ${trimmed}` };
+    return { ok: false, error: `Error: Path traversal ("..") is not allowed: ${effectivePath}` };
   }
 
-  const normalizedWorkingDir = resolve(workingDirectory).replace(/[\\/]+$/, '') + sep;
-  const fullPath = resolve(join(workingDirectory, trimmed));
+  const fullPath = resolve(join(workingDirectory, effectivePath));
 
   if (!fullPath.startsWith(normalizedWorkingDir) && fullPath !== normalizedWorkingDir.slice(0, -1)) {
-    return { ok: false, error: `Error: Path escapes working directory: ${trimmed}` };
+    return { ok: false, error: `Error: Path escapes working directory: ${effectivePath}` };
   }
 
   const relPath = fullPath.slice(normalizedWorkingDir.length);
