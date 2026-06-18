@@ -418,27 +418,37 @@ export function useRuntime() {
         }));
       }
 
-      // 关闭 isStreaming 标记，并更新类型（如从 assistant_stream -> agent）
-      setMessages(prev => prev.map(msg => {
-        if (msg.id !== msgId) return msg;
-        return {
-          ...msg,
-          isStreaming: false,
-          ...(newType ? { type: newType } : {}),
-        };
-      }));
+      const isTextStream = messageIdRef === streamingMessageIdRef;
+      const streamText = isTextStream ? streamingTextRef.current : '';
+      const hasContent = streamText?.trim()?.length > 0;
+
+      if (hasContent) {
+        // 有内容：关闭 isStreaming 标记，并更新类型（如从 assistant_stream -> agent）
+        setMessages(prev => prev.map(msg => {
+          if (msg.id !== msgId) return msg;
+          return {
+            ...msg,
+            isStreaming: false,
+            ...(newType ? { type: newType } : {}),
+          };
+        }));
+      } else {
+        // 空内容：直接删除这条消息，避免出现空的 Agent 气泡
+        setMessages(prev => prev.filter(msg => msg.id !== msgId));
+      }
 
       // 清空 ID，下一个 delta 将创建新消息
       messageIdRef.current = null;
-      if (messageIdRef === streamingMessageIdRef) {
+      if (isTextStream) {
         const closed = {
           id: msgId,
-          text: streamingTextRef.current,
+          text: streamText,
+          hasContent,
         };
         streamingTextRef.current = '';
         return closed;
       }
-      return { id: msgId, text: '' };
+      return { id: msgId, text: '', hasContent: false };
     };
     
     // 订阅通用 IPC 事件
@@ -535,10 +545,10 @@ export function useRuntime() {
         }
 
         if (eventName === 'agent:complete') {
-          completedByEventRef.current = true;
           const answer = extractAgentAnswer(payload);
-          // 1) 有流式消息 + 有答案：原地收口为 agent 消息（不额外添加 result 消息）
+          // 场景A：有流式消息 + 有答案 → 原地收口为 agent 消息（不额外添加 result 消息）
           if (answer && closedTextStream?.id) {
+            completedByEventRef.current = true;
             lastAnswerRef.current = answer;
             setMessages(prev => prev.map(msg =>
               msg.id === closedTextStream.id
@@ -553,19 +563,18 @@ export function useRuntime() {
             ));
             return;
           }
-          // 2) 有流式消息 + 无答案 + 无内容：删除空的流式消息
+          // 场景B：有流式消息 + 无答案 + 无内容 → 删除空的流式消息
           if (!answer && closedTextStream?.id && !closedTextStream.text?.trim()) {
             setMessages(prev => prev.filter(msg => msg.id !== closedTextStream.id));
             return;
           }
-          // 3) 重复答案：忽略
+          // 场景C：重复答案 → 忽略
           if (answer && answer === lastAnswerRef.current) {
             return;
           }
-          // 4) 记录答案，后续由 processInput 统一添加结果消息（避免重复）
-          if (answer) {
-            lastAnswerRef.current = answer;
-          }
+          // 场景D：无流式消息（流式消息已被 tool:call 等事件切断）
+          // 不设置 completedByEventRef，也不设置 lastAnswerRef
+          // 让 processInput 的 await 分支来添加独立的 result 消息
           return;
         }
 
