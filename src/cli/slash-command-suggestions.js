@@ -52,14 +52,18 @@ export function buildSlashCommandSuggestions(skillTools = []) {
   }
 
   for (const tool of skillTools) {
-    const name = toolNameToSlashCommand(tool.name);
+    // tool 可能是对象 { name, description } 或字符串
+    const toolName = typeof tool === 'string' ? tool : (tool?.name || tool?.fullName || '');
+    if (!toolName) continue;
+
+    const name = toolNameToSlashCommand(toolName);
     if (seen.has(name)) {
       continue;
     }
     seen.add(name);
     commands.push({
       name,
-      description: tool.description || `Run ${tool.name}`,
+      description: tool.description || `Run ${toolName}`,
       source: 'skill',
     });
   }

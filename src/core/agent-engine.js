@@ -884,10 +884,16 @@ export class AgentEngine {
     };
   }
 
-  /** 返回所有已注册工具的名称列表 */
+  /** 返回所有已注册工具（name + description） */
   getTools() {
-    try { return this.#toolRegistry.getAll?.().map(t => t.name) || []; }
-    catch { return []; }
+    try {
+      const all = this.#toolRegistry.getAll?.() || [];
+      return all.map(t => ({
+        name: t.name || String(t),
+        description: t.description || '',
+        category: t.category || 'general'
+      }));
+    } catch { return []; }
   }
 
   /** 注册单个工具（直接转发到 toolRegistry） */

@@ -153,14 +153,15 @@ const styles = {
  * @param {Function} props.onSelect - 选择命令回调
  * @param {Function} props.onClose - 关闭回调
  */
-function CommandSuggestions({ input, tools = [], onSelect, onClose }) {
+function CommandSuggestions({ input = '', tools = [], onSelect, onClose }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const listRef = useRef(null);
   const itemRefs = useRef([]);
   
   // 过滤命令
   const filteredCommands = React.useMemo(() => {
-    const trimmed = input.trimStart();
+    const safeInput = typeof input === 'string' ? input : '';
+    const trimmed = safeInput.trimStart();
     if (!trimmed.startsWith('/')) {
       return [];
     }
@@ -173,11 +174,15 @@ function CommandSuggestions({ input, tools = [], onSelect, onClose }) {
     // 添加工具作为命令
     if (tools && tools.length > 0) {
       for (const tool of tools) {
-        const name = `/${tool.name.replace(/_/g, '-')}`;
+        // tool 可能是对象 { name, description } 或字符串
+        const toolName = typeof tool === 'string' ? tool : (tool?.name || tool?.fullName || '');
+        if (!toolName) continue;
+        
+        const name = '/' + toolName.replace(/_/g, '-');
         if (!allCommands.find(c => c.name === name)) {
           allCommands.push({
             name,
-            description: tool.description || `运行 ${tool.name}`,
+            description: tool.description || `运行 ${toolName}`,
             source: 'skill'
           });
         }
@@ -207,7 +212,7 @@ function CommandSuggestions({ input, tools = [], onSelect, onClose }) {
   }, [input, tools]);
   
   // 显示条件
-  const visible = input.startsWith('/') && filteredCommands.length > 0;
+  const visible = (typeof input === 'string' && input.startsWith('/')) && filteredCommands.length > 0;
   
   // 滚动到激活项
   useEffect(() => {
