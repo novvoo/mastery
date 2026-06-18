@@ -569,6 +569,11 @@ export function useRuntime() {
           return;
         }
 
+        // status:update 事件仅更新状态，不添加消息（避免与 agent:complete/processInput 的 result 消息重复）
+        if (eventName === 'status:update') {
+          return;
+        }
+
         addMessage(normalized.message);
       }
     });
