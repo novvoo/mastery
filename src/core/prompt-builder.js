@@ -197,6 +197,11 @@ export function extractFinalAnswer(response) {
 export function normalizeFinalAnswer(response) {
   const text = String(response || '').trim();
   if (!text) return text;
+  const isToolCallFormat = /<action\b|<tool_call\b|<function_call\b|<tool_code\b|<invoke\b/i.test(text);
+  if (isToolCallFormat) {
+    const trimmedNoTags = text.replace(/<\/?(?:action|tool_call|function_call|tool_code|invoke)\b[^>]*>/gi, '').trim();
+    if (trimmedNoTags.length < text.length * 0.5) return '';
+  }
   const parsed = safeParseJSON(text);
   const doneText = parsed?.action?.done?.text || parsed?.done?.text;
   if (typeof doneText === 'string' && doneText.trim()) return doneText.trim();

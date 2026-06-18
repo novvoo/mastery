@@ -410,10 +410,10 @@ export class TextToolParser {
       toolRegistry: this.#toolRegistry, queryFromSearchURL, inferSearchQuery, isSearchNavigation,
     });
     if (browserActionCall) { return [browserActionCall]; }
-    const directName = json.name || json.tool || (typeof json.action === 'string' ? json.action : '');
+    const directName = json.name || json.tool || json.tool_name || (typeof json.action === 'string' ? json.action : '');
     if (directName) {
       const originalArgs = json.arguments || json.args || json.params || Object.fromEntries(
-        Object.entries(json).filter(([key]) => !['name', 'tool', 'action'].includes(key))
+        Object.entries(json).filter(([key]) => !['name', 'tool', 'tool_name', 'action', 'source', 'id'].includes(key))
       );
       const { name, args } = this.#normalizeJSONToolCall(directName, originalArgs);
       if (!this.#toolRegistry?.has?.(name)) { return []; }
