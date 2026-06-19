@@ -23,12 +23,14 @@ export function buildWindowConfig(platform, base = {}) {
     transparent: true,
     backgroundColor: '#00000000',
     frame: true,
+    roundedCorners: true,
   };
 
   if (platform === 'darwin') {
     return {
       ...common,
       titleBarStyle: 'hiddenInset',
+      trafficLightPosition: { x: 14, y: 14 },
       vibrancy: 'under-window',
       visualEffectState: 'active',
     };

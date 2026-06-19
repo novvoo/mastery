@@ -40,7 +40,6 @@ export function getPersistDir(workingDir) {
 export async function ensureState(workingDir) {
   const dir = getPersistDir(workingDir);
   if (loadedPersistDir === dir) { return; }
-  loadedPersistDir = dir;
   documents.clear();
   chunks.length = 0;
   bm25Cache = null;
@@ -52,6 +51,7 @@ export async function ensureState(workingDir) {
     const loadedChunks = JSON.parse(chunkJson);
     for (const [key, val] of Object.entries(loadedDocs)) { documents.set(key, val); }
     chunks.push(...loadedChunks);
+    loadedPersistDir = dir;
   } catch {
     // No persisted document index yet.
   }

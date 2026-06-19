@@ -9,6 +9,7 @@ describe('buildWindowConfig', () => {
       expect(cfg.backgroundColor).toBe('#00000000');
       expect(cfg.show).toBe(false);
       expect(cfg.hasShadow).toBe(true);
+      expect(cfg.roundedCorners).toBe(true);
       expect(cfg.width).toBe(1400);
       expect(cfg.minHeight).toBe(600);
     }
@@ -19,6 +20,7 @@ describe('buildWindowConfig', () => {
     expect(cfg.vibrancy).toBe('under-window');
     expect(cfg.visualEffectState).toBe('active');
     expect(cfg.titleBarStyle).toBe('hiddenInset');
+    expect(cfg.trafficLightPosition).toEqual({ x: 14, y: 14 });
     expect(cfg.frame).toBe(true);
   });
 

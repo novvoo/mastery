@@ -9,6 +9,7 @@ export function ActivityRail({
   onShowAgent,
   onShowTools,
   onToggleSettings,
+  onToggleSidebar,
 }) {
   return (
     <nav style={styles.activityRail} aria-label="workspace-nav">
@@ -32,16 +33,26 @@ export function ActivityRail({
       >
         TL
       </Button>
-      <Button
-        variant="icon"
-        size="md"
-        onClick={onToggleSettings}
-        title={t('inspector.settings_title')}
-        ariaLabel={t('inspector.settings_title')}
-        style={{ marginTop: 'auto' }}
-      >
-        ⚙
-      </Button>
+      <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <Button
+          variant="icon"
+          size="md"
+          onClick={onToggleSidebar}
+          title={sidebarCollapsed ? t('window.expand_sidebar') : t('window.collapse_sidebar')}
+          ariaLabel={t('window.toggle_sidebar')}
+        >
+          {sidebarCollapsed ? '☰' : '✕'}
+        </Button>
+        <Button
+          variant="icon"
+          size="md"
+          onClick={onToggleSettings}
+          title={t('inspector.settings_title')}
+          ariaLabel={t('inspector.settings_title')}
+        >
+          ⚙
+        </Button>
+      </div>
     </nav>
   );
 }

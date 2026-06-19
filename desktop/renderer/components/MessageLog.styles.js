@@ -14,25 +14,40 @@ export const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    minHeight: '32px',
-    padding: '0 10px',
-    borderBottom: '1px solid var(--glass-border)',
-    backgroundColor: 'var(--glass-bg-light)'
+    minHeight: '42px',
+    padding: '7px 10px',
+    gap: '10px',
+    borderBottom: 'none',
+    backgroundColor: 'transparent'
   },
   
   title: {
-    fontSize: '13px',
-    fontWeight: '700',
+    minHeight: '28px',
+    padding: '0 12px',
+    borderRadius: '999px',
+    border: '1px solid var(--title-capsule-border)',
+    backgroundColor: 'var(--title-capsule-bg)',
+    boxShadow: 'var(--glass-inner-hl)',
+    fontSize: '12px',
+    fontWeight: '800',
     color: 'var(--text-color)',
     display: 'flex',
     alignItems: 'center',
-    gap: '8px'
+    gap: '8px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em'
   },
   
   headerButtons: {
     display: 'flex',
-    gap: '8px',
-    alignItems: 'center'
+    gap: '6px',
+    alignItems: 'center',
+    minHeight: '30px',
+    padding: '2px',
+    borderRadius: '999px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-control-bg)',
+    boxShadow: 'var(--glass-inner-hl)'
   },
   
   searchContainer: {
@@ -46,9 +61,9 @@ export const styles = {
     width: '150px',
     height: '28px',
     padding: '0 9px',
-    borderRadius: '6px',
+    borderRadius: '999px',
     border: '1px solid var(--glass-border)',
-    backgroundColor: 'var(--glass-bg-light)',
+    backgroundColor: 'var(--glass-bg)',
     color: 'var(--text-color)',
     fontSize: '12px',
     transition: 'width 0.2s ease'
@@ -61,7 +76,7 @@ export const styles = {
   button: {
     height: '28px',
     padding: '0 9px',
-    borderRadius: '6px',
+    borderRadius: '999px',
     border: '1px solid var(--glass-border)',
     backgroundColor: 'var(--glass-bg-light)',
     color: 'var(--text-color)',
@@ -83,14 +98,14 @@ export const styles = {
     display: 'flex',
     gap: '2px',
     padding: '2px',
-    borderRadius: '7px',
-    backgroundColor: 'var(--glass-bg-light)',
+    borderRadius: '999px',
+    backgroundColor: 'var(--glass-control-bg)',
     border: '1px solid var(--glass-border)'
   },
   
   viewButton: {
     padding: '4px 8px',
-    borderRadius: '5px',
+    borderRadius: '999px',
     border: 'none',
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',
@@ -604,22 +619,25 @@ export const styles = {
 
   // 消息气泡
   messageBubble: {
-    borderRadius: '8px',
-    padding: '10px 12px',
-    backgroundColor: 'var(--surface-subtle)',
-    border: '1px solid var(--border-card)',
+    borderRadius: '16px',
+    padding: '9px 12px',
+    backgroundColor: 'var(--message-agent-bg)',
+    border: '1px solid var(--message-agent-border)',
+    boxShadow: 'var(--message-shadow)',
+    color: 'var(--text-color)',
     maxWidth: '85%'
   },
 
   messageBubbleUser: {
-    backgroundColor: 'var(--primary-soft)',
-    borderColor: 'var(--primary-border)',
-    borderRadius: '8px 8px 3px 8px',
+    backgroundColor: 'var(--message-user-bg)',
+    borderColor: 'var(--message-user-border)',
+    color: 'var(--message-user-text)',
+    borderRadius: '16px',
     maxWidth: '80%'
   },
 
   messageBubbleAgent: {
-    borderRadius: '8px 8px 8px 3px',
+    borderRadius: '16px',
     maxWidth: '85%'
   },
 
@@ -1039,10 +1057,11 @@ export const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '10px',
-    padding: '14px 16px',
-    borderRadius: '10px',
-    backgroundColor: 'var(--surface-subtle)',
-    border: '1px solid var(--border-card)',
+    padding: '12px 14px',
+    borderRadius: '16px',
+    backgroundColor: 'var(--message-tool-bg)',
+    border: '1px solid var(--message-tool-border)',
+    boxShadow: 'var(--message-shadow)',
     overflow: 'hidden',
     maxWidth: '85%'
   },
@@ -1051,14 +1070,15 @@ export const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '10px',
-    paddingBottom: '10px',
+    minHeight: '30px',
+    paddingBottom: '8px',
     borderBottom: '1px solid var(--border-subtle)'
   },
 
   actionIconBox: {
-    width: '30px',
-    height: '30px',
-    borderRadius: '8px',
+    width: '28px',
+    height: '28px',
+    borderRadius: '999px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1103,7 +1123,8 @@ export const styles = {
   actionDurationBadge: {
     fontSize: '11px',
     color: 'var(--text-muted)',
-    backgroundColor: 'var(--border-subtle)',
+    backgroundColor: 'var(--glass-bg-light)',
+    border: '1px solid var(--glass-border)',
     padding: '3px 8px',
     borderRadius: '999px',
     fontWeight: 500,
@@ -1158,8 +1179,9 @@ export const styles = {
     color: 'var(--text-dark)',
     lineHeight: 1.6,
     padding: '8px 10px',
-    backgroundColor: 'var(--border-subtle)',
-    borderRadius: '6px'
+    backgroundColor: 'var(--message-result-bg)',
+    border: '1px solid var(--message-result-border)',
+    borderRadius: '12px'
   },
 
   // 错误区
@@ -1179,7 +1201,7 @@ export const styles = {
     flexDirection: 'column',
     gap: '8px',
     padding: '12px 14px',
-    borderRadius: '10px',
+    borderRadius: '16px',
     backgroundColor: 'var(--info-faint)',
     border: '1px solid var(--info-border)',
     fontSize: '13px',
@@ -1198,10 +1220,11 @@ export const styles = {
 
   // Agent 普通文本气泡增强
   enhancedMessageBubble: {
-    padding: '14px 16px',
-    borderRadius: '8px',
-    border: '1px solid var(--border-card)',
-    backgroundColor: 'var(--surface-subtle)',
+    padding: '12px 14px',
+    borderRadius: '16px',
+    border: '1px solid var(--message-agent-border)',
+    backgroundColor: 'var(--message-agent-bg)',
+    boxShadow: 'var(--message-shadow)',
     fontSize: '14px',
     lineHeight: 1.7,
     maxWidth: '85%',
@@ -1209,21 +1232,22 @@ export const styles = {
   },
 
   enhancedMessageBubbleAgent: {
-    borderRadius: '4px 8px 8px 8px'
+    borderRadius: '16px'
   },
 
   assistantMarkdownBubble: {
     width: 'min(760px, 88%)',
     maxWidth: '88%',
-    backgroundColor: 'var(--surface-subtle)',
-    borderColor: 'var(--border-card)',
-    boxShadow: 'var(--glass-inner-hl)',
+    backgroundColor: 'var(--message-agent-bg)',
+    borderColor: 'var(--message-agent-border)',
+    boxShadow: 'var(--message-shadow)',
   },
 
   enhancedMessageBubbleUser: {
-    backgroundColor: 'var(--primary-soft)',
-    borderColor: 'var(--primary-border)',
-    borderRadius: '8px 4px 8px 8px'
+    backgroundColor: 'var(--message-user-bg)',
+    borderColor: 'var(--message-user-border)',
+    color: 'var(--message-user-text)',
+    borderRadius: '16px'
   },
 
   emptyAssistantMessage: {
@@ -1247,19 +1271,19 @@ export const styles = {
   streamingBubble: {
     width: 'min(760px, 88%)',
     minWidth: '220px',
-    padding: '12px 14px',
-    borderRadius: '4px 8px 8px 8px',
-    border: '1px solid var(--primary-border)',
-    backgroundColor: 'var(--glass-bg-light)',
-    boxShadow: 'var(--glass-inner-hl)',
+    padding: '11px 13px',
+    borderRadius: '16px',
+    border: '1px solid var(--message-agent-border)',
+    backgroundColor: 'var(--message-agent-bg)',
+    boxShadow: 'var(--message-shadow)',
     fontSize: '14px',
     lineHeight: 1.68,
     animation: 'streamingEdge 1.8s ease-in-out infinite'
   },
 
   streamingBubbleActive: {
-    backgroundColor: 'var(--surface-subtle)',
-    borderColor: 'var(--border-card)'
+    backgroundColor: 'var(--message-agent-bg)',
+    borderColor: 'var(--primary-border)'
   },
 
   streamingStatus: {

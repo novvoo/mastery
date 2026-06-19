@@ -5,7 +5,12 @@ export const LAYOUT = {
   inspectorMinWidth: 320,
   inspectorMaxWidth: 860,
   inspectorExpandedWidth: 720,
-  headerHeight: 44,
+  headerHeight: 44,           // legacy: 旧 TopBar 高度，保留以防遗漏引用
+  dragRegionHeight: 32,
+  capsuleTop: 8,
+  capsuleBottom: 10,
+  capsuleSide: 12,
+  macTrafficLightOffset: 74,
   inputAreaHeight: 140,
 };
 
@@ -55,5 +60,4 @@ export const SKILL_BUNDLES = {
     { name: 'handoff', desc: '任务交接', icon: '🤝' }
   ]
 };
-
 

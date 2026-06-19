@@ -12,18 +12,20 @@ import React from 'react';
 
 const VARIANTS = {
   sidebar: {
-    backgroundColor: 'var(--glass-bg)',
-    backdropFilter: 'blur(16px) saturate(160%)',
-    WebkitBackdropFilter: 'blur(16px) saturate(160%)',
-    borderRight: '1px solid var(--glass-border)',
-    boxShadow: 'var(--glass-shadow)',
+    backgroundColor: 'var(--glass-control-bg)',
+    backdropFilter: 'blur(18px) saturate(170%)',
+    WebkitBackdropFilter: 'blur(18px) saturate(170%)',
+    border: '1px solid var(--glass-border-strong)',
+    borderRadius: '16px',
+    boxShadow: 'var(--glass-shadow), var(--glass-inner-hl)',
   },
   inspector: {
-    backgroundColor: 'var(--glass-bg)',
-    backdropFilter: 'blur(16px) saturate(160%)',
-    WebkitBackdropFilter: 'blur(16px) saturate(160%)',
-    borderLeft: '1px solid var(--glass-border)',
-    boxShadow: 'var(--glass-shadow)',
+    backgroundColor: 'var(--glass-control-bg)',
+    backdropFilter: 'blur(18px) saturate(170%)',
+    WebkitBackdropFilter: 'blur(18px) saturate(170%)',
+    border: '1px solid var(--glass-border-strong)',
+    borderRadius: '16px',
+    boxShadow: 'var(--glass-shadow), var(--glass-inner-hl)',
   },
   card: {
     backgroundColor: 'var(--glass-bg)',
@@ -39,29 +41,52 @@ export function PanelHeader({ title, actions, style }) {
   return (
     <div
       style={{
-        minHeight: '42px',
-        padding: '0 var(--spacing-md)',
-        borderBottom: '1px solid var(--glass-border)',
+        minHeight: '46px',
+        padding: '8px var(--spacing-md)',
+        borderBottom: 'none',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: 'var(--spacing-sm)',
-        backgroundColor: 'var(--glass-bg-light)',
+        backgroundColor: 'transparent',
+        borderTopLeftRadius: 'inherit',
+        borderTopRightRadius: 'inherit',
         ...style,
       }}
     >
       {title && (
         <span style={{
+          minHeight: '28px',
+          display: 'inline-flex',
+          alignItems: 'center',
+          padding: '0 12px',
+          borderRadius: '999px',
+          border: '1px solid var(--title-capsule-border)',
+          backgroundColor: 'var(--title-capsule-bg)',
+          boxShadow: 'var(--glass-inner-hl)',
           fontSize: '12px',
           fontWeight: 800,
           color: 'var(--text-muted)',
           textTransform: 'uppercase',
-          letterSpacing: '0.08em',
+          letterSpacing: '0.06em',
         }}>
           {title}
         </span>
       )}
-      {actions && <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>{actions}</div>}
+      {actions && (
+        <div style={{
+          display: 'flex',
+          gap: '4px',
+          alignItems: 'center',
+          padding: '2px',
+          borderRadius: '999px',
+          border: '1px solid var(--glass-border)',
+          backgroundColor: 'var(--glass-control-bg)',
+          boxShadow: 'var(--glass-inner-hl)',
+        }}>
+          {actions}
+        </div>
+      )}
     </div>
   );
 }

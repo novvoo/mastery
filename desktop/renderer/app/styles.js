@@ -5,68 +5,11 @@ export const styles = {
     display: 'flex',
     flexDirection: 'column',
     height: '100vh',
-    background: 'linear-gradient(180deg, var(--container-gradient-start) 0%, var(--background-color) 42%, var(--container-gradient-end) 100%)',
+    background: 'var(--window-tint)',
     color: 'var(--text-color)',
     fontFamily: 'var(--font-family)',
     overflow: 'hidden',
     position: 'relative'
-  },
-  
-  // ================== 顶部菜单栏 ==================
-  menuBar: {
-    display: 'flex',
-    alignItems: 'center',
-    minHeight: `${LAYOUT.headerHeight}px`,
-    padding: '0 var(--spacing-md)',
-    backgroundColor: 'var(--glass-bg)',
-    backdropFilter: 'blur(20px) saturate(180%)',
-    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-    borderBottom: '1px solid var(--glass-border)',
-    gap: 'var(--spacing-sm)',
-    boxShadow: 'var(--glass-inner-hl)',
-    zIndex: 20
-  },
-
-  topBarBrand: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    minWidth: 0,
-    WebkitAppRegion: 'no-drag'
-  },
-
-  brandMark: {
-    width: '28px',
-    height: '28px',
-    borderRadius: '8px',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: 'var(--gradient-brand)',
-    color: 'var(--text-color)',
-    border: '1px solid var(--primary-strong)',
-    fontSize: '11px',
-    fontWeight: 800,
-    letterSpacing: 0
-  },
-
-  brandText: {
-    display: 'flex',
-    flexDirection: 'column',
-    minWidth: 0,
-    lineHeight: 1.15
-  },
-
-  brandTitle: {
-    fontSize: '13px',
-    fontWeight: 700,
-    color: 'var(--text-color)',
-    letterSpacing: '0.01em'
-  },
-
-  brandSubtitle: {
-    fontSize: '11px',
-    color: 'var(--text-dark)'
   },
   
   menuItem: {
@@ -146,25 +89,32 @@ export const styles = {
   },
   
   // ================== 主内容区 ==================
-  mainContent: {
-    display: 'flex',
+  mainContentWrapper: {
     flex: 1,
-    overflow: 'hidden'
+    minHeight: 0,
+    display: 'flex',
+    padding: '40px 12px 32px',
+    gap: '10px',
+    position: 'relative',
+    borderRadius: '20px',
   },
 
   activityRail: {
     width: `${LAYOUT.activityRailWidth}px`,
     flexShrink: 0,
-    backgroundColor: 'var(--glass-bg-light)',
-    backdropFilter: 'blur(12px) saturate(150%)',
-    WebkitBackdropFilter: 'blur(12px) saturate(150%)',
-    borderRight: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-control-bg)',
+    backdropFilter: 'blur(18px) saturate(170%)',
+    WebkitBackdropFilter: 'blur(18px) saturate(170%)',
+    border: '1px solid var(--glass-border-strong)',
+    borderRadius: '16px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    padding: 'var(--spacing-sm) 6px',
+    padding: '10px 6px',
     gap: '6px',
-    boxShadow: 'var(--glass-inner-hl)'
+    boxShadow: 'var(--glass-shadow), var(--glass-inner-hl)',
+    position: 'relative',
+    zIndex: 1,
   },
 
   activityButton: {
@@ -194,7 +144,7 @@ export const styles = {
   // ================== 左侧工具面板 ==================
   leftSidebar: {
     width: `${LAYOUT.sidebarWidth}px`,
-    backgroundColor: 'var(--glass-bg)',
+    backgroundColor: 'var(--glass-control-bg)',
     backdropFilter: 'blur(16px) saturate(160%)',
     WebkitBackdropFilter: 'blur(16px) saturate(160%)',
     borderRight: '1px solid var(--glass-border)',
@@ -202,28 +152,39 @@ export const styles = {
     flexDirection: 'column',
     overflow: 'hidden',
     transition: 'width var(--transition-normal)',
-    boxShadow: 'var(--glass-shadow)'
+    boxShadow: 'var(--glass-shadow)',
+    position: 'relative',
+    zIndex: 1,
   },
 
   sidebarHeader: {
-    minHeight: '42px',
-    padding: '0 var(--spacing-md)',
-    borderBottom: '1px solid var(--glass-border)',
+    minHeight: '46px',
+    padding: '8px var(--spacing-md)',
+    borderBottom: 'none',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 'var(--spacing-sm)',
-    backgroundColor: 'var(--glass-bg-light)',
+    backgroundColor: 'transparent',
     backdropFilter: 'blur(8px) saturate(140%)',
     WebkitBackdropFilter: 'blur(8px) saturate(140%)',
-    boxShadow: 'var(--glass-inner-hl)'
+    boxShadow: 'none'
   },
 
   sidebarTitle: {
+    minHeight: '28px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '0 12px',
+    borderRadius: '999px',
+    border: '1px solid var(--title-capsule-border)',
+    backgroundColor: 'var(--title-capsule-bg)',
     fontSize: '12px',
     fontWeight: '800',
     color: 'var(--text-muted)',
-    textTransform: 'uppercase'
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+    boxShadow: 'var(--glass-inner-hl)'
   },
   
   // ================== 右侧 Inspector 面板 ==================
@@ -236,7 +197,8 @@ export const styles = {
     flexDirection: 'column',
     overflow: 'hidden',
     position: 'relative',
-    boxShadow: 'var(--glass-shadow)'
+    boxShadow: 'var(--glass-shadow)',
+    zIndex: 1,
   },
 
   inspectorResizeHandle: {
@@ -253,22 +215,23 @@ export const styles = {
   inspectorHeader: {
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
-    padding: 'var(--spacing-sm)',
-    borderBottom: '1px solid var(--glass-border)',
-    backgroundColor: 'var(--glass-bg-light)',
+    gap: '8px',
+    padding: '8px',
+    borderBottom: 'none',
+    backgroundColor: 'transparent',
     backdropFilter: 'blur(8px) saturate(140%)',
     WebkitBackdropFilter: 'blur(8px) saturate(140%)',
-    boxShadow: 'var(--glass-inner-hl)'
+    boxShadow: 'none'
   },
 
   previewHeader: {
-    minHeight: '42px',
+    minHeight: '44px',
     padding: '8px 10px',
-    borderBottom: '1px solid var(--glass-border)',
+    borderBottom: 'none',
     display: 'flex',
     alignItems: 'center',
-    gap: '8px'
+    gap: '8px',
+    backgroundColor: 'transparent'
   },
 
   inspectorTabs: {
@@ -276,12 +239,17 @@ export const styles = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(88px, 1fr))',
     gap: '4px',
-    minWidth: 0
+    minWidth: 0,
+    padding: '2px',
+    borderRadius: '999px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-control-bg)',
+    boxShadow: 'var(--glass-inner-hl)'
   },
 
   inspectorTab: {
     height: '30px',
-    borderRadius: '6px',
+    borderRadius: '999px',
     border: '1px solid transparent',
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',
@@ -292,7 +260,7 @@ export const styles = {
   },
 
   inspectorTabActive: {
-    backgroundColor: 'var(--glass-bg-light)',
+    backgroundColor: 'var(--glass-bg-strong)',
     backdropFilter: 'blur(8px) saturate(140%)',
     WebkitBackdropFilter: 'blur(8px) saturate(140%)',
     border: '1px solid var(--glass-border)',
@@ -303,7 +271,7 @@ export const styles = {
   iconButton: {
     width: '30px',
     height: '30px',
-    borderRadius: '6px',
+    borderRadius: '999px',
     border: '1px solid var(--glass-border)',
     backgroundColor: 'var(--glass-bg-light)',
     backdropFilter: 'blur(8px) saturate(140%)',
@@ -325,7 +293,7 @@ export const styles = {
     minHeight: 0,
     width: '100%',
     border: 'none',
-    backgroundColor: '#fff'
+    backgroundColor: 'var(--background-color)'
   },
   
   summarySection: {
@@ -490,28 +458,45 @@ export const styles = {
   },
   
   // ================== 聊天区域 ==================
+  chatAreaWrapper: {
+    flex: 1,
+    minHeight: 0,
+    minWidth: 0,
+    display: 'flex',
+    backgroundColor: 'var(--surface-base)',
+    borderRadius: '20px',
+    overflow: 'hidden',
+  },
+
   chatArea: {
     flex: 1,
     minHeight: 0,
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    background: 'linear-gradient(180deg, var(--primary-faint) 0%, transparent 170px), transparent'
+    borderRadius: '20px',
   },
   
   chatHeader: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '12px var(--spacing-xl)',
-    borderBottom: '1px solid var(--glass-border)',
-    backgroundColor: 'var(--glass-bg-light)',
+    gap: '12px',
+    padding: '10px var(--spacing-xl) 8px',
+    borderBottom: 'none',
+    backgroundColor: 'transparent',
     backdropFilter: 'blur(12px) saturate(150%)',
     WebkitBackdropFilter: 'blur(12px) saturate(150%)',
-    boxShadow: 'var(--glass-inner-hl)'
+    boxShadow: 'none'
   },
   
   chatTitle: {
+    minHeight: '32px',
+    padding: '2px 12px 2px 4px',
+    borderRadius: '999px',
+    border: '1px solid var(--title-capsule-border)',
+    backgroundColor: 'var(--title-capsule-bg)',
+    boxShadow: 'var(--glass-inner-hl)',
     fontSize: '13px',
     fontWeight: '700',
     color: 'var(--text-color)',
@@ -523,9 +508,9 @@ export const styles = {
   },
 
   chatTitleMark: {
-    width: '24px',
-    height: '24px',
-    borderRadius: '7px',
+    width: '26px',
+    height: '26px',
+    borderRadius: '999px',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -543,6 +528,18 @@ export const styles = {
     marginLeft: '8px',
     textTransform: 'none',
     letterSpacing: 0
+  },
+
+  chatHeaderActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    minHeight: '32px',
+    padding: '2px',
+    borderRadius: '999px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-control-bg)',
+    boxShadow: 'var(--glass-inner-hl)'
   },
   
   chatStatus: {
@@ -573,17 +570,19 @@ export const styles = {
     flex: 1,
     minHeight: 0,
     overflow: 'visible',
-    padding: '10px 14px 0',
+    padding: '10px 14px 12px',
   },
   
   // ================== 输入区域 ==================
   inputArea: {
-    padding: '12px var(--spacing-xl) 14px',
+    margin: '0 var(--spacing-xl) 16px',
+    padding: '12px',
     backgroundColor: 'var(--glass-bg)',
-    backdropFilter: 'blur(16px) saturate(160%)',
-    WebkitBackdropFilter: 'blur(16px) saturate(160%)',
-    borderTop: '1px solid var(--glass-border)',
-    boxShadow: 'var(--shadow-overlay)'
+    backdropFilter: 'blur(20px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+    border: '1px solid var(--glass-border-strong)',
+    borderRadius: '18px',
+    boxShadow: 'var(--glass-shadow), var(--glass-inner-hl)'
   },
 
   interactionConsole: {
@@ -781,7 +780,7 @@ export const styles = {
 
   userInputRequestPanel: {
     marginBottom: '10px',
-    borderRadius: '10px',
+    borderRadius: '16px',
     border: '1px solid var(--glass-border)',
     backgroundColor: 'var(--glass-bg-light)',
     backdropFilter: 'blur(10px) saturate(140%)',
@@ -791,13 +790,13 @@ export const styles = {
   },
 
   userInputRequestHeader: {
-    minHeight: '32px',
-    padding: '0 10px',
+    minHeight: '40px',
+    padding: '6px 8px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: '8px',
-    borderBottom: '1px solid var(--glass-border)',
+    borderBottom: 'none',
     color: 'var(--text-color)',
     fontSize: '12px',
     fontWeight: 700
@@ -937,15 +936,6 @@ export const styles = {
     fontSize: '12px',
     fontWeight: '600',
     whiteSpace: 'nowrap'
-  },
-  
-  // ================== 底部状态栏 ==================
-  footer: {
-    backgroundColor: 'var(--glass-bg-light)',
-    backdropFilter: 'blur(16px) saturate(150%)',
-    WebkitBackdropFilter: 'blur(16px) saturate(150%)',
-    borderTop: '1px solid var(--glass-border)',
-    boxShadow: 'var(--glass-inner-hl)'
   },
   
   // ================== 模态框样式 ==================
@@ -1190,8 +1180,8 @@ export const styles = {
 
   mgmtContentHeader: {
     marginBottom: '16px',
-    paddingBottom: '12px',
-    borderBottom: '1px solid var(--glass-border)',
+    padding: '8px 0 12px',
+    borderBottom: 'none',
   },
 
   mgmtSection: {
@@ -1199,11 +1189,17 @@ export const styles = {
   },
 
   mgmtSectionTitle: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    minHeight: '24px',
+    borderRadius: '999px',
+    border: '1px solid var(--title-capsule-border)',
+    backgroundColor: 'var(--title-capsule-bg)',
     fontSize: '11px',
     fontWeight: 700,
     color: 'var(--text-muted)',
     textTransform: 'uppercase',
-    padding: '0 12px 6px',
+    padding: '0 10px',
   },
 
   mgmtCheckboxRow: {
@@ -1242,7 +1238,7 @@ export const styles = {
     width: '100%',
     padding: '10px 12px',
     border: 'none',
-    backgroundColor: 'transparent',
+    backgroundColor: 'var(--title-capsule-bg)',
     color: 'var(--text-color)',
     cursor: 'pointer',
     fontSize: '13px',

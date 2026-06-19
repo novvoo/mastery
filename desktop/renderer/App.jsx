@@ -10,15 +10,15 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import StatusBar from './components/StatusBar.jsx';
+import pkg from '../../package.json';
 import { SettingsMenu } from './components/SettingsMenu.jsx';
 import { LLMSetupModal } from './components/LLMSetupModal.jsx';
 import { ManagementPage } from './components/management/ManagementPage.jsx';
+import { ChromeCapsules } from './components/chrome/ChromeCapsules.jsx';
 import { ActivityRail } from './components/workbench/ActivityRail.jsx';
 import { ChatWorkspace } from './components/workbench/ChatWorkspace.jsx';
 import { InspectorPanel } from './components/workbench/InspectorPanel.jsx';
 import { SidebarPanel } from './components/workbench/SidebarPanel.jsx';
-import { TopBar } from './components/workbench/TopBar.jsx';
 import { useRuntime } from './hooks/useRuntime.js';
 import { useIPC } from './hooks/useIPC.js';
 import { formatPreviewUrlInput, normalizePreviewUrlInput } from './preview-url.js';
@@ -1199,12 +1199,15 @@ function App() {
 
   return (
     <div style={styles.container}>
-      <TopBar
+      <ChromeCapsules
         platformInfo={platformInfo}
         windowState={windowState}
         runtimeStatusMeta={runtimeStatusMeta}
-        sidebarCollapsed={sidebarCollapsed}
-        onToggleSidebar={() => setSidebarCollapsed(prev => !prev)}
+        runtimeStatus={runtime.status}
+        isConnected={ipc.isConnected}
+        toolCount={runtime.tools.length}
+        stats={runtime.stats}
+        appVersion={pkg.version}
         onMinimize={handleMinimize}
         onMaximize={handleMaximize}
         onClose={handleClose}
@@ -1252,20 +1255,21 @@ function App() {
         </div>
       )}
 
-      <main style={styles.mainContent}>
+      <div style={styles.mainContentWrapper}>
         <ActivityRail
-          activeTab={activeTab}
-          sidebarCollapsed={sidebarCollapsed}
-          onShowAgent={() => {
-            setActiveTab('agent');
-            setSidebarCollapsed(false);
-          }}
-          onShowTools={() => {
-            setActiveTab('tools');
-            setSidebarCollapsed(false);
-          }}
-          onToggleSettings={() => setShowManagement(prev => !prev)}
-        />
+        activeTab={activeTab}
+        sidebarCollapsed={sidebarCollapsed}
+        onShowAgent={() => {
+          setActiveTab('agent');
+          setSidebarCollapsed(false);
+        }}
+        onShowTools={() => {
+          setActiveTab('tools');
+          setSidebarCollapsed(false);
+        }}
+        onToggleSettings={() => setShowManagement(prev => !prev)}
+        onToggleSidebar={() => setSidebarCollapsed(prev => !prev)}
+      />
 
         {!sidebarCollapsed && (
           <SidebarPanel
@@ -1295,32 +1299,34 @@ function App() {
           />
         )}
 
-        <ChatWorkspace
-          runtime={runtime}
-          chatInput={chatInput}
-          chatInputRef={chatInputRef}
-          inputNotice={inputNotice}
-          inputFocused={inputFocused}
-          showSuggestions={showSuggestions}
-          onAskAgentFromMessage={handleAskAgentFromMessage}
-          onChatInputChange={handleChatInputChange}
-          onChatKeyDown={handleChatKeyDown}
-          onCommandSelect={handleCommandSelect}
-          onSuggestionsClose={handleSuggestionsClose}
-          onFocus={() => setInputFocused(true)}
-          onBlur={() => setInputFocused(false)}
-          onSendMessage={handleSendMessage}
-          onContinue={handleContinueAgentInput}
-          onExport={handleExport}
-          onOpenPreview={() => {
-            setSummaryPanelVisible(true);
-            setActiveInspectorTab('preview');
-          }}
-          onToggleInspector={() => setSummaryPanelVisible(prev => !prev)}
-          summaryPanelVisible={summaryPanelVisible}
-          workingDirectory={workingDirectory}
-          fileServerUrl={fileServerUrl}
-        />
+        <div style={styles.chatAreaWrapper}>
+          <ChatWorkspace
+            runtime={runtime}
+            chatInput={chatInput}
+            chatInputRef={chatInputRef}
+            inputNotice={inputNotice}
+            inputFocused={inputFocused}
+            showSuggestions={showSuggestions}
+            onAskAgentFromMessage={handleAskAgentFromMessage}
+            onChatInputChange={handleChatInputChange}
+            onChatKeyDown={handleChatKeyDown}
+            onCommandSelect={handleCommandSelect}
+            onSuggestionsClose={handleSuggestionsClose}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
+            onSendMessage={handleSendMessage}
+            onContinue={handleContinueAgentInput}
+            onExport={handleExport}
+            onOpenPreview={() => {
+              setSummaryPanelVisible(true);
+              setActiveInspectorTab('preview');
+            }}
+            onToggleInspector={() => setSummaryPanelVisible(prev => !prev)}
+            summaryPanelVisible={summaryPanelVisible}
+            workingDirectory={workingDirectory}
+            fileServerUrl={fileServerUrl}
+          />
+        </div>
 
         {summaryPanelVisible && (
           <InspectorPanel
@@ -1351,18 +1357,7 @@ function App() {
             onTabChange={setActiveInspectorTab}
           />
         )}
-      </main>
-
-      {/* 底部状态栏 */}
-      <footer style={styles.footer}>
-        <StatusBar
-          status={runtime.status}
-          workingDirectory={workingDirectory}
-          toolCount={runtime.tools.length}
-          isConnected={ipc.isConnected}
-          stats={runtime.stats}
-        />
-      </footer>
+      </div>
 
       {/* 管理设置页面 */}
       {showManagement && (

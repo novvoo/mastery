@@ -61,18 +61,35 @@
   --neutral-soft: rgba(176, 189, 189, 0.12);
   --neutral-faint: rgba(176, 189, 189, 0.08);
 
-  /* 毛玻璃 (glassmorphism) — 深色主题（更高透明度 */
-  --glass-bg: rgba(20, 23, 25, 0.42);
-  --glass-bg-strong: rgba(14, 17, 19, 0.58);
-  --glass-bg-light: rgba(27, 32, 34, 0.26);
-  --glass-border: rgba(190, 205, 210, 0.075);
-  --glass-border-strong: rgba(190, 205, 210, 0.13);
+  /* 毛玻璃 (glassmorphism) — 深色主题 */
+  --window-tint: rgba(0, 0, 0, 0.93);
+  --glass-bg: rgba(10, 14, 16, 0.68);
+  --glass-bg-strong: rgba(5, 8, 10, 0.84);
+  --glass-bg-light: rgba(14, 18, 20, 0.48);
+  --glass-control-bg: rgba(8, 12, 14, 0.74);
+  --glass-control-bg-strong: rgba(5, 8, 10, 0.88);
+  --glass-border: rgba(173, 189, 192, 0.09);
+  --glass-border-strong: rgba(193, 207, 209, 0.16);
   --glass-blur: 20px;
   --glass-blur-soft: 10px;
-  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
-  --glass-shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.18);
-  --glass-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.38);
-  --glass-inner-hl: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --glass-shadow: 0 12px 36px rgba(0, 0, 0, 0.34);
+  --glass-shadow-soft: 0 6px 18px rgba(0, 0, 0, 0.22);
+  --glass-shadow-lg: 0 18px 54px rgba(0, 0, 0, 0.44);
+  --glass-inner-hl: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+
+  /* 消息气泡 — 独立于底层玻璃，保证聊天内容有清晰层级 */
+  --message-agent-bg: rgba(18, 24, 26, 0.78);
+  --message-agent-border: rgba(225, 242, 245, 0.09);
+  --message-user-bg: rgba(123, 211, 184, 0.14);
+  --message-user-border: rgba(123, 211, 184, 0.2);
+  --message-user-text: #D4F0E8;
+  --message-tool-bg: rgba(13, 18, 20, 0.74);
+  --message-tool-border: rgba(127, 184, 217, 0.14);
+  --message-result-bg: rgba(15, 28, 25, 0.62);
+  --message-result-border: rgba(123, 211, 184, 0.16);
+  --message-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  --title-capsule-bg: rgba(12, 17, 19, 0.68);
+  --title-capsule-border: rgba(225, 242, 245, 0.12);
 
   /* 阴影 */
   --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.4);
@@ -206,17 +223,34 @@
   --neutral-faint: #F3F7F8;
 
   /* 毛玻璃 (glassmorphism) — 亮色主题 */
-  --glass-bg: rgba(248, 250, 251, 0.76);
-  --glass-bg-strong: rgba(248, 250, 251, 0.9);
-  --glass-bg-light: rgba(248, 250, 251, 0.58);
-  --glass-border: rgba(82, 110, 110, 0.12);
-  --glass-border-strong: rgba(82, 110, 110, 0.2);
+  --window-tint: rgba(246, 250, 251, 0.30);
+  --glass-bg: rgba(248, 250, 251, 0.82);
+  --glass-bg-strong: rgba(248, 250, 251, 0.94);
+  --glass-bg-light: rgba(248, 250, 251, 0.68);
+  --glass-control-bg: rgba(248, 250, 251, 0.86);
+  --glass-control-bg-strong: rgba(248, 250, 251, 0.96);
+  --glass-border: rgba(62, 88, 92, 0.16);
+  --glass-border-strong: rgba(62, 88, 92, 0.28);
   --glass-blur: 22px;
   --glass-blur-soft: 10px;
   --glass-shadow: 0 8px 32px rgba(82, 110, 110, 0.14);
   --glass-shadow-soft: 0 4px 16px rgba(82, 110, 110, 0.08);
   --glass-shadow-lg: 0 16px 48px rgba(82, 110, 110, 0.18);
   --glass-inner-hl: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+
+  /* 消息气泡 — 亮色主题 */
+  --message-agent-bg: rgba(255, 255, 255, 0.94);
+  --message-agent-border: rgba(62, 88, 92, 0.18);
+  --message-user-bg: rgba(23, 132, 116, 0.12);
+  --message-user-border: rgba(23, 132, 116, 0.2);
+  --message-user-text: #1A7A6A;
+  --message-tool-bg: rgba(245, 249, 250, 0.96);
+  --message-tool-border: rgba(61, 122, 184, 0.2);
+  --message-result-bg: rgba(238, 248, 244, 0.96);
+  --message-result-border: rgba(46, 139, 106, 0.2);
+  --message-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  --title-capsule-bg: rgba(248, 250, 251, 0.82);
+  --title-capsule-border: rgba(62, 88, 92, 0.16);
 
   /* 阴影 - 亮色 */
   --shadow-sm: 0 1px 2px rgba(82, 110, 110, 0.08);
@@ -263,12 +297,13 @@ html, body, #root {
   height: 100%;
   width: 100%;
   overflow: hidden;
+  background: transparent;
 }
 
 body {
   font-family: var(--font-family);
   font-size: var(--font-size-base);
-  background: var(--background-color);
+  background: transparent;
   color: var(--text-color);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

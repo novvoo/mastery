@@ -46,15 +46,15 @@ const VARIANTS = {
 };
 
 const SIZES = {
-  sm: { height: '28px', padding: '0 8px', fontSize: '12px', borderRadius: 'var(--radius-md)', minWidth: '28px' },
-  md: { height: '32px', padding: '0 12px', fontSize: '13px', borderRadius: 'var(--radius-md)' },
-  lg: { height: '40px', padding: '0 16px', fontSize: '14px', borderRadius: 'var(--radius-lg)' },
+  sm: { height: '28px', padding: '0 10px', fontSize: '12px', borderRadius: '999px', minWidth: '28px' },
+  md: { height: '32px', padding: '0 13px', fontSize: '13px', borderRadius: '999px' },
+  lg: { height: '40px', padding: '0 16px', fontSize: '14px', borderRadius: '999px' },
 };
 
 const ICON_SIZES = {
-  sm: { width: '28px', height: '28px', padding: 0, fontSize: '14px', borderRadius: 'var(--radius-md)' },
-  md: { width: '32px', height: '32px', padding: 0, fontSize: '15px', borderRadius: 'var(--radius-md)' },
-  lg: { width: '40px', height: '40px', padding: 0, fontSize: '18px', borderRadius: 'var(--radius-lg)' },
+  sm: { width: '28px', height: '28px', padding: 0, fontSize: '14px', borderRadius: '999px' },
+  md: { width: '32px', height: '32px', padding: 0, fontSize: '15px', borderRadius: '999px' },
+  lg: { width: '40px', height: '40px', padding: 0, fontSize: '18px', borderRadius: '999px' },
 };
 
 export default function Button({

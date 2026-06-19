@@ -545,19 +545,70 @@ async function waitForNodePreviewHttp(session, getOutput, timeoutMs = SERVER_REA
   throw new Error(`Preview server did not become ready: ${lastError?.message || session.url}`);
 }
 
+function createErrorPage(statusCode, message) {
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${statusCode} - Preview Error</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #090B0D;
+      color: #B0BDBD;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      text-align: center;
+      max-width: 500px;
+    }
+    .status {
+      font-size: 64px;
+      font-weight: 800;
+      color: #2F8F80;
+      margin-bottom: 16px;
+    }
+    .message {
+      font-size: 16px;
+      color: #E8F0F0;
+      margin-bottom: 8px;
+    }
+    .hint {
+      font-size: 13px;
+      color: #8A9696;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="status">${statusCode}</div>
+    <div class="message">${message}</div>
+    <div class="hint">This preview is served from your local workspace</div>
+  </div>
+</body>
+</html>`;
+}
+
 function createStaticServer(root) {
   return http.createServer((req, res) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
-      res.writeHead(405);
-      res.end('Method Not Allowed');
+      res.writeHead(405, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(createErrorPage(405, 'Method Not Allowed'));
       return;
     }
 
     const requestUrl = new URL(req.url || '/', 'http://localhost');
     let candidate = resolve(root, normalizeRelativePath(requestUrl.pathname));
     if (!isInside(root, candidate)) {
-      res.writeHead(403);
-      res.end('Forbidden');
+      res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(createErrorPage(403, 'Access Forbidden'));
       return;
     }
 
@@ -566,8 +617,8 @@ function createStaticServer(root) {
       if (existsSync(spaFallback)) {
         candidate = spaFallback;
       } else {
-        res.writeHead(404);
-        res.end('Not Found');
+        res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(createErrorPage(404, 'Page Not Found'));
         return;
       }
     }
@@ -576,8 +627,8 @@ function createStaticServer(root) {
     if (stat.isDirectory()) {
       candidate = join(candidate, 'index.html');
       if (!existsSync(candidate)) {
-        res.writeHead(404);
-        res.end('Not Found');
+        res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(createErrorPage(404, 'Page Not Found'));
         return;
       }
     }

@@ -53,7 +53,7 @@ export function ChatWorkspace({
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+        <div style={styles.chatHeaderActions}>
           <Button variant="ghost" size="sm" onClick={onExport} title="export" ariaLabel="export">{t('chat.export')}</Button>
           <Button variant="ghost" size="sm" onClick={onOpenPreview} title="preview" ariaLabel="preview">{t('chat.preview')}</Button>
           <Button variant="ghost" size="sm" onClick={onToggleInspector} title="toggle-inspector" ariaLabel="toggle-inspector">
