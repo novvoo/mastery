@@ -1,4 +1,158 @@
-import { describe, expect, test, beforeEach } from 'bun:test';
+import { describe, expect, test, beforeEach, mock } from 'bun:test';
+
+mock.module('../../../src/core/session-manager.js', () => ({
+  SessionManager: class SessionManager {
+    constructor(opts = {}) {}
+    setSystemPrompt() {}
+    addSystemMessage() {}
+    addMessage() {}
+    addUserMessage() {}
+    addAssistantMessage() {}
+    getMessages() { return []; }
+    getHistory() { return []; }
+    clear() {}
+    get length() { return 0; }
+  },
+}));
+
+mock.module('../../../src/prompts/system-prompt.js', () => ({
+  buildSystemPrompt: () => 'system prompt',
+}));
+
+mock.module('../../../src/errors/error-handler.js', () => ({
+  RetryStrategy: class RetryStrategy {
+    shouldRetry() { return false; }
+    getDelay() { return 0; }
+    async executeWithRetry(fn) { return await fn(); }
+  },
+  withTimeout: (fn) => fn,
+}));
+
+mock.module('../../../src/core/text-tool-parser.js', () => ({
+  TextToolParser: class TextToolParser {
+    constructor() {}
+    parse() { return []; }
+    generateToolPrompt() { return ''; }
+  },
+}));
+
+mock.module('../../../src/core/intent-classifier.js', () => ({
+  IntentClassifier: class IntentClassifier {
+    constructor() {}
+    async classify() { return null; }
+  },
+}));
+
+mock.module('../../../src/core/dynamic-context-pruning.js', () => ({
+  DynamicContextPruning: class DynamicContextPruning {
+    prune(messages) { return messages; }
+  },
+}));
+
+mock.module('../../../src/core/workspace-index.js', () => ({
+  WorkspaceIndex: class WorkspaceIndex {
+    constructor() {}
+    stopPeriodicSync() {}
+  },
+}));
+
+mock.module('../../../src/core/workspace-state.js', () => ({
+  WorkspaceState: class WorkspaceState {
+    constructor() {}
+    aggregateContext() { return null; }
+    getFileSnapshot() { return null; }
+  },
+}));
+
+mock.module('../../../src/core/routed-tool-context.js', () => ({
+  withRoutedToolContext: (fn) => fn,
+}));
+
+mock.module('../../../src/core/token-scope.js', () => ({
+  TokenScope: class TokenScope {
+    constructor() {}
+    allocate() {}
+    release() {}
+    getRemaining() { return Infinity; }
+  },
+}));
+
+mock.module('../../../src/core/execution-plan-manager.js', () => ({
+  ExecutionPlanManager: class ExecutionPlanManager {
+    constructor() {}
+    get plan() { return null; }
+    get isCompleted() { return true; }
+    buildPlan() { return null; }
+    createIfNeeded() { return null; }
+  },
+}));
+
+mock.module('../../../src/core/tool-executor.js', () => ({
+  ToolExecutor: class ToolExecutor {
+    constructor() { this.events = []; }
+    reset() {}
+    async execute() { return {}; }
+  },
+}));
+
+mock.module('../../../src/core/context-manager.js', () => ({
+  ContextManager: class ContextManager {
+    constructor() {}
+    prepareContext() { return {}; }
+    manage() {}
+  },
+}));
+
+mock.module('../../../src/core/metrics-sink.js', () => ({
+  metricsSink: {
+    startRun() {},
+    endRun() {},
+    recordEvent() {},
+  },
+}));
+
+mock.module('../../../src/memory/memory-manager.js', () => ({
+  MemoryManager: class MemoryManager {
+    constructor() {}
+  },
+}));
+
+mock.module('../../../src/core/prompt-builder.js', () => ({
+  buildToolSyntaxCorrectionPrompt: () => '',
+  buildToolUseCorrectionPrompt: () => '',
+  buildCodingTaskOperatingPrompt: () => '',
+  buildCodingCompletionGatePrompt: () => '',
+  suggestVerificationStrategy: () => null,
+  isTermination: () => false,
+  extractFinalAnswer: (text) => text,
+  normalizeFinalAnswer: (text) => text,
+  containsUnparsedToolSyntax: () => false,
+  shouldCorrectToolRefusal: () => false,
+  shouldBlockCodingFinal: () => false,
+}));
+
+mock.module('../../../src/core/termination-detector.js', () => ({
+  StagnationDetector: class StagnationDetector {
+    constructor() {}
+    reset() {}
+    check() { return { shouldStop: false, reason: '' }; }
+    nudge() { return null; }
+  },
+}));
+
+mock.module('../../../src/planner/graph-planner.js', () => ({
+  TaskStatus: {
+    PENDING: 'pending',
+    RUNNING: 'running',
+    COMPLETED: 'completed',
+    FAILED: 'failed',
+  },
+}));
+
+mock.module('../../../src/core/agent-constants.js', () => ({
+  MAX_ITERATIONS_DEFAULT: 10,
+}));
+
 import { createAgentEngine } from '../../../src/core/agent-engine.js';
 import { StreamEventType } from '../../../src/models/streaming-parser.js';
 

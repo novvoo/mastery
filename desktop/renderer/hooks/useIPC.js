@@ -30,6 +30,10 @@ export function waitForElectronAPI(timeoutMs = 3000, pollIntervalMs = 50) {
         resolve(true);
         return;
       }
+      if (!getWindowObject()) {
+        resolve(false);
+        return;
+      }
       if (Date.now() - start >= timeoutMs) {
         resolve(false);
         return;
@@ -349,6 +353,10 @@ export function useIPC() {
     return invoke('workspace:getFileDiff', { path });
   }, [invoke]);
 
+  const isGitRepo = useCallback(async () => {
+    return invoke('workspace:isGitRepo');
+  }, [invoke]);
+
   const undoActivity = useCallback(async (activity, options = {}) => {
     return invoke('activity:undo', { activity, ...options });
   }, [invoke]);
@@ -502,6 +510,7 @@ export function useIPC() {
     listPreviews,
     stopPreview,
     getFileDiff,
+    isGitRepo,
     undoActivity,
     reviewActivity,
     approveActivity,

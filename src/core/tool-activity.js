@@ -14,7 +14,7 @@ export function describeToolActivity(toolName, args = {}, phase = 'running', res
   const action = actionLabel(intent, normalizedPhase);
   const subject = target || toolDisplayName(name, args);
   const statusText = statusLabel(intent, normalizedPhase, subject);
-  const counts = inferCounts(name, result);
+  const counts = inferCounts(name, args, result);
 
   return {
     id: activityId(name, args),
@@ -215,9 +215,29 @@ function detailText(toolName, args, result) {
   return truncate(JSON.stringify(args || {}), 220);
 }
 
-function inferCounts(toolName, result) {
+function inferCounts(toolName, args = {}, result = null) {
+  if (toolName === 'write_file' && typeof args?.content === 'string') {
+    const lines = countLines(args.content);
+    return { files: 1, lines, additions: lines, deletions: 0 };
+  }
+
+  if (toolName === 'edit_file') {
+    const additions = typeof args?.new_text === 'string' ? countLines(args.new_text) : 0;
+    const deletions = typeof args?.old_text === 'string' ? countLines(args.old_text) : 0;
+    if (additions || deletions) {
+      return { files: 1, lines: additions, additions, deletions };
+    }
+  }
+
   const text = typeof result === 'string' ? result : '';
   if (!text) {return null;}
+
+  const write = text.match(/File written successfully:\s+.+?\((\d+)\s+lines?/i);
+  if (write) {
+    const lines = Number(write[1] || 0);
+    return { files: 1, lines, additions: lines, deletions: 0 };
+  }
+
   const diff = text.match(/(\d+)\s+files?\s+changed(?:,\s+(\d+)\s+insertions?\(\+\))?(?:,\s+(\d+)\s+deletions?\(-\))?/i);
   if (diff) {
     return {
@@ -226,10 +246,37 @@ function inferCounts(toolName, result) {
       deletions: Number(diff[3] || 0),
     };
   }
-  if (toolName === 'write_file' || toolName === 'edit_file') {
-    return { files: 1 };
+
+  const unified = countUnifiedDiffLines(text);
+  if (unified.additions > 0 || unified.deletions > 0) {
+    return {
+      files: 1,
+      lines: unified.additions,
+      additions: unified.additions,
+      deletions: unified.deletions,
+    };
   }
   return null;
+}
+
+function countLines(text) {
+  if (text === '') {return 0;}
+  return String(text).split('\n').length;
+}
+
+function countUnifiedDiffLines(text) {
+  const counts = { additions: 0, deletions: 0 };
+  for (const line of String(text || '').split('\n')) {
+    if (line.startsWith('+++') || line.startsWith('---')) {
+      continue;
+    }
+    if (line.startsWith('+')) {
+      counts.additions++;
+    } else if (line.startsWith('-')) {
+      counts.deletions++;
+    }
+  }
+  return counts;
 }
 
 function canReview(intent, phase) {

@@ -136,6 +136,7 @@ try {
       'workspace:setWorkingDirectory',
       'workspace:listDirectory',
       'workspace:getFileDiff',
+      'workspace:isGitRepo',
       'activity:undo',
       'activity:review',
       'activity:approve',
@@ -648,6 +649,16 @@ try {
       } catch (error) {
         console.error('[Preload] getFileDiff 失败:', error);
         throw error;
+      }
+    },
+
+    isGitRepo: async () => {
+      try {
+        const result = await ipcRenderer.invoke('workspace:isGitRepo');
+        return result?.isGitRepo ?? false;
+      } catch (error) {
+        console.error('[Preload] isGitRepo 失败:', error);
+        return false;
       }
     },
 

@@ -600,8 +600,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       msg.type === 'assistant' ||
       msg.type === 'assistant_stream' ||
       msg.type === 'result' ||
-      msg.streamComplete === true ||
-      (msg.event === 'agent:complete' && ['success', 'result'].includes(msg.type))
+      msg.streamComplete === true
     );
 
     const renderAssistantBubble = ({ streaming = false } = {}) => {

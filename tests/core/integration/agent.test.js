@@ -5,10 +5,16 @@ mock.module('../../../src/core/session-manager.js', () => ({
   SessionManager: class SessionManager {
     #model;
     constructor(opts = {}) { this.#model = opts?.model || null; }
+    setSystemPrompt() {}
+    addSystemMessage() {}
+    addMessage() {}
+    addUserMessage() {}
+    addAssistantMessage() {}
+    getMessages() { return []; }
+    getHistory() { return []; }
     clear() {}
     setTokenizerModel() {}
-    addMessage() {}
-    getMessages() { return []; }
+    get length() { return 0; }
   },
 }));
 

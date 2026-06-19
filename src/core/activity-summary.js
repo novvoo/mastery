@@ -9,6 +9,7 @@ export function buildActivitySummary(runtimeDetails = []) {
   const byKey = new Map();
   const fileStates = new Map();
   let waitingForUser = false;
+  const planEvents = [];
 
   for (const detail of runtimeDetails) {
     if (
@@ -17,6 +18,11 @@ export function buildActivitySummary(runtimeDetails = []) {
       detail?.status === 'needs_user_input'
     ) {
       waitingForUser = true;
+    }
+
+    const planEvent = getPlanEventFromDetail(detail);
+    if (planEvent) {
+      planEvents.push(planEvent);
     }
 
     const activity = getActivityFromDetail(detail);
@@ -32,9 +38,10 @@ export function buildActivitySummary(runtimeDetails = []) {
       startedAt: previous?.startedAt || detail.timestamp || activity.timestamp,
       updatedAt: detail.timestamp || activity.timestamp || Date.now(),
       // 保留最高进度值
-      progress: activity.progress != null
+      progress: activity.progress !== null && activity.progress !== undefined
         ? Math.max(previous?.progress || 0, activity.progress)
         : previous?.progress,
+      counts: mergeCounts(previous?.counts, activity.counts),
     };
     byKey.set(key, next);
   }
@@ -58,6 +65,7 @@ export function buildActivitySummary(runtimeDetails = []) {
 
   return {
     activities: activities.sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0)),
+    plan: buildPlanSummary(planEvents),
     taskStages,
     progress: taskStages.length > 0
       ? Math.round((taskStages.filter(stage => stage.status === 'completed').length / taskStages.length) * 100)
@@ -72,6 +80,74 @@ export function buildActivitySummary(runtimeDetails = []) {
     waitingForUser,
     total: activities.length,
   };
+}
+
+function getPlanEventFromDetail(detail) {
+  if (!detail || !['plan:created', 'plan:updated'].includes(detail.event)) {
+    return null;
+  }
+
+  const payload = detail.payload || {};
+  const plan = detail.plan || payload.plan || payload;
+  const tasks = normalizePlanTasks(plan?.tasks || detail.planTasks);
+  const completed = tasks.filter(task => task.status === 'completed').length;
+  const running = tasks.filter(task => task.status === 'running').length;
+  const failed = tasks.filter(task => task.status === 'failed').length;
+  const total = tasks.length;
+
+  return {
+    id: detail.id || `${detail.event}:${detail.timestamp || plan?.id || plan?.name || planEventsKey(plan)}`,
+    type: detail.event === 'plan:created' ? 'created' : 'updated',
+    title: detail.content || (detail.event === 'plan:created' ? '执行计划已创建' : '执行计划已更新'),
+    tasks,
+    progress: {
+      total,
+      completed,
+      running,
+      failed,
+      progress: total > 0 ? Math.round((completed / total) * 100) : 0,
+    },
+    update: detail.planUpdate || payload.update || null,
+    toolName: detail.toolName || payload.toolName || '',
+    timestamp: detail.timestamp || payload.timestamp || Date.now(),
+  };
+}
+
+function normalizePlanTasks(tasks) {
+  if (!Array.isArray(tasks)) {
+    if (tasks && typeof tasks === 'object') {
+      return Object.values(tasks).map(normalizePlanTask);
+    }
+    return [];
+  }
+  return tasks.map(normalizePlanTask);
+}
+
+function normalizePlanTask(task) {
+  const status = String(task?.status || 'pending').toLowerCase();
+  return {
+    id: task?.id || task?.name || '',
+    name: task?.name || task?.id || 'Task',
+    description: task?.description || '',
+    status,
+  };
+}
+
+function buildPlanSummary(planEvents) {
+  const events = planEvents.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+  const latest = events.at(-1) || null;
+  return {
+    events,
+    latest,
+    tasks: latest?.tasks || [],
+    progress: latest?.progress || { total: 0, completed: 0, running: 0, failed: 0, progress: 0 },
+    created: events.some(event => event.type === 'created'),
+    updateCount: events.filter(event => event.type === 'updated').length,
+  };
+}
+
+function planEventsKey(plan) {
+  return JSON.stringify(plan || {}).slice(0, 80);
 }
 
 function getActivityFromDetail(detail) {
@@ -103,6 +179,23 @@ function getActivityFromDetail(detail) {
 function getToolArgs(detail) {
   const args = detail?.args ?? detail?.arguments ?? detail?.payload?.args ?? detail?.payload?.arguments;
   return args && typeof args === 'object' ? args : {};
+}
+
+function mergeCounts(previous, next) {
+  if (!previous) {
+    return next || null;
+  }
+  if (!next) {
+    return previous || null;
+  }
+  return {
+    ...previous,
+    ...next,
+    additions: Math.max(Number(previous.additions || 0), Number(next.additions || 0)),
+    deletions: Math.max(Number(previous.deletions || 0), Number(next.deletions || 0)),
+    lines: Math.max(Number(previous.lines || 0), Number(next.lines || 0)),
+    files: Math.max(Number(previous.files || 0), Number(next.files || 0)),
+  };
 }
 
 export function getActivityTone(activity) {
@@ -156,28 +249,42 @@ function updateFileState(fileStates, activity) {
   const previous = fileStates.get(activity.target) || {
     path: activity.target,
     status: 'pending',
+    operation: 'pending',
     reads: 0,
     writes: 0,
     edits: 0,
     deletes: 0,
+    linesAdded: 0,
+    linesDeleted: 0,
+    linesWritten: 0,
   };
 
   if (activity.intent === 'read') {
     previous.reads++;
+    previous.operation = 'read';
   } else if (activity.intent === 'write') {
     previous.writes++;
+    previous.operation = 'write';
   } else if (activity.intent === 'edit') {
     previous.edits++;
+    previous.operation = 'edit';
   } else if (activity.intent === 'delete') {
     previous.deletes++;
+    previous.operation = 'delete';
   }
 
-  previous.status = fileStatusForActivity(activity, previous);
+  if (activity.counts) {
+    previous.linesAdded += Number(activity.counts.additions || 0);
+    previous.linesDeleted += Number(activity.counts.deletions || 0);
+    previous.linesWritten += Number(activity.counts.lines || activity.counts.additions || 0);
+  }
+
+  previous.status = fileStatusForActivity(activity);
   previous.updatedAt = activity.updatedAt || activity.timestamp || Date.now();
   fileStates.set(activity.target, previous);
 }
 
-function fileStatusForActivity(activity, aggregate) {
+function fileStatusForActivity(activity) {
   if (activity.phase === 'failed') {
     return 'failed';
   }
@@ -187,17 +294,20 @@ function fileStatusForActivity(activity, aggregate) {
   if (activity.phase === 'waiting') {
     return 'waiting';
   }
-  if (aggregate.deletes > 0) {
-    return 'deleted';
-  }
-  if (aggregate.edits > 0) {
-    return 'edited';
-  }
-  if (aggregate.writes > 0) {
-    return 'created';
-  }
-  if (aggregate.reads > 0) {
-    return 'read';
+  if (activity.phase === 'completed') {
+    if (activity.intent === 'read') {
+      return 'read';
+    }
+    if (activity.intent === 'edit') {
+      return 'edited';
+    }
+    if (activity.intent === 'write') {
+      return 'created';
+    }
+    if (activity.intent === 'delete') {
+      return 'deleted';
+    }
+    return 'completed';
   }
   return 'completed';
 }
@@ -205,6 +315,9 @@ function fileStatusForActivity(activity, aggregate) {
 export function getFileStatusLabel(status) {
   return {
     read: '已读',
+    write: '写入',
+    edit: '编辑',
+    delete: '删除',
     edited: '已编辑',
     created: '已创建',
     deleted: '已删除',
@@ -220,7 +333,9 @@ export function getFileStatusLabel(status) {
  * 根据文件扩展名返回类型图标文字
  */
 export function getFileTypeIcon(filePath) {
-  if (!filePath || typeof filePath !== 'string') return '🗎';
+  if (!filePath || typeof filePath !== 'string') {
+    return '🗎';
+  }
   const ext = filePath.split('.').pop().toLowerCase();
   const iconMap = {
     js: 'JS', jsx: 'JX', ts: 'TS', tsx: 'TX', mjs: 'MJ', cjs: 'CJ',
@@ -244,9 +359,15 @@ export function getFileTypeIcon(filePath) {
  * 格式化时长（毫秒 → 可读字符串）
  */
 export function formatDuration(ms) {
-  if (ms == null || ms < 0) return '';
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  if (ms === null || ms === undefined || ms < 0) {
+    return '';
+  }
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
+  if (ms < 60000) {
+    return `${(ms / 1000).toFixed(1)}s`;
+  }
   const min = Math.floor(ms / 60000);
   const sec = Math.floor((ms % 60000) / 1000);
   return `${min}m${sec > 0 ? ` ${sec}s` : ''}`;

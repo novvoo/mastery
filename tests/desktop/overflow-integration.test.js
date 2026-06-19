@@ -339,8 +339,8 @@ describe('面板内容完整性集成测试', () => {
 
     const summary = buildActivitySummary(runtimeDetails);
     expect(summary.files).toHaveLength(3);
-    expect(summary.files.find(f => f.path === 'a.js')?.status).toBe('read');
-    expect(summary.files.find(f => f.path === 'b.js')?.status).toBe('edited');
+    expect(summary.files.find(f => f.path === 'a.js')).toMatchObject({ status: 'read', operation: 'read' });
+    expect(summary.files.find(f => f.path === 'b.js')).toMatchObject({ status: 'edited', operation: 'edit' });
     expect(summary.files.find(f => f.path === 'c.js')?.status).toBe('running');
     expect(summary.completed).toBe(2);
     expect(summary.running).toBe(1);

@@ -4,9 +4,15 @@ import { describe, test, expect, mock } from 'bun:test';
 mock.module('../../../src/core/session-manager.js', () => ({
   SessionManager: class SessionManager {
     constructor() {}
-    clear() {}
+    setSystemPrompt() {}
+    addSystemMessage() {}
     addMessage() {}
+    addUserMessage() {}
+    addAssistantMessage() {}
     getMessages() { return []; }
+    getHistory() { return []; }
+    clear() {}
+    get length() { return 0; }
   },
 }));
 

@@ -13,9 +13,8 @@ import {
 } from './runtime-details.js';
 import { buildActivitySummary, getActivityTone, getFileStatusLabel, getFileTypeIcon, formatDuration } from './activity-summary.js';
 
-// ===== Tab 定义（3 Tab：概览 / 文件 / 活动） =====
+// ===== Tab 定义（2 个 Tab：文件 / 活动） =====
 const TABS = [
-  { id: 'overview', key: 'exec.overview', icon: '◉' },
   { id: 'files', key: 'exec.tools_used', icon: '🗂' },
   { id: 'activity', key: 'exec.activity_log', icon: '⚡' },
 ];
@@ -33,14 +32,6 @@ function fileStatusColor(status) {
     case 'failed': return 'var(--error-color)';
     default: return 'var(--text-muted)';
   }
-}
-
-// ===== 进度条颜色 =====
-function progressFillColor(summary, isRunning) {
-  if (summary.failed > 0) return 'var(--error-color)';
-  if (!isRunning && summary.completed > 0) return 'var(--success-color)';
-  if (summary.waitingForUser) return 'var(--warning-color)';
-  return 'var(--warning-color)';
 }
 
 // ===== 活动 intent 过滤选项 =====
@@ -62,6 +53,50 @@ const PHASE_FILTERS = [
   { value: 'failed', key: 'status.failed' },
   { value: 'waiting', key: 'status.not_set' },
 ];
+
+function phaseLabel(phase) {
+  return {
+    pending: '未开始',
+    queued: '开始',
+    running: '进行中',
+    completed: '完成',
+    failed: '失败',
+    waiting: '等待',
+    skipped: '跳过',
+  }[String(phase || 'pending').toLowerCase()] || phase;
+}
+
+function lineChangeParts(counts) {
+  if (!counts) return null;
+  const additions = Number(counts.additions || counts.lines || 0);
+  const deletions = Number(counts.deletions || 0);
+  if (additions === 0 && deletions === 0) return null;
+  return { additions, deletions };
+}
+
+function fileLineChangeParts(file) {
+  const added = Number(file?.linesWritten || file?.linesAdded || 0);
+  const deleted = Number(file?.linesDeleted || 0);
+  if (added === 0 && deleted === 0) return null;
+  return { additions: added, deletions: deleted };
+}
+
+function activitySubject(activity) {
+  return activity?.target || activity?.toolName || activity?.title || '活动';
+}
+
+function diffLineStyle(line) {
+  if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('@@')) {
+    return localStyles.diffLineMeta;
+  }
+  if (line.startsWith('+')) {
+    return localStyles.diffLineAdd;
+  }
+  if (line.startsWith('-')) {
+    return localStyles.diffLineDelete;
+  }
+  return localStyles.diffLineNeutral;
+}
 
 export function RuntimeDetailsPanel({
   group,
@@ -88,9 +123,28 @@ export function RuntimeDetailsPanel({
   const statusText = isRunningGroup || latestStatusUpdate
     ? getStatusUpdateText(latestStatusUpdate)
     : '执行完成';
+  const runtimeDurationMs = useMemo(() => {
+    const timestamps = runtimeDetails
+      .map(detail => Number(detail?.timestamp || 0))
+      .filter(Boolean);
+    if (timestamps.length < 2) {
+      return 0;
+    }
+    return Math.max(...timestamps) - Math.min(...timestamps);
+  }, [runtimeDetails]);
+  const changedFiles = useMemo(() => activitySummary.files.filter(file => (
+    Number(file.linesAdded || 0) > 0 ||
+    Number(file.linesDeleted || 0) > 0 ||
+    ['write', 'edit', 'delete'].includes(file.operation)
+  )), [activitySummary.files]);
+  const changeTotals = useMemo(() => changedFiles.reduce((total, file) => ({
+    additions: total.additions + Number(file.linesAdded || file.linesWritten || 0),
+    deletions: total.deletions + Number(file.linesDeleted || 0),
+  }), { additions: 0, deletions: 0 }), [changedFiles]);
+  const hasFileChanges = changedFiles.length > 0;
 
   // Tab 状态
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('files');
   // 文件列表展开状态
   const [showAllFiles, setShowAllFiles] = useState(false);
   // 活动列表展开状态
@@ -105,8 +159,6 @@ export function RuntimeDetailsPanel({
   const [activitySearch, setActivitySearch] = useState('');
   // activity Tab 视图模式：'structured' 结构化 checklist | 'raw' 原始日志
   const [activityViewMode, setActivityViewMode] = useState('structured');
-  // 概览 Tab 中的思考摘要折叠状态
-  const [showOverviewReasoning, setShowOverviewReasoning] = useState(false);
   // 活动 Tab 中的 reasoning 折叠状态
   const [showActivityReasoning, setShowActivityReasoning] = useState(false);
   // 展开的活动详情
@@ -114,6 +166,12 @@ export function RuntimeDetailsPanel({
   const [expandedFileDiffs, setExpandedFileDiffs] = useState(new Set());
   const [fileDiffs, setFileDiffs] = useState({});
   const [loadingDiffs, setLoadingDiffs] = useState(new Set());
+  const [changeDrawer, setChangeDrawer] = useState({
+    open: false,
+    mode: 'review',
+    loading: false,
+    diffs: {},
+  });
 
   const toggleActivityExpand = useCallback((activityId) => {
     setExpandedActivities(prev => {
@@ -164,6 +222,39 @@ export function RuntimeDetailsPanel({
     }
   }, [fileDiffs, ipc, loadingDiffs]);
 
+  const openChangeDrawer = useCallback(async (mode) => {
+    if (changedFiles.length === 0) {
+      return;
+    }
+
+    setChangeDrawer({
+      open: true,
+      mode,
+      loading: true,
+      diffs: {},
+    });
+
+    const entries = await Promise.all(changedFiles.map(async (file) => {
+      try {
+        const result = await ipc.getFileDiff?.(file.path);
+        return [file.path, result || { success: false, error: '无法读取 diff' }];
+      } catch (error) {
+        return [file.path, { success: false, error: error.message }];
+      }
+    }));
+
+    setChangeDrawer({
+      open: true,
+      mode,
+      loading: false,
+      diffs: Object.fromEntries(entries),
+    });
+  }, [changedFiles, ipc]);
+
+  const closeChangeDrawer = useCallback(() => {
+    setChangeDrawer(prev => ({ ...prev, open: false }));
+  }, []);
+
   // ===== 过滤活动 =====
   // 注意：所有 Hooks 必须在条件返回之前调用，否则违反 Rules of Hooks
   const filteredActivities = useMemo(() => {
@@ -186,42 +277,35 @@ export function RuntimeDetailsPanel({
     return activities;
   }, [activitySummary.activities, activityIntentFilter, activityPhaseFilter, activitySearch]);
 
+  const fileListFiltered = useMemo(() => {
+    if (fileIntentFilter === 'all') return activitySummary.files;
+    return activitySummary.files.filter(f => f.status === fileIntentFilter);
+  }, [activitySummary.files, fileIntentFilter]);
+
   const displayedFiles = showAllFiles ? activitySummary.files : activitySummary.files.slice(0, 6);
   const displayedActivities = showAllActivities ? filteredActivities : filteredActivities.slice(-8);
   const hasMoreFiles = activitySummary.files.length > 6;
   const hasMoreActivities = filteredActivities.length > 8;
-  const overviewHighlights = useMemo(() => {
-    const items = runtimeDetails
-      .filter(msg => !isThinkingMessage(msg))
-      .filter(msg => msg.event || msg.type || msg.content || msg.message || msg.toolName)
-      .slice(-4)
-      .map((msg, index) => {
-        const label = msg.toolName || (isThinkingMessage(msg) ? t('msg.thinking_in_progress') : msg.event || msg.type || t('msg.message'));
-        const text = isStatusUpdateMessage(msg)
-          ? getStatusUpdateText(msg)
-          : getRuntimeDetailPreviewText(msg);
-        return {
-          id: msg.id || `${msg.event || msg.type || 'runtime'}_${msg.timestamp || index}`,
-          label,
-          text,
-          tone: msg.type === 'error' || msg.event === 'tool:error' ? 'error'
-            : msg.event === 'tool:result' || msg.event === 'agent:complete' ? 'success'
-              : msg.event === 'agent:thinking' ? 'thinking'
-                : 'neutral',
-        };
-      });
 
-    if (items.length > 0) {
-      return items;
+  const renderLineDelta = (parts, compact = false) => {
+    if (!parts) {
+      return null;
     }
-
-    return [{
-      id: 'ready',
-      label: t('common.status'),
-      text: isRunningGroup ? '正在等待运行事件' : statusText,
-      tone: 'neutral',
-    }];
-  }, [runtimeDetails, isRunningGroup, statusText]);
+    return (
+      <span style={compact ? localStyles.lineDeltaCompact : localStyles.lineDeltaGroup}>
+        {parts.additions > 0 && (
+          <span style={{ ...localStyles.lineDeltaChip, ...localStyles.lineDeltaAdd }}>
+            (+{parts.additions})
+          </span>
+        )}
+        {parts.deletions > 0 && (
+          <span style={{ ...localStyles.lineDeltaChip, ...localStyles.lineDeltaDelete }}>
+            (-{parts.deletions})
+          </span>
+        )}
+      </span>
+    );
+  };
 
   // 使用 runtimeDetails（而非 visibleRuntimeDetails）判断，避免完成后过滤掉 thinking/status 消息导致面板消失
   // 必须在所有 Hooks 之后才能条件返回，否则违反 Rules of Hooks
@@ -251,227 +335,12 @@ export function RuntimeDetailsPanel({
           {tab.id === 'activity' && activitySummary.activities.length > 0 && (
             <span style={localStyles.tabBadge}>{activitySummary.activities.length}</span>
           )}
-          {tab.id === 'reasoning' && thinkingSummary.count > 0 && (
-            <span style={localStyles.tabBadge}>{thinkingSummary.count}</span>
-          )}
-          {tab.id === 'log' && visibleRuntimeDetails.length > 0 && (
-            <span style={localStyles.tabBadge}>{visibleRuntimeDetails.length}</span>
-          )}
         </button>
       ))}
     </div>
   );
 
-  // ===== 概览 Tab：进度 + 统计 + 任务阶段 + 迷你文件 + 迷你活动 + 思考摘要 =====
-  const renderOverview = () => (
-    <>
-      {/* 进度条 */}
-      <div style={styles.runtimeProgress}>
-        <div style={styles.runtimeProgressText}>
-          <span style={styles.runtimeProgressLabel}>{statusText}</span>
-          <span>
-            {activitySummary.running} 进行中 / {activitySummary.completed} 完成
-            {activitySummary.failed > 0 ? ` / ${activitySummary.failed} 失败` : ''}
-          </span>
-        </div>
-        <div style={styles.progressBar}>
-          <div style={{
-            ...styles.progressFill,
-            width: `${Math.max(6, activitySummary.progress)}%`,
-            backgroundColor: progressFillColor(activitySummary, isRunningGroup),
-            animation: isRunningGroup ? 'progressPulse 1.5s ease-in-out infinite' : 'none',
-          }} />
-        </div>
-      </div>
-
-      {/* 统计摘要 */}
-      <div style={localStyles.overviewRow}>
-        <span style={localStyles.overviewStat}>
-          <span style={localStyles.overviewStatValue}>{activitySummary.fileCount}</span>
-          <span style={localStyles.overviewStatLabel}>{t('exec.tools_used')}</span>
-        </span>
-        <span style={localStyles.overviewStat}>
-          <span style={localStyles.overviewStatValue}>{activitySummary.completed}</span>
-          <span style={localStyles.overviewStatLabel}>{t('msg.success')}</span>
-        </span>
-        <span style={localStyles.overviewStat}>
-          <span style={{ ...localStyles.overviewStatValue, color: activitySummary.reviewable > 0 ? 'var(--warning-color)' : 'var(--text-muted)' }}>{activitySummary.reviewable}</span>
-          <span style={localStyles.overviewStatLabel}>{t('exec.review_change')}</span>
-        </span>
-        <span style={localStyles.overviewStat}>
-          <span style={{ ...localStyles.overviewStatValue, color: activitySummary.undoable > 0 ? 'var(--info-color)' : 'var(--text-muted)' }}>{activitySummary.undoable}</span>
-          <span style={localStyles.overviewStatLabel}>{t('exec.ask_revert')}</span>
-        </span>
-        {activitySummary.waitingForUser && (
-          <span style={{ ...localStyles.overviewStat, color: 'var(--warning-color)' }}>
-            <span>{t('common.confirm')}</span>
-            <button
-              type="button"
-              style={styles.activityActionButton}
-              title={t('exec.confirm_continue')}
-              onClick={(event) => {
-                event.stopPropagation();
-                onActivityAction?.('continue', {
-                  kind: 'tool_activity',
-                  phase: 'waiting',
-                  intent: 'interaction',
-                  statusText: t('exec.confirm_continue'),
-                });
-              }}
-            >
-              {t('chat.continue')}
-            </button>
-          </span>
-        )}
-      </div>
-
-      {/* 任务阶段 */}
-      <div style={styles.taskStageList}>
-        {activitySummary.taskStages.map(stage => (
-          <div
-            key={stage.id}
-            style={{
-              ...styles.taskStageItem,
-              ...(stage.status === 'completed' ? styles.taskStageCompleted : {}),
-              ...(stage.status === 'running' ? styles.taskStageRunning : {}),
-              ...(stage.status === 'waiting' ? styles.taskStageWaiting : {}),
-              ...(stage.status === 'failed' ? styles.taskStageFailed : {}),
-            }}
-          >
-            <span style={styles.taskStageMark}>
-              {stage.status === 'completed' ? '✓' : stage.status === 'failed' ? '!' : stage.status === 'pending' ? '·' : '…'}
-            </span>
-            <span style={styles.taskStageLabel}>{stage.label}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* 迷你文件列表 */}
-      {activitySummary.files.length > 0 && (
-        <div style={localStyles.miniFileList}>
-          {activitySummary.files.slice(0, 3).map(file => (
-            <div key={file.path} style={localStyles.miniFileItem}>
-              <span style={localStyles.fileTypeIcon}>{getFileTypeIcon(file.path)}</span>
-              <span style={localStyles.miniFilePath} title={file.path}>{file.path}</span>
-              <span style={{ ...localStyles.miniFileStatus, color: fileStatusColor(file.status) }}>
-                {getFileStatusLabel(file.status)}
-              </span>
-            </div>
-          ))}
-          {activitySummary.files.length > 3 && (
-            <button
-              type="button"
-              style={localStyles.showMoreButton}
-              onClick={(e) => { e.stopPropagation(); setActiveTab('files'); }}
-            >
-              +{activitySummary.files.length - 3} 个文件 →
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* 迷你活动列表（最后 3 个，点击跳转到活动 Tab） */}
-      {activitySummary.activities.length > 0 && (
-        <div style={localStyles.miniActivityList}>
-          {activitySummary.activities.slice(-3).map((activity, idx) => {
-            const tone = getActivityTone(activity);
-            return (
-              <div key={`${activity.id || activity.toolName}_${idx}`} style={localStyles.miniActivityItem}>
-                <span style={{
-                  ...localStyles.miniActivityMark,
-                  ...(tone === 'completed' ? localStyles.miniActivityMarkDone : {}),
-                  ...(tone === 'failed' ? localStyles.miniActivityMarkFail : {}),
-                  ...(tone === 'waiting' ? localStyles.miniActivityMarkWait : {}),
-                }}>
-                  {tone === 'completed' ? '✓' : tone === 'failed' ? '✗' : tone === 'waiting' ? '?' : '…'}
-                </span>
-                <span style={localStyles.miniActivityText} title={activity.statusText || activity.title}>
-                  {activity.statusText || activity.title}
-                </span>
-              </div>
-            );
-          })}
-          {activitySummary.activities.length > 3 && (
-            <button
-              type="button"
-              style={localStyles.showMoreButton}
-              onClick={(e) => { e.stopPropagation(); setActiveTab('activity'); }}
-            >
-              +{activitySummary.activities.length - 3} 个活动 →
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* 思考摘要（折叠） */}
-      {thinkingSummary.count > 0 && (
-        <div style={localStyles.overviewReasoningWrap}>
-          <button
-            type="button"
-            style={localStyles.overviewReasoningHeader}
-            onClick={(e) => { e.stopPropagation(); setShowOverviewReasoning(v => !v); }}
-          >
-            <span style={localStyles.overviewReasoningIcon}>◇</span>
-            <span style={localStyles.overviewReasoningTitle}>
-              {t('msg.thinking_summary_label')} ({thinkingSummary.count})
-            </span>
-            <span style={{ color: 'var(--text-muted)' }}>
-              {showOverviewReasoning ? '▾' : '▸'}
-            </span>
-          </button>
-          {showOverviewReasoning && (
-            <div style={localStyles.reasoningList}>
-              {thinkingSummary.messages.slice(0, 3).map((msg, index) => (
-                <div key={msg.id || `${group.id}_overview_thinking_${index}`} style={localStyles.reasoningItem}>
-                  <div style={localStyles.reasoningHeader}>
-                    <span style={localStyles.reasoningTitle}>
-                      {msg.payload?.eventName || msg.summary || (msg.iteration ? t('msg.iteration_x', { n: msg.iteration }) : t('msg.fragment_n', { n: index + 1 }))}
-                    </span>
-                    {msg.timestamp && <span style={localStyles.reasoningTime}>{new Date(msg.timestamp).toLocaleTimeString()}</span>}
-                  </div>
-                  <div style={localStyles.reasoningText}>
-                    {msg.thinkingText || msg.summary || msg.payload?.message || msg.payload?.data?.textPreview || msg.content || t('msg.model_thinking')}
-                  </div>
-                </div>
-              ))}
-              {thinkingSummary.messages.length > 3 && (
-                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '10px', padding: '4px' }}>
-                  还有 {thinkingSummary.messages.length - 3} 条
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 无文件无活动时显示亮点 */}
-      {activitySummary.files.length === 0 && activitySummary.activities.length === 0 && (
-        <div style={localStyles.overviewHighlights}>
-          {overviewHighlights.map(item => (
-            <div
-              key={item.id}
-              style={{
-                ...localStyles.overviewHighlightItem,
-                ...(item.tone === 'success' ? localStyles.overviewHighlightSuccess : {}),
-                ...(item.tone === 'error' ? localStyles.overviewHighlightError : {}),
-                ...(item.tone === 'thinking' ? localStyles.overviewHighlightThinking : {}),
-              }}
-            >
-              <span style={localStyles.overviewHighlightLabel}>{item.label}</span>
-              <span style={localStyles.overviewHighlightText}>{item.text || t('status.not_set')}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </>
-  );
-
   // ===== 文件 Tab：完整文件列表 + diff + 独立过滤（不与 activity 共享） =====
-  const fileListFiltered = useMemo(() => {
-    if (fileIntentFilter === 'all') return activitySummary.files;
-    return activitySummary.files.filter(f => f.status === fileIntentFilter);
-  }, [activitySummary.files, fileIntentFilter]);
-
   const renderFiles = () => (
     <>
       <div style={localStyles.fileListHeader}>
@@ -481,7 +350,7 @@ export function RuntimeDetailsPanel({
             : activitySummary.files.length}
         </span>
         <div style={localStyles.fileFilterGroup}>
-          {['all', 'read', 'edited', 'created', 'deleted'].map(filter => (
+          {['all', 'running', 'completed', 'failed', 'waiting'].map(filter => (
             <button
               key={filter}
               type="button"
@@ -518,6 +387,7 @@ export function RuntimeDetailsPanel({
                 <span style={{ ...localStyles.fileStatusChip, color: fileStatusColor(file.status) }}>
                   {getFileStatusLabel(file.status)}
                 </span>
+                {renderLineDelta(fileLineChangeParts(file))}
                 {file.updatedAt && (
                   <span style={localStyles.fileTime}>
                     {new Date(file.updatedAt).toLocaleTimeString()}
@@ -706,13 +576,15 @@ export function RuntimeDetailsPanel({
                       </span>
                       <div style={localStyles.activityMainContent}>
                         <div style={localStyles.activityTitleRow}>
-                          <span style={styles.activityTitle} title={activity.statusText || activity.title}>
-                            {activity.statusText || activity.title}
+                          <span style={styles.activityTitle} title={activitySubject(activity)}>
+                            {activitySubject(activity)}
                           </span>
+                          <span style={localStyles.activityPhaseChip}>{phaseLabel(activity.phase)}</span>
                           {duration !== null && (
                             <span style={localStyles.activityDuration}>{formatDuration(duration)}</span>
                           )}
                         </div>
+                        {renderLineDelta(lineChangeParts(activity.counts))}
                         {activity.detail && (
                           <button
                             type="button"
@@ -900,12 +772,135 @@ export function RuntimeDetailsPanel({
   // ===== 渲染 Tab 内容 =====
   const renderTabContent = () => {
     switch (activeTab) {
-      case 'overview': return renderOverview();
       case 'files': return renderFiles();
       case 'activity': return renderActivity();
-      default: return renderOverview();
+      default: return renderFiles();
     }
   };
+
+  const renderDiffBlock = (diffText) => (
+    <pre style={localStyles.drawerDiffPre}>
+      {String(diffText || '').split('\n').map((line, index) => (
+        <span key={`${index}_${line.slice(0, 16)}`} style={{ ...localStyles.drawerDiffLine, ...diffLineStyle(line) }}>
+          {line || ' '}
+          {'\n'}
+        </span>
+      ))}
+    </pre>
+  );
+
+  const renderChangeDrawer = () => {
+    if (!changeDrawer.open) {
+      return null;
+    }
+
+    return (
+      <div style={localStyles.drawerBackdrop} onClick={closeChangeDrawer}>
+        <aside style={localStyles.changeDrawer} onClick={(event) => event.stopPropagation()}>
+          <div style={localStyles.drawerHeader}>
+            <div>
+              <div style={localStyles.drawerTitle}>
+                {changeDrawer.mode === 'undo' ? '撤销变更' : '审核变更'}
+              </div>
+              <div style={localStyles.drawerMeta}>
+                {changedFiles.length} 个文件 · {renderLineDelta(changeTotals, true)}
+              </div>
+            </div>
+            <button type="button" style={localStyles.drawerCloseButton} onClick={closeChangeDrawer}>
+              ×
+            </button>
+          </div>
+
+          <div style={localStyles.drawerFileList}>
+            {changedFiles.map((file) => {
+              const diffResult = changeDrawer.diffs[file.path];
+              return (
+                <section key={file.path} style={localStyles.drawerFileSection}>
+                  <div style={localStyles.drawerFileHeader}>
+                    <span style={localStyles.fileTypeIcon}>{getFileTypeIcon(file.path)}</span>
+                    <span style={localStyles.drawerFilePath} title={file.path}>{file.path}</span>
+                    {renderLineDelta(fileLineChangeParts(file), true)}
+                  </div>
+                  {changeDrawer.loading && (
+                    <div style={localStyles.fileDiffEmpty}>{t('common.loading')}</div>
+                  )}
+                  {!changeDrawer.loading && diffResult?.success === false && (
+                    <div style={localStyles.fileDiffEmpty}>{diffResult.error || t('common.error')}</div>
+                  )}
+                  {!changeDrawer.loading && diffResult?.success !== false && !diffResult?.hasDiff && (
+                    <div style={localStyles.fileDiffEmpty}>没有可显示的未提交 diff</div>
+                  )}
+                  {!changeDrawer.loading && diffResult?.diff && renderDiffBlock(diffResult.diff)}
+                </section>
+              );
+            })}
+          </div>
+        </aside>
+      </div>
+    );
+  };
+
+  const renderCompactCompletedPanel = () => (
+    <div key={`${group.id}_runtime`} style={{
+      ...styles.runtimeDetailsPanel,
+      border: 'none',
+      backgroundColor: 'transparent',
+      backdropFilter: 'none',
+      WebkitBackdropFilter: 'none',
+      borderRadius: 0,
+      marginBottom: '4px',
+    }}>
+      <div
+        style={{
+          ...styles.runtimeDetailsHeader,
+          ...styles.runtimeDetailsHeaderInteractive,
+          ...localStyles.compactCompletedHeader,
+        }}
+        onClick={() => onRuntimeDetailsToggle(group.id)}
+        title={t('msg.details')}
+      >
+        <span style={localStyles.compactProcessedText}>
+          已处理 {formatDuration(runtimeDurationMs)}
+        </span>
+        {hasFileChanges && (
+          <span style={localStyles.compactChangeSummary}>
+            {renderLineDelta(changeTotals, true)}
+            <span>{changedFiles.length} 个文件</span>
+          </span>
+        )}
+        <span style={localStyles.compactChevron}>{'>'}</span>
+        {hasFileChanges && (
+          <span style={localStyles.compactActionGroup}>
+            <button
+              type="button"
+              style={styles.activityActionButton}
+              onClick={(event) => {
+                event.stopPropagation();
+                openChangeDrawer('undo');
+              }}
+            >
+              撤销
+            </button>
+            <button
+              type="button"
+              style={styles.activityActionButton}
+              onClick={(event) => {
+                event.stopPropagation();
+                openChangeDrawer('review');
+              }}
+            >
+              审核
+            </button>
+          </span>
+        )}
+      </div>
+      {renderChangeDrawer()}
+    </div>
+  );
+
+  if (!isRunningGroup && !isExpanded) {
+    return renderCompactCompletedPanel();
+  }
 
   return (
     <div key={`${group.id}_runtime`} style={styles.runtimeDetailsPanel}>
@@ -924,6 +919,31 @@ export function RuntimeDetailsPanel({
         </span>
         <span style={styles.runtimeDetailsActions}>
           <span style={styles.runtimeStatusChip} title={statusText}>{statusText}</span>
+          {hasFileChanges && renderLineDelta(changeTotals, true)}
+          {hasFileChanges && (
+            <>
+              <button
+                type="button"
+                style={styles.activityActionButton}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openChangeDrawer('undo');
+                }}
+              >
+                撤销
+              </button>
+              <button
+                type="button"
+                style={styles.activityActionButton}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openChangeDrawer('review');
+                }}
+              >
+                审核
+              </button>
+            </>
+          )}
           <span>{activitySummary.total || visibleRuntimeDetails.length} {t('ui.root')}</span>
           {visibleRuntimeDetails.length > 0 && (
             <button
@@ -973,6 +993,7 @@ export function RuntimeDetailsPanel({
       <div style={localStyles.tabContent}>
         {renderTabContent()}
       </div>
+      {renderChangeDrawer()}
     </div>
   );
 }
@@ -1022,186 +1043,181 @@ const localStyles = {
   tabContent: {
     overflow: 'visible',
   },
-
-  // 概览
-  overviewRow: {
+  compactCompletedHeader: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
-    padding: '8px 10px',
-    borderBottom: '1px solid var(--border-subtle)',
-    flexWrap: 'wrap',
+    gap: '10px',
+    minHeight: '38px',
+    borderBottom: 'none',
+    borderRadius: 0,
+    justifyContent: 'flex-start',
   },
-  overviewStat: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '2px',
-    fontSize: '11px',
-    color: 'var(--text-muted)',
-  },
-  overviewStatValue: {
-    fontSize: '16px',
-    fontWeight: 800,
+  compactProcessedText: {
     color: 'var(--text-color)',
+    fontSize: '12px',
+    fontWeight: 800,
+    whiteSpace: 'nowrap',
   },
-  overviewStatLabel: {
-    fontSize: '10px',
-    fontWeight: 500,
-  },
-
-  // 概览：迷你活动列表
-  miniActivityList: {
-    padding: '6px 10px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '3px',
-  },
-  miniActivityItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    minHeight: '22px',
-  },
-  miniActivityMark: {
-    width: '16px',
-    height: '16px',
-    borderRadius: '50%',
+  compactChangeSummary: {
+    minWidth: 0,
     display: 'inline-flex',
     alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '9px',
-    fontWeight: 700,
-    flexShrink: 0,
-    backgroundColor: 'var(--neutral-faint)',
+    gap: '8px',
     color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 700,
   },
-  miniActivityMarkDone: {
+  compactActionGroup: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  compactChevron: {
+    flexShrink: 0,
+    color: 'var(--text-muted)',
+    fontSize: '12px',
+    fontWeight: 800,
+  },
+
+  lineDeltaGroup: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    flexShrink: 0,
+  },
+  lineDeltaCompact: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '3px',
+    flexShrink: 0,
+  },
+  lineDeltaChip: {
+    padding: '1px 5px',
+    borderRadius: '4px',
+    fontSize: '10px',
+    fontWeight: 800,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  lineDeltaAdd: {
     backgroundColor: 'var(--success-soft)',
     color: 'var(--success-color)',
   },
-  miniActivityMarkFail: {
+  lineDeltaDelete: {
     backgroundColor: 'var(--error-soft)',
     color: 'var(--error-color)',
   },
-  miniActivityMarkWait: {
-    backgroundColor: 'var(--info-soft)',
-    color: 'var(--info-color)',
-    animation: 'pulse 1s infinite',
-  },
-  miniActivityText: {
-    flex: 1,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    color: 'var(--text-color)',
-    fontSize: '11px',
-    fontWeight: 500,
-  },
-
-  // 概览：reasoning 折叠
-  overviewReasoningWrap: {
-    margin: '6px 10px',
-    borderRadius: '6px',
-    border: '1px solid var(--border-subtle)',
-    backgroundColor: 'var(--surface-subtle)',
-    overflow: 'hidden',
-  },
-  overviewReasoningHeader: {
-    width: '100%',
+  drawerBackdrop: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 80,
+    backgroundColor: 'rgba(0, 0, 0, 0.18)',
     display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    padding: '6px 8px',
-    border: 'none',
-    backgroundColor: 'transparent',
-    color: 'var(--text-dark)',
-    fontSize: '11px',
-    fontWeight: 700,
-    cursor: 'pointer',
-    textAlign: 'left',
+    justifyContent: 'flex-end',
   },
-  overviewReasoningIcon: {
-    fontSize: '10px',
-    color: 'var(--info-color)',
-  },
-  overviewReasoningTitle: {
-    fontSize: '11px',
-  },
-
-  // 迷你文件列表
-  miniFileList: {
-    padding: '6px 10px',
+  changeDrawer: {
+    width: 'min(520px, 92vw)',
+    height: '100vh',
+    backgroundColor: 'var(--surface-color)',
+    borderLeft: '1px solid var(--border-subtle)',
+    boxShadow: '-18px 0 36px rgba(0, 0, 0, 0.22)',
     display: 'flex',
     flexDirection: 'column',
-    gap: '3px',
-  },
-  miniFileItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    minHeight: '24px',
-  },
-  miniFilePath: {
-    flex: 1,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
     color: 'var(--text-color)',
-    fontSize: '11px',
-    fontWeight: 500,
   },
-  miniFileStatus: {
-    flexShrink: 0,
-    fontSize: '10px',
-    fontWeight: 700,
-  },
-  overviewHighlights: {
-    padding: '8px 10px 10px',
+  drawerHeader: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: '6px',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: '12px',
+    padding: '14px 16px',
+    borderBottom: '1px solid var(--border-subtle)',
   },
-  overviewHighlightItem: {
-    minHeight: '30px',
-    display: 'grid',
-    gridTemplateColumns: 'minmax(76px, auto) minmax(0, 1fr)',
+  drawerTitle: {
+    color: 'var(--text-color)',
+    fontSize: '15px',
+    fontWeight: 850,
+  },
+  drawerMeta: {
+    marginTop: '5px',
+    display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    padding: '6px 8px',
-    borderRadius: '6px',
-    border: '1px solid var(--border-subtle)',
-    backgroundColor: 'var(--surface-subtle)',
-  },
-  overviewHighlightSuccess: {
-    borderColor: 'var(--success-border)',
-    backgroundColor: 'var(--success-faint)',
-  },
-  overviewHighlightError: {
-    borderColor: 'var(--error-border)',
-    backgroundColor: 'var(--error-faint)',
-  },
-  overviewHighlightThinking: {
-    borderColor: 'var(--info-border)',
-    backgroundColor: 'var(--info-faint)',
-  },
-  overviewHighlightLabel: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    color: 'var(--text-dark)',
-    fontSize: '11px',
-    fontWeight: 800,
-  },
-  overviewHighlightText: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
     color: 'var(--text-muted)',
     fontSize: '11px',
-    fontWeight: 600,
+    fontWeight: 700,
+  },
+  drawerCloseButton: {
+    width: '28px',
+    height: '28px',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '6px',
+    backgroundColor: 'var(--glass-bg-light)',
+    color: 'var(--text-dark)',
+    cursor: 'pointer',
+    fontSize: '18px',
+    lineHeight: 1,
+  },
+  drawerFileList: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '12px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  drawerFileSection: {
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '8px',
+    backgroundColor: 'var(--surface-subtle)',
+    overflow: 'hidden',
+  },
+  drawerFileHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '8px 10px',
+    borderBottom: '1px solid var(--border-subtle)',
+  },
+  drawerFilePath: {
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: 'var(--text-color)',
+    fontSize: '12px',
+    fontWeight: 800,
+  },
+  drawerDiffPre: {
+    margin: 0,
+    padding: '8px 0',
+    maxHeight: '420px',
+    overflow: 'auto',
+    backgroundColor: 'var(--glass-bg-light)',
+    fontSize: '11px',
+    lineHeight: 1.45,
+  },
+  drawerDiffLine: {
+    display: 'block',
+    padding: '0 10px',
+    whiteSpace: 'pre',
+    fontFamily: 'var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace)',
+  },
+  diffLineAdd: {
+    backgroundColor: 'var(--success-faint)',
+    color: 'var(--success-color)',
+  },
+  diffLineDelete: {
+    backgroundColor: 'var(--error-faint)',
+    color: 'var(--error-color)',
+  },
+  diffLineMeta: {
+    backgroundColor: 'var(--primary-faint)',
+    color: 'var(--primary-color)',
+    fontWeight: 800,
+  },
+  diffLineNeutral: {
+    color: 'var(--text-muted)',
   },
   reasoningList: {
     padding: '8px 10px 10px',
@@ -1499,6 +1515,15 @@ const localStyles = {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
+  },
+  activityPhaseChip: {
+    flexShrink: 0,
+    padding: '1px 5px',
+    borderRadius: '4px',
+    backgroundColor: 'var(--neutral-faint)',
+    color: 'var(--text-dark)',
+    fontSize: '10px',
+    fontWeight: 700,
   },
   activityDuration: {
     flexShrink: 0,

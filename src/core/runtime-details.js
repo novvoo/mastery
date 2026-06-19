@@ -35,10 +35,7 @@ export function isPrimaryMessage(msg) {
   if (!msg) {
     return false;
   }
-  if (!isRuntimeDetailMessage(msg)) {
-    return true;
-  }
-  return msg.event === 'agent:complete' && ['result', 'warning', 'success'].includes(msg.type);
+  return !isRuntimeDetailMessage(msg);
 }
 
 export function formatRuntimeDetailValue(value) {

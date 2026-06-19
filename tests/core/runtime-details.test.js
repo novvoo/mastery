@@ -43,7 +43,7 @@ describe('runtime-details (src/core)', () => {
     expect(isPrimaryMessage({ type: 'user', content: 'hi' })).toBe(true);
     expect(isPrimaryMessage({ type: 'assistant', content: 'hello' })).toBe(true);
     expect(isPrimaryMessage({ event: 'tool:call' })).toBe(false);
-    expect(isPrimaryMessage({ event: 'agent:complete', type: 'success' })).toBe(true);
+    expect(isPrimaryMessage({ event: 'agent:complete', type: 'success' })).toBe(false);
     expect(isPrimaryMessage({ event: 'agent:complete', type: 'tool' })).toBe(false);
   });
 

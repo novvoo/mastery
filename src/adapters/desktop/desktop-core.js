@@ -192,9 +192,11 @@ export class DesktopCore {
         if (isDebug) console.log('[UiAdapter] tool:call', name);
         eventBus.emit(RuntimeEvent.TOOL_CALL, eventData);
       },
-      toolResult(name, result) {
+      toolResult(name, result, args = {}) {
         const eventData = {
           name,
+          arguments: args,
+          args,
           result: typeof result === 'string' ? result : (result?.result ?? result),
           timestamp: Date.now(),
         };

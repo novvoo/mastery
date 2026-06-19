@@ -13,10 +13,13 @@
 import { EventEmitter } from 'events';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import fs from 'node:fs';
+import path from 'node:path';
 import { RuntimeEvent } from '../../runtime/types.js';
 import { buildSlashCommandSuggestions } from '../../cli/slash-command-suggestions.js';
 import { handleDocumentBatchAdd, handleDocumentCommand, parseDocumentCommand } from '../../runtime/document-command.js';
 import { listPreviews, startPreview, stopPreview } from '../../core/preview-server.js';
+import { computeDiff, isNoop } from '../../core/diff-preview.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -575,6 +578,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
       'workspace:setWorkingDirectory',
       'workspace:listDirectory',
       'workspace:getFileDiff',
+      'workspace:isGitRepo',
       'activity:undo',
       'activity:review',
       'activity:approve',
@@ -690,6 +694,9 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
 
         case 'workspace:getFileDiff':
           return this.createResponse(message, await this.#handleFileDiff(message.payload));
+
+        case 'workspace:isGitRepo':
+          return this.createResponse(message, await this.#handleIsGitRepo());
 
         case 'activity:undo':
           return this.createResponse(message, await this.#handleActivityUndo(message.payload));
@@ -824,6 +831,16 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     };
   }
 
+  async #handleIsGitRepo() {
+    const workingDirectory = this.#engine?.getConfig?.().workingDirectory || process.cwd();
+    try {
+      await execFileAsync('git', ['rev-parse', '--git-dir'], { cwd: workingDirectory });
+      return { isGitRepo: true };
+    } catch {
+      return { isGitRepo: false };
+    }
+  }
+
   async #handleFileDiff(payload = {}) {
     const filePath = String(payload?.path || payload?.target || '').trim();
     if (!filePath) {
@@ -832,6 +849,10 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
 
     const workingDirectory = this.#engine?.getConfig?.().workingDirectory || process.cwd();
     try {
+      await execFileAsync('git', ['rev-parse', '--git-dir'], {
+        cwd: workingDirectory,
+      });
+
       const { stdout } = await execFileAsync('git', ['diff', '--', filePath], {
         cwd: workingDirectory,
         maxBuffer: 1024 * 1024,
@@ -841,14 +862,34 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
         path: filePath,
         diff: stdout || '',
         hasDiff: Boolean(stdout && stdout.trim()),
+        source: 'git',
       };
-    } catch (error) {
-      return {
-        success: false,
-        path: filePath,
-        error: error.message,
-        diff: error.stdout || '',
-      };
+    } catch (gitError) {
+      try {
+        const absPath = path.isAbsolute(filePath) ? filePath : path.join(workingDirectory, filePath);
+        const newContent = fs.readFileSync(absPath, 'utf8');
+        const oldContent = this.#engine?.workspaceState?.getFileSnapshot(filePath)?.content ||
+                           this.#engine?.workspaceState?.getFileSnapshot(absPath)?.content || '';
+
+        const diff = computeDiff({ path: filePath, oldContent, newContent });
+        const hasDiff = !isNoop(diff);
+
+        return {
+          success: true,
+          path: filePath,
+          diff: diff.unifiedDiff,
+          hasDiff,
+          source: 'snapshot',
+        };
+      } catch (snapshotError) {
+        return {
+          success: false,
+          path: filePath,
+          error: snapshotError.message || '无法读取文件内容',
+          diff: '',
+          hasDiff: false,
+        };
+      }
     }
   }
 

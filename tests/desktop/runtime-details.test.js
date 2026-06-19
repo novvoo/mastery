@@ -23,7 +23,7 @@ describe('runtime details helpers', () => {
     expect(isRuntimeDetailMessage({ type: 'user' })).toBe(false);
     expect(isStatusUpdateMessage({ event: 'status:update' })).toBe(true);
     expect(isPrimaryMessage({ type: 'user' })).toBe(true);
-    expect(isPrimaryMessage({ event: 'agent:complete', type: 'success' })).toBe(true);
+    expect(isPrimaryMessage({ event: 'agent:complete', type: 'success' })).toBe(false);
   });
 
   test('builds stable runtime detail content and previews', () => {
@@ -57,8 +57,8 @@ describe('runtime details helpers', () => {
     });
 
     expect(groups).toHaveLength(1);
-    expect(groups[0].messages.map(msg => msg.id)).toEqual(['u1', 'a1', 'c1']);
-    expect(groups[0].runtimeDetails.map(msg => msg.id)).toEqual(['s1', 'r1', 't1']);
+    expect(groups[0].messages.map(msg => msg.id)).toEqual(['u1', 'a1']);
+    expect(groups[0].runtimeDetails.map(msg => msg.id)).toEqual(['s1', 'r1', 't1', 'c1']);
   });
 
   test('builds thinking summaries across iterations', () => {
@@ -129,9 +129,76 @@ describe('runtime details helpers', () => {
     expect(summary.reviewable).toBe(1);
     expect(summary.undoable).toBe(1);
     expect(summary.progress).toBeGreaterThan(0);
-    expect(summary.files[0]).toMatchObject({ path: 'src/app.js', status: 'edited' });
+    expect(summary.files[0]).toMatchObject({ path: 'src/app.js', status: 'edited', operation: 'edit' });
     expect(summary.taskStages.find(stage => stage.id === 'change')?.status).toBe('completed');
     expect(summary.activities[0].statusText).toBe('已编辑 src/app.js');
+  });
+
+  test('summarizes plan updates and file line changes', () => {
+    const summary = buildActivitySummary([
+      {
+        event: 'plan:created',
+        type: 'plan',
+        timestamp: 1,
+        payload: {
+          plan: {
+            tasks: [
+              { id: 'read_files', name: '读取文件', status: 'running' },
+              { id: 'write_files', name: '写入文件', status: 'pending' },
+            ],
+          },
+        },
+      },
+      {
+        event: 'tool:result',
+        type: 'tool_result',
+        timestamp: 2,
+        toolName: 'write_file',
+        args: { path: 'src/app.js', content: 'one\ntwo\nthree' },
+        result: 'File written successfully: src/app.js (3 lines)',
+      },
+      {
+        event: 'tool:result',
+        type: 'tool_result',
+        timestamp: 3,
+        toolName: 'edit_file',
+        args: { path: 'src/app.js', old_text: 'old\nline', new_text: 'new' },
+        result: 'File edited successfully: src/app.js',
+      },
+      {
+        event: 'plan:updated',
+        type: 'plan',
+        timestamp: 4,
+        payload: {
+          plan: {
+            tasks: [
+              { id: 'read_files', name: '读取文件', status: 'completed' },
+              { id: 'write_files', name: '写入文件', status: 'completed' },
+            ],
+          },
+        },
+      },
+    ]);
+
+    expect(summary.plan.updateCount).toBe(1);
+    expect(summary.plan.tasks.map(task => task.status)).toEqual(['completed', 'completed']);
+    expect(summary.plan.progress.progress).toBe(100);
+    expect(summary.files[0]).toMatchObject({
+      path: 'src/app.js',
+      status: 'edited',
+      operation: 'edit',
+      linesAdded: 4,
+      linesDeleted: 2,
+      linesWritten: 4,
+    });
+    expect(summary.activities.find(activity => activity.toolName === 'write_file')?.counts).toMatchObject({
+      additions: 3,
+      deletions: 0,
+    });
+    expect(summary.activities.find(activity => activity.toolName === 'edit_file')?.counts).toMatchObject({
+      additions: 1,
+      deletions: 2,
+    });
   });
 
   test('summarizes waiting-for-user interaction state', () => {
