@@ -25,7 +25,7 @@ mock.module('../../../src/errors/error-handler.js', () => ({
     getDelay() { return 0; }
     async executeWithRetry(fn) { return await fn(); }
   },
-  withTimeout: (fn) => fn,
+  withTimeout: (fn) => fn(),
 }));
 
 mock.module('../../../src/core/text-tool-parser.js', () => ({
@@ -137,6 +137,7 @@ mock.module('../../../src/core/termination-detector.js', () => ({
     reset() {}
     check() { return { shouldStop: false, reason: '' }; }
     nudge() { return null; }
+    recordTool() {}
   },
 }));
 
@@ -206,18 +207,20 @@ describe('AgentEngine Streaming', () => {
 
     const engine = createAgentEngine({
       modelProvider: streamingModelProvider,
+      toolRegistry: { size: 0, get: () => null, getAll: () => [], toFunctionDefinitions: () => [] },
       ui,
-      workingDirectory: process.cwd(),
-      systemPrompt: 'You are a helpful assistant.',
-      tools: [],
+      config: {
+        workingDirectory: process.cwd(),
+        systemPrompt: 'You are a helpful assistant.',
+      },
     });
 
     try {
       const deltas = [];
-      const original = ui.onTextDelta;
+      const originalOnTextDelta = ui.onTextDelta;
       ui.onTextDelta = (text) => {
         deltas.push(text);
-        original(text);
+        originalOnTextDelta(text);
       };
 
       const result = await engine.processInput('生成一个简单的回答');
@@ -266,10 +269,12 @@ describe('AgentEngine Streaming', () => {
 
     const engine = createAgentEngine({
       modelProvider: streamingModelProvider,
+      toolRegistry: { size: 0, get: () => null, getAll: () => [], toFunctionDefinitions: () => [] },
       ui,
-      workingDirectory: process.cwd(),
-      systemPrompt: 'You are a helpful assistant.',
-      tools: [],
+      config: {
+        workingDirectory: process.cwd(),
+        systemPrompt: 'You are a helpful assistant.',
+      },
     });
 
     try {
@@ -306,10 +311,12 @@ describe('AgentEngine Streaming', () => {
 
     const engine = createAgentEngine({
       modelProvider: mockProvider,
+      toolRegistry: { size: 0, get: () => null, getAll: () => [], toFunctionDefinitions: () => [] },
       ui,
-      workingDirectory: process.cwd(),
-      systemPrompt: 'You are helpful.',
-      tools: [],
+      config: {
+        workingDirectory: process.cwd(),
+        systemPrompt: 'You are helpful.',
+      },
     });
 
     try {

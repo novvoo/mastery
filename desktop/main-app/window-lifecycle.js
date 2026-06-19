@@ -14,6 +14,7 @@ import path from 'path';
 import fs from 'fs';
 import { APP_NAME, APP_COPYRIGHT, APP_CREDITS } from '../app-metadata.js';
 import { createApplicationMenu } from '../menu.js';
+import { buildWindowConfig } from './window-config.js';
 
 export function setupAppProperties(ctx) {
   const { app } = ctx.electron;
@@ -84,17 +85,15 @@ export function createMainWindow(ctx) {
   }
 
   ctx.mainWindow = new BrowserWindow({
-    width: ctx.config.window.width,
-    height: ctx.config.window.height,
-    minWidth: ctx.config.window.minWidth,
-    minHeight: ctx.config.window.minHeight,
+    ...buildWindowConfig(process.platform, {
+      width: ctx.config.window.width,
+      height: ctx.config.window.height,
+      minWidth: ctx.config.window.minWidth,
+      minHeight: ctx.config.window.minHeight,
+    }),
     webPreferences: ctx.config.window.webPreferences,
     title: APP_NAME,
     icon: getIconPath(ctx),
-    show: false,
-    frame: true,
-    backgroundColor: '#1a1a2e',
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default'
   });
 
   attachIpcDiagnostics(ctx);
