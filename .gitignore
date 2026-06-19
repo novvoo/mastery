@@ -42,3 +42,4 @@ test*.json
 .agent-data/
 desktop/renderer/dist/
 .agent-logs/
+.superpowers/
