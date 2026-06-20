@@ -23,11 +23,11 @@ export const styles = {
   
   title: {
     minHeight: '28px',
-    padding: '0 12px',
+    padding: '0 2px',
     borderRadius: '999px',
-    border: '1px solid var(--title-capsule-border)',
-    backgroundColor: 'var(--title-capsule-bg)',
-    boxShadow: 'var(--glass-inner-hl)',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
+    boxShadow: 'none',
     fontSize: '12px',
     fontWeight: '800',
     color: 'var(--text-color)',
@@ -633,7 +633,8 @@ export const styles = {
     borderColor: 'var(--message-user-border)',
     color: 'var(--message-user-text)',
     borderRadius: '16px',
-    maxWidth: '80%'
+    maxWidth: '80%',
+    textAlign: 'center'
   },
 
   messageBubbleAgent: {
@@ -652,7 +653,7 @@ export const styles = {
   messageType: {
     display: 'inline-flex',
     alignItems: 'center',
-    padding: '2px 8px',
+    padding: '2px 0',
     borderRadius: '999px',
     fontSize: '11px',
     fontWeight: '500',
@@ -660,67 +661,67 @@ export const styles = {
   },
   
   typeInfo: {
-    backgroundColor: 'var(--info-muted)',
+    backgroundColor: 'transparent',
     color: 'var(--info-color)',
     border: 'none'
   },
   
   typeSuccess: {
-    backgroundColor: 'var(--success-soft)',
+    backgroundColor: 'transparent',
     color: 'var(--success-color)',
     border: 'none'
   },
   
   typeError: {
-    backgroundColor: 'var(--error-soft)',
+    backgroundColor: 'transparent',
     color: 'var(--error-color)',
     border: 'none'
   },
   
   typeWarning: {
-    backgroundColor: 'var(--warning-soft)',
+    backgroundColor: 'transparent',
     color: 'var(--warning-color)',
     border: 'none'
   },
   
   typeDebug: {
-    backgroundColor: 'var(--neutral-muted)',
+    backgroundColor: 'transparent',
     color: 'var(--text-dark)',
     border: 'none'
   },
   
   typeTool: {
-    backgroundColor: 'var(--primary-soft)',
+    backgroundColor: 'transparent',
     color: 'var(--primary-color)',
     border: 'none'
   },
   
   typeEvent: {
-    backgroundColor: 'var(--warning-strong)',
+    backgroundColor: 'transparent',
     color: 'var(--warning-color)',
     border: 'none'
   },
   
   typeResult: {
-    backgroundColor: 'var(--info-muted)',
+    backgroundColor: 'transparent',
     color: 'var(--info-color)',
     border: 'none'
   },
   
   typeUser: {
-    backgroundColor: 'var(--neutral-soft)',
+    backgroundColor: 'transparent',
     color: 'var(--text-color)',
     border: 'none'
   },
 
   typeAgent: {
-    backgroundColor: 'var(--primary-soft)',
+    backgroundColor: 'transparent',
     color: 'var(--primary-color)',
     border: 'none'
   },
 
   typeThinking: {
-    backgroundColor: 'var(--info-soft)',
+    backgroundColor: 'transparent',
     color: 'var(--info-color)',
     border: 'none'
   },
@@ -1247,7 +1248,8 @@ export const styles = {
     backgroundColor: 'var(--message-user-bg)',
     borderColor: 'var(--message-user-border)',
     color: 'var(--message-user-text)',
-    borderRadius: '16px'
+    borderRadius: '16px',
+    textAlign: 'center'
   },
 
   emptyAssistantMessage: {

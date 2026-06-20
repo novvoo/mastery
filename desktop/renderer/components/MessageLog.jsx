@@ -36,6 +36,38 @@ import {
 function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear, onAskAgent }) {
   const ipc = useIPC();
 
+  const getStableMessageId = useCallback((msg = {}, index, scope = 'list') => {
+    if (msg.id) return String(msg.id);
+    const timestamp = msg.timestamp || msg.createdAt || '';
+    const type = msg.type || msg.event || 'message';
+    const contentSeed = [
+      msg.toolName,
+      msg.name,
+      typeof msg.content === 'string' ? msg.content.slice(0, 80) : '',
+      typeof msg.message === 'string' ? msg.message.slice(0, 80) : '',
+      typeof msg.result === 'string' ? msg.result.slice(0, 80) : '',
+    ].filter(Boolean).join(':');
+    return `${scope}_${type}_${timestamp}_${index}_${contentSeed}`.replace(/\s+/g, '_');
+  }, []);
+
+  const safeStringify = useCallback((value, fallback = '') => {
+    if (value == null) return fallback;
+    if (typeof value === 'string') return value;
+    try {
+      const seen = new WeakSet();
+      return JSON.stringify(value, (_key, item) => {
+        if (typeof item === 'object' && item !== null) {
+          if (seen.has(item)) return '[Circular]';
+          seen.add(item);
+        }
+        if (typeof item === 'function') return `[Function ${item.name || 'anonymous'}]`;
+        return item;
+      }, 2);
+    } catch (error) {
+      return fallback || String(value);
+    }
+  }, []);
+
   // 在消息容器上用事件委托捕获所有 <a> 标签的点击
   // 这样无论链接是 ReactMarkdown 生成的，还是嵌入的 HTML 结构，都能被正确拦截
   // 比自定义 ReactMarkdown components 更可靠（components 对复杂嵌套内容可能不生效）
@@ -127,6 +159,16 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
 
     return '';
   }, []);
+
+  const getMessageSerializableText = useCallback((msg = {}) => {
+    return getMessageDisplayText(msg)
+      || safeStringify(msg.content)
+      || safeStringify(msg.message)
+      || safeStringify(msg.result)
+      || safeStringify(msg.payload)
+      || safeStringify(msg.raw)
+      || '';
+  }, [getMessageDisplayText, safeStringify]);
 
   // 状态
   const [filter, setFilter] = useState('all');
@@ -433,6 +475,12 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         newSet.delete(msgId);
       } else {
         newSet.add(msgId);
+        setShowDetails(detailsPrev => {
+          if (!detailsPrev.has(msgId)) return detailsPrev;
+          const nextDetails = new Set(detailsPrev);
+          nextDetails.delete(msgId);
+          return nextDetails;
+        });
       }
       return newSet;
     });
@@ -440,6 +488,12 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   
   // 处理消息详情显示/隐藏
   const handleToggleDetails = useCallback((msgId) => {
+    setCollapsedMessages(prev => {
+      if (!prev.has(msgId)) return prev;
+      const next = new Set(prev);
+      next.delete(msgId);
+      return next;
+    });
     setShowDetails(prev => {
       const newSet = new Set(prev);
       if (newSet.has(msgId)) {
@@ -452,12 +506,12 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   }, []);
   
   // 处理复制消息
-  const handleCopyMessage = useCallback(async (msg) => {
-    const content = msg.content || msg.message || '';
+  const handleCopyMessage = useCallback(async (msg, msgId) => {
+    const content = getMessageSerializableText(msg);
     
     try {
       await navigator.clipboard.writeText(content);
-      setCopiedMessage(msg.id);
+      setCopiedMessage(msgId || msg.id);
       
       // 3秒后清除提示
       setTimeout(() => {
@@ -466,7 +520,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     } catch (error) {
       console.error('[MessageLog] 复制失败:', error);
     }
-  }, []);
+  }, [getMessageSerializableText]);
 
   const handleAskAgent = useCallback((msg) => {
     if (onAskAgent) {
@@ -586,7 +640,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   
   // 渲染消息项
   const renderMessage = (msg, index, isTimeline = false) => {
-    const msgId = msg.id || `msg_${index}`;
+    const msgId = getStableMessageId(msg, index, isTimeline ? 'timeline' : 'message');
     const isCollapsed = collapsedMessages.has(msgId);
     const showDetail = showDetails.has(msgId);
     const isSelected = selectedMessage === msgId;
@@ -685,7 +739,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
                   }}>
                     {typeof value === 'string'
                       ? (value.length > 200 ? value.slice(0, 200) + '…' : value)
-                      : JSON.stringify(value)
+                      : safeStringify(value)
                     }
                   </span>
                 </div>
@@ -715,9 +769,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         return renderAssistantBubble();
       }
 
-      const summary = msg.content || msg.message || msg.result || msg.payload || '执行成功';
-      const hasContent = summary && summary.length > 0;
-      const displayText = typeof summary === 'string' ? summary : JSON.stringify(summary, null, 2);
+      const summary = msg.content ?? msg.message ?? msg.result ?? msg.payload ?? '执行成功';
+      const displayText = safeStringify(summary, '执行成功');
+      const hasContent = Boolean(displayText.trim());
 
       return (
         <div style={{ ...styles.actionCard, borderColor: 'var(--success-color)' }}>
@@ -750,8 +804,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
 
     // ── 错误卡片渲染 ───────────────────────────
     const renderErrorCard = () => {
-      const errorMsg = msg.content || msg.message || msg.error || msg.payload || '操作失败';
-      const displayMsg = typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg, null, 2);
+      const errorMsg = msg.content ?? msg.message ?? msg.error ?? msg.payload ?? '操作失败';
+      const displayMsg = safeStringify(errorMsg, '操作失败');
 
       return (
         <div style={{ ...styles.actionCard, borderColor: 'var(--error-border)' }}>
@@ -1053,7 +1107,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           style={styles.actionButton}
           onClick={(e) => {
             e.stopPropagation();
-            handleCopyMessage(msg);
+            handleCopyMessage(msg, msgId);
           }}
           title={t('msg.copy_hint')}
         >
@@ -1116,13 +1170,13 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           {msg.payload && (
             <div style={{ marginTop: '8px' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>{t('msg.payload')}</div>
-              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--text-color)', backgroundColor: 'transparent', borderRadius: '4px' }}>{typeof msg.payload === 'string' ? msg.payload : JSON.stringify(msg.payload, null, 2)}</pre>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--text-color)', backgroundColor: 'transparent', borderRadius: '4px' }}>{safeStringify(msg.payload)}</pre>
             </div>
           )}
           {msg.raw && (
             <div style={{ marginTop: '8px' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>{t('msg.raw_data')}</div>
-              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--text-color)', backgroundColor: 'transparent', borderRadius: '4px' }}>{typeof msg.raw === 'string' ? msg.raw : JSON.stringify(msg.raw, null, 2)}</pre>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--text-color)', backgroundColor: 'transparent', borderRadius: '4px' }}>{safeStringify(msg.raw)}</pre>
             </div>
           )}
         </div>
@@ -1546,7 +1600,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             {Object.entries(groupedMessages).map(([groupTitle, msgs]) => (
               <React.Fragment key={groupTitle}>
                 {renderGroupHeader(groupTitle, msgs.length)}
-                {msgs.map((msg, index) => renderMessage(msg, index, true))}
+                {msgs.map((msg, index) => renderMessage(msg, `${groupTitle}_${index}`, true))}
               </React.Fragment>
             ))}
           </div>

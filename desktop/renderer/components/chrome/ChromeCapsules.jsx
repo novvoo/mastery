@@ -6,6 +6,7 @@ import {
   CAPSULE_POSITIONS,
   CAPSULE_PRIMARY,
   CAPSULE_SECONDARY,
+  CAPSULE_CHROMELESS,
   getCapsuleTone,
   STATUS_TONE,
   statusDotStyle,
@@ -27,7 +28,7 @@ function StatusCapsule({ runtimeStatusMeta, runtimeStatus, isConnected, isMac })
 
   return (
     <div
-      style={{ ...CAPSULE_PRIMARY, ...CAPSULE_POSITIONS.status(isMac) }}
+      style={{ ...CAPSULE_PRIMARY, ...CAPSULE_CHROMELESS, ...CAPSULE_POSITIONS.status(isMac) }}
       title={t('status.ipc', { state: isConnected ? t('status.connected') : t('status.disconnected') })}
     >
       <span style={statusDotStyle(tone, runtimeStatus)} />
@@ -41,19 +42,21 @@ function StatusCapsule({ runtimeStatusMeta, runtimeStatus, isConnected, isMac })
 }
 
 function StatsCapsule({ toolCount, stats, appVersion }) {
+  const messageCount = stats?.messageCount || 0;
+  const toolCalls = stats?.toolCalls || 0;
+  if (messageCount === 0 && toolCalls === 0) {
+    return null;
+  }
+
   return (
-    <div style={{ ...CAPSULE_SECONDARY, ...CAPSULE_POSITIONS.stats }}>
-      {stats && (
+    <div style={{ ...CAPSULE_SECONDARY, ...CAPSULE_CHROMELESS, ...CAPSULE_POSITIONS.stats }}>
+      <span>{messageCount} msgs</span>
+      {toolCalls > 0 && (
         <>
-          <span>💬 {stats.messageCount || 0}</span>
           <span style={{ opacity: 0.25 }}>·</span>
-          <span>🔧 {stats.toolCalls || 0}</span>
-          <span style={{ opacity: 0.25 }}>·</span>
+          <span>{toolCalls} tools</span>
         </>
       )}
-      <span>📁 {toolCount}</span>
-      <span style={{ opacity: 0.25 }}>·</span>
-      <span style={{ color: 'var(--text-color)' }}>v{appVersion}</span>
     </div>
   );
 }

@@ -577,6 +577,8 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
       'app:openExternal',
       'workspace:setWorkingDirectory',
       'workspace:listDirectory',
+      'workspace:readFile',
+      'workspace:writeFile',
       'workspace:getFileDiff',
       'workspace:isGitRepo',
       'activity:undo',
@@ -694,6 +696,12 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
 
         case 'workspace:getFileDiff':
           return this.createResponse(message, await this.#handleFileDiff(message.payload));
+
+        case 'workspace:readFile':
+          return this.createResponse(message, await this.#handleReadWorkspaceFile(message.payload));
+
+        case 'workspace:writeFile':
+          return this.createResponse(message, await this.#handleWriteWorkspaceFile(message.payload));
 
         case 'workspace:isGitRepo':
           return this.createResponse(message, await this.#handleIsGitRepo());
@@ -838,6 +846,82 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
       return { isGitRepo: true };
     } catch {
       return { isGitRepo: false };
+    }
+  }
+
+  #resolveWorkspacePath(filePath) {
+    const requestedPath = String(filePath || '').trim();
+    if (!requestedPath) {
+      throw new Error('Missing file path.');
+    }
+
+    const workingDirectory = this.#engine?.getConfig?.().workingDirectory || process.cwd();
+    const root = path.resolve(workingDirectory);
+    const absolutePath = path.resolve(root, requestedPath);
+    const relativePath = path.relative(root, absolutePath);
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+      throw new Error('Path is outside the current workspace.');
+    }
+
+    return {
+      absolutePath,
+      relativePath: relativePath || path.basename(absolutePath),
+      workingDirectory: root,
+    };
+  }
+
+  async #handleReadWorkspaceFile(payload = {}) {
+    try {
+      const { absolutePath, relativePath } = this.#resolveWorkspacePath(payload?.path || payload?.target);
+      const stat = fs.statSync(absolutePath);
+      if (!stat.isFile()) {
+        return { success: false, error: 'Selected path is not a file.', path: relativePath };
+      }
+
+      const maxBytes = Number(payload?.maxBytes || 512 * 1024);
+      if (stat.size > maxBytes) {
+        return {
+          success: false,
+          error: `File is too large to preview (${stat.size} bytes).`,
+          path: relativePath,
+          size: stat.size,
+        };
+      }
+
+      const content = fs.readFileSync(absolutePath, 'utf8');
+      return {
+        success: true,
+        path: relativePath,
+        name: path.basename(absolutePath),
+        content,
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+      };
+    } catch (error) {
+      return { success: false, error: error.message || 'Unable to read file.' };
+    }
+  }
+
+  async #handleWriteWorkspaceFile(payload = {}) {
+    try {
+      const { absolutePath, relativePath, workingDirectory } = this.#resolveWorkspacePath(payload?.path || payload?.target);
+      const content = String(payload?.content ?? '');
+      fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+      fs.writeFileSync(absolutePath, content, 'utf8');
+      const stat = fs.statSync(absolutePath);
+      this.broadcast('workspace:changed', {
+        path: relativePath,
+        workingDirectory,
+        action: 'write',
+      });
+      return {
+        success: true,
+        path: relativePath,
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+      };
+    } catch (error) {
+      return { success: false, error: error.message || 'Unable to write file.' };
     }
   }
 

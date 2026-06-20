@@ -16,9 +16,11 @@ import { LLMSetupModal } from './components/LLMSetupModal.jsx';
 import { ManagementPage } from './components/management/ManagementPage.jsx';
 import { ChromeCapsules } from './components/chrome/ChromeCapsules.jsx';
 import { ActivityRail } from './components/workbench/ActivityRail.jsx';
+import { BottomTerminalPanel } from './components/workbench/BottomTerminalPanel.jsx';
 import { ChatWorkspace } from './components/workbench/ChatWorkspace.jsx';
 import { InspectorPanel } from './components/workbench/InspectorPanel.jsx';
 import { SidebarPanel } from './components/workbench/SidebarPanel.jsx';
+import { Button } from './components/ui/index.js';
 import { useRuntime } from './hooks/useRuntime.js';
 import { useIPC } from './hooks/useIPC.js';
 import { formatPreviewUrlInput, normalizePreviewUrlInput } from './preview-url.js';
@@ -67,6 +69,92 @@ import './index.css';
  * 主应用组件
  */
 const DESKTOP_THEME_STORAGE_KEY = 'ai-agent-desktop-theme';
+const TERMINAL_PANEL_STORAGE_KEY = 'ai-agent-terminal-panel';
+
+function WorkbenchControls({
+  sidebarCollapsed,
+  isTerminalVisible,
+  summaryPanelVisible,
+  onExport,
+  onOpenPreview,
+  onToggleSidebar,
+  onToggleTerminal,
+  onToggleInspector,
+  onClearMessages,
+}) {
+  const iconButton = {
+    width: '28px',
+    height: '28px',
+    minWidth: '28px',
+    padding: 0,
+    borderRadius: '6px',
+    fontSize: '12px',
+    fontFamily: 'var(--font-mono)',
+  };
+  const activeButton = {
+    backgroundColor: 'var(--primary-faint)',
+    borderColor: 'var(--primary-border)',
+    color: 'var(--primary-color)',
+  };
+
+  return (
+    <div style={styles.workspaceControls}>
+      <Button variant="ghost" size="sm" style={iconButton} onClick={onExport} title={i18nT('chat.export')} ariaLabel={i18nT('chat.export')}>↓</Button>
+      <Button variant="ghost" size="sm" style={iconButton} onClick={onOpenPreview} title={i18nT('chat.preview')} ariaLabel={i18nT('chat.preview')}>◱</Button>
+      <span style={styles.chatHeaderActionDivider} />
+      <Button
+        variant="icon"
+        size="sm"
+        style={{ ...iconButton, ...(!sidebarCollapsed ? activeButton : {}) }}
+        onClick={onToggleSidebar}
+        title={sidebarCollapsed ? i18nT('window.expand_sidebar') : i18nT('window.collapse_sidebar')}
+        ariaLabel={i18nT('window.toggle_sidebar')}
+      >
+        ◧
+      </Button>
+      <Button
+        variant="icon"
+        size="sm"
+        style={{ ...iconButton, ...(isTerminalVisible ? activeButton : {}) }}
+        onClick={onToggleTerminal}
+        title="Bottom terminal"
+        ariaLabel="Bottom terminal"
+      >
+        ▔
+      </Button>
+      <Button
+        variant="icon"
+        size="sm"
+        style={{ ...iconButton, ...(summaryPanelVisible ? activeButton : {}) }}
+        onClick={onToggleInspector}
+        title="toggle-inspector"
+        ariaLabel="toggle-inspector"
+      >
+        ◨
+      </Button>
+      <Button variant="ghost" size="sm" style={iconButton} onClick={onClearMessages} title={i18nT('chat.clear_messages')} ariaLabel={i18nT('chat.clear_messages')}>×</Button>
+    </div>
+  );
+}
+
+function readTerminalPanelLayout() {
+  if (typeof localStorage === 'undefined') {
+    return {};
+  }
+  try {
+    return JSON.parse(localStorage.getItem(TERMINAL_PANEL_STORAGE_KEY) || '{}');
+  } catch (_) {
+    return {};
+  }
+}
+
+function clampTerminalHeight(height) {
+  const numeric = Number(height);
+  if (!Number.isFinite(numeric)) {
+    return 280;
+  }
+  return Math.min(520, Math.max(180, numeric));
+}
 
 function App() {
   // 状态管理
@@ -112,6 +200,10 @@ function App() {
   const [activeInspectorTab, setActiveInspectorTab] = useState(readStoredInspectorTab);
   const [inspectorPanelWidth, setInspectorPanelWidth] = useState(() => clampInspectorWidth(readDesktopLayout().inspectorPanelWidth));
   const [inspectorExpanded, setInspectorExpanded] = useState(() => Boolean(readDesktopLayout().inspectorExpanded));
+  const [terminalClosed, setTerminalClosed] = useState(() => Boolean(readTerminalPanelLayout().closed));
+  const [terminalOpen, setTerminalOpen] = useState(() => readTerminalPanelLayout().open !== false);
+  const [terminalPanelHeight, setTerminalPanelHeight] = useState(() => clampTerminalHeight(readTerminalPanelLayout().height));
+  const [activeTerminalTab, setActiveTerminalTab] = useState(() => readTerminalPanelLayout().activeTab || 'terminal');
   const [chatInput, setChatInput] = useState('');
   const [inputNotice, setInputNotice] = useState(null);
   const [inputFocused, setInputFocused] = useState(false);
@@ -170,6 +262,15 @@ function App() {
   }, [activeInspectorTab, inspectorExpanded, inspectorPanelWidth, sidebarCollapsed, summaryPanelVisible]);
 
   useEffect(() => {
+    localStorage.setItem(TERMINAL_PANEL_STORAGE_KEY, JSON.stringify({
+      activeTab: activeTerminalTab,
+      closed: terminalClosed,
+      height: terminalPanelHeight,
+      open: terminalOpen
+    }));
+  }, [activeTerminalTab, terminalClosed, terminalOpen, terminalPanelHeight]);
+
+  useEffect(() => {
     if (typeof document !== 'undefined') {
       document.documentElement.setAttribute('data-theme', theme);
       localStorage.setItem(DESKTOP_THEME_STORAGE_KEY, theme);
@@ -178,6 +279,43 @@ function App() {
 
   const toggleTheme = useCallback(() => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  }, []);
+
+  const handleTerminalOpenChange = useCallback((open) => {
+    setTerminalClosed(false);
+    setTerminalOpen(Boolean(open));
+    if (open) {
+      setActiveTerminalTab('terminal');
+    }
+  }, []);
+
+  const toggleTerminalPanel = useCallback(() => {
+    setTerminalClosed(false);
+    setTerminalOpen(prev => !prev);
+    setActiveTerminalTab('terminal');
+  }, []);
+
+  const handleTerminalClose = useCallback(() => {
+    setTerminalClosed(true);
+    setTerminalOpen(false);
+  }, []);
+
+  useEffect(() => {
+    const handleTerminalShortcut = (event) => {
+      const isBacktick = event.key === '`' || event.code === 'Backquote';
+      if (!isBacktick || !(event.ctrlKey || event.metaKey || event.shiftKey)) {
+        return;
+      }
+      event.preventDefault();
+      setTerminalClosed(false);
+      setTerminalOpen(prev => !prev);
+      setActiveTerminalTab('terminal');
+    };
+
+    window.addEventListener('keydown', handleTerminalShortcut);
+    return () => {
+      window.removeEventListener('keydown', handleTerminalShortcut);
+    };
   }, []);
 
   // I18n 订阅 — 监听语言变化并重新渲染
@@ -1255,6 +1393,21 @@ function App() {
         </div>
       )}
 
+      <WorkbenchControls
+        sidebarCollapsed={sidebarCollapsed}
+        isTerminalVisible={!terminalClosed && terminalOpen}
+        summaryPanelVisible={summaryPanelVisible}
+        onExport={handleExport}
+        onOpenPreview={() => {
+          setSummaryPanelVisible(true);
+          setActiveInspectorTab('preview');
+        }}
+        onToggleSidebar={() => setSidebarCollapsed(prev => !prev)}
+        onToggleTerminal={toggleTerminalPanel}
+        onToggleInspector={() => setSummaryPanelVisible(prev => !prev)}
+        onClearMessages={runtime.clearMessages}
+      />
+
       <div style={styles.mainContentWrapper}>
         <ActivityRail
         activeTab={activeTab}
@@ -1268,7 +1421,6 @@ function App() {
           setSidebarCollapsed(false);
         }}
         onToggleSettings={() => setShowManagement(prev => !prev)}
-        onToggleSidebar={() => setSidebarCollapsed(prev => !prev)}
       />
 
         {!sidebarCollapsed && (
@@ -1286,7 +1438,6 @@ function App() {
             onClearHistory={handleClearAgentHistory}
             onWorkingDirectoryChange={handleWorkingDirectoryChange}
             onNewTask={handleNewTask}
-            onCollapse={() => setSidebarCollapsed(true)}
             projectTree={{
               directoryChildren,
               expandedDirectories,
@@ -1316,16 +1467,21 @@ function App() {
             onBlur={() => setInputFocused(false)}
             onSendMessage={handleSendMessage}
             onContinue={handleContinueAgentInput}
-            onExport={handleExport}
-            onOpenPreview={() => {
-              setSummaryPanelVisible(true);
-              setActiveInspectorTab('preview');
-            }}
-            onToggleInspector={() => setSummaryPanelVisible(prev => !prev)}
-            summaryPanelVisible={summaryPanelVisible}
             workingDirectory={workingDirectory}
             fileServerUrl={fileServerUrl}
           />
+          {!terminalClosed && (
+            <BottomTerminalPanel
+              activeTab={activeTerminalTab}
+              height={terminalPanelHeight}
+              isOpen={terminalOpen}
+              workingDirectory={workingDirectory}
+              onActiveTabChange={setActiveTerminalTab}
+              onClose={handleTerminalClose}
+              onHeightChange={setTerminalPanelHeight}
+              onOpenChange={handleTerminalOpenChange}
+            />
+          )}
         </div>
 
         {summaryPanelVisible && (

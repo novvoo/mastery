@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { styles } from '../MessageLog.styles.js';
 import { useIPC } from '../../hooks/useIPC.js';
 import { t } from '../../i18n.js';
@@ -172,7 +172,6 @@ export function RuntimeDetailsPanel({
     loading: false,
     diffs: {},
   });
-
   const toggleActivityExpand = useCallback((activityId) => {
     setExpandedActivities(prev => {
       const next = new Set(prev);
@@ -840,63 +839,87 @@ export function RuntimeDetailsPanel({
     );
   };
 
-  const renderCompactCompletedPanel = () => (
-    <div key={`${group.id}_runtime`} style={{
-      ...styles.runtimeDetailsPanel,
-      border: 'none',
-      backgroundColor: 'transparent',
-      backdropFilter: 'none',
-      WebkitBackdropFilter: 'none',
-      borderRadius: 0,
-      marginBottom: '4px',
-    }}>
-      <div
-        style={{
-          ...styles.runtimeDetailsHeader,
-          ...styles.runtimeDetailsHeaderInteractive,
-          ...localStyles.compactCompletedHeader,
-        }}
-        onClick={() => onRuntimeDetailsToggle(group.id)}
-        title={t('msg.details')}
-      >
-        <span style={localStyles.compactProcessedText}>
-          已处理 {formatDuration(runtimeDurationMs)}
-        </span>
-        {hasFileChanges && (
-          <span style={localStyles.compactChangeSummary}>
-            {renderLineDelta(changeTotals, true)}
-            <span>{changedFiles.length} 个文件</span>
-          </span>
-        )}
-        <span style={localStyles.compactChevron}>{'>'}</span>
-        {hasFileChanges && (
-          <span style={localStyles.compactActionGroup}>
+  const renderCompactCompletedPanel = () => {
+    const failedActivityCount = activitySummary.activities.filter(activity => activity.phase === 'failed').length;
+    const totalActivityCount = activitySummary.total || visibleRuntimeDetails.length || activitySummary.activities.length;
+    const fileCount = changedFiles.length || activitySummary.files.length;
+    const summaryItems = [
+      runtimeDurationMs > 0 ? formatDuration(runtimeDurationMs) : null,
+      totalActivityCount > 0 ? `${totalActivityCount} steps` : null,
+      fileCount > 0 ? `${fileCount} files` : null,
+      failedActivityCount > 0 ? `${failedActivityCount} failed` : null,
+    ].filter(Boolean);
+
+    return (
+      <div key={`${group.id}_runtime`} style={localStyles.completedCapsuleHost}>
+        <div
+          style={localStyles.executionHud}
+          onClick={() => onRuntimeDetailsToggle(group.id)}
+          title={t('msg.details')}
+        >
+          <div style={localStyles.executionHudMain}>
+            <div style={localStyles.executionHudTitleRow}>
+              <span style={localStyles.executionStatusMark}>
+                <span style={localStyles.capsuleDot} />
+                {statusText}
+              </span>
+              {summaryItems.length > 0 && (
+                <span style={localStyles.executionSummaryText}>
+                  {summaryItems.map((item, index) => (
+                    <React.Fragment key={item}>
+                      {index > 0 && <span style={localStyles.executionSeparator}>·</span>}
+                      <span style={failedActivityCount > 0 && item.endsWith('failed') ? localStyles.executionSummaryError : undefined}>
+                        {item}
+                      </span>
+                    </React.Fragment>
+                  ))}
+                </span>
+              )}
+              {hasFileChanges && renderLineDelta(changeTotals, true)}
+            </div>
+          </div>
+
+          <div style={localStyles.executionActionCluster}>
+            {hasFileChanges && (
+              <>
+                <button
+                  type="button"
+                  style={localStyles.capsuleActionButton}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openChangeDrawer('undo');
+                  }}
+                >
+                  撤销
+                </button>
+                <button
+                  type="button"
+                  style={localStyles.capsuleActionButton}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openChangeDrawer('review');
+                  }}
+                >
+                  审核
+                </button>
+              </>
+            )}
             <button
               type="button"
-              style={styles.activityActionButton}
+              style={localStyles.capsuleDetailsButton}
               onClick={(event) => {
                 event.stopPropagation();
-                openChangeDrawer('undo');
+                onRuntimeDetailsToggle(group.id);
               }}
             >
-              撤销
+              详情
             </button>
-            <button
-              type="button"
-              style={styles.activityActionButton}
-              onClick={(event) => {
-                event.stopPropagation();
-                openChangeDrawer('review');
-              }}
-            >
-              审核
-            </button>
-          </span>
-        )}
+          </div>
+        </div>
+        {renderChangeDrawer()}
       </div>
-      {renderChangeDrawer()}
-    </div>
-  );
+    );
+  };
 
   if (!isRunningGroup && !isExpanded) {
     return renderCompactCompletedPanel();
@@ -1042,6 +1065,158 @@ const localStyles = {
   },
   tabContent: {
     overflow: 'visible',
+  },
+  completedCapsuleHost: {
+    marginTop: '4px',
+    marginBottom: '8px',
+    display: 'flex',
+    justifyContent: 'flex-start',
+    animation: 'fadeIn 0.18s ease-out',
+  },
+  executionHud: {
+    maxWidth: 'min(820px, 100%)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '12px',
+    padding: '4px 0',
+    borderRadius: '10px',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
+    backdropFilter: 'none',
+    WebkitBackdropFilter: 'none',
+    boxShadow: 'none',
+    cursor: 'pointer',
+  },
+  executionHudMain: {
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    padding: '4px 2px',
+    borderRadius: '8px',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
+  },
+  executionHudTitleRow: {
+    minWidth: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    flexWrap: 'wrap',
+  },
+  executionStatusMark: {
+    height: '24px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: 0,
+    borderRadius: '999px',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
+    color: 'var(--success-color)',
+    fontSize: '11px',
+    fontWeight: 850,
+    whiteSpace: 'nowrap',
+  },
+  executionSummaryText: {
+    minWidth: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  executionSeparator: {
+    color: 'var(--text-dark)',
+    fontWeight: 600,
+  },
+  executionSummaryError: {
+    color: 'var(--error-color)',
+  },
+  executionActionCluster: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: '6px',
+  },
+  completedCapsuleDock: {
+    maxWidth: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    flexWrap: 'wrap',
+    padding: '6px 0',
+    borderRadius: '999px',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
+    backdropFilter: 'none',
+    WebkitBackdropFilter: 'none',
+    boxShadow: 'none',
+    cursor: 'pointer',
+  },
+  overviewCapsule: {
+    minHeight: '28px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    maxWidth: '180px',
+    padding: '0 2px',
+    borderRadius: '999px',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 750,
+    boxShadow: 'none',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  overviewCapsuleSuccess: {
+    color: 'var(--success-color)',
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+  },
+  capsuleDot: {
+    width: '7px',
+    height: '7px',
+    borderRadius: '50%',
+    backgroundColor: 'var(--success-color)',
+    boxShadow: '0 0 0 3px var(--success-faint)',
+    flexShrink: 0,
+  },
+  capsuleKicker: {
+    color: 'var(--text-dark)',
+    fontSize: '10px',
+    fontWeight: 800,
+    textTransform: 'uppercase',
+  },
+  capsuleActionButton: {
+    height: '28px',
+    padding: '0 9px',
+    borderRadius: '999px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 800,
+  },
+  capsuleDetailsButton: {
+    height: '28px',
+    padding: '0 10px',
+    borderRadius: '999px',
+    border: '1px solid var(--primary-border)',
+    backgroundColor: 'var(--primary-soft)',
+    color: 'var(--primary-color)',
+    fontSize: '11px',
+    fontWeight: 850,
   },
   compactCompletedHeader: {
     display: 'flex',

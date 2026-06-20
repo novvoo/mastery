@@ -19,7 +19,6 @@ export function SidebarPanel({
   onClearHistory,
   onWorkingDirectoryChange,
   onNewTask,
-  onCollapse,
   projectTree,
 }) {
   const content = activeTab === 'tools' ? (
@@ -54,7 +53,6 @@ export function SidebarPanel({
             {activeTab !== 'tools' && (
               <Button variant="icon" size="sm" onClick={onNewTask} title="new" ariaLabel="new">+</Button>
             )}
-            <Button variant="icon" size="sm" onClick={onCollapse} title="collapse" ariaLabel="collapse">×</Button>
           </>
         }
       />

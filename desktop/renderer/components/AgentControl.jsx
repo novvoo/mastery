@@ -13,6 +13,7 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { getRuntimeStatusMeta } from '../runtime-status.js';
+import { useIPC } from '../hooks/useIPC.js';
 
 // removed
 const ACTIVE_AGENT_SESSION_STORAGE_KEY = 'activeAgentConversationSessionId';
@@ -53,7 +54,7 @@ const styles = {
   statusBadge: {
     display: 'inline-flex',
     alignItems: 'center',
-    padding: '4px 10px',
+    padding: '4px 0',
     borderRadius: '999px',
     fontSize: '12px',
     fontWeight: '500',
@@ -61,31 +62,31 @@ const styles = {
   },
   
   statusRunning: {
-    backgroundColor: 'var(--warning-soft)',
+    backgroundColor: 'transparent',
     color: 'var(--warning-color)',
     border: 'none'
   },
   
   statusIdle: {
-    backgroundColor: 'var(--success-soft)',
+    backgroundColor: 'transparent',
     color: 'var(--success-color)',
     border: 'none'
   },
   
   statusError: {
-    backgroundColor: 'var(--error-soft)',
+    backgroundColor: 'transparent',
     color: 'var(--error-color)',
     border: 'none'
   },
   
   statusCompleted: {
-    backgroundColor: 'var(--info-soft)',
+    backgroundColor: 'transparent',
     color: 'var(--info-color)',
     border: 'none'
   },
 
   statusWaiting: {
-    backgroundColor: 'var(--warning-soft)',
+    backgroundColor: 'transparent',
     color: 'var(--warning-color)',
     border: 'none'
   },
@@ -95,17 +96,19 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    padding: '9px 10px',
-    borderRadius: '8px',
-    backgroundColor: 'var(--glass-bg-light)',
-    border: '1px solid var(--glass-border)'
+    padding: '0 0 8px',
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderBottom: '1px solid var(--border-subtle)'
   },
   
   directoryIcon: {
     fontSize: '10px',
     color: 'var(--text-dark)',
     fontWeight: '800',
-    letterSpacing: '0'
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase'
   },
   
   directoryText: {
@@ -118,20 +121,20 @@ const styles = {
   },
   
   changeButton: {
-    padding: '4px 10px',
-    borderRadius: '6px',
-    border: '1px solid var(--glass-border)',
-    backgroundColor: 'var(--glass-bg-light)',
-    color: 'var(--text-color)',
+    padding: '3px 2px',
+    borderRadius: '4px',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
+    color: 'var(--text-muted)',
     cursor: 'pointer',
     fontSize: '11px',
     transition: 'all var(--transition-fast)'
   },
   projectExplorer: {
-    marginTop: '8px',
-    borderRadius: '10px',
-    border: '1px solid var(--glass-border)',
-    backgroundColor: 'var(--glass-bg-light)',
+    marginTop: '10px',
+    borderRadius: '0',
+    border: 'none',
+    backgroundColor: 'transparent',
     overflow: 'hidden'
   },
   projectExplorerHeader: {
@@ -139,8 +142,8 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: '8px',
-    padding: '8px 10px',
-    borderBottom: '1px solid var(--glass-border)'
+    padding: '0 0 7px',
+    borderBottom: '1px solid var(--border-subtle)'
   },
   projectExplorerTitle: {
     minWidth: 0,
@@ -154,9 +157,9 @@ const styles = {
   projectExplorerButton: {
     width: '24px',
     height: '24px',
-    borderRadius: '6px',
-    border: '1px solid var(--glass-border)',
-    backgroundColor: 'var(--glass-bg-light)',
+    borderRadius: '4px',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
     color: 'var(--text-muted)',
     cursor: 'pointer',
     fontSize: '12px',
@@ -165,22 +168,22 @@ const styles = {
   projectTree: {
     maxHeight: '240px',
     overflow: 'auto',
-    padding: '4px'
+    padding: '5px 0'
   },
   projectTreeRow: {
     width: '100%',
     minHeight: '26px',
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
+    gap: '7px',
     border: 'none',
-    borderRadius: '4px',
+    borderRadius: '5px',
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',
     cursor: 'default',
     fontSize: '12px',
     textAlign: 'left',
-    padding: '3px 6px'
+    padding: '3px 4px'
   },
   projectTreeRowInteractive: {
     cursor: 'pointer'
@@ -193,12 +196,13 @@ const styles = {
     textAlign: 'center'
   },
   projectTreeType: {
-    width: '24px',
+    width: '26px',
     flexShrink: 0,
     color: 'var(--text-dark)',
-    fontSize: '9px',
+    fontSize: '10px',
     fontWeight: '800',
-    letterSpacing: '0'
+    letterSpacing: '0',
+    textTransform: 'uppercase'
   },
   projectTreeName: {
     minWidth: 0,
@@ -206,6 +210,10 @@ const styles = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     color: 'var(--text-color)'
+  },
+  projectTreeRowActive: {
+    backgroundColor: 'var(--primary-faint)',
+    color: 'var(--primary-color)'
   },
   projectTreeMeta: {
     marginLeft: 'auto',
@@ -217,6 +225,105 @@ const styles = {
     padding: '9px 10px',
     color: 'var(--text-dark)',
     fontSize: '12px'
+  },
+  fileWorkbench: {
+    borderTop: '1px solid var(--border-subtle)',
+    backgroundColor: 'transparent',
+    display: 'flex',
+    flexDirection: 'column',
+    minHeight: '220px',
+    maxHeight: '420px'
+  },
+  fileWorkbenchHeader: {
+    minHeight: '36px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '6px 0',
+    borderBottom: '1px solid var(--border-subtle)'
+  },
+  fileWorkbenchTitle: {
+    minWidth: 0,
+    flex: 1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: 'var(--text-color)',
+    fontSize: '12px',
+    fontWeight: 800
+  },
+  fileWorkbenchMeta: {
+    flexShrink: 0,
+    color: 'var(--text-dark)',
+    fontSize: '10px',
+    fontWeight: 700
+  },
+  fileActionButton: {
+    height: '24px',
+    padding: '0 6px',
+    borderRadius: '4px',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
+    color: 'var(--text-muted)',
+    fontSize: '10px',
+    fontWeight: 800,
+    cursor: 'pointer'
+  },
+  fileEditorBody: {
+    flex: 1,
+    minHeight: 0,
+    overflow: 'auto',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '11px',
+    lineHeight: 1.55,
+    backgroundColor: 'var(--bg-depth-0)'
+  },
+  codeLine: {
+    display: 'grid',
+    gridTemplateColumns: '34px minmax(0, 1fr)',
+    minHeight: '18px'
+  },
+  codeLineNumber: {
+    paddingRight: '8px',
+    color: 'var(--text-dark)',
+    textAlign: 'right',
+    userSelect: 'none',
+    borderRight: '1px solid var(--border-subtle)'
+  },
+  codeLineContent: {
+    paddingLeft: '10px',
+    paddingRight: '8px',
+    whiteSpace: 'pre',
+    color: 'var(--text-muted)'
+  },
+  codeKeyword: {
+    color: 'var(--info-color)',
+    fontWeight: 800
+  },
+  codeString: {
+    color: 'var(--success-color)'
+  },
+  codeComment: {
+    color: 'var(--text-dark)',
+    fontStyle: 'italic'
+  },
+  codeNumber: {
+    color: 'var(--warning-color)'
+  },
+  fileTextarea: {
+    width: '100%',
+    minHeight: '220px',
+    height: '100%',
+    resize: 'vertical',
+    border: 'none',
+    borderRadius: 0,
+    backgroundColor: 'var(--bg-depth-0)',
+    color: 'var(--text-color)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '11px',
+    lineHeight: 1.55,
+    padding: '10px',
+    outline: 'none'
   },
   
   // 输入区域
@@ -586,6 +693,60 @@ const INPUT_TEMPLATES = [
   }
 ];
 
+const CODE_KEYWORD_PATTERN = /\b(import|export|from|const|let|var|function|return|if|else|for|while|class|extends|async|await|try|catch|throw|new|switch|case|break|default|true|false|null|undefined)\b/g;
+
+function splitCodeLine(line) {
+  const segments = [];
+  const pattern = /(\/\/.*$|#.*$|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|\b\d+(?:\.\d+)?\b|\b(?:import|export|from|const|let|var|function|return|if|else|for|while|class|extends|async|await|try|catch|throw|new|switch|case|break|default|true|false|null|undefined)\b)/g;
+  let lastIndex = 0;
+  for (const match of line.matchAll(pattern)) {
+    if (match.index > lastIndex) {
+      segments.push({ text: line.slice(lastIndex, match.index), type: 'plain' });
+    }
+    const text = match[0];
+    const type = text.startsWith('//') || text.startsWith('#')
+      ? 'comment'
+      : text.startsWith('"') || text.startsWith("'") || text.startsWith('`')
+      ? 'string'
+      : /^\d/.test(text)
+      ? 'number'
+      : CODE_KEYWORD_PATTERN.test(text)
+      ? 'keyword'
+      : 'plain';
+    CODE_KEYWORD_PATTERN.lastIndex = 0;
+    segments.push({ text, type });
+    lastIndex = match.index + text.length;
+  }
+  if (lastIndex < line.length) {
+    segments.push({ text: line.slice(lastIndex), type: 'plain' });
+  }
+  return segments.length > 0 ? segments : [{ text: ' ', type: 'plain' }];
+}
+
+function getCodeTokenStyle(type) {
+  if (type === 'keyword') return styles.codeKeyword;
+  if (type === 'string') return styles.codeString;
+  if (type === 'comment') return styles.codeComment;
+  if (type === 'number') return styles.codeNumber;
+  return null;
+}
+
+function getFileLanguage(path = '') {
+  const ext = path.split('.').pop()?.toLowerCase();
+  return {
+    js: 'JavaScript',
+    jsx: 'React',
+    ts: 'TypeScript',
+    tsx: 'React TS',
+    json: 'JSON',
+    css: 'CSS',
+    md: 'Markdown',
+    html: 'HTML',
+    py: 'Python',
+    sh: 'Shell',
+  }[ext] || 'Text';
+}
+
 /**
  * Agent 控制面板组件
  * @param {Object} props - 组件属性
@@ -612,9 +773,15 @@ function AgentControl({
   projectTree
 }) {
   // 状态
+  const ipc = useIPC();
 
   const [showTemplates, setShowTemplates] = useState(false);
   const [hoveredHistoryItem, setHoveredHistoryItem] = useState(null);
+  const [openFile, setOpenFile] = useState(null);
+  const [fileDraft, setFileDraft] = useState('');
+  const [fileMode, setFileMode] = useState('preview');
+  const [fileStatus, setFileStatus] = useState('idle');
+  const [fileError, setFileError] = useState('');
   
 
   
@@ -645,6 +812,72 @@ function AgentControl({
       }));
     }
   }, [onOptionsChange]);
+
+  const openWorkspaceFile = useCallback(async (entry) => {
+    if (!entry?.path || entry.type === 'directory') {
+      return;
+    }
+
+    setOpenFile({
+      path: entry.path,
+      name: entry.name,
+      content: '',
+      size: 0,
+    });
+    setFileDraft('');
+    setFileMode('preview');
+    setFileStatus('loading');
+    setFileError('');
+
+    try {
+      const result = await ipc.readWorkspaceFile(entry.path);
+      if (!result?.success) {
+        setFileStatus('error');
+        setFileError(result?.error || '无法读取文件');
+        return;
+      }
+      setOpenFile({
+        path: result.path || entry.path,
+        name: result.name || entry.name,
+        content: result.content || '',
+        size: result.size || 0,
+        mtimeMs: result.mtimeMs,
+      });
+      setFileDraft(result.content || '');
+      setFileStatus('ready');
+    } catch (error) {
+      setFileStatus('error');
+      setFileError(error.message || '无法读取文件');
+    }
+  }, [ipc]);
+
+  const saveWorkspaceFile = useCallback(async () => {
+    if (!openFile?.path) {
+      return;
+    }
+    setFileStatus('saving');
+    setFileError('');
+    try {
+      const result = await ipc.writeWorkspaceFile(openFile.path, fileDraft);
+      if (!result?.success) {
+        setFileStatus('error');
+        setFileError(result?.error || '保存失败');
+        return;
+      }
+      setOpenFile(prev => ({
+        ...prev,
+        content: fileDraft,
+        size: result.size || fileDraft.length,
+        mtimeMs: result.mtimeMs,
+      }));
+      setFileMode('preview');
+      setFileStatus('ready');
+      projectTree?.onRefresh?.();
+    } catch (error) {
+      setFileStatus('error');
+      setFileError(error.message || '保存失败');
+    }
+  }, [fileDraft, ipc, openFile?.path, projectTree]);
   
 
   
@@ -668,7 +901,7 @@ function AgentControl({
         return {
           ...styles.statusBadge,
           color: statusMeta.tone === 'muted' ? 'var(--text-muted)' : 'var(--text-color)',
-          backgroundColor: 'var(--glass-bg-light)',
+          backgroundColor: 'transparent',
         };
     }
   };
@@ -707,6 +940,10 @@ function AgentControl({
       const isDirectory = entry.type === 'directory';
       const isExpanded = expandedDirectories.has(entry.path);
       const isLoading = loadingDirectories.has(entry.path);
+      const isActiveFile = !isDirectory && openFile?.path === entry.path;
+      const typeLabel = isDirectory
+        ? ''
+        : (entry.name?.includes('.') ? entry.name.split('.').pop().slice(0, 4) : 'file');
 
       return (
         <React.Fragment key={entry.path}>
@@ -714,12 +951,15 @@ function AgentControl({
             type="button"
             style={{
               ...styles.projectTreeRow,
-              ...(isDirectory ? styles.projectTreeRowInteractive : {}),
-              paddingLeft: `${depth * 14 + 6}px`
+              ...styles.projectTreeRowInteractive,
+              ...(isActiveFile ? styles.projectTreeRowActive : {}),
+              paddingLeft: `${depth * 14 + 4}px`
             }}
             onClick={() => {
               if (isDirectory) {
                 projectTree?.onToggleDirectory?.(entry.path);
+              } else {
+                openWorkspaceFile(entry);
               }
             }}
             title={entry.path}
@@ -727,7 +967,7 @@ function AgentControl({
             <span style={styles.projectTreeToggle}>
               {isDirectory ? (isExpanded ? 'v' : '>') : ''}
             </span>
-            <span style={styles.projectTreeType}>{isDirectory ? 'DIR' : 'FILE'}</span>
+            <span style={styles.projectTreeType}>{typeLabel}</span>
             <span style={styles.projectTreeName}>{entry.name}</span>
             {isLoading && <span style={styles.projectTreeMeta}>读取中</span>}
           </button>
@@ -740,6 +980,86 @@ function AgentControl({
   const rootName = workingDirectory
     ? workingDirectory.split(/[\\/]/).filter(Boolean).pop() || workingDirectory
     : '未设置';
+
+  const renderCodePreview = () => {
+    const content = openFile?.content || '';
+    const lines = content.split('\n');
+    return (
+      <div style={styles.fileEditorBody}>
+        {lines.map((line, index) => (
+          <div key={`${index}_${line.slice(0, 16)}`} style={styles.codeLine}>
+            <span style={styles.codeLineNumber}>{index + 1}</span>
+            <code style={styles.codeLineContent}>
+              {splitCodeLine(line).map((segment, segmentIndex) => (
+                <span key={`${segmentIndex}_${segment.text}`} style={getCodeTokenStyle(segment.type)}>
+                  {segment.text}
+                </span>
+              ))}
+            </code>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderFileWorkbench = () => {
+    if (!openFile) {
+      return null;
+    }
+    const isDirty = fileDraft !== openFile.content;
+    const language = getFileLanguage(openFile.path);
+    return (
+      <div style={styles.fileWorkbench}>
+        <div style={styles.fileWorkbenchHeader}>
+          <span style={styles.fileWorkbenchTitle} title={openFile.path}>
+            {openFile.name || openFile.path}
+          </span>
+          <span style={styles.fileWorkbenchMeta}>{language}</span>
+          {isDirty && <span style={styles.fileWorkbenchMeta}>modified</span>}
+          <button
+            type="button"
+            style={styles.fileActionButton}
+            onClick={() => setFileMode(prev => prev === 'edit' ? 'preview' : 'edit')}
+            disabled={fileStatus === 'loading' || fileStatus === 'saving'}
+          >
+            {fileMode === 'edit' ? 'View' : 'Edit'}
+          </button>
+          {fileMode === 'edit' && (
+            <button
+              type="button"
+              style={styles.fileActionButton}
+              onClick={saveWorkspaceFile}
+              disabled={!isDirty || fileStatus === 'saving'}
+            >
+              {fileStatus === 'saving' ? 'Saving' : 'Save'}
+            </button>
+          )}
+          <button
+            type="button"
+            style={styles.fileActionButton}
+            onClick={() => setOpenFile(null)}
+          >
+            ×
+          </button>
+        </div>
+        {fileStatus === 'loading' && (
+          <div style={styles.projectTreeEmpty}>正在打开文件...</div>
+        )}
+        {fileStatus === 'error' && (
+          <div style={styles.projectTreeEmpty}>{fileError}</div>
+        )}
+        {fileStatus !== 'loading' && fileStatus !== 'error' && fileMode === 'preview' && renderCodePreview()}
+        {fileStatus !== 'loading' && fileStatus !== 'error' && fileMode === 'edit' && (
+          <textarea
+            style={styles.fileTextarea}
+            value={fileDraft}
+            onChange={(event) => setFileDraft(event.target.value)}
+            spellCheck={false}
+          />
+        )}
+      </div>
+    );
+  };
   
   return (
     <div style={styles.container}>
@@ -763,7 +1083,7 @@ function AgentControl({
         
         {/* 工作目录 */}
         <div style={styles.workingDirectory}>
-          <span style={styles.directoryIcon}>DIR</span>
+          <span style={styles.directoryIcon}>Workspace</span>
           <span style={styles.directoryText}>
             {workingDirectory || '未设置'}
           </span>
@@ -771,8 +1091,8 @@ function AgentControl({
             style={styles.changeButton}
             onClick={onWorkingDirectoryChange}
             title="更改工作目录"
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--glass-bg-strong)'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--glass-bg-light)'}
+            onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-color)'}
+            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
           >
             更改
           </button>
@@ -801,6 +1121,7 @@ function AgentControl({
               {renderProjectTreeRows('', 0)}
             </div>
           )}
+          {renderFileWorkbench()}
         </div>
       </div>
       

@@ -124,6 +124,8 @@ describe('Desktop IPC Initialization Order', () => {
       'dialog:openDirectory',
       'app:getInfo',
       'app:getPath',
+      'workspace:readFile',
+      'workspace:writeFile',
     ];
 
     for (const channel of expectedChannels) {

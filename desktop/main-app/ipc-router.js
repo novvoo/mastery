@@ -19,6 +19,7 @@ import { metricsSink } from '../../src/core/metrics-sink.js';
 import { getMissingRequiredConfig } from '../../src/core/runtime-config.js';
 import { createConfiguredModelProvider } from '../../src/cli/model-provider-factory.js';
 import fs from 'fs';
+import { exec } from 'child_process';
 
 async function fileExists(filePath) {
   try {
@@ -212,6 +213,27 @@ export function registerCustomHandlers(ctx) {
     return typeof ctx.listWorkspaceDirectory
       ? ctx.listWorkspaceDirectory(ctx.config.workingDirectory, options)
       : { success: false, error: 'listWorkspaceDirectory 未实现' };
+  });
+
+  // 终端命令执行
+  ipc.registerHandler('terminal:execute', async ({ command, cwd }) => {
+    return new Promise((resolve) => {
+      exec(command, {
+        cwd: cwd || ctx.config.workingDirectory,
+        timeout: 30000,
+        env: {
+          ...process.env,
+          TERM: 'xterm-256color',
+        },
+      }, (error, stdout, stderr) => {
+        resolve({
+          success: !error,
+          stdout: stdout || '',
+          stderr: stderr || '',
+          exitCode: error?.code || 0,
+        });
+      });
+    });
   });
 
   // 预览服务

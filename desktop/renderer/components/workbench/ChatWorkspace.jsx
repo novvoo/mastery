@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import CommandSuggestions from '../CommandSuggestions.jsx';
 import MessageLog from '../MessageLog.jsx';
-import { Button } from '../ui/index.js';
 import { InteractionConsole } from './InteractionConsole.jsx';
 import { getSendButtonMotionClass } from '../../app/animation-system.js';
 import { styles } from '../../app/styles.js';
@@ -23,10 +22,6 @@ export function ChatWorkspace({
   onBlur,
   onSendMessage,
   onContinue,
-  onExport,
-  onOpenPreview,
-  onToggleInspector,
-  summaryPanelVisible,
   workingDirectory,
   fileServerUrl,
 }) {
@@ -41,7 +36,6 @@ export function ChatWorkspace({
     await onContinue?.(value);
     setContinuationInput('');
   };
-
   return (
     <div style={styles.chatArea}>
       <div style={styles.chatHeader}>
@@ -51,15 +45,6 @@ export function ChatWorkspace({
           <span style={styles.chatMessageCount}>
             {t('chat.message_count', { count: runtime.messages.length })}
           </span>
-        </div>
-
-        <div style={styles.chatHeaderActions}>
-          <Button variant="ghost" size="sm" onClick={onExport} title="export" ariaLabel="export">{t('chat.export')}</Button>
-          <Button variant="ghost" size="sm" onClick={onOpenPreview} title="preview" ariaLabel="preview">{t('chat.preview')}</Button>
-          <Button variant="ghost" size="sm" onClick={onToggleInspector} title="toggle-inspector" ariaLabel="toggle-inspector">
-            {summaryPanelVisible ? t('chat.hide_inspector') : t('chat.show_inspector')}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={runtime.clearMessages} title="clear" ariaLabel="clear">{t('chat.clear_messages')}</Button>
         </div>
       </div>
 

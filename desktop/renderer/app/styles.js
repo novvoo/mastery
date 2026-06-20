@@ -89,14 +89,36 @@ export const styles = {
   },
   
   // ================== 主内容区 ==================
+  // 顶部 padding 留出隐形拖拽带（DRAG_REGION 高度 40px），
+  // 避免面板标题被浮动 chrome 元素遮挡。
   mainContentWrapper: {
     flex: 1,
     minHeight: 0,
     display: 'flex',
-    padding: '40px 12px 32px',
-    gap: '10px',
+    padding: '40px 12px 18px',
+    gap: '8px',
     position: 'relative',
     borderRadius: '20px',
+  },
+
+  // WorkbenchControls 属于 chrome 层（与 DragRegion / 状态胶囊同级），
+  // absolute 定位到窗口右上角，悬浮在拖拽带上。
+  // 必须设 WebkitAppRegion:'no-drag'，否则被拖拽带吞掉点击事件。
+  workspaceControls: {
+    position: 'absolute',
+    top: '8px',
+    right: '12px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    minHeight: '28px',
+    padding: 0,
+    borderRadius: '8px',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
+    boxShadow: 'none',
+    zIndex: 40,
+    WebkitAppRegion: 'no-drag',
   },
 
   activityRail: {
@@ -105,21 +127,21 @@ export const styles = {
     backgroundColor: 'var(--glass-control-bg)',
     backdropFilter: 'blur(18px) saturate(170%)',
     WebkitBackdropFilter: 'blur(18px) saturate(170%)',
-    border: '1px solid var(--glass-border-strong)',
-    borderRadius: '16px',
+    border: '1px solid var(--glass-border)',
+    borderRadius: '12px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    padding: '10px 6px',
-    gap: '6px',
-    boxShadow: 'var(--glass-shadow), var(--glass-inner-hl)',
+    padding: '8px 5px',
+    gap: '5px',
+    boxShadow: 'var(--glass-shadow-soft), var(--glass-inner-hl)',
     position: 'relative',
     zIndex: 1,
   },
 
   activityButton: {
-    width: '38px',
-    height: '38px',
+    width: '34px',
+    height: '34px',
     borderRadius: '8px',
     border: '1px solid transparent',
     backgroundColor: 'transparent',
@@ -175,16 +197,16 @@ export const styles = {
     minHeight: '28px',
     display: 'inline-flex',
     alignItems: 'center',
-    padding: '0 12px',
+    padding: '0 2px',
     borderRadius: '999px',
-    border: '1px solid var(--title-capsule-border)',
-    backgroundColor: 'var(--title-capsule-bg)',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
     fontSize: '12px',
     fontWeight: '800',
     color: 'var(--text-muted)',
     textTransform: 'uppercase',
     letterSpacing: '0.06em',
-    boxShadow: 'var(--glass-inner-hl)'
+    boxShadow: 'none'
   },
   
   // ================== 右侧 Inspector 面板 ==================
@@ -463,6 +485,7 @@ export const styles = {
     minHeight: 0,
     minWidth: 0,
     display: 'flex',
+    flexDirection: 'column',
     backgroundColor: 'var(--surface-base)',
     borderRadius: '20px',
     overflow: 'hidden',
@@ -482,7 +505,7 @@ export const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: '12px',
-    padding: '10px var(--spacing-xl) 8px',
+    padding: '8px 14px 4px',
     borderBottom: 'none',
     backgroundColor: 'transparent',
     backdropFilter: 'blur(12px) saturate(150%)',
@@ -491,38 +514,38 @@ export const styles = {
   },
   
   chatTitle: {
-    minHeight: '32px',
-    padding: '2px 12px 2px 4px',
+    minHeight: '28px',
+    padding: '2px 2px',
     borderRadius: '999px',
-    border: '1px solid var(--title-capsule-border)',
-    backgroundColor: 'var(--title-capsule-bg)',
-    boxShadow: 'var(--glass-inner-hl)',
-    fontSize: '13px',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
+    boxShadow: 'none',
+    fontSize: '12px',
     fontWeight: '700',
     color: 'var(--text-color)',
     display: 'flex',
     alignItems: 'center',
     gap: '9px',
     textTransform: 'uppercase',
-    letterSpacing: '0.08em'
+    letterSpacing: '0.04em'
   },
 
   chatTitleMark: {
-    width: '26px',
-    height: '26px',
+    width: '22px',
+    height: '22px',
     borderRadius: '999px',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'linear-gradient(145deg, var(--primary-strong), var(--primary-faint))',
-    color: 'var(--text-color)',
-    border: '1px solid var(--primary-border)',
+    background: 'transparent',
+    color: 'var(--primary-color)',
+    border: '1px solid transparent',
     fontSize: '10px',
     fontWeight: 800
   },
 
   chatMessageCount: {
-    fontSize: '12px',
+    fontSize: '11px',
     fontWeight: 500,
     color: 'var(--text-muted)',
     marginLeft: '8px',
@@ -530,16 +553,12 @@ export const styles = {
     letterSpacing: 0
   },
 
-  chatHeaderActions: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-    minHeight: '32px',
-    padding: '2px',
-    borderRadius: '999px',
-    border: '1px solid var(--glass-border)',
-    backgroundColor: 'var(--glass-control-bg)',
-    boxShadow: 'var(--glass-inner-hl)'
+  chatHeaderActionDivider: {
+    width: '1px',
+    height: '18px',
+    margin: '0 2px',
+    backgroundColor: 'var(--border-subtle)',
+    flexShrink: 0,
   },
   
   chatStatus: {
@@ -570,28 +589,28 @@ export const styles = {
     flex: 1,
     minHeight: 0,
     overflow: 'visible',
-    padding: '10px 14px 12px',
+    padding: '8px 12px 10px',
   },
   
   // ================== 输入区域 ==================
   inputArea: {
-    margin: '0 var(--spacing-xl) 16px',
-    padding: '12px',
+    margin: '0 14px 12px',
+    padding: '9px',
     backgroundColor: 'var(--glass-bg)',
     backdropFilter: 'blur(20px) saturate(180%)',
     WebkitBackdropFilter: 'blur(20px) saturate(180%)',
     border: '1px solid var(--glass-border-strong)',
-    borderRadius: '18px',
-    boxShadow: 'var(--glass-shadow), var(--glass-inner-hl)'
+    borderRadius: '14px',
+    boxShadow: 'var(--glass-shadow-soft), var(--glass-inner-hl)'
   },
 
   interactionConsole: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-    marginBottom: '10px',
-    padding: '8px',
-    borderRadius: '8px',
+    alignItems: 'center',
+    gap: '6px',
+    marginBottom: '7px',
+    padding: '4px 6px',
+    borderRadius: '999px',
     border: '1px solid var(--glass-border)',
     backgroundColor: 'var(--glass-bg-light)',
     backdropFilter: 'blur(10px) saturate(140%)',
@@ -607,13 +626,12 @@ export const styles = {
 
   interactionStage: {
     minWidth: 0,
-    minHeight: '34px',
-    display: 'grid',
-    gridTemplateColumns: '8px minmax(0, auto) minmax(0, 1fr)',
+    minHeight: '24px',
+    display: 'inline-flex',
     alignItems: 'center',
-    gap: '6px',
-    padding: '6px 8px',
-    borderRadius: '6px',
+    gap: '5px',
+    padding: '0 8px',
+    borderRadius: '999px',
     border: '1px solid var(--border-subtle)',
     backgroundColor: 'var(--neutral-faint)',
     color: 'var(--text-muted)',
@@ -645,8 +663,8 @@ export const styles = {
   },
 
   interactionStageDot: {
-    width: '7px',
-    height: '7px',
+    width: '6px',
+    height: '6px',
     borderRadius: '50%',
     backgroundColor: 'currentColor',
     boxShadow: '0 0 0 3px var(--neutral-faint)'
@@ -662,6 +680,7 @@ export const styles = {
   },
 
   interactionStageDetail: {
+    display: 'none',
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -673,16 +692,16 @@ export const styles = {
   interactionMetaRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
+    gap: '5px',
     minWidth: 0
   },
 
   interactionMetaPill: {
     flex: '0 0 auto',
-    minHeight: '22px',
+    minHeight: '24px',
     display: 'inline-flex',
     alignItems: 'center',
-    padding: '0 8px',
+    padding: '0 7px',
     borderRadius: '999px',
     border: '1px solid var(--glass-border)',
     backgroundColor: 'var(--glass-bg)',
@@ -693,7 +712,7 @@ export const styles = {
 
   interactionRiskPill: {
     flex: '0 0 auto',
-    minHeight: '22px',
+    minHeight: '24px',
     display: 'inline-flex',
     alignItems: 'center',
     padding: '0 8px',
@@ -734,6 +753,7 @@ export const styles = {
   },
 
   interactionShortcut: {
+    display: 'none',
     flex: '0 0 auto',
     display: 'inline-flex',
     alignItems: 'center',
@@ -1193,13 +1213,13 @@ export const styles = {
     alignItems: 'center',
     minHeight: '24px',
     borderRadius: '999px',
-    border: '1px solid var(--title-capsule-border)',
-    backgroundColor: 'var(--title-capsule-bg)',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
     fontSize: '11px',
     fontWeight: 700,
     color: 'var(--text-muted)',
     textTransform: 'uppercase',
-    padding: '0 10px',
+    padding: '0 2px',
   },
 
   mgmtCheckboxRow: {

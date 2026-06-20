@@ -135,8 +135,11 @@ try {
       'app:openExternal',
       'workspace:setWorkingDirectory',
       'workspace:listDirectory',
+      'workspace:readFile',
+      'workspace:writeFile',
       'workspace:getFileDiff',
       'workspace:isGitRepo',
+      'terminal:execute',
       'activity:undo',
       'activity:review',
       'activity:approve',
@@ -648,6 +651,24 @@ try {
         return await ipcRenderer.invoke('workspace:getFileDiff', { path });
       } catch (error) {
         console.error('[Preload] getFileDiff 失败:', error);
+        throw error;
+      }
+    },
+
+    readWorkspaceFile: async (path, options = {}) => {
+      try {
+        return await ipcRenderer.invoke('workspace:readFile', { path, ...options });
+      } catch (error) {
+        console.error('[Preload] readWorkspaceFile 失败:', error);
+        throw error;
+      }
+    },
+
+    writeWorkspaceFile: async (path, content, options = {}) => {
+      try {
+        return await ipcRenderer.invoke('workspace:writeFile', { path, content, ...options });
+      } catch (error) {
+        console.error('[Preload] writeWorkspaceFile 失败:', error);
         throw error;
       }
     },

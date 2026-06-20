@@ -337,6 +337,14 @@ export function useIPC() {
     return invoke('workspace:listDirectory', { path });
   }, [invoke]);
 
+  const readWorkspaceFile = useCallback(async (path, options = {}) => {
+    return invoke('workspace:readFile', { path, ...options });
+  }, [invoke]);
+
+  const writeWorkspaceFile = useCallback(async (path, content, options = {}) => {
+    return invoke('workspace:writeFile', { path, content, ...options });
+  }, [invoke]);
+
   const startPreview = useCallback(async (options = {}) => {
     return invoke('preview:start', options);
   }, [invoke]);
@@ -506,6 +514,8 @@ export function useIPC() {
 
     setWorkingDirectory,
     listDirectory,
+    readWorkspaceFile,
+    writeWorkspaceFile,
     startPreview,
     listPreviews,
     stopPreview,

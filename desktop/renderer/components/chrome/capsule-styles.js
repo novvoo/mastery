@@ -54,6 +54,14 @@ export const CAPSULE_SECONDARY = {
   color: 'var(--text-muted)',
 };
 
+export const CAPSULE_CHROMELESS = {
+  backgroundColor: 'transparent',
+  backdropFilter: 'none',
+  WebkitBackdropFilter: 'none',
+  borderColor: 'transparent',
+  boxShadow: 'none',
+};
+
 export const CAPSULE_TOGGLE = {
   ...CAPSULE_BASE,
   width: '30px',
@@ -70,13 +78,13 @@ export const CAPSULE_TOGGLE = {
 export const CAPSULE_POSITIONS = {
   status: (isMac) => ({
     position: 'absolute',
-    bottom: '6px',
+    bottom: '0px',
     left: '12px',
     zIndex: 30,
   }),
   stats: {
     position: 'absolute',
-    bottom: '6px',
+    bottom: '0px',
     right: '12px',
     zIndex: 30,
   },
