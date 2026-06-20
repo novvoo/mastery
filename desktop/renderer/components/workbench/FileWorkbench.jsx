@@ -71,7 +71,7 @@ const fileStyles = {
     alignItems: 'center',
     gap: '8px',
     padding: '6px 10px',
-    borderBottom: '1px solid var(--border-subtle)',
+    borderBottom: '1px solid transparent',
     flexShrink: 0,
   },
   title: {
