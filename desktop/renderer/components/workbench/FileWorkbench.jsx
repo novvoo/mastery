@@ -123,10 +123,12 @@ const fileStyles = {
     borderRight: '1px solid transparent',
   },
   codeLineContent: {
-    paddingLeft: '10px',
-    paddingRight: '8px',
+    padding: '0 8px 0 10px',
     whiteSpace: 'pre',
     color: 'var(--text-muted)',
+    border: 'none',
+    borderRadius: 0,
+    backgroundColor: 'transparent',
   },
   codeKeyword: {
     color: 'var(--info-color)',
