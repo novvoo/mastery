@@ -108,6 +108,8 @@ const fileStyles = {
     fontFamily: 'var(--font-mono)',
     fontSize: '11px',
     lineHeight: 1.55,
+    cursor: 'text',
+    userSelect: 'text',
     backgroundColor: 'var(--surface-color)',
   },
   codeLine: {
@@ -129,6 +131,8 @@ const fileStyles = {
     border: 'none',
     borderRadius: 0,
     backgroundColor: 'transparent',
+    cursor: 'text',
+    userSelect: 'text',
   },
   codeKeyword: {
     color: 'var(--info-color)',
