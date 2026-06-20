@@ -757,8 +757,6 @@ function AgentControl({
     ? workingDirectory.split(/[\\/]/).filter(Boolean).pop() || workingDirectory
     : '未设置';
 
-};
-  
   return (
     <div style={styles.container}>
       {/* 状态显示 */}
