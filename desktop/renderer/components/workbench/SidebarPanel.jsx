@@ -20,6 +20,8 @@ export function SidebarPanel({
   onWorkingDirectoryChange,
   onNewTask,
   projectTree,
+  onOpenFile,
+  activeOpenFile,
 }) {
   const content = activeTab === 'tools' ? (
     <ToolPanel
@@ -33,6 +35,8 @@ export function SidebarPanel({
       workingDirectory={workingDirectory}
       onWorkingDirectoryChange={onWorkingDirectoryChange}
       agentOptions={agentOptions}
+      onOpenFile={onOpenFile}
+      activeOpenFile={activeOpenFile}
       onOptionsChange={onOptionsChange}
       onInsertText={onInsertText}
       sessions={sessions}

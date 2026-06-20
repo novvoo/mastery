@@ -17,6 +17,7 @@ import { ManagementPage } from './components/management/ManagementPage.jsx';
 import { ChromeCapsules } from './components/chrome/ChromeCapsules.jsx';
 import { ActivityRail } from './components/workbench/ActivityRail.jsx';
 import { BottomTerminalPanel } from './components/workbench/BottomTerminalPanel.jsx';
+import { FileWorkbench } from './components/workbench/FileWorkbench.jsx';
 import { ChatWorkspace } from './components/workbench/ChatWorkspace.jsx';
 import { InspectorPanel } from './components/workbench/InspectorPanel.jsx';
 import { SidebarPanel } from './components/workbench/SidebarPanel.jsx';
@@ -235,6 +236,13 @@ function App() {
     const storedUrl = readStoredPreviewUrl();
     return storedUrl ? formatPreviewUrlInput(storedUrl) : '';
   });
+  
+  // 文件编辑状态
+  const [openFile, setOpenFile] = useState(null);
+  const [fileDraft, setFileDraft] = useState('');
+  const [fileMode, setFileMode] = useState('preview');
+  const [fileStatus, setFileStatus] = useState('idle');
+  const [fileError, setFileError] = useState('');
   
   // 使用自定义 Hooks
   const runtime = useRuntime();
@@ -950,6 +958,83 @@ function App() {
     setChatInput('');
   }, [runtime]);
 
+  const handleOpenWorkspaceFile = useCallback(async (entry) => {
+    if (!entry?.path || entry.type === 'directory') {
+      return;
+    }
+    setOpenFile({
+      path: entry.path,
+      name: entry.name,
+      content: '',
+      size: 0,
+    });
+    setFileDraft('');
+    setFileMode('preview');
+    setFileStatus('loading');
+    setFileError('');
+    try {
+      const result = await ipc.readWorkspaceFile(entry.path);
+      if (!result?.success) {
+        setFileStatus('error');
+        setFileError(result?.error || '\u65e0\u6cd5\u8bfb\u53d6\u6587\u4ef6');
+        return;
+      }
+      setOpenFile({
+        path: result.path || entry.path,
+        name: result.name || entry.name,
+        content: result.content || '',
+        size: result.size || 0,
+        mtimeMs: result.mtimeMs,
+      });
+      setFileDraft(result.content || '');
+      setFileStatus('ready');
+    } catch (error) {
+      setFileStatus('error');
+      setFileError(error.message || '\u65e0\u6cd5\u8bfb\u53d6\u6587\u4ef6');
+    }
+  }, [ipc]);
+
+  const handleSaveWorkspaceFile = useCallback(async () => {
+    if (!openFile?.path) {
+      return;
+    }
+    setFileStatus('saving');
+    setFileError('');
+    try {
+      const result = await ipc.writeWorkspaceFile(openFile.path, fileDraft);
+      if (!result?.success) {
+        setFileStatus('error');
+        setFileError(result?.error || '\u4fdd\u5b58\u5931\u8d25');
+        return;
+      }
+      setOpenFile(prev => ({
+        ...prev,
+        content: fileDraft,
+        size: result.size || fileDraft.length,
+        mtimeMs: result.mtimeMs,
+      }));
+      setFileMode('preview');
+      setFileStatus('ready');
+      handleProjectTreeRefresh();
+    } catch (error) {
+      setFileStatus('error');
+      setFileError(error.message || '\u4fdd\u5b58\u5931\u8d25');
+    }
+  }, [fileDraft, ipc, openFile?.path]);
+
+  const handleCloseFileWorkbench = useCallback(() => {
+    setOpenFile(null);
+    setFileDraft('');
+    setFileMode('preview');
+    setFileStatus('idle');
+    setFileError('');
+  }, []);
+
+  const handleFileModeToggle = useCallback(() => {
+    setFileMode(prev => prev === 'edit' ? 'preview' : 'edit');
+  }, []);
+
+
   const handleClearAgentHistory = useCallback(() => {
     localStorage.removeItem(AGENT_HISTORY_STORAGE_KEY);
     localStorage.removeItem(AGENT_SESSIONS_STORAGE_KEY);
@@ -1438,6 +1523,8 @@ function App() {
             onClearHistory={handleClearAgentHistory}
             onWorkingDirectoryChange={handleWorkingDirectoryChange}
             onNewTask={handleNewTask}
+            onOpenFile={handleOpenWorkspaceFile}
+            activeOpenFile={openFile}
             projectTree={{
               directoryChildren,
               expandedDirectories,
@@ -1447,6 +1534,20 @@ function App() {
               onToggleDirectory: handleProjectDirectoryToggle,
               onRefresh: handleProjectTreeRefresh
             }}
+          />
+        )}
+
+        {openFile && (
+          <FileWorkbench
+            openFile={openFile}
+            fileDraft={fileDraft}
+            fileMode={fileMode}
+            fileStatus={fileStatus}
+            fileError={fileError}
+            onClose={handleCloseFileWorkbench}
+            onSave={handleSaveWorkspaceFile}
+            onModeToggle={handleFileModeToggle}
+            onDraftChange={(event) => setFileDraft(event.target.value)}
           />
         )}
 
