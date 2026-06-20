@@ -42,6 +42,11 @@ export function attachModelProvider(ctx, modelProvider) {
     });
   }
 
+  // 为 memoryManager 设置 modelProvider，启用 LLM 选择器
+  if (ctx.memoryManager && typeof ctx.memoryManager.setModelProvider === 'function') {
+    ctx.memoryManager.setModelProvider(modelProvider);
+  }
+
   ctx.pluginManager.triggerHook(HOOKS.ON_CONFIG_CHANGE, 'modelProvider', modelProvider);
 }
 
@@ -59,6 +64,11 @@ export function setModelProvider(ctx, modelProvider, options = {}) {
 
   if (ctx.schedulerEngine) {
     ctx.schedulerEngine.modelProvider = modelProvider;
+  }
+
+  // 为 memoryManager 设置 modelProvider，启用 LLM 选择器
+  if (ctx.memoryManager && typeof ctx.memoryManager.setModelProvider === 'function') {
+    ctx.memoryManager.setModelProvider(modelProvider);
   }
 
   ctx.pluginManager.triggerHook(HOOKS.ON_CONFIG_CHANGE, 'modelProvider', modelProvider);

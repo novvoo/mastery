@@ -14,7 +14,7 @@ import { RuntimeConfig, AgentState } from '../types.js';
 import { getEventBus } from '../event-bus.js';
 import { PluginManager, HOOKS } from '../plugin-system.js';
 import { ToolRegistry } from '../../core/tool-registry.js';
-import { MemoryManager } from '../../memory/memory-manager.js';
+import { AgentMemory } from '../../memory/agent-memory.js';
 import { SecurityPolicy } from '../../core/security-policy.js';
 import { ExperienceMemory } from '../../core/experience-memory.js';
 import { TokenJuice } from '../../core/token-juice.js';
@@ -108,7 +108,7 @@ export async function runInitialization(ctx, registerAllToolsFn, wrapToolCallsFn
 
   // 1. 核心组件
   ctx.toolRegistry = new ToolRegistry();
-  ctx.memoryManager = new MemoryManager(ctx.config.workingDirectory);
+  ctx.memoryManager = new AgentMemory(ctx.config.workingDirectory);
   ctx.securityPolicy = new SecurityPolicy({
     requireApproval: ctx.config.requireApproval || false
   });

@@ -7,6 +7,7 @@ import { createStateGraphTools } from './harness/state-graph-tools.js';
 import { createContextExpansionTools } from './harness/context-expansion.js';
 import { createSemanticSearchTool } from './memory/semantic-search.js';
 import { createDocumentRagTools } from './memory/document-rag.js';
+import { createStructuredMemoryTools } from './memory/structured-memory-tools.js';
 import { createGitTools } from './git/git-tools.js';
 import { createWebTools } from './web/web-tools.js';
 import { createPreviewTools } from './web/preview-tools.js';
@@ -62,6 +63,7 @@ export function createCoreTools({
     ...createPtyTools(),
     createSemanticSearchTool(),
     ...createDocumentRagTools(),
+    ...createStructuredMemoryTools(),
     ...createGitTools(),
     ...createWebTools(),
     ...createPreviewTools(),

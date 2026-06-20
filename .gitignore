@@ -43,3 +43,4 @@ test*.json
 desktop/renderer/dist/
 .agent-logs/
 .superpowers/
+.test-e2e-write-file/
