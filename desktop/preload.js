@@ -140,6 +140,8 @@ try {
       'workspace:getFileDiff',
       'workspace:isGitRepo',
       'terminal:execute',
+      'terminal:complete',
+      'terminal:resolvePath',
       'activity:undo',
       'activity:review',
       'activity:approve',

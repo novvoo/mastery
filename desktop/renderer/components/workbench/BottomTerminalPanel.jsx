@@ -48,16 +48,16 @@ async function createCommandOutput(command, workingDirectory, ipcInvoke) {
 
 function TerminalLine({ line }) {
   const color = line.type === 'command'
-    ? '#E8F0F0'
+    ? 'var(--text-color)'
     : line.type === 'error'
-      ? '#E88A9A'
+      ? 'var(--error-color)'
       : line.type === 'muted'
-        ? '#8A9696'
+        ? 'var(--text-muted)'
         : line.type === 'system'
-          ? '#7FB8D9'
+          ? 'var(--info-color)'
           : line.type === 'success'
-            ? '#7BD3B8'
-            : '#E8F0F0';
+            ? 'var(--success-color)'
+            : 'var(--text-color)';
 
   if (line.type === 'blank') {
     return <div style={styles.lineRow}>&nbsp;</div>;
@@ -98,10 +98,13 @@ export function BottomTerminalPanel({
   const [commandHistory, setCommandHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [showCursor, setShowCursor] = useState(true);
+  const [currentDirectory, setCurrentDirectory] = useState(workingDirectory || '.');
+  const [completionOptions, setCompletionOptions] = useState([]);
+  const [completionIndex, setCompletionIndex] = useState(-1);
   const terminalBodyRef = useRef(null);
   const inputRef = useRef(null);
   const resizeStateRef = useRef(null);
-  const promptLabel = promptForDirectory(workingDirectory);
+  const promptLabel = promptForDirectory(currentDirectory);
 
   const problems = useMemo(() => ([
     { level: 'warning', file: 'desktop/renderer/App.jsx', text: 'Terminal transport is mocked until PTY IPC is connected.' },
@@ -137,6 +140,12 @@ export function BottomTerminalPanel({
   }, []);
 
   useEffect(() => {
+    if (workingDirectory) {
+      setCurrentDirectory(workingDirectory);
+    }
+  }, [workingDirectory]);
+
+  useEffect(() => {
     const handlePointerMove = (event) => {
       const resizeState = resizeStateRef.current;
       if (!resizeState) return;
@@ -159,6 +168,18 @@ export function BottomTerminalPanel({
     };
   }, [onHeightChange]);
 
+  const getCommandCompletions = async (partialCommand) => {
+    try {
+      const result = await ipc.invoke('terminal:complete', {
+        command: partialCommand,
+        cwd: currentDirectory,
+      });
+      return result.completions || [];
+    } catch (error) {
+      return [];
+    }
+  };
+
   const streamCommandOutput = async (command) => {
     if (command.trim() === 'clear') {
       setLines([]);
@@ -166,15 +187,36 @@ export function BottomTerminalPanel({
     }
 
     setIsStreaming(true);
-    const output = await createCommandOutput(command, workingDirectory, ipc.invoke);
+    const output = await createCommandOutput(command, currentDirectory, ipc.invoke);
     for (const item of output) {
       await new Promise(resolve => setTimeout(resolve, 40));
       setLines(prev => [...prev, { type: item.isError ? 'error' : 'output', text: item.text }]);
     }
     setIsStreaming(false);
+    
+    if (command.trim().startsWith('cd ')) {
+      const newPath = command.trim().substring(3).trim();
+      if (newPath) {
+        try {
+          const resolvedPath = await ipc.invoke('terminal:resolvePath', {
+            path: newPath,
+            cwd: currentDirectory,
+          });
+          if (resolvedPath && resolvedPath.exists) {
+            setCurrentDirectory(resolvedPath.path);
+          }
+        } catch (error) {
+          console.log('Failed to resolve cd path:', error);
+        }
+      }
+    }
+    
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
   };
 
-  const handleKeyDown = useCallback((event) => {
+  const handleKeyDown = useCallback(async (event) => {
     if (event.key === 'ArrowUp') {
       event.preventDefault();
       if (commandHistory.length > 0) {
@@ -195,8 +237,37 @@ export function BottomTerminalPanel({
     } else if (event.key === 'Escape') {
       setInput('');
       setHistoryIndex(-1);
+      setCompletionOptions([]);
+      setCompletionIndex(-1);
     } else if (event.key === 'Tab') {
       event.preventDefault();
+      if (completionOptions.length > 0) {
+        const newIndex = (completionIndex + 1) % completionOptions.length;
+        setCompletionIndex(newIndex);
+        const parts = input.split(' ');
+        const lastPart = parts[parts.length - 1];
+        const completion = completionOptions[newIndex];
+        if (parts.length === 1) {
+          setInput(completion);
+        } else {
+          parts[parts.length - 1] = completion;
+          setInput(parts.join(' '));
+        }
+      } else {
+        const completions = await getCommandCompletions(input);
+        if (completions.length > 0) {
+          setCompletionOptions(completions);
+          setCompletionIndex(0);
+          const parts = input.split(' ');
+          const completion = completions[0];
+          if (parts.length === 1) {
+            setInput(completion);
+          } else {
+            parts[parts.length - 1] = completion;
+            setInput(parts.join(' '));
+          }
+        }
+      }
     } else if (event.key === 'Enter') {
       event.preventDefault();
       const command = input.trim();
@@ -204,10 +275,15 @@ export function BottomTerminalPanel({
       setLines(prev => [...prev, { type: 'command', text: `${promptLabel} $ ${command}` }]);
       setCommandHistory(prev => [...prev, command]);
       setHistoryIndex(-1);
+      setCompletionOptions([]);
+      setCompletionIndex(-1);
       setInput('');
       streamCommandOutput(command);
+    } else {
+      setCompletionOptions([]);
+      setCompletionIndex(-1);
     }
-  }, [commandHistory, historyIndex, input, isStreaming, promptLabel, streamCommandOutput]);
+  }, [commandHistory, historyIndex, input, isStreaming, promptLabel, streamCommandOutput, completionOptions, completionIndex, getCommandCompletions]);
 
   const handleResizeStart = (event) => {
     event.preventDefault();
@@ -340,8 +416,8 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     position: 'relative',
-    borderTop: '1px solid rgba(0, 0, 0, 0.5)',
-    backgroundColor: '#0D1117',
+    borderTop: '1px solid var(--border-color)',
+    backgroundColor: 'var(--surface-color)',
     boxShadow: 'none',
   },
   resizeHandle: {
@@ -361,8 +437,8 @@ const styles = {
     justifyContent: 'space-between',
     gap: '8px',
     padding: '0 8px',
-    borderBottom: '1px solid rgba(0, 0, 0, 0.5)',
-    backgroundColor: '#161B22',
+    borderBottom: '1px solid var(--border-color)',
+    backgroundColor: 'var(--surface-raised)',
   },
   headerLeft: {
     minWidth: 0,
@@ -385,9 +461,9 @@ const styles = {
     height: '32px',
     borderRadius: 0,
     border: 'none',
-    borderRight: '1px solid rgba(0, 0, 0, 0.3)',
-    backgroundColor: '#161B22',
-    color: '#8B949E',
+    borderRight: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-raised)',
+    color: 'var(--text-muted)',
     padding: '0 12px',
     fontSize: '11px',
     fontWeight: 400,
@@ -397,8 +473,8 @@ const styles = {
     fontFamily: 'var(--font-mono)',
   },
   tabActive: {
-    color: '#E6EDF3',
-    backgroundColor: '#0D1117',
+    color: 'var(--text-color)',
+    backgroundColor: 'var(--surface-color)',
   },
   tabMeta: {
     minWidth: '18px',
@@ -408,14 +484,14 @@ const styles = {
     justifyContent: 'center',
     padding: '0 4px',
     borderRadius: '3px',
-    backgroundColor: 'rgba(240, 147, 25, 0.15)',
-    color: '#F0931B',
+    backgroundColor: 'var(--warning-soft)',
+    color: 'var(--warning-color)',
     fontSize: '10px',
     fontWeight: 600,
   },
   tabMetaActive: {
-    backgroundColor: 'rgba(240, 147, 25, 0.2)',
-    color: '#F0931B',
+    backgroundColor: 'var(--warning-soft)',
+    color: 'var(--warning-color)',
   },
   headerMeta: {
     display: 'flex',
@@ -423,7 +499,7 @@ const styles = {
     justifyContent: 'flex-end',
     gap: '2px',
     minWidth: 0,
-    color: '#8B949E',
+    color: 'var(--text-muted)',
     fontSize: '11px',
     whiteSpace: 'nowrap',
   },
@@ -433,7 +509,7 @@ const styles = {
     borderRadius: '3px',
     border: '1px solid transparent',
     backgroundColor: 'transparent',
-    color: '#8B949E',
+    color: 'var(--text-muted)',
     padding: 0,
     fontFamily: 'var(--font-mono)',
     fontSize: '11px',
@@ -443,7 +519,7 @@ const styles = {
     minHeight: 0,
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: '#0D1117',
+    backgroundColor: 'var(--surface-color)',
     overflowY: 'auto',
   },
   terminalBody: {
@@ -462,7 +538,7 @@ const styles = {
     alignItems: 'center',
     minHeight: '28px',
     padding: '4px 12px',
-    backgroundColor: '#0D1117',
+    backgroundColor: 'var(--surface-color)',
     fontFamily: '"SF Mono", "Monaco", "Inconsolata", "Roboto Mono", monospace',
     fontSize: '13px',
   },
@@ -472,7 +548,7 @@ const styles = {
     padding: 0,
     borderRadius: 0,
     backgroundColor: 'transparent',
-    color: '#58A6FF',
+    color: 'var(--primary-color)',
     fontSize: '13px',
     fontWeight: 400,
     whiteSpace: 'nowrap',
@@ -492,7 +568,7 @@ const styles = {
     backgroundColor: 'transparent',
     boxShadow: 'none',
     padding: '0',
-    color: '#E6EDF3',
+    color: 'var(--text-color)',
     fontFamily: '"SF Mono", "Monaco", "Inconsolata", "Roboto Mono", monospace',
     fontSize: '13px',
     outline: 'none',
@@ -504,7 +580,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '4px',
-    backgroundColor: '#0D1117',
+    backgroundColor: 'var(--surface-color)',
   },
   problemRow: {
     display: 'flex',
@@ -513,7 +589,7 @@ const styles = {
     padding: '6px 0',
     borderRadius: 0,
     border: 'none',
-    borderBottom: '1px solid rgba(0, 0, 0, 0.3)',
+    borderBottom: '1px solid var(--border-subtle)',
     backgroundColor: 'transparent',
   },
   problemBadge: {
@@ -528,19 +604,19 @@ const styles = {
     fontFamily: 'var(--font-mono)',
   },
   problemWarning: {
-    color: '#F0883E',
-    backgroundColor: 'rgba(240, 136, 62, 0.1)',
+    color: 'var(--warning-color)',
+    backgroundColor: 'var(--warning-soft)',
   },
   problemInfo: {
-    color: '#58A6FF',
-    backgroundColor: 'rgba(88, 166, 255, 0.1)',
+    color: 'var(--primary-color)',
+    backgroundColor: 'var(--info-soft)',
   },
   problemCopy: {
     minWidth: 0,
     display: 'flex',
     flexDirection: 'column',
     gap: '2px',
-    color: '#8B949E',
+    color: 'var(--text-muted)',
     fontSize: '12px',
     fontFamily: 'var(--font-mono)',
   },
@@ -550,8 +626,8 @@ const styles = {
     padding: '12px',
     fontFamily: '"SF Mono", "Monaco", "Inconsolata", "Roboto Mono", monospace',
     fontSize: '12px',
-    color: '#8B949E',
-    backgroundColor: '#0D1117',
+    color: 'var(--text-muted)',
+    backgroundColor: 'var(--surface-color)',
   },
   outputLine: {
     minHeight: '18px',

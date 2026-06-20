@@ -20,6 +20,7 @@ import { getMissingRequiredConfig } from '../../src/core/runtime-config.js';
 import { createConfiguredModelProvider } from '../../src/cli/model-provider-factory.js';
 import fs from 'fs';
 import { exec } from 'child_process';
+import { resolve, dirname, extname, basename, normalize } from 'path';
 
 async function fileExists(filePath) {
   try {
@@ -236,6 +237,65 @@ export function registerCustomHandlers(ctx) {
     });
   });
 
+  // 终端命令补全
+  ipc.registerHandler('terminal:complete', async ({ command, cwd }) => {
+    try {
+      const workingDir = cwd || ctx.config.workingDirectory;
+      const parts = command.trim().split(' ');
+      const lastPart = parts[parts.length - 1];
+      
+      if (parts.length === 1 && !lastPart.includes('/')) {
+        const completions = await getCommandCompletions(lastPart);
+        return { success: true, completions };
+      }
+      
+      let targetDir = workingDir;
+      let partialName = lastPart;
+      
+      if (lastPart.includes('/')) {
+        const lastSlashIndex = lastPart.lastIndexOf('/');
+        const pathPrefix = lastPart.substring(0, lastSlashIndex);
+        partialName = lastPart.substring(lastSlashIndex + 1);
+        targetDir = resolve(workingDir, pathPrefix);
+      }
+      
+      const entries = await listDirectoryEntries(targetDir);
+      const filtered = entries.filter(e => e.name.startsWith(partialName));
+      const completions = filtered.map(e => {
+        const fullPath = lastPart.includes('/') 
+          ? lastPart.substring(0, lastPart.lastIndexOf('/') + 1) + e.name + (e.isDirectory ? '/' : '')
+          : e.name + (e.isDirectory ? '/' : '');
+        return fullPath;
+      });
+      
+      return { success: true, completions };
+    } catch (error) {
+      return { success: false, completions: [], error: error.message };
+    }
+  });
+
+  // 路径解析
+  ipc.registerHandler('terminal:resolvePath', async ({ path, cwd }) => {
+    try {
+      const workingDir = cwd || ctx.config.workingDirectory;
+      const resolved = resolve(workingDir, path);
+      const stats = fs.statSync(resolved);
+      return {
+        success: true,
+        path: resolved,
+        exists: true,
+        isDirectory: stats.isDirectory(),
+      };
+    } catch (error) {
+      return {
+        success: false,
+        path: null,
+        exists: false,
+        isDirectory: false,
+      };
+    }
+  });
+
   // 预览服务
   ipc.registerHandler('preview:start', async (options = {}) => {
     const preview = await ctx.startPreview({
@@ -291,6 +351,38 @@ export function registerCustomHandlers(ctx) {
   if (ctx.config.debug) {
     console.log('   注册了自定义 IPC 处理器');
   }
+}
+
+async function getCommandCompletions(prefix) {
+  return new Promise((resolve) => {
+    exec(`compgen -c ${prefix} 2>/dev/null || ls /usr/local/bin /usr/bin /bin 2>/dev/null | grep "^${prefix}"`, (error, stdout) => {
+      const commands = new Set();
+      if (stdout) {
+        stdout.trim().split('\n').forEach(line => {
+          const cmd = line.trim();
+          if (cmd) commands.add(cmd);
+        });
+      }
+      resolve(Array.from(commands).sort());
+    });
+  });
+}
+
+async function listDirectoryEntries(dirPath) {
+  return new Promise((resolve, reject) => {
+    fs.readdir(dirPath, { withFileTypes: true }, (error, entries) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      const result = entries.map(entry => ({
+        name: entry.name,
+        isDirectory: entry.isDirectory(),
+        isFile: entry.isFile(),
+      }));
+      resolve(result);
+    });
+  });
 }
 
 export function registerCommandPalette(ctx) {
