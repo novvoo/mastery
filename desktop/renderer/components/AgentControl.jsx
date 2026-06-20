@@ -227,19 +227,6 @@ const styles = {
     fontSize: '12px'
   },
 
-    minHeight: '220px',
-    height: '100%',
-    resize: 'vertical',
-    border: 'none',
-    borderRadius: 0,
-    backgroundColor: 'var(--bg-depth-0)',
-    color: 'var(--text-color)',
-    fontFamily: 'var(--font-mono)',
-    fontSize: '11px',
-    lineHeight: 1.55,
-    padding: '10px',
-    outline: 'none'
-  },
   
   // 输入区域
   inputContainer: {
