@@ -120,7 +120,7 @@ const fileStyles = {
     color: 'var(--text-dark)',
     textAlign: 'right',
     userSelect: 'none',
-    borderRight: '1px solid var(--border-subtle)',
+    borderRight: '1px solid transparent',
   },
   codeLineContent: {
     paddingLeft: '10px',
