@@ -74,6 +74,8 @@ function TerminalLine({ line }) {
         fontFamily: 'var(--font-mono)',
         fontSize: '12px',
         lineHeight: '1.5',
+        cursor: 'text',
+        userSelect: 'text',
       }}>
         {line.text}
       </span>
@@ -527,6 +529,8 @@ const styles = {
     fontFamily: '"SF Mono", "Monaco", "Inconsolata", "Roboto Mono", monospace',
     fontSize: '13px',
     lineHeight: 1.4,
+    cursor: 'text',
+    userSelect: 'text',
   },
   lineRow: {
     minHeight: '18px',
