@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from 'fs';
 import { resolve, join } from 'path';
 import { MemoryType, MemoryStatus, MemoryEntry } from './memory-types.js';
 
@@ -69,7 +69,6 @@ export class StructuredMemory {
   #deleteEntry(entryId) {
     const filePath = join(this.#entriesDir, `${entryId}.md`);
     if (existsSync(filePath)) {
-      const { unlinkSync } = require('fs');
       unlinkSync(filePath);
     }
   }

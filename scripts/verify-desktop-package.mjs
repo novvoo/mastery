@@ -15,6 +15,7 @@ const requiredAsarEntries = [
   '/desktop/main.js',
   '/desktop/preload-entry/index.js',
   '/desktop/preload-entry/package.json',
+  '/desktop/preload.cjs',
   '/desktop/preload.js',
   '/desktop/workspace.js',
   '/src/adapters/desktop/desktop-core.js',

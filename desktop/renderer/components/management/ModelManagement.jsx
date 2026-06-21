@@ -6,7 +6,7 @@
  */
 import React, { useState, useCallback } from 'react';
 import Switch from '../ui/Switch.jsx';
-import { LLM_PROVIDER_OPTIONS } from '../../app/config.js';
+import { LLM_PROVIDER_OPTIONS } from '../../app/config/index.js';
 import { t } from '../../i18n.js';
 import { styles } from '../../app/styles.js';
 

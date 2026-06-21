@@ -5,7 +5,7 @@ import {
   getMotionClassNames,
   getSendButtonMotionClass,
   getStageMotionClass,
-} from '../desktop/renderer/app/animation-system.js';
+} from '../desktop/renderer/app/interaction/animation-system.js';
 
 describe('desktop animation system', () => {
   test('selects semantic motion modes from runtime state', () => {

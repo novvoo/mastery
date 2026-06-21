@@ -1,5 +1,5 @@
 import React from 'react';
-import { LLM_PROVIDER_OPTIONS } from '../app/config.js';
+import { LLM_PROVIDER_OPTIONS } from '../app/config/index.js';
 import { styles } from '../app/styles.js';
 
 export function LLMSetupModal({

@@ -11,6 +11,35 @@ export { RuntimeEventBus, getEventBus, resetEventBus, EventPriority } from './ev
 
 // Agent Engine - Agent 引擎
 export { AgentEngine } from './agent-engine.js';
+export { ReActAgent } from '../core/runtime/agent/agent.js';
+export { ToolRegistry } from '../core/runtime/agent/tool-registry.js';
+export { SessionManager } from '../core/session/session-manager.js';
+export { ExperienceMemory } from '../core/session/experience-memory.js';
+
+// Runtime support - 运行时支撑能力
+export {
+  loadRuntimeEnv,
+  applyRuntimeValues,
+  getMissingRequiredConfig,
+  getProviderBaseUrl,
+  getProviderModel,
+  getProviderRequirement,
+  getUserEnvPath,
+  writeUserEnv,
+  APP_NAME,
+  APP_DISPLAY_NAME,
+  APP_COPYRIGHT,
+  APP_CREDITS,
+} from '../core/runtime/runtime-config.js';
+export {
+  RUNTIME_STATUS_META,
+  getRuntimeStatusMeta,
+  getRuntimeStatusText,
+} from '../core/runtime/runtime-status.js';
+export {
+  normalizePreviewUrlInput,
+  formatPreviewUrlInput,
+} from '../core/runtime/preview-url.js';
 
 // Plugin System - 插件系统
 export * from './plugin-system.js';
@@ -20,6 +49,10 @@ export * from './migration-bridge.js';
 
 // Convenience factory - 便捷工厂函数
 import { AgentEngine } from './agent-engine.js';
+import { ReActAgent } from '../core/runtime/agent/agent.js';
+import { ToolRegistry } from '../core/runtime/agent/tool-registry.js';
+import { SessionManager } from '../core/session/session-manager.js';
+import { ExperienceMemory } from '../core/session/experience-memory.js';
 import { RuntimeConfig, PlatformType } from './types.js';
 import { detectPlatform, createCompatibilityLayer, MigrationBridge } from './migration-bridge.js';
 
@@ -60,6 +93,10 @@ export { createCompatibilityLayer };
  */
 export default {
   AgentEngine,
+  ReActAgent,
+  ToolRegistry,
+  SessionManager,
+  ExperienceMemory,
   RuntimeConfig,
   PlatformType,
   createAgentEngine,

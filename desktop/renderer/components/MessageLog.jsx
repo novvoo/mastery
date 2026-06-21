@@ -13,16 +13,18 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { MarkdownMessageContent } from './MarkdownMessageContent.jsx';
-import { styles } from './MessageLog.styles.js';
+import { styles } from './message-log/styles/MessageLog.styles.js';
 import { useIPC } from '../hooks/useIPC.js';
 import { RuntimeDetailsPanel } from './message-log/RuntimeDetailsPanel.jsx';
+import { Icon } from './ui/index.js';
 import { t } from '../i18n.js';
 import {
   buildRuntimeDetailsExportData,
   createConversationGroups,
   isPrimaryMessage,
   isRuntimeDetailMessage,
-} from './message-log/runtime-details.js';
+} from './message-log/utils/runtime-details.js';
+import { getMessageDisplayText, getMessageSerializableText, getStableMessageId, safeStringify } from './message-log/utils/message-utils.js';
 
 // 样式定义
 /**
@@ -35,38 +37,6 @@ import {
  */
 function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear, onAskAgent }) {
   const ipc = useIPC();
-
-  const getStableMessageId = useCallback((msg = {}, index, scope = 'list') => {
-    if (msg.id) return String(msg.id);
-    const timestamp = msg.timestamp || msg.createdAt || '';
-    const type = msg.type || msg.event || 'message';
-    const contentSeed = [
-      msg.toolName,
-      msg.name,
-      typeof msg.content === 'string' ? msg.content.slice(0, 80) : '',
-      typeof msg.message === 'string' ? msg.message.slice(0, 80) : '',
-      typeof msg.result === 'string' ? msg.result.slice(0, 80) : '',
-    ].filter(Boolean).join(':');
-    return `${scope}_${type}_${timestamp}_${index}_${contentSeed}`.replace(/\s+/g, '_');
-  }, []);
-
-  const safeStringify = useCallback((value, fallback = '') => {
-    if (value == null) return fallback;
-    if (typeof value === 'string') return value;
-    try {
-      const seen = new WeakSet();
-      return JSON.stringify(value, (_key, item) => {
-        if (typeof item === 'object' && item !== null) {
-          if (seen.has(item)) return '[Circular]';
-          seen.add(item);
-        }
-        if (typeof item === 'function') return `[Function ${item.name || 'anonymous'}]`;
-        return item;
-      }, 2);
-    } catch (error) {
-      return fallback || String(value);
-    }
-  }, []);
 
   // 在消息容器上用事件委托捕获所有 <a> 标签的点击
   // 这样无论链接是 ReactMarkdown 生成的，还是嵌入的 HTML 结构，都能被正确拦截
@@ -115,60 +85,6 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       />
     ),
   }), []);
-
-  const getMessageDisplayText = useCallback((msg = {}) => {
-    const candidates = [
-      msg.content,
-      msg.message,
-      msg.answer,
-      msg.text,
-      msg.response,
-      msg.result,
-      msg.result?.answer,
-      msg.result?.response,
-      msg.result?.text,
-      msg.resultMeta?.answer,
-      msg.resultMeta?.content,
-      msg.resultMeta?.result,
-      msg.resultMeta?.result?.answer,
-      msg.resultMeta?.result?.response,
-      msg.resultMeta?.result?.text,
-      msg.payload?.answer,
-      msg.payload?.content,
-      msg.payload?.message,
-      msg.payload?.text,
-      msg.payload?.chunk,
-      msg.payload?.result?.answer,
-      msg.payload?.result?.response,
-      msg.payload?.result?.text,
-    ];
-
-    for (const value of candidates) {
-      if (typeof value === 'string' && value.trim()) {
-        return value;
-      }
-    }
-
-    if (msg.event === 'agent:complete' || msg.streamComplete) {
-      return '任务执行完成';
-    }
-
-    if (msg.isStreaming || msg.type === 'assistant_stream') {
-      return '';
-    }
-
-    return '';
-  }, []);
-
-  const getMessageSerializableText = useCallback((msg = {}) => {
-    return getMessageDisplayText(msg)
-      || safeStringify(msg.content)
-      || safeStringify(msg.message)
-      || safeStringify(msg.result)
-      || safeStringify(msg.payload)
-      || safeStringify(msg.raw)
-      || '';
-  }, [getMessageDisplayText, safeStringify]);
 
   // 状态
   const [filter, setFilter] = useState('all');
@@ -1511,8 +1427,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
               style={styles.button}
               onClick={handleSearchToggle}
               title={t('msg.search_hint')}
+              aria-label={t('msg.search_hint')}
             >
-              🔍
+              <Icon name="search" size={14} />
             </button>
           </div>
           
@@ -1525,8 +1442,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
               }}
               onClick={() => handleViewChange('list')}
               title={t('msg.list_view')}
+              aria-label={t('msg.list_view')}
             >
-              📋
+              <Icon name="list" size={14} />
             </button>
             <button
               style={{
@@ -1535,8 +1453,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
               }}
               onClick={() => handleViewChange('timeline')}
               title={t('msg.timeline_view')}
+              aria-label={t('msg.timeline_view')}
             >
-              📅
+              <Icon name="timeline" size={14} />
             </button>
           </div>
           
@@ -1573,7 +1492,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             onClick={handleAutoScrollChange}
             title={autoScroll ? '跟随新内容 (点击锁定当前位置)' : '已锁定 — 点击恢复跟随滚动'}
           >
-            {autoScroll ? '📍 跟随' : '已锁定'}
+            <Icon name={autoScroll ? 'pin' : 'lock'} size={14} />
+            {autoScroll ? '跟随' : '已锁定'}
           </button>
           
           {/* 清空按钮 */}
@@ -1581,8 +1501,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             style={styles.button}
             onClick={handleClear}
             title={t('msg.clear_hint')}
+            aria-label={t('msg.clear_hint')}
           >
-            🗑️
+            <Icon name="trash" size={14} />
           </button>
         </div>
       </div>

@@ -4,7 +4,7 @@ import {
   getCapsuleTone,
   isStatusPulseEnabled,
   statusDotStyle,
-} from '../../desktop/renderer/components/chrome/capsule-styles.js';
+} from '../../desktop/renderer/components/chrome/styles/capsule-styles.js';
 
 describe('STATUS_TONE', () => {
   test('maps runtime tone to a color token', () => {

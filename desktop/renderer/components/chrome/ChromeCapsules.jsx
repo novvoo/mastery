@@ -11,7 +11,7 @@ import {
   STATUS_TONE,
   statusDotStyle,
   connectionDotStyle,
-} from './capsule-styles.js';
+} from './styles/capsule-styles.js';
 
 function DragRegion() {
   return <div style={DRAG_REGION} />;

@@ -15,18 +15,18 @@ import { SettingsMenu } from './components/SettingsMenu.jsx';
 import { LLMSetupModal } from './components/LLMSetupModal.jsx';
 import { ManagementPage } from './components/management/ManagementPage.jsx';
 import { ChromeCapsules } from './components/chrome/ChromeCapsules.jsx';
+import { IpcDiagnosticBanner } from './components/chrome/IpcDiagnosticBanner.jsx';
 import { ActivityRail } from './components/workbench/ActivityRail.jsx';
 import { BottomTerminalPanel } from './components/workbench/BottomTerminalPanel.jsx';
 import { FileWorkbench } from './components/workbench/FileWorkbench.jsx';
 import { ChatWorkspace } from './components/workbench/ChatWorkspace.jsx';
 import { InspectorPanel } from './components/workbench/InspectorPanel.jsx';
 import { SidebarPanel } from './components/workbench/SidebarPanel.jsx';
-import { Button } from './components/ui/index.js';
 import { useRuntime } from './hooks/useRuntime.js';
 import { useIPC } from './hooks/useIPC.js';
-import { formatPreviewUrlInput, normalizePreviewUrlInput } from './preview-url.js';
-import { getRuntimeStatusMeta } from './runtime-status.js';
-import { LAYOUT, LLM_PROVIDER_OPTIONS } from './app/config.js';
+import { formatPreviewUrlInput, normalizePreviewUrlInput } from './runtime/preview-url.js';
+import { getRuntimeStatusMeta } from './runtime/runtime-status.js';
+import { LAYOUT, LLM_PROVIDER_OPTIONS } from './app/config/index.js';
 import {
   ACTIVE_AGENT_SESSION_STORAGE_KEY,
   AGENT_HISTORY_STORAGE_KEY,
@@ -51,12 +51,13 @@ import {
   readStoredPreviewUrl,
   saveAgentInputHistory,
   upsertAgentSession,
-} from './app/session-storage.js';
+} from './app/session/session-storage.js';
 import {
   createComposerInteractionState,
   handleComposerKey,
-} from './app/interaction-model.js';
+} from './app/interaction/interaction-model.js';
 import { styles } from './app/styles.js';
+import { WorkbenchControls, TERMINAL_PANEL_STORAGE_KEY, readTerminalPanelLayout, clampTerminalHeight } from './components/workbench/controls/WorkbenchControls.jsx';
 import { getI18n, t as i18nT } from './i18n.js';
 import './index.css';
 
@@ -70,92 +71,6 @@ import './index.css';
  * 主应用组件
  */
 const DESKTOP_THEME_STORAGE_KEY = 'ai-agent-desktop-theme';
-const TERMINAL_PANEL_STORAGE_KEY = 'ai-agent-terminal-panel';
-
-function WorkbenchControls({
-  sidebarCollapsed,
-  isTerminalVisible,
-  summaryPanelVisible,
-  onExport,
-  onOpenPreview,
-  onToggleSidebar,
-  onToggleTerminal,
-  onToggleInspector,
-  onClearMessages,
-}) {
-  const iconButton = {
-    width: '28px',
-    height: '28px',
-    minWidth: '28px',
-    padding: 0,
-    borderRadius: '6px',
-    fontSize: '12px',
-    fontFamily: 'var(--font-mono)',
-  };
-  const activeButton = {
-    backgroundColor: 'var(--primary-faint)',
-    borderColor: 'var(--primary-border)',
-    color: 'var(--primary-color)',
-  };
-
-  return (
-    <div style={styles.workspaceControls}>
-      <Button variant="ghost" size="sm" style={iconButton} onClick={onExport} title={i18nT('chat.export')} ariaLabel={i18nT('chat.export')}>↓</Button>
-      <Button variant="ghost" size="sm" style={iconButton} onClick={onOpenPreview} title={i18nT('chat.preview')} ariaLabel={i18nT('chat.preview')}>◱</Button>
-      <span style={styles.chatHeaderActionDivider} />
-      <Button
-        variant="icon"
-        size="sm"
-        style={{ ...iconButton, ...(!sidebarCollapsed ? activeButton : {}) }}
-        onClick={onToggleSidebar}
-        title={sidebarCollapsed ? i18nT('window.expand_sidebar') : i18nT('window.collapse_sidebar')}
-        ariaLabel={i18nT('window.toggle_sidebar')}
-      >
-        ◧
-      </Button>
-      <Button
-        variant="icon"
-        size="sm"
-        style={{ ...iconButton, ...(isTerminalVisible ? activeButton : {}) }}
-        onClick={onToggleTerminal}
-        title="Bottom terminal"
-        ariaLabel="Bottom terminal"
-      >
-        ▔
-      </Button>
-      <Button
-        variant="icon"
-        size="sm"
-        style={{ ...iconButton, ...(summaryPanelVisible ? activeButton : {}) }}
-        onClick={onToggleInspector}
-        title="toggle-inspector"
-        ariaLabel="toggle-inspector"
-      >
-        ◨
-      </Button>
-      <Button variant="ghost" size="sm" style={iconButton} onClick={onClearMessages} title={i18nT('chat.clear_messages')} ariaLabel={i18nT('chat.clear_messages')}>×</Button>
-    </div>
-  );
-}
-
-function readTerminalPanelLayout() {
-  if (typeof localStorage === 'undefined') {
-    return {};
-  }
-  try {
-    return JSON.parse(localStorage.getItem(TERMINAL_PANEL_STORAGE_KEY) || '{}');
-  } catch (_) {
-    return {};
-  }
-}
-
-function clampTerminalHeight(height) {
-  const numeric = Number(height);
-  if (!Number.isFinite(numeric)) {
-    return 280;
-  }
-  return Math.min(520, Math.max(180, numeric));
-}
 
 function App() {
   // 状态管理
@@ -1436,47 +1351,10 @@ function App() {
         onClose={handleClose}
       />
 
-      {ipcDiagnostic && !ipcDiagnostic.hasElectronAPI && (
-        <div style={{
-          background: 'linear-gradient(90deg, #8a6d3b, #b98b3c)',
-          color: '#f8f4e8',
-          padding: '8px 16px',
-          fontSize: 13,
-          borderBottom: '1px solid rgba(0,0,0,0.15)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 12,
-        }}>
-          <div style={{ flex: 1 }}>
-            <strong>⚠️ IPC 连接不可用：</strong>
-            preload 脚本未能成功暴露 <code>window.electronAPI</code>，所有与主进程的通信功能将不可用。
-            <div style={{
-              marginTop: 4,
-              fontSize: 12,
-              opacity: 0.9,
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-              wordBreak: 'break-all',
-            }}>
-              诊断: {JSON.stringify(ipcDiagnostic)}
-            </div>
-          </div>
-          <button
-            onClick={() => setIpcDiagnostic(null)}
-            style={{
-              background: 'transparent',
-              border: '1px solid rgba(255,255,255,0.4)',
-              color: 'inherit',
-              padding: '4px 10px',
-              borderRadius: 4,
-              fontSize: 12,
-              cursor: 'pointer',
-            }}
-          >
-            关闭
-          </button>
-        </div>
-      )}
+      <IpcDiagnosticBanner
+        diagnostic={ipcDiagnostic}
+        onDismiss={() => setIpcDiagnostic(null)}
+      />
 
       <WorkbenchControls
         sidebarCollapsed={sidebarCollapsed}

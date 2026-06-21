@@ -5,4 +5,4 @@ export {
   getFileStatusLabel,
   getFileTypeIcon,
   formatDuration,
-} from '../../../../src/core/activity-summary.js';
+} from '../../../../../src/core/activity-summary.js';

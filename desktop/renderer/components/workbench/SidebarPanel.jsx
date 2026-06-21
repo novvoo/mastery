@@ -1,8 +1,8 @@
 import React from 'react';
 import AgentControl from '../AgentControl.jsx';
 import ToolPanel from '../ToolPanel.jsx';
-import { Button, Panel, PanelHeader } from '../ui/index.js';
-import { LAYOUT } from '../../app/config.js';
+import { Button, Icon, Panel, PanelHeader } from '../ui/index.js';
+import { LAYOUT } from '../../app/config/index.js';
 import { t } from '../../i18n.js';
 
 export function SidebarPanel({
@@ -55,7 +55,9 @@ export function SidebarPanel({
         actions={
           <>
             {activeTab !== 'tools' && (
-              <Button variant="icon" size="sm" onClick={onNewTask} title="new" ariaLabel="new">+</Button>
+              <Button variant="icon" size="sm" onClick={onNewTask} title="new" ariaLabel="new">
+                <Icon name="plus" size={14} />
+              </Button>
             )}
           </>
         }

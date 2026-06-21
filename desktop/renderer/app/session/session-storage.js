@@ -13,9 +13,9 @@ import {
   createAgentErrorPrompt,
   MAX_AGENT_HISTORY_ITEMS,
   MAX_AGENT_SESSIONS,
-} from '../../../src/core/session-store.js';
-import { normalizePreviewUrlInput } from '../../../src/core/preview-url.js';
-import { LAYOUT } from './config.js';
+} from '../../../../src/core/session-store.js';
+import { normalizePreviewUrlInput } from '../../../../src/core/preview-url.js';
+import { LAYOUT } from '../config/index.js';
 
 export const REPOSITORY_URL = 'https://github.com/novvoo/mastery';
 export const PROJECT_TREE_REFRESH_CONCURRENCY = 12;

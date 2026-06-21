@@ -84,7 +84,7 @@ jobs:
         run: bunx prettier --check "src/**/*.js"
 
       - name: Check outdated dependencies (advisory)
-        run: bun outdated || true
+        run: bun outdated
 
   # ========== 阶段 2: 单元测试（多 OS，阻塞 - 必须通过）==========
   test-unit:

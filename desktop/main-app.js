@@ -107,14 +107,13 @@ class ElectronMainApp {
         minWidth: inputWindow.minWidth || config.minWindowWidth || 800,
         minHeight: inputWindow.minHeight || config.minWindowHeight || 600,
         webPreferences: {
-          // 这些是安全设置，不允许从外部传入覆盖——始终使用硬编码默认
+          // 允许外部传入覆盖额外字段，但安全项会在下面强制固定。
+          ...inputWebPrefs,
           nodeIntegration: false,
           contextIsolation: true,
-          preload: path.join(__dirname, 'preload-entry', 'index.js'),
-          sandbox: false,
+          preload: path.join(__dirname, 'preload.cjs'),
+          sandbox: true,
           webSecurity: true,
-          // 允许外部传入覆盖额外字段（但不覆盖上面的安全项）
-          ...inputWebPrefs
         }
       },
 
@@ -143,8 +142,8 @@ class ElectronMainApp {
       ...(this.#config.window.webPreferences || {}),
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload-entry', 'index.js'),
-      sandbox: false,
+      preload: path.join(__dirname, 'preload.cjs'),
+      sandbox: true,
       webSecurity: true
     };
   }

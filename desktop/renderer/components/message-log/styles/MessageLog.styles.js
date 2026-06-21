@@ -17,6 +17,7 @@ export const styles = {
     minHeight: '42px',
     padding: '7px 10px',
     gap: '10px',
+    flexWrap: 'wrap',
     borderBottom: 'none',
     backgroundColor: 'transparent'
   },
@@ -42,6 +43,9 @@ export const styles = {
     display: 'flex',
     gap: '6px',
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    flexWrap: 'wrap',
+    maxWidth: '100%',
     minHeight: '30px',
     padding: '2px',
     borderRadius: '999px',
@@ -54,11 +58,12 @@ export const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '4px',
-    marginRight: '8px'
+    minWidth: 0
   },
   
   searchInput: {
-    width: '150px',
+    width: 'min(180px, 32vw)',
+    minWidth: '120px',
     height: '28px',
     padding: '0 9px',
     borderRadius: '999px',
@@ -70,7 +75,7 @@ export const styles = {
   },
   
   searchInputExpanded: {
-    width: '200px'
+    width: 'min(240px, 42vw)'
   },
   
   button: {
@@ -100,17 +105,23 @@ export const styles = {
     padding: '2px',
     borderRadius: '999px',
     backgroundColor: 'var(--glass-control-bg)',
-    border: '1px solid var(--glass-border)'
+    border: '1px solid var(--glass-border)',
+    flex: '0 0 auto'
   },
   
   viewButton: {
-    padding: '4px 8px',
+    width: '28px',
+    height: '24px',
+    padding: 0,
     borderRadius: '999px',
     border: 'none',
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',
     cursor: 'pointer',
     fontSize: '11px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     transition: 'all 0.15s'
   },
   

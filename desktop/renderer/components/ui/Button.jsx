@@ -88,14 +88,6 @@ export default function Button({
         boxShadow: variant === 'ghost' ? 'none' : 'var(--shadow-button)',
         userSelect: 'none',
         WebkitUserSelect: 'none',
-        ':hover': {
-          transform: 'translateY(-1px)',
-          boxShadow: variant === 'ghost' ? 'none' : 'var(--shadow-button-hover)'
-        },
-        ':active': {
-          transform: 'translateY(0)',
-          boxShadow: variant === 'ghost' ? 'none' : 'var(--shadow-button)'
-        },
         ...sizeStyles,
         ...variantStyles,
         ...style,

@@ -417,19 +417,22 @@ describe('Desktop App Config Persistence', () => {
 });
 
 describe('Desktop IPC Preload Bridge', () => {
-  test('ElectronMainApp always points BrowserWindow preload at CommonJS preload-entry', async () => {
+  test('ElectronMainApp always points BrowserWindow preload at sandbox-compatible CommonJS preload', async () => {
     const path = await import('path');
     const fs = await import('fs');
 
     const source = fs.readFileSync(path.join(DESKTOP_ROOT, 'main-app.js'), 'utf8');
-    const preloadEntryRefs = source.match(/path\.join\(__dirname, 'preload-entry', 'index\.js'\)/g) || [];
-    expect(preloadEntryRefs.length).toBeGreaterThanOrEqual(2);
+    const preloadCjsRefs = source.match(/path\.join\(__dirname, 'preload\.cjs'\)/g) || [];
+    expect(preloadCjsRefs.length).toBeGreaterThanOrEqual(2);
+    expect(source).not.toContain("preload: path.join(__dirname, 'preload-entry', 'index.js')");
     expect(source).not.toContain("preload: path.join(__dirname, 'preload.js')");
     expect(source).toContain('nodeIntegration: false');
     expect(source).toContain('contextIsolation: true');
+    expect(source).toContain('sandbox: true');
+    expect(source).not.toContain('sandbox: false');
   });
 
-  test('desktop packaging includes only the active preload entry plus shared preload script', async () => {
+  test('desktop packaging includes the sandboxed preload and diagnostic preload files', async () => {
     const path = await import('path');
     const fs = await import('fs');
 
@@ -438,31 +441,29 @@ describe('Desktop IPC Preload Bridge', () => {
     const verifyScript = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'verify-desktop-package.mjs'), 'utf8');
 
     expect(rootPackage.build.files).toContain('desktop/preload-entry/**/*');
+    expect(rootPackage.build.files).toContain('desktop/preload.cjs');
     expect(rootPackage.build.files).toContain('desktop/preload.js');
-    expect(rootPackage.build.files).not.toContain('desktop/preload.cjs');
 
     expect(electronBuilder.files).toContain('preload-entry/**/*');
+    expect(electronBuilder.files).toContain('preload.cjs');
     expect(electronBuilder.files).toContain('preload.js');
-    expect(electronBuilder.files).not.toContain('preload.cjs');
 
     expect(verifyScript).toContain('/desktop/preload-entry/index.js');
     expect(verifyScript).toContain('/desktop/preload-entry/package.json');
-    expect(verifyScript).not.toContain('/desktop/preload.cjs');
+    expect(verifyScript).toContain('/desktop/preload.cjs');
   });
 
-  test('preload-entry seeds Electron bridge globals before running preload.js', async () => {
+  test('active CommonJS preload remains sandbox-compatible', async () => {
     const fs = await import('fs');
     const path = await import('path');
 
-    const entryPath = path.join(DESKTOP_ROOT, 'preload-entry', 'index.js');
-    const entrySource = fs.readFileSync(entryPath, 'utf8');
+    const preloadPath = path.join(DESKTOP_ROOT, 'preload.cjs');
+    const preloadSource = fs.readFileSync(preloadPath, 'utf8');
 
-    expect(entrySource).toContain("const electron = require('electron')");
-    expect(entrySource).toContain('const { contextBridge, ipcRenderer } = electron');
-    expect(entrySource).toContain("Object.defineProperty(globalThis, 'contextBridge'");
-    expect(entrySource).toContain("Object.defineProperty(globalThis, 'ipcRenderer'");
-    expect(entrySource).toContain('runPreload(require, process, console');
-    expect(entrySource).toContain('[IPC-DIAG][preload-entry] bootstrap start');
+    expect(preloadSource).toContain("const electron = require('electron')");
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('electronAPI'");
+    expect(preloadSource).not.toContain("require('fs')");
+    expect(preloadSource).not.toContain("require('vm')");
   });
 
   test('preload exposes diagnostic APIs and allows ipc:diagnose', async () => {

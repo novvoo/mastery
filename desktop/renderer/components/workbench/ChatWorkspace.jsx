@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import CommandSuggestions from '../CommandSuggestions.jsx';
 import MessageLog from '../MessageLog.jsx';
 import { InteractionConsole } from './InteractionConsole.jsx';
-import { getSendButtonMotionClass } from '../../app/animation-system.js';
+import { getSendButtonMotionClass } from '../../app/interaction/animation-system.js';
 import { styles } from '../../app/styles.js';
 import { t } from '../../i18n.js';
 

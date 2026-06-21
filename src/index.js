@@ -27,13 +27,13 @@ export { AIEngineeringAgent, handleCliArgs };
 export default AIEngineeringAgent;
 
 // Backward-compatible public API exports
-export { ReActAgent } from './core/agent.js';
-export { ToolRegistry } from './core/tool-registry.js';
-export { SessionManager } from './core/session-manager.js';
+export { ReActAgent } from './core/runtime/agent/agent.js';
+export { ToolRegistry } from './core/runtime/agent/tool-registry.js';
+export { SessionManager } from './core/session/session-manager.js';
 export { MemoryManager } from './memory/memory-manager.js';
-export { SecurityPolicy } from './core/security-policy.js';
-export { TokenJuice } from './core/token-juice.js';
-export { ExperienceMemory } from './core/experience-memory.js';
+export { SecurityPolicy } from './core/runtime/agent/support/security-policy.js';
+export { TokenJuice } from './core/runtime/agent/support/token-juice.js';
+export { ExperienceMemory } from './core/session/experience-memory.js';
 export { IntelligentReasoning } from './core/intelligent-reasoning.js';
 export { AutomationEngine } from './core/automation-engine.js';
 export { Embedder } from './core/embedder.js';
@@ -87,19 +87,19 @@ export {
   APP_DISPLAY_NAME,
   APP_COPYRIGHT,
   APP_CREDITS,
-} from './core/runtime-config.js';
+} from './core/runtime/runtime-config.js';
 export {
   listWorkspaceDirectory,
   createWorkspaceWatcher,
   DEFAULT_IGNORED_WATCH_DIRECTORIES,
-} from './core/workspace-watcher.js';
+} from './core/workspace/workspace-watcher.js';
 export {
   buildActivitySummary,
   getActivityTone,
   getFileStatusLabel,
   getFileTypeIcon,
   formatDuration,
-} from './core/activity-summary.js';
+} from './core/runtime/activity-summary.js';
 export {
   isRuntimeDetailMessage,
   isThinkingMessage,
@@ -114,16 +114,16 @@ export {
   createConversationGroups,
   createRuntimeDetailId,
   buildRuntimeDetailsExportData,
-} from './core/runtime-details.js';
+} from './core/runtime/runtime-details.js';
 export {
   normalizePreviewUrlInput,
   formatPreviewUrlInput,
-} from './core/preview-url.js';
+} from './core/runtime/preview-url.js';
 export {
   RUNTIME_STATUS_META,
   getRuntimeStatusMeta,
   getRuntimeStatusText,
-} from './core/runtime-status.js';
+} from './core/runtime/runtime-status.js';
 export {
   createAgentSessionId,
   getAgentSessionTitle,
@@ -138,7 +138,7 @@ export {
   createFileSystemStorageAdapter,
   MAX_AGENT_HISTORY_ITEMS,
   MAX_AGENT_SESSIONS,
-} from './core/session-store.js';
+} from './core/session/session-store.js';
 export {
   createAgentEngine,
   createRuntime,

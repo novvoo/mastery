@@ -1,8 +1,8 @@
 import React from 'react';
 import { t } from '../../i18n.js';
-import { Button, Panel } from '../ui/index.js';
+import { Button, Icon, Panel } from '../ui/index.js';
 import { TabGroup, TabItem } from '../ui/Tab.jsx';
-import { LAYOUT } from '../../app/config.js';
+import { LAYOUT } from '../../app/config/index.js';
 import { styles } from '../../app/styles.js';
 
 function RagTab({
@@ -20,7 +20,7 @@ function RagTab({
       <div style={styles.summarySection}>
         <div style={styles.summarySectionTitle}>{t('inspector.rag_title')}</div>
         <div style={styles.inspectorHelpText}>
-          {t('inspector.rag_title')}
+          {t('inspector.rag_help', {}, 'Add documents, initialize the index, then insert a document search command into chat.')}
         </div>
 
         <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
@@ -60,8 +60,8 @@ function RagTab({
       <div style={styles.summarySection}>
         <div style={styles.summarySectionTitle}>{t('common.ok')}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <button style={styles.button} onClick={onInsertDocSearch}>Doc Search</button>
-          <button style={styles.button} onClick={onResetRag} disabled={!ipc.processInput && ragDocs.length === 0}>Reset</button>
+          <button style={styles.button} onClick={onInsertDocSearch}>{t('inspector.insert_doc_search', {}, 'Insert doc search')}</button>
+          <button style={styles.button} onClick={onResetRag} disabled={!ipc.processInput && ragDocs.length === 0}>{t('common.reset', {}, 'Reset')}</button>
         </div>
       </div>
     </div>
@@ -117,7 +117,7 @@ function PreviewTab({
           title={inspectorExpanded ? t('inspector.restore') : t('inspector.expand')}
           aria-label={inspectorExpanded ? t('inspector.restore') : t('inspector.expand')}
         >
-          {inspectorExpanded ? '↙' : '⛶'}
+          <Icon name={inspectorExpanded ? 'restore' : 'expand'} size={15} />
         </button>
         {previewSession?.session_id ? (
           <button style={styles.button} onClick={onStopPreview}>{t('ui.stop')}</button>
@@ -235,7 +235,7 @@ export function InspectorPanel({
           title={inspectorExpanded ? t('inspector.restore') : t('inspector.expand')}
           ariaLabel={inspectorExpanded ? t('inspector.restore') : t('inspector.expand')}
         >
-          {inspectorExpanded ? '↙' : '⛶'}
+          <Icon name={inspectorExpanded ? 'restore' : 'expand'} size={15} />
         </Button>
       </div>
 

@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { styles } from './MessageLog.styles.js';
+import { styles } from './message-log/styles/MessageLog.styles.js';
 
 const AUTO_LINK_RE = /(?<!<)(?<!\]\()(?<!\[)(\b(?:https?:\/\/|www\.)[^\s<>\]\[()"']+[^\s<>\]\[()"'\.,;!?\n])/gi;
 const MARKDOWN_STYLE = {

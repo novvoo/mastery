@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   buildActivitySummary,
   getFileStatusLabel,
-} from '../../desktop/renderer/components/message-log/activity-summary.js';
+} from '../../desktop/renderer/components/message-log/utils/activity-summary.js';
 import {
   buildThinkingSummary,
   buildRuntimeDetailsExportData,
@@ -13,7 +13,7 @@ import {
   isPrimaryMessage,
   isRuntimeDetailMessage,
   isStatusUpdateMessage,
-} from '../../desktop/renderer/components/message-log/runtime-details.js';
+} from '../../desktop/renderer/components/message-log/utils/runtime-details.js';
 
 describe('runtime details helpers', () => {
   test('classifies runtime detail and primary messages', () => {

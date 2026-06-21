@@ -13,4 +13,4 @@ export {
   createConversationGroups,
   createRuntimeDetailId,
   buildRuntimeDetailsExportData,
-} from '../../../../src/core/runtime-details.js';
+} from '../../../../../src/core/runtime-details.js';

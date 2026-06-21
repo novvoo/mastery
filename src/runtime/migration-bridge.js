@@ -14,13 +14,13 @@ import { AgentEngine } from './agent-engine.js';
 import { PlatformType, RuntimeConfig, MAX_ITERATIONS_DEFAULT } from './types.js';
 
 // 导入旧架构组件
-import { ReActAgent } from '../core/agent.js';
-import { ToolRegistry } from '../core/tool-registry.js';
+import { ReActAgent } from '../core/runtime/agent/agent.js';
+import { ToolRegistry } from '../core/runtime/agent/tool-registry.js';
 import { MemoryManager } from '../memory/memory-manager.js';
-import { SecurityPolicy } from '../core/security-policy.js';
-import { SessionManager } from '../core/session-manager.js';
-import { TokenJuice } from '../core/token-juice.js';
-import { ExperienceMemory } from '../core/experience-memory.js';
+import { SecurityPolicy } from '../core/runtime/agent/support/security-policy.js';
+import { SessionManager } from '../core/session/session-manager.js';
+import { TokenJuice } from '../core/runtime/agent/support/token-juice.js';
+import { ExperienceMemory } from '../core/session/experience-memory.js';
 
 // 导入模型提供者
 import { OpenAIModelProvider } from '../models/openai-provider.js';

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   formatPreviewUrlInput,
   normalizePreviewUrlInput
-} from '../../desktop/renderer/preview-url.js';
+} from '../../desktop/renderer/runtime/preview-url.js';
 
 describe('desktop preview URL helpers', () => {
   test('normalizes localhost preview addresses', () => {

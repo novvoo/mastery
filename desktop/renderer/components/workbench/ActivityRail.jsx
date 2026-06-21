@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from '../ui/index.js';
+import { Button, Icon } from '../ui/index.js';
 import { styles } from '../../app/styles.js';
 import { t } from '../../i18n.js';
 
@@ -20,7 +20,7 @@ export function ActivityRail({
         ariaLabel={t('inspector.agent_panel')}
         style={activeTab === 'agent' && !sidebarCollapsed ? styles.activityButtonActive : {}}
       >
-        AG
+        <Icon name="agent" size={16} />
       </Button>
       <Button
         variant="icon"
@@ -30,7 +30,7 @@ export function ActivityRail({
         ariaLabel={t('inspector.tools_panel')}
         style={activeTab === 'tools' && !sidebarCollapsed ? styles.activityButtonActive : {}}
       >
-        TL
+        <Icon name="tools" size={16} />
       </Button>
       <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
         <Button
@@ -40,7 +40,7 @@ export function ActivityRail({
           title={t('inspector.settings_title')}
           ariaLabel={t('inspector.settings_title')}
         >
-          ⚙
+          <Icon name="settings" size={16} />
         </Button>
       </div>
     </nav>

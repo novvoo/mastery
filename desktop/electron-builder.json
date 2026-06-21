@@ -10,6 +10,7 @@
   "files": [
     "main.js",
     "preload-entry/**/*",
+    "preload.cjs",
     "preload.js",
     "renderer/**/*",
     "build/**/*",

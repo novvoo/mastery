@@ -15,7 +15,7 @@ import {
   getFileTypeIcon,
   formatDuration,
   getActivityTone,
-} from '../../desktop/renderer/components/message-log/activity-summary.js';
+} from '../../desktop/renderer/components/message-log/utils/activity-summary.js';
 import {
   buildThinkingSummary,
   buildRuntimeDetailsExportData,
@@ -28,7 +28,7 @@ import {
   isRuntimeDetailMessage,
   isStatusUpdateMessage,
   isThinkingMessage,
-} from '../../desktop/renderer/components/message-log/runtime-details.js';
+} from '../../desktop/renderer/components/message-log/utils/runtime-details.js';
 
 // ===== 辅助函数：模拟 RuntimeDetailsPanel 的 null 返回判断逻辑 =====
 function shouldPanelBeVisible(runtimeDetails, isRunningGroup) {
@@ -197,7 +197,7 @@ describe('overflow 链路集成测试', () => {
   test('RuntimeDetailsPanel 不使用 overflow:hidden', async () => {
     // 读取样式文件验证
     const stylesContent = await import(
-      '../../desktop/renderer/components/MessageLog.styles.js'
+      '../../desktop/renderer/components/message-log/styles/MessageLog.styles.js'
     ).then(m => m.styles);
 
     expect(stylesContent.runtimeDetailsPanel.overflow).not.toBe('hidden');
@@ -207,7 +207,7 @@ describe('overflow 链路集成测试', () => {
 
   test('thinkingPanel 不使用 overflow:hidden', async () => {
     const stylesContent = await import(
-      '../../desktop/renderer/components/MessageLog.styles.js'
+      '../../desktop/renderer/components/message-log/styles/MessageLog.styles.js'
     ).then(m => m.styles);
 
     expect(stylesContent.thinkingPanel.overflow).not.toBe('hidden');
@@ -216,7 +216,7 @@ describe('overflow 链路集成测试', () => {
 
   test('MessageLog container 不使用 overflow:hidden', async () => {
     const stylesContent = await import(
-      '../../desktop/renderer/components/MessageLog.styles.js'
+      '../../desktop/renderer/components/message-log/styles/MessageLog.styles.js'
     ).then(m => m.styles);
 
     expect(stylesContent.container.overflow).not.toBe('hidden');
@@ -234,7 +234,7 @@ describe('overflow 链路集成测试', () => {
 
   test('消息滚动容器 messageList 使用 overflowY:auto（不裁切内容）', async () => {
     const stylesContent = await import(
-      '../../desktop/renderer/components/MessageLog.styles.js'
+      '../../desktop/renderer/components/message-log/styles/MessageLog.styles.js'
     ).then(m => m.styles);
 
     // messageList 应该是 overflowY: 'auto'，允许滚动但不裁切
@@ -247,7 +247,7 @@ describe('overflow 链路集成测试', () => {
       '../../desktop/renderer/app/styles.js'
     ).then(m => m.styles);
     const msgStyles = await import(
-      '../../desktop/renderer/components/MessageLog.styles.js'
+      '../../desktop/renderer/components/message-log/styles/MessageLog.styles.js'
     ).then(m => m.styles);
 
     // 从 chatArea → messageContainer → MessageLog container → messageList
@@ -276,7 +276,7 @@ describe('overflow 链路集成测试', () => {
 
   test('header 元素有 borderRadius 补偿外层 overflow:visible', async () => {
     const msgStyles = await import(
-      '../../desktop/renderer/components/MessageLog.styles.js'
+      '../../desktop/renderer/components/message-log/styles/MessageLog.styles.js'
     ).then(m => m.styles);
 
     // runtimeDetailsHeader 和 thinkingHeader 应有顶部圆角

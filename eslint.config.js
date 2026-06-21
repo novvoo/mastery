@@ -22,6 +22,7 @@ export default [
         encodeURIComponent: "readonly",
         decodeURIComponent: "readonly",
         fetch: "readonly",
+        Response: "readonly",
         AbortController: "readonly",
         Buffer: "readonly",
         URL: "readonly",

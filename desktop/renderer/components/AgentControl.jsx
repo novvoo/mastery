@@ -12,7 +12,7 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { getRuntimeStatusMeta } from '../runtime-status.js';
+import { getRuntimeStatusMeta } from '../runtime/runtime-status.js';
 import { useIPC } from '../hooks/useIPC.js';
 
 // removed

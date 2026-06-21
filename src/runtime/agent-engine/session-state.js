@@ -7,7 +7,7 @@
  *   - 调试模式切换
  */
 
-import { ReActAgent } from '../../core/agent.js';
+import { ReActAgent } from '../../core/runtime/agent/agent.js';
 import { HOOKS } from '../plugin-system.js';
 import { RuntimeEvent } from '../types.js';
 

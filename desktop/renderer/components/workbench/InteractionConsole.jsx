@@ -5,12 +5,12 @@ import {
   deriveInteractionStages,
   getComposerAssistText,
   getToolActivitySummary,
-} from '../../app/interaction-model.js';
+} from '../../app/interaction/interaction-model.js';
 import {
   getAnimationMode,
   getMotionClassNames,
   getStageMotionClass,
-} from '../../app/animation-system.js';
+} from '../../app/interaction/animation-system.js';
 import { styles } from '../../app/styles.js';
 
 function getStageStyle(state) {

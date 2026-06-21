@@ -11,64 +11,26 @@
  */
 
 import { EventEmitter } from 'events';
+import {
+  DEFAULT_BATCH_CONFIG,
+  DEFAULT_CACHE_CONFIG,
+  DEFAULT_HISTORY_CONFIG,
+  EventPriority,
+  PRIORITY_WEIGHT,
+  createDefaultFilter,
+} from './event-bus/config.js';
+import {
+  countSubscribers,
+  createCacheEntry,
+  createEventRecord,
+  filterReplayHistory,
+  isCacheExpired,
+  queryHistory,
+  summarizeSubscribers,
+  toHistoryRecord,
+} from './event-bus/records.js';
 
-/**
- * 事件优先级枚举
- * @enum {string}
- */
-export const EventPriority = {
-  HIGH: 'high',      // 高优先级，优先执行
-  MEDIUM: 'medium',  // 中等优先级，默认值
-  LOW: 'low'         // 低优先级，最后执行
-};
-
-/**
- * 优先级权重映射，用于排序
- */
-const PRIORITY_WEIGHT = {
-  [EventPriority.HIGH]: 3,
-  [EventPriority.MEDIUM]: 2,
-  [EventPriority.LOW]: 1
-};
-
-/**
- * 默认事件历史记录配置
- */
-const DEFAULT_HISTORY_CONFIG = {
-  enabled: true,           // 是否启用历史记录
-  maxSize: 1000,           // 最大历史记录数量
-  includeData: true        // 是否包含事件数据
-};
-
-/**
- * 默认事件缓存配置
- */
-const DEFAULT_CACHE_CONFIG = {
-  enabled: true,           // 是否启用缓存
-  maxSize: 100,            // 最大缓存事件数量
-  ttl: 60000               // 缓存过期时间（毫秒）
-};
-
-/**
- * 默认批量处理配置
- */
-const DEFAULT_BATCH_CONFIG = {
-  enabled: false,          // 是否启用批量处理
-  batchSize: 50,           // 批量处理大小
-  flushInterval: 100       // 批量处理刷新间隔（毫秒）
-};
-
-/**
- * 创建默认的事件过滤器
- * @returns {Object} 默认过滤器配置
- */
-function createDefaultFilter() {
-  return {
-    types: null,           // 允许的事件类型列表，null 表示允许所有
-    sources: null,         // 允许的事件来源列表，null 表示允许所有
-    dataFilter: null       // 数据过滤函数，返回 true 表示通过
-  };
-}
+export { EventPriority };
 
 /**
  * 运行时事件总线类
@@ -276,13 +238,10 @@ export class RuntimeEventBus extends EventEmitter {
     const { source = 'unknown', cache = false, batch = false } = options;
 
     // 构建事件数据
-    const eventData = {
-      type: event,
-      timestamp: Date.now(),
+    const eventData = createEventRecord(event, data, {
       source,
-      id: this._generateId(),
-      ...data
-    };
+      idFactory: () => this._generateId(),
+    });
 
     // 检查过滤器
     if (!this._passFilters(event, eventData)) {
@@ -343,14 +302,11 @@ export class RuntimeEventBus extends EventEmitter {
   async emitAsync(event, data = {}, options = {}) {
     const { source = 'unknown', cache = false } = options;
 
-    const eventData = {
-      type: event,
-      timestamp: Date.now(),
+    const eventData = createEventRecord(event, data, {
       source,
-      id: this._generateId(),
       async: true,
-      ...data
-    };
+      idFactory: () => this._generateId(),
+    });
 
     // 检查过滤器
     if (!this._passFilters(event, eventData)) {
@@ -541,9 +497,7 @@ export class RuntimeEventBus extends EventEmitter {
       return;
     }
 
-    const record = this.historyConfig.includeData
-      ? { ...eventData }
-      : { type: eventData.type, timestamp: eventData.timestamp, source: eventData.source, id: eventData.id };
+    const record = toHistoryRecord(eventData, this.historyConfig);
 
     this.history.push(record);
 
@@ -563,25 +517,7 @@ export class RuntimeEventBus extends EventEmitter {
    * @returns {Array} 历史记录数组
    */
   getHistory(options = {}) {
-    let result = [...this.history];
-
-    if (options.type) {
-      result = result.filter(e => e.type === options.type);
-    }
-
-    if (options.source) {
-      result = result.filter(e => e.source === options.source);
-    }
-
-    if (options.since) {
-      result = result.filter(e => e.timestamp >= options.since);
-    }
-
-    if (options.limit && options.limit > 0) {
-      result = result.slice(-options.limit);
-    }
-
-    return result;
+    return queryHistory(this.history, options);
   }
 
   /**
@@ -604,21 +540,7 @@ export class RuntimeEventBus extends EventEmitter {
   async replayHistory(options = {}) {
     const { since, until, type, delay = 0 } = options;
 
-    let events = [...this.history];
-
-    // 过滤事件
-    if (since) {
-      events = events.filter(e => e.timestamp >= since);
-    }
-    if (until) {
-      events = events.filter(e => e.timestamp <= until);
-    }
-    if (type) {
-      events = events.filter(e => e.type === type);
-    }
-
-    // 按时间戳排序
-    events.sort((a, b) => a.timestamp - b.timestamp);
+    const events = filterReplayHistory(this.history, { since, until, type });
 
     for (const event of events) {
       // 按优先级顺序执行订阅者回调
@@ -659,11 +581,7 @@ export class RuntimeEventBus extends EventEmitter {
       return;
     }
 
-    const cacheEntry = {
-      data: eventData,
-      timestamp: Date.now(),
-      expires: Date.now() + this.cacheConfig.ttl
-    };
+    const cacheEntry = createCacheEntry(eventData, this.cacheConfig.ttl);
 
     // 检查缓存大小限制
     if (this.cache.size >= this.cacheConfig.maxSize) {
@@ -688,7 +606,7 @@ export class RuntimeEventBus extends EventEmitter {
     }
 
     // 检查是否过期
-    if (Date.now() > entry.expires) {
+    if (isCacheExpired(entry)) {
       this.cache.delete(event);
       return null;
     }
@@ -729,14 +647,7 @@ export class RuntimeEventBus extends EventEmitter {
     }
     
     // 返回所有订阅者的摘要信息
-    const result = {};
-    for (const [evt, subs] of this.subscribers) {
-      result[evt] = subs.map(s => ({
-        priority: s.priority,
-        id: s.id
-      }));
-    }
-    return result;
+    return summarizeSubscribers(this.subscribers);
   }
 
   /**
@@ -745,11 +656,7 @@ export class RuntimeEventBus extends EventEmitter {
    */
   getStats() {
     // 计算总订阅者数：事件特定订阅者 + 通配符订阅者
-    let totalSubs = 0;
-    for (const subs of this.subscribers.values()) {
-      totalSubs += subs.length;
-    }
-    totalSubs += this.wildcardSubscribers.length;
+    const totalSubs = countSubscribers(this.subscribers, this.wildcardSubscribers);
     
     return {
       ...this.stats,

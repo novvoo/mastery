@@ -113,6 +113,7 @@
     "files": [
       "desktop/main.js",
       "desktop/preload-entry/**/*",
+      "desktop/preload.cjs",
       "desktop/preload.js",
       "desktop/workspace.js",
       "desktop/renderer/**/*",

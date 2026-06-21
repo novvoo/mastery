@@ -8,7 +8,7 @@ import {
   getShortcutHints,
   getToolActivitySummary,
   handleComposerKey,
-} from '../desktop/renderer/app/interaction-model.js';
+} from '../desktop/renderer/app/interaction/interaction-model.js';
 
 describe('desktop interaction model', () => {
   test('Ctrl+Enter submits when input is non-empty and runtime is not running', () => {
