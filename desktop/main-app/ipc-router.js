@@ -348,6 +348,67 @@ export function registerCustomHandlers(ctx) {
     return typeof ctx.toggleModelConfig ? ctx.toggleModelConfig(id, enabled) : { success: false };
   });
 
+  // ============ LSP 编辑器集成 ============
+  ipc.registerHandler('lsp:getDiagnostics', async ({ path } = {}) => {
+    try {
+      const lsp = ctx.desktopCore?.getLSPManager?.();
+      if (!lsp) { return { success: false, error: 'LSP not available' }; }
+      if (path) {
+        const resolved = resolve(ctx.config.workingDirectory, path);
+        return { success: true, diagnostics: lsp.getDiagnostics(resolved) };
+      }
+      return { success: true, diagnostics: lsp.getAllDiagnostics() };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipc.registerHandler('lsp:getSemanticTokens', async ({ path } = {}) => {
+    try {
+      const lsp = ctx.desktopCore?.getLSPManager?.();
+      if (!lsp || !path) { return { success: false, error: 'LSP not available' }; }
+      const resolved = resolve(ctx.config.workingDirectory, path);
+      const tokens = await lsp.getSemanticTokens(resolved);
+      return { success: true, tokens };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipc.registerHandler('lsp:getHover', async ({ path, position } = {}) => {
+    try {
+      const lsp = ctx.desktopCore?.getLSPManager?.();
+      if (!lsp || !path || !position) { return { success: false, error: 'LSP not available' }; }
+      const resolved = resolve(ctx.config.workingDirectory, path);
+      const hover = await lsp.getHover(resolved, position);
+      return { success: true, hover };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipc.registerHandler('lsp:syncDocument', async ({ path, content } = {}) => {
+    try {
+      const lsp = ctx.desktopCore?.getLSPManager?.();
+      if (!lsp || !path) { return { success: false, error: 'LSP not available' }; }
+      const resolved = resolve(ctx.config.workingDirectory, path);
+      await lsp.syncDocument(resolved, content);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipc.registerHandler('lsp:supportedLanguages', async () => {
+    try {
+      const lsp = ctx.desktopCore?.getLSPManager?.();
+      if (!lsp) { return { success: true, languages: [] }; }
+      return { success: true, languages: lsp.supportedLanguages };
+    } catch (e) {
+      return { success: false, error: e.message, languages: [] };
+    }
+  });
+
   if (ctx.config.debug) {
     console.log('   注册了自定义 IPC 处理器');
   }

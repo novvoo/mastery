@@ -41,8 +41,11 @@ export class ToolExecutor {
   #eventEmitter;
   #contentStore;
   #fileAnalyzer;
+  #snapshotStore;
+  #hashlinePatcher;
+  #lspManager;
 
-  constructor({ toolRegistry, securityPolicy, textToolParser, ui, config, contentStore, fileAnalyzer }) {
+  constructor({ toolRegistry, securityPolicy, textToolParser, ui, config, contentStore, fileAnalyzer, snapshotStore, hashlinePatcher, lspManager }) {
     this.#toolRegistry = toolRegistry;
     this.#securityPolicy = securityPolicy || null;
     this.#textToolParser = textToolParser || new TextToolParser(toolRegistry);
@@ -50,6 +53,9 @@ export class ToolExecutor {
     this.#config = config || {};
     this.#contentStore = contentStore || null;
     this.#fileAnalyzer = fileAnalyzer || null;
+    this.#snapshotStore = snapshotStore || null;
+    this.#hashlinePatcher = hashlinePatcher || null;
+    this.#lspManager = lspManager || null;
   }
 
   // ============== 公共 API ==============
@@ -194,6 +200,9 @@ export class ToolExecutor {
       subAgent: context.subAgent,
       contentStore: this.#contentStore,
       fileAnalyzer: this.#fileAnalyzer,
+      snapshotStore: this.#snapshotStore,
+      hashlinePatcher: this.#hashlinePatcher,
+      lspManager: this.#lspManager,
       toolEventsSnapshot: this.#events.map(e => ({ ...e })),
     };
 

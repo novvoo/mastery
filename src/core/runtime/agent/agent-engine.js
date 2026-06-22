@@ -29,6 +29,9 @@ import { selectToolsForRequest, shouldUseIntentClassifier } from './tool-router.
 import { WorkspaceState } from '../../workspace-state.js';
 import { ObservationSummarizer } from '../../observation-summarizer.js';
 import { ContentAddressableStore, FileAnalyzer } from '../../harness/content-addressing.js';
+import { Patcher, InMemorySnapshotStore, HashlineBridge, DiskFilesystem } from '../../harness/hashline.js';
+import { ServerManager } from '../../../lsp/lsp-manager.js';
+import { createLSPTools } from '../../../lsp/lsp-tools.js';
 import { withRoutedToolContext } from '../../routed-tool-context.js';
 import { TokenScope } from './support/token-scope.js';
 import { quickAssess, computeIterationBudget } from './support/risk-budget.js';
@@ -159,6 +162,10 @@ export class AgentEngine {
   #observationSummarizer;
   #contentStore;
   #fileAnalyzer;
+  #snapshotStore;
+  #hashlinePatcher;
+  #hashlineBridge;
+  #lspManager;
   #contextPruner;
   #tokenScope;
 
@@ -221,6 +228,35 @@ export class AgentEngine {
     this.#contentStore = new ContentAddressableStore();
     this.#fileAnalyzer = new FileAnalyzer(this.#contentStore);
 
+    // ============ Hashline 子系统初始化 ============
+    // SnapshotStore: 管理文件快照历史，支持 stale tag recovery
+    this.#snapshotStore = new InMemorySnapshotStore();
+    // HashlineBridge: 把 Patcher 的事件桥接到 ContentAddressableStore
+    this.#hashlineBridge = new HashlineBridge(this.#contentStore, this.#fileAnalyzer);
+    // Patcher: 完整的 Hashline patch 应用器（含 preflight / recovery / 3-way merge）
+    this.#hashlinePatcher = new Patcher({
+      fs: new DiskFilesystem(this.#config.workingDirectory),
+      snapshots: this.#snapshotStore,
+      autoRecord: true,
+      allowRecovery: true,
+      bridge: this.#hashlineBridge,
+    });
+
+    // ============ LSP 子系统初始化 ============
+    // ServerManager: 管理多语言 LSP server 生命周期
+    this.#lspManager = new ServerManager({
+      workspaceRoot: this.#config.workingDirectory,
+    });
+    // 将 LSP 工具注册到 ToolRegistry
+    const lspTools = createLSPTools({
+      lspManager: this.#lspManager,
+      contentStore: this.#contentStore,
+      hashlinePatcher: this.#hashlinePatcher,
+    });
+    for (const tool of lspTools) {
+      try { this.#toolRegistry.register(tool); } catch { /* 重复注册忽略 */ }
+    }
+
     this.#toolExecutor = new ToolExecutor({
       toolRegistry: this.#toolRegistry,
       securityPolicy: this.#config.securityPolicy,
@@ -229,9 +265,15 @@ export class AgentEngine {
       config: this.#config,
       contentStore: this.#contentStore,
       fileAnalyzer: this.#fileAnalyzer,
+      snapshotStore: this.#snapshotStore,
+      hashlinePatcher: this.#hashlinePatcher,
+      lspManager: this.#lspManager,
     });
     this.#contextManager = null; // 在 run() 中懒创建（需要 sessionManager 就绪）
     this.#stagnationDetector = new StagnationDetector();
+
+    // ============ 公共 getter ============
+    this.getLSPManager = () => this.#lspManager;
   }
 
   // ============================================================

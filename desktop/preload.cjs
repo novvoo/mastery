@@ -160,6 +160,11 @@ try {
       'command:list',
       'command:run',
       'metrics:snapshot',
+      'lsp:getDiagnostics',
+      'lsp:getSemanticTokens',
+      'lsp:getHover',
+      'lsp:syncDocument',
+      'lsp:supportedLanguages',
     ],
 
     // 发送频道（使用 send）
@@ -1022,6 +1027,52 @@ try {
       }
     },
 
+    // ==================== LSP 编辑器集成 ====================
+    getLSPDiagnostics: async (path) => {
+      try {
+        return await ipcRenderer.invoke('lsp:getDiagnostics', { path });
+      } catch (error) {
+        console.error('[Preload] getLSPDiagnostics 失败:', error);
+        return { success: false, diagnostics: [] };
+      }
+    },
+
+    getLSPSemanticTokens: async (path) => {
+      try {
+        return await ipcRenderer.invoke('lsp:getSemanticTokens', { path });
+      } catch (error) {
+        console.error('[Preload] getLSPSemanticTokens 失败:', error);
+        return { success: false, tokens: null };
+      }
+    },
+
+    getLSPHover: async (path, position) => {
+      try {
+        return await ipcRenderer.invoke('lsp:getHover', { path, position });
+      } catch (error) {
+        console.error('[Preload] getLSPHover 失败:', error);
+        return { success: false, hover: null };
+      }
+    },
+
+    syncLSPDocument: async (path, content) => {
+      try {
+        return await ipcRenderer.invoke('lsp:syncDocument', { path, content });
+      } catch (error) {
+        console.error('[Preload] syncLSPDocument 失败:', error);
+        return { success: false };
+      }
+    },
+
+    getLSPSupportedLanguages: async () => {
+      try {
+        return await ipcRenderer.invoke('lsp:supportedLanguages');
+      } catch (error) {
+        console.error('[Preload] getLSPSupportedLanguages 失败:', error);
+        return { success: false, languages: [] };
+      }
+    },
+
     // ==================== 平台信息 ====================
     getPlatform: () => {
       const info = safeProcessAccess();
@@ -1108,6 +1159,12 @@ try {
     getTools: async () => [],
     getPlatform: () => ({ platform: 'unknown', arch: 'unknown' }),
     getVersions: () => ({ electron: 'unknown', node: 'unknown' }),
+    // LSP fallback
+    getLSPDiagnostics: async () => ({ success: false, diagnostics: [] }),
+    getLSPSemanticTokens: async () => ({ success: false, tokens: null }),
+    getLSPHover: async () => ({ success: false, hover: null }),
+    syncLSPDocument: async () => ({ success: false }),
+    getLSPSupportedLanguages: async () => ({ success: false, languages: [] }),
     _error: fatalError?.message || 'unknown error'
   };
 

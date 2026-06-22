@@ -13,6 +13,7 @@ import { join, resolve, sep, isAbsolute } from 'path';
 import { Buffer } from 'buffer';
 import { createHash } from 'crypto';
 import { ToolCategory } from '../../core/types.js';
+import { computeTag } from '../../core/harness/hashline.js';
 
 /**
  * 检测内容是否为 base64 编码，并在适当时解码
@@ -266,9 +267,18 @@ export function createFileSystemTools() {
         if (!existsSync(fullPath)) {return `Error: File not found: ${path}`;}
 
         try {
-          let content = await readFile(fullPath, 'utf-8');
-          const lines = content.split('\n');
+          let rawContent = await readFile(fullPath, 'utf-8');
+          const lines = rawContent.split('\n');
 
+          // 记录 snapshot 到 Hashline SnapshotStore（在格式化之前用原始内容）
+          if (ctx.snapshotStore && typeof ctx.snapshotStore.record === 'function') {
+            try {
+              ctx.snapshotStore.record(path, rawContent);
+            } catch {
+            }
+          }
+
+          let content;
           if (offset || limit) {
             const start = ((offset) || 1) - 1;
             const end = start + ((limit) || lines.length);
@@ -345,6 +355,14 @@ export function createFileSystemTools() {
               if (ctx.fileAnalyzer && typeof ctx.fileAnalyzer.analyzeFile === 'function') {
                 ctx.fileAnalyzer.analyzeFile(path, content);
               }
+            } catch {
+            }
+          }
+
+          // 自动记录 snapshot 到 Hashline SnapshotStore
+          if (ctx.snapshotStore && typeof ctx.snapshotStore.record === 'function') {
+            try {
+              ctx.snapshotStore.record(path, content);
             } catch {
             }
           }
@@ -432,6 +450,14 @@ export function createFileSystemTools() {
             }
           }
 
+          // 自动记录 snapshot 到 Hashline SnapshotStore
+          if (ctx.snapshotStore && typeof ctx.snapshotStore.record === 'function') {
+            try {
+              ctx.snapshotStore.record(path, newContent);
+            } catch {
+            }
+          }
+
           const oldLineCount = old_text.split('\n').length;
           return (
             `File edited successfully: ${path}\n` +
@@ -443,6 +469,108 @@ export function createFileSystemTools() {
           );
         } catch (error) {
           return `Error editing file: ${error instanceof Error ? error.message : error}`;
+        }
+      },
+    },
+
+    // =====================================================================
+    // Hashline Patch: 使用 Oh My Pi Hashline DSL 进行多文件原子编辑
+    // =====================================================================
+    {
+      name: 'apply_hashline_patch',
+      description: `Apply a multi-file, content-hash-anchored patch using the Hashline DSL.
+
+The patch format is compact and line-anchored, with each section bound to a content hash (tag) of the file. This enables safe, atomic, multi-file edits with stale-tag detection and automatic recovery.
+
+**Patch DSL syntax:**
+
+\`\`\`
+[path/to/file.js#a1b2c3...]
+SWAP 1.=2:
++new line 1
++new line 2
+DEL 3.=4
+INS.PRE 5=
++// comment before line 5
+INS.POST 6=
++// comment after line 6
+\`\`\`
+
+- \`[path#tag]\`: Section header. tag is the content hash of the normalized file text.
+- \`SWAP start.=end:\`: Replace lines [start, end] (1-based, inclusive) with following + lines.
+- \`DEL start.=end\`: Delete lines [start, end].
+- \`INS.PRE line=\`: Insert following + lines before the given line.
+- \`INS.POST line=\`: Insert following + lines after the given line.
+- Content lines start with \`+\`. Empty lines and \`#\` comments between operations are ignored.
+
+**Benefits over edit_file:**
+- Multi-file atomic: all sections preflight together, none written if any fail
+- Content-hash anchored: detects stale files (concurrent modifications) and auto-recovers via 3-way merge
+- Semantic operations: SWAP/DEL/INS instead of fragile text matching
+
+**Important:** Use the tag (content hash) from the most recent read of the file. If you don't know the tag, use read_file first to get the current content, then compute the tag using the sha256 of the normalized text (trailing newlines trimmed, lines joined with \\n).`,
+      category: ToolCategory.FILESYSTEM,
+      params: {
+        patch: { type: 'string', description: 'The complete Hashline patch text in the DSL format described above.' },
+      },
+      required: ['patch'],
+      handler: async ({ patch }, ctx) => {
+        if (!patch || typeof patch !== 'string' || patch.trim().length === 0) {
+          return 'Error: patch must be a non-empty string in Hashline DSL format.';
+        }
+
+        const patcher = ctx.hashlinePatcher;
+        if (!patcher) {
+          return 'Error: Hashline Patcher is not available in this runtime. Use edit_file or write_file instead.';
+        }
+
+        try {
+          // 执行 preflight 先做校验
+          const { patch: parsedPatch, preflight } = await patcher.preflight(patch);
+
+          // 汇总 preflight 结果
+          const preflightSummary = preflight.map(p => {
+            if (p.ok) {
+              return `  ✓ ${p.path}: tag matches (${p.tag.substring(0, 12)}...)`;
+            }
+            if (p.recoverable) {
+              return `  ⚠ ${p.path}: stale tag, will attempt recovery`;
+            }
+            return `  ✗ ${p.path}: ${p.error}`;
+          }).join('\n');
+
+          // 如果有不可恢复的 section，提前返回 preflight 结果
+          const fatalSection = preflight.find(p => !p.ok && !p.recoverable);
+          if (fatalSection) {
+            return `Hashline patch preflight FAILED:\n${preflightSummary}\n\nPatch NOT applied. Fix the following and retry:\n  - ${fatalSection.path}: ${fatalSection.error}`;
+          }
+
+          // 应用 patch
+          const result = await patcher.apply(parsedPatch);
+
+          if (!result.ok) {
+            return `Hashline patch apply FAILED: ${result.error}`;
+          }
+
+          // 汇总 apply 结果
+          const applySummary = result.sections.map(s => {
+            const status = s.recovered ? 'RECOVERED' : 'applied';
+            const warnStr = (s.warnings && s.warnings.length > 0)
+              ? `\n    warnings: ${s.warnings.join('; ')}`
+              : '';
+            return `  ✓ ${s.path}: ${status} (${s.hunksApplied} hunks)${warnStr}\n    tag: ${s.tag.substring(0, 12)}... → ${s.newTag.substring(0, 12)}...`;
+          }).join('\n');
+
+          // 更新 memoryManager 文件映射
+          for (const s of result.sections) {
+            if (ctx.memoryManager && typeof ctx.memoryManager.updateFileMap === 'function') {
+              ctx.memoryManager.updateFileMap(s.path, 'edited').catch(() => {});
+            }
+          }
+
+          return `Hashline patch applied successfully:\n${applySummary}\n\nPreflight:\n${preflightSummary}`;
+        } catch (error) {
+          return `Error applying Hashline patch: ${error instanceof Error ? error.message : error}`;
         }
       },
     },

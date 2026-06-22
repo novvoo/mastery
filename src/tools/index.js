@@ -12,6 +12,7 @@ import { createGitTools } from './git/git-tools.js';
 import { createWebTools } from './web/web-tools.js';
 import { createPreviewTools } from './web/preview-tools.js';
 import { createMCPTools } from './mcp/mcp-tools.js';
+import { createLSPTools } from '../lsp/lsp-tools.js';
 import { createTaskTools } from './scheduler/task-tools.js';
 import { createScheduleTools } from './scheduler/schedule-tools.js';
 import { createSubAgentTools } from './scheduler/subagent-tools.js';

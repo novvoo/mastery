@@ -677,6 +677,13 @@ export class DesktopCore {
   }
 
   /**
+   * 获取 LSP Manager 实例（用于编辑器集成）。
+   */
+  getLSPManager() {
+    return this.#engine ? this.#engine.getLSPManager() : null;
+  }
+
+  /**
    * 附加模型提供者
    */
   attachModelProvider(modelProvider) {
