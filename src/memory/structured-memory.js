@@ -68,6 +68,9 @@ export class StructuredMemory {
   }
 
   #saveEntry(entry) {
+    if (!existsSync(this.#entriesDir)) {
+      mkdirSync(this.#entriesDir, { recursive: true });
+    }
     const filePath = join(this.#entriesDir, `${entry.id}.md`);
     writeFileSync(filePath, entry.toMarkdown(), 'utf-8');
   }
@@ -87,11 +90,16 @@ export class StructuredMemory {
     }
 
     this.#saveTimer = setTimeout(() => {
-      for (const entry of this.#entries.values()) {
-        this.#saveEntry(entry);
+      try {
+        for (const entry of this.#entries.values()) {
+          this.#saveEntry(entry);
+        }
+        this.#writeIndex();
+        this.#dirty = false;
+      } catch (e) {
+        // 目录可能已被清理（测试等场景），静默失败
+        if (e.code !== 'ENOENT') { console.warn(`Failed to save memory: ${e.message}`); }
       }
-      this.#writeIndex();
-      this.#dirty = false;
       this.#saveTimer = null;
     }, 1000);
   }
@@ -177,6 +185,9 @@ export class StructuredMemory {
   }
 
   #writeIndex() {
+    if (!existsSync(this.#memoryDir)) {
+      mkdirSync(this.#memoryDir, { recursive: true });
+    }
     const entries = Array.from(this.#entries.values())
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, MAX_INDEX_SIZE);

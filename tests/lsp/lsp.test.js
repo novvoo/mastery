@@ -457,14 +457,19 @@ describe('ServerManager with mock server', () => {
 
   test('syncDocument + getDiagnostics', async () => {
     const content = await readFile(testFile, 'utf-8');
+    // 使用 onDiagnostics 事件精确等待，避免轮询时序竞争
+    const diagPromise = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('timed out waiting for diagnostics')), 10_000);
+      const unsub = mgr.onDiagnostics((params) => {
+        if (params.uri === `file://${testFile}` && params.diagnostics && params.diagnostics.length >= 1) {
+          clearTimeout(timer);
+          unsub();
+          resolve(params.diagnostics);
+        }
+      });
+    });
     await mgr.syncDocument(testFile, content);
-    // diagnostics 由 initialized/didOpen 回调异步推送，轮询等待
-    let diags = [];
-    for (let i = 0; i < 20; i++) {
-      await delay(100);
-      diags = mgr.getDiagnostics(testFile);
-      if (diags.length >= 1) break;
-    }
+    const diags = await diagPromise;
     expect(diags.length).toBeGreaterThanOrEqual(1);
   });
 });
