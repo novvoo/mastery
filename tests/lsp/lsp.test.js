@@ -458,9 +458,13 @@ describe('ServerManager with mock server', () => {
   test('syncDocument + getDiagnostics', async () => {
     const content = await readFile(testFile, 'utf-8');
     await mgr.syncDocument(testFile, content);
-    // diagnostics 由 initialized 回调异步推送
-    await delay(200);
-    const diags = mgr.getDiagnostics(testFile);
+    // diagnostics 由 initialized/didOpen 回调异步推送，轮询等待
+    let diags = [];
+    for (let i = 0; i < 20; i++) {
+      await delay(100);
+      diags = mgr.getDiagnostics(testFile);
+      if (diags.length >= 1) break;
+    }
     expect(diags.length).toBeGreaterThanOrEqual(1);
   });
 });
