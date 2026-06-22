@@ -24,7 +24,7 @@ function makeScriptedModelProvider(responseScript = []) {
         };
       }
       return {
-        text: typeof next === 'string' ? next : 'FINAL_ANSWER\n{done}',
+        text: typeof next === 'string' ? next : 'FINAL_ANSWER: {done}',
         finishReason: 'stop',
         toolCalls: null,
         reasoning: null,
@@ -99,7 +99,7 @@ describe('ReAct loop: real ToolRegistry + scripted model provider', () => {
   });
 
   test('FINAL_ANSWER marker: terminates with success=true', async () => {
-    const model = makeScriptedModelProvider(['FINAL_ANSWER\nHello, world.']);
+    const model = makeScriptedModelProvider(['FINAL_ANSWER: Hello, world.']);
     const engine = buildEngine(registry, model, ui);
     const result = await engine.run('say hi');
     expect(result.success).toBe(true);
@@ -117,7 +117,7 @@ describe('ReAct loop: real ToolRegistry + scripted model provider', () => {
         finishReason: 'tool_calls',
         toolCalls: [{ id: 'call_1', name: 'echo', arguments: { message: 'ping' } }],
       },
-      'FINAL_ANSWER\nechoed successfully.',
+      'FINAL_ANSWER: echoed successfully.',
     ]);
     const engine = buildEngine(registry, model, ui);
     const result = await engine.run('echo something');
@@ -136,7 +136,7 @@ describe('ReAct loop: real ToolRegistry + scripted model provider', () => {
         finishReason: 'tool_calls',
         toolCalls: [{ id: 'sum_1', name: 'sum', arguments: { a: 40, b: 2 } }],
       },
-      'FINAL_ANSWER\ndone.',
+      'FINAL_ANSWER: done.',
     ]);
     const engine = buildEngine(registry, model, ui);
     const result = await engine.run('sum 40 and 2');
@@ -162,7 +162,7 @@ describe('ReAct loop: real ToolRegistry + scripted model provider', () => {
         finishReason: 'tool_calls',
         toolCalls: [{ id: 'bad_1', name: 'does_not_exist', arguments: {} }],
       },
-      'FINAL_ANSWER\nfinished.',
+      'FINAL_ANSWER: finished.',
     ]);
     const engine = buildEngine(registry, model, ui);
     const result = await engine.run('something strange');
