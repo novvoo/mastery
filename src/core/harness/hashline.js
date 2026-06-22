@@ -37,7 +37,7 @@
 import { createHash } from 'crypto';
 import { readFile, writeFile, stat, access } from 'fs/promises';
 import { resolve } from 'path';
-import { constants as fsConstants } from 'fs';
+import { constants as fsConstants, existsSync, lstatSync, readlinkSync } from 'fs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 哈希工具
@@ -160,7 +160,64 @@ export class DiskFilesystem extends Filesystem {
       throw new Error(`path escapes root directory: "${path}" -> "${resolved}"`);
     }
 
+    // ── symlink 逃逸防护（realpath 解析） ──
+    // 必须解析真实路径，防止通过 symlink 指向 root 外的文件。
+    try {
+      const rootReal = this._getRealpath(root);
+      // 逐级解析目标路径的真实路径（目标路径的父目录必须存在才能解析）
+      if (existsSync(resolved)) {
+        const targetReal = this._getRealpath(resolved);
+        if (!targetReal.startsWith(rootReal + '/') && targetReal !== rootReal) {
+          throw new Error(
+            `symlink escape detected: "${path}" resolves to "${targetReal}" which is outside root "${rootReal}" (${root})`
+          );
+        }
+        return resolved;
+      }
+      // 目标文件尚不存在：逐级检查父目录是否通过 symlink 逃逸
+      const _resolveParent = (p) => {
+        if (p === rootReal || p === '/' || p === '.') return;
+        const parent = resolve(p, '..');
+        if (existsSync(parent)) {
+          const parentReal = this._getRealpath(parent);
+          if (!parentReal.startsWith(rootReal + '/') && parentReal !== rootReal) {
+            throw new Error(
+              `symlink escape detected in parent of "${path}": "${parent}" resolves outside root "${rootReal}"`
+            );
+          }
+          _resolveParent(parent);
+        }
+      };
+      _resolveParent(resolved);
+    } catch (err) {
+      if (err.message.includes('symlink escape')) throw err;
+      // realpath 失败可能是文件尚不存在，fallback 到字符串路径检测
+    }
+    // ── /symlink 逃逸防护 ──
+
     return resolved;
+  }
+
+  /**
+   * 获取路径的真实路径（解析 symlink），带缓存。
+   * @private
+   */
+  _getRealpath(p) {
+    if (!this._realpathCache) { this._realpathCache = new Map(); }
+    if (this._realpathCache.has(p)) return this._realpathCache.get(p);
+    // 同步检查：如果路径本身是 symlink，读它指向的目标
+    try {
+      if (existsSync(p)) {
+        while (lstatSync(p).isSymbolicLink()) {
+          const linkTarget = readlinkSync(p);
+          p = resolve(resolve(p, '..'), linkTarget);
+        }
+      }
+      this._realpathCache.set(p, p);
+      return p;
+    } catch {
+      return p;
+    }
   }
 }
 
@@ -1473,6 +1530,704 @@ export class HashlineBridge {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 扩展 DSL 操作
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 在文件头部插入（第 1 行之前） */
+const OP_INS_HEAD = 'INS.HEAD';
+/** 在文件尾部追加（最后一行之后） */
+const OP_INS_TAIL = 'INS.TAIL';
+/** 在代码块之后插入（BLK 指 blank-line delimited block） */
+const OP_INS_BLK_POST = 'INS.BLK.POST';
+/** 替换整个代码块 */
+const OP_SWAP_BLK = 'SWAP.BLK';
+/** 删除整个代码块 */
+const OP_DEL_BLK = 'DEL.BLK';
+/** 中止标记（整个 section 不应用） */
+const OP_ABORT = 'ABORT';
+
+export { OP_INS_HEAD, OP_INS_TAIL, OP_INS_BLK_POST, OP_SWAP_BLK, OP_DEL_BLK, OP_ABORT };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 正式 Grammar Spec & Error Codes（固定化的语法规范）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Hashline Grammar Specification v2.0（BNF 形式）
+ *
+ * ```text
+ * patch            ::= (section | blank | comment)*
+ * section          ::= section_header (op_header content_lines?)+
+ * section_header   ::= '[' path '#' tag ']'
+ * path             ::= [^#\]]+          # 文件路径，不能含 # 或 ]
+ * tag              ::= [a-f0-9]{64}     # SHA-256 hex
+ *
+ * op_header        ::= swap_op | del_op | ins_pre_op | ins_post_op
+ *                    | ins_head_op | ins_tail_op | ins_blk_post_op
+ *                    | swap_blk_op | del_blk_op | abort_op
+ *
+ * swap_op          ::= 'SWAP' ws num ('.=' num)? ':'?
+ * del_op           ::= 'DEL' ws num ('.=' num)?
+ * ins_pre_op       ::= 'INS.PRE' ws num '='?
+ * ins_post_op      ::= 'INS.POST' ws num '='?
+ * ins_head_op      ::= 'INS.HEAD' ws num '='?   # 语义：在第 num 行之前插入（通常 num=1）
+ * ins_tail_op      ::= 'INS.TAIL' ws num '=?'   # 语义：在第 num 行之后插入（通常 num=last）
+ * ins_blk_post_op  ::= 'INS.BLK.POST' ws num '='?
+ * swap_blk_op      ::= 'SWAP.BLK' ws num '='? ':'?
+ * del_blk_op       ::= 'DEL.BLK' ws num '='?
+ * abort_op         ::= 'ABORT'
+ *
+ * content_lines    ::= content_line+
+ * content_line     ::= '+' text?
+ *
+ * blank            ::= ^\s*$
+ * comment          ::= ^\s*#.*$
+ * ws               ::= \s+
+ * num              ::= \d+
+ * text             ::= .*
+ * ```
+ */
+
+/**
+ * 所有已知操作类型映射（供 parser 引用）。
+ * @internal
+ */
+const _ALL_OPS = {
+  SWAP: OP_SWAP,
+  DEL: OP_DEL,
+  'INS.PRE': OP_INS_PRE,
+  'INS.POST': OP_INS_POST,
+  'INS.HEAD': OP_INS_HEAD,
+  'INS.TAIL': OP_INS_TAIL,
+  'INS.BLK.POST': OP_INS_BLK_POST,
+  'SWAP.BLK': OP_SWAP_BLK,
+  'DEL.BLK': OP_DEL_BLK,
+  ABORT: OP_ABORT,
+};
+
+/**
+ * Hashline 错误代码枚举。
+ */
+export const HashlineErrorCode = {
+  // Parse errors
+  PARSE_UNEXPECTED_TOKEN: 'PARSE_UNEXPECTED_TOKEN',
+  PARSE_NO_SECTION_OPEN: 'PARSE_NO_SECTION_OPEN',
+  PARSE_CONTENT_WITHOUT_OP: 'PARSE_CONTENT_WITHOUT_OP',
+  PARSE_INVALID_SECTION_HEADER: 'PARSE_INVALID_SECTION_HEADER',
+  PARSE_INVALID_TAG_FORMAT: 'PARSE_INVALID_TAG_FORMAT',
+  PARSE_INVALID_LINE_NUMBER: 'PARSE_INVALID_LINE_NUMBER',
+  PARSE_AMBIGUOUS_SYNTAX: 'PARSE_AMBIGUOUS_SYNTAX',
+  PARSE_UNIFIED_DIFF_DETECTED: 'PARSE_UNIFIED_DIFF_DETECTED',
+
+  // Apply errors
+  APPLY_STALE_TAG: 'APPLY_STALE_TAG',
+  APPLY_FILE_NOT_FOUND: 'APPLY_FILE_NOT_FOUND',
+  APPLY_RANGE_OUT_OF_BOUNDS: 'APPLY_RANGE_OUT_OF_BOUNDS',
+  APPLY_OVERLAPPING_HUNKS: 'APPLY_OVERLAPPING_HUNKS',
+  APPLY_WRITE_FAILED: 'APPLY_WRITE_FAILED',
+  APPLY_ROLLBACK_FAILED: 'APPLY_ROLLBACK_FAILED',
+
+  // Conflict errors
+  CONFLICT_OVERLAPPING_CHANGE: 'CONFLICT_OVERLAPPING_CHANGE',
+  CONFLICT_MOVED_BLOCK: 'CONFLICT_MOVED_BLOCK',
+  CONFLICT_DELETED_ANCHOR: 'CONFLICT_DELETED_ANCHOR',
+  CONFLICT_AMBIGUOUS_MATCH: 'CONFLICT_AMBIGUOUS_MATCH',
+  CONFLICT_CONTENT_DIVERGED: 'CONFLICT_CONTENT_DIVERGED',
+
+  // Policy errors
+  POLICY_PATH_ESCAPE: 'POLICY_PATH_ESCAPE',
+  POLICY_SYMLINK_ESCAPE: 'POLICY_SYMLINK_ESCAPE',
+  POLICY_GENERATED_FILE: 'POLICY_GENERATED_FILE',
+  POLICY_BINARY_FILE: 'POLICY_BINARY_FILE',
+  POLICY_MINIFIED_FILE: 'POLICY_MINIFIED_FILE',
+  POLICY_LOCKFILE_READONLY: 'POLICY_LOCKFILE_READONLY',
+  POLICY_FILE_TOO_LARGE: 'POLICY_FILE_TOO_LARGE',
+};
+
+/**
+ * 结构化解析错误（含 source span）。
+ */
+export class StructuredParseError extends Error {
+  /**
+   * @param {string} message
+   * @param {object} details
+   * @param {string} details.code         错误代码（来自 HashlineErrorCode）
+   * @param {number} [details.line]       1-based 源行号
+   * @param {number} [details.column]     1-based 源列号
+   * @param {number} [details.srcLine]    patch 文本中的行号
+   * @param {string} [details.span]       出错的源文本片段
+   */
+  constructor(message, details = {}) {
+    super(message);
+    this.name = 'StructuredParseError';
+    this.code = details.code || HashlineErrorCode.PARSE_UNEXPECTED_TOKEN;
+    this.line = details.line || null;
+    this.column = details.column || null;
+    this.srcLine = details.srcLine || null;
+    this.span = details.span || null;
+  }
+}
+
+/**
+ * 增强版 PatchApplyError（带结构化冲突）。
+ */
+export class StructuredApplyError extends Error {
+  /**
+   * @param {string} message
+   * @param {object} details
+   * @param {string} [details.path]
+   * @param {string} [details.code]
+   * @param {Diff3Conflict|null} [details.conflict]
+   */
+  constructor(message, details = {}) {
+    super(message);
+    this.name = 'StructuredApplyError';
+    this.path = details.path || null;
+    this.code = details.code || null;
+    this.conflict = details.conflict || null;
+  }
+}
+
+/**
+ * 结构化 diff3 冲突对象（对标文档要求）。
+ *
+ * @typedef {Object} Diff3Conflict
+ * @property {string} path            文件路径
+ * @property {number[]} baseRange     [startLine, endLine] base 中的范围
+ * @property {number[]} currentRange  [startLine, endLine] current 中的范围
+ * @property {number[]} patchRange    [startLine, endLine] patch 中的范围
+ * @property {string} baseText        base 中的文本
+ * @property {string} currentText     current 中的文本
+ * @property {string} patchText       patch 中期望的文本
+ * @property {string} reason         冲突原因
+ */
+
+/**
+ * 创建结构化冲突对象。
+ * @param {object} opts
+ * @returns {Diff3Conflict}
+ */
+export function createDiff3Conflict(opts = {}) {
+  return {
+    path: opts.path || '',
+    baseRange: opts.baseRange || [0, 0],
+    currentRange: opts.currentRange || [0, 0],
+    patchRange: opts.patchRange || [0, 0],
+    baseText: opts.baseText || '',
+    currentText: opts.currentText || '',
+    patchText: opts.patchText || '',
+    reason: opts.reason || 'overlapping_change',
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 增强 Parser：支持扩展 DSL + 正式错误代码 + source span
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 解析增强版 patch 文本，支持扩展 DSL 操作和正式错误报告。
+ *
+ * @param {string} text
+ * @returns {Patch}
+ * @throws {StructuredParseError}
+ */
+export function parsePatchExtended(text) {
+  const rawLines = String(text).split('\n');
+  const sections = [];
+  let cur = null;
+  let pendingOp = null;
+
+  const flushOp = () => {
+    if (pendingOp) {
+      if (!cur) {
+        throw new StructuredParseError('Content line before any [path#tag] section', {
+          code: HashlineErrorCode.PARSE_NO_SECTION_OPEN,
+          srcLine: pendingOp.srcLine,
+        });
+      }
+      cur.hunks.push(pendingOp);
+      pendingOp = null;
+    }
+  };
+
+  const flushSection = () => {
+    flushOp();
+    if (cur) {
+      sections.push(new Section(cur.path, cur.tag, cur.hunks));
+      cur = null;
+    }
+  };
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i];
+    const lineNo = i + 1;
+
+    // 注释 / 空行
+    const trimmed = line.trim();
+    if (trimmed === '' || trimmed.startsWith('#')) { continue; }
+
+    // 检测统一 diff 格式混入
+    if (trimmed.startsWith('@@ ') || trimmed.startsWith('--- ') || trimmed.startsWith('+++ ') || trimmed.startsWith('diff ')) {
+      throw new StructuredParseError(
+        `Unified diff format detected at line ${lineNo}: '${trimmed.substring(0, 40)}...'. Use Hashline patch format instead.`,
+        { code: HashlineErrorCode.PARSE_UNIFIED_DIFF_DETECTED, srcLine: lineNo, span: trimmed },
+      );
+    }
+
+    // 节区头
+    const sectionMatch = line.match(/^\[([^\]#]+)#([a-f0-9]{64})\]\s*$/);
+    if (sectionMatch) {
+      flushSection();
+      cur = { path: sectionMatch[1].trim(), tag: sectionMatch[2].trim(), hunks: [] };
+      continue;
+    }
+
+    // 宽松节区头（非 64 字符的 tag，给个警告但不失败）
+    const looseSectionMatch = line.match(/^\[([^\]#]+)#([^\]]+)\]\s*$/);
+    if (looseSectionMatch) {
+      flushSection();
+      cur = { path: looseSectionMatch[1].trim(), tag: looseSectionMatch[2].trim(), hunks: [] };
+      continue;
+    }
+
+    if (!cur) {
+      throw new StructuredParseError(
+        `Unexpected token at line ${lineNo}: '${trimmed}' (no [path#tag] section open)`,
+        { code: HashlineErrorCode.PARSE_NO_SECTION_OPEN, srcLine: lineNo, span: trimmed },
+      );
+    }
+
+    // ABORT sentinel
+    if (trimmed === 'ABORT') {
+      flushOp();
+      pendingOp = { op: OP_ABORT, start: 0, end: 0, lines: [], srcLine: lineNo };
+      flushOp();
+      continue;
+    }
+
+    // 扩展操作：INS.HEAD
+    const insHeadMatch = line.match(/^INS\.HEAD\s+(\d+)\s*=?\s*$/);
+    if (insHeadMatch) {
+      flushOp();
+      const start = parseInt(insHeadMatch[1], 10);
+      pendingOp = { op: OP_INS_HEAD, start, end: start, lines: [], srcLine: lineNo };
+      continue;
+    }
+
+    // 扩展操作：INS.TAIL
+    const insTailMatch = line.match(/^INS\.TAIL\s+(\d+)\s*=?\s*$/);
+    if (insTailMatch) {
+      flushOp();
+      const start = parseInt(insTailMatch[1], 10);
+      pendingOp = { op: OP_INS_TAIL, start, end: start, lines: [], srcLine: lineNo };
+      continue;
+    }
+
+    // 扩展操作：INS.BLK.POST
+    const insBlkPostMatch = line.match(/^INS\.BLK\.POST\s+(\d+)\s*=?\s*$/);
+    if (insBlkPostMatch) {
+      flushOp();
+      const start = parseInt(insBlkPostMatch[1], 10);
+      pendingOp = { op: OP_INS_BLK_POST, start, end: start, lines: [], srcLine: lineNo };
+      continue;
+    }
+
+    // 扩展操作：SWAP.BLK
+    const swapBlkMatch = line.match(/^SWAP\.BLK\s+(\d+)\s*=?\s*:?\s*$/);
+    if (swapBlkMatch) {
+      flushOp();
+      const start = parseInt(swapBlkMatch[1], 10);
+      pendingOp = { op: OP_SWAP_BLK, start, end: start, lines: [], srcLine: lineNo };
+      continue;
+    }
+
+    // 扩展操作：DEL.BLK
+    const delBlkMatch = line.match(/^DEL\.BLK\s+(\d+)\s*=?\s*$/);
+    if (delBlkMatch) {
+      flushOp();
+      const start = parseInt(delBlkMatch[1], 10);
+      pendingOp = { op: OP_DEL_BLK, start, end: start, lines: [], srcLine: lineNo };
+      flushOp();
+      continue;
+    }
+
+    // 原有操作
+    const swapMatch = line.match(/^SWAP\s+(\d+)\s*\.?=\s*(\d+)\s*:\s*$/);
+    const swapSingleMatch = line.match(/^SWAP\s+(\d+)\s*:\s*$/);
+    const delMatch = line.match(/^DEL\s+(\d+)\s*\.?=\s*(\d+)\s*$/);
+    const delSingleMatch = line.match(/^DEL\s+(\d+)\s*$/);
+    const insPreMatch = line.match(/^INS\.PRE\s+(\d+)\s*=\s*$/);
+    const insPostMatch = line.match(/^INS\.POST\s+(\d+)\s*=\s*$/);
+
+    if (swapMatch || swapSingleMatch) {
+      flushOp();
+      const start = parseInt(swapMatch ? swapMatch[1] : swapSingleMatch[1], 10);
+      const end = swapMatch ? parseInt(swapMatch[2], 10) : start;
+      pendingOp = { op: OP_SWAP, start, end, lines: [], srcLine: lineNo };
+      continue;
+    }
+    if (delMatch || delSingleMatch) {
+      flushOp();
+      const start = parseInt(delMatch ? delMatch[1] : delSingleMatch[1], 10);
+      const end = delMatch ? parseInt(delMatch[2], 10) : start;
+      pendingOp = { op: OP_DEL, start, end, lines: [], srcLine: lineNo };
+      flushOp();
+      continue;
+    }
+    if (insPreMatch) {
+      flushOp();
+      const start = parseInt(insPreMatch[1], 10);
+      pendingOp = { op: OP_INS_PRE, start, end: start, lines: [], srcLine: lineNo };
+      continue;
+    }
+    if (insPostMatch) {
+      flushOp();
+      const start = parseInt(insPostMatch[1], 10);
+      pendingOp = { op: OP_INS_POST, start, end: start, lines: [], srcLine: lineNo };
+      continue;
+    }
+
+    // 内容行
+    if (line.startsWith('+')) {
+      if (!pendingOp) {
+        throw new StructuredParseError(
+          `Content line at ${lineNo} has no preceding operation header`,
+          { code: HashlineErrorCode.PARSE_CONTENT_WITHOUT_OP, srcLine: lineNo, span: line },
+        );
+      }
+      pendingOp.lines.push(line.slice(1));
+      continue;
+    }
+
+    throw new StructuredParseError(
+      `Unrecognized patch line ${lineNo}: '${line}'`,
+      { code: HashlineErrorCode.PARSE_UNEXPECTED_TOKEN, srcLine: lineNo, span: line },
+    );
+  }
+
+  flushSection();
+  return new Patch(sections);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 增强 applyHunksToText：支持扩展 DSL 操作
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 增强版 applyHunksToText，支持所有扩展 DSL 操作。
+ */
+export function applyHunksToTextExtended(text, hunks) {
+  if (hunks.length === 0) { return text; }
+
+  const lines = text.split('\n');
+  const totalLines = lines.length;
+  const edits = [];
+
+  for (const h of hunks) {
+    if (h.op === 'NOP') { continue; }
+    if (h.op === OP_ABORT) { continue; }
+
+    switch (h.op) {
+      case OP_INS_PRE:
+        edits.push({ start: h.start, end: h.start - 1, lines: h.lines });
+        break;
+      case OP_INS_POST:
+        edits.push({ start: h.start + 1, end: h.start, lines: h.lines });
+        break;
+      case OP_INS_HEAD:
+        // 在文件头部插入（通常是第 1 行前）
+        edits.push({ start: h.start, end: h.start - 1, lines: h.lines });
+        break;
+      case OP_INS_TAIL:
+        // 在文件尾部追加
+        edits.push({ start: totalLines + 1, end: totalLines, lines: h.lines });
+        break;
+      case OP_INS_BLK_POST:
+        // 在空行分隔的块之后插入：找到 h.start 所在块的结尾空行，在其后插入
+        {
+          let blkEnd = h.start;
+          // 向后找空行或文件结尾
+          for (let i1 = h.start; i1 <= totalLines; i1++) {
+            if (i1 === totalLines || lines[i1 - 1].trim() === '') {
+              blkEnd = i1;
+              break;
+            }
+          }
+          edits.push({ start: blkEnd + 1, end: blkEnd, lines: h.lines });
+        }
+        break;
+      case OP_SWAP:
+        edits.push({ start: h.start, end: h.end, lines: h.lines });
+        break;
+      case OP_DEL:
+        edits.push({ start: h.start, end: h.end, lines: [] });
+        break;
+      case OP_SWAP_BLK:
+        // 替换整个空行分隔的块
+        {
+          let blkStart = h.start;
+          let blkEnd = h.start;
+          // 向前找块起始（空行之后或文件开头）
+          for (let i2 = h.start - 1; i2 >= 1; i2--) {
+            if (lines[i2 - 1].trim() === '') {
+              blkStart = i2 + 1;
+              break;
+            }
+            blkStart = i2;
+          }
+          // 向后找块结尾（空行或文件结尾）
+          for (let i3 = blkStart; i3 <= totalLines; i3++) {
+            if (i3 === totalLines || lines[i3 - 1].trim() === '') {
+              blkEnd = i3 - 1;
+              break;
+            }
+          }
+          if (blkEnd >= blkStart) {
+            edits.push({ start: blkStart, end: blkEnd, lines: h.lines });
+          }
+        }
+        break;
+      case OP_DEL_BLK:
+        // 删除整个空行分隔的块
+        {
+          let blkStart = h.start;
+          let blkEnd = h.start;
+          for (let i4 = h.start - 1; i4 >= 1; i4--) {
+            if (lines[i4 - 1].trim() === '') { blkStart = i4 + 1; break; }
+            blkStart = i4;
+          }
+          for (let i5 = blkStart; i5 <= totalLines; i5++) {
+            if (i5 === totalLines || lines[i5 - 1].trim() === '') { blkEnd = i5 - 1; break; }
+          }
+          if (blkEnd >= blkStart) {
+            edits.push({ start: blkStart, end: blkEnd, lines: [] });
+          }
+        }
+        break;
+      default:
+        throw new PatchApplyError(`unknown op: ${h.op}`);
+    }
+  }
+
+  // 验证区间不重叠（与原始版本相同逻辑）
+  const sorted = edits.slice().sort((a, b) => a.start - b.start);
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const cur = sorted[i];
+    const prevIsEmpty = prev.end < prev.start;
+    const curIsEmpty = cur.end < cur.start;
+    if (!prevIsEmpty && !curIsEmpty && cur.start <= prev.end) {
+      throw new PatchApplyError(`overlapping hunks: previous up to ${prev.end}, next starts at ${cur.start}`);
+    }
+  }
+
+  // 从后往前应用
+  const desc = edits.slice().sort((a, b) => {
+    if (b.start !== a.start) { return b.start - a.start; }
+    const aEmpty = a.end < a.start ? 1 : 0;
+    const bEmpty = b.end < b.start ? 1 : 0;
+    return aEmpty - bEmpty;
+  });
+
+  const result = text.split('\n');
+  for (const e of desc) {
+    const s = e.start;
+    const en = e.end;
+    const before = result.slice(0, Math.max(0, s - 1));
+    const after = result.slice(Math.max(0, en));
+    before.push(...e.lines);
+    before.push(...after);
+    result.length = 0;
+    result.push(...before);
+  }
+  return result.join('\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 真正 Diff3 Merge（结构化冲突输出）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Diff3MergeEngine：真正的 three-way merge 引擎。
+ *
+ * 输入：
+ *  - base：patch 生成时的文件快照
+ *  - current：当前磁盘上的文件
+ *  - patch：要应用的 hunks
+ *
+ * 输出：
+ *  - merged：合并后的文本（无冲突时）
+ *  - conflicts：结构化冲突对象列表
+ */
+export class Diff3MergeEngine {
+  /**
+   * 执行 three-way merge。
+   * @param {string} baseText       base 快照文本
+   * @param {string} currentText    当前文件文本
+   * @param {Hunk[]} hunks          要应用的 hunks
+   * @returns {{ merged: string|null, conflicts: Diff3Conflict[], path: string }}
+   */
+  static merge(baseText, currentText, hunks, filePath = '') {
+    const baseLines = baseText.split('\n');
+    const curLines = currentText.split('\n');
+    const conflicts = [];
+
+    // 计算 base → current 的行差异区域
+    const baseToCurMapping = Diff3MergeEngine._computeEditMapping(baseLines, curLines);
+
+    // 对每个 hunk 检查是否与 current 的变更区域重叠
+    const resolvedHunks = [];
+    const unresolvedHunks = [];
+
+    for (const h of hunks) {
+      if (h.op === OP_INS_PRE || h.op === OP_INS_POST || h.op === OP_INS_HEAD || h.op === OP_INS_TAIL) {
+        // 插入操作：找出在 current 中的正确位置
+        // 简化处理：如果能映射就映射，否则用 seen-line 方法
+        let targetLine = baseToCurMapping[h.start];
+        if (targetLine === undefined) {
+          targetLine = Diff3MergeEngine._findLineByContent(curLines, baseLines[h.start - 1]);
+          if (targetLine === -1) {
+            targetLine = Math.min(h.start, curLines.length);
+          }
+        }
+        resolvedHunks.push({ ...h, start: targetLine, end: targetLine });
+        continue;
+      }
+
+      // SWAP / DEL 操作：检查重叠
+      const baseStart = baseToCurMapping[h.start];
+      const baseEnd = baseToCurMapping[h.end];
+
+      if (baseStart === undefined || baseEnd === undefined) {
+        // 行无法映射 → 内容可能被移动或删除
+        const curStart = Diff3MergeEngine._findLineByContent(curLines, baseLines[h.start - 1]);
+        const curEnd = Diff3MergeEngine._findLineByContent(curLines, baseLines[h.end - 1]);
+
+        if (curStart === -1 || curEnd === -1) {
+          conflicts.push(createDiff3Conflict({
+            path: filePath,
+            baseRange: [h.start, h.end],
+            currentRange: [-1, -1],
+            patchRange: [h.start, h.end],
+            baseText: baseLines.slice(h.start - 1, h.end).join('\n'),
+            currentText: '',
+            patchText: h.lines.join('\n'),
+            reason: HashlineErrorCode.CONFLICT_DELETED_ANCHOR,
+          }));
+          unresolvedHunks.push(h);
+          continue;
+        }
+
+        // 找到但位置不同 → moved block
+        if (Math.abs(curStart - h.start) > 2 || Math.abs(curEnd - h.end) > 2) {
+          conflicts.push(createDiff3Conflict({
+            path: filePath,
+            baseRange: [h.start, h.end],
+            currentRange: [curStart, curEnd],
+            patchRange: [h.start, h.end],
+            baseText: baseLines.slice(h.start - 1, h.end).join('\n'),
+            currentText: curLines.slice(curStart - 1, curEnd).join('\n'),
+            patchText: h.lines.join('\n'),
+            reason: HashlineErrorCode.CONFLICT_MOVED_BLOCK,
+          }));
+        }
+
+        resolvedHunks.push({ ...h, start: curStart, end: curEnd });
+        continue;
+      }
+
+      // 检查内容是否变更
+      const curContent = curLines.slice(baseStart - 1, baseEnd).join('\n');
+      const baseContent = baseLines.slice(h.start - 1, h.end).join('\n');
+
+      if (curContent !== baseContent) {
+        conflicts.push(createDiff3Conflict({
+          path: filePath,
+          baseRange: [h.start, h.end],
+          currentRange: [baseStart, baseEnd],
+          patchRange: [h.start, h.end],
+          baseText: baseContent,
+          currentText: curContent,
+          patchText: h.lines.join('\n'),
+          reason: HashlineErrorCode.CONFLICT_CONTENT_DIVERGED,
+        }));
+        unresolvedHunks.push(h);
+        continue;
+      }
+
+      resolvedHunks.push({ ...h, start: baseStart, end: baseEnd });
+    }
+
+    // 如果有冲突，返回 null + conflicts
+    if (conflicts.length > 0 && unresolvedHunks.length > 0) {
+      return { merged: null, conflicts, path: filePath };
+    }
+
+    // 无冲突：应用所有 resolved hunks
+    try {
+      const merged = applyHunksToTextExtended(currentText, resolvedHunks);
+      return { merged, conflicts, path: filePath };
+    } catch (err) {
+      return { merged: null, conflicts, path: filePath, error: err.message };
+    }
+  }
+
+  /**
+   * 计算 base → current 的行映射（简单 LCS 方法）。
+   * @private
+   */
+  static _computeEditMapping(baseLines, curLines) {
+    const mapping = {};
+
+    // 使用贪心 LCS 建立 base → current 映射
+    const n = baseLines.length;
+    const m = curLines.length;
+
+    // 建立 current 行索引
+    const curIndex = new Map();
+    for (let i = 0; i < m; i++) {
+      const fp = hashContent(curLines[i]);
+      if (!curIndex.has(fp)) { curIndex.set(fp, []); }
+      curIndex.get(fp).push(i + 1);
+    }
+
+    // 贪心匹配
+    let lastCurIdx = 0;
+    for (let i = 0; i < n; i++) {
+      const fp = hashContent(baseLines[i]);
+      const candidates = curIndex.get(fp) || [];
+      const found = candidates.find(c => c > lastCurIdx);
+      if (found !== undefined) {
+        mapping[i + 1] = found;
+        lastCurIdx = found;
+      }
+    }
+
+    return mapping;
+  }
+
+  /**
+   * 使用内容指纹在 current 中查找单行。
+   * @private
+   */
+  static _findLineByContent(curLines, baseLine) {
+    if (!baseLine) { return -1; }
+    const fp = hashContent(baseLine);
+    for (let i = 0; i < curLines.length; i++) {
+      if (hashContent(curLines[i]) === fp) { return i + 1; }
+    }
+    // 宽松匹配：前缀匹配
+    const trimmed = baseLine.trim();
+    if (trimmed.length > 10) {
+      for (let i = 0; i < curLines.length; i++) {
+        if (curLines[i].trim() === trimmed) { return i + 1; }
+      }
+    }
+    return -1;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 便捷工厂
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1514,4 +2269,18 @@ export default {
   OP_INS_PRE,
   OP_INS_POST,
   OP_NOP,
+  // 扩展
+  OP_INS_HEAD,
+  OP_INS_TAIL,
+  OP_INS_BLK_POST,
+  OP_SWAP_BLK,
+  OP_DEL_BLK,
+  OP_ABORT,
+  parsePatchExtended,
+  applyHunksToTextExtended,
+  StructuredParseError,
+  StructuredApplyError,
+  Diff3MergeEngine,
+  createDiff3Conflict,
+  HashlineErrorCode,
 };

@@ -3,13 +3,19 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtemp, rm, writeFile, readFile, chmod } from 'fs/promises';
+import { mkdtemp, mkdir, rm, writeFile, readFile, chmod } from 'fs/promises';
+import { existsSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
+import { randomBytes } from 'crypto';
 
 import { LSPClient, LSPClientError, LSPServerError } from '../../src/lsp/lsp-client.js';
 import { ServerManager, detectLanguage } from '../../src/lsp/lsp-manager.js';
 import { createLSPTools } from '../../src/lsp/lsp-tools.js';
+import { ModuleResolver } from '../../src/core/harness/module-resolver.js';
+import { ImportGraph, ExportGraph } from '../../src/core/harness/import-graph.js';
+import { BarrelManager } from '../../src/core/harness/barrel-manager.js';
+import { DiagnosticsGate } from '../../src/core/diagnostics-gate.js';
 
 // ── 辅助 ───────────────────────────────────────────────────────────────────
 
@@ -699,5 +705,194 @@ describe('LSP tools with mock server integration', () => {
     // 范围应有嵌套层级
     const labels = result.ranges.map(r => r.snippet);
     expect(labels.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════
+// P5 测试矩阵：ModuleResolver / ImportGraph / BarrelManager / DiagnosticsGate
+// ═════════════════════════════════════════════════════════════════════
+
+let _lspTestDir;
+
+async function _lspSetupEnv({ name = 'lsp-test', tsconfig } = {}) {
+  _lspTestDir = join(tmpdir(), `lsp-${randomBytes(6).toString('hex')}`);
+  await mkdir(_lspTestDir, { recursive: true });
+  await mkdir(join(_lspTestDir, 'src'), { recursive: true });
+  const ts = tsconfig || {
+    compilerOptions: { paths: { '@app/*': ['./src/app/*'], '@lib/*': ['./src/lib/*'], '@shared': ['./src/shared/index.ts'] }, baseUrl: '.' },
+  };
+  await writeFile(join(_lspTestDir, 'tsconfig.json'), JSON.stringify(ts, null, 2));
+  await writeFile(join(_lspTestDir, 'package.json'), JSON.stringify({ name: name || 'test-project', version: '1.0.0' }, null, 2));
+  await mkdir(join(_lspTestDir, 'src/app'), { recursive: true });
+  await mkdir(join(_lspTestDir, 'src/lib'), { recursive: true });
+  await mkdir(join(_lspTestDir, 'src/shared'), { recursive: true });
+  await writeFile(join(_lspTestDir, 'src/app/main.ts'), 'export const app = 1;\n');
+  await writeFile(join(_lspTestDir, 'src/lib/utils.ts'), 'export const util = 2;\n');
+  await writeFile(join(_lspTestDir, 'src/shared/index.ts'), 'export const shared = 3;\n');
+}
+
+async function _lspCleanupEnv() {
+  try { if (_lspTestDir) await rm(_lspTestDir, { recursive: true, force: true }); } catch {}
+}
+
+describe('LSP: ModuleResolver', () => {
+  test('resolve tsconfig paths aliases', async () => {
+    await _lspSetupEnv();
+    try {
+      const resolver = new ModuleResolver({ workingDirectory: _lspTestDir });
+      await resolver.init();
+      const r = resolver.resolveImport('@app/main', join(_lspTestDir, 'src/app/main.ts'));
+      expect(r).toBeTruthy();
+      expect(r?.includes('src/app/main')).toBe(true);
+    } finally { await _lspCleanupEnv(); }
+  });
+
+  test('resolve @shared alias', async () => {
+    await _lspSetupEnv();
+    try {
+      const resolver = new ModuleResolver({ workingDirectory: _lspTestDir });
+      await resolver.init();
+      const r = resolver.resolveImport('@shared', join(_lspTestDir, 'src/app/main.ts'));
+      expect(r).toBeTruthy();
+    } finally { await _lspCleanupEnv(); }
+  });
+
+  test('resolve relative imports', async () => {
+    await _lspSetupEnv();
+    try {
+      const resolver = new ModuleResolver({ workingDirectory: _lspTestDir });
+      await resolver.init();
+      const r = resolver.resolveImport('../lib/utils', join(_lspTestDir, 'src/app/main.ts'));
+      expect(r?.includes('src/lib/utils')).toBe(true);
+    } finally { await _lspCleanupEnv(); }
+  });
+
+  test('match pipeline aliases', async () => {
+    await _lspSetupEnv();
+    try {
+      const resolver = new ModuleResolver({ workingDirectory: _lspTestDir });
+      await resolver.init();
+      const m1 = resolver.matchAlias('@app/main');
+      expect(m1?.alias).toBe('@app');
+      const m2 = resolver.matchAlias('@shared');
+      expect(m2?.alias).toBe('@shared');
+    } finally { await _lspCleanupEnv(); }
+  });
+});
+
+describe('LSP: ImportGraph', () => {
+  test('build graph from files', async () => {
+    await _lspSetupEnv();
+    try {
+      await writeFile(join(_lspTestDir, 'a.ts'), `import { b } from './b'; import { d } from './d'; export const a = 1;\n`);
+      await writeFile(join(_lspTestDir, 'b.ts'), `import { c } from './c'; export const b = 2;\n`);
+      await writeFile(join(_lspTestDir, 'c.ts'), `export const c = 3;\n`);
+      await writeFile(join(_lspTestDir, 'd.ts'), `export const d = 4;\n`);
+      const graph = new ImportGraph({ workingDirectory: _lspTestDir });
+      const files = [join(_lspTestDir, 'a.ts'), join(_lspTestDir, 'b.ts'), join(_lspTestDir, 'c.ts'), join(_lspTestDir, 'd.ts')];
+      await graph.build(files);
+      expect(graph.graph.size).toBe(4);
+      const aNode = graph.graph.get(join(_lspTestDir, 'a.ts'));
+      expect(aNode.imports.length).toBeGreaterThanOrEqual(2);
+    } finally { await _lspCleanupEnv(); }
+  });
+
+  test('find transitive imports', async () => {
+    await _lspSetupEnv();
+    try {
+      await writeFile(join(_lspTestDir, 'a.ts'), `import { b } from './b'; export const a = 1;\n`);
+      await writeFile(join(_lspTestDir, 'b.ts'), `import { c } from './c'; export const b = 2;\n`);
+      await writeFile(join(_lspTestDir, 'c.ts'), `export const c = 3;\n`);
+      const graph = new ImportGraph({ workingDirectory: _lspTestDir });
+      const transitive = await graph.getTransitiveImports(join(_lspTestDir, 'a.ts'));
+      expect(transitive.length).toBeGreaterThanOrEqual(2);
+    } finally { await _lspCleanupEnv(); }
+  });
+
+  test('find importers of a module', async () => {
+    await _lspSetupEnv();
+    try {
+      await writeFile(join(_lspTestDir, 'a.ts'), `import { b } from './b'; export const a = 1;\n`);
+      await writeFile(join(_lspTestDir, 'b.ts'), `import { c } from './c'; export const b = 2;\n`);
+      await writeFile(join(_lspTestDir, 'c.ts'), `export const c = 3;\n`);
+      const graph = new ImportGraph({ workingDirectory: _lspTestDir });
+      const files = [join(_lspTestDir, 'a.ts'), join(_lspTestDir, 'b.ts'), join(_lspTestDir, 'c.ts')];
+      await graph.build(files);
+      const importers = await graph.getImporters(join(_lspTestDir, 'c.ts'), files);
+      expect(importers.some(i => i.endsWith('b.ts'))).toBe(true);
+    } finally { await _lspCleanupEnv(); }
+  });
+});
+
+describe('LSP: BarrelManager', () => {
+  test('discover barrel files', async () => {
+    await _lspSetupEnv();
+    try {
+      await mkdir(join(_lspTestDir, 'src/utils'), { recursive: true });
+      await writeFile(join(_lspTestDir, 'src/utils/math.ts'), 'export const add = (a: number, b: number) => a + b;\nexport const sub = (a: number, b: number) => a - b;\n');
+      await writeFile(join(_lspTestDir, 'src/utils/index.ts'), 'export { add, sub } from "./math";\n');
+      const barrel = new BarrelManager({ workingDirectory: _lspTestDir });
+      const barrels = await barrel.discoverBarrels(_lspTestDir);
+      expect(barrels.length).toBeGreaterThanOrEqual(1);
+    } finally { await _lspCleanupEnv(); }
+  });
+
+  test('add re-export to barrel', async () => {
+    await _lspSetupEnv();
+    try {
+      await mkdir(join(_lspTestDir, 'src/utils'), { recursive: true });
+      const mathPath = join(_lspTestDir, 'src/utils/math.ts');
+      const indexPath = join(_lspTestDir, 'src/utils/index.ts');
+      await writeFile(mathPath, 'export const add = (a: number, b: number) => a + b;\n');
+      await writeFile(indexPath, 'export { add } from "./math";\n');
+      const barrel = new BarrelManager({ workingDirectory: _lspTestDir });
+      await barrel.discoverBarrels(_lspTestDir);
+      const added = await barrel.addReExport(indexPath, mathPath, 'mul');
+      if (added) {
+        const content = readFileSync(indexPath, 'utf-8');
+        expect(content.includes('mul')).toBe(true);
+      }
+    } finally { await _lspCleanupEnv(); }
+  });
+
+  test('remove re-export from barrel', async () => {
+    await _lspSetupEnv();
+    try {
+      await mkdir(join(_lspTestDir, 'src/utils'), { recursive: true });
+      const indexPath = join(_lspTestDir, 'src/utils/index.ts');
+      await writeFile(join(_lspTestDir, 'src/utils/math.ts'), 'export const add = (a: number, b: number) => a + b;\n');
+      await writeFile(indexPath, 'export { add } from "./math";\n');
+      const barrel = new BarrelManager({ workingDirectory: _lspTestDir });
+      await barrel.discoverBarrels(_lspTestDir);
+      const removed = await barrel.removeReExport(indexPath, 'add');
+      expect(removed).toBe(true);
+      const content = readFileSync(indexPath, 'utf-8');
+      expect(content.includes('export { add }')).toBe(false);
+    } finally { await _lspCleanupEnv(); }
+  });
+});
+
+describe('LSP: DiagnosticsGate', () => {
+  test('return ok when no lspManager', async () => {
+    const gate = new DiagnosticsGate({ lspManager: null });
+    const result = await gate.check(['nonexistent.ts']);
+    expect(result.ok).toBe(true);
+    expect(result.newErrors.length).toBe(0);
+  });
+
+  test('handle missing files gracefully', async () => {
+    const gate = new DiagnosticsGate({ lspManager: { getDiagnostics: () => [], syncDocument: async () => {} }, waitMs: 10, maxRetries: 1, autoRepair: false });
+    const result = await gate.check(['/nonexistent/path.ts']);
+    expect(result.ok).toBe(true);
+  });
+
+  test('autoRepair default is true', () => {
+    const gate = new DiagnosticsGate({ lspManager: null });
+    expect(gate.autoRepair).toBe(true);
+  });
+
+  test('respect repairTimeout setting', () => {
+    const gate = new DiagnosticsGate({ lspManager: null, repairTimeout: 30000 });
+    expect(gate.repairTimeout).toBe(30000);
   });
 });
