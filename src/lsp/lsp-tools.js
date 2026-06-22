@@ -16,6 +16,7 @@
 import { readFile, writeFile } from 'fs/promises';
 import { resolve, dirname, relative, basename } from 'path';
 import { ToolCategory } from '../core/types/index.js';
+import { computeTag } from '../core/harness/hashline.js';
 
 // ── 辅助 ───────────────────────────────────────────────────────────────────
 
@@ -27,11 +28,81 @@ import { ToolCategory } from '../core/types/index.js';
  */
 function safePath(workingDir, userPath) {
   const r = resolve(workingDir || process.cwd(), userPath || '.');
-  // 简单沙箱：不超出 workingDir
   if (!r.startsWith(resolve(workingDir || process.cwd()))) {
     throw new Error(`path escapes workspace: ${userPath}`);
   }
   return r;
+}
+
+/**
+ * 验证参数是否满足基本类型和范围要求。
+ * @param {object} args
+ * @param {object} schema
+ * @returns {string|null} 错误信息或 null
+ */
+function validateArgs(args, schema) {
+  for (const [key, def] of Object.entries(schema)) {
+    const value = args[key];
+    if (def.required && (value === undefined || value === null)) {
+      return `${key} is required`;
+    }
+    if (value !== undefined && value !== null) {
+      if (def.type === 'number' && (typeof value !== 'number' || isNaN(value))) {
+        return `${key} must be a number`;
+      }
+      if (def.type === 'string' && typeof value !== 'string') {
+        return `${key} must be a string`;
+      }
+      if (def.type === 'boolean' && typeof value !== 'boolean') {
+        return `${key} must be a boolean`;
+      }
+      if (def.type === 'number' && def.min !== undefined && value < def.min) {
+        return `${key} must be >= ${def.min}`;
+      }
+      if (def.type === 'number' && def.max !== undefined && value > def.max) {
+        return `${key} must be <= ${def.max}`;
+      }
+      if (def.type === 'string' && def.minLength !== undefined && value.length < def.minLength) {
+        return `${key} must be at least ${def.minLength} characters`;
+      }
+      if (def.type === 'string' && def.maxLength !== undefined && value.length > def.maxLength) {
+        return `${key} must be at most ${def.maxLength} characters`;
+      }
+      if (def.enum && !def.enum.includes(value)) {
+        return `${key} must be one of: ${def.enum.join(', ')}`;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * 捕获 LSP 请求错误，统一错误格式。
+ */
+async function withLSPErrorHandling(promise, context) {
+  try {
+    const result = await promise;
+    return { success: true, result };
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      return { success: false, error: `File not found: ${context.filePath || ''}`, code: 'FILE_NOT_FOUND' };
+    }
+    if (err.code === 'ETIMEDOUT' || err.message?.includes('timeout')) {
+      return { success: false, error: `LSP request timed out: ${context.method || ''}`, code: 'TIMEOUT' };
+    }
+    if (err.message?.includes('server not found')) {
+      return { success: false, error: 'LSP server not found. Please install the appropriate language server.', code: 'SERVER_NOT_FOUND' };
+    }
+    if (err.message?.includes('disconnected')) {
+      return { success: false, error: 'LSP server disconnected', code: 'SERVER_DISCONNECTED' };
+    }
+    return {
+      success: false,
+      error: `LSP error: ${err.message || 'unknown'}`,
+      code: 'LSP_ERROR',
+      details: context,
+    };
+  }
 }
 
 // ── 工具工厂 ───────────────────────────────────────────────────────────────
@@ -58,45 +129,63 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         'Returns the workspace edit that will be applied and a summary of changes.',
       category: ToolCategory.LSP,
       params: {
-        filePath: { type: 'string', description: 'Path to the file containing the symbol' },
-        line: { type: 'number', description: '1-based line number of the symbol' },
-        character: { type: 'number', description: '1-based character (column) of the symbol' },
-        newName: { type: 'string', description: 'New name for the symbol' },
+        filePath: { type: 'string', description: 'Path to the file containing the symbol', required: true },
+        line: { type: 'number', description: '1-based line number of the symbol', required: true, min: 1 },
+        character: { type: 'number', description: '1-based character (column) of the symbol', required: true, min: 1 },
+        newName: { type: 'string', description: 'New name for the symbol', required: true, minLength: 1 },
       },
       required: ['filePath', 'line', 'character', 'newName'],
       handler: async (args, ctx) => {
-        const filePath = safePath(ctx.workingDirectory, args.filePath);
-        const content = await readFile(filePath, 'utf-8');
-        const position = { line: (args.line || 1) - 1, character: (args.character || 1) - 1 };
-
-        // 1) 先 prepareRename 检查
-        let prepareResult;
-        try {
-          prepareResult = await lspManager.request(
-            'textDocument/prepareRename', filePath, {}, position, content, 15000,
-          );
-        } catch {
-          return {
-            success: false,
-            error: 'Cannot rename at this position: symbol not found or LSP server does not support rename.',
-          };
+        const validationErr = validateArgs(args, {
+          filePath: { type: 'string', required: true },
+          line: { type: 'number', required: true, min: 1 },
+          character: { type: 'number', required: true, min: 1 },
+          newName: { type: 'string', required: true, minLength: 1 },
+        });
+        if (validationErr) {
+          return { success: false, error: `Invalid parameters: ${validationErr}` };
         }
-        if (!prepareResult) {
+
+        let filePath;
+        try {
+          filePath = safePath(ctx.workingDirectory, args.filePath);
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+
+        let content;
+        try {
+          content = await readFile(filePath, 'utf-8');
+        } catch (err) {
+          return { success: false, error: `Failed to read file: ${err.message}` };
+        }
+
+        const position = { line: args.line - 1, character: args.character - 1 };
+
+        const prepareResult = await withLSPErrorHandling(
+          lspManager.request('textDocument/prepareRename', filePath, {}, position, content, 15000),
+          { method: 'textDocument/prepareRename', filePath },
+        );
+        if (!prepareResult.success) {
+          return prepareResult;
+        }
+        if (!prepareResult.result) {
           return { success: false, error: 'LSP server returned null — rename not available at this location.' };
         }
 
-        // 2) 执行 rename
-        const workspaceEdit = await lspManager.request(
-          'textDocument/rename', filePath,
-          { newName: args.newName },
-          position, content, 30000,
+        const renameResult = await withLSPErrorHandling(
+          lspManager.request('textDocument/rename', filePath, { newName: args.newName }, position, content, 30000),
+          { method: 'textDocument/rename', filePath },
         );
+        if (!renameResult.success) {
+          return renameResult;
+        }
 
+        const workspaceEdit = renameResult.result;
         if (!workspaceEdit || !workspaceEdit.changes) {
           return { success: false, error: 'Rename returned no changes.' };
         }
 
-        // 3) 应用 workspace edit
         const appResult = await applyWorkspaceEdit(workspaceEdit, {
           workingDirectory: ctx.workingDirectory,
           contentStore,
@@ -104,10 +193,17 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
           snapshotStore: ctx.snapshotStore,
         });
 
-        // 4) 同步 barrel/export/alias
+        if (!appResult.success && appResult.rolledBack) {
+          return {
+            success: false,
+            error: `Rename rolled back: ${appResult.filesFailed.join(', ')}`,
+            rolledBack: true,
+          };
+        }
+
         const syncResult = await syncBarrelAndAliasImports({
           renamedFile: filePath,
-          oldName: prepareResult.placeholder || (await extractSymbolName(content, position)),
+          oldName: prepareResult.result.placeholder || (await extractSymbolName(content, position)),
           newName: args.newName,
           workingDirectory: ctx.workingDirectory,
           lspManager,
@@ -132,35 +228,56 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         'Returns file paths, line numbers, and surrounding context for each reference.',
       category: ToolCategory.LSP,
       params: {
-        filePath: { type: 'string', description: 'Path to the file containing the symbol' },
-        line: { type: 'number', description: '1-based line number of the symbol' },
-        character: { type: 'number', description: '1-based character position of the symbol' },
+        filePath: { type: 'string', description: 'Path to the file containing the symbol', required: true },
+        line: { type: 'number', description: '1-based line number of the symbol', required: true, min: 1 },
+        character: { type: 'number', description: '1-based character position of the symbol', required: true, min: 1 },
         includeDeclaration: { type: 'boolean', description: 'Include the declaration itself (default: true)' },
       },
       required: ['filePath', 'line', 'character'],
       handler: async (args, ctx) => {
-        const filePath = safePath(ctx.workingDirectory, args.filePath);
-        const content = await readFile(filePath, 'utf-8');
-        const position = { line: (args.line || 1) - 1, character: (args.character || 1) - 1 };
+        const validationErr = validateArgs(args, {
+          filePath: { type: 'string', required: true },
+          line: { type: 'number', required: true, min: 1 },
+          character: { type: 'number', required: true, min: 1 },
+        });
+        if (validationErr) {
+          return { success: false, error: `Invalid parameters: ${validationErr}` };
+        }
 
-        const refs = await lspManager.request(
-          'textDocument/references', filePath,
-          {
+        let filePath;
+        try {
+          filePath = safePath(ctx.workingDirectory, args.filePath);
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+
+        let content;
+        try {
+          content = await readFile(filePath, 'utf-8');
+        } catch (err) {
+          return { success: false, error: `Failed to read file: ${err.message}` };
+        }
+
+        const position = { line: args.line - 1, character: args.character - 1 };
+
+        const refsResult = await withLSPErrorHandling(
+          lspManager.request('textDocument/references', filePath, {
             context: { includeDeclaration: args.includeDeclaration !== false },
-          },
-          position, content, 15000,
+          }, position, content, 15000),
+          { method: 'textDocument/references', filePath },
         );
+        if (!refsResult.success) {
+          return refsResult;
+        }
 
+        const refs = refsResult.result;
         if (!refs || refs.length === 0) {
           return { success: true, references: [], count: 0 };
         }
 
-        // 提取每个引用的上下文行
         const enriched = await Promise.all(
           refs.map(async (ref) => {
-            const uriToPath = ref.uri.startsWith('file://')
-              ? ref.uri.slice(7)
-              : ref.uri;
+            const uriToPath = ref.uri.startsWith('file://') ? ref.uri.slice(7) : ref.uri;
             try {
               const refContent = await readFile(uriToPath, 'utf-8');
               const lines = refContent.split('\n');
@@ -184,11 +301,7 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
           }),
         );
 
-        return {
-          success: true,
-          references: enriched,
-          count: enriched.length,
-        };
+        return { success: true, references: enriched, count: enriched.length };
       },
     },
 
@@ -199,27 +312,51 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         'Go to the definition of a symbol using LSP. Returns file path, line, and context.',
       category: ToolCategory.LSP,
       params: {
-        filePath: { type: 'string', description: 'Path to the file containing the symbol' },
-        line: { type: 'number', description: '1-based line number' },
-        character: { type: 'number', description: '1-based character position' },
+        filePath: { type: 'string', description: 'Path to the file containing the symbol', required: true },
+        line: { type: 'number', description: '1-based line number', required: true, min: 1 },
+        character: { type: 'number', description: '1-based character position', required: true, min: 1 },
       },
       required: ['filePath', 'line', 'character'],
       handler: async (args, ctx) => {
-        const filePath = safePath(ctx.workingDirectory, args.filePath);
-        const content = await readFile(filePath, 'utf-8');
-        const position = { line: (args.line || 1) - 1, character: (args.character || 1) - 1 };
+        const validationErr = validateArgs(args, {
+          filePath: { type: 'string', required: true },
+          line: { type: 'number', required: true, min: 1 },
+          character: { type: 'number', required: true, min: 1 },
+        });
+        if (validationErr) {
+          return { success: false, error: `Invalid parameters: ${validationErr}` };
+        }
 
-        const result = await lspManager.request(
-          'textDocument/definition', filePath, {}, position, content, 10000,
+        let filePath;
+        try {
+          filePath = safePath(ctx.workingDirectory, args.filePath);
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+
+        let content;
+        try {
+          content = await readFile(filePath, 'utf-8');
+        } catch (err) {
+          return { success: false, error: `Failed to read file: ${err.message}` };
+        }
+
+        const position = { line: args.line - 1, character: args.character - 1 };
+
+        const defResult = await withLSPErrorHandling(
+          lspManager.request('textDocument/definition', filePath, {}, position, content, 10000),
+          { method: 'textDocument/definition', filePath },
         );
+        if (!defResult.success) {
+          return defResult;
+        }
 
+        const result = defResult.result;
         if (!result) {
           return { success: true, definitions: [], message: 'No definition found.' };
         }
 
-        // 可能是单个 Location 或 Location[]
         const defs = Array.isArray(result) ? result : [result];
-
         const enriched = await Promise.all(
           defs.map(async (d) => {
             const uriToPath = d.uri.startsWith('file://') ? d.uri.slice(7) : d.uri;
@@ -636,8 +773,74 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
 
 // ── Workspace Edit 应用 ────────────────────────────────────────────────────
 
+function lspTextEditsToHashlinePatch(editsByPath) {
+  const lines = [];
+  for (const [filePath, { originalContent, edits }] of Object.entries(editsByPath)) {
+    const normalized = originalContent.replace(/\r\n/g, '\n').replace(/\n$/, '');
+    const tag = computeTag(normalized);
+    lines.push(`[${filePath}#${tag}]`);
+
+    const sortedEdits = [...edits].sort((a, b) => {
+      if (a.range.start.line !== b.range.start.line) {
+        return b.range.start.line - a.range.start.line;
+      }
+      return b.range.start.character - a.range.start.character;
+    });
+
+    let content = normalized;
+    for (const edit of sortedEdits) {
+      const startLine = edit.range.start.line + 1;
+      const endLine = edit.range.end.line + 1;
+      const startChar = edit.range.start.character;
+      const endChar = edit.range.end.character;
+
+      const contentLines = content.split('\n');
+      const startLineContent = contentLines[startLine - 1] || '';
+      const endLineContent = contentLines[endLine - 1] || '';
+
+      if (startLine === endLine) {
+        const lineContent = contentLines[startLine - 1] || '';
+        const oldText = lineContent.substring(startChar, endChar);
+        const newText = edit.newText || '';
+        if (oldText === '' && newText !== '') {
+          lines.push(`INS.PRE ${startLine}=`);
+          for (const newLine of newText.split('\n')) {
+            lines.push(`+${newLine}`);
+          }
+        } else if (newText === '' && oldText !== '') {
+          const before = startLineContent.substring(0, startChar);
+          const after = startLineContent.substring(endChar);
+          if (before === '' && after === '') {
+            lines.push(`DEL ${startLine}.=${startLine}`);
+          } else {
+            lines.push(`SWAP ${startLine}.=${startLine}:`);
+            const replacement = before + after;
+            if (replacement !== '') {
+              lines.push(`+${replacement}`);
+            }
+          }
+        } else {
+          lines.push(`SWAP ${startLine}.=${startLine}:`);
+          for (const newLine of newText.split('\n')) {
+            lines.push(`+${newLine}`);
+          }
+        }
+      } else {
+        lines.push(`SWAP ${startLine}.=${endLine}:`);
+        for (const newLine of edit.newText.split('\n')) {
+          lines.push(`+${newLine}`);
+        }
+      }
+
+      content = applyTextEdits(content, [edit]);
+    }
+  }
+  return lines.join('\n');
+}
+
 /**
  * 应用 LSP workspace edit（跨文件文本编辑）。
+ * 当 hashlinePatcher 可用时，使用 Hashline 进行原子性应用（带 rollback）。
  * @returns {Promise<{success: boolean, filesChanged: string[], filesFailed: string[], totalEdits: number}>}
  */
 async function applyWorkspaceEdit(workspaceEdit, {
@@ -651,67 +854,118 @@ async function applyWorkspaceEdit(workspaceEdit, {
   const filesFailed = [];
   let totalEdits = 0;
 
-  // 处理 changes（按 URI 分组的 TextEdit 数组）
+  const editsByPath = {};
+
+  const collectEdits = (uri, edits) => {
+    const filePath = uri.startsWith('file://') ? uri.slice(7) : uri;
+    if (!editsByPath[filePath]) {
+      editsByPath[filePath] = { edits: [], originalContent: null };
+    }
+    editsByPath[filePath].edits.push(...edits);
+    totalEdits += edits.length;
+  };
+
   const changes = workspaceEdit.changes || {};
   for (const [uri, edits] of Object.entries(changes)) {
-    const filePath = uri.startsWith('file://') ? uri.slice(7) : uri;
-    if (edits.length === 0) { continue; }
+    if (edits.length > 0) {
+      collectEdits(uri, edits);
+    }
+  }
+
+  if (workspaceEdit.documentChanges) {
+    for (const dc of workspaceEdit.documentChanges) {
+      if (dc.textDocument && dc.edits) {
+        collectEdits(dc.textDocument.uri, dc.edits);
+      }
+    }
+  }
+
+  for (const filePath of Object.keys(editsByPath)) {
     try {
-      let content = await readFile(filePath, 'utf-8');
+      editsByPath[filePath].originalContent = await readFile(filePath, 'utf-8');
+    } catch {
+      filesFailed.push(`${filePath}: file not found`);
+      delete editsByPath[filePath];
+    }
+  }
+
+  if (filesFailed.length === Object.keys(workspaceEdit.changes || {}).length + (workspaceEdit.documentChanges || []).length) {
+    return { success: false, filesChanged: [], filesFailed, totalEdits: 0 };
+  }
+
+  if (hashlinePatcher && Object.keys(editsByPath).length > 0) {
+    try {
+      const patchText = lspTextEditsToHashlinePatch(editsByPath);
+      const preflight = await hashlinePatcher.preflight(patchText);
+
+      const fatalSection = preflight.preflight.find(p => !p.ok && !p.recoverable);
+      if (fatalSection) {
+        filesFailed.push(`${fatalSection.path}: preflight failed - ${fatalSection.error}`);
+        return { success: false, filesChanged: [], filesFailed, totalEdits };
+      }
+
+      const result = await hashlinePatcher.apply(preflight.patch);
+      if (!result.ok) {
+        if (result.rolledBack) {
+          return {
+            success: false,
+            filesChanged: [],
+            filesFailed: [`Workspace edit rolled back: ${result.error}`],
+            totalEdits,
+            rolledBack: true,
+          };
+        }
+        filesFailed.push(`Workspace edit failed: ${result.error}`);
+        return { success: false, filesChanged: [], filesFailed, totalEdits };
+      }
+
+      for (const section of result.sections) {
+        filesChanged.push(section.path);
+        if (contentStore) {
+          const blob = contentStore.storeBlob(await readFile(section.path, 'utf-8'));
+          contentStore.setRef(`file:${section.path}`, blob);
+        }
+        if (lspManager) {
+          lspManager.syncDocument(section.path, await readFile(section.path, 'utf-8')).catch(() => {});
+        }
+      }
+
+      return {
+        success: true,
+        filesChanged: [...new Set(filesChanged)],
+        filesFailed,
+        totalEdits,
+        atomic: true,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        filesChanged: [],
+        filesFailed: [`Hashline workspace edit error: ${err.message}`],
+        totalEdits,
+      };
+    }
+  }
+
+  for (const [filePath, { originalContent, edits }] of Object.entries(editsByPath)) {
+    try {
+      let content = originalContent;
       content = applyTextEdits(content, edits);
       await writeFile(filePath, content, 'utf-8');
       filesChanged.push(filePath);
-      totalEdits += edits.length;
 
-      // 更新 CAS
       if (contentStore) {
         const blob = contentStore.storeBlob(content);
         contentStore.setRef(`file:${filePath}`, blob);
       }
-      // 更新 snapshot
       if (snapshotStore) {
         snapshotStore.record(filePath, content);
       }
-      // 通知 LSP
       if (lspManager) {
         lspManager.syncDocument(filePath, content).catch(() => {});
       }
     } catch (err) {
       filesFailed.push(`${filePath}: ${err.message}`);
-    }
-  }
-
-  // 处理 documentChanges（资源变更数组）
-  if (workspaceEdit.documentChanges) {
-    for (const dc of workspaceEdit.documentChanges) {
-      if (dc.textDocument && dc.edits) {
-        const uri = dc.textDocument.uri;
-        const filePath = uri.startsWith('file://') ? uri.slice(7) : uri;
-        try {
-          let content;
-          try {
-            content = await readFile(filePath, 'utf-8');
-          } catch {
-            filesFailed.push(`${filePath}: file not found`);
-            continue;
-          }
-          content = applyTextEdits(content, dc.edits);
-          await writeFile(filePath, content, 'utf-8');
-          filesChanged.push(filePath);
-          totalEdits += dc.edits.length;
-          if (contentStore) {
-            contentStore.setRef(`file:${filePath}`, contentStore.storeBlob(content));
-          }
-          if (snapshotStore) {
-            snapshotStore.record(filePath, content);
-          }
-          if (lspManager) {
-            lspManager.syncDocument(filePath, content).catch(() => {});
-          }
-        } catch (err) {
-          filesFailed.push(`${filePath}: ${err.message}`);
-        }
-      }
     }
   }
 
@@ -768,6 +1022,7 @@ async function syncBarrelAndAliasImports({
   newName,
   workingDirectory,
   lspManager,
+  contentStore,
 } = {}) {
   const synced = [];
   const wd = workingDirectory || process.cwd();
@@ -794,6 +1049,21 @@ async function syncBarrelAndAliasImports({
     }
   } catch (err) {
     synced.push(`barrel:error:${err.message}`);
+  }
+
+  // 2) Alias import 同步：解析 tsconfig paths 并更新相关 import 语句
+  try {
+    const aliasResult = await syncAliasImports({
+      renamedFile,
+      oldName,
+      newName,
+      workingDirectory: wd,
+      lspManager,
+      contentStore,
+    });
+    synced.push(...aliasResult.synced);
+  } catch (err) {
+    synced.push(`alias:error:${err.message}`);
   }
 
   return { synced };
@@ -849,6 +1119,115 @@ function updateBarrelExport(content, fileName, relativePath, oldName, newName) {
   }
 
   return updated;
+}
+
+/**
+ * 从 tsconfig.json 解析 paths 别名配置。
+ */
+async function parseTsconfigPaths(workspaceRoot) {
+  const tsconfigPath = resolve(workspaceRoot, 'tsconfig.json');
+  const tsconfigBasePath = resolve(workspaceRoot, 'tsconfig.base.json');
+
+  const paths = {};
+
+  for (const configPath of [tsconfigPath, tsconfigBasePath]) {
+    try {
+      const content = await readFile(configPath, 'utf-8');
+      const json = JSON.parse(content);
+      if (json.compilerOptions && json.compilerOptions.paths) {
+        const baseUrl = json.compilerOptions.baseUrl || '.';
+        const basePath = resolve(workspaceRoot, baseUrl);
+        for (const [alias, mappings] of Object.entries(json.compilerOptions.paths)) {
+          const targetPaths = mappings.map(m => resolve(basePath, m.replace(/\*/g, '')));
+          paths[alias.replace(/\*/g, '')] = targetPaths;
+        }
+      }
+    } catch {
+      // skip if file doesn't exist or parse fails
+    }
+  }
+
+  return paths;
+}
+
+/**
+ * 更新文件中的 alias import 路径。
+ */
+function updateAliasImports(content, oldPath, newPath, paths) {
+  let updated = content;
+
+  for (const [alias, targetPaths] of Object.entries(paths)) {
+    for (const targetPath of targetPaths) {
+      if (oldPath.startsWith(targetPath)) {
+        const suffix = oldPath.substring(targetPath.length);
+        const newAliasPath = alias + (suffix || '');
+        const newTargetPath = targetPath.substring(0, targetPath.length - (suffix ? suffix.length : 0)) + (newPath.substring(oldPath.length - (suffix ? suffix.length : 0)) || '');
+
+        const importRe = new RegExp(`(from\\s*['"])${escapeRegex(newAliasPath)}(['"])`, 'g');
+        const newImportPath = newTargetPath;
+        updated = updated.replace(importRe, `$1${newImportPath}$2`);
+      }
+    }
+  }
+
+  return updated;
+}
+
+/**
+ * 同步 alias import 路径。
+ */
+async function syncAliasImports({
+  renamedFile,
+  oldName,
+  newName,
+  workingDirectory,
+  lspManager,
+  contentStore,
+} = {}) {
+  const synced = [];
+  const wd = workingDirectory || process.cwd();
+
+  try {
+    const paths = await parseTsconfigPaths(wd);
+    if (Object.keys(paths).length === 0) {
+      return { synced };
+    }
+
+    const glob = (await import('glob')).glob;
+    const files = await glob('**/*.{ts,tsx,js,jsx,mjs}', {
+      cwd: wd,
+      ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/build/**'],
+    });
+
+    const oldFilePath = renamedFile;
+    const newFilePath = renamedFile.replace(basename(renamedFile), newName || basename(renamedFile));
+
+    for (const file of files) {
+      const fullPath = resolve(wd, file);
+      if (fullPath === oldFilePath || fullPath === newFilePath) {
+        continue;
+      }
+
+      try {
+        const content = await readFile(fullPath, 'utf-8');
+        const updated = updateAliasImports(content, oldFilePath, newFilePath, paths);
+        if (updated !== content) {
+          await writeFile(fullPath, updated, 'utf-8');
+          synced.push(`alias:${fullPath}`);
+          if (lspManager) {
+            lspManager.syncDocument(fullPath, updated).catch(() => {});
+          }
+          if (contentStore) {
+            contentStore.setRef(`file:${fullPath}`, contentStore.storeBlob(updated));
+          }
+        }
+      } catch { /* skip unreadable files */ }
+    }
+  } catch (err) {
+    synced.push(`alias:error:${err.message}`);
+  }
+
+  return { synced };
 }
 
 // ── Code Action 执行 ───────────────────────────────────────────────────────

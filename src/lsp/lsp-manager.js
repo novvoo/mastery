@@ -66,22 +66,75 @@ const DEFAULT_SERVER_CONFIGS = {
     command: 'typescript-language-server',
     args: ['--stdio'],
     languageIds: ['typescript', 'typescriptreact', 'javascript', 'javascriptreact'],
+    installCommand: 'npm install -g typescript-language-server typescript',
   },
   python: {
     command: 'pyright-langserver',
     args: ['--stdio'],
     languageIds: ['python'],
     fallback: { command: 'pylsp', args: [] },
+    installCommand: 'npm install -g pyright',
   },
   rust: {
     command: 'rust-analyzer',
     args: [],
     languageIds: ['rust'],
+    installCommand: 'cargo install rust-analyzer',
   },
   go: {
     command: 'gopls',
     args: [],
     languageIds: ['go'],
+    installCommand: 'go install golang.org/x/tools/gopls@latest',
+  },
+  java: {
+    command: 'jdtls',
+    args: [],
+    languageIds: ['java'],
+    installCommand: 'npm install -g eclipse-jdtls',
+  },
+  vue: {
+    command: 'vls',
+    args: ['--stdio'],
+    languageIds: ['vue'],
+    fallback: { command: 'vue-language-server', args: ['--stdio'] },
+    installCommand: 'npm install -g @vue/language-server',
+  },
+  svelte: {
+    command: 'svelteserver',
+    args: ['--stdio'],
+    languageIds: ['svelte'],
+    installCommand: 'npm install -g svelte-language-server',
+  },
+  css: {
+    command: 'vscode-css-languageserver',
+    args: ['--stdio'],
+    languageIds: ['css', 'scss', 'less'],
+    installCommand: 'npm install -g vscode-css-languageserver-bin',
+  },
+  html: {
+    command: 'vscode-html-languageserver',
+    args: ['--stdio'],
+    languageIds: ['html'],
+    installCommand: 'npm install -g vscode-html-languageserver-bin',
+  },
+  json: {
+    command: 'vscode-json-languageserver',
+    args: ['--stdio'],
+    languageIds: ['json'],
+    installCommand: 'npm install -g vscode-json-languageserver',
+  },
+  yaml: {
+    command: 'yaml-language-server',
+    args: ['--stdio'],
+    languageIds: ['yaml'],
+    installCommand: 'npm install -g yaml-language-server',
+  },
+  toml: {
+    command: 'taplo',
+    args: ['lsp', 'stdio'],
+    languageIds: ['toml'],
+    installCommand: 'cargo install taplo-cli',
   },
 };
 
@@ -162,6 +215,10 @@ export class ServerManager {
     // 操作队列锁（同一 server 的请求串行化以避免消息交错）
     /** @type {Map<string, Promise>} */
     this.#locks = new Map();
+
+    // 正在安装中的 server（防止重复安装）
+    /** @type {Set<string>} */
+    this.#installing = new Set();
   }
 
   // ── server 配置 ─────────────────────────────────────────────────────────
@@ -180,6 +237,8 @@ export class ServerManager {
   #diagnostics;
   /** @private */
   #locks;
+  /** @private */
+  #installing;
 
   /**
    * 获取或创建某语言的 LSP 客户端。
@@ -196,7 +255,6 @@ export class ServerManager {
       return entry.client;
     }
 
-    // 创建新 client
     const config = this.#serverConfigs[serverKey];
     let command = findExecutable(config.command);
 
@@ -208,9 +266,28 @@ export class ServerManager {
       }
     }
 
+    // 自动安装 fallback
+    if (!command && config.installCommand && !this.#installing.has(serverKey)) {
+      this.#installing.set(serverKey, true);
+      try {
+        console.warn(`[LSP] Server '${config.command}' not found, attempting auto-install...`);
+        const installResult = await this.#tryInstallServer(config.installCommand);
+        if (installResult.success) {
+          command = findExecutable(config.command);
+        }
+      } catch (err) {
+        console.warn(`[LSP] Auto-install failed: ${err.message}`);
+      } finally {
+        this.#installing.delete(serverKey);
+      }
+    }
+
     if (!command) {
+      const hint = config.installCommand
+        ? `\nInstall with: ${config.installCommand}`
+        : '';
       throw new LSPClientError(
-        `LSP server '${config.command}' not found. Install it (e.g. npm i -g ${config.command}) or configure a custom server.`,
+        `LSP server '${config.command}' not found.${hint}`,
       );
     }
 
@@ -282,6 +359,44 @@ export class ServerManager {
     }
 
     return client;
+  }
+
+  /**
+   * 尝试自动安装语言服务器。
+   * @private
+   */
+  async #tryInstallServer(installCommand) {
+    const { spawn } = await import('child_process');
+    const [cmd, ...args] = installCommand.split(' ');
+
+    return new Promise((resolve) => {
+      const proc = spawn(cmd, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 120_000,
+      });
+
+      let stdout = '';
+      let stderr = '';
+      proc.stdout.on('data', (data) => { stdout += data.toString(); });
+      proc.stderr.on('data', (data) => { stderr += data.toString(); });
+
+      proc.on('close', (code) => {
+        if (code === 0) {
+          resolve({ success: true });
+        } else {
+          resolve({ success: false, error: stderr.trim() || `Exit code ${code}` });
+        }
+      });
+
+      proc.on('error', (err) => {
+        resolve({ success: false, error: err.message });
+      });
+
+      proc.on('timeout', () => {
+        proc.kill();
+        resolve({ success: false, error: 'Install timed out' });
+      });
+    });
   }
 
   /**

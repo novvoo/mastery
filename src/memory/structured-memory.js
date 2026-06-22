@@ -1,17 +1,19 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync, appendFileSync } from 'fs';
 import { resolve, join } from 'path';
-import { MemoryType, MemoryStatus, MemoryEntry } from './memory-types.js';
+import { MemoryType, MemoryStatus, MemoryEntry, MemoryTopic, inferTopic } from './memory-types.js';
 
 const MAX_INDEX_SIZE = 50;
 const MEMORY_DIR = '.agent-memory';
 const INDEX_FILE = 'MEMORY.md';
 const ENTRIES_DIR = 'entries';
+const TOPICS_DIR = 'topics';
 
 export class StructuredMemory {
   #workingDir;
   #memoryDir;
   #indexPath;
   #entriesDir;
+  #topicsDir;
   #entries;
   #dirty;
   #saveTimer;
@@ -21,6 +23,7 @@ export class StructuredMemory {
     this.#memoryDir = join(workingDir, MEMORY_DIR);
     this.#indexPath = join(this.#memoryDir, INDEX_FILE);
     this.#entriesDir = join(this.#memoryDir, ENTRIES_DIR);
+    this.#topicsDir = join(this.#memoryDir, TOPICS_DIR);
     this.#entries = new Map();
     this.#dirty = false;
     this.#saveTimer = null;
@@ -33,6 +36,9 @@ export class StructuredMemory {
     }
     if (!existsSync(this.#entriesDir)) {
       mkdirSync(this.#entriesDir, { recursive: true });
+    }
+    if (!existsSync(this.#topicsDir)) {
+      mkdirSync(this.#topicsDir, { recursive: true });
     }
     this.#load();
   }
@@ -114,6 +120,11 @@ export class StructuredMemory {
 
     this.#entries.set(entry.id, entry);
     this.#dirty = true;
+
+    // 自动追加到 topic 文件
+    const topic = options.topic || null;
+    this.appendToTopic(entry, topic);
+
     this.save();
 
     return entry;
@@ -241,6 +252,120 @@ export class StructuredMemory {
       reference: this.getAll(MemoryType.REFERENCE).length,
       stale: this.getAll().filter(e => e.isStale()).length,
     };
+  }
+
+  // ── Topic-file 组织 ──────────────────────────────────────────────────
+
+  /**
+   * 将一条记忆追加到对应 topic 文件中（人可读主题笔记本）。
+   * 自动推断 topic 分类，同时保留原始 entries/mem_xxx.md。
+   *
+   * @param {MemoryEntry} entry
+   * @param {string} [topic] - 显式指定 topic，不指定则自动推断
+   * @returns {string} topic 文件名
+   */
+  appendToTopic(entry, topic = null) {
+    const targetTopic = topic || inferTopic(entry.type, entry.tags, entry.content);
+    const topicPath = join(this.#topicsDir, `${targetTopic}.md`);
+
+    // 如果 topic 文件不存在，创建带标题头的新文件
+    if (!existsSync(topicPath)) {
+      const header = this.#topicHeader(targetTopic);
+      writeFileSync(topicPath, header, 'utf-8');
+    }
+
+    // 追加记忆区块
+    const block = this.#topicEntryBlock(entry);
+    appendFileSync(topicPath, block, 'utf-8');
+
+    return targetTopic;
+  }
+
+  /**
+   * 读取指定 topic 文件内容。
+   * @param {string} topic
+   * @returns {string|null}
+   */
+  readTopic(topic) {
+    const topicPath = join(this.#topicsDir, `${topic}.md`);
+    if (!existsSync(topicPath)) { return null; }
+    return readFileSync(topicPath, 'utf-8');
+  }
+
+  /**
+   * 列出所有 topic 文件。
+   * @returns {Array<{ topic: string, path: string, size: number, entryCount: number }>}
+   */
+  listTopics() {
+    if (!existsSync(this.#topicsDir)) { return []; }
+    const files = readdirSync(this.#topicsDir).filter(f => f.endsWith('.md'));
+    return files.map(f => {
+      const topicPath = join(this.#topicsDir, f);
+      const content = readFileSync(topicPath, 'utf-8');
+      return {
+        topic: f.replace('.md', ''),
+        path: topicPath,
+        size: content.length,
+        entryCount: (content.match(/^### /gm) || []).length,
+      };
+    }).sort((a, b) => b.size - a.size);
+  }
+
+  /**
+   * 获取 topic 目录的摘要（注入 system prompt）。
+   */
+  getTopicSummary() {
+    const topics = this.listTopics();
+    if (topics.length === 0) { return ''; }
+
+    const lines = ['[TOPIC FILES - Reference notebooks for common themes:]'];
+    for (const t of topics) {
+      lines.push(`  - ${t.topic}.md (${t.entryCount} entries, ${this.#formatSize(t.size)})`);
+    }
+    return lines.join('\n');
+  }
+
+  /**
+   * 将 entries/ 下已有记忆迁移到 topic 文件（首次启用时调用）。
+   */
+  migrateToTopics() {
+    const migrated = [];
+    for (const entry of this.#entries.values()) {
+      const topic = this.appendToTopic(entry);
+      migrated.push({ id: entry.id, topic });
+    }
+    return migrated;
+  }
+
+  // ── 私有：topic 辅助 ───────────────────────────────────────────────
+
+  #topicHeader(topic) {
+    const title = topic.charAt(0).toUpperCase() + topic.slice(1);
+    return `# ${title}\n\n> Auto-generated topic notebook. Last updated: ${new Date().toISOString()}\n> Use \`read_memory\` to retrieve individual entries.\n\n`;
+  }
+
+  #topicEntryBlock(entry) {
+    const date = new Date(entry.timestamp).toISOString().split('T')[0];
+    const tags = entry.tags.length > 0 ? ` \`#${entry.tags.join('` `#')}\`` : '';
+    return [
+      '',
+      `### ${entry.title}`,
+      '',
+      `- **ID**: \`${entry.id}\``,
+      `- **Type**: \`${entry.type}\``,
+      `- **Date**: ${date}${tags}`,
+      `- **Status**: ${entry.isStale() ? '⚠️ STALE' : entry.status}`,
+      '',
+      entry.content,
+      '',
+      '---',
+      '',
+    ].join('\n');
+  }
+
+  #formatSize(bytes) {
+    if (bytes < 1024) { return `${bytes}B`; }
+    return `${(bytes / 1024).toFixed(1)}KB`;
   }
 
   clear() {

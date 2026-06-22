@@ -653,6 +653,7 @@ export class PatchApplyError extends Error {
  * @property {string} afterHash               应用后原始内容 hash（非规范化）
  * @property {number} hunksApplied            应用的 hunk 数
  * @property {string[]} [warnings]
+ * @property {{type: string, hunk: object, message: string, baseContent?: string, curContent?: string, patchContent?: string}[]} [conflicts]
  * @property {string} [error]
  */
 
@@ -755,36 +756,71 @@ export class Patcher {
       }
     }
 
-    // 4) 落盘 + 记录 snapshot
+    // 4) 事务性落盘：先备份，全部写入成功后再更新 metadata；失败则回滚
+    const backups = new Map();
+    const writtenPaths = [];
     const sectionResults = [];
-    for (const c of computed) {
-      try {
-        await this.fs.write(c.path, c.newText);
-        const newTag = computeTag(c.newText);
+
+    try {
+      // 4a) 备份所有待修改文件（in-memory backup，不写临时文件）
+      for (const c of computed) {
+        backups.set(c.path, c.originalText);
+      }
+
+      // 4b) 写入新内容
+      for (const c of computed) {
+        try {
+          await this.fs.write(c.path, c.newText);
+          writtenPaths.push(c.path);
+          const newTag = computeTag(c.newText);
+          sectionResults.push({
+            path: c.path,
+            tag: c.section.tag,
+            applied: true,
+            recovered: c.recovered,
+            newTag,
+            beforeHash: hashContent(c.originalText),
+            afterHash: hashContent(c.newText),
+            hunksApplied: c.hunksApplied,
+            warnings: c.warnings || [],
+            conflicts: c.conflicts || [],
+          });
+        } catch (err) {
+          throw new PatchApplyError(`failed to write ${c.path}: ${err.message}`, { path: c.path, section: c.section, recoverable: false });
+        }
+      }
+
+      // 4c) 全部写入成功：更新 snapshots 和 bridge
+      for (const c of computed) {
+        const result = sectionResults.find(r => r.path === c.path);
         if (this.autoRecord) {
           this.snapshots.record(c.path, c.newText);
         }
-        if (this.bridge) {
-          this.bridge.recordApply(c.path, c.originalText, c.newText, c.section.tag, newTag);
+        if (this.bridge && result) {
+          this.bridge.recordApply(c.path, c.originalText, c.newText, c.section.tag, result.newTag);
         }
-        sectionResults.push({
-          path: c.path,
-          tag: c.section.tag,
-          applied: true,
-          recovered: c.recovered,
-          newTag,
-          beforeHash: hashContent(c.originalText),
-          afterHash: hashContent(c.newText),
-          hunksApplied: c.hunksApplied,
-          warnings: c.warnings || [],
-        });
-      } catch (err) {
-        return {
-          ok: false,
-          sections: sectionResults,
-          error: `failed to write ${c.path}: ${err.message}`,
-        };
       }
+
+    } catch (err) {
+      // 4d) 回滚：恢复所有已写入的文件
+      for (const path of writtenPaths) {
+        try {
+          const backup = backups.get(path);
+          if (backup !== undefined) {
+            await this.fs.write(path, backup);
+          }
+        } catch (rollbackErr) {
+          // 回滚失败是严重问题，但不掩盖原始错误
+          console.error(`[Hashline] rollback failed for ${path}: ${rollbackErr.message}`);
+        }
+      }
+      return {
+        ok: false,
+        sections: [],
+        error: err instanceof PatchApplyError ? err.message : String(err),
+        rolledBack: writtenPaths.length > 0,
+        rollbackPaths: writtenPaths,
+      };
     }
 
     return { ok: true, sections: sectionResults };
@@ -916,21 +952,30 @@ export class Patcher {
    */
   async _applySectionWithRecovery(section, pre) {
     const currentText = pre.currentText;
-    // 优先用 snapshot 里的原版文本做 3-way
     const snapshot = this.snapshots.byHash(section.path, section.tag);
     const baseText = snapshot ? snapshot.text : null;
 
     let recoveredHunks;
     const warnings = [];
+    let conflicts = [];
     if (baseText) {
       warnings.push(`recovered via snapshot store (base tag known)`);
       recoveredHunks = this._remapHunksAgainstBase(baseText, currentText, section.hunks);
+      if (this._lastConflicts && this._lastConflicts.length > 0) {
+        conflicts = [...this._lastConflicts];
+        for (const c of conflicts) {
+          if (c.type === 'conflict') {
+            warnings.push(`conflict detected: base and current differ in hunk range`);
+          } else if (c.type === 'gone') {
+            warnings.push(`warning: ${c.message}`);
+          }
+        }
+      }
     } else {
       warnings.push(`recovered via seen-line fingerprint matching (no snapshot available)`);
       recoveredHunks = this._remapHunksByContent(currentText, section.hunks);
     }
 
-    // 重新做范围检查
     const lineCount = currentText.split('\n').length;
     for (const h of recoveredHunks) {
       const rangeErr = this._checkRange(h, lineCount);
@@ -948,15 +993,20 @@ export class Patcher {
       hunksApplied: recoveredHunks.length,
       recovered: true,
       warnings,
+      conflicts,
     };
   }
 
+  getLastConflicts() {
+    return this._lastConflicts || [];
+  }
+
   /**
-   * 用已知 base 文本对 hunks 做 3-way 重映射：
-   *  - 把 base 行号映射到 current 中“等价”的行号（基于行内容指纹 + 邻居上下文）。
-   *  - 对于 SWAP/DEL：用 base 区间内首行的内容指纹在 current 中查找，并用
-   *    邻居行指纹评分消歧（重复行时选上下文最匹配的那个）。
-   *  - 对于 INS.PRE/POST：用锚点行内容指纹 + 邻居评分查找。
+   * 用已知 base 文本对 hunks 做 3-way merge：
+   *  - 先计算 base 和 current 的 diff，找出当前文件的修改区域
+   *  - 检测冲突：当 patch 的 hunk 区域与 current 的修改区域重叠时
+   *  - 对于无冲突的 hunks：用行内容指纹 + 邻居上下文重映射行号
+   *  - 对于有冲突的 hunks：采用 diff3 风格的冲突处理
    *
    * @private
    */
@@ -964,7 +1014,10 @@ export class Patcher {
     const baseLines = baseText.split('\n');
     const curLines = currentText.split('\n');
 
-    // 行内容指纹 -> current 中所有行号（1-based）
+    const conflicts = [];
+
+    const baseToCurMapping = this._computeLineMapping(baseLines, curLines);
+
     const curIndex = new Map();
     for (let i = 0; i < curLines.length; i++) {
       const fp = hashContent(curLines[i]);
@@ -972,8 +1025,6 @@ export class Patcher {
       curIndex.get(fp).push(i + 1);
     }
 
-    // 邻居评分：给定 base 中某行号 b 与 current 中候选行号 c，
-    // 比较 ±window 行的内容指纹匹配数。
     const scoreNeighbors = (b, c, window = 3) => {
       let score = 0;
       for (let d = -window; d <= window; d++) {
@@ -986,46 +1037,199 @@ export class Patcher {
       return score;
     };
 
-    return hunks.map((h) => {
+    const hunksByStart = [...hunks].sort((a, b) => a.start - b.start);
+
+    const result = [];
+    for (const h of hunksByStart) {
       const remapped = { ...h, lines: h.lines.slice() };
-      const baseStartLine = baseLines[h.start - 1];
-      if (baseStartLine === undefined) { return remapped; }
-      const fp = hashContent(baseStartLine);
-      const candidates = curIndex.get(fp) || [];
-      if (candidates.length === 0) {
-        // 该锚点行在 current 中已不存在：保留原 start，让范围检查兜底
-        return remapped;
-      }
-      if (candidates.length === 1) {
-        const shift = candidates[0] - h.start;
-        remapped.start = h.start + shift;
-        remapped.end = h.end + shift;
-      } else {
-        // 多候选：用邻居评分消歧；平局时选与原 start 偏差最小、且更靠后的
-        let best = candidates[0];
-        let bestScore = scoreNeighbors(h.start, best);
-        let bestDelta = Math.abs(best - h.start);
-        for (let k = 1; k < candidates.length; k++) {
-          const c = candidates[k];
-          const sc = scoreNeighbors(h.start, c);
-          const dlt = Math.abs(c - h.start);
-          if (sc > bestScore ||
-              (sc === bestScore && dlt < bestDelta) ||
-              (sc === bestScore && dlt === bestDelta && c > best)) {
-            best = c;
-            bestScore = sc;
-            bestDelta = dlt;
-          }
+
+      let mappedStart = baseToCurMapping[h.start];
+      let mappedEnd = baseToCurMapping[h.end];
+      let foundByFallback = false;
+
+      if (mappedStart === undefined || mappedEnd === undefined) {
+        const baseStartLine = baseLines[h.start - 1];
+        if (baseStartLine === undefined) {
+          conflicts.push({
+            type: 'gone',
+            hunk: h,
+            message: `Hunk anchor line ${h.start} no longer exists in current file`,
+          });
+          result.push(remapped);
+          continue;
         }
-        const shift = best - h.start;
-        remapped.start = h.start + shift;
-        remapped.end = h.end + shift;
+
+        const fp = hashContent(baseStartLine);
+        const candidates = curIndex.get(fp) || [];
+
+        if (candidates.length === 0) {
+          foundByFallback = true;
+          const nearestLine = Math.min(h.start, curLines.length);
+          mappedStart = nearestLine;
+          const length = h.end - h.start;
+          mappedEnd = Math.min(mappedStart + length, curLines.length);
+        } else {
+          if (candidates.length === 1) {
+            mappedStart = candidates[0];
+          } else {
+            let best = candidates[0];
+            let bestScore = scoreNeighbors(h.start, best);
+            let bestDelta = Math.abs(best - h.start);
+            for (let k = 1; k < candidates.length; k++) {
+              const c = candidates[k];
+              const sc = scoreNeighbors(h.start, c);
+              const dlt = Math.abs(c - h.start);
+              if (sc > bestScore ||
+                  (sc === bestScore && dlt < bestDelta) ||
+                  (sc === bestScore && dlt === bestDelta && c > best)) {
+                best = c;
+                bestScore = sc;
+                bestDelta = dlt;
+              }
+            }
+            mappedStart = best;
+          }
+          const length = h.end - h.start;
+          mappedEnd = Math.min(mappedStart + length, curLines.length);
+        }
       }
-      // 修正 end 不越界
+
+      const baseContent = h.start <= baseLines.length ? baseLines.slice(h.start - 1, h.end).join('\n') : '';
+      const curContent = mappedStart <= curLines.length ? curLines.slice(mappedStart - 1, mappedEnd).join('\n') : '';
+
+      if (h.op !== OP_INS_PRE && h.op !== OP_INS_POST) {
+        if (baseContent !== '' && curContent !== '' && baseContent !== curContent) {
+          conflicts.push({
+            type: 'conflict',
+            hunk: h,
+            baseContent,
+            curContent,
+            patchContent: h.lines.join('\n'),
+            message: `Content conflict: base and current differ in hunk range`,
+          });
+        } else if (foundByFallback && baseContent !== '') {
+          conflicts.push({
+            type: 'conflict',
+            hunk: h,
+            baseContent,
+            curContent,
+            patchContent: h.lines.join('\n'),
+            message: `Conflict: base line content changed, no matching line found in current file`,
+          });
+        }
+      }
+
+      remapped.start = mappedStart;
+      remapped.end = mappedEnd;
+
       if (remapped.end > curLines.length) { remapped.end = curLines.length; }
       if (remapped.start > curLines.length) { remapped.start = curLines.length; }
-      return remapped;
-    });
+
+      result.push(remapped);
+    }
+
+    if (conflicts.length > 0) {
+      this._lastConflicts = conflicts;
+    }
+
+    return result;
+  }
+
+  /**
+   * 计算 base 行号到 current 行号的映射。
+   * @private
+   */
+  _computeLineMapping(baseLines, curLines) {
+    const mapping = {};
+    const lcs = this._computeLCS(baseLines, curLines);
+
+    let bi = 0;
+    let ci = 0;
+    for (const match of lcs) {
+      while (bi < match.baseIdx) {
+        bi++;
+      }
+      while (ci < match.curIdx) {
+        ci++;
+      }
+      mapping[bi + 1] = ci + 1;
+      bi++;
+      ci++;
+    }
+
+    return mapping;
+  }
+
+  /**
+   * 计算最长公共子序列（LCS），用于行映射。
+   * @private
+   */
+  _computeLCS(a, b) {
+    const n = a.length;
+    const m = b.length;
+
+    if (n === 0 || m === 0) { return []; }
+
+    const SAFE_SIZE = 1000000;
+    if (n * m > SAFE_SIZE) {
+      return this._computeLCSGreedy(a, b);
+    }
+
+    const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = m - 1; j >= 0; j--) {
+        if (a[i] === b[j]) {
+          dp[i][j] = dp[i + 1][j + 1] + 1;
+        } else {
+          dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+        }
+      }
+    }
+
+    const lcs = [];
+    let i = 0, j = 0;
+    while (i < n && j < m) {
+      if (a[i] === b[j]) {
+        lcs.push({ baseIdx: i, curIdx: j });
+        i++;
+        j++;
+      } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+        i++;
+      } else {
+        j++;
+      }
+    }
+
+    return lcs;
+  }
+
+  /**
+   * 贪心 LCS 算法（用于大文件）。
+   * @private
+   */
+  _computeLCSGreedy(a, b) {
+    const fingerprintMap = new Map();
+    for (let i = 0; i < b.length; i++) {
+      const fp = hashContent(b[i]);
+      if (!fingerprintMap.has(fp)) {
+        fingerprintMap.set(fp, []);
+      }
+      fingerprintMap.get(fp).push(i);
+    }
+
+    const lcs = [];
+    let lastCurIdx = -1;
+    for (let i = 0; i < a.length; i++) {
+      const fp = hashContent(a[i]);
+      const candidates = fingerprintMap.get(fp) || [];
+      const found = candidates.find(c => c > lastCurIdx);
+      if (found !== undefined) {
+        lcs.push({ baseIdx: i, curIdx: found });
+        lastCurIdx = found;
+      }
+    }
+
+    return lcs;
   }
 
   /**

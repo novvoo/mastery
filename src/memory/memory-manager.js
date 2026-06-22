@@ -1,5 +1,8 @@
 /**
  * Memory Manager - CONTEXT.md based persistent memory
+ *
+ * 默认存储路径：{workingDir}/CONTEXT.md
+ * 可通过 contextDir 参数指定子目录（如 '.agent-memory'）。
  */
 
 import { readFile, writeFile, mkdir } from 'fs/promises';
@@ -13,11 +16,19 @@ const MAX_KEY_DECISIONS = 100; // 最多保留100个关键决策
 export class MemoryManager {
   /** @type {string} */
   #contextPath;
+  /** @type {string} */
+  #workingDir;
   /** @type {object} */
   #context;
 
-  constructor(workingDir) {
-    this.#contextPath = join(workingDir, 'CONTEXT.md');
+  /**
+   * @param {string} workingDir
+   * @param {string} [contextDir] - 可选，CONTEXT.md 所在子目录（如 '.agent-memory'）
+   */
+  constructor(workingDir, contextDir = null) {
+    this.#workingDir = workingDir;
+    const base = contextDir ? join(workingDir, contextDir) : workingDir;
+    this.#contextPath = join(base, 'CONTEXT.md');
     this.#context = this.createDefaultContext(workingDir);
   }
 
@@ -45,6 +56,21 @@ export class MemoryManager {
   }
 
   async load() {
+    // 兼容迁移：如果新路径不存在但旧根路径存在 CONTEXT.md，自动迁移
+    if (!existsSync(this.#contextPath)) {
+      const legacyPath = join(this.#workingDir, 'CONTEXT.md');
+      if (existsSync(legacyPath) && legacyPath !== this.#contextPath) {
+        try {
+          const content = await readFile(legacyPath, 'utf-8');
+          // 确保目标目录存在
+          const dir = this.#contextPath.substring(0, this.#contextPath.lastIndexOf('/'));
+          if (!existsSync(dir)) { await mkdir(dir, { recursive: true }); }
+          await writeFile(this.#contextPath, content, 'utf-8');
+          // 不删除旧文件，保持向后兼容
+        } catch { /* 迁移失败静默 */ }
+      }
+    }
+
     if (existsSync(this.#contextPath)) {
       try {
         const content = await readFile(this.#contextPath, 'utf-8');
@@ -281,7 +307,7 @@ export class MemoryManager {
   /** @param {string} content @returns {object} */
   parseContextMd(content) {
     // Simple parser - in production, use a proper markdown parser
-    const ctx = this.createDefaultContext(this.#contextPath.replace('/CONTEXT.md', ''));
+    const ctx = this.createDefaultContext(this.#workingDir);
 
     const taskMatch = content.match(/- \*\*Description\*\*: (.+)/);
     if (taskMatch) {ctx.currentTask.description = taskMatch[1];}

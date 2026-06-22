@@ -5,6 +5,71 @@ export const MemoryType = Object.freeze({
   REFERENCE: 'reference',
 });
 
+/**
+ * Topic 分类（人可读的主题笔记本）。
+ * 每个 topic 对应一个 topics/{name}.md 文件。
+ */
+export const MemoryTopic = Object.freeze({
+  ARCHITECTURE: 'architecture',
+  DEBUGGING: 'debugging',
+  CONVENTIONS: 'conventions',
+  DEPENDENCIES: 'dependencies',
+  PERFORMANCE: 'performance',
+  SECURITY: 'security',
+  TESTING: 'testing',
+  DEPLOYMENT: 'deployment',
+  API: 'api',
+  GENERAL: 'general',
+});
+
+/**
+ * 根据记忆 type + tags 自动推断最佳 topic（基于得分的多模式匹配）。
+ */
+export function inferTopic(type, tags = [], content = '') {
+  const text = (tags.join(' ') + ' ' + content).toLowerCase();
+
+  // 模式定义：权重越高的 pattern 越具辨识度
+  const patterns = [
+    [MemoryTopic.DEBUGGING,   /\b(?:debug|debugging|bug|error|crash|traceback|stack trace|workaround|troubleshoot)\b/i, 10],
+    [MemoryTopic.TESTING,     /\b(?:test|spec|mock|stub|fixture|coverage|assert|e2e|unit test|integration test)\b/i, 10],
+    [MemoryTopic.SECURITY,    /\b(?:csrf|xss|cve|vulnerab|exploit|encrypt|decrypt|authn|authz|jwt|oauth)\b/i, 10],
+    [MemoryTopic.DEPLOYMENT,  /\b(?:deploy|docker|kubernetes|helm|terraform|ci\b|cd\b|jenkins|infra|release)\b/i, 10],
+    [MemoryTopic.API,         /\b(?:api\b|endpoint|graphql|rpc|swagger|openapi|restful|grpc|protobuf)\b/i, 10],
+    [MemoryTopic.DEPENDENCIES,/\b(?:dependenc|package|library|version|upgrade|npm\b|pip\b|cargo\b|gem\b|lockfile)\b/i, 9],
+    [MemoryTopic.PERFORMANCE, /\b(?:perform|slow|fast|optimiz|memory leak|cache|latency|throughput|benchmark)\b/i, 9],
+    [MemoryTopic.CONVENTIONS, /\b(?:convention|coding style|naming|format|best practice|guideline|lint|eslint|prettier)\b/i, 8],
+    // Architecture pattern - 权重最低因为 "module"/"component" 太通用
+    [MemoryTopic.ARCHITECTURE,/\b(?:architect|design pattern|monorepo|microservice|middleware|hexagonal|event sourcing)\b/i, 7],
+  ];
+
+  let bestTopic = null;
+  let bestScore = 0;
+
+  for (const [topic, regex, weight] of patterns) {
+    const matches = (text.match(regex) || []).length;
+    const score = matches * weight;
+    if (score > bestScore) {
+      bestScore = score;
+      bestTopic = topic;
+    }
+  }
+
+  if (bestScore >= 7) return bestTopic;
+
+  // Fallback: check for weak ARCHITECTURE signals if nothing else matched
+  if (/\b(?:module|component|layer|pipeline|service)\b/i.test(text)) {
+    if (/\b(?:pattern|structure|design|layout|abstraction|decouple|interface|dependency inversion)\b/i.test(text)) {
+      return MemoryTopic.ARCHITECTURE;
+    }
+  }
+
+  // 根据类型回退
+  if (type === MemoryType.PROJECT) return MemoryTopic.ARCHITECTURE;
+  if (type === MemoryType.REFERENCE) return MemoryTopic.GENERAL;
+
+  return MemoryTopic.GENERAL;
+}
+
 export const MemoryStatus = Object.freeze({
   ACTIVE: 'active',
   STALE: 'stale',

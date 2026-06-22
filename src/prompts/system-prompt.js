@@ -206,7 +206,7 @@ const FORBIDDEN_BEHAVIORS = `## Forbidden Behaviors
 7. NEVER ignore error messages from tool results
 8. NEVER say "You're absolutely right!" or "Great point!" — respond technically or start working`;
 
-export function buildSystemPrompt(memoryManager, toolRegistry, workingDirectory) {
+export function buildSystemPrompt(memoryManager, toolRegistry, workingDirectory, memoryContext) {
   const sections = [
     ROLE_DEFINITION,
     BEHAVIORAL_PRINCIPLES,
@@ -219,7 +219,12 @@ export function buildSystemPrompt(memoryManager, toolRegistry, workingDirectory)
     '',
   ];
 
-  if (memoryManager && typeof memoryManager.toPromptFragment === 'function') {
+  if (memoryContext && memoryContext.trim()) {
+    // AgentMemory 生成的丰富上下文（含索引 + 相关记忆 + 陈旧标记）
+    sections.push('## Project Memory');
+    sections.push(memoryContext);
+    sections.push('');
+  } else if (memoryManager && typeof memoryManager.toPromptFragment === 'function') {
     sections.push(memoryManager.toPromptFragment());
     sections.push('');
   }

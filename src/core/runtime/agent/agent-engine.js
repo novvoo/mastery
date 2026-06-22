@@ -32,6 +32,7 @@ import { ContentAddressableStore, FileAnalyzer } from '../../harness/content-add
 import { Patcher, InMemorySnapshotStore, HashlineBridge, DiskFilesystem } from '../../harness/hashline.js';
 import { ServerManager } from '../../../lsp/lsp-manager.js';
 import { createLSPTools } from '../../../lsp/lsp-tools.js';
+import { registerCodeTools } from './tools/index.js';
 import { withRoutedToolContext } from '../../routed-tool-context.js';
 import { TokenScope } from './support/token-scope.js';
 import { quickAssess, computeIterationBudget } from './support/risk-budget.js';
@@ -40,6 +41,7 @@ import { ToolExecutor } from './tool-executor.js';
 import { ContextManager } from './context-manager.js';
 import { metricsSink } from '../metrics-sink.js';
 import { MemoryManager } from '../../../memory/memory-manager.js';
+import { AgentMemory } from '../../../memory/agent-memory.js';
 import {
   buildToolSyntaxCorrectionPrompt,
   buildToolUseCorrectionPrompt,
@@ -177,10 +179,15 @@ export class AgentEngine {
   constructor({ modelProvider, toolRegistry, memoryManager, config, ui }) {
     this.#modelProvider = modelProvider;
     this.#toolRegistry = toolRegistry || createEmptyToolRegistry();
-    // memoryManager 可选：没传时创建一个默认的空实例，避免 buildSystemPrompt 崩溃
+    // memoryManager 可选：没传时默认创建 AgentMemory（含结构化记忆、检索、校验），
+    // fallback 到 MemoryManager 确保兼容性
+    const cwd = config?.workingDirectory || process.cwd();
     this.#memoryManager = memoryManager || (() => {
-      try { return new MemoryManager(config?.workingDirectory || process.cwd()); }
-      catch { return null; }
+      try { return new AgentMemory(cwd, modelProvider); }
+      catch {
+        try { return new MemoryManager(cwd); }
+        catch { return null; }
+      }
     })();
     this.#config = {
       maxIterations: config.maxIterations || MAX_ITERATIONS_DEFAULT,
@@ -247,15 +254,14 @@ export class AgentEngine {
     this.#lspManager = new ServerManager({
       workspaceRoot: this.#config.workingDirectory,
     });
-    // 将 LSP 工具注册到 ToolRegistry
-    const lspTools = createLSPTools({
+
+    // ============ 统一工具注册 ============
+    // 通过 registerCodeTools 注册文件系统、Hashline 和 LSP 工具
+    registerCodeTools(this.#toolRegistry, {
       lspManager: this.#lspManager,
       contentStore: this.#contentStore,
       hashlinePatcher: this.#hashlinePatcher,
     });
-    for (const tool of lspTools) {
-      try { this.#toolRegistry.register(tool); } catch { /* 重复注册忽略 */ }
-    }
 
     this.#toolExecutor = new ToolExecutor({
       toolRegistry: this.#toolRegistry,
@@ -310,7 +316,50 @@ export class AgentEngine {
 
     // 首次 run：设置 system prompt
     if (!this.#systemPromptInitialized || this.#sessionManager.length === 0) {
-      const systemPrompt = buildSystemPrompt(this.#memoryManager, this.#toolRegistry, this.#config.workingDirectory);
+      // 初始化结构化记忆（AgentMemory 异步加载并构建索引）
+      if (this.#memoryManager && typeof this.#memoryManager.initialize === 'function') {
+        try { await this.#memoryManager.initialize(); } catch { /* 静默失败 */ }
+      }
+
+      // 路径作用域懒加载：当前 workingDirectory 下的规则
+      if (this.#memoryManager && typeof this.#memoryManager.ensureRulesForPath === 'function') {
+        try {
+          const cwd = this.#config.workingDirectory || process.cwd();
+          const { hasNewRules } = this.#memoryManager.ensureRulesForPath(cwd);
+          if (hasNewRules) {
+            this.#ui.debugEvent?.('Path-scoped rules loaded', { cwd });
+          }
+        } catch { /* 静默 */ }
+      }
+
+      // 生成记忆上下文：AgentMemory → getMemoryContext(userInput)，MemoryManager → toPromptFragment()
+      let memoryContext = '';
+      if (this.#memoryManager && typeof this.#memoryManager.getMemoryContext === 'function') {
+        try {
+          const inputPreview = typeof userInput === 'string' ? userInput.substring(0, 200) : '';
+          memoryContext = this.#memoryManager.getMemoryContext(inputPreview);
+        } catch { /* 静默失败 */ }
+      }
+
+      const systemPrompt = buildSystemPrompt(
+        this.#memoryManager,
+        this.#toolRegistry,
+        this.#config.workingDirectory,
+        memoryContext,
+      );
+
+      // 注入自动记忆提示
+      if (this.#memoryManager && typeof this.#memoryManager.getAutoMemoryPrompt === 'function') {
+        try {
+          const autoPrompt = this.#memoryManager.getAutoMemoryPrompt({
+            toolEvents: this.#lastRunResult?.toolEvents || [],
+          });
+          if (autoPrompt) {
+            this.#sessionManager.addSystemMessage(autoPrompt);
+          }
+        } catch { /* 静默 */ }
+      }
+
       this.#sessionManager.setSystemPrompt(systemPrompt);
       const toolInstructions = this.#textToolParser.generateToolPrompt([]);
       this.#sessionManager.addSystemMessage(toolInstructions);
@@ -1009,6 +1058,41 @@ export class AgentEngine {
         toolCount: toolEvents.length,
       });
     } catch (_) { /* 忽略 */ }
+
+    // —— Auto-Memory: 分析本轮会话，自动沉淀高置信度记忆（fire-and-forget）——
+    if (this.#memoryManager && typeof this.#memoryManager.autoWriteMemory === 'function') {
+      // 不 await，避免阻塞 main loop
+      (async () => {
+        try {
+          const errors = (toolEvents || []).filter(e => e.error || e.result?.error).map(e => (e.error || e.result?.error)?.toString()).filter(Boolean);
+          const { written, deferred } = await this.#memoryManager.autoWriteMemory({
+            finalAnswer: answer,
+            corrections: success ? [] : (error ? [String(error)] : []),
+            toolEvents: toolEvents || [],
+          });
+          if (written.length > 0) {
+            this.#ui.debugEvent?.('Auto-memory written', { count: written.length, topics: written.map(w => w.topic) });
+          }
+          if (deferred.length > 0) {
+            this.#ui.debugEvent?.('Auto-memory deferred', { count: deferred.length });
+          }
+        } catch { /* 静默 */ }
+      })();
+    } else if (this.#memoryManager && typeof this.#memoryManager.autoSuggestMemory === 'function') {
+      // fallback：旧版仅建议模式
+      try {
+        const errors = (toolEvents || []).filter(e => e.error || e.result?.error).map(e => (e.error || e.result?.error)?.toString()).filter(Boolean);
+        const { shouldSuggest, suggestions } = this.#memoryManager.autoSuggestMemory({
+          finalAnswer: answer,
+          corrections: success ? [] : (error ? [String(error)] : []),
+          toolEvents: toolEvents || [],
+        });
+        if (shouldSuggest) {
+          this.#ui.debugEvent?.('Auto-memory suggestions', { count: suggestions.length });
+        }
+      } catch { /* 静默 */ }
+    }
+
     return result;
   }
 

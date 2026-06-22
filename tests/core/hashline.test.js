@@ -486,6 +486,70 @@ describe('hashline: Patcher recovery', () => {
     expect(r.sections[0].warnings.length).toBeGreaterThan(0);
     expect(r.sections[0].warnings[0]).toContain('recovered');
   });
+
+  test('3-way merge detects conflicts when base and current differ', async () => {
+    const fs = new MemoryFilesystem({ 'a.txt': 'line1\nline2\nline3\n' });
+    const snapshots = new InMemorySnapshotStore();
+    const tag = snapshots.record('a.txt', 'line1\nline2\nline3\n');
+    await fs.write('a.txt', 'line1\nMODIFIED\nline3\n');
+    const patcher = new Patcher({ fs, snapshots });
+    const r = await patcher.apply(`[a.txt#${tag}]\nSWAP 2.=2:\n+PATCHED`);
+    expect(r.ok).toBe(true);
+    expect(r.sections[0].recovered).toBe(true);
+    expect(r.sections[0].conflicts.length).toBeGreaterThan(0);
+    expect(r.sections[0].conflicts[0].type).toBe('conflict');
+    expect(r.sections[0].warnings.some(w => w.includes('conflict'))).toBe(true);
+  });
+
+  test('LCS-based line mapping handles deletions correctly', async () => {
+    const fs = new MemoryFilesystem({ 'a.txt': 'a\nb\nc\nd\ne\n' });
+    const snapshots = new InMemorySnapshotStore();
+    const tag = snapshots.record('a.txt', 'a\nb\nc\nd\ne\n');
+    await fs.write('a.txt', 'a\nd\ne\n');
+    const patcher = new Patcher({ fs, snapshots });
+    const r = await patcher.apply(`[a.txt#${tag}]\nDEL 4.=4`);
+    expect(r.ok).toBe(true);
+    expect(await fs.read('a.txt')).toBe('a\ne\n');
+  });
+
+  test('LCS-based line mapping handles insertions correctly', async () => {
+    const fs = new MemoryFilesystem({ 'a.txt': 'a\nb\nc\n' });
+    const snapshots = new InMemorySnapshotStore();
+    const tag = snapshots.record('a.txt', 'a\nb\nc\n');
+    await fs.write('a.txt', 'a\nINSERTED\nb\nc\n');
+    const patcher = new Patcher({ fs, snapshots });
+    const r = await patcher.apply(`[a.txt#${tag}]\nSWAP 3.=3:\n+MODIFIED_C`);
+    expect(r.ok).toBe(true);
+    expect(await fs.read('a.txt')).toBe('a\nINSERTED\nb\nMODIFIED_C\n');
+  });
+
+  test('getLastConflicts returns detected conflicts', async () => {
+    const fs = new MemoryFilesystem({ 'a.txt': 'base\n' });
+    const snapshots = new InMemorySnapshotStore();
+    const tag = snapshots.record('a.txt', 'base\n');
+    await fs.write('a.txt', 'modified\n');
+    const patcher = new Patcher({ fs, snapshots });
+    await patcher.apply(`[a.txt#${tag}]\nSWAP 1.=1:\n+patched\n`);
+    const conflicts = patcher.getLastConflicts();
+    expect(conflicts.length).toBeGreaterThan(0);
+    expect(conflicts[0].type).toBe('conflict');
+  });
+
+  test('recovery works with large file using greedy LCS', async () => {
+    const lines = Array.from({ length: 500 }, (_, i) => `line${i}`);
+    const fs = new MemoryFilesystem({ 'big.txt': lines.join('\n') + '\n' });
+    const snapshots = new InMemorySnapshotStore();
+    const tag = snapshots.record('big.txt', lines.join('\n') + '\n');
+    const modifiedLines = ['INSERTED']
+      .concat(lines.slice(0, 200))
+      .concat(['INSERTED2'])
+      .concat(lines.slice(200));
+    await fs.write('big.txt', modifiedLines.join('\n') + '\n');
+    const patcher = new Patcher({ fs, snapshots });
+    const r = await patcher.apply(`[big.txt#${tag}]\nDEL 250.=250`);
+    expect(r.ok).toBe(true);
+    expect(r.sections[0].recovered).toBe(true);
+  });
 });
 
 // ── HashlineBridge ───────────────────────────────────────────────────────────
