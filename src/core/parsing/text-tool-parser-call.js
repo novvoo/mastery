@@ -86,7 +86,7 @@ export function parseCALLFormat(text, { toolRegistry, safeJSONParse, normalizeJS
   // Find each CALL header, then scan for balanced JSON argument object.
   // A naive /\{[\s\S]*?\}/ non-greedy match stops at the first }, which
   // breaks when string values contain code snippets like { x: 10 }.
-  const headerRegex = /CALL\s+\/?([A-Za-z_][\w-]*)\s*\(\s*\{/g;
+  const headerRegex = /CALL\s+\/?([A-Za-z_][\w.-]*)\s*\(\s*\{/g;
   let match;
 
   while ((match = headerRegex.exec(text)) !== null) {

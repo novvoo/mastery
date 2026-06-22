@@ -233,7 +233,7 @@ export function containsUnparsedToolSyntax(toolParser, responseText) {
     /<tool_call>[\s\S]*?<\/tool_call>/i,
     /<function_call>[\s\S]*?<\/function_call>/i,
     /```(?:tool|json)?\s*\n\s*\{[\s\S]*?(?:"name"|"action"|"tool")[\s\S]*?\}\s*```/i,
-    /\bCALL\s+\/?[A-Za-z_][\w-]*\s*\(/,
+    /\bCALL\s+\/?[A-Za-z_][\w.-]*\s*\(/,
     /<(?:\uFF5C\uFF5C|\|\|)DSML(?:\uFF5C\uFF5C|\|\|)\s*\w+/i,
   ];
   return patterns.some(p => p.test(response));

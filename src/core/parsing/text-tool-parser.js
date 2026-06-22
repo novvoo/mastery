@@ -172,7 +172,7 @@ export class TextToolParser {
       }
     }
 
-    const callMatch = text.match(/\bCALL\s+\/?([A-Za-z_][\w-]*)\s*\(\s*\{/);
+    const callMatch = text.match(/\bCALL\s+\/?([A-Za-z_][\w.-]*)\s*\(\s*\{/);
     if (callMatch) {
       const braceIdx = callMatch.index + callMatch[0].length - 1;
       const found = findBalancedJSON(text, braceIdx);
@@ -440,11 +440,14 @@ export class TextToolParser {
 
   #normalizeJSONToolCall(rawName, originalArgs) {
     const args = originalArgs && typeof originalArgs === 'object' && !Array.isArray(originalArgs) ? originalArgs : {};
-    const name = String(rawName || '').replace(/^\//, '');
+    // 去除开头的 / 和常见的命名空间前缀 (filesystem., fs., tools. 等)
+    let name = String(rawName || '').replace(/^\//, '');
+    name = name.replace(/^(?:filesystem|fs|tools|file|workspace)\./i, '');
     const snakeName = name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/-/g, '_').toLowerCase();
     const aliases = {
       list_directory: 'list_dir', list_files: 'list_dir', ls: 'list_dir',
       read: 'read_file', cat: 'read_file', write: 'write_file', save_file: 'write_file',
+      edit: 'edit_file', update: 'write_file',
       run_command: 'shell', execute_command: 'shell', run_in_terminal: 'shell',
       terminal: 'shell', exec: 'shell', bash: 'shell',
       search_web: 'web_search', browser_search: 'web_search', google: 'web_search', internet_search: 'web_search',
