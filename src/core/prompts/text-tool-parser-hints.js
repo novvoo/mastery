@@ -7,7 +7,7 @@ export function getParseHints(text, hasNamedXMLCandidate) {
   const hasShellFence = hasFence && /```(?:bash|sh|zsh|shell|terminal|console)\b/i.test(text);
 
   return {
-    dsml: text.includes('DSML'),
+    dsml: text.includes('DSML') || /<invoke\b/i.test(text),
     call: text.includes('CALL'),
     jsonBlock: hasFence && text.includes('{'),
     actionTag: hasAngleTag && /<action\b/i.test(text),

@@ -172,6 +172,21 @@ export class TextToolParser {
       }
     }
 
+    // Check for plain <invoke> blocks without DSML wrapper — not parsable
+    const hasPlainInvoke = /<invoke\b[^>]*>/i.test(text);
+    const hasDSMLPrefix = /<(?:\uFF5C\uFF5C|\|\|)DSML(?:\uFF5C\uFF5C|\|\|)/i.test(text);
+    if (hasPlainInvoke && !hasDSMLPrefix) {
+      const invokeMatch = text.match(/<invoke\b[^>]*>/i);
+      const invokeIdx = text.search(/<invoke\b/i);
+      return {
+        tag: 'plain_invoke_without_dsml',
+        opening: invokeMatch[0],
+        closing: '</invoke>' + (text.includes('</invoke>') ? ' (present but not in DSML format)' : ' (missing)'),
+        hint: '<invoke> blocks must be wrapped in ||DSML|| tags to be parsed. Use CALL tool_name({"param":"value"}) format instead.',
+        sample: text.substring(invokeIdx, Math.min(invokeIdx + 200, text.length)),
+      };
+    }
+
     const callMatch = text.match(/\bCALL\s+\/?([A-Za-z_][\w.-]*)\s*\(\s*\{/);
     if (callMatch) {
       const braceIdx = callMatch.index + callMatch[0].length - 1;

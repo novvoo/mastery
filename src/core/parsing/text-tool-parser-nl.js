@@ -407,5 +407,45 @@ export function parseDSMLFormat(text, { toolRegistry, resolveToolName, decodeStr
     }
   }
 
+  // Fallback: parse plain <invoke> blocks without DSML prefix
+  // e.g. <invoke name="glob"><parameter name="path">/foo</parameter></invoke>
+  if (toolCalls.length === 0 && /<invoke\b/i.test(text)) {
+    const plainInvokeRegex = /<invoke\s+name="([^"]+)"\s*>\s*([\s\S]*?)<\/invoke\s*>/gi;
+    const plainParamRegex = /<parameter\s+name="([^"]+)"(?:\s+[^>]*)?>\s*([\s\S]*?)\s*<\/parameter\s*>/gi;
+
+    let invokeMatch;
+    while ((invokeMatch = plainInvokeRegex.exec(text)) !== null) {
+      const name = resolveToolName(invokeMatch[1]);
+      if (!toolRegistry?.has?.(name)) continue;
+
+      const innerText = invokeMatch[2];
+      const args = {};
+      let paramMatch;
+      while ((paramMatch = plainParamRegex.exec(innerText)) !== null) {
+        const paramName = paramMatch[1];
+        let paramValue = (paramMatch[2] || '').trim();
+        const decoded = decodeStringLiteral(paramValue);
+        args[paramName] = decoded !== undefined ? decoded : paramValue;
+      }
+
+      if (Object.keys(args).length === 0) {
+        const jsonMatch = innerText.match(/^\s*(\{[\s\S]*\})\s*$/);
+        if (jsonMatch) {
+          const parsed = safeJSONParse(jsonMatch[1]);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            Object.assign(args, parsed);
+          }
+        }
+      }
+
+      toolCalls.push({
+        id: `call_${Date.now()}_${toolCalls.length}`,
+        name,
+        arguments: args,
+        source: 'plain_invoke',
+      });
+    }
+  }
+
   return toolCalls;
 }
