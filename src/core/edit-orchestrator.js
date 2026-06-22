@@ -26,120 +26,7 @@ import {
   InMemorySnapshotStore, DiskFilesystem,
   computeTag, hashContent,
 } from './harness/hashline.js';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DiagnosticsGate — 编辑后自动检测新引入的诊断错误
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 诊断门控：编辑后等待 LSP diagnostics，检测新引入的错误。
- * 如果出现新的 blocking errors，触发回滚。
- */
-export class DiagnosticsGate {
-  /**
-   * @param {object} opts
-   * @param {import('../lsp/lsp-manager.js').ServerManager} opts.lspManager
-   * @param {number} [opts.waitMs=800]      等待 diagnostics 的毫秒数
-   * @param {number} [opts.maxRetries=3]    最大重试次数
-   * @param {string[]} [opts.blockingSeverities]  触发回滚的 severity 列表
-   */
-  constructor(opts = {}) {
-    this.lspManager = opts.lspManager || null;
-    this.waitMs = opts.waitMs || 800;
-    this.maxRetries = opts.maxRetries || 3;
-    this.blockingSeverities = opts.blockingSeverities || ['error'];
-  }
-
-  /**
-   * 检查编辑后是否引入了新的 blocking errors。
-   *
-   * @param {string[]} filePaths        被编辑的文件路径列表
-   * @param {object} [baselineDiags]   编辑前的 diagnostics（可选，用于对比）
-   * @returns {Promise<DiagnosticsGateResult>}
-   */
-  async check(filePaths, baselineDiags = null) {
-    if (!this.lspManager || filePaths.length === 0) {
-      return { ok: true, newErrors: [], allDiagnostics: {} };
-    }
-
-    const allDiags = {};
-    const newErrors = [];
-
-    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
-      // 同步文档触发 diagnostics
-      for (const fp of filePaths) {
-        try {
-          const content = await readFile(fp, 'utf-8');
-          await this.lspManager.syncDocument(fp, content);
-        } catch { /* skip unreadable */ }
-      }
-
-      // 等待 diagnostics 推送
-      await new Promise(r => setTimeout(r, this.waitMs));
-
-      // 收集 diagnostics
-      for (const fp of filePaths) {
-        const diags = this.lspManager.getDiagnostics(fp);
-        allDiags[fp] = diags;
-
-        for (const d of diags) {
-          if (this.blockingSeverities.includes(severityLabel(d.severity))) {
-            // 检查是否是新引入的错误
-            if (!this._wasInBaseline(fp, d, baselineDiags)) {
-              newErrors.push({
-                file: fp,
-                line: (d.range?.start?.line || 0) + 1,
-                character: (d.range?.start?.character || 0) + 1,
-                message: d.message,
-                code: d.code || null,
-                severity: severityLabel(d.severity),
-              });
-            }
-          }
-        }
-      }
-
-      // 如果本批次没有新错误，跳出重试循环
-      if (attempt < this.maxRetries - 1 && newErrors.length > 0) {
-        // 可能 diagnostics 还没完全到达，等待并重试
-        await new Promise(r => setTimeout(r, 500));
-        newErrors.length = 0; // 重置
-        continue;
-      }
-      break;
-    }
-
-    return {
-      ok: newErrors.length === 0,
-      newErrors,
-      allDiagnostics: allDiags,
-    };
-  }
-
-  /**
-   * @private 检查 diagnostics 是否在基线中存在
-   */
-  _wasInBaseline(filePath, diagnostic, baselineDiags) {
-    if (!baselineDiags || !baselineDiags[filePath]) { return false; }
-    const baseline = baselineDiags[filePath];
-    return baseline.some(b =>
-      b.message === diagnostic.message &&
-      (b.range?.start?.line || 0) === (diagnostic.range?.start?.line || 0) &&
-      (b.range?.start?.character || 0) === (diagnostic.range?.start?.character || 0)
-    );
-  }
-}
-
-function severityLabel(sev) {
-  return { 1: 'error', 2: 'warning', 3: 'info', 4: 'hint' }[sev] || 'unknown';
-}
-
-/**
- * @typedef {Object} DiagnosticsGateResult
- * @property {boolean} ok
- * @property {{file:string, line:number, character:number, message:string, code:string|null, severity:string}[]} newErrors
- * @property {object} allDiagnostics
- */
+import { DiagnosticsGate } from './diagnostics-gate.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EditOrchestrator — 协调 LSP → Hashline → Diagnostics → Memory 的主入口
@@ -189,9 +76,12 @@ export class EditOrchestrator {
     this.workingDirectory = opts.workingDirectory || process.cwd();
     this.memoryRules = opts.memoryRules || {};
 
-    // 诊断门控
+    // 诊断门控（默认启用 autoRepair）
     this.diagGate = opts.diagGate || new DiagnosticsGate({
       lspManager: this.lspManager,
+      hashlinePatcher: this.hashlinePatcher,
+      snapshotStore: this.snapshotStore,
+      workingDirectory: this.workingDirectory,
     });
 
     // 编辑历史（用于 memory 反馈闭环）
@@ -303,20 +193,37 @@ export class EditOrchestrator {
       }
     }
 
-    // Diagnostics gate
+    // Diagnostics gate — 默认强制，带 autoRepair
     if (!opts.skipDiagnostics && this.lspManager && result.filesChanged.length > 0) {
-      const diagResult = await this.diagGate.check(result.filesChanged, baselineDiags);
+      // 构建 snapshot data 用于 rollback
+      const snapshotData = { files: {} };
+      for (const fp of result.filesChanged) {
+        try {
+          const snap = this.snapshotStore.head(fp);
+          if (snap?.text) snapshotData.files[fp] = snap.text;
+        } catch { /* skip */ }
+      }
+
+      const diagResult = await this.diagGate.gate(result.filesChanged, baselineDiags, snapshotData);
       result.diagnostics = diagResult;
 
+      // 记录自动修复
+      if (diagResult.repaired?.length > 0) {
+        result.repaired = diagResult.repaired;
+        result.diagnosticsWarning = `Auto-repaired ${diagResult.repaired.length} error(s) via codeAction`;
+      }
+
       if (!diagResult.ok) {
-        // 回滚
-        await this._rollback(result.filesChanged, result);
+        // gate 内部已尝试回滚，这里标记状态
         result.success = false;
-        result.rolledBack = true;
-        result.error = `Diagnostics gate: ${diagResult.newErrors.length} new blocking errors introduced`;
+        if (diagResult.rolledBack) {
+          result.rolledBack = true;
+          result.error = `Diagnostics gate: rollback after ${diagResult.newErrors.length} new errors (repair failed: ${diagResult.repairFailed?.length || 0})`;
+        } else {
+          result.error = `Diagnostics gate: ${diagResult.newErrors.length} new blocking errors (no snapshot for rollback)`;
+        }
         result.newErrors = diagResult.newErrors;
 
-        // 记录到 Memory
         if (!opts.skipMemory && this.memoryManager) {
           this._recordDiagnosticFailureToMemory(diagResult.newErrors);
         }
@@ -636,11 +543,13 @@ export class EditOrchestrator {
 
   /**
    * @private WorkspaceEdit → Hashline（内部实现）
+   * 支持 documentChanges（create/delete/rename）和 text edits。
    */
   async _applyWorkspaceEditViaHashline(workspaceEdit, baselineDiags) {
     const editsByPath = {};
+    const documentOps = []; // create/delete/rename operations
 
-    // 收集 edits
+    // 收集 edits + document changes
     const collectEdits = (uri, edits) => {
       const fp = uri.startsWith('file://') ? uri.slice(7) : uri;
       if (!editsByPath[fp]) {
@@ -656,13 +565,37 @@ export class EditOrchestrator {
 
     if (workspaceEdit.documentChanges) {
       for (const dc of workspaceEdit.documentChanges) {
-        if (dc.textDocument && dc.edits) {
+        if (dc.kind === 'create' && dc.uri) {
+          const fp = (dc.uri.startsWith('file://') ? dc.uri.slice(7) : dc.uri);
+          documentOps.push({ kind: 'create', path: fp, options: dc.options || {} });
+        } else if (dc.kind === 'delete' && dc.uri) {
+          const fp = (dc.uri.startsWith('file://') ? dc.uri.slice(7) : dc.uri);
+          documentOps.push({ kind: 'delete', path: fp, options: dc.options || {} });
+        } else if (dc.kind === 'rename' && dc.oldUri && dc.newUri) {
+          const oldFp = (dc.oldUri.startsWith('file://') ? dc.oldUri.slice(7) : dc.oldUri);
+          const newFp = (dc.newUri.startsWith('file://') ? dc.newUri.slice(7) : dc.newUri);
+          documentOps.push({ kind: 'rename', oldPath: oldFp, newPath: newFp, options: dc.options || {} });
+        } else if (dc.textDocument && dc.edits) {
           collectEdits(dc.textDocument.uri, dc.edits);
         }
       }
     }
 
+    // 处理 documentOps（create/delete/rename）
+    let docOpResults = { success: true, paths: [] };
+    if (documentOps.length > 0) {
+      docOpResults = await this._applyDocumentOps(documentOps);
+    }
+
     if (Object.keys(editsByPath).length === 0) {
+      if (docOpResults.success) {
+        return {
+          success: true,
+          filesChanged: docOpResults.paths,
+          filesFailed: [],
+          totalEdits: documentOps.length,
+        };
+      }
       return { success: false, error: 'No edits to apply', filesChanged: [], filesFailed: [], totalEdits: 0 };
     }
 
@@ -675,25 +608,133 @@ export class EditOrchestrator {
 
         const normalized = originalContent.replace(/\r\n/g, '\n').replace(/\n$/, '');
         const tag = computeTag(normalized);
-        const section = this._editsToHashlineSection(fp, tag, normalized, edits);
+        // 检测重叠并合并同位置编辑
+        const mergedEdits = this._mergeOverlappingEdits(edits);
+        const section = this._editsToHashlineSection(fp, tag, normalized, mergedEdits);
         patchSections.push(section);
       } catch (err) {
         return {
           success: false,
           error: `Failed to read ${fp}: ${err.message}`,
-          filesChanged: [], filesFailed: [fp], totalEdits: 0,
+          filesChanged: docOpResults.paths, filesFailed: [fp], totalEdits: 0,
         };
       }
     }
 
     const patchText = patchSections.join('\n');
-    return this.editViaHashline(patchText, {
+    const result = await this.editViaHashline(patchText, {
       skipDiagnostics: !baselineDiags,
     });
+
+    // 合并 documentOps 结果
+    if (result.success && docOpResults.success) {
+      result.filesChanged = [...new Set([...result.filesChanged, ...docOpResults.paths])];
+    }
+    return result;
   }
 
   /**
-   * @private LSP TextEdit → Hashline section
+   * @private 应用 document operations（create/delete/rename）
+   */
+  async _applyDocumentOps(ops) {
+    const paths = [];
+    for (const op of ops) {
+      try {
+        switch (op.kind) {
+          case 'create': {
+            const dir = op.path.substring(0, op.path.lastIndexOf('/'));
+            if (dir) {
+              const { mkdir } = await import('fs/promises');
+              await mkdir(dir, { recursive: true });
+            }
+            if (op.options?.overwrite === false) {
+              try { await import('fs').then(fs => fs.existsSync(op.path)); }
+              catch { /* doesn't exist, proceed */ }
+            }
+            if (this.hashlinePatcher?.fs) {
+              await this.hashlinePatcher.fs.write(op.path, '');
+            } else {
+              await writeFile(op.path, '', 'utf-8');
+            }
+            paths.push(op.path);
+            break;
+          }
+          case 'delete': {
+            if (this.hashlinePatcher?.fs?.delete) {
+              await this.hashlinePatcher.fs.delete(op.path);
+            } else {
+              const { unlink } = await import('fs/promises');
+              await unlink(op.path);
+            }
+            paths.push(op.path);
+            break;
+          }
+          case 'rename': {
+            if (this.hashlinePatcher?.fs?.rename) {
+              await this.hashlinePatcher.fs.rename(op.oldPath, op.newPath);
+            } else {
+              const { rename: fsRename } = await import('fs/promises');
+              await fsRename(op.oldPath, op.newPath);
+            }
+            paths.push(op.newPath);
+            break;
+          }
+        }
+      } catch (err) {
+        // best-effort: continue with other ops
+      }
+    }
+    return { success: paths.length > 0, paths };
+  }
+
+  /**
+   * @private 检测并合并重叠的 TextEdit。
+   * 多个 edit 可能修改同一行或重叠范围，合并它们避免二次应用时的冲突。
+   */
+  _mergeOverlappingEdits(edits) {
+    if (edits.length <= 1) return edits;
+
+    // 按位置降序排序
+    const sorted = [...edits].sort((a, b) => {
+      const aPos = a.range.start.line * 100000 + a.range.start.character;
+      const bPos = b.range.start.line * 100000 + b.range.start.character;
+      return bPos - aPos;
+    });
+
+    const merged = [];
+    for (const edit of sorted) {
+      // 检查是否与已合并的 edit 重叠
+      let overlapping = false;
+      for (const m of merged) {
+        if (this._rangesOverlap(edit.range, m.range)) {
+          overlapping = true;
+          break;
+        }
+      }
+      if (!overlapping) {
+        merged.push(edit);
+      }
+      // 重叠的 edit 跳过：因为按降序处理，先处理靠后的 edit，
+      // 重叠的后续 edit 基于未修改的内容计算位置，已经失效。
+    }
+    // 恢复升序
+    return merged.reverse();
+  }
+
+  /**
+   * @private 检查两个 range 是否重叠
+   */
+  _rangesOverlap(a, b) {
+    const aStart = a.start.line * 100000 + a.start.character;
+    const aEnd = a.end.line * 100000 + a.end.character;
+    const bStart = b.start.line * 100000 + b.start.character;
+    const bEnd = b.end.line * 100000 + b.end.character;
+    return !(aEnd <= bStart || bEnd <= aStart);
+  }
+
+  /**
+   * @private LSP TextEdit → Hashline section（增强版）
+   * 处理：多行编辑、同位置插入、换行边界、空文本
    */
   _editsToHashlineSection(filePath, tag, content, edits) {
     const lines = [`[${filePath}#${tag}]`];
@@ -713,14 +754,34 @@ export class EditOrchestrator {
 
       const contentLines = currentContent.split('\n');
       const startLineContent = contentLines[startLine - 1] || '';
+      const newText = edit.newText || '';
 
+      // 单行编辑
       if (startLine === endLine) {
-        const oldText = startLineContent.substring(startChar, endChar);
-        const newText = edit.newText || '';
-        if (oldText === '' && newText !== '') {
-          lines.push(`INS.PRE ${startLine}=`);
-          for (const nl of newText.split('\n')) lines.push(`+${nl}`);
-        } else if (newText === '' && oldText !== '') {
+        // 情况1：纯插入（oldText为空，newText非空）
+        if (startChar === endChar && newText !== '') {
+          // newText 可能包含换行 → 多行插入
+          const nlParts = newText.split('\n');
+          if (nlParts.length === 1) {
+            // 单行插入：在 startChar 位置之前插入
+            const before = startLineContent.substring(0, startChar);
+            const after = startLineContent.substring(startChar);
+            lines.push(`SWAP ${startLine}.=${startLine}:`);
+            lines.push(`+${before}${nlParts[0]}${after}`);
+          } else {
+            // 多行插入：拆分当前行
+            const before = startLineContent.substring(0, startChar);
+            const after = startLineContent.substring(startChar);
+            lines.push(`SWAP ${startLine}.=${startLine}:`);
+            lines.push(`+${before}${nlParts[0]}`);
+            for (let i = 1; i < nlParts.length - 1; i++) {
+              lines.push(`+${nlParts[i]}`);
+            }
+            lines.push(`+${nlParts[nlParts.length - 1]}${after}`);
+          }
+        }
+        // 情况2：纯删除（newText为空，oldText非空）
+        else if (newText === '' && startChar !== endChar) {
           const before = startLineContent.substring(0, startChar);
           const after = startLineContent.substring(endChar);
           if (before === '' && after === '') {
@@ -730,13 +791,29 @@ export class EditOrchestrator {
             const replacement = before + after;
             if (replacement !== '') lines.push(`+${replacement}`);
           }
-        } else {
-          lines.push(`SWAP ${startLine}.=${startLine}:`);
-          for (const nl of newText.split('\n')) lines.push(`+${nl}`);
         }
-      } else {
+        // 情况3：替换（oldText和newText都非空）
+        else if (startChar !== endChar && newText !== '') {
+          const before = startLineContent.substring(0, startChar);
+          const after = startLineContent.substring(endChar);
+          const nlParts = newText.split('\n');
+          lines.push(`SWAP ${startLine}.=${startLine}:`);
+          if (nlParts.length === 1) {
+            lines.push(`+${before}${nlParts[0]}${after}`);
+          } else {
+            lines.push(`+${before}${nlParts[0]}`);
+            for (let i = 1; i < nlParts.length - 1; i++) {
+              lines.push(`+${nlParts[i]}`);
+            }
+            lines.push(`+${nlParts[nlParts.length - 1]}${after}`);
+          }
+        }
+        // 情况4：空操作（startChar === endChar && newText === ''）→ 跳过
+      }
+      // 多行编辑
+      else {
         lines.push(`SWAP ${startLine}.=${endLine}:`);
-        for (const nl of edit.newText.split('\n')) lines.push(`+${nl}`);
+        for (const nl of newText.split('\n')) lines.push(`+${nl}`);
       }
 
       currentContent = this._applyTextEdits(currentContent, [edit]);

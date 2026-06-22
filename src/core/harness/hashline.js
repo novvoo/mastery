@@ -1031,12 +1031,46 @@ export class Patcher {
     let conflicts = [];
     if (baseText) {
       warnings.push(`recovered via snapshot store (base tag known)`);
+      // ── P4: 使用 Diff3MergeEngine 做真正 base/current/intended 三方 merge ──
+      const diff3Result = Diff3MergeEngine.merge(
+        baseText, currentText, section.hunks, section.path
+      );
+      if (diff3Result.conflicts.length > 0) {
+        conflicts = diff3Result.conflicts.map(c => ({
+          type: 'conflict',
+          hunk: { start: c.baseRange[0], end: c.baseRange[1] },
+          baseContent: c.baseText,
+          curContent: c.currentText,
+          patchContent: c.patchText,
+          message: `Diff3 conflict: ${c.reason || HashlineErrorCode.CONFLICT_CONTENT_DIVERGED}`,
+        }));
+        for (const c of diff3Result.conflicts) {
+          warnings.push(`diff3 conflict: ${c.reason || 'content diverged'} at lines ${c.baseRange.join('-')}`);
+        }
+      }
+      if (diff3Result.merged !== null) {
+        // diff3 成功合并 → 直接返回合并文本，跳过 hunk-by-hunk 应用
+        return {
+          section,
+          path: section.path,
+          originalText: currentText,
+          newText: diff3Result.merged,
+          hunksApplied: diff3Result.conflicts.length === 0 ? section.hunks.length : 0,
+          recovered: true,
+          warnings,
+          conflicts,
+        };
+      }
+      // diff3 无法合并 → 降级到原有 _remapHunksAgainstBase
+      warnings.push(`diff3 merge incomplete, falling back to remap`);
       recoveredHunks = this._remapHunksAgainstBase(baseText, currentText, section.hunks);
       if (this._lastConflicts && this._lastConflicts.length > 0) {
-        conflicts = [...this._lastConflicts];
-        for (const c of conflicts) {
+        for (const c of this._lastConflicts) {
           if (c.type === 'conflict') {
-            warnings.push(`conflict detected: base and current differ in hunk range`);
+            if (!conflicts.some(ex => ex.message === c.message)) {
+              conflicts.push(c);
+            }
+            warnings.push(`fallback conflict: base and current differ in hunk range`);
           } else if (c.type === 'gone') {
             warnings.push(`warning: ${c.message}`);
           }

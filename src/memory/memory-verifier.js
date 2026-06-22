@@ -8,6 +8,7 @@
  */
 
 import { existsSync, readFileSync, statSync } from 'fs';
+import { createHash } from 'crypto';
 import { join, relative } from 'path';
 import { execSync } from 'child_process';
 
@@ -572,19 +573,10 @@ class ProvenanceUtils {
   static fileContentHash(filePath) {
     try {
       const content = readFileSync(filePath, 'utf-8');
-      return this._simpleHash(content);
+      const normalized = content.replace(/\r\n/g, '\n').replace(/\n$/, '');
+      return createHash('sha256').update(normalized).digest('hex');
     } catch {
       return null;
     }
-  }
-
-  static _simpleHash(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return Math.abs(hash).toString(16);
   }
 }

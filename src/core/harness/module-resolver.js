@@ -157,40 +157,57 @@ export class ModuleResolver {
       join(this.workingDirectory, 'tsconfig.json'),
       join(this.workingDirectory, 'jsconfig.json'),
     ];
+    const seenConfigs = new Set(); // 防循环引用
     for (const candidate of candidates) {
       try {
         if (existsSync(candidate)) {
-          const raw = readFileSync(candidate, 'utf-8');
-          // 简单 JSON 解析（不要求 comments 支持，Node 原生支持 stripping）
-          const config = JSON.parse(this._stripComments(raw));
-          if (config.compilerOptions && config.compilerOptions.paths) {
-            for (const [alias, targets] of Object.entries(config.compilerOptions.paths)) {
-              for (const target of targets) {
-                const resolvedTarget = target.replace(/\/\*$/, '').replace(/^\*$/, '');
-                this.tsPaths.set(alias.replace(/\/\*$/, ''), join(this.workingDirectory, resolvedTarget));
-              }
-            }
-          }
-          // 如果有 extends，递归加载
-          if (config.extends) {
-            const extendedPath = join(this.workingDirectory, config.extends.replace(/\.json$/, '') + '.json');
-            if (existsSync(extendedPath)) {
-              const extendedRaw = readFileSync(extendedPath, 'utf-8');
-              const extendedConfig = JSON.parse(this._stripComments(extendedRaw));
-              if (extendedConfig.compilerOptions && extendedConfig.compilerOptions.paths) {
-                for (const [alias, targets] of Object.entries(extendedConfig.compilerOptions.paths)) {
-                  for (const target of targets) {
-                    const resolvedTarget = target.replace(/\/\*$/, '');
-                    this.tsPaths.set(alias.replace(/\/\*$/, ''), join(this.workingDirectory, resolvedTarget));
-                  }
-                }
-              }
-            }
-          }
+          this._loadTsconfigRecursive(candidate, seenConfigs);
           break; // 找到第一个就停
         }
       } catch { /* skip unparseable */ }
     }
+  }
+
+  /**
+   * @private 递归加载 tsconfig extends 链
+   */
+  _loadTsconfigRecursive(configPath, seenConfigs, maxDepth = 10) {
+    const absPath = resolve(configPath);
+    if (seenConfigs.has(absPath) || maxDepth <= 0) return;
+    seenConfigs.add(absPath);
+    try {
+      const raw = readFileSync(absPath, 'utf-8');
+      const config = JSON.parse(this._stripComments(raw));
+      if (config.compilerOptions?.paths) {
+        for (const [alias, targets] of Object.entries(config.compilerOptions.paths)) {
+          for (const target of targets) {
+            const resolvedTarget = target.replace(/\/\*$/, '').replace(/^\*$/, '');
+            this.tsPaths.set(alias.replace(/\/\*$/, ''), join(this.workingDirectory, resolvedTarget));
+          }
+        }
+      }
+      // 递归处理 extends
+      if (config.extends) {
+        const extendPath = config.extends.replace(/\.json$/, '') + '.json';
+        // extends 可能是相对路径、绝对路径、或 npm 包名
+        let resolvedExtends;
+        if (extendPath.startsWith('.')) {
+          resolvedExtends = resolve(dirname(absPath), extendPath);
+        } else if (extendPath.startsWith('/')) {
+          resolvedExtends = extendPath;
+        } else {
+          // npm 包名，尝试从 node_modules 解析
+          resolvedExtends = resolve(this.workingDirectory, 'node_modules', extendPath);
+        }
+        if (existsSync(resolvedExtends)) {
+          // 子 extends 的 baseDir 是它自己的目录
+          const savedWd = this.workingDirectory;
+          this.workingDirectory = dirname(resolvedExtends);
+          this._loadTsconfigRecursive(resolvedExtends, seenConfigs, maxDepth - 1);
+          this.workingDirectory = savedWd;
+        }
+      }
+    } catch { /* skip unparseable */ }
   }
 
   async _loadPackageExports() {
@@ -213,14 +230,7 @@ export class ModuleResolver {
         const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
         const workspaces = pkg.workspaces || (Array.isArray(pkg.workspaces?.packages) ? pkg.workspaces.packages : []);
         for (const ws of workspaces) {
-          // 通配符匹配暂简化：只处理明确路径
-          if (!ws.includes('*')) {
-            const wsPath = join(this.workingDirectory, ws);
-            if (existsSync(join(wsPath, 'package.json'))) {
-              const wsPkg = JSON.parse(readFileSync(join(wsPath, 'package.json'), 'utf-8'));
-              this.workspacePackages.set(wsPkg.name, wsPath);
-            }
-          }
+          this._expandWorkspacePattern(ws);
         }
       }
     } catch { /* skip */ }
@@ -240,19 +250,56 @@ export class ModuleResolver {
           }
           if (inPackages && line.trim().startsWith('-')) {
             const p = line.trim().replace(/^-\s*['"]?/, '').replace(/['"]$/, '');
-            if (!p.includes('*')) {
-              const wsPath = join(this.workingDirectory, p);
-              if (existsSync(join(wsPath, 'package.json'))) {
-                const wsPkg = JSON.parse(readFileSync(join(wsPath, 'package.json'), 'utf-8'));
-                this.workspacePackages.set(wsPkg.name, wsPath);
-              }
-            }
+            this._expandWorkspacePattern(p);
           } else if (inPackages && !line.trim().startsWith('-') && line.trim() !== '') {
             inPackages = false;
           }
         }
       }
     } catch { /* skip */ }
+  }
+
+  /**
+   * @private 展开 workspace glob 模式，支持 * 通配符。
+   * 例：'packages/*' → 匹配 packages/ 下所有含 package.json 的子目录
+   */
+  _expandWorkspacePattern(pattern) {
+    if (!pattern.includes('*')) {
+      const wsPath = join(this.workingDirectory, pattern);
+      if (existsSync(join(wsPath, 'package.json'))) {
+        try {
+          const wsPkg = JSON.parse(readFileSync(join(wsPath, 'package.json'), 'utf-8'));
+          if (wsPkg.name) this.workspacePackages.set(wsPkg.name, wsPath);
+        } catch { /* skip */ }
+      }
+      return;
+    }
+    // glob 匹配：将 * 替换为当前目录下的子目录
+    const parts = pattern.split('*');
+    if (parts.length === 2) {
+      const prefix = parts[0]; // e.g. "packages/"
+      const suffix = parts[1]; // e.g. "" or "/package.json"
+      const baseDir = join(this.workingDirectory, prefix);
+      try {
+        const { readdirSync } = require('fs');
+        if (existsSync(baseDir)) {
+          const entries = readdirSync(baseDir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (entry.isDirectory()) {
+              const wsPath = join(baseDir, entry.name, suffix.replace(/^\//, ''));
+              const pkgFile = suffix ? join(wsPath) : join(wsPath, 'package.json');
+              const checkDir = suffix ? dirname(join(wsPath)) : wsPath;
+              if (existsSync(join(checkDir, 'package.json'))) {
+                try {
+                  const wsPkg = JSON.parse(readFileSync(join(checkDir, 'package.json'), 'utf-8'));
+                  if (wsPkg.name) this.workspacePackages.set(wsPkg.name, checkDir);
+                } catch { /* skip */ }
+              }
+            }
+          }
+        }
+      } catch { /* skip */ }
+    }
   }
 
   async _loadCustomAliases() {

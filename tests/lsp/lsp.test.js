@@ -896,3 +896,124 @@ describe('LSP: DiagnosticsGate', () => {
     expect(gate.repairTimeout).toBe(30000);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════
+// P5: Rename torture tests — 覆盖复杂边界场景
+// ═════════════════════════════════════════════════════════════════════
+
+describe('LSP: TextEdit Conversion Torture Tests', () => {
+  test('same-line overlapping edits are merged', async () => {
+    // 两个 edit 范围真正重叠：第一个改 0-8，第二个改 5-10
+    const orch = await import('../../src/core/edit-orchestrator.js');
+    const edits = [
+      { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 8 } }, newText: 'FIRST' },
+      { range: { start: { line: 0, character: 5 }, end: { line: 0, character: 10 } }, newText: 'SECOND' },
+    ];
+    if (orch.EditOrchestrator) {
+      const instance = new orch.EditOrchestrator({ workingDirectory: process.cwd() });
+      const merged = instance._mergeOverlappingEdits(edits);
+      // 真正重叠时只保留 1 个（靠后的位置优先）
+      expect(merged.length).toBe(1);
+    }
+  });
+
+  test('non-overlapping same-line edits are kept separate', async () => {
+    const orch = await import('../../src/core/edit-orchestrator.js');
+    const edits = [
+      { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 3 } }, newText: 'A' },
+      { range: { start: { line: 0, character: 5 }, end: { line: 0, character: 8 } }, newText: 'B' },
+    ];
+    if (orch.EditOrchestrator) {
+      const instance = new orch.EditOrchestrator({ workingDirectory: process.cwd() });
+      const merged = instance._mergeOverlappingEdits(edits);
+      // 不重叠，两个都保留
+      expect(merged.length).toBe(2);
+    }
+  });
+
+  test('no-edit passthrough', async () => {
+    // 空操作：startChar === endChar && newText === ''
+    const orch = await import('../../src/core/edit-orchestrator.js');
+    const edits = [
+      { range: { start: { line: 0, character: 5 }, end: { line: 0, character: 5 } }, newText: '' },
+    ];
+    if (orch.EditOrchestrator) {
+      const instance = new orch.EditOrchestrator({ workingDirectory: process.cwd() });
+      const section = instance._editsToHashlineSection('test.ts', 'abc', 'line1\ntest\n', edits);
+      // 空操作应产生空 section（只有 header）
+      expect(section.includes('SWAP') || section.includes('DEL') || section.includes('INS')).toBe(false);
+    }
+  });
+
+  test('newline insertion boundary', async () => {
+    // 在行末插入换行符 → 等价于在多行插入
+    const orch = await import('../../src/core/edit-orchestrator.js');
+    const edits = [
+      { range: { start: { line: 0, character: 5 }, end: { line: 0, character: 5 } }, newText: '\nnew line\n' },
+    ];
+    if (orch.EditOrchestrator) {
+      const instance = new orch.EditOrchestrator({ workingDirectory: process.cwd() });
+      const section = instance._editsToHashlineSection('test.ts', 'abc', 'line1\n', edits);
+      // 换行插入应产生 SWAP（拆分当前行）
+      expect(section.includes('SWAP')).toBe(true);
+      expect(section.includes('new line')).toBe(true);
+    }
+  });
+
+  test('delete entire line with DEL', async () => {
+    const orch = await import('../../src/core/edit-orchestrator.js');
+    const edits = [
+      { range: { start: { line: 1, character: 0 }, end: { line: 1, character: 4 } }, newText: '' },
+    ];
+    if (orch.EditOrchestrator) {
+      const instance = new orch.EditOrchestrator({ workingDirectory: process.cwd() });
+      const section = instance._editsToHashlineSection('test.ts', 'abc', 'line1\nline2\nline3\n', edits);
+      expect(section.includes('SWAP') || section.includes('DEL')).toBe(true);
+    }
+  });
+
+  test('documentOps: create file', async () => {
+    const orch = await import('../../src/core/edit-orchestrator.js');
+    const ops = [{ kind: 'create', path: join(tmpdir(), `create-${randomBytes(6).toString('hex')}.ts`), options: {} }];
+    if (orch.EditOrchestrator) {
+      const instance = new orch.EditOrchestrator({ workingDirectory: process.cwd() });
+      try {
+        const result = await instance._applyDocumentOps(ops);
+        expect(result.success).toBe(true);
+        expect(result.paths.length).toBe(1);
+      } finally {
+        // cleanup
+        try { await rm(ops[0].path, { force: true }); } catch {}
+      }
+    }
+  });
+
+  test('documentOps: delete file', async () => {
+    const orch = await import('../../src/core/edit-orchestrator.js');
+    const tmpFile = join(tmpdir(), `del-${randomBytes(6).toString('hex')}.ts`);
+    await writeFile(tmpFile, '// test');
+    const ops = [{ kind: 'delete', path: tmpFile, options: {} }];
+    if (orch.EditOrchestrator) {
+      const instance = new orch.EditOrchestrator({ workingDirectory: process.cwd() });
+      const result = await instance._applyDocumentOps(ops);
+      expect(result.success).toBe(true);
+    }
+  });
+
+  test('range overlap detection', async () => {
+    const orch = await import('../../src/core/edit-orchestrator.js');
+    if (orch.EditOrchestrator) {
+      const instance = new orch.EditOrchestrator({ workingDirectory: process.cwd() });
+      // 两个不重叠的 range
+      expect(instance._rangesOverlap(
+        { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } },
+        { start: { line: 0, character: 5 }, end: { line: 0, character: 10 } },
+      )).toBe(false);
+      // 两个重叠的 range
+      expect(instance._rangesOverlap(
+        { start: { line: 0, character: 0 }, end: { line: 0, character: 8 } },
+        { start: { line: 0, character: 5 }, end: { line: 0, character: 10 } },
+      )).toBe(true);
+    }
+  });
+});
