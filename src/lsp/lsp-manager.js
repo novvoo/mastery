@@ -177,21 +177,34 @@ export class ServerManager {
   /**
    * @param {object} options
    * @param {string} options.workspaceRoot        工作区根目录
+   * @param {string[]} [options.workspaceFolders]  多根工作区文件夹列表
    * @param {object} [options.serverConfigs]      自定义 server 配置（合并到默认）
    * @param {number} [options.maxServers=5]       最大并发 server 数
+   * @param {number} [options.maxServersPerLang=3] 每种语言最大 server 实例数 (server pool)
    * @param {number} [options.idleTimeoutMs=300_000]  空闲 5 分钟后自动关闭
+   * @param {boolean} [options.autoInstall=true]  自动安装缺失的 LSP server
    */
   constructor(options = {}) {
     this.workspaceRoot = options.workspaceRoot || process.cwd();
     this.maxServers = options.maxServers || 5;
+    this.maxServersPerLang = options.maxServersPerLang || 3;
     this.idleTimeoutMs = options.idleTimeoutMs || 300_000;
+    this.autoInstall = options.autoInstall !== false;
 
-    /** @type {Map<string, { client: LSPClient, config: object, lastUsed: number }>} */
+    // 多根工作区支持
+    /** @type {string[]} */
+    this.workspaceFolders = options.workspaceFolders || [this.workspaceRoot];
+
+    /** @type {Map<string, { client: LSPClient, config: object, lastUsed: number, workspaceRoot: string }>} */
     this.#servers = new Map();
     /** @type {Map<string, string>} languageId -> serverKey */
     this.#languageMap = new Map();
-    /** @type {Map<string, { uri: string, languageId: string, version: number, text?: string }>} */
+    /** @type {Map<string, { uri: string, languageId: string, version: number, text?: string, workspaceRoot?: string }>} */
     this.#openDocs = new Map();
+
+    // Server pool: langKey -> Map<workspaceRoot, entry>
+    /** @type {Map<string, Map<string, object>>} */
+    this.#serverPool = new Map();
 
     // 合并 server 配置
     this.#serverConfigs = {
@@ -239,16 +252,53 @@ export class ServerManager {
   #locks;
   /** @private */
   #installing;
+  /** @private Server pool: langKey -> Map<workspaceRoot, serverEntry> */
+  #serverPool;
 
   /**
-   * 获取或创建某语言的 LSP 客户端。
+   * 根据文件路径找到对应的 workspace root。
+   * @private
+   * @param {string} filePath
+   * @returns {string}
+   */
+  #getWorkspaceForPath(filePath) {
+    let best = this.workspaceRoot;
+    let bestLen = 0;
+    for (const wf of this.workspaceFolders) {
+      if (filePath.startsWith(wf + '/') || filePath === wf) {
+        if (wf.length > bestLen) { best = wf; bestLen = wf.length; }
+      }
+    }
+    return best;
+  }
+
+  /**
+   * 获取或创建某语言的 LSP 客户端（支持 workspace-aware server pool）。
    * @private
    */
-  async #getClient(languageId) {
+  async #getClient(languageId, filePath) {
     const serverKey = this.#languageMap.get(languageId);
     if (!serverKey) {
       throw new LSPClientError(`no LSP server configured for language: ${languageId}`);
     }
+
+    // Server pool 查找：根据 workspace root 找对应 instance
+    const wsRoot = filePath ? this.#getWorkspaceForPath(filePath) : this.workspaceRoot;
+
+    // 先从 server pool 查找
+    if (!this.#serverPool.has(serverKey)) {
+      this.#serverPool.set(serverKey, new Map());
+    }
+    const poolForLang = this.#serverPool.get(serverKey);
+    if (poolForLang.has(wsRoot)) {
+      const entry = poolForLang.get(wsRoot);
+      if (entry && entry.client.started) {
+        entry.lastUsed = Date.now();
+        return entry.client;
+      }
+    }
+
+    // 单例 fallback（非 pool 模式）
     let entry = this.#servers.get(serverKey);
     if (entry && entry.client.started) {
       entry.lastUsed = Date.now();
@@ -267,7 +317,7 @@ export class ServerManager {
     }
 
     // 自动安装 fallback
-    if (!command && config.installCommand && !this.#installing.has(serverKey)) {
+    if (!command && config.installCommand && !this.#installing.has(serverKey) && this.autoInstall) {
       this.#installing.set(serverKey, true);
       try {
         console.warn(`[LSP] Server '${config.command}' not found, attempting auto-install...`);
@@ -294,14 +344,13 @@ export class ServerManager {
     const client = new LSPClient({
       command,
       args: config.args || [],
-      cwd: this.workspaceRoot,
+      cwd: wsRoot,
       timeout: config.timeout || 60_000,
     });
 
     // 收集 diagnostics
     client.on('diagnostics', (params) => {
       this.#diagnostics.set(params.uri, params.diagnostics || []);
-      // 通知编辑器 diagnostic 监听器
       for (const cb of this.#_diagListeners) {
         try { cb(params); } catch { /* 忽略回调错误 */ }
       }
@@ -310,14 +359,19 @@ export class ServerManager {
     // 服务端退出时清除
     client.on('exit', () => {
       if (entry) { entry.client = null; }
+      if (poolForLang) { poolForLang.delete(wsRoot); }
     });
 
     await client.start();
 
-    // 初始化
+    // 初始化 — 传递 workspaceFolders 信息
     await client.initialize({
-      rootUri: `file://${this.workspaceRoot}`,
-      rootPath: this.workspaceRoot,
+      rootUri: `file://${wsRoot}`,
+      rootPath: wsRoot,
+      workspaceFolders: this.workspaceFolders.map(f => ({
+        uri: `file://${f}`,
+        name: f.split('/').pop() || f,
+      })),
       capabilities: config.capabilities,
       extra: config.initializationOptions
         ? { initializationOptions: config.initializationOptions }
@@ -325,14 +379,32 @@ export class ServerManager {
     });
     client.initialized();
 
-    entry = { client, config, lastUsed: Date.now() };
+    entry = { client, config, lastUsed: Date.now(), workspaceRoot: wsRoot };
     this.#servers.set(serverKey, entry);
 
-    // 重新打开该 server 负责的所有已打开文档
+    // 存入 server pool
+    poolForLang.set(wsRoot, entry);
+
+    // Server pool 限制：每种语言最大实例数
+    if (poolForLang.size > this.maxServersPerLang) {
+      let oldestKey = null;
+      let oldestTime = Infinity;
+      for (const [k, e] of poolForLang) {
+        if (e.lastUsed < oldestTime) { oldestTime = e.lastUsed; oldestKey = k; }
+      }
+      if (oldestKey) {
+        const oldEntry = poolForLang.get(oldestKey);
+        poolForLang.delete(oldestKey);
+        oldEntry.client.shutdown().catch(() => {});
+      }
+    }
+
+    // 重新打开该 server/workspace 负责的所有已打开文档
     for (const [uri, doc] of this.#openDocs) {
       const docLang = detectLanguage(uri);
       const docServerKey = docLang ? this.#languageMap.get(docLang) : null;
-      if (docServerKey === serverKey) {
+      const docWsRoot = doc.workspaceRoot || this.workspaceRoot;
+      if (docServerKey === serverKey && docWsRoot === wsRoot) {
         client.notify('textDocument/didOpen', {
           textDocument: {
             uri: doc.uri,
@@ -344,7 +416,7 @@ export class ServerManager {
       }
     }
 
-    // LRU 淘汰
+    // 全局 LRU 淘汰（总 server 数限制）
     if (this.#servers.size > this.maxServers) {
       let oldestKey = null;
       let oldestTime = Infinity;
@@ -354,6 +426,11 @@ export class ServerManager {
       if (oldestKey) {
         const e = this.#servers.get(oldestKey);
         this.#servers.delete(oldestKey);
+        // 也从 pool 清理
+        if (e.workspaceRoot) {
+          const p = this.#serverPool.get(oldestKey);
+          if (p) { p.delete(e.workspaceRoot); }
+        }
         e.client.shutdown().catch(() => {});
       }
     }
@@ -432,7 +509,7 @@ export class ServerManager {
     if (content !== undefined && existing) {
       // didChange
       const newVersion = (existing.version || 0) + 1;
-      const client = await this.#getClient(languageId);
+      const client = await this.#getClient(languageId, filePath);
       const serverKey = this.#languageMap.get(languageId);
       await this.#withLock(serverKey, async () => {
         client.notify('textDocument/didChange', {
@@ -444,7 +521,7 @@ export class ServerManager {
       existing.version = newVersion;
     } else if (content !== undefined && !existing) {
       // didOpen
-      const client = await this.#getClient(languageId);
+      const client = await this.#getClient(languageId, filePath);
       const serverKey = this.#languageMap.get(languageId);
       await this.#withLock(serverKey, async () => {
         client.notify('textDocument/didOpen', {
@@ -466,7 +543,7 @@ export class ServerManager {
     const languageId = doc.languageId;
     if (!languageId) { return; }
     try {
-      const client = await this.#getClient(languageId);
+      const client = await this.#getClient(languageId, filePath);
       client.notify('textDocument/didClose', { textDocument: { uri } });
     } catch { /* server 可能已下线 */ }
     this.#openDocs.delete(uri);
@@ -499,7 +576,7 @@ export class ServerManager {
       throw new LSPClientError(`unsupported file type: ${filePath}`);
     }
 
-    const client = await this.#getClient(languageId);
+    const client = await this.#getClient(languageId, filePath);
     const serverKey = this.#languageMap.get(languageId);
     const uri = `file://${filePath}`;
 
@@ -597,6 +674,32 @@ export class ServerManager {
   /** 获取所有已知的语言 ID。 */
   get supportedLanguages() {
     return [...this.#languageMap.keys()];
+  }
+
+  /** 获取当前 workspace folders 列表。 */
+  getWorkspaceFolders() {
+    return [...this.workspaceFolders];
+  }
+
+  /**
+   * 添加一个 workspace folder（多根工作区支持）。
+   * @param {string} folderPath
+   */
+  addWorkspaceFolder(folderPath) {
+    if (!this.workspaceFolders.includes(folderPath)) {
+      this.workspaceFolders.push(folderPath);
+    }
+  }
+
+  /**
+   * 获取当前 server pool 统计。
+   */
+  getPoolStats() {
+    const stats = {};
+    for (const [langKey, pool] of this.#serverPool) {
+      stats[langKey] = pool.size;
+    }
+    return stats;
   }
 
   /** 优雅关闭所有 server。 */

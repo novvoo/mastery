@@ -553,6 +553,169 @@ Answer ONLY "YES" or "NO":`;
     return lines.join('\n');
   }
 
+  // ── Token-budget 感知的上下文构建器 ────────────────────────────
+
+  /**
+   * 在 token 预算限制下构建最优记忆上下文。
+   * 按优先级加载：分层规则 > topic 摘要 > 当前任务相关 > 最近记忆 > 索引。
+   *
+   * @param {object} opts
+   * @param {string} [opts.currentTask='']   当前任务描述
+   * @param {number} [opts.maxTokens=2000]   token 预算上限
+   * @param {number} [opts.tokensPerChar=0.25] 字符→token 估算系数
+   * @returns {string}
+   */
+  getBudgetedMemoryContext(opts = {}) {
+    const { currentTask = '', maxTokens = 2000, tokensPerChar = 0.25 } = opts;
+    const budget = maxTokens;
+    let used = 0;
+    const parts = [];
+
+    const estimateTokens = (text) => Math.ceil(text.length * tokensPerChar);
+    const canFit = (text) => estimateTokens(text) + used <= budget;
+
+    // Priority 1: 分层规则（最高优先级）
+    const rulesCtx = this.getRulesContext();
+    if (rulesCtx) {
+      if (canFit(rulesCtx)) {
+        parts.push(rulesCtx);
+        used += estimateTokens(rulesCtx);
+      } else {
+        // 截断规则上下文
+        const truncated = rulesCtx.substring(0, Math.floor((budget - used) / tokensPerChar));
+        if (truncated.length > 50) {
+          parts.push(truncated + '\n[Rules truncated to fit token budget]');
+          used = budget;
+          return parts.join('\n\n');
+        }
+      }
+    }
+
+    // Priority 2: Topic 摘要
+    const topicSummary = this.getTopicSummary();
+    if (topicSummary && canFit(topicSummary)) {
+      parts.push(topicSummary);
+      used += estimateTokens(topicSummary);
+    }
+
+    // Priority 3: 当前任务相关记忆
+    if (currentTask && used < budget * 0.7) {
+      const relevant = this.retrieveSync(currentTask, { limit: 5 });
+      if (relevant.length > 0) {
+        let taskCtx = '[RELEVANT MEMORIES]\n';
+        let counted = 0;
+        for (const mem of relevant) {
+          const staleMarker = mem.isStale ? mem.isStale() : false;
+          const line = `- [${mem.type}] ${mem.title}${staleMarker ? ' ⚠️STALE' : ''}: ${mem.content.substring(0, 120)}\n`;
+          if (estimateTokens(taskCtx + line) + used > budget * 0.95) break;
+          taskCtx += line;
+          counted++;
+        }
+        if (counted > 0) {
+          parts.push(taskCtx);
+          used += estimateTokens(taskCtx);
+        }
+      }
+    }
+
+    // Priority 4: 最近 N 条记忆（按时间排序，去重）
+    if (used < budget * 0.5) {
+      const allMemories = this.getAll()
+        .filter(m => !m.isExpired || !m.isExpired())
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+        .slice(0, 10);
+      let recentCtx = '[RECENT MEMORIES]\n';
+      let counted = 0;
+      for (const mem of allMemories) {
+        const line = `- [${mem.type}] ${mem.title || 'untitled'}\n`;
+        if (estimateTokens(recentCtx + line) + used > budget * 0.9) break;
+        recentCtx += line;
+        counted++;
+      }
+      if (counted > 0) {
+        parts.push(recentCtx);
+        used += estimateTokens(recentCtx);
+      }
+    }
+
+    return parts.join('\n\n');
+  }
+
+  // ── 矛盾检测 + Compaction 生命周期集成 ─────────────────────────
+
+  /**
+   * 运行记忆健康维护：矛盾检测 + 压缩 + stale 标记。
+   * 建议在会话结束或定期（每 N 轮）调用。
+   *
+   * @param {object} [opts]
+   * @param {boolean} [opts.detectContradictions=true]
+   * @param {boolean} [opts.compactDuplicates=true]
+   * @param {boolean} [opts.detectStale=true]
+   * @returns {Promise<MemoryHealthResult>}
+   */
+  async runMemoryHealthCheck(opts = {}) {
+    const {
+      detectContradictions = true,
+      compactDuplicates = true,
+      detectStale = true,
+    } = opts;
+
+    const result = {
+      contradictions: [],
+      removedDuplicateIds: [],
+      staleIds: [],
+      actions: [],
+    };
+
+    const allMemories = this.getAll();
+
+    // 1) 矛盾检测
+    if (detectContradictions && allMemories.length > 1) {
+      const { contradictions } = MemoryVerifier.detectContradictions(allMemories);
+      result.contradictions = contradictions;
+      if (contradictions.length > 0) {
+        result.actions.push(`Found ${contradictions.length} contradictions`);
+      }
+    }
+
+    // 2) Compaction：合并重复条目
+    if (compactDuplicates && allMemories.length > 0) {
+      const { removedIds } = MemoryVerifier.compact(allMemories);
+      result.removedDuplicateIds = removedIds;
+      if (removedIds.length > 0) {
+        result.actions.push(`Compacted ${removedIds.length} duplicate entries`);
+      }
+    }
+
+    // 3) Stale 检测（Git diff 驱动）
+    if (detectStale && allMemories.length > 0) {
+      try {
+        const verifyResult = await this.#verifier.verifyAll(allMemories);
+        result.staleIds = (verifyResult.stale || []);
+        if (result.staleIds.length > 0) {
+          result.actions.push(`Detected ${result.staleIds.length} stale entries`);
+        }
+      } catch {
+        // Git diff 可能不可用
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * 运行完整审计（通过 MemoryAudit）。
+   * @returns {Promise<import('./memory-audit.js').AuditReport>}
+   */
+  async runFullAudit() {
+    const { MemoryAudit } = await import('./memory-audit.js');
+    const auditor = new MemoryAudit({
+      workingDirectory: this._baseDir || this.workingDir,
+      structuredMemory: this.#structuredMemory,
+    });
+    return auditor.runAudit({ autoClean: false });
+  }
+
   // ── Topic-file 代理 ──────────────────────────────────────────────────
 
   /**

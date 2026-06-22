@@ -292,6 +292,36 @@ export class BarrelManager {
 
   // ── 私有方法 ───────────────────────────────────────────────────────
 
+  /**
+   * 解析 re-export 源文件的实际路径（尝试多种扩展名）。
+   * @param {string} barrelDir    barrel 所在目录
+   * @param {string} specifier    re-export 的 from specifier
+   * @returns {string|null}
+   */
+  _resolveReExportSource(barrelDir, specifier) {
+    const basePath = join(barrelDir, specifier);
+
+    // 如果 specifier 已有扩展名
+    if (extname(specifier) && existsSync(basePath)) {
+      return basePath;
+    }
+
+    // 尝试常见扩展名
+    const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts'];
+    for (const ext of extensions) {
+      const candidate = basePath + ext;
+      if (existsSync(candidate)) return candidate;
+    }
+
+    // 尝试 index 文件
+    for (const ext of extensions) {
+      const candidate = join(basePath, 'index' + ext);
+      if (existsSync(candidate)) return candidate;
+    }
+
+    return null;
+  }
+
   _parseReExports(content, barrelPath) {
     const reExports = [];
     const barrelDir = dirname(barrelPath);
@@ -300,29 +330,73 @@ export class BarrelManager {
     let m;
     while ((m = re.exec(content)) !== null) {
       const items = m[1].split(',').map(s => s.trim()).filter(Boolean);
+      const sourcePath = this._resolveReExportSource(barrelDir, m[2]) || join(barrelDir, m[2] + '.ts');
       for (const item of items) {
         const parts = item.split(/\s+as\s+/);
         reExports.push({
           name: parts[parts.length - 1].trim(),
           localName: parts.length > 1 ? parts[0].trim() : parts[0].trim(),
           from: m[2],
-          sourcePath: join(barrelDir, m[2] + '.ts'),
+          sourcePath,
         });
       }
     }
     // export * from './foo'
     const starRe = /export\s+\*\s+from\s+['"]([^'"]+)['"]/g;
     while ((m = starRe.exec(content)) !== null) {
+      const sourcePath = this._resolveReExportSource(barrelDir, m[1]) || join(barrelDir, m[1] + '.ts');
       reExports.push({
         name: '*',
         from: m[1],
-        sourcePath: join(barrelDir, m[1] + '.ts'),
+        sourcePath,
       });
     }
     return reExports;
   }
 
-  _findSourcFiles(barrelPath) {
+  /**
+   * 通过 re-export chain 追踪：从 barrel 追溯到最终源文件的导出。
+   * @param {string} barrelPath
+   * @param {string} exportName
+   * @returns {Promise<{ sourcePath: string|null, chain: string[], circular: boolean }>}
+   */
+  async traceExportSource(barrelPath, exportName) {
+    const chain = [barrelPath];
+    const visited = new Set();
+
+    let current = barrelPath;
+    while (true) {
+      if (visited.has(current)) {
+        return { sourcePath: null, chain, circular: true };
+      }
+      visited.add(current);
+
+      const barrelInfo = this.barrels.get(current);
+      if (!barrelInfo) break;
+
+      const re = barrelInfo.reExports.find(
+        r => r.name === exportName || r.name === '*' || r.localName === exportName
+      );
+      if (!re) break;
+
+      // 如果源文件不是 barrel（没有 re-export），则找到终点
+      const sourceInfo = this.barrels.get(re.sourcePath);
+      if (!sourceInfo) {
+        return {
+          sourcePath: re.sourcePath,
+          chain: [...chain, re.sourcePath],
+          circular: false,
+        };
+      }
+
+      chain.push(re.sourcePath);
+      current = re.sourcePath;
+    }
+
+    return { sourcePath: current !== barrelPath ? current : null, chain, circular: false };
+  }
+
+  _findSourceFiles(barrelPath) {
     const barrelDir = dirname(barrelPath);
     const sourceFiles = [];
     // 从同一目录下找到所有 .ts/.tsx/.js/.jsx 文件

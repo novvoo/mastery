@@ -77,12 +77,14 @@ export class ModuleResolver {
     const aliasResult = this._resolveAlias(specifier);
     if (aliasResult) return aliasResult;
 
-    // 2. package.json exports
-    const exportsResult = this._resolveExports(specifier);
+    // 2. package.json exports (including nested)
+    const exportsResult = this._resolveExports(specifier)
+      || this._resolveNestedExports(specifier);
     if (exportsResult) return exportsResult;
 
-    // 3. workspace packages
-    const workspaceResult = this._resolveWorkspace(specifier);
+    // 3. workspace packages (including inter-dependencies)
+    const workspaceResult = this._resolveWorkspace(specifier)
+      || this._resolveWorkspaceDependency(specifier, fromPath);
     if (workspaceResult) return workspaceResult;
 
     // 4. 相对路径
@@ -464,6 +466,132 @@ export class ModuleResolver {
         return idx >= 0 ? line.substring(0, idx) : line;
       })
       .join('\n');
+  }
+
+  // ── 增强：深度 Monorepo / Nested Exports 解析 ──────────────────────
+
+  /**
+   * 解析 monorepo workspace 包内的嵌套依赖。
+   * 处理 `@scope/pkg/feature` 这种嵌套导出情况。
+   * @param {string} specifier   如 `@myorg/ui/button`
+   * @returns {string|null}
+   */
+  _resolveNestedExports(specifier) {
+    // 检查是否为 workspace package 的子路径导出
+    for (const [pkgName, pkgPath] of this.workspacePackages) {
+      if (specifier === pkgName) {
+        return this._resolveToFile(pkgPath);
+      }
+      if (specifier.startsWith(pkgName + '/')) {
+        const subPath = specifier.slice(pkgName.length + 1);
+        return this._resolveToFile(join(pkgPath, subPath));
+      }
+    }
+    // 检查是否为 exports 子路径
+    for (const [exportKey, exportPath] of this.packageExports) {
+      if (specifier === exportKey) {
+        return this._resolveToFile(exportPath);
+      }
+      // 通配符 exports: "@myorg/ui/*"
+      if (exportKey.includes('*')) {
+        const pattern = exportKey.replace('*', '(.+)');
+        const regex = new RegExp('^' + pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$');
+        const match = specifier.match(regex);
+        if (match) {
+          return this._resolveToFile(exportPath.replace('*', match[1]));
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 解析 conditional exports（package.json exports 的 import/require/types/default 条件）。
+   * @param {string} packageName   包名
+   * @param {string} subpath       子路径（不含包名）
+   * @param {'import'|'require'|'types'} [condition='import']
+   * @returns {string|null}
+   */
+  _resolveConditionalExport(packageName, subpath = '.', condition = 'import') {
+    // 先在 workspace packages 中查找
+    const pkgPath = this.workspacePackages.get(packageName);
+    const searchPath = pkgPath || join(this.workingDirectory, 'node_modules', packageName);
+    const pkgJsonPath = join(searchPath, 'package.json');
+
+    if (!existsSync(pkgJsonPath)) return null;
+
+    try {
+      const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'));
+      if (!pkg.exports) return null;
+
+      const exportEntry = pkg.exports[subpath] || pkg.exports['.' + subpath] || pkg.exports['./' + subpath];
+      if (!exportEntry) return null;
+
+      if (typeof exportEntry === 'string') {
+        return this._resolveToFile(join(searchPath, exportEntry));
+      }
+
+      // Conditional exports: { import: '...', require: '...', types: '...', default: '...' }
+      const resolved = exportEntry[condition]
+        || exportEntry.default
+        || exportEntry.import
+        || exportEntry.require;
+      if (resolved) {
+        return this._resolveToFile(join(searchPath, resolved));
+      }
+    } catch { /* skip */ }
+
+    return null;
+  }
+
+  /**
+   * 解析 monorepo workspace 包之间的依赖关系。
+   * 当 package A 依赖 package B（workspace 内），解析 B 的实际路径。
+   * @param {string} specifier  依赖的包名
+   * @param {string} fromPath   发起依赖的文件路径
+   * @returns {string|null}
+   */
+  _resolveWorkspaceDependency(specifier, fromPath) {
+    // 先检查直接的 workspace package 映射
+    if (this.workspacePackages.has(specifier)) {
+      return this._resolveToFile(this.workspacePackages.get(specifier));
+    }
+
+    // 检查子路径导出
+    const nested = this._resolveNestedExports(specifier);
+    if (nested) return nested;
+
+    // 从 fromPath 向上查找所在 package 的 package.json，
+    // 获取它的 dependencies，再检查依赖是否是 workspace package
+    let current = dirname(fromPath);
+    for (let i = 0; i < 10; i++) {
+      const pkgPath = join(current, 'package.json');
+      if (existsSync(pkgPath)) {
+        try {
+          const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+          const allDeps = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies };
+
+          // 检查 specifier 是否匹配某个 workspace package 的 export field
+          for (const [depName, depVersion] of Object.entries(allDeps)) {
+            if (specifier === depName || specifier.startsWith(depName + '/')) {
+              // 查找 workspace package
+              const wsPath = this.workspacePackages.get(depName);
+              if (wsPath) {
+                if (specifier === depName) {
+                  return this._resolveToFile(wsPath);
+                }
+                const subPath = specifier.slice(depName.length + 1);
+                return this._resolveToFile(join(wsPath, subPath));
+              }
+            }
+          }
+        } catch { /* skip */ }
+        break;
+      }
+      current = dirname(current);
+    }
+
+    return null;
   }
 
   _findCommentStart(line) {

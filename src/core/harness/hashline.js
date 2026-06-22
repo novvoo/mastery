@@ -783,6 +783,19 @@ export class Patcher {
   async apply(patch) {
     const parsed = typeof patch === 'string' ? Patch.parse(patch) : patch;
 
+    // 0) 文件策略检查（二进制/大文件/generated 文件保护）
+    for (const section of parsed.sections) {
+      const policyError = await this._checkFilePolicy(section.path);
+      if (policyError) {
+        return {
+          ok: false,
+          sections: [],
+          error: policyError,
+          policyBlocked: true,
+        };
+      }
+    }
+
     // 1) 批量 preflight
     const preflightResults = [];
     for (const section of parsed.sections) {
@@ -895,6 +908,58 @@ export class Patcher {
     }
 
     return { ok: true, sections: sectionResults };
+  }
+
+  // ── 文件策略保护 ─────────────────────────────────────────────────────
+
+  /**
+   * 检查文件编辑策略：二进制、大文件、generated 文件保护。
+   * @private
+   * @param {string} path
+   * @returns {Promise<string|null>} 错误消息或 null（允许编辑）
+   */
+  async _checkFilePolicy(path) {
+    // 检查文件是否存在
+    let statInfo;
+    try {
+      statInfo = await this.fs.stat(path);
+    } catch {
+      // 文件不存在则允许创建
+      return null;
+    }
+
+    // 大文件检查（默认 1MB 以上拒绝 Hashline 编辑）
+    const maxFileSize = this.maxFileSize || 1_048_576; // 1MB
+    if (statInfo.size > maxFileSize) {
+      return `File too large for Hashline editing: ${path} (${(statInfo.size / 1024 / 1024).toFixed(1)}MB > ${(maxFileSize / 1024 / 1024).toFixed(1)}MB limit). Use write_file for full-file replacement instead.`;
+    }
+
+    // Generated / binary / minified 文件检查
+    const pathLower = path.toLowerCase();
+    const generatedPatterns = [
+      /\.d\.ts$/, /\.generated\./, /\.min\.(js|css)$/,
+      /\/dist\//, /\/build\//, /\/\.next\//, /\/node_modules\//,
+      /\.bundle\./, /-bundle\./,
+    ];
+    for (const pattern of generatedPatterns) {
+      if (pattern.test(pathLower)) {
+        return `Cannot edit generated/build artifact: ${path}. Use write_file if this is intentional.`;
+      }
+    }
+
+    // Lockfile 只读保护
+    const lockfilePatterns = [
+      /package-lock\.json$/, /yarn\.lock$/, /pnpm-lock\.yaml$/,
+      /Cargo\.lock$/, /Gemfile\.lock$/, /poetry\.lock$/,
+      /composer\.lock$/, /Pipfile\.lock$/,
+    ];
+    for (const pattern of lockfilePatterns) {
+      if (pattern.test(pathLower)) {
+        return `Cannot edit lockfile via Hashline: ${path}. Use write_file with explicit content if needed.`;
+      }
+    }
+
+    return null;
   }
 
   // ── preflight 单 section ──────────────────────────────────────────────────
@@ -2192,9 +2257,34 @@ export class Diff3MergeEngine {
       resolvedHunks.push({ ...h, start: baseStart, end: baseEnd });
     }
 
-    // 如果有冲突，返回 null + conflicts
+    // 如果有冲突，尝试部分合并（应用已 resolved 的 hunks，跳过有冲突的）
     if (conflicts.length > 0 && unresolvedHunks.length > 0) {
+      // Partial merge：只应用无冲突的 hunks
+      if (resolvedHunks.length > 0) {
+        try {
+          const partialMerged = applyHunksToTextExtended(currentText, resolvedHunks);
+          return {
+            merged: partialMerged,
+            conflicts,
+            path: filePath,
+            partialMerge: true,
+            unresolvedCount: unresolvedHunks.length,
+          };
+        } catch (err) {
+          return { merged: null, conflicts, path: filePath, error: err.message };
+        }
+      }
       return { merged: null, conflicts, path: filePath };
+    }
+
+    // 虽然有 conflicts 但没有 unresolvedHunks（内容变化但位置可映射）：仍然应用
+    if (conflicts.length > 0 && unresolvedHunks.length === 0) {
+      try {
+        const merged = applyHunksToTextExtended(currentText, resolvedHunks);
+        return { merged, conflicts: [], path: filePath };
+      } catch (err) {
+        return { merged: null, conflicts, path: filePath, error: err.message };
+      }
     }
 
     // 无冲突：应用所有 resolved hunks
