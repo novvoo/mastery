@@ -77,19 +77,33 @@ describe('hashline: MemoryFilesystem', () => {
 
 describe('hashline: DiskFilesystem', () => {
   test('read/write/exists on real disk', async () => {
-    const fs = new DiskFilesystem();
-    const path = `./test-hashline-tmp-${Date.now()}.txt`;
+    const { resolve: fsResolve } = await import('path');
+    const tmpDir = fsResolve('.');
+    const fs = new DiskFilesystem(tmpDir);
+    const relPath = `test-hashline-tmp-${Date.now()}.txt`;
+    const absPath = fsResolve(relPath);
     try {
-      await fs.write(path, 'line1\nline2\n');
-      expect(await fs.exists(path)).toBe(true);
-      expect(await fs.read(path)).toBe('line1\nline2\n');
-      const st = await fs.stat(path);
+      await fs.write(relPath, 'line1\nline2\n');
+      expect(await fs.exists(relPath)).toBe(true);
+      expect(await fs.read(relPath)).toBe('line1\nline2\n');
+      const st = await fs.stat(relPath);
       expect(st.size).toBe(12);
     } finally {
-      // cleanup
       const { unlink } = await import('fs/promises');
-      try { await unlink(path); } catch {}
+      try { await unlink(absPath); } catch {}
     }
+  });
+
+  test('_resolve rejects .. traversal escape', async () => {
+    const { resolve: fsResolve } = await import('path');
+    const fs = new DiskFilesystem(fsResolve('./test_fixtures'));
+    // 尝试用 .. 逃逸 root 目录
+    expect(() => fs._resolve('../escape.txt')).toThrow(/escapes root/);
+  });
+
+  test('_resolve rejects absolute path outside root', () => {
+    const fs = new DiskFilesystem('/tmp/hashline-test');
+    expect(() => fs._resolve('/etc/passwd')).toThrow(/escapes root/);
   });
 });
 

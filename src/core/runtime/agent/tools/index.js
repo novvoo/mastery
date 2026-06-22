@@ -7,7 +7,7 @@
  *  - createLSPTools()        — 创建 LSP 相关工具（rename, references, etc.）
  */
 
-import { createFileSystemTools } from '../../../tools/filesystem/filesystem-tools.js';
+import { createFileSystemTools } from '../../../../tools/filesystem/filesystem-tools.js';
 import { createLSPTools as createLSPToolsImpl } from '../../../../lsp/lsp-tools.js';
 
 export function createHashlineTools() {

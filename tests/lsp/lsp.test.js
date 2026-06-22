@@ -77,6 +77,9 @@ process.stdin.on('data', (chunk) => {
               hoverProvider: true,
               documentSymbolProvider: true,
               workspaceSymbolProvider: true,
+              inlayHintProvider: true,
+              foldingRangeProvider: true,
+              selectionRangeProvider: true,
             },
             serverInfo: { name: 'mock-lsp', version: '1.0.0' },
           });
@@ -131,6 +134,32 @@ process.stdin.on('data', (chunk) => {
           break;
         case 'codeAction/resolve':
           respond(id, { ...msg.params, edit: { changes: { 'file:///test.ts': [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } }, newText: 'import { y } from "./mod";' }] } } });
+          break;
+        case 'textDocument/inlayHint':
+          respond(id, [
+            { position: { line: 0, character: 6 }, label: ': number', kind: 1, paddingLeft: true },
+            { position: { line: 3, character: 9 }, label: ': any', kind: 1, paddingLeft: true },
+          ]);
+          break;
+        case 'textDocument/foldingRange':
+          respond(id, [
+            { startLine: 0, endLine: 4, kind: 'region' },
+            { startLine: 1, endLine: 2, kind: 'comment' },
+          ]);
+          break;
+        case 'textDocument/selectionRange':
+          {
+            const pos = msg.params.positions[0];
+            respond(id, [{
+              range: { start: pos, end: { line: pos.line, character: pos.character + 6 } },
+              parent: {
+                range: { start: pos, end: { line: pos.line, character: pos.character + 20 } },
+                parent: {
+                  range: { start: { line: pos.line, character: 0 }, end: { line: pos.line + 2, character: 0 } },
+                },
+              },
+            }]);
+          }
           break;
         case 'shutdown':
           respond(id, null);
@@ -438,10 +467,10 @@ describe('createLSPTools', () => {
     expect(tools).toEqual([]);
   });
 
-  test('returns 9 tools', () => {
+  test('returns 15 tools', () => {
     const mgr = new ServerManager({ workspaceRoot: tmpdir() });
     const tools = createLSPTools({ lspManager: mgr });
-    expect(tools.length).toBe(9);
+    expect(tools.length).toBe(15);
     const names = tools.map((t) => t.name);
     expect(names).toContain('lsp_rename');
     expect(names).toContain('lsp_references');
@@ -451,7 +480,13 @@ describe('createLSPTools', () => {
     expect(names).toContain('lsp_code_action');
     expect(names).toContain('lsp_hover');
     expect(names).toContain('lsp_symbols');
+    expect(names).toContain('lsp_type_definition');
+    expect(names).toContain('lsp_implementation');
+    expect(names).toContain('lsp_call_hierarchy');
     expect(names).toContain('lsp_workspace_edit');
+    expect(names).toContain('lsp_inlay_hints');
+    expect(names).toContain('lsp_folding_ranges');
+    expect(names).toContain('lsp_selection_ranges');
   });
 
   test('each tool has name, description, category, params, required, handler', () => {
@@ -625,5 +660,44 @@ describe('LSP tools with mock server integration', () => {
       { workingDirectory: workDir },
     );
     expect(result.success).toBeDefined();
+  });
+
+  test('lsp_inlay_hints returns hints', async () => {
+    const tools = createLSPTools({ lspManager: mgr });
+    const ih = tools.find((t) => t.name === 'lsp_inlay_hints');
+    const result = await ih.handler(
+      { filePath: testFile },
+      { workingDirectory: workDir },
+    );
+    expect(result.success).toBe(true);
+    expect(result.hints).toBeDefined();
+    expect(result.count).toBeGreaterThanOrEqual(1);
+  });
+
+  test('lsp_folding_ranges returns folds', async () => {
+    const tools = createLSPTools({ lspManager: mgr });
+    const fr = tools.find((t) => t.name === 'lsp_folding_ranges');
+    const result = await fr.handler(
+      { filePath: testFile },
+      { workingDirectory: workDir },
+    );
+    expect(result.success).toBe(true);
+    expect(result.folds).toBeDefined();
+    expect(result.count).toBeGreaterThanOrEqual(1);
+  });
+
+  test('lsp_selection_ranges returns nested AST ranges', async () => {
+    const tools = createLSPTools({ lspManager: mgr });
+    const sr = tools.find((t) => t.name === 'lsp_selection_ranges');
+    const result = await sr.handler(
+      { filePath: testFile, line: 1, character: 8 },
+      { workingDirectory: workDir },
+    );
+    expect(result.success).toBe(true);
+    expect(result.ranges).toBeDefined();
+    expect(result.count).toBeGreaterThanOrEqual(2);
+    // 范围应有嵌套层级
+    const labels = result.ranges.map(r => r.snippet);
+    expect(labels.length).toBeGreaterThanOrEqual(2);
   });
 });

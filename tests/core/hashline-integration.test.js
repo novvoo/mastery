@@ -48,8 +48,8 @@ describe('hashline integration: DiskFilesystem + bridge + ContentAddressableStor
     store.setRef(`file:${file}`, store.storeBlob(initial));
     analyzer.analyzeFile(file, initial);
 
-    // DiskFilesystem 用相对/绝对路径均可，这里用绝对路径
-    const fs = new DiskFilesystem();
+    // DiskFilesystem 用绝对路径，指定 tmpdir 为 rootDir
+    const fs = new DiskFilesystem(workDir);
     // patcher 使用相对于 cwd 的 path：我们直接传绝对路径
     const tag = snapshots.record(file, initial);
     const patcher = new Patcher({ fs, snapshots, bridge });
@@ -79,7 +79,7 @@ describe('hashline integration: DiskFilesystem + bridge + ContentAddressableStor
     const snapshots = new InMemorySnapshotStore();
     const tag = snapshots.record(file, initial);
 
-    const fs = new DiskFilesystem();
+    const fs = new DiskFilesystem(workDir);
     const patcher = new Patcher({ fs, snapshots });
 
     // 外部在文件前面插入一行（行号偏移 +1）
@@ -112,7 +112,7 @@ describe('hashline integration: DiskFilesystem + bridge + ContentAddressableStor
     snapshots.record(file, initial);
 
     // 2) 用 Hashline 做一次编辑
-    const fs = new DiskFilesystem();
+    const fs = new DiskFilesystem(workDir);
     const tag1 = snapshots.head(file).tag;
     const patcher = new Patcher({ fs, snapshots, bridge });
     const r1 = await patcher.apply(`[${file}#${tag1}]\nSWAP 1.=1:\n+const x = 10;`);
@@ -151,7 +151,7 @@ describe('hashline integration: DiskFilesystem + bridge + ContentAddressableStor
     await writeFile(file, initial, 'utf-8');
     const snapshots = new InMemorySnapshotStore();
     const tag = snapshots.record(file, initial);
-    const patcher = new Patcher({ fs: new DiskFilesystem(), snapshots });
+    const patcher = new Patcher({ fs: new DiskFilesystem(workDir), snapshots });
     const pre = await patcher.preflight(`[${file}#${tag}]\nDEL 1.=1`);
     expect(pre.preflight[0].ok).toBe(true);
     // 文件没变
@@ -166,7 +166,7 @@ describe('hashline integration: DiskFilesystem + bridge + ContentAddressableStor
     const bridge = new HashlineBridge(store);
     const snapshots = new InMemorySnapshotStore();
     const tag = snapshots.record(file, initial);
-    const patcher = new Patcher({ fs: new DiskFilesystem(), snapshots, bridge });
+    const patcher = new Patcher({ fs: new DiskFilesystem(workDir), snapshots, bridge });
     const r = await patcher.apply(`[${file}#${tag}]\nSWAP 1.=1:\n+two`);
     expect(r.ok).toBe(true);
     const newTag = r.sections[0].newTag;
@@ -182,7 +182,7 @@ describe('hashline integration: DiskFilesystem + bridge + ContentAddressableStor
     const snapshots = new InMemorySnapshotStore();
     const t1 = snapshots.record(f1, 'a1\na2\n');
     const t2 = snapshots.record(f2, 'b1\n'); // snapshot 存在但文件不存在
-    const patcher = new Patcher({ fs: new DiskFilesystem(), snapshots });
+    const patcher = new Patcher({ fs: new DiskFilesystem(workDir), snapshots });
     const r = await patcher.apply(
       `[${f1}#${t1}]\nDEL 1.=1\n[${f2}#${t2}]\nDEL 1.=1`,
     );

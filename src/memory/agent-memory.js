@@ -4,6 +4,8 @@ import { MemoryVerifier } from './memory-verifier.js';
 import { MemoryType, inferTopic } from './memory-types.js';
 import { MemoryManager } from './memory-manager.js';
 import { ProjectRules } from './project-rules.js';
+import { AdvancedMemoryManager } from './advanced-memory.js';
+import { join } from 'path';
 
 export class AgentMemory extends MemoryManager {
   #structuredMemory;
@@ -13,6 +15,7 @@ export class AgentMemory extends MemoryManager {
   #modelProvider;
   #projectRules;
   #rulesLoaded = false;
+  #advancedMemory;  // 会话内三层记忆（与结构化记忆互补）
 
   constructor(workingDir, modelProvider = null) {
     super(workingDir, '.agent-memory');  // CONTEXT.md 统一存入 .agent-memory/
@@ -22,6 +25,11 @@ export class AgentMemory extends MemoryManager {
     this.#selector = new MemorySelector(modelProvider);
     this.#fallbackSelector = new RuleBasedSelector();
     this.#projectRules = new ProjectRules(workingDir);
+    this.#advancedMemory = new AdvancedMemoryManager({
+      maxEpisodicMemories: 1000,
+      maxSummaries: 100,
+      compression: { maxTokens: 4000, compressionRatio: 0.5 },
+    });
   }
 
   async initialize() {
@@ -235,6 +243,131 @@ export class AgentMemory extends MemoryManager {
     this.#selector = new MemorySelector(modelProvider);
   }
 
+  // ── AdvancedMemoryManager 代理（会话内三层记忆）──────────────────────
+
+  /**
+   * 添加情景记忆（会话内短期记忆）。
+   */
+  addEpisodic(content, metadata = {}) {
+    return this.#advancedMemory.addEpisodic(content, metadata);
+  }
+
+  /**
+   * 添加语义记忆（跨会话知识）。
+   */
+  addSemantic(key, content, metadata = {}) {
+    return this.#advancedMemory.addSemantic(key, content, metadata);
+  }
+
+  /**
+   * 添加摘要记忆（压缩后的上下文）。
+   */
+  addSessionSummary(content, metadata = {}) {
+    return this.#advancedMemory.addSummary(content, metadata);
+  }
+
+  /**
+   * 从三层记忆检索。
+   */
+  retrieveFromSession(query, options = {}) {
+    return this.#advancedMemory.retrieve(query, options);
+  }
+
+  /**
+   * 生成会话记忆上下文（注入 prompt 用）。
+   */
+  getSessionMemoryContext(currentQuery = '', maxTokens = 4000) {
+    if (this.#advancedMemory.getStats().total === 0) {
+      return '';
+    }
+    const ctx = this.#advancedMemory.generateContext(currentQuery, maxTokens);
+    const parts = [];
+    if (ctx.summaries && ctx.summaries.length > 0) {
+      parts.push('[SESSION SUMMARIES]');
+      for (const s of ctx.summaries) {
+        parts.push(`  - ${s}`);
+      }
+    }
+    if (ctx.semantic && ctx.semantic.length > 0) {
+      parts.push('[SESSION SEMANTIC KNOWLEDGE]');
+      for (const s of ctx.semantic) {
+        parts.push(`  - [${s.key}]: ${s.content}`);
+      }
+    }
+    return parts.join('\n');
+  }
+
+  /**
+   * 桥梁：将高价值的会话记忆持久化到 StructuredMemory。
+   * @param {{ threshold?: number, includeSemantic?: boolean }} opts
+   */
+  persistSessionMemories(opts = {}) {
+    const { threshold = 0.6, includeSemantic = true } = opts;
+    const stats = this.#advancedMemory.getStats();
+    const written = [];
+
+    // 持久化摘要（通常是高价值知识）
+    const { summaries = [], semantic = [] } = this.#advancedMemory.generateContext('', stats.total * 4);
+    for (const summary of summaries) {
+      if (summary && summary.length > 30) {
+        const entry = this.#structuredMemory.addProject(
+          'Session Summary', summary,
+          { tags: ['session-summary', 'auto'] },
+        );
+        written.push({ id: entry.id, source: 'summary' });
+      }
+    }
+
+    // 持久化语义知识
+    if (includeSemantic) {
+      for (const s of semantic) {
+        if (s.content && s.content.length > 20 && s.importance >= threshold) {
+          const entry = this.#structuredMemory.addReference(
+            `Knowledge: ${s.key || 'unnamed'}`,
+            s.content,
+            { tags: ['semantic', 'auto'] },
+          );
+          written.push({ id: entry.id, source: 'semantic' });
+        }
+      }
+    }
+
+    return written;
+  }
+
+  /**
+   * 保存会话记忆状态到磁盘。
+   * @param {string} [filePath] - 自定义路径，默认 .agent-memory/session-memory.json
+   */
+  saveSessionState(filePath) {
+    const dest = filePath || join(this._memoryDir || '.agent-memory', 'session-memory.json');
+    return this.#advancedMemory.saveToDisk(dest);
+  }
+
+  /**
+   * 从磁盘加载会话记忆状态。
+   * @param {string} [filePath]
+   */
+  loadSessionState(filePath) {
+    const dest = filePath || join(this._memoryDir || '.agent-memory', 'session-memory.json');
+    return this.#advancedMemory.loadFromDisk(dest);
+  }
+
+  /**
+   * 获取会话记忆摘要文本（供归档或调试）。
+   * @param {{ maxEntries?: number }} opts
+   */
+  getSessionMemorySummary(opts = {}) {
+    return this.#advancedMemory.toSummaryText(opts);
+  }
+
+  /**
+   * 获取高级记忆统计。
+   */
+  getSessionStats() {
+    return this.#advancedMemory.getStats();
+  }
+
   toPromptFragment() {
     const parts = [];
 
@@ -244,6 +377,13 @@ export class AgentMemory extends MemoryManager {
     if (memoryContext && memoryContext.trim().length > 0) {
       parts.push('');
       parts.push(memoryContext);
+    }
+
+    // 注入会话记忆上下文
+    const sessionCtx = this.getSessionMemoryContext();
+    if (sessionCtx) {
+      parts.push('');
+      parts.push(sessionCtx);
     }
 
     return parts.join('\n');

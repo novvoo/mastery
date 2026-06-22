@@ -6,27 +6,32 @@
  * - Semantic Memory: 语义记忆 (知识/概念)
  * - Summary Memory: 摘要记忆 (压缩总结)
  * - Context Compression: 上下文压缩
+ *
+ * 注意：这里的 AdvancedMemoryType 和 AdvancedMemoryEntry 是会话内记忆，
+ * 与 memory-types.js 中的 MemoryType/MemoryEntry（持久化文件系统记忆）互补。
  */
 
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 
 /**
- * 记忆类型
+ * 高级记忆类型（会话内三层记忆）。
+ * 与 memory-types.js 的 MemoryType（持久化分类）正交。
  */
-export const MemoryType = {
+export const AdvancedMemoryType = {
   EPISODIC: 'episodic',    // 情景记忆
   SEMANTIC: 'semantic',    // 语义记忆
   SUMMARY: 'summary',      // 摘要记忆
 };
 
 /**
- * 记忆条目
+ * 高级记忆条目（会话内记忆，支持评分/压缩/向量检索）。
  */
-export class MemoryEntry {
+export class AdvancedMemoryEntry {
   constructor(data) {
     this.id = data.id || randomUUID();
-    this.type = data.type || MemoryType.EPISODIC;
+    this.type = data.type || AdvancedMemoryType.EPISODIC;
     this.content = data.content;
     this.timestamp = data.timestamp || Date.now();
     this.importance = data.importance || 0.5;  // 0-1
@@ -215,7 +220,7 @@ export class ContextCompressor {
 export class AdvancedMemoryManager extends EventEmitter {
   #memories = new Map();
   #episodic = [];
-  #semantic = new Map();  // key -> MemoryEntry
+  #semantic = new Map();  // key -> AdvancedMemoryEntry
   #summaries = [];
   #compressor;
   #config;
@@ -235,8 +240,8 @@ export class AdvancedMemoryManager extends EventEmitter {
    * 添加情景记忆
    */
   addEpisodic(content, metadata = {}) {
-    const entry = new MemoryEntry({
-      type: MemoryType.EPISODIC,
+    const entry = new AdvancedMemoryEntry({
+      type: AdvancedMemoryType.EPISODIC,
       content,
       importance: metadata.importance || 0.5,
       metadata,
@@ -259,8 +264,8 @@ export class AdvancedMemoryManager extends EventEmitter {
    * 添加语义记忆
    */
   addSemantic(key, content, metadata = {}) {
-    const entry = new MemoryEntry({
-      type: MemoryType.SEMANTIC,
+    const entry = new AdvancedMemoryEntry({
+      type: AdvancedMemoryType.SEMANTIC,
       content,
       importance: metadata.importance || 0.7,
       metadata,
@@ -278,8 +283,8 @@ export class AdvancedMemoryManager extends EventEmitter {
    * 添加摘要记忆
    */
   addSummary(content, metadata = {}) {
-    const entry = new MemoryEntry({
-      type: MemoryType.SUMMARY,
+    const entry = new AdvancedMemoryEntry({
+      type: AdvancedMemoryType.SUMMARY,
       content,
       importance: metadata.importance || 0.6,
       metadata,
@@ -312,13 +317,13 @@ export class AdvancedMemoryManager extends EventEmitter {
     let candidates = [];
 
     // 收集候选
-    if (!type || type === MemoryType.EPISODIC) {
+    if (!type || type === AdvancedMemoryType.EPISODIC) {
       candidates.push(...this.#episodic);
     }
-    if (!type || type === MemoryType.SEMANTIC) {
+    if (!type || type === AdvancedMemoryType.SEMANTIC) {
       candidates.push(...this.#semantic.values());
     }
-    if (!type || type === MemoryType.SUMMARY) {
+    if (!type || type === AdvancedMemoryType.SUMMARY) {
       candidates.push(...this.#summaries);
     }
 
@@ -404,24 +409,25 @@ export class AdvancedMemoryManager extends EventEmitter {
 
     // 1. 添加相关摘要
     const relevantSummaries = this.retrieve(currentQuery, {
-      type: MemoryType.SUMMARY,
+      type: AdvancedMemoryType.SUMMARY,
       limit: 5,
     });
     context.summaries = relevantSummaries.map(m => m.content);
 
     // 2. 添加语义知识
     const relevantSemantic = this.retrieve(currentQuery, {
-      type: MemoryType.SEMANTIC,
+      type: AdvancedMemoryType.SEMANTIC,
       limit: 10,
     });
     context.semantic = relevantSemantic.map(m => ({
       key: m.metadata.key,
       content: m.content,
+      importance: m.importance,
     }));
 
     // 3. 添加情景记忆
     const relevantEpisodic = this.retrieve(currentQuery, {
-      type: MemoryType.EPISODIC,
+      type: AdvancedMemoryType.EPISODIC,
       limit: 20,
     });
     context.episodic = relevantEpisodic.map(m => ({
@@ -489,6 +495,178 @@ export class AdvancedMemoryManager extends EventEmitter {
       semantic: this.#semantic.size,
       summaries: this.#summaries.length,
     };
+  }
+
+  /**
+   * 序列化当前记忆状态到磁盘文件。
+   * 将 Episodic、Semantic、Summary 三层记忆序列化为 JSON。
+   *
+   * @param {string} filePath - 保存路径
+   * @returns {{ path: string, totalEntries: number }}
+   */
+  saveToDisk(filePath) {
+    const serialized = {
+      version: 1,
+      timestamp: Date.now(),
+      episodic: this.#episodic.map(m => ({
+        id: m.id, type: m.type, content: m.content, timestamp: m.timestamp,
+        importance: m.importance, accessCount: m.accessCount,
+        lastAccessed: m.lastAccessed, metadata: m.metadata,
+        tags: m.tags, relatedIds: m.relatedIds,
+        compressionLevel: m.compressionLevel, originalLength: m.originalLength,
+      })),
+      semantic: Array.from(this.#semantic.entries()).map(([key, m]) => ({
+        key, id: m.id, type: m.type, content: m.content, timestamp: m.timestamp,
+        importance: m.importance, accessCount: m.accessCount,
+        lastAccessed: m.lastAccessed, metadata: m.metadata,
+        tags: m.tags, relatedIds: m.relatedIds,
+      })),
+      summaries: this.#summaries.map(m => ({
+        id: m.id, type: m.type, content: m.content, timestamp: m.timestamp,
+        importance: m.importance, accessCount: m.accessCount,
+        lastAccessed: m.lastAccessed, metadata: m.metadata,
+        tags: m.tags, relatedIds: m.relatedIds,
+      })),
+    };
+
+    writeFileSync(filePath, JSON.stringify(serialized, null, 2), 'utf-8');
+    this.emit('memory:saved', { path: filePath, total: serialized.episodic.length + serialized.semantic.length + serialized.summaries.length });
+    return {
+      path: filePath,
+      totalEntries: serialized.episodic.length + serialized.semantic.length + serialized.summaries.length,
+    };
+  }
+
+  /**
+   * 从磁盘文件反序列化并恢复记忆状态。
+   * 清空当前记忆后加载。
+   *
+   * @param {string} filePath
+   * @returns {{ loaded: boolean, totalEntries: number }}
+   */
+  loadFromDisk(filePath) {
+    if (!existsSync(filePath)) {
+      return { loaded: false, totalEntries: 0 };
+    }
+
+    try {
+      const raw = readFileSync(filePath, 'utf-8');
+      const data = JSON.parse(raw);
+
+      if (data.version !== 1) {
+        throw new Error(`Unsupported memory format version: ${data.version}`);
+      }
+
+      // 清空当前
+      this.clear();
+
+      // 恢复 Episodic
+      if (Array.isArray(data.episodic)) {
+        for (const e of data.episodic) {
+          const entry = new AdvancedMemoryEntry(e);
+          entry.accessCount = e.accessCount || 0;
+          entry.lastAccessed = e.lastAccessed || e.timestamp;
+          this.#episodic.push(entry);
+          this.#memories.set(entry.id, entry);
+        }
+      }
+
+      // 恢复 Semantic
+      if (Array.isArray(data.semantic)) {
+        for (const s of data.semantic) {
+          const entry = new AdvancedMemoryEntry(s);
+          entry.accessCount = s.accessCount || 0;
+          entry.lastAccessed = s.lastAccessed || s.timestamp;
+          this.#semantic.set(s.key, entry);
+          this.#memories.set(entry.id, entry);
+        }
+      }
+
+      // 恢复 Summary
+      if (Array.isArray(data.summaries)) {
+        for (const s of data.summaries) {
+          const entry = new AdvancedMemoryEntry(s);
+          entry.accessCount = s.accessCount || 0;
+          entry.lastAccessed = s.lastAccessed || s.timestamp;
+          this.#summaries.push(entry);
+          this.#memories.set(entry.id, entry);
+        }
+      }
+
+      const total = this.#memories.size;
+      this.emit('memory:loaded', { path: filePath, total });
+      return { loaded: true, totalEntries: total };
+    } catch (err) {
+      this.emit('memory:loadError', { path: filePath, error: err.message });
+      return { loaded: false, totalEntries: 0 };
+    }
+  }
+
+  /**
+   * 将会话记忆摘要持久化为可读文本（供 prompt 注入或归档）。
+   *
+   * @param {{ maxEntries?: number, includeMetadata?: boolean }} opts
+   * @returns {string} 格式化的文本
+   */
+  toSummaryText(opts = {}) {
+    const { maxEntries = 20, includeMetadata = true } = opts;
+    const parts = [];
+
+    parts.push('# Session Memory Summary');
+    parts.push(`> Generated: ${new Date().toISOString()}`);
+    parts.push(`> Total: ${this.#memories.size} (Episodic: ${this.#episodic.length}, Semantic: ${this.#semantic.size}, Summaries: ${this.#summaries.length})`);
+    parts.push('');
+
+    // 摘要（最高价值）
+    if (this.#summaries.length > 0) {
+      parts.push('## Summaries');
+      for (const m of this.#summaries.slice(-Math.min(maxEntries, this.#summaries.length))) {
+        const age = this.#formatAge(m.timestamp);
+        parts.push(`- [${age}] ${this.#truncate(m.content, 200)}`);
+      }
+      parts.push('');
+    }
+
+    // 语义知识
+    if (this.#semantic.size > 0) {
+      parts.push('## Semantic Knowledge');
+      let count = 0;
+      for (const [key, m] of this.#semantic) {
+        if (count >= maxEntries) { break; }
+        const age = this.#formatAge(m.timestamp);
+        parts.push(`- **${key}**: ${this.#truncate(m.content, 150)}${includeMetadata ? ` (importance: ${m.importance.toFixed(1)})` : ''}`);
+        count++;
+      }
+      parts.push('');
+    }
+
+    // 近期情景
+    if (this.#episodic.length > 0) {
+      parts.push('## Recent Episodic');
+      const recent = this.#episodic.slice(-Math.min(maxEntries, this.#episodic.length));
+      for (const m of recent) {
+        const age = this.#formatAge(m.timestamp);
+        const tags = m.tags.length > 0 ? ` [${m.tags.join(', ')}]` : '';
+        parts.push(`- [${age}]${tags} ${this.#truncate(m.content, 100)}`);
+      }
+      parts.push('');
+    }
+
+    return parts.join('\n');
+  }
+
+  #truncate(text, maxLen) {
+    if (!text) { return ''; }
+    const str = String(text).replace(/\n/g, ' ');
+    return str.length > maxLen ? str.substring(0, maxLen - 3) + '...' : str;
+  }
+
+  #formatAge(ts) {
+    const agoMs = Date.now() - ts;
+    if (agoMs < 60000) { return '<1m ago'; }
+    if (agoMs < 3600000) { return `${Math.floor(agoMs / 60000)}m ago`; }
+    if (agoMs < 86400000) { return `${Math.floor(agoMs / 3600000)}h ago`; }
+    return `${Math.floor(agoMs / 86400000)}d ago`;
   }
 
   /**

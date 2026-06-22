@@ -36,6 +36,7 @@
 
 import { createHash } from 'crypto';
 import { readFile, writeFile, stat, access } from 'fs/promises';
+import { resolve } from 'path';
 import { constants as fsConstants } from 'fs';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -145,9 +146,21 @@ export class DiskFilesystem extends Filesystem {
   }
 
   _resolve(path) {
-    // 简单的 join；生产环境应做沙箱化检查。
-    // 不直接用 path.join 以便调用方可传绝对/相对路径。
-    return path;
+    // 沙箱化路径解析：相对路径相对于 rootDir，拒绝路径遍历逃逸。
+    const root = resolve(this.rootDir || '.');
+    const resolved = resolve(root, path || '.');
+
+    // 拒绝 .. 遍历逃逸：若 path 包含 .. 路径段且解析结果跑出 root，拒绝
+    if (/(?:^|\/)\.\.(?:$|\/)/.test(path) && !resolved.startsWith(root + '/') && resolved !== root) {
+      throw new Error(`path escapes root directory: "${path}" -> "${resolved}"`);
+    }
+
+    // 拒绝绝对路径逃逸：任何非 root 内的绝对路径
+    if (resolved !== root && !resolved.startsWith(root + '/') && !resolved.startsWith(root + '\\')) {
+      throw new Error(`path escapes root directory: "${path}" -> "${resolved}"`);
+    }
+
+    return resolved;
   }
 }
 
@@ -426,7 +439,8 @@ const OP_DEL = 'DEL';
 const OP_INS_PRE = 'INS.PRE';
 const OP_INS_POST = 'INS.POST';
 
-export { OP_SWAP, OP_DEL, OP_INS_PRE, OP_INS_POST };
+const OP_NOP = 'NOP';
+export { OP_SWAP, OP_DEL, OP_INS_PRE, OP_INS_POST, OP_NOP };
 
 /**
  * 单条操作。
@@ -1107,6 +1121,8 @@ export class Patcher {
             patchContent: h.lines.join('\n'),
             message: `Content conflict: base and current differ in hunk range`,
           });
+          // 冲突时标记为跳过：使用 curContent 范围但 op 设为 NOP，保留当前内容
+          remapped.op = 'NOP';
         } else if (foundByFallback && baseContent !== '') {
           conflicts.push({
             type: 'conflict',
@@ -1116,6 +1132,7 @@ export class Patcher {
             patchContent: h.lines.join('\n'),
             message: `Conflict: base line content changed, no matching line found in current file`,
           });
+          remapped.op = 'NOP';
         }
       }
 
@@ -1243,10 +1260,61 @@ export class Patcher {
    * @private
    */
   _remapHunksByContent(currentText, hunks) {
+    const curLines = currentText.split('\n');
+
     return hunks.map((h) => {
-      // 不做激进重映射：仅按原行号返回，范围检查会兜底。
-      return { ...h, lines: h.lines.slice() };
+      const remapped = { ...h, lines: h.lines.slice() };
+
+      // 对于 SWAP/DEL hunk：用内容在 current 中查找匹配行
+      if (h.op === 'SWAP' || h.op === 'DEL') {
+        if (h.lines && h.lines.length > 0) {
+          // 用第一行做指纹（去首尾空白后取前 40 字符）
+          const fingerprint = h.lines[0].trim().substring(0, 40);
+          if (fingerprint.length >= 3) {
+            let bestIdx = -1;
+            let bestScore = 0;
+
+            for (let i = 0; i < curLines.length; i++) {
+              const score = this._contentMatchScore(fingerprint, curLines[i].trim(), h.lines);
+              if (score > bestScore) {
+                bestScore = score;
+                bestIdx = i;
+              }
+            }
+
+            if (bestIdx >= 0 && bestScore >= 0.6) {
+              remapped.start = bestIdx + 1; // 1-based
+              remapped.end = Math.min(bestIdx + h.lines.length, curLines.length);
+            }
+          }
+        }
+      }
+
+      return remapped;
     });
+  }
+
+  /**
+   * 计算单行内容匹配度（0-1），考虑多行上下文。
+   */
+  _contentMatchScore(fingerprint, candidate, allLines) {
+    let score = 0;
+
+    // 精确匹配
+    if (candidate === fingerprint) {
+      score = 1.0;
+    } else if (candidate.startsWith(fingerprint) || fingerprint.startsWith(candidate)) {
+      score = 0.8;
+    } else if (candidate.includes(fingerprint.substring(0, Math.min(20, fingerprint.length)))) {
+      score = 0.6;
+    }
+
+    // 多行匹配加分：若后续行也匹配
+    if (allLines.length > 1 && score > 0) {
+      score = Math.min(1.0, score + 0.1);
+    }
+
+    return score;
   }
 }
 
@@ -1279,23 +1347,22 @@ export function applyHunksToText(text, hunks) {
   if (hunks.length === 0) { return text; }
 
   // 把 INS.PRE/POST 归一成等价的 SWAP：空区间替换。
-  const edits = hunks.map((h) => {
+  // NOP hunk 直接跳过。
+  const edits = [];
+  for (const h of hunks) {
+    if (h.op === 'NOP') { continue; }  // 冲突跳过的 hunk
     if (h.op === OP_INS_PRE) {
-      // 在第 start 行"之前"插入 = 替换 [start, start-1] 这个空区间
-      return { start: h.start, end: h.start - 1, lines: h.lines };
+      edits.push({ start: h.start, end: h.start - 1, lines: h.lines });
+    } else if (h.op === OP_INS_POST) {
+      edits.push({ start: h.start + 1, end: h.start, lines: h.lines });
+    } else if (h.op === OP_SWAP) {
+      edits.push({ start: h.start, end: h.end, lines: h.lines });
+    } else if (h.op === OP_DEL) {
+      edits.push({ start: h.start, end: h.end, lines: [] });
+    } else {
+      throw new Error(`unknown op: ${h.op}`);
     }
-    if (h.op === OP_INS_POST) {
-      // 在第 start 行"之后"插入 = 替换 [start+1, start] 这个空区间
-      return { start: h.start + 1, end: h.start, lines: h.lines };
-    }
-    if (h.op === OP_SWAP) {
-      return { start: h.start, end: h.end, lines: h.lines };
-    }
-    if (h.op === OP_DEL) {
-      return { start: h.start, end: h.end, lines: [] };
-    }
-    throw new Error(`unknown op: ${h.op}`);
-  });
+  }
 
   // 校验区间不重叠（按 start 升序检查）
   const sorted = edits.slice().sort((a, b) => a.start - b.start);
@@ -1446,4 +1513,5 @@ export default {
   OP_DEL,
   OP_INS_PRE,
   OP_INS_POST,
+  OP_NOP,
 };

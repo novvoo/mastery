@@ -690,6 +690,510 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
       },
     },
 
+    // ── lsp_type_definition ───────────────────────────────────────────────
+    {
+      name: 'lsp_type_definition',
+      description:
+        'Go to the type definition of a symbol using LSP (e.g. interface, type alias). ' +
+        'Returns file path, line, and context snippet for each type definition.',
+      category: ToolCategory.LSP,
+      params: {
+        filePath: { type: 'string', description: 'Path to the file containing the symbol', required: true },
+        line: { type: 'number', description: '1-based line number', required: true, min: 1 },
+        character: { type: 'number', description: '1-based character position', required: true, min: 1 },
+      },
+      required: ['filePath', 'line', 'character'],
+      handler: async (args, ctx) => {
+        const validationErr = validateArgs(args, {
+          filePath: { type: 'string', required: true },
+          line: { type: 'number', required: true, min: 1 },
+          character: { type: 'number', required: true, min: 1 },
+        });
+        if (validationErr) {
+          return { success: false, error: `Invalid parameters: ${validationErr}` };
+        }
+
+        let filePath;
+        try {
+          filePath = safePath(ctx.workingDirectory, args.filePath);
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+
+        let content;
+        try {
+          content = await readFile(filePath, 'utf-8');
+        } catch (err) {
+          return { success: false, error: `Failed to read file: ${err.message}` };
+        }
+
+        const position = { line: args.line - 1, character: args.character - 1 };
+
+        const typeDefResult = await withLSPErrorHandling(
+          lspManager.request('textDocument/typeDefinition', filePath, {}, position, content, 10000),
+          { method: 'textDocument/typeDefinition', filePath },
+        );
+        if (!typeDefResult.success) {
+          return typeDefResult;
+        }
+
+        const result = typeDefResult.result;
+        if (!result) {
+          return { success: true, typeDefinitions: [], message: 'No type definition found.' };
+        }
+
+        const defs = Array.isArray(result) ? result : [result];
+        const enriched = await Promise.all(
+          defs.map(async (d) => {
+            const uriToPath = d.uri.startsWith('file://') ? d.uri.slice(7) : d.uri;
+            try {
+              const defContent = await readFile(uriToPath, 'utf-8');
+              const lines = defContent.split('\n');
+              const startLine = d.range.start.line;
+              const endLine = d.range.end.line;
+              const snippet = lines.slice(startLine, endLine + 1).join('\n');
+              return {
+                uri: d.uri,
+                file: uriToPath,
+                line: startLine + 1,
+                endLine: endLine + 1,
+                snippet,
+              };
+            } catch {
+              return {
+                uri: d.uri,
+                file: uriToPath,
+                line: d.range.start.line + 1,
+                snippet: '<unable to read>',
+              };
+            }
+          }),
+        );
+
+        return { success: true, typeDefinitions: enriched, count: enriched.length };
+      },
+    },
+
+    // ── lsp_implementation ─────────────────────────────────────────────────
+    {
+      name: 'lsp_implementation',
+      description:
+        'Find all implementations of an interface method, abstract method, or overridable symbol. ' +
+        'Returns file path, line, and context for each implementation.',
+      category: ToolCategory.LSP,
+      params: {
+        filePath: { type: 'string', description: 'Path to the file containing the symbol', required: true },
+        line: { type: 'number', description: '1-based line number', required: true, min: 1 },
+        character: { type: 'number', description: '1-based character position', required: true, min: 1 },
+      },
+      required: ['filePath', 'line', 'character'],
+      handler: async (args, ctx) => {
+        const validationErr = validateArgs(args, {
+          filePath: { type: 'string', required: true },
+          line: { type: 'number', required: true, min: 1 },
+          character: { type: 'number', required: true, min: 1 },
+        });
+        if (validationErr) {
+          return { success: false, error: `Invalid parameters: ${validationErr}` };
+        }
+
+        let filePath;
+        try {
+          filePath = safePath(ctx.workingDirectory, args.filePath);
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+
+        let content;
+        try {
+          content = await readFile(filePath, 'utf-8');
+        } catch (err) {
+          return { success: false, error: `Failed to read file: ${err.message}` };
+        }
+
+        const position = { line: args.line - 1, character: args.character - 1 };
+
+        const implResult = await withLSPErrorHandling(
+          lspManager.request('textDocument/implementation', filePath, {}, position, content, 15000),
+          { method: 'textDocument/implementation', filePath },
+        );
+        if (!implResult.success) {
+          return implResult;
+        }
+
+        const result = implResult.result;
+        if (!result || (Array.isArray(result) && result.length === 0)) {
+          return { success: true, implementations: [], count: 0, message: 'No implementations found.' };
+        }
+
+        const impls = Array.isArray(result) ? result : [result];
+        const enriched = await Promise.all(
+          impls.map(async (d) => {
+            const uriToPath = d.uri.startsWith('file://') ? d.uri.slice(7) : d.uri;
+            try {
+              const implContent = await readFile(uriToPath, 'utf-8');
+              const lines = implContent.split('\n');
+              const startLine = d.range.start.line;
+              return {
+                uri: d.uri,
+                file: uriToPath,
+                line: startLine + 1,
+                context: lines[startLine] || '',
+              };
+            } catch {
+              return {
+                uri: d.uri,
+                file: uriToPath,
+                line: d.range.start.line + 1,
+                context: '<unable to read>',
+              };
+            }
+          }),
+        );
+
+        return { success: true, implementations: enriched, count: enriched.length };
+      },
+    },
+
+    // ── lsp_call_hierarchy ─────────────────────────────────────────────────
+    {
+      name: 'lsp_call_hierarchy',
+      description:
+        'Analyze call hierarchy for a function/method. Use direction="incoming" for callers, direction="outgoing" for callees. ' +
+        'Returns structured tree of call relationships.',
+      category: ToolCategory.LSP,
+      params: {
+        filePath: { type: 'string', description: 'Path to the file containing the function', required: true },
+        line: { type: 'number', description: '1-based line number', required: true, min: 1 },
+        character: { type: 'number', description: '1-based character position', required: true, min: 1 },
+        direction: { type: 'string', description: '"incoming" for callers, "outgoing" for callees (default: incoming)' },
+        maxDepth: { type: 'number', description: 'Maximum depth of call hierarchy (default: 2, max: 5)', min: 1, max: 5 },
+      },
+      required: ['filePath', 'line', 'character'],
+      handler: async (args, ctx) => {
+        const validationErr = validateArgs(args, {
+          filePath: { type: 'string', required: true },
+          line: { type: 'number', required: true, min: 1 },
+          character: { type: 'number', required: true, min: 1 },
+        });
+        if (validationErr) {
+          return { success: false, error: `Invalid parameters: ${validationErr}` };
+        }
+
+        const direction = args.direction === 'outgoing' ? 'outgoing' : 'incoming';
+
+        let filePath;
+        try {
+          filePath = safePath(ctx.workingDirectory, args.filePath);
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+
+        let content;
+        try {
+          content = await readFile(filePath, 'utf-8');
+        } catch (err) {
+          return { success: false, error: `Failed to read file: ${err.message}` };
+        }
+
+        const position = { line: args.line - 1, character: args.character - 1 };
+
+        // Step 1: Prepare call hierarchy
+        const prepareResult = await withLSPErrorHandling(
+          lspManager.request('textDocument/prepareCallHierarchy', filePath, {}, position, content, 10000),
+          { method: 'textDocument/prepareCallHierarchy', filePath },
+        );
+        if (!prepareResult.success) {
+          return prepareResult;
+        }
+
+        const items = prepareResult.result;
+        if (!items || (Array.isArray(items) && items.length === 0)) {
+          return { success: true, hierarchy: [], message: 'No call hierarchy available at this position.' };
+        }
+
+        const rootItem = Array.isArray(items) ? items[0] : items;
+        const maxDepth = Math.min(args.maxDepth || 2, 5);
+
+        // Step 2: Traverse call hierarchy recursively
+        const buildCallTree = async (item, depth) => {
+          if (depth > maxDepth) { return null; }
+
+          const node = {
+            name: item.name,
+            kind: symbolKindLabel(item.kind),
+            file: (item.uri || '').startsWith('file://') ? (item.uri || '').slice(7) : (item.uri || ''),
+            line: (item.range?.start?.line || 0) + 1,
+            children: [],
+          };
+
+          if (depth < maxDepth) {
+            try {
+              const calls = await lspManager.request(
+                direction === 'incoming' ? 'callHierarchy/incomingCalls' : 'callHierarchy/outgoingCalls',
+                filePath,
+                { item },
+                null, null, 10000,
+              );
+
+              if (calls && calls.length > 0) {
+                const children = await Promise.all(
+                  calls.slice(0, 20).map(async (call) => {
+                    const fromName = call.from?.name || call.fromRanges?.[0] ? 'unknown' : 'unknown';
+                    const childItem = call.from || call;
+                    const child = await buildCallTree(childItem, depth + 1);
+                    if (child) {
+                      // Add caller/callee range info
+                      child.fromRanges = (call.fromRanges || []).map(r => ({
+                        start: { line: (r.start?.line || 0) + 1, character: (r.start?.character || 0) + 1 },
+                        end: { line: (r.end?.line || 0) + 1, character: (r.end?.character || 0) + 1 },
+                      }));
+                    }
+                    return child;
+                  }),
+                );
+                node.children = children.filter(Boolean);
+              }
+            } catch {
+              // Call hierarchy not supported for this level
+            }
+          }
+
+          return node;
+        };
+
+        const tree = await buildCallTree(rootItem, 1);
+
+        return {
+          success: true,
+          direction,
+          hierarchy: tree,
+        };
+      },
+    },
+
+    // ── lsp_inlay_hints ───────────────────────────────────────────────────
+    {
+      name: 'lsp_inlay_hints',
+      description:
+        'Get LSP inlay hints (inline type annotations, parameter names, etc.) for a file or range. ' +
+        'Helps understand inferred types and implicit parameters without cluttering source code.',
+      category: ToolCategory.LSP,
+      params: {
+        filePath: { type: 'string', description: 'Path to the file', required: true },
+        startLine: { type: 'number', description: '1-based start line for range (optional, omit for whole file)', min: 1 },
+        endLine: { type: 'number', description: '1-based end line for range', min: 1 },
+      },
+      required: ['filePath'],
+      handler: async (args, ctx) => {
+        let filePath;
+        try {
+          filePath = safePath(ctx.workingDirectory, args.filePath);
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+
+        let content;
+        try {
+          content = await readFile(filePath, 'utf-8');
+        } catch (err) {
+          return { success: false, error: `Failed to read file: ${err.message}` };
+        }
+
+        const requestParams = { textDocument: { uri: `file://${filePath}` } };
+
+        if (args.startLine !== undefined && args.endLine !== undefined) {
+          requestParams.range = {
+            start: { line: args.startLine - 1, character: 0 },
+            end: { line: args.endLine - 1, character: 1000 },
+          };
+        }
+
+        const hintsResult = await withLSPErrorHandling(
+          lspManager.request('textDocument/inlayHint', filePath, requestParams, null, content, 10000),
+          { method: 'textDocument/inlayHint', filePath },
+        );
+        if (!hintsResult.success) {
+          return hintsResult;
+        }
+
+        const hints = hintsResult.result;
+        if (!hints || (Array.isArray(hints) && hints.length === 0)) {
+          return { success: true, hints: [], count: 0, message: 'No inlay hints available.' };
+        }
+
+        const enriched = (Array.isArray(hints) ? hints : [hints]).map((h) => {
+          const hintLine = h.position?.line !== undefined ? h.position.line + 1 : '?';
+          const hintLabel = typeof h.label === 'string' ? h.label : (h.label?.[0]?.value || JSON.stringify(h.label));
+          return {
+            line: hintLine,
+            character: (h.position?.character || 0) + 1,
+            label: hintLabel,
+            kind: typeof h.kind === 'number' ? inlayHintKindLabel(h.kind) : 'unknown',
+            paddingLeft: h.paddingLeft || false,
+            paddingRight: h.paddingRight || false,
+            tooltip: typeof h.tooltip === 'string' ? h.tooltip : (h.tooltip?.value || null),
+          };
+        });
+
+        return { success: true, hints: enriched, count: enriched.length };
+      },
+    },
+
+    // ── lsp_folding_ranges ─────────────────────────────────────────────────
+    {
+      name: 'lsp_folding_ranges',
+      description:
+        'Get LSP folding ranges for a file. Returns regions that can be folded/collapsed by the editor ' +
+        '(imports, comments, code blocks, etc.). Useful for understanding file structure at a glance.',
+      category: ToolCategory.LSP,
+      params: {
+        filePath: { type: 'string', description: 'Path to the file', required: true },
+      },
+      required: ['filePath'],
+      handler: async (args, ctx) => {
+        let filePath;
+        try {
+          filePath = safePath(ctx.workingDirectory, args.filePath);
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+
+        let content;
+        try {
+          content = await readFile(filePath, 'utf-8');
+        } catch (err) {
+          return { success: false, error: `Failed to read file: ${err.message}` };
+        }
+
+        const foldResult = await withLSPErrorHandling(
+          lspManager.request('textDocument/foldingRange', filePath, {
+            textDocument: { uri: `file://${filePath}` },
+          }, null, content, 10000),
+          { method: 'textDocument/foldingRange', filePath },
+        );
+        if (!foldResult.success) {
+          return foldResult;
+        }
+
+        const folds = foldResult.result;
+        if (!folds || folds.length === 0) {
+          return { success: true, folds: [], count: 0, message: 'No folding ranges.' };
+        }
+
+        const enriched = folds.map((f) => ({
+          startLine: (f.startLine || 0) + 1,
+          endLine: (f.endLine || 0) + 1,
+          kind: typeof f.kind === 'string' ? f.kind : 'region',
+          collapsedText: f.collapsedText || null,
+        }));
+
+        return {
+          success: true,
+          folds: enriched,
+          count: enriched.length,
+          summary: `File has ${enriched.length} foldable regions spanning lines 1-${enriched.reduce((m, f) => Math.max(m, f.endLine), 0)}`,
+        };
+      },
+    },
+
+    // ── lsp_selection_ranges ───────────────────────────────────────────────
+    {
+      name: 'lsp_selection_ranges',
+      description:
+        'Get LSP selection ranges for positions in a file. Smart selection expansion returns nested AST-aware ranges ' +
+        '(word → expression → statement → block → function). Useful for understanding code structure hierarchy.',
+      category: ToolCategory.LSP,
+      params: {
+        filePath: { type: 'string', description: 'Path to the file', required: true },
+        line: { type: 'number', description: '1-based line number', required: true, min: 1 },
+        character: { type: 'number', description: '1-based character position', required: true, min: 1 },
+      },
+      required: ['filePath', 'line', 'character'],
+      handler: async (args, ctx) => {
+        const validationErr = validateArgs(args, {
+          filePath: { type: 'string', required: true },
+          line: { type: 'number', required: true, min: 1 },
+          character: { type: 'number', required: true, min: 1 },
+        });
+        if (validationErr) {
+          return { success: false, error: `Invalid parameters: ${validationErr}` };
+        }
+
+        let filePath;
+        try {
+          filePath = safePath(ctx.workingDirectory, args.filePath);
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+
+        let content;
+        try {
+          content = await readFile(filePath, 'utf-8');
+        } catch (err) {
+          return { success: false, error: `Failed to read file: ${err.message}` };
+        }
+
+        const position = { line: args.line - 1, character: args.character - 1 };
+
+        const selResult = await withLSPErrorHandling(
+          lspManager.request('textDocument/selectionRange', filePath, {
+            textDocument: { uri: `file://${filePath}` },
+            positions: [position],
+          }, null, content, 10000),
+          { method: 'textDocument/selectionRange', filePath },
+        );
+        if (!selResult.success) {
+          return selResult;
+        }
+
+        const selectionRanges = selResult.result;
+        if (!selectionRanges || selectionRanges.length === 0) {
+          return { success: true, ranges: [], count: 0, message: 'No selection ranges available.' };
+        }
+
+        // 扁平化嵌套范围
+        const flatten = (range) => {
+          const results = [];
+          let current = range;
+          while (current) {
+            const lines = content.split('\n');
+            const startLine = current.range?.start?.line || 0;
+            const endLine = current.range?.end?.line || 0;
+            const startChar = current.range?.start?.character || 0;
+            const endChar = current.range?.end?.character || 0;
+            let snippet = '';
+            try {
+              if (startLine === endLine) {
+                const line = lines[startLine] || '';
+                snippet = line.substring(startChar, Math.min(endChar, line.length));
+              } else {
+                snippet = lines.slice(startLine, endLine + 1).join('\n').substring(0, 100);
+              }
+            } catch { /* ignore */ }
+
+            results.push({
+              start: { line: startLine + 1, character: startChar + 1 },
+              end: { line: endLine + 1, character: endChar + 1 },
+              snippet,
+            });
+            current = current.parent || null;
+          }
+          return results;
+        };
+
+        const ranges = flatten(selectionRanges[0]);
+
+        return {
+          success: true,
+          position: { line: args.line, character: args.character },
+          ranges,
+          count: ranges.length,
+          hint: 'Ranges are ordered from narrowest to widest (word → expression → statement → block).',
+        };
+      },
+    },
+
     // ── lsp_workspace_edit ────────────────────────────────────────────────
     {
       name: 'lsp_workspace_edit',
@@ -947,11 +1451,20 @@ async function applyWorkspaceEdit(workspaceEdit, {
     }
   }
 
+  // Non-Hashline fallback: 带备份/回滚的逐文件应用
+  const backups = new Map();
+  const writtenPaths = [];
+  let hasFailure = false;
+
   for (const [filePath, { originalContent, edits }] of Object.entries(editsByPath)) {
     try {
+      // 备份原始内容
+      backups.set(filePath, originalContent);
+
       let content = originalContent;
       content = applyTextEdits(content, edits);
       await writeFile(filePath, content, 'utf-8');
+      writtenPaths.push(filePath);
       filesChanged.push(filePath);
 
       if (contentStore) {
@@ -966,11 +1479,29 @@ async function applyWorkspaceEdit(workspaceEdit, {
       }
     } catch (err) {
       filesFailed.push(`${filePath}: ${err.message}`);
+      hasFailure = true;
+
+      // 回滚已写入的文件
+      for (const writtenPath of writtenPaths) {
+        try {
+          await writeFile(writtenPath, backups.get(writtenPath), 'utf-8');
+        } catch (rollbackErr) {
+          filesFailed.push(`${writtenPath}: rollback failed - ${rollbackErr.message}`);
+        }
+      }
+
+      return {
+        success: false,
+        filesChanged: [],
+        filesFailed,
+        totalEdits,
+        rolledBack: true,
+      };
     }
   }
 
   return {
-    success: filesFailed.length === 0,
+    success: !hasFailure,
     filesChanged: [...new Set(filesChanged)],
     filesFailed,
     totalEdits,
@@ -1159,12 +1690,18 @@ function updateAliasImports(content, oldPath, newPath, paths) {
   for (const [alias, targetPaths] of Object.entries(paths)) {
     for (const targetPath of targetPaths) {
       if (oldPath.startsWith(targetPath)) {
+        // oldPath 在 alias 映射范围内：计算相对后缀
         const suffix = oldPath.substring(targetPath.length);
-        const newAliasPath = alias + (suffix || '');
-        const newTargetPath = targetPath.substring(0, targetPath.length - (suffix ? suffix.length : 0)) + (newPath.substring(oldPath.length - (suffix ? suffix.length : 0)) || '');
+        // 旧 alias import 路径（import 语句中实际出现的）
+        const oldAliasPath = alias + (suffix || '');
+        // 新 alias import 路径：newPath 也应在同一 targetPath 下
+        const newSuffix = newPath.startsWith(targetPath)
+          ? newPath.substring(targetPath.length)
+          : newPath;
 
-        const importRe = new RegExp(`(from\\s*['"])${escapeRegex(newAliasPath)}(['"])`, 'g');
-        const newImportPath = newTargetPath;
+        // 将旧 alias path 替换为新 alias path（保持 alias 前缀）
+        const importRe = new RegExp(`(from\\s*['"])${escapeRegex(oldAliasPath)}(['"])`, 'g');
+        const newImportPath = alias + (newSuffix || '');
         updated = updated.replace(importRe, `$1${newImportPath}$2`);
       }
     }
@@ -1369,6 +1906,11 @@ function formatAsDiff(original, formatted) {
     }
   }
   return diff.join('\n');
+}
+
+function inlayHintKindLabel(kind) {
+  const map = { 1: 'type', 2: 'parameter' };
+  return map[kind] || `kind_${kind}`;
 }
 
 function escapeRegex(str) {
