@@ -222,30 +222,47 @@ export class MemoryAudit {
     if (!report) return '# Memory Audit Report\n\nNo audit has been run yet.';
 
     const health = this.getHealthScore();
+    const healthBar = this._renderHealthBar(health.score);
+    const validPct = report.summary.total > 0
+      ? ((report.summary.valid || 0) / report.summary.total * 100).toFixed(1)
+      : '100.0';
+
     const lines = [
-      '# Memory Audit Report',
+      '# 📋 Memory Audit Report',
       '',
       `**Date:** ${new Date(report.timestamp).toISOString()}`,
-      `**Health Score:** ${health.score}/100 (${health.grade})`,
+      '',
+      `## Health: ${health.score}/100 (${health.grade})`,
+      '',
+      `\`\`\``,
+      healthBar,
+      `\`\`\``,
+      '',
+      `**Valid:** ${validPct}% of ${report.summary.total} entries are healthy`,
       '',
       '## Summary',
       '',
-      `| Metric | Count |`,
-      `|--------|-------|`,
-      `| Total | ${report.summary.total} |`,
-      `| Valid | ${report.summary.valid} |`,
-      `| Stale | ${report.summary.stale} |`,
-      `| Expired | ${report.summary.expired} |`,
-      `| Conflicting | ${report.summary.conflicting} |`,
-      `| Duplicates | ${report.summary.duplicate} |`,
+      `| Metric | Count | % | Status |`,
+      `|--------|-------|---|--------|`,
+      `| Total | ${report.summary.total} | 100% | 📊 |`,
+      `| Valid | ${report.summary.valid} | ${validPct}% | ✅ |`,
+      `| Stale | ${report.summary.stale} | ${(report.summary.stale / Math.max(1, report.summary.total) * 100).toFixed(1)}% | ${report.summary.stale > 0 ? '⚠️' : '✅'} |`,
+      `| Expired | ${report.summary.expired} | ${(report.summary.expired / Math.max(1, report.summary.total) * 100).toFixed(1)}% | ${report.summary.expired > 0 ? '⏰' : '✅'} |`,
+      `| Conflicting | ${report.summary.conflicting} | ${(report.summary.conflicting / Math.max(1, report.summary.total) * 100).toFixed(1)}% | ${report.summary.conflicting > 0 ? '🔴' : '✅'} |`,
+      `| Duplicates | ${report.summary.duplicate} | ${(report.summary.duplicate / Math.max(1, report.summary.total) * 100).toFixed(1)}% | ${report.summary.duplicate > 0 ? '🔄' : '✅'} |`,
       '',
     ];
+
+    if (report.diskUsage && report.diskUsage.totalBytes > 0) {
+      lines.push(`💾 **Disk:** ${this._formatSize(report.diskUsage.totalBytes)} (${report.diskUsage.fileCount} files)`);
+      lines.push('');
+    }
 
     if (health.issues.length > 0) {
       lines.push('## Issues');
       lines.push('');
       for (const issue of health.issues) {
-        lines.push(`- ${issue}`);
+        lines.push(`- 🔴 ${issue}`);
       }
       lines.push('');
     }
@@ -254,7 +271,9 @@ export class MemoryAudit {
       lines.push('## Contradictions');
       lines.push('');
       for (const c of report.contradictions) {
-        lines.push(`- **${c.topic}**: ${c.reason} — \`${c.a.title}\` vs \`${c.b.title}\``);
+        lines.push(`- **${c.topic || 'general'}**: ${c.reason}`);
+        lines.push(`  - A: \`${c.a?.title || '?'}\``);
+        lines.push(`  - B: \`${c.b?.title || '?'}\``);
       }
       lines.push('');
     }
@@ -263,7 +282,7 @@ export class MemoryAudit {
       lines.push('## Stale Entries');
       lines.push('');
       for (const s of report.staleEntries) {
-        lines.push(`- \`${s.id}\`: ${s.title} — ${s.reason}`);
+        lines.push(`- \`${s.id}\`: **${s.title}** — ${s.reason}`);
       }
       lines.push('');
     }
@@ -272,12 +291,34 @@ export class MemoryAudit {
       lines.push('## Recommendations');
       lines.push('');
       for (const rec of report.recommendations) {
-        lines.push(`- **${rec.action}**: ${rec.reason}`);
+        const sev = rec.severity === 'critical' ? '🔴' : rec.severity === 'warning' ? '🟡' : '🔵';
+        lines.push(`- ${sev} **${rec.action}**: ${rec.reason}`);
+        if (rec.fix) {
+          lines.push(`  → Fix: ${rec.fix}`);
+        }
       }
       lines.push('');
     }
 
+    if (report.removedIds?.length > 0) {
+      lines.push('## Cleaned');
+      lines.push('');
+      lines.push(`Auto-cleaned ${report.removedIds.length} entries during audit.`);
+      lines.push('');
+    }
+
     return lines.join('\n');
+  }
+
+  /**
+   * 渲染 ASCII 健康度进度条。
+   * @private
+   */
+  _renderHealthBar(score) {
+    const filled = Math.round(score / 5);
+    const empty = 20 - filled;
+    const color = score >= 90 ? '🟢' : score >= 70 ? '🟡' : score >= 50 ? '🟠' : '🔴';
+    return `${color} [${'█'.repeat(filled)}${'░'.repeat(empty)}] ${score}%`;
   }
 
   /**
@@ -373,17 +414,50 @@ export class MemoryAudit {
     const recs = report.recommendations;
     recs.length = 0;
 
+    const total = report.summary.total || 1;
+    const healthPct = ((report.summary.valid || 0) / total * 100).toFixed(0);
+
     if (report.summary.stale > 0) {
-      recs.push({ action: 'review_stale', reason: `${report.summary.stale} stale entries need review or cleanup` });
+      recs.push({
+        action: 'review_stale',
+        severity: report.summary.stale > total * 0.3 ? 'critical' : 'warning',
+        reason: `${report.summary.stale} stale entries need review or cleanup`,
+        fix: 'Re-verify source files and update or remove stale memories.',
+      });
     }
     if (report.summary.expired > 0) {
-      recs.push({ action: 'clean_expired', reason: `${report.summary.expired} expired entries should be removed` });
+      recs.push({
+        action: 'clean_expired',
+        severity: 'warning',
+        reason: `${report.summary.expired} expired entries should be removed`,
+        fix: 'Run audit with autoClean=true or manually delete expired entries.',
+      });
     }
     if (report.summary.duplicate > 0) {
-      recs.push({ action: 'remove_duplicates', reason: `${report.summary.duplicate} duplicate entries, re-run with autoClean=true` });
+      recs.push({
+        action: 'remove_duplicates',
+        severity: 'info',
+        reason: `${report.summary.duplicate} duplicate entries, re-run with autoClean=true`,
+        fix: 'Duplicates can be auto-compacted. Run audit with compactDuplicate=true.',
+      });
     }
     if (report.summary.conflicting > 0) {
-      recs.push({ action: 'resolve_contradictions', reason: `${report.summary.conflicting} contradictory memories, manual review needed` });
+      recs.push({
+        action: 'resolve_contradictions',
+        severity: 'warning',
+        reason: `${report.summary.conflicting} contradictory memories, manual review needed`,
+        fix: 'Review each contradiction pair and keep the higher-confidence entry.',
+      });
+    }
+
+    // 健康度总体建议
+    if (Number(healthPct) < 60) {
+      recs.push({
+        action: 'deep_clean',
+        severity: 'critical',
+        reason: `Memory health too low (${healthPct}%), consider full reset of stale/expired entries`,
+        fix: 'Consider running a full clean cycle and rebuilding from fresh project scan.',
+      });
     }
   }
 

@@ -30,6 +30,8 @@ const EXT_TO_LANGUAGE = {
   '.rs': 'rust',
   '.go': 'go',
   '.java': 'java',
+  '.kt': 'kotlin',
+  '.kts': 'kotlin',
   '.vue': 'vue',
   '.svelte': 'svelte',
   '.css': 'css',
@@ -39,6 +41,14 @@ const EXT_TO_LANGUAGE = {
   '.yaml': 'yaml',
   '.yml': 'yaml',
   '.toml': 'toml',
+  '.dart': 'dart',
+  '.cs': 'csharp',
+  '.csx': 'csharp',
+  '.zig': 'zig',
+  '.ex': 'elixir',
+  '.exs': 'elixir',
+  '.swift': 'swift',
+  '.r': 'r',
 };
 
 /**
@@ -135,6 +145,52 @@ const DEFAULT_SERVER_CONFIGS = {
     args: ['lsp', 'stdio'],
     languageIds: ['toml'],
     installCommand: 'cargo install taplo-cli',
+  },
+  dart: {
+    command: 'dart',
+    args: ['language-server', '--client-id=agent-mastery'],
+    languageIds: ['dart'],
+    installCommand: 'flutter pub global activate dart_language_server || dart pub global activate dart_language_server',
+    fallback: { command: 'dart_language_server', args: [] },
+  },
+  kotlin: {
+    command: 'kotlin-language-server',
+    args: [],
+    languageIds: ['kotlin'],
+    installCommand: 'npm install -g kotlin-language-server',
+    fallback: { command: 'kotlin-ls', args: [] },
+  },
+  csharp: {
+    command: 'omnisharp',
+    args: ['-lsp'],
+    languageIds: ['csharp'],
+    installCommand: 'dotnet tool install -g csharp-ls || npm install -g omnisharp',
+    fallback: { command: 'csharp-ls', args: [] },
+  },
+  zig: {
+    command: 'zls',
+    args: [],
+    languageIds: ['zig'],
+    installCommand: 'brew install zls || cargo install zls',
+  },
+  elixir: {
+    command: 'elixir-ls',
+    args: [],
+    languageIds: ['elixir'],
+    installCommand: 'brew install elixir-ls',
+    fallback: { command: 'elixir-ls', args: ['language-server'] },
+  },
+  swift: {
+    command: 'sourcekit-lsp',
+    args: [],
+    languageIds: ['swift'],
+    installCommand: 'xcode-select --install || brew install swift-language-server',
+  },
+  r: {
+    command: 'R',
+    args: ['--slave', '-e', 'languageserver::run()'],
+    languageIds: ['r'],
+    installCommand: 'R -e "install.packages(\'languageserver\', repos=\'https://cran.rstudio.com\')"',
   },
 };
 
@@ -700,6 +756,71 @@ export class ServerManager {
       stats[langKey] = pool.size;
     }
     return stats;
+  }
+
+  /**
+   * 检查已安装的 LSP server 版本是否满足最低要求。
+   * 通过执行 `{command} --version` 检测。
+   *
+   * @param {string} serverKey  server 配置 key（如 'typescript', 'rust'）
+   * @returns {Promise<{installed: boolean, version: string|null, meetsMinimum: boolean, message: string}>}
+   */
+  async checkServerVersion(serverKey) {
+    const config = this.#serverConfigs[serverKey];
+    if (!config) {
+      return { installed: false, version: null, meetsMinimum: false, message: `Unknown server key: ${serverKey}` };
+    }
+
+    const command = config.command;
+    const { execSync } = await import('child_process');
+    try {
+      const output = execSync(`${command} --version 2>&1 || ${command} version 2>&1 || ${command} -v 2>&1`, {
+        timeout: 5000,
+        encoding: 'utf-8',
+      }).toString().trim();
+      const versionMatch = output.match(/(\d+\.\d+\.\d+)/);
+      const version = versionMatch ? versionMatch[1] : output.substring(0, 50);
+
+      // 检查最低版本
+      let meetsMinimum = true;
+      const minVersion = config.minVersion;
+      if (minVersion && versionMatch) {
+        const [minMajor, minMinor, minPatch] = minVersion.split('.').map(Number);
+        const [curMajor, curMinor, curPatch] = versionMatch[1].split('.').map(Number);
+        if (curMajor < minMajor || (curMajor === minMajor && curMinor < minMinor) ||
+            (curMajor === minMajor && curMinor === minMinor && curPatch < minPatch)) {
+          meetsMinimum = false;
+        }
+      }
+
+      return {
+        installed: true,
+        version,
+        meetsMinimum,
+        message: meetsMinimum
+          ? `✅ ${serverKey} ${version} (meets minimum ${minVersion || 'none'})`
+          : `⚠️ ${serverKey} ${version} (minimum required: ${minVersion})`,
+      };
+    } catch {
+      return {
+        installed: false,
+        version: null,
+        meetsMinimum: false,
+        message: `❌ ${serverKey} (${command}) is not installed. ${config.installCommand ? `Try: ${config.installCommand}` : ''}`,
+      };
+    }
+  }
+
+  /**
+   * 检查所有已配置的 LSP server 版本状态。
+   * @returns {Promise<Array<{serverKey: string, installed: boolean, version: string|null, meetsMinimum: boolean, message: string}>>}
+   */
+  async checkAllServerVersions() {
+    const results = [];
+    for (const serverKey of Object.keys(this.#serverConfigs)) {
+      results.push({ serverKey, ...(await this.checkServerVersion(serverKey)) });
+    }
+    return results;
   }
 
   /** 优雅关闭所有 server。 */

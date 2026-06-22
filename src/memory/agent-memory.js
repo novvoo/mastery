@@ -445,40 +445,163 @@ export class AgentMemory extends MemoryManager {
   }
 
   /**
+   * 多因子置信度计算。
+   *
+   * 综合以下信号计算一个 0-1 的归一化置信度：
+   *  - baseConfidence：调用方给出的基础置信度
+   *  - sourceQuality：来源质量（user_correction=0.9, lsp_fix=0.7, auto_pattern=0.6）
+   *  - verificationScore：是否通过文件引用验证
+   *  - existingSimilar：是否已有相似记忆（已有则加 0.05）
+   *  - agePenalty：如果候选内容太旧，降低置信度
+   *
+   * @param {object} suggestion
+   * @param {number} suggestion.confidence   基础置信度
+   * @param {string} [suggestion.type]       记忆类型
+   * @param {string} [suggestion.reason]     建议原因
+   * @param {object} [opts]
+   * @param {number} [opts.maxAgeMs=86400000] 最大时效（24h）
+   * @returns {{ confidence: number, factors: object }}
+   */
+  _computeConfidence(suggestion, opts = {}) {
+    const { maxAgeMs = 86_400_000 } = opts;
+    const factors = {};
+
+    // 基础置信度
+    factors.base = suggestion.confidence || 0.5;
+
+    // 来源质量加权
+    const sourceWeights = {
+      feedback: 0.90,     // 用户纠正确认
+      reference: 0.85,    // 问题模式识别
+      project: 0.70,      // 项目发现
+      user: 0.75,         // 用户偏好
+    };
+    factors.source = sourceWeights[suggestion.type] || 0.6;
+
+    // 时效性惩罚：距今超过 maxAgeMs 按线性衰减
+    const now = Date.now();
+    const ts = suggestion.timestamp || (now - 1000); // 假设 1s 前
+    const ageWeight = Math.max(0.2, 1 - (now - ts) / maxAgeMs);
+    factors.age = ageWeight;
+
+    // 已有相似记忆：加权
+    const existing = this.getAll()
+      .filter(m => m.title && suggestion.title &&
+        (m.title.toLowerCase().includes(suggestion.title.toLowerCase().substring(0, 10)) ||
+         suggestion.title.toLowerCase().includes((m.title || '').toLowerCase().substring(0, 10))))
+      .length;
+    factors.existingSimilar = Math.min(1, existing * 0.1 + 0.8);
+
+    // 加权综合（来源 40%，基础 25%，相似性 20%，时效性 15%）
+    const composite = (
+      factors.source * 0.40 +
+      factors.base * 0.25 +
+      factors.existingSimilar * 0.20 +
+      factors.age * 0.15
+    );
+
+    return { confidence: Math.min(1, Math.max(0, composite)), factors };
+  }
+
+  /**
    * 自动写入高置信度记忆（自动沉淀闭环）。
-   * 
+   *
+   * 增强版：使用多因子置信度计算，写入前检测与现有记忆的矛盾。
+   *
    * 高置信度（>= 0.8 / 错误模式 >= 0.85）的建议直接写入；
    * 中等置信度（0.6 - 0.8）的建议递交给 isWorthRemembering 做 LLM 判断。
    *
    * @param {object} sessionContext
-   * @param {{ autoWriteThreshold?: number }} opts
-   * @returns {Promise<{ written: Array<{id:string, topic:string}>, deferred: Array<object> }>}
+   * @param {{ autoWriteThreshold?: number, checkContradictions?: boolean }} opts
+   * @returns {Promise<{ written: Array<{id:string, topic:string}>, deferred: Array<object>, contradictions: Array<object> }>}
    */
   async autoWriteMemory(sessionContext = {}, opts = {}) {
-    const { autoWriteThreshold = 0.8 } = opts;
+    const { autoWriteThreshold = 0.8, checkContradictions = true } = opts;
     const { suggestions } = this.autoSuggestMemory(sessionContext);
 
     const written = [];
     const deferred = [];
+    const contradictions = [];
 
     for (const s of suggestions) {
-      if (s.confidence >= autoWriteThreshold) {
+      // 多因子置信度
+      const { confidence: adjustedConfidence } = this._computeConfidence(s);
+
+      // 矛盾检测：检查新建议是否与已有记忆矛盾
+      const conflictIds = [];
+      if (checkContradictions) {
+        const { contradictions: existingConflicts } = MemoryVerifier.detectContradictions(this.getAll());
+        const myConflicts = existingConflicts.filter(c =>
+          c.memories.some(m => m.title === s.title || m.topic === s.type)
+        );
+        for (const c of myConflicts) {
+          // 根据置信度决定保留哪一个
+          const other = c.memories.find(m => m.title !== s.title);
+          if (other && adjustedConfidence > 0.8) {
+            // 新记忆置信度更高：标记旧记忆为 superseded
+            if (other.id) {
+              this.updateStatus(other.id, 'superseded');
+              conflictIds.push({ resolved: 'newer', oldId: other.id, oldTitle: other.title });
+            }
+          } else if (other) {
+            // 旧记忆置信度更高：跳过新记忆
+            contradictions.push({
+              newTitle: s.title,
+              conflictingWith: { id: other.id, title: other.title },
+              resolution: 'skipped_new',
+            });
+            deferred.push(s);
+            continue;
+          }
+        }
+      }
+
+      if (adjustedConfidence >= autoWriteThreshold) {
         // 高置信度：直接写入
         const entry = this.#addWithTopic(s.type, s.title, s.content, { tags: ['auto'], reason: s.reason });
-        written.push({ id: entry.id, topic: entry.topic });
-      } else if (s.confidence >= 0.6 && this.#modelProvider) {
+        written.push({ id: entry.id, topic: entry.topic, confidence: adjustedConfidence });
+      } else if (adjustedConfidence >= 0.6 && this.#modelProvider) {
         // 中等置信度：LLM 判断
         const isWorth = await this.isWorthRemembering(s.content, { type: s.type, reason: s.reason });
         if (isWorth) {
           const entry = this.#addWithTopic(s.type, s.title, s.content, { tags: ['auto'], reason: s.reason });
-          written.push({ id: entry.id, topic: entry.topic });
+          written.push({ id: entry.id, topic: entry.topic, confidence: adjustedConfidence });
         }
       } else {
         deferred.push(s);
       }
     }
 
-    return { written, deferred };
+    // 写入后自动检查是否需要 compaction
+    if (written.length >= 5) {
+      this._scheduleCompaction();
+    }
+
+    return { written, deferred, contradictions };
+  }
+
+  /**
+   * 压缩调度：当写入超过阈值时触发自动压缩。
+   * @private
+   */
+  _scheduleCompaction() {
+    const allMemories = this.getAll();
+    if (allMemories.length < 10) { return; } // 少于 10 条不触发
+
+    const { removedIds } = MemoryVerifier.compact(allMemories);
+    for (const id of removedIds) {
+      try {
+        if (this.#structuredMemory?.remove) {
+          this.#structuredMemory.remove(id);
+        }
+      } catch { /* best-effort removal */ }
+    }
+    if (removedIds.length > 0) {
+      // 静默日志
+      if (typeof process !== 'undefined' && process.env?.AGENT_DEBUG) {
+        console.warn(`[Memory] Auto-compacted ${removedIds.length} duplicate entries`);
+      }
+    }
   }
 
   /**

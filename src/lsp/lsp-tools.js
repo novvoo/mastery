@@ -1343,6 +1343,62 @@ function lspTextEditsToHashlinePatch(editsByPath) {
 }
 
 /**
+ * 检测 workspace edit 中的冲突编辑（重叠 TextEdit）。
+ * 返回冲突详情列表，空数组表示无冲突。
+ *
+ * @param {object} editsByPath  { [path]: { edits: TextEdit[] } }
+ * @returns {{ path: string, conflicts: Array<{editA: object, editB: object, overlap: object}> }[]}
+ */
+function detectWorkspaceEditConflicts(editsByPath) {
+  const allConflicts = [];
+
+  for (const [filePath, { edits }] of Object.entries(editsByPath)) {
+    const conflicts = [];
+    const sorted = [...edits].map((e, i) => ({ ...e, _idx: i }))
+      .sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.character - b.range.start.character);
+
+    for (let i = 0; i < sorted.length; i++) {
+      for (let j = i + 1; j < sorted.length; j++) {
+        const a = sorted[i], b = sorted[j];
+
+        // 检查行重叠
+        if (b.range.start.line <= a.range.end.line) {
+          // 同一行内检查字符重叠
+          if (b.range.start.line === a.range.end.line) {
+            if (b.range.start.character < a.range.end.character) {
+              conflicts.push({
+                editA: { start: a.range.start, end: a.range.end, newText: a.newText?.substring(0, 50) },
+                editB: { start: b.range.start, end: b.range.end, newText: b.newText?.substring(0, 50) },
+                overlap: {
+                  line: a.range.start.line + 1,
+                  range: `${a.range.end.character} overlaps with ${b.range.start.character}`,
+                },
+              });
+            }
+          } else {
+            // 跨行重叠（b 的 start 在 a 的范围内）
+            conflicts.push({
+              editA: { start: a.range.start, end: a.range.end, newText: a.newText?.substring(0, 50) },
+              editB: { start: b.range.start, end: b.range.end, newText: b.newText?.substring(0, 50) },
+              overlap: {
+                lineRange: `${a.range.start.line + 1}-${a.range.end.line + 1}`,
+                reason: 'editB starts within editA range',
+              },
+            });
+          }
+        }
+      }
+    }
+
+    if (conflicts.length > 0) {
+      allConflicts.push({ path: filePath, conflicts });
+    }
+  }
+
+  return allConflicts;
+}
+
+/**
  * 应用 LSP workspace edit（跨文件文本编辑）。
  * 当 hashlinePatcher 可用时，使用 Hashline 进行原子性应用（带 rollback）。
  * @returns {Promise<{success: boolean, filesChanged: string[], filesFailed: string[], totalEdits: number}>}
@@ -1391,6 +1447,20 @@ async function applyWorkspaceEdit(workspaceEdit, {
       filesFailed.push(`${filePath}: file not found`);
       delete editsByPath[filePath];
     }
+  }
+
+  // 冲突检测：在应用编辑前检查是否有重叠 TextEdit
+  const editConflicts = detectWorkspaceEditConflicts(editsByPath);
+  const hasHardConflicts = editConflicts.some(c => c.conflicts.length > 0);
+  if (hasHardConflicts) {
+    return {
+      success: false,
+      filesChanged: [],
+      filesFailed: [],
+      totalEdits,
+      editConflicts,
+      error: `Workspace edit contains ${editConflicts.length} file(s) with overlapping TextEdits. Resolve conflicts first.`,
+    };
   }
 
   if (filesFailed.length === Object.keys(workspaceEdit.changes || {}).length + (workspaceEdit.documentChanges || []).length) {

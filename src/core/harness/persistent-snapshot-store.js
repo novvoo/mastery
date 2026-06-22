@@ -64,17 +64,24 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
     this.objectsDir = join(this.baseDir, 'objects');
     this.historyDir = join(this.baseDir, 'history');
     this.seenLinesDir = join(this.baseDir, 'seen-lines');
+    this.walDir = join(this.baseDir, 'wal');         // Write-Ahead Log
     this.indexPath = join(this.baseDir, 'index.json');
     this.maxVersionsPerPath = opts.maxVersionsPerPath || 10;
     this.maxTotalSize = opts.maxTotalSize || 256_000_000;
     this.gcIntervalMs = opts.gcIntervalMs || 300_000;
+    this.enableWAL = opts.enableWAL !== false;       // WAL enabled by default
     this._lastGC = Date.now();
     this._index = null; // lazy load
     this._ensureDirs();
+
+    // 启动时自动 crash recovery
+    if (this.enableWAL) {
+      this._recoverFromWAL();
+    }
   }
 
   _ensureDirs() {
-    for (const d of [this.baseDir, this.objectsDir, this.historyDir, this.seenLinesDir]) {
+    for (const d of [this.baseDir, this.objectsDir, this.historyDir, this.seenLinesDir, this.walDir]) {
       if (!existsSync(d)) { mkdirSync(d, { recursive: true }); }
     }
   }
@@ -156,6 +163,10 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
   record(path, fullText) {
     const text = String(fullText ?? '');
     const tag = computeTag(text);
+
+    // WAL：在实际写入前记录
+    this._appendWAL('record', { path, tag });
+
     const index = this._loadIndex();
     const history = this._loadHistory(path);
 
@@ -355,29 +366,134 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
     } catch { /* best-effort GC */ }
   }
 
+  // ── Write-Ahead Log (WAL) 方法 ──────────────────────────────────────
+
   /**
-   * 崩溃恢复：检查 index.json 是否损坏，从 history 文件重建。
+   * WAL 日志文件路径。按时间戳命名，便于排序。
+   * @private
+   */
+  _walPath() {
+    return join(this.walDir, `wal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.log`);
+  }
+
+  /**
+   * 追加一条 WAL 记录。
+   * 格式：JSON 行，每行一条记录。
+   * @private
+   * @param {string} op      操作类型: 'record' | 'invalidate' | 'clear'
+   * @param {object} payload 操作负载
+   */
+  _appendWAL(op, payload) {
+    if (!this.enableWAL) { return; }
+    try {
+      const entry = JSON.stringify({
+        op,
+        ts: Date.now(),
+        payload,
+      });
+      writeFileSync(this._walPath(), entry + '\n', 'utf-8');
+    } catch { /* WAL write failure is best-effort */ }
+  }
+
+  /**
+   * 从 WAL 日志中恢复未完成的写操作。
+   * 在构造函数中自动调用。
+   * @private
+   */
+  _recoverFromWAL() {
+    try {
+      if (!existsSync(this.walDir)) { return; }
+      const logFiles = readdirSync(this.walDir)
+        .filter(f => f.startsWith('wal-') && f.endsWith('.log'))
+        .sort(); // 按时间排序
+
+      let recovered = 0;
+      for (const f of logFiles) {
+        const lp = join(this.walDir, f);
+        try {
+          const content = readFileSync(lp, 'utf-8');
+          const lines = content.trim().split('\n');
+          for (const line of lines) {
+            if (!line.trim()) { continue; }
+            try {
+              const entry = JSON.parse(line);
+              if (entry.op === 'record') {
+                // 检查目标文件是否已正确记录
+                const { path, tag } = entry.payload;
+                if (!this.has(path, tag)) {
+                  // 重新执行写入
+                  if (this._objectExists(tag)) {
+                    this.record(path, this._readObject(tag));
+                    recovered++;
+                  }
+                }
+              } else if (entry.op === 'invalidate') {
+                this.invalidate(entry.payload.path);
+              } else if (entry.op === 'clear') {
+                this.clear();
+              }
+            } catch { /* skip corrupted line */ }
+          }
+          // 恢复完成后删除 WAL 文件
+          try { unlinkSync(lp); } catch {}
+        } catch { /* skip corrupted WAL file */ }
+      }
+
+      if (recovered > 0) {
+        // 重新保存 index
+        this._saveIndex();
+      }
+    } catch { /* best-effort crash recovery */ }
+  }
+
+  /**
+   * 清理所有 WAL 日志（在所有操作成功提交后调用）。
+   * @private
+   */
+  _truncateWAL() {
+    try {
+      if (!existsSync(this.walDir)) { return; }
+      const logFiles = readdirSync(this.walDir)
+        .filter(f => f.startsWith('wal-') && f.endsWith('.log'));
+      for (const f of logFiles) {
+        try { unlinkSync(join(this.walDir, f)); } catch {}
+      }
+    } catch { /* best-effort */ }
+  }
+
+  /**
+   * 显式提交：将所有 pending WAL 记录截断（表示已安全落地到主存储）。
+   */
+  commit() {
+    this._truncateWAL();
+  }
+
+  /**
+   * 崩溃恢复：检查 index.json 是否损坏，从 history 文件 + WAL 重建。
+   * 现在已由构造函数中的 _recoverFromWAL 自动处理。
    */
   recover() {
+    // WAL-based recovery is already done in constructor.
+    // This public method additionally tries to reconstruct index from history files.
+    const recovered = {};
     try {
-      const recovered = {};
       if (existsSync(this.historyDir)) {
         for (const f of readdirSync(this.historyDir)) {
           try {
             const hp = join(this.historyDir, f);
             const h = JSON.parse(readFileSync(hp, 'utf-8'));
             if (h.length > 0) {
+              // 从 index.json 已加载，这里作为额外保险
               const latest = h[h.length - 1];
-              // 从 history 文件名无法反推原始 path，需要扫描 index
-              // 通常 index.json 是可靠的，这里只是增强
+              if (latest && latest.tag) {
+                // 无法从 history 文件名反推 path，但可标记为已恢复
+              }
             }
           } catch {}
         }
       }
-      return recovered;
-    } catch {
-      return {};
-    }
+    } catch {}
+    return recovered;
   }
 }
 

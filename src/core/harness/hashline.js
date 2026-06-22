@@ -1744,6 +1744,64 @@ export const HashlineErrorCode = {
 };
 
 /**
+ * Error severity level 映射。
+ *  - FATAL: 必须中断，无法继续
+ *  - ERROR: 当前操作失败，可重试
+ *  - WARNING: 非阻塞警告，操作可继续
+ */
+export const HashlineErrorSeverity = {
+  PARSE_UNEXPECTED_TOKEN: 'FATAL',
+  PARSE_NO_SECTION_OPEN: 'FATAL',
+  PARSE_CONTENT_WITHOUT_OP: 'FATAL',
+  PARSE_INVALID_SECTION_HEADER: 'FATAL',
+  PARSE_INVALID_TAG_FORMAT: 'FATAL',
+  PARSE_INVALID_LINE_NUMBER: 'FATAL',
+  PARSE_AMBIGUOUS_SYNTAX: 'WARNING',
+  PARSE_UNIFIED_DIFF_DETECTED: 'ERROR',
+  APPLY_STALE_TAG: 'ERROR',
+  APPLY_FILE_NOT_FOUND: 'ERROR',
+  APPLY_RANGE_OUT_OF_BOUNDS: 'ERROR',
+  APPLY_OVERLAPPING_HUNKS: 'FATAL',
+  APPLY_WRITE_FAILED: 'FATAL',
+  APPLY_ROLLBACK_FAILED: 'FATAL',
+  CONFLICT_OVERLAPPING_CHANGE: 'ERROR',
+  CONFLICT_MOVED_BLOCK: 'WARNING',
+  CONFLICT_DELETED_ANCHOR: 'ERROR',
+  CONFLICT_AMBIGUOUS_MATCH: 'WARNING',
+  CONFLICT_CONTENT_DIVERGED: 'ERROR',
+  POLICY_PATH_ESCAPE: 'FATAL',
+  POLICY_SYMLINK_ESCAPE: 'FATAL',
+  POLICY_GENERATED_FILE: 'FATAL',
+  POLICY_BINARY_FILE: 'FATAL',
+  POLICY_MINIFIED_FILE: 'FATAL',
+  POLICY_LOCKFILE_READONLY: 'FATAL',
+  POLICY_FILE_TOO_LARGE: 'FATAL',
+};
+
+/** 获取错误代码对应的严重级别。 */
+export function errorSeverity(code) {
+  return HashlineErrorSeverity[code] || 'ERROR';
+}
+
+/**
+ * 所有错误的统一规范化格式。
+ * 包含：code, severity, sourceSpan, message, context。
+ */
+export function formatHashlineError(code, message, sourceSpan = null, context = null) {
+  const sev = errorSeverity(code);
+  const err = { code, severity: sev, message };
+  if (sourceSpan) {
+    err.sourceSpan = {
+      line: sourceSpan.line || sourceSpan.srcLine || null,
+      column: sourceSpan.column || null,
+      span: sourceSpan.span || null,
+    };
+  }
+  if (context) { err.context = context; }
+  return err;
+}
+
+/**
  * 结构化解析错误（含 source span）。
  */
 export class StructuredParseError extends Error {
@@ -2297,37 +2355,145 @@ export class Diff3MergeEngine {
   }
 
   /**
-   * 计算 base → current 的行映射（简单 LCS 方法）。
+   * 计算 base → current 的行映射（真正 DP LCS + 回退模糊匹配）。
+   *
+   * 这一步是 diff3 merge 的核心：找出 base 中每一行在 current 中的
+   * 对应位置，从而判断 patch 的锚定行是否已被其他人修改。
+   *
+   * 算法：
+   *  1. 先按内容哈希匹配，缩小 DP 网格。
+   *  2. 对哈希匹配的行序列跑 DP LCS。
+   *  3. 对哈希未匹配的行，使用编辑距离模糊匹配回退。
+   *
    * @private
    */
   static _computeEditMapping(baseLines, curLines) {
-    const mapping = {};
-
-    // 使用贪心 LCS 建立 base → current 映射
     const n = baseLines.length;
     const m = curLines.length;
 
-    // 建立 current 行索引
-    const curIndex = new Map();
+    // ── Step 1: 内容哈希完全匹配 ──
+    const curHashIndex = new Map(); // hash → [line1, line2, ...]
     for (let i = 0; i < m; i++) {
       const fp = hashContent(curLines[i]);
-      if (!curIndex.has(fp)) { curIndex.set(fp, []); }
-      curIndex.get(fp).push(i + 1);
+      if (!curHashIndex.has(fp)) { curHashIndex.set(fp, []); }
+      curHashIndex.get(fp).push(i + 1);
     }
 
-    // 贪心匹配
-    let lastCurIdx = 0;
-    for (let i = 0; i < n; i++) {
-      const fp = hashContent(baseLines[i]);
-      const candidates = curIndex.get(fp) || [];
-      const found = candidates.find(c => c > lastCurIdx);
-      if (found !== undefined) {
-        mapping[i + 1] = found;
-        lastCurIdx = found;
+    // ── Step 2: 找出所有候选匹配对 (baseLine, curLine candidates) ──
+    // 用 DP 找最长递增子序列
+    const candidates = []; // [{bi, ci}]
+    for (let bi = 1; bi <= n; bi++) {
+      const fp = hashContent(baseLines[bi - 1]);
+      const matches = curHashIndex.get(fp) || [];
+      for (const ci of matches) {
+        candidates.push({ bi, ci });
+      }
+    }
+
+    // ── Step 3: DP LCS on candidate pairs ──
+    // 按 ci 排序后找 bi 的最长递增子序列
+    candidates.sort((a, b) => a.ci - b.ci || a.bi - b.bi);
+
+    // O(k log k) LIS
+    const lisTails = []; // tails[t] = 长度为 t+1 的 LIS 的末尾 bi 值
+    const lisIndices = []; // 对应在 candidates 中的索引
+    const prev = new Array(candidates.length).fill(-1);
+
+    for (let k = 0; k < candidates.length; k++) {
+      const { bi } = candidates[k];
+      // 二分查找：找到 tails 中第一个 >= bi 的位置
+      let lo = 0, hi = lisTails.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (lisTails[mid] < bi) { lo = mid + 1; }
+        else { hi = mid; }
+      }
+      if (lo > 0) { prev[k] = lisIndices[lo - 1]; }
+      if (lo === lisTails.length) {
+        lisTails.push(bi);
+        lisIndices.push(k);
+      } else {
+        lisTails[lo] = bi;
+        lisIndices[lo] = k;
+      }
+    }
+
+    // 回溯 LIS
+    const mapping = {};
+    const usedCi = new Set();
+    let idx = lisIndices.length > 0 ? lisIndices[lisIndices.length - 1] : -1;
+    while (idx >= 0) {
+      const { bi, ci } = candidates[idx];
+      mapping[bi] = ci;
+      usedCi.add(ci);
+      idx = prev[idx];
+    }
+
+    // ── Step 4: 回退模糊匹配 ──
+    // 对未匹配的 base 行，尝试用编辑距离在未使用的 cur 行中找最近匹配
+    const unmatchedBase = [];
+    for (let bi = 1; bi <= n; bi++) {
+      if (mapping[bi] === undefined) { unmatchedBase.push(bi); }
+    }
+    const unusedCur = [];
+    for (let ci = 1; ci <= m; ci++) {
+      if (!usedCi.has(ci)) { unusedCur.push(ci); }
+    }
+
+    for (const bi of unmatchedBase) {
+      const bLine = baseLines[bi - 1].trim();
+      if (bLine.length < 8) { continue; } // 太短的行不模糊匹配
+
+      let bestCi = -1, bestDist = Infinity;
+      for (const ci of unusedCur) {
+        const cLine = curLines[ci - 1].trim();
+        const dist = Diff3MergeEngine._editDistance(bLine, cLine);
+        // 允许 20% 以内的编辑距离
+        const threshold = Math.max(3, Math.floor(Math.max(bLine.length, cLine.length) * 0.2));
+        if (dist <= threshold && dist < bestDist) {
+          bestDist = dist;
+          bestCi = ci;
+        }
+      }
+      if (bestCi > 0) {
+        mapping[bi] = bestCi;
+        usedCi.add(bestCi);
+        const idx = unusedCur.indexOf(bestCi);
+        if (idx > -1) { unusedCur.splice(idx, 1); }
       }
     }
 
     return mapping;
+  }
+
+  /**
+   * 计算两个字符串的 Levenshtein 编辑距离。
+   * @private
+   */
+  static _editDistance(a, b) {
+    const lenA = a.length;
+    const lenB = b.length;
+    if (lenA === 0) { return lenB; }
+    if (lenB === 0) { return lenA; }
+
+    // 使用两行 DP 节省空间
+    let prev = new Array(lenB + 1);
+    let cur = new Array(lenB + 1);
+    for (let j = 0; j <= lenB; j++) { prev[j] = j; }
+
+    for (let i = 1; i <= lenA; i++) {
+      cur[0] = i;
+      for (let j = 1; j <= lenB; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        cur[j] = Math.min(
+          prev[j] + 1,      // deletion
+          cur[j - 1] + 1,   // insertion
+          prev[j - 1] + cost // substitution
+        );
+      }
+      [prev, cur] = [cur, prev];
+    }
+    return prev[lenB];
   }
 
   /**
