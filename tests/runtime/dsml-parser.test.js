@@ -133,6 +133,124 @@ describe('TextToolParser DSML Format', () => {
     });
   });
 
+  describe('Plain <invoke> format (no DSML prefix)', () => {
+    it('parses single <invoke> with path parameter', () => {
+      const parser = createParser();
+      const text = '<invoke name="list_dir">\n' +
+        '<parameter name="path" string="true">/Users/jingslunt/workspace</parameter>\n' +
+        '</invoke>';
+
+      const result = parser.parse(text);
+      expect(result.length).toBe(1);
+      expect(result[0].name).toBe('list_dir');
+      expect(result[0].arguments.path).toBe('/Users/jingslunt/workspace');
+      expect(result[0].source).toBe('plain_invoke');
+    });
+
+    it('parses multiple <invoke> blocks without DSML prefix', () => {
+      const parser = createParser();
+      const text = '<invoke name="list_dir">\n' +
+        '<parameter name="path" string="true">/tmp</parameter>\n' +
+        '</invoke>\n' +
+        '<invoke name="read_file">\n' +
+        '<parameter name="path" string="true">/tmp/file.js</parameter>\n' +
+        '</invoke>';
+
+      const result = parser.parse(text);
+      expect(result.length).toBe(2);
+      expect(result[0].name).toBe('list_dir');
+      expect(result[1].name).toBe('read_file');
+      expect(result[1].arguments.path).toBe('/tmp/file.js');
+    });
+
+    it('parses <invoke> with multiple parameters', () => {
+      const parser = createParser();
+      const text = '<invoke name="write_file">\n' +
+        '<parameter name="path" string="true">/tmp/test.js</parameter>\n' +
+        '<parameter name="content" string="true">console.log("hello")</parameter>\n' +
+        '</invoke>';
+
+      const result = parser.parse(text);
+      expect(result.length).toBe(1);
+      expect(result[0].name).toBe('write_file');
+      expect(result[0].arguments.path).toBe('/tmp/test.js');
+      expect(result[0].arguments.content).toBe('console.log("hello")');
+    });
+
+    it('filters out unknown tools in plain <invoke>', () => {
+      const parser = createParser();
+      const text = '<invoke name="nonexistent_tool">\n' +
+        '<parameter name="x" string="true">1</parameter>\n' +
+        '</invoke>';
+
+      const result = parser.parse(text);
+      expect(result.length).toBe(0);
+    });
+  });
+
+  describe('detectMalformedToolCall — plain <invoke>', () => {
+    it('detects plain <invoke> without DSML prefix', () => {
+      const parser = createParser();
+      const text = '<invoke name="unknown_tool">\n' +
+        '<parameter name="path" string="true">/tmp</parameter>\n' +
+        '</invoke>';
+
+      const diag = parser.detectMalformedToolCall(text);
+      expect(diag).not.toBeNull();
+      expect(diag.tag).toBe('plain_invoke_without_dsml');
+    });
+
+    it('returns null for <invoke> that parses successfully', () => {
+      const parser = createParser();
+      const text = '<invoke name="list_dir">\n' +
+        '<parameter name="path" string="true">/tmp</parameter>\n' +
+        '</invoke>';
+
+      const diag = parser.detectMalformedToolCall(text);
+      expect(diag).toBeNull();
+    });
+  });
+
+  describe('detectMalformedToolCall — <function> and <tool> blocks', () => {
+    it('detects unparsed <function> blocks', () => {
+      const parser = createParser();
+      const text = '<function>\n<name>unknown_func</name>\n</function>';
+
+      const diag = parser.detectMalformedToolCall(text);
+      expect(diag).not.toBeNull();
+      expect(diag.tag).toBe('unparsed_function_block');
+    });
+
+    it('detects unparsed <tool> blocks with unrecognized tool name', () => {
+      const parser = createParser();
+      const text = '<tool>phony_tool</tool>';
+
+      const diag = parser.detectMalformedToolCall(text);
+      expect(diag).not.toBeNull();
+      expect(diag.tag).toBe('unparsed_tool_block');
+    });
+
+    it('returns null for <tool> with registered tool name (parsed by XML parser)', () => {
+      const parser = createParser();
+      const text = '<tool>list_dir</tool><arg name="path">/tmp</arg>';
+
+      // XML parser will parse this (tool name is registered)
+      const diag = parser.detectMalformedToolCall(text);
+      expect(diag).toBeNull();
+    });
+  });
+
+  describe('detectMalformedToolCall — close tag mismatch', () => {
+    it('detects mismatched <function> close tag', () => {
+      const parser = createParser();
+      const text = '<function>\n<name>list_dir</name>\n<parameters>{"path": "/tmp"}</parameters>';
+
+      const diag = parser.detectMalformedToolCall(text);
+      expect(diag).not.toBeNull();
+      expect(diag.tag).toBe('xml_close_mismatch_or_missing');
+    });
+  });
+
   describe('Empty / edge input', () => {
     it('handles empty string without throwing', () => {
       const parser = createParser();

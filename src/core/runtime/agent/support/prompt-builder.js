@@ -232,6 +232,8 @@ export function containsUnparsedToolSyntax(toolParser, responseText) {
     /<action>[\s\S]*?<\/action>/i,
     /<tool_call>[\s\S]*?<\/tool_call>/i,
     /<function_call>[\s\S]*?<\/function_call>/i,
+    /<function>\s*[\s\S]*?\s*<\/function>/i,
+    /<tool>\s*\/?[A-Za-z_][\w-]*\s*<\/tool>/i,
     /```(?:tool|json)?\s*\n\s*\{[\s\S]*?(?:"name"|"action"|"tool")[\s\S]*?\}\s*```/i,
     /\bCALL\s+\/?[A-Za-z_][\w.-]*\s*\(/,
     /<invoke\b[^>]*>/i,

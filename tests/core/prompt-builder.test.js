@@ -124,6 +124,18 @@ describe('containsUnparsedToolSyntax', () => {
     expect(containsUnparsedToolSyntax(null, '<action>{"action":"web_search","query":"厦门天气"}</action>')).toBe(true);
   });
 
+  test('detects <invoke> blocks without DSML prefix', () => {
+    expect(containsUnparsedToolSyntax(null, '<invoke name="list_dir"><parameter name="path">/tmp</parameter></invoke>')).toBe(true);
+  });
+
+  test('detects <function> blocks', () => {
+    expect(containsUnparsedToolSyntax(null, '<function>\n<name>search</name>\n</function>')).toBe(true);
+  });
+
+  test('detects <tool>name</tool> blocks', () => {
+    expect(containsUnparsedToolSyntax(null, '<tool>list_dir</tool>')).toBe(true);
+  });
+
   test('returns false for normal text', () => {
     expect(containsUnparsedToolSyntax(null, 'Hello World')).toBe(false);
   });

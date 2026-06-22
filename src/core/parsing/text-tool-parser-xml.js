@@ -9,13 +9,16 @@
  * Parse XML format tool calls.
  * Format: <tool>tool_name</tool><arg>value</arg>
  */
-export function parseXMLFormat(text, { resolveToolName }) {
+export function parseXMLFormat(text, { resolveToolName, toolRegistry }) {
   const toolCalls = [];
   const toolRegex = /<tool>\/?([A-Za-z_][\w-]*)<\/tool>/g;
   let match;
 
   while ((match = toolRegex.exec(text)) !== null) {
     const name = resolveToolName(match[1]);
+    // Skip unregistered tool names — these will be caught by malformed detection
+    if (toolRegistry && !toolRegistry.has?.(name)) continue;
+
     const args = {};
 
     const argRegex = new RegExp('<arg(?:\\s+name="([^"]+)")?>([^<]*)</arg>', 'g');

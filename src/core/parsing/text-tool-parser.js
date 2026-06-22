@@ -136,7 +136,9 @@ export class TextToolParser {
       { open: /<action\b[^>]*>/gi, expectedClose: '<' + '/action>' },
       { open: /<tool_call\b[^>]*>/gi, expectedClose: '<' + '/tool_call>' },
       { open: /<function_call\b[^>]*>/gi, expectedClose: '<' + '/function_call>' },
+      { open: /<function>/gi, expectedClose: '<' + '/function>' },
       { open: /<tool_code\b[^>]*>/gi, expectedClose: '<' + '/tool_code>' },
+      { open: /<tool>/gi, expectedClose: '<' + '/tool>' },
       { open: /<invoke\b[^>]*>/gi, expectedClose: '<' + '/invoke>' },
     ];
 
@@ -184,6 +186,32 @@ export class TextToolParser {
         closing: '</invoke>' + (text.includes('</invoke>') ? ' (present but not in DSML format)' : ' (missing)'),
         hint: '<invoke> blocks must be wrapped in ||DSML|| tags to be parsed. Use CALL tool_name({"param":"value"}) format instead.',
         sample: text.substring(invokeIdx, Math.min(invokeIdx + 200, text.length)),
+      };
+    }
+
+    // Check for properly-closed <function> / <tool> blocks that the parser couldn't resolve
+    // These are well-formed XML but may have unknown tool names or other issues.
+    const hasPlainFunctionBlock = /<function>\s*[\s\S]*?\s*<\/function>/i.test(text);
+    if (hasPlainFunctionBlock) {
+      const funcIdx = text.search(/<function>/i);
+      return {
+        tag: 'unparsed_function_block',
+        opening: '<function>',
+        closing: '</function>',
+        hint: '<function> blocks with this name/parameters could not be resolved to a registered tool. Use CALL tool_name({"param":"value"}) format.',
+        sample: text.substring(funcIdx, Math.min(funcIdx + 200, text.length)),
+      };
+    }
+
+    const hasPlainToolBlock = /<tool>\s*\/?[A-Za-z_][\w-]*\s*<\/tool>/i.test(text);
+    if (hasPlainToolBlock) {
+      const toolIdx = text.search(/<tool>/i);
+      return {
+        tag: 'unparsed_tool_block',
+        opening: '<tool>',
+        closing: '</tool>',
+        hint: '<tool> block could not be resolved to a recognized tool name. Use CALL tool_name({"param":"value"}) format.',
+        sample: text.substring(toolIdx, Math.min(toolIdx + 200, text.length)),
       };
     }
 
@@ -292,6 +320,7 @@ export class TextToolParser {
   #parseXMLFormat(text) {
     return parseXMLFormat(text, {
       resolveToolName: n => this.#resolveToolName(n),
+      toolRegistry: this.#toolRegistry,
     });
   }
 
