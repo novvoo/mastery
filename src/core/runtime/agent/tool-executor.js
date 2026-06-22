@@ -113,6 +113,7 @@ export class ToolExecutor {
         ? `Duplicate call to ${name} skipped. Previous result:\n${cachedResult}\n\nUse this observation to provide the final answer.`
         : `Warning: Duplicate call to ${name} skipped. Use the existing observations to provide the final answer.`;
       options.emitObservation?.(id, name, observation, resultMode);
+      this.#recordEvent(name, args, !!cachedResult, cachedResult || observation);
       return { name, result: cachedResult || null, skipped: true, cached: !!cachedResult };
     }
 

@@ -2,7 +2,7 @@
  * Integration tests: real ToolRegistry + scripted model provider → full ReAct loop.
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { createAgentEngine } from '../../src/core/agent-engine.js';
 import { ToolRegistry } from '../../src/core/tool-registry.js';
 
@@ -92,15 +92,20 @@ function makeUi() {
 describe('ReAct loop: real ToolRegistry + scripted model provider', () => {
   let registry;
   let ui;
+  let engine;
 
   beforeEach(() => {
     registry = makeRegistryWithTools();
     ui = makeUi();
   });
 
+  afterEach(() => {
+    if (engine) { try { engine.dispose(); } catch { /* ok */ } }
+  });
+
   test('FINAL_ANSWER marker: terminates with success=true', async () => {
     const model = makeScriptedModelProvider(['FINAL_ANSWER: Hello, world.']);
-    const engine = buildEngine(registry, model, ui);
+    engine = buildEngine(registry, model, ui);
     const result = await engine.run('say hi');
     expect(result.success).toBe(true);
     expect(result.status).toBe('completed');
@@ -119,7 +124,7 @@ describe('ReAct loop: real ToolRegistry + scripted model provider', () => {
       },
       'FINAL_ANSWER: echoed successfully.',
     ]);
-    const engine = buildEngine(registry, model, ui);
+    engine = buildEngine(registry, model, ui);
     const result = await engine.run('echo something');
     expect(result.success).toBe(true);
     expect(result.toolEvents.length).toBeGreaterThan(0);
@@ -138,7 +143,7 @@ describe('ReAct loop: real ToolRegistry + scripted model provider', () => {
       },
       'FINAL_ANSWER: done.',
     ]);
-    const engine = buildEngine(registry, model, ui);
+    engine = buildEngine(registry, model, ui);
     const result = await engine.run('sum 40 and 2');
     expect(result.success).toBe(true);
     const sumEvent = result.toolEvents.find(e => e.name === 'sum');
@@ -149,7 +154,7 @@ describe('ReAct loop: real ToolRegistry + scripted model provider', () => {
 
   test('Provider returns stop with text → treated as final answer', async () => {
     const model = makeScriptedModelProvider([{ text: 'The answer is blue.', finishReason: 'stop' }]);
-    const engine = buildEngine(registry, model, ui);
+    engine = buildEngine(registry, model, ui);
     const result = await engine.run('color of the sky');
     expect(result.success).toBe(true);
     expect(result.answer).toMatch(/blue/i);
@@ -164,7 +169,7 @@ describe('ReAct loop: real ToolRegistry + scripted model provider', () => {
       },
       'FINAL_ANSWER: finished.',
     ]);
-    const engine = buildEngine(registry, model, ui);
+    engine = buildEngine(registry, model, ui);
     const result = await engine.run('something strange');
     expect(result).toBeTruthy();
     expect(Array.isArray(result.toolEvents)).toBe(true);
