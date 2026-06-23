@@ -14,7 +14,7 @@ HANDOFF.md
 .github/*
 !.github/workflows/
 !.github/workflows/*.yml
-workspace
+/workspace
 logs
 test*.json
 *.log
