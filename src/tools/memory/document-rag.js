@@ -36,19 +36,11 @@ import {
   getEmbedder,
 } from './document-rag-state.js';
 
-import {
-  loadDocument,
-  inferKind,
-} from './document-rag-parsing.js';
+import { loadDocument, inferKind } from './document-rag-parsing.js';
 
-import {
-  chunkText,
-  tokenCount,
-} from './document-rag-chunking.js';
+import { chunkText, tokenCount } from './document-rag-chunking.js';
 
-import {
-  BM25Index,
-} from './document-rag-bm25.js';
+import { BM25Index } from './document-rag-bm25.js';
 
 import {
   hybridSearch,
@@ -95,13 +87,20 @@ export function createDocumentRagTools() {
 function createDocumentAddTool() {
   return {
     name: 'document_add',
-    description: 'Add a user document to the document RAG index. Supports local .txt/.md/.json/.html/.pdf/.docx files, http(s) URLs, or raw text content. Uses section-aware chunking and builds a hybrid semantic+BM25 index.',
+    description:
+      'Add a user document to the document RAG index. Supports local .txt/.md/.json/.html/.pdf/.docx files, http(s) URLs, or raw text content. Uses section-aware chunking and builds a hybrid semantic+BM25 index.',
     category: ToolCategory.FILESYSTEM,
     params: {
-      source: { type: 'string', description: 'Local path or http(s) URL. Optional if content is provided.' },
+      source: {
+        type: 'string',
+        description: 'Local path or http(s) URL. Optional if content is provided.',
+      },
       content: { type: 'string', description: 'Raw document text to index directly.' },
       title: { type: 'string', description: 'Optional human-readable document title.' },
-      id: { type: 'string', description: 'Optional stable document id. Defaults to a generated id.' },
+      id: {
+        type: 'string',
+        description: 'Optional stable document id. Defaults to a generated id.',
+      },
     },
     handler: async ({ source, content, title, id }, ctx) => {
       await ensureState(ctx?.workingDirectory);
@@ -123,7 +122,7 @@ function createDocumentAddTool() {
       // chunk's first 80 chars within the normalized text.
       const normalizedText = normalizeText(parsed.text);
       const lines = normalizedText.split('\n');
-      const sectionBoundaries = sections.map(s => ({
+      const sectionBoundaries = sections.map((s) => ({
         heading: s.heading,
         startChar: lines.slice(0, s.startLine).join('\n').length + (s.startLine > 0 ? 1 : 0),
         endChar: lines.slice(0, s.endLine).join('\n').length,
@@ -131,7 +130,8 @@ function createDocumentAddTool() {
 
       const documentChunks = textChunks.map((chunk, index) => {
         const text = typeof chunk === 'string' ? chunk : chunk.text;
-        const sectionPath = chunk?.sectionPath || inferSectionForChunk(text, normalizedText, sectionBoundaries);
+        const sectionPath =
+          chunk?.sectionPath || inferSectionForChunk(text, normalizedText, sectionBoundaries);
         return {
           text,
           metadata: {
@@ -158,7 +158,7 @@ function createDocumentAddTool() {
         chars: parsed.text.length,
         tokens: rawTokens,
         sections: sectionPaths.length,
-        section_headings: sectionPaths.map(p => p[0]),
+        section_headings: sectionPaths.map((p) => p[0]),
         chunks: documentChunks.length,
         addedAt: new Date().toISOString(),
       });
@@ -167,7 +167,7 @@ function createDocumentAddTool() {
       // Pre-compute embeddings so search doesn't re-embed all chunks every time
       try {
         const embedder = await getEmbedder();
-        const texts = documentChunks.map(c => c.text);
+        const texts = documentChunks.map((c) => c.text);
         const embeddings = await embedder.embed(texts);
         for (let i = 0; i < documentChunks.length; i++) {
           documentChunks[i].embedding = embeddings[i] || null;
@@ -204,25 +204,37 @@ function createDocumentAddTool() {
         chars: parsed.text.length,
         tokens: rawTokens,
         sections: sectionPaths.length,
-        section_headings: sectionPaths.map(p => p[0]).slice(0, 20),
+        section_headings: sectionPaths.map((p) => p[0]).slice(0, 20),
       };
     },
   };
 }
 
 function inferSectionForChunk(chunkText, fullText, boundaries) {
-  if (!boundaries || boundaries.length === 0) { return ['Content']; }
+  if (!boundaries || boundaries.length === 0) {
+    return ['Content'];
+  }
   const needle = chunkText.trim().slice(0, 80);
-  if (!needle) { return ['Content']; }
+  if (!needle) {
+    return ['Content'];
+  }
   const pos = fullText.indexOf(needle);
-  if (pos === -1) { return ['Content']; }
+  if (pos === -1) {
+    return ['Content'];
+  }
   // Find the section whose [startChar, endChar] range contains pos
   for (const b of boundaries) {
-    if (pos >= b.startChar && pos <= b.endChar) { return [b.heading]; }
+    if (pos >= b.startChar && pos <= b.endChar) {
+      return [b.heading];
+    }
   }
   // Fallback: closest preceding section
   let chosen = boundaries[0];
-  for (const b of boundaries) { if (b.startChar <= pos) { chosen = b; } }
+  for (const b of boundaries) {
+    if (b.startChar <= pos) {
+      chosen = b;
+    }
+  }
   return [chosen.heading];
 }
 
@@ -230,20 +242,30 @@ function inferSectionForChunk(chunkText, fullText, boundaries) {
 function createDocumentSearchTool() {
   return {
     name: 'document_search',
-    description: 'Search previously added user documents using hybrid (semantic + BM25 lexical) scoring. Use this to answer questions grounded in uploaded documents.',
+    description:
+      'Search previously added user documents using hybrid (semantic + BM25 lexical) scoring. Use this to answer questions grounded in uploaded documents.',
     category: ToolCategory.FILESYSTEM,
     params: {
       query: { type: 'string', description: 'Natural-language question or concept to search for.' },
-      limit: { type: 'number', description: 'Maximum matching chunks to return (default 5, max 20).' },
+      limit: {
+        type: 'number',
+        description: 'Maximum matching chunks to return (default 5, max 20).',
+      },
       document_id: { type: 'string', description: 'Optional document id to restrict search.' },
-      min_score: { type: 'number', description: 'Minimum semantic score to keep (default 0.25; higher = stricter).' },
-      mmr_lambda: { type: 'number', description: 'MMR balance: 1.0 = pure relevance, 0.0 = pure diversity (default 0.7).' },
+      min_score: {
+        type: 'number',
+        description: 'Minimum semantic score to keep (default 0.25; higher = stricter).',
+      },
+      mmr_lambda: {
+        type: 'number',
+        description: 'MMR balance: 1.0 = pure relevance, 0.0 = pure diversity (default 0.7).',
+      },
     },
     required: ['query'],
     handler: async ({ query, limit, document_id, min_score, mmr_lambda }, ctx) => {
       await ensureState(ctx?.workingDirectory);
       const scopedChunks = document_id
-        ? chunks.filter(chunk => chunk.metadata.documentId === document_id)
+        ? chunks.filter((chunk) => chunk.metadata.documentId === document_id)
         : chunks;
 
       if (scopedChunks.length === 0) {
@@ -271,16 +293,25 @@ function createDocumentSearchTool() {
       });
 
       const results = (reranked.length > 0 ? reranked : hybrid).slice(0, maxResults);
-      for (const r of results) { r.query = query; }
+      for (const r of results) {
+        r.query = query;
+      }
 
       ctx?.ui?.debugEvent?.('Document search completed', {
         query,
         chunks: scopedChunks.length,
         finalResults: results.length,
-        hybrid_scores: results.map(r => ({ fused: r.score, semantic: r.semanticScore, lexical: r.lexicalScore })),
+        hybrid_scores: results.map((r) => ({
+          fused: r.score,
+          semantic: r.semanticScore,
+          lexical: r.lexicalScore,
+        })),
       });
 
-      return formatSearchResults(results, { totalChunks: scopedChunks.length, minScore: finalMinScore });
+      return formatSearchResults(results, {
+        totalChunks: scopedChunks.length,
+        minScore: finalMinScore,
+      });
     },
   };
 }
@@ -289,11 +320,18 @@ function createDocumentSearchTool() {
 function createDocumentAnswerTool() {
   return {
     name: 'document_answer',
-    description: 'Given a natural-language question about the uploaded documents, return a structured RAG answer including citations (with section paths), evidence snippets, confidence, and missing-info. Use this instead of document_search when the user wants a direct, citeable answer.',
+    description:
+      'Given a natural-language question about the uploaded documents, return a structured RAG answer including citations (with section paths), evidence snippets, confidence, and missing-info. Use this instead of document_search when the user wants a direct, citeable answer.',
     category: ToolCategory.FILESYSTEM,
     params: {
-      question: { type: 'string', description: 'The question to answer based on the indexed documents.' },
-      limit: { type: 'number', description: 'Max evidence chunks to consider (default 8, max 20).' },
+      question: {
+        type: 'string',
+        description: 'The question to answer based on the indexed documents.',
+      },
+      limit: {
+        type: 'number',
+        description: 'Max evidence chunks to consider (default 8, max 20).',
+      },
       document_id: { type: 'string', description: 'Optional document id to restrict search.' },
       min_score: { type: 'number', description: 'Minimum semantic score (default 0.25).' },
       mmr_lambda: { type: 'number', description: 'MMR lambda for diversity (default 0.7).' },
@@ -302,7 +340,7 @@ function createDocumentAnswerTool() {
     handler: async ({ question, limit, document_id, min_score, mmr_lambda }, ctx) => {
       await ensureState(ctx?.workingDirectory);
       const scopedChunks = document_id
-        ? chunks.filter(chunk => chunk.metadata.documentId === document_id)
+        ? chunks.filter((chunk) => chunk.metadata.documentId === document_id)
         : chunks;
 
       if (scopedChunks.length === 0) {
@@ -321,7 +359,11 @@ function createDocumentAnswerTool() {
 
       // Phase 2: merge adjacent → MMR
       const merged = mergeAdjacentChunks(hybrid);
-      const reranked = mmrReRank(merged, { lambda: finalLambda, limit: maxResults, minScore: -Infinity });
+      const reranked = mmrReRank(merged, {
+        lambda: finalLambda,
+        limit: maxResults,
+        minScore: -Infinity,
+      });
       const evidence = (reranked.length > 0 ? reranked : hybrid).slice(0, maxResults);
 
       return buildStructuredAnswer(question, evidence, scopedChunks.length, finalMinScore, {
@@ -335,7 +377,8 @@ function createDocumentAnswerTool() {
 function createDocumentListTool() {
   return {
     name: 'document_list',
-    description: 'List user documents currently loaded into the document RAG index, including section counts and chunk counts.',
+    description:
+      'List user documents currently loaded into the document RAG index, including section counts and chunk counts.',
     category: ToolCategory.FILESYSTEM,
     params: {},
     handler: async (args, ctx) => {
@@ -356,7 +399,10 @@ function createDocumentClearTool() {
     description: 'Clear one document or the entire document RAG index.',
     category: ToolCategory.FILESYSTEM,
     params: {
-      document_id: { type: 'string', description: 'Optional document id to remove. If omitted, clears all documents.' },
+      document_id: {
+        type: 'string',
+        description: 'Optional document id to remove. If omitted, clears all documents.',
+      },
     },
     handler: async ({ document_id }, ctx) => {
       await ensureState(ctx?.workingDirectory);
@@ -379,16 +425,21 @@ function createDocumentClearTool() {
  * ===================================================================== */
 
 async function synthesizeWithLLM(question, evidenceItems, modelProvider) {
-  if (!modelProvider || typeof modelProvider.chat !== 'function') { return null; }
+  if (!modelProvider || typeof modelProvider.chat !== 'function') {
+    return null;
+  }
 
   const topEv = evidenceItems.slice(0, 5);
-  const evidenceText = topEv.map((e, i) => {
-    const md = e.metadata || {};
-    const section = (md.sectionPath && md.sectionPath.length > 0)
-      ? ` [section: ${md.sectionPath.join(' › ')}]`
-      : '';
-    return `[Evidence #${i + 1}] doc=${md.documentId || '?'} chunk=${md.chunkIndex || '?'}${section}\n${(e.snippet || e.text || '').trim()}`;
-  }).join('\n\n---\n\n');
+  const evidenceText = topEv
+    .map((e, i) => {
+      const md = e.metadata || {};
+      const section =
+        md.sectionPath && md.sectionPath.length > 0
+          ? ` [section: ${md.sectionPath.join(' › ')}]`
+          : '';
+      return `[Evidence #${i + 1}] doc=${md.documentId || '?'} chunk=${md.chunkIndex || '?'}${section}\n${(e.snippet || e.text || '').trim()}`;
+    })
+    .join('\n\n---\n\n');
 
   const systemPrompt =
     '你是一个严谨的证据型问答助手。你的任务是：仅根据用户提供的 evidence 片段，用简洁的中文（或与 question 相同的语言）回答问题。\n' +
@@ -449,7 +500,8 @@ async function buildStructuredAnswer(question, evidence, totalChunks, minScore, 
     return {
       structured_rag: true,
       question,
-      answer: 'No document content scored above the relevance threshold. The indexed documents may not cover this question.',
+      answer:
+        'No document content scored above the relevance threshold. The indexed documents may not cover this question.',
       citations: [],
       evidence: [],
       confidence: 0.05,
@@ -481,9 +533,10 @@ async function buildStructuredAnswer(question, evidence, totalChunks, minScore, 
     const docTitle = md.title || 'Untitled';
     const sectionPath = md.sectionPath || null;
     const snippet = extractRelevantSnippet(item.text, question, 400);
-    const semanticPct = typeof item.semanticScore === 'number'
-      ? Math.round((item.semanticScore + 1) / 2 * 100)
-      : null;
+    const semanticPct =
+      typeof item.semanticScore === 'number'
+        ? Math.round(((item.semanticScore + 1) / 2) * 100)
+        : null;
 
     // Keep sectionPath unique for display
     if (sectionPath && Array.isArray(sectionPath)) {
@@ -497,7 +550,7 @@ async function buildStructuredAnswer(question, evidence, totalChunks, minScore, 
       source: md.source || null,
       chunk_index: md.chunkIndex || null,
       section_path: sectionPath,
-      score: Number(item.score) || 0,          // fused (RRF) score
+      score: Number(item.score) || 0, // fused (RRF) score
       semantic_score: Number(item.semanticScore) || 0,
       lexical_score: Number(item.lexicalScore) || 0,
       score_pct: semanticPct,
@@ -516,19 +569,21 @@ async function buildStructuredAnswer(question, evidence, totalChunks, minScore, 
         sections: sectionPath ? [sectionPath] : [],
       });
     } else {
-      const c = citations.find(c => c.document_id === docId);
+      const c = citations.find((c) => c.document_id === docId);
       if (c) {
         c.references += 1;
         if (sectionPath) {
           const key = sectionPath.join(' › ');
-          if (!c.sections.some(s => s.join(' › ') === key)) { c.sections.push(sectionPath); }
+          if (!c.sections.some((s) => s.join(' › ') === key)) {
+            c.sections.push(sectionPath);
+          }
         }
       }
     }
   }
 
   // Confidence from top-3 semantic scores (cosine → [0,1])
-  const topSemScores = evidence.slice(0, 3).map(e => Number(e.semanticScore) || 0);
+  const topSemScores = evidence.slice(0, 3).map((e) => Number(e.semanticScore) || 0);
   const avgTop = topSemScores.reduce((a, b) => a + b, 0) / Math.max(1, topSemScores.length);
   const confidence = Math.max(0, Math.min(1, (avgTop + 1) / 2));
 
@@ -540,10 +595,15 @@ async function buildStructuredAnswer(question, evidence, totalChunks, minScore, 
   let answerMethod = 'fallback-extractive';
   if (modelProvider && typeof modelProvider.chat === 'function' && !lowRelevance) {
     synthesizedAnswer = await synthesizeWithLLM(question, evidenceItems, modelProvider);
-    if (synthesizedAnswer) { answerMethod = 'llm-evidence-based'; }
+    if (synthesizedAnswer) {
+      answerMethod = 'llm-evidence-based';
+    }
   }
   if (!synthesizedAnswer) {
-    const topSnippet = evidenceItems.slice(0, 2).map(e => e.snippet).join(' ');
+    const topSnippet = evidenceItems
+      .slice(0, 2)
+      .map((e) => e.snippet)
+      .join(' ');
     synthesizedAnswer = condenseForAnswer(topSnippet, question, 600);
   }
 
@@ -584,7 +644,9 @@ async function buildStructuredAnswer(question, evidence, totalChunks, minScore, 
 function removeDocument(documentId) {
   const existed = documents.delete(documentId);
   for (let i = chunks.length - 1; i >= 0; i--) {
-    if (chunks[i].metadata.documentId === documentId) { chunks.splice(i, 1); }
+    if (chunks[i].metadata.documentId === documentId) {
+      chunks.splice(i, 1);
+    }
   }
   if (existed) {
     invalidateBM25Cache();

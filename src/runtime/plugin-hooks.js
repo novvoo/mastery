@@ -80,7 +80,9 @@ export class HookManager {
    */
   unregister(hookName, entry) {
     const hooks = this.#hooks.get(hookName);
-    if (!hooks) {return false;}
+    if (!hooks) {
+      return false;
+    }
 
     const index = hooks.indexOf(entry);
     if (index > -1) {
@@ -111,7 +113,7 @@ export class HookManager {
             hookName,
             hookFn: entry.name,
             pluginName: entry.pluginName,
-            error
+            error,
           });
 
           // 调用全局错误处理器
@@ -165,12 +167,12 @@ export class HookManager {
    */
   getHookInfo(hookName) {
     const hooks = this.#hooks.get(hookName) || [];
-    return hooks.map(entry => ({
+    return hooks.map((entry) => ({
       name: entry.name,
       priority: entry.priority,
       pluginName: entry.pluginName,
       called: entry.called,
-      enabled: entry.enabled
+      enabled: entry.enabled,
     }));
   }
 }

@@ -36,10 +36,7 @@ export {
   getRuntimeStatusMeta,
   getRuntimeStatusText,
 } from '../core/runtime/runtime-status.js';
-export {
-  normalizePreviewUrlInput,
-  formatPreviewUrlInput,
-} from '../core/runtime/preview-url.js';
+export { normalizePreviewUrlInput, formatPreviewUrlInput } from '../core/runtime/preview-url.js';
 
 // Plugin System - 插件系统
 export * from './plugin-system.js';
@@ -76,9 +73,9 @@ export function createRuntime(options = {}) {
     debug: options.debug || false,
     maxIterations: options.maxIterations,
     autoDownloadModels: options.autoDownloadModels !== false,
-    ...options
+    ...options,
   });
-  
+
   return createAgentEngine(config);
 }
 
@@ -102,5 +99,5 @@ export default {
   createAgentEngine,
   createRuntime,
   createCompatibilityLayer,
-  MigrationBridge
+  MigrationBridge,
 };

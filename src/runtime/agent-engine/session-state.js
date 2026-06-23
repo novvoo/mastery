@@ -40,7 +40,9 @@ export async function processInput(ctx, input, options = {}) {
   try {
     await ctx.memoryManager.updateTask(input.substring(0, 500), 'execution');
   } catch (err) {
-    try { console.warn('[MemoryManager] updateTask 失败:', err.message); } catch {}
+    try {
+      console.warn('[MemoryManager] updateTask 失败:', err.message);
+    } catch {}
   }
 
   await ctx.pluginManager.triggerHook(HOOKS.ON_INPUT_RECEIVED, input);
@@ -48,7 +50,7 @@ export async function processInput(ctx, input, options = {}) {
 
   ctx.eventBus.emit(RuntimeEvent.AGENT_START, {
     task: input,
-    timestamp: ctx.state.startTime
+    timestamp: ctx.state.startTime,
   });
 
   // 高级图规划（可选）
@@ -58,24 +60,27 @@ export async function processInput(ctx, input, options = {}) {
 
     const lowerInput = input.toLowerCase();
     let template = 'default';
-    if (lowerInput.includes('review') || lowerInput.includes('审查')) {template = 'code_review';}
-    else if (lowerInput.includes('refactor') || lowerInput.includes('重构')) {template = 'refactor';}
+    if (lowerInput.includes('review') || lowerInput.includes('审查')) {
+      template = 'code_review';
+    } else if (lowerInput.includes('refactor') || lowerInput.includes('重构')) {
+      template = 'refactor';
+    }
 
-    const subtasks = ctx.graphPlanner.decomposeTask(
-      null, input, { template }
-    );
+    const subtasks = ctx.graphPlanner.decomposeTask(null, input, { template });
     ctx.state.currentPlanId = ctx.graphPlanner._latestPlanId || null;
 
     ctx.eventBus.emit(RuntimeEvent.EXECUTION_PLAN_CREATED, {
       planId: ctx.state.currentPlanId,
-      taskCount: subtasks.length
+      taskCount: subtasks.length,
     });
 
     if (ctx.config.debug) {
       console.log(`[GraphPlanner] 创建执行计划, ${subtasks.length} 个子任务`);
     }
   } catch (planError) {
-    try { console.warn('[GraphPlanner] 任务规划失败，降级为线性执行:', planError.message); } catch {}
+    try {
+      console.warn('[GraphPlanner] 任务规划失败，降级为线性执行:', planError.message);
+    } catch {}
     ctx.state.currentPlanId = null;
   }
 
@@ -94,9 +99,9 @@ export async function processInput(ctx, input, options = {}) {
       model: ctx.config.model,
       intentClassification: ctx.config.intentClassification !== false,
       toolResultCacheEnabled: ctx.config.toolResultCacheEnabled,
-      session: ctx.sessionManager
+      session: ctx.sessionManager,
     },
-    ctx.uiAdapter || createDefaultUIFacade(ctx)
+    ctx.uiAdapter || createDefaultUIFacade(ctx),
   );
   ctx.agent = agent;
 
@@ -107,16 +112,22 @@ export async function processInput(ctx, input, options = {}) {
     ctx.eventBus.emit(RuntimeEvent.AGENT_COMPLETE, { result });
 
     if (ctx.state.status === 'completed') {
-      try { await ctx.memoryManager.completeTask(); } catch (err) {
-        try { console.warn('[MemoryManager] completeTask 失败:', err.message); } catch {}
+      try {
+        await ctx.memoryManager.completeTask();
+      } catch (err) {
+        try {
+          console.warn('[MemoryManager] completeTask 失败:', err.message);
+        } catch {}
       }
     }
 
     const tokenStats = ctx.tokenScope.getStats();
     if (tokenStats.totalRequests > 0) {
-      const cost = tokenStats.totalCost ? `$${tokenStats.totalCost.toFixed(4)}` : 'N/A (未配置模型价格)';
+      const cost = tokenStats.totalCost
+        ? `$${tokenStats.totalCost.toFixed(4)}`
+        : 'N/A (未配置模型价格)';
       console.log(
-        `[TokenScope] 本次任务: ${tokenStats.totalRequests} 请求, ${tokenStats.totalInputTokens}+${tokenStats.totalOutputTokens} tokens, ${cost} (${Math.round(tokenStats.duration / 1000)}s)`
+        `[TokenScope] 本次任务: ${tokenStats.totalRequests} 请求, ${tokenStats.totalInputTokens}+${tokenStats.totalOutputTokens} tokens, ${cost} (${Math.round(tokenStats.duration / 1000)}s)`,
       );
     }
 
@@ -130,8 +141,12 @@ export async function processInput(ctx, input, options = {}) {
     await ctx.pluginManager.triggerHook(HOOKS.ON_TOOL_ERROR, null, error);
     throw error;
   } finally {
-    try { await ctx.memoryManager.save(); } catch (err) {
-      try { console.warn('[MemoryManager] save 失败:', err.message); } catch {}
+    try {
+      await ctx.memoryManager.save();
+    } catch (err) {
+      try {
+        console.warn('[MemoryManager] save 失败:', err.message);
+      } catch {}
     }
     ctx.state.lastActivity = Date.now();
   }
@@ -149,11 +164,16 @@ export function createDefaultUIFacade(ctx) {
     error: (message) => eventBus.emit(RuntimeEvent.STATUS_UPDATE, { message, level: 'error' }),
     warn: (message) => eventBus.emit(RuntimeEvent.STATUS_UPDATE, { message, level: 'warn' }),
     debug: (message) => {
-      if (ctx.config.debug) {eventBus.emit(RuntimeEvent.STATUS_UPDATE, { message, level: 'debug' });}
+      if (ctx.config.debug) {
+        eventBus.emit(RuntimeEvent.STATUS_UPDATE, { message, level: 'debug' });
+      }
     },
-    debugEvent: (eventName, data) => eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
-      message: `[${eventName}]`, level: 'debug', data
-    }),
+    debugEvent: (eventName, data) =>
+      eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
+        message: `[${eventName}]`,
+        level: 'debug',
+        data,
+      }),
     thinking: (thinking) => eventBus.emit(RuntimeEvent.AGENT_THINKING, thinking),
     toolCall: (name, args) => {
       const activity = describeToolActivityLocal(name, args, 'running');
@@ -171,13 +191,19 @@ export function createDefaultUIFacade(ctx) {
       eventBus.emit(RuntimeEvent.TOOL_ACTIVITY, activity);
     },
     finalAnswer: (answer) => eventBus.emit(RuntimeEvent.AGENT_COMPLETE, { answer }),
-    iteration: (current, max) => eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
-      message: `迭代 ${current}/${max}`, level: 'info'
-    }),
+    iteration: (current, max) =>
+      eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
+        message: `迭代 ${current}/${max}`,
+        level: 'info',
+      }),
     theme: {
-      dim: (t) => t, success: (t) => t, error: (t) => t, info: (t) => t, warn: (t) => t
+      dim: (t) => t,
+      success: (t) => t,
+      error: (t) => t,
+      info: (t) => t,
+      warn: (t) => t,
     },
-    isDebugEnabled: () => ctx.config.debug === true
+    isDebugEnabled: () => ctx.config.debug === true,
   };
 }
 
@@ -187,7 +213,7 @@ function describeToolActivityLocal(name, args, status, resultOrError) {
     status,
     args: typeof args === 'object' && args ? Object.keys(args).length : 0,
     result: resultOrError ? String(resultOrError).substring(0, 120) : null,
-    timestamp: Date.now()
+    timestamp: Date.now(),
   };
 }
 

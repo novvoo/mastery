@@ -1,19 +1,23 @@
 export function generateTextToolPrompt(toolRegistry, tools = null) {
-  const visibleTools = Array.isArray(tools)
-    ? tools
-    : (toolRegistry ? toolRegistry.getAll() : []);
+  const visibleTools = Array.isArray(tools) ? tools : toolRegistry ? toolRegistry.getAll() : [];
   const grouped = new Map();
   for (const tool of visibleTools) {
     const category = tool.category || 'general';
-    if (!grouped.has(category)) {grouped.set(category, []);}
+    if (!grouped.has(category)) {
+      grouped.set(category, []);
+    }
     grouped.get(category).push(tool.name);
   }
 
   const lines = [
     'You can call tools exposed for the current request. Tool availability is intentionally task-scoped to keep reasoning fast.',
     '',
-    visibleTools.length > 0 ? 'Available tools for this request:' : 'No tools are currently exposed for this request.',
-    ...Array.from(grouped.entries()).map(([category, names]) => `- ${category}: ${names.join(', ')}`),
+    visibleTools.length > 0
+      ? 'Available tools for this request:'
+      : 'No tools are currently exposed for this request.',
+    ...Array.from(grouped.entries()).map(
+      ([category, names]) => `- ${category}: ${names.join(', ')}`,
+    ),
     '',
     'To use a tool, output in one of these formats:',
     '1. CALL tool_name({"param": "value"})',

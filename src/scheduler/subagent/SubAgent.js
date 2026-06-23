@@ -14,7 +14,7 @@ export const SubAgentStatus = {
   RUNNING: 'running',
   COMPLETED: 'completed',
   FAILED: 'failed',
-  STOPPED: 'stopped'
+  STOPPED: 'stopped',
 };
 
 /**
@@ -39,12 +39,12 @@ export class SubAgent {
   #messageBus;
   #parentId;
   #abortController;
-  #subAgentPool;      // 嵌套SubAgent支持
-  #parentMemory;      // 父代理记忆引用
-  #sharedContext;     // 共享上下文
-  #executionPromise;  // 执行Promise（用于同步等待）
-  #resolveExecution;  // Promise resolve函数
-  #rejectExecution;   // Promise reject函数
+  #subAgentPool; // 嵌套SubAgent支持
+  #parentMemory; // 父代理记忆引用
+  #sharedContext; // 共享上下文
+  #executionPromise; // 执行Promise（用于同步等待）
+  #resolveExecution; // Promise resolve函数
+  #rejectExecution; // Promise reject函数
 
   /**
    * 创建子代理实例
@@ -192,7 +192,9 @@ export class SubAgent {
    */
   createSubAgent(options = {}) {
     if (!this.#subAgentPool) {
-      throw new Error('SubAgentPool not available. Nested SubAgent creation requires a SubAgentPool.');
+      throw new Error(
+        'SubAgentPool not available. Nested SubAgent creation requires a SubAgentPool.',
+      );
     }
 
     // 合并共享上下文
@@ -200,7 +202,7 @@ export class SubAgent {
       ...this.#sharedContext,
       ...options.sharedContext,
       parentAgentId: this.#id,
-      parentTaskId: this.#task?.id
+      parentTaskId: this.#task?.id,
     };
 
     // 获取当前记忆状态用于共享
@@ -209,14 +211,14 @@ export class SubAgent {
       keyDecisions: currentMemory?.context?.keyDecisions || [],
       constraints: currentMemory?.context?.constraints || [],
       fileMap: currentMemory?.context?.fileMap || {},
-      currentTask: currentMemory?.context?.currentTask
+      currentTask: currentMemory?.context?.currentTask,
     };
 
     return this.#subAgentPool.create({
       ...options,
       parentId: this.#id,
       parentMemory: memorySnapshot,
-      sharedContext: mergedContext
+      sharedContext: mergedContext,
     });
   }
 
@@ -257,7 +259,7 @@ export class SubAgent {
     this.#notifyParent('task:started', {
       taskId: task.id,
       taskType: task.type,
-      timestamp: this.#startTime
+      timestamp: this.#startTime,
     });
 
     // 启动执行
@@ -270,7 +272,7 @@ export class SubAgent {
           reject(new Error(`Task execution timeout after ${timeout}ms`));
         }, timeout);
       });
-      
+
       return Promise.race([executionPromise, timeoutPromise]);
     }
 
@@ -310,7 +312,7 @@ export class SubAgent {
         taskId: task.id,
         output: agentResult?.answer || '',
         agentResult,
-        completedAt: Date.now()
+        completedAt: Date.now(),
       };
       this.#status = SubAgentStatus.COMPLETED;
       this.#endTime = Date.now();
@@ -319,7 +321,7 @@ export class SubAgent {
       this.#notifyParent('task:completed', {
         taskId: task.id,
         result: this.#result,
-        duration: this.#endTime - this.#startTime
+        duration: this.#endTime - this.#startTime,
       });
 
       // 解析执行Promise
@@ -328,12 +330,11 @@ export class SubAgent {
       }
 
       return this.#result;
-
     } catch (err) {
       // 设置错误状态
       this.#error = err instanceof Error ? err.message : String(err);
-      this.#status = this.#abortController?.signal.aborted 
-        ? SubAgentStatus.STOPPED 
+      this.#status = this.#abortController?.signal.aborted
+        ? SubAgentStatus.STOPPED
         : SubAgentStatus.FAILED;
       this.#endTime = Date.now();
 
@@ -341,7 +342,7 @@ export class SubAgent {
       this.#notifyParent('task:failed', {
         taskId: task.id,
         error: this.#error,
-        duration: this.#endTime - this.#startTime
+        duration: this.#endTime - this.#startTime,
       });
 
       // 拒绝执行Promise
@@ -374,7 +375,7 @@ export class SubAgent {
     if (this.#task) {
       this.#notifyParent('task:stopped', {
         taskId: this.#task.id,
-        timestamp: this.#endTime
+        timestamp: this.#endTime,
       });
     }
 
@@ -450,7 +451,7 @@ export class SubAgent {
         from: this.#id,
         to: this.#parentId,
         event,
-        data
+        data,
       });
     } catch (error) {
       console.error(`Failed to notify parent ${this.#parentId}:`, error);
@@ -489,9 +490,7 @@ export class SubAgent {
    */
   getStats() {
     const now = Date.now();
-    const duration = this.#startTime 
-      ? (this.#endTime || now) - this.#startTime 
-      : 0;
+    const duration = this.#startTime ? (this.#endTime || now) - this.#startTime : 0;
 
     return {
       id: this.#id,
@@ -501,7 +500,7 @@ export class SubAgent {
       startTime: this.#startTime,
       endTime: this.#endTime,
       duration,
-      hasExecutionPromise: this.#executionPromise !== null
+      hasExecutionPromise: this.#executionPromise !== null,
     };
   }
 

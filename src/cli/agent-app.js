@@ -135,7 +135,7 @@ class AIEngineeringAgent {
       securityPolicy: this.securityPolicy,
       intelligentReasoning: this.intelligentReasoning,
       automationEngine: this.automationEngine,
-      registerMcpTools: serverName => this.#registerMCPTools(serverName),
+      registerMcpTools: (serverName) => this.#registerMCPTools(serverName),
     });
 
     // Initialize MCP servers

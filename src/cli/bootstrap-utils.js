@@ -45,7 +45,9 @@ export function runDoctor() {
   console.log(`Model: ${model}`);
   console.log(`Working directory: ${workingDirectory}`);
   console.log(`User config: ${userEnvPath}${existsSync(userEnvPath) ? ' (found)' : ' (missing)'}`);
-  console.log(`Workspace: ${existsSync(workingDirectory) ? 'found' : 'will be created on startup'}`);
+  console.log(
+    `Workspace: ${existsSync(workingDirectory) ? 'found' : 'will be created on startup'}`,
+  );
 
   if (missing.length > 0) {
     enhancedUI.error(`Missing required configuration: ${missing.join(', ')}`);
@@ -59,7 +61,9 @@ export function runDoctor() {
 
 export function getPackageVersion() {
   try {
-    const pkg = JSON.parse(readFileSync(resolve(import.meta.dirname, '..', '..', 'package.json'), 'utf8'));
+    const pkg = JSON.parse(
+      readFileSync(resolve(import.meta.dirname, '..', '..', 'package.json'), 'utf8'),
+    );
     return pkg.version || 'unknown';
   } catch {
     return 'unknown';

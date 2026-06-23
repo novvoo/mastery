@@ -13,7 +13,17 @@
  * ```
  */
 
-import { hashContent, computeTag, Patch, Section, OP_SWAP, OP_DEL, OP_INS_PRE, OP_INS_POST, OP_NOP } from './hashline.js';
+import {
+  hashContent,
+  computeTag,
+  Patch,
+  Section,
+  OP_SWAP,
+  OP_DEL,
+  OP_INS_PRE,
+  OP_INS_POST,
+  OP_NOP,
+} from './hashline.js';
 
 // ── 类型定义 ────────────────────────────────────────────────────────────
 
@@ -82,7 +92,16 @@ export class TextEditMapper {
         patch: null,
         mappedEdits: [],
         conflicts: [],
-        stats: { total: 0, mapped: 0, merged: 0, conflicts: 0, create: 0, delete: 0, modify: 0, rename: 0 },
+        stats: {
+          total: 0,
+          mapped: 0,
+          merged: 0,
+          conflicts: 0,
+          create: 0,
+          delete: 0,
+          modify: 0,
+          rename: 0,
+        },
       };
     }
 
@@ -94,7 +113,7 @@ export class TextEditMapper {
     });
 
     // 2) 分类每个 edit
-    const classified = sorted.map(e => this._classify(e));
+    const classified = sorted.map((e) => this._classify(e));
 
     // 3) 检测并合并同行多 edit / overlapping edits
     const { mapped, conflicts } = this._resolveConflicts(classified);
@@ -105,11 +124,11 @@ export class TextEditMapper {
     const stats = {
       total: edits.length,
       mapped: mapped.length,
-      merged: mapped.filter(m => m.merged).length,
+      merged: mapped.filter((m) => m.merged).length,
       conflicts: conflicts.length,
-      create: mapped.filter(m => m.op === 'INS.PRE' || m.op === 'INS.POST').length,
-      delete: mapped.filter(m => m.op === 'DEL').length,
-      modify: mapped.filter(m => m.op === 'SWAP').length,
+      create: mapped.filter((m) => m.op === 'INS.PRE' || m.op === 'INS.POST').length,
+      delete: mapped.filter((m) => m.op === 'DEL').length,
+      modify: mapped.filter((m) => m.op === 'SWAP').length,
     };
 
     return { patch, mappedEdits: mapped, conflicts, stats };
@@ -150,7 +169,9 @@ export class TextEditMapper {
     }
 
     // 获取原始内容（用于冲突检测）
-    const originalContent = hasOldContent ? this._getContent(startLine, endLine, startChar, endChar) : '';
+    const originalContent = hasOldContent
+      ? this._getContent(startLine, endLine, startChar, endChar)
+      : '';
 
     return {
       startLine,
@@ -171,7 +192,9 @@ export class TextEditMapper {
    * @private
    */
   _getContent(startLine, endLine, startChar, endChar) {
-    if (startLine < 1 || startLine > this._lines.length) {return '';}
+    if (startLine < 1 || startLine > this._lines.length) {
+      return '';
+    }
     const s = startLine - 1;
     const e = Math.min(endLine - 1, this._lines.length - 1);
 
@@ -203,7 +226,10 @@ export class TextEditMapper {
     let i = 0;
     while (i < classified.length) {
       const cur = classified[i];
-      if (cur.op === 'NOP') { i++; continue; }
+      if (cur.op === 'NOP') {
+        i++;
+        continue;
+      }
 
       // 检查与前一个 resolved edit 是否有冲突
       if (resolved.length > 0 && this.options.detectConflicts) {
@@ -219,14 +245,25 @@ export class TextEditMapper {
 
             // 找到 classified 中 prev 对应的位置
             let k = i - 1;
-            while (k >= 0 && classified[k] !== prevEdit && classified[k].startLine === prevEdit.startLine) {k--;}
+            while (
+              k >= 0 &&
+              classified[k] !== prevEdit &&
+              classified[k].startLine === prevEdit.startLine
+            ) {
+              k--;
+            }
             // prev 可能已经是合并后的，需要拆分其 mergedFrom
             if (prevEdit.merged && prevEdit.mergedFrom.length > 0) {
               // 将 prevEdit.mergedFrom 中的原始 edits 加入（但它们在 classified 中已被合并）
               // 直接收集该行所有原始 classified edits
               let scanIdx = 0;
-              while (scanIdx < classified.length && classified[scanIdx].startLine < cur.startLine) {scanIdx++;}
-              while (scanIdx < classified.length && classified[scanIdx].startLine === cur.startLine) {
+              while (scanIdx < classified.length && classified[scanIdx].startLine < cur.startLine) {
+                scanIdx++;
+              }
+              while (
+                scanIdx < classified.length &&
+                classified[scanIdx].startLine === cur.startLine
+              ) {
                 if (classified[scanIdx].op !== 'NOP') {
                   sameLineEdits.push(classified[scanIdx]);
                 }
@@ -266,7 +303,9 @@ export class TextEditMapper {
               continue;
             }
             // 无法合并，回退为逐个添加
-            for (const edit of sameLineEdits) {resolved.push(edit);}
+            for (const edit of sameLineEdits) {
+              resolved.push(edit);
+            }
             continue;
           }
 
@@ -322,10 +361,14 @@ export class TextEditMapper {
    * @private
    */
   _mergeSameLineEditsBatch(edits) {
-    if (edits.length < 2) {return edits[0] || null;}
+    if (edits.length < 2) {
+      return edits[0] || null;
+    }
 
     const lineIdx = edits[0].startLine - 1;
-    if (lineIdx < 0 || lineIdx >= this._lines.length) {return null;}
+    if (lineIdx < 0 || lineIdx >= this._lines.length) {
+      return null;
+    }
 
     const orgLine = this._lines[lineIdx];
 
@@ -353,7 +396,9 @@ export class TextEditMapper {
       }
       // 插入替换内容
       const newText = edit.lines.join('\n');
-      if (newText) {parts.push(newText);}
+      if (newText) {
+        parts.push(newText);
+      }
       cursor = edit.endChar;
     }
 
@@ -371,7 +416,7 @@ export class TextEditMapper {
       lines: [newLine],
       source: edits[0].source,
       merged: true,
-      mergedFrom: sorted.map(e => e.source),
+      mergedFrom: sorted.map((e) => e.source),
       startChar: sorted[0].startChar,
       endChar: sorted[sorted.length - 1].endChar,
     };
@@ -451,18 +496,28 @@ export class TextEditMapper {
    * @private
    */
   _computeSimilarity(a, b) {
-    if (!a && !b) {return 1;}
-    if (!a || !b) {return 0;}
+    if (!a && !b) {
+      return 1;
+    }
+    if (!a || !b) {
+      return 0;
+    }
 
     const aWords = new Set(a.toLowerCase().split(/\s+/));
     const bWords = new Set(b.toLowerCase().split(/\s+/));
 
-    if (aWords.size === 0 && bWords.size === 0) {return 1;}
-    if (aWords.size === 0 || bWords.size === 0) {return 0;}
+    if (aWords.size === 0 && bWords.size === 0) {
+      return 1;
+    }
+    if (aWords.size === 0 || bWords.size === 0) {
+      return 0;
+    }
 
     let intersection = 0;
     for (const w of aWords) {
-      if (bWords.has(w)) {intersection++;}
+      if (bWords.has(w)) {
+        intersection++;
+      }
     }
 
     return intersection / Math.max(aWords.size, bWords.size);
@@ -475,11 +530,13 @@ export class TextEditMapper {
    * @private
    */
   _toHashlinePatch(mappedEdits) {
-    if (mappedEdits.length === 0) {return null;}
+    if (mappedEdits.length === 0) {
+      return null;
+    }
 
     const hunks = mappedEdits
-      .filter(e => e.op !== OP_NOP)
-      .map(e => ({
+      .filter((e) => e.op !== OP_NOP)
+      .map((e) => ({
         op: e.op,
         start: e.startLine,
         end: e.endLine,
@@ -487,7 +544,9 @@ export class TextEditMapper {
         srcLine: 0,
       }));
 
-    if (hunks.length === 0) {return null;}
+    if (hunks.length === 0) {
+      return null;
+    }
 
     const section = new Section(this.filePath, this._tag, hunks);
     return new Patch([section]);
@@ -497,24 +556,34 @@ export class TextEditMapper {
    * 生成 Hashline patch 文本（不经过 Patch 对象）。
    */
   toPatchText(mappedEdits) {
-    if (!mappedEdits || mappedEdits.length === 0) {return '';}
+    if (!mappedEdits || mappedEdits.length === 0) {
+      return '';
+    }
 
     const lines = [];
     lines.push(`[${this.filePath}#${this._tag}]`);
 
     for (const e of mappedEdits) {
-      if (e.op === 'NOP') {continue;}
+      if (e.op === 'NOP') {
+        continue;
+      }
       if (e.op === 'SWAP') {
         lines.push(`SWAP ${e.startLine}.=${e.endLine}:`);
-        for (const l of e.lines) {lines.push(`+${l}`);}
+        for (const l of e.lines) {
+          lines.push(`+${l}`);
+        }
       } else if (e.op === 'DEL') {
         lines.push(`DEL ${e.startLine}.=${e.endLine}`);
       } else if (e.op === 'INS.PRE') {
         lines.push(`INS.PRE ${e.startLine}=`);
-        for (const l of e.lines) {lines.push(`+${l}`);}
+        for (const l of e.lines) {
+          lines.push(`+${l}`);
+        }
       } else if (e.op === 'INS.POST') {
         lines.push(`INS.POST ${e.startLine}=`);
-        for (const l of e.lines) {lines.push(`+${l}`);}
+        for (const l of e.lines) {
+          lines.push(`+${l}`);
+        }
       }
     }
 

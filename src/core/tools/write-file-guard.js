@@ -45,7 +45,9 @@ export class WriteFileGuard {
         oldContent = await io.readFile(filePath);
         fileExists = true;
       }
-    } catch (_) { /* 文件不存在 — 视为全新创建 */ }
+    } catch (_) {
+      /* 文件不存在 — 视为全新创建 */
+    }
 
     const diff = computeDiff({ path: filePath, oldContent, newContent });
     const noop = diffIsNoop(diff);
@@ -123,9 +125,15 @@ export class WriteFileGuard {
 
   #isRisky(filePath, diff, newContent, fileExists) {
     // 启发式：全新文件 > 50 行 或 修改行数 > 40 视为需要谨慎
-    if (!fileExists && newContent.split('\n').length > 50) {return true;}
-    if (diff.hunks.length > 6) {return true;}
-    if ((diff.stats?.added ?? 0) + (diff.stats?.removed ?? 0) > 80) {return true;}
+    if (!fileExists && newContent.split('\n').length > 50) {
+      return true;
+    }
+    if (diff.hunks.length > 6) {
+      return true;
+    }
+    if ((diff.stats?.added ?? 0) + (diff.stats?.removed ?? 0) > 80) {
+      return true;
+    }
     // 路径包含常见配置/敏感关键字
     const lower = String(filePath).toLowerCase();
     if (/(package\.json|tsconfig|vite|webpack|\.env|deploy|dockerfile|nginx|kube)/.test(lower)) {

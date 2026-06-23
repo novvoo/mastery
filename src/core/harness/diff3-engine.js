@@ -33,10 +33,13 @@ export function myersDiff(a, b) {
 
   // 快速路径：相同前缀
   let prefix = 0;
-  while (prefix < n && prefix < m && a[prefix] === b[prefix]) {prefix++;}
+  while (prefix < n && prefix < m && a[prefix] === b[prefix]) {
+    prefix++;
+  }
 
   // 后缀
-  let suffixA = n, suffixB = m;
+  let suffixA = n,
+    suffixB = m;
   if (prefix === 0) {
     while (suffixA > 0 && suffixB > 0 && a[suffixA - 1] === b[suffixB - 1]) {
       suffixA--;
@@ -55,10 +58,10 @@ export function myersDiff(a, b) {
     const snapshot = new Int32Array(2 * max + 1);
     for (let k = -D; k <= D; k += 2) {
       let x;
-      if (k === -D || (k !== D && V[(k - 1) + max] < V[(k + 1) + max])) {
-        x = V[(k + 1) + max]; // 向下移动
+      if (k === -D || (k !== D && V[k - 1 + max] < V[k + 1 + max])) {
+        x = V[k + 1 + max]; // 向下移动
       } else {
-        x = V[(k - 1) + max] + 1; // 向右移动
+        x = V[k - 1 + max] + 1; // 向右移动
       }
       let y = x - k;
 
@@ -73,7 +76,21 @@ export function myersDiff(a, b) {
 
       if (x >= aLen && y >= bLen) {
         // 找到最短编辑脚本，回溯构建 diff
-        return _myersBacktrack(a, b, prefix, suffixA, suffixB, A, B, aLen, bLen, D, max, trace.concat([snapshot]), V);
+        return _myersBacktrack(
+          a,
+          b,
+          prefix,
+          suffixA,
+          suffixB,
+          A,
+          B,
+          aLen,
+          bLen,
+          D,
+          max,
+          trace.concat([snapshot]),
+          V,
+        );
       }
     }
     trace.push(snapshot);
@@ -83,7 +100,21 @@ export function myersDiff(a, b) {
   return _fallbackDiff(a, b);
 }
 
-function _myersBacktrack(aFull, bFull, prefix, suffixA, suffixB, A, B, aLen, bLen, D, max, trace, V) {
+function _myersBacktrack(
+  aFull,
+  bFull,
+  prefix,
+  suffixA,
+  suffixB,
+  A,
+  B,
+  aLen,
+  bLen,
+  D,
+  max,
+  trace,
+  V,
+) {
   const edits = [];
 
   // 添加前缀
@@ -92,14 +123,15 @@ function _myersBacktrack(aFull, bFull, prefix, suffixA, suffixB, A, B, aLen, bLe
   }
 
   // 从终点回溯
-  let x = aLen, y = bLen;
+  let x = aLen,
+    y = bLen;
 
   for (let d = D; d >= 0; d--) {
     const snapshot = d === D ? V : trace[d - 1] || new Int32Array(2 * max + 1);
     const k = x - y;
 
     let prevX, prevY, prevK;
-    if (k === -d || (k !== d && snapshot[(k - 1) + max] < snapshot[(k + 1) + max])) {
+    if (k === -d || (k !== d && snapshot[k - 1 + max] < snapshot[k + 1 + max])) {
       // 从 (k+1, y) 向下
       prevK = k + 1;
       prevX = snapshot[prevK + max] || 0;
@@ -113,7 +145,8 @@ function _myersBacktrack(aFull, bFull, prefix, suffixA, suffixB, A, B, aLen, bLe
 
     // 对角线滑动（相同的行）
     while (x > prevX && y > prevY) {
-      x--; y--;
+      x--;
+      y--;
       edits.push({ type: 'keep', line: A[x], aIdx: prefix + x, bIdx: prefix + y });
     }
 
@@ -153,11 +186,13 @@ function _myersBacktrack(aFull, bFull, prefix, suffixA, suffixB, A, B, aLen, bLe
 function _fallbackDiff(a, b) {
   // 简单逐行比较
   const result = [];
-  let i = 0, j = 0;
+  let i = 0,
+    j = 0;
   while (i < a.length && j < b.length) {
     if (a[i] === b[j]) {
       result.push({ type: 'keep', line: a[i], aIdx: i, bIdx: j });
-      i++; j++;
+      i++;
+      j++;
     } else {
       result.push({ type: 'delete', line: a[i], aIdx: i, bIdx: null });
       i++;
@@ -186,13 +221,16 @@ function extractEditHunks(diff) {
   for (let i = 0; i < diff.length; i++) {
     const d = diff[i];
     if (d.type === 'keep') {
-      if (current) { hunks.push(current); current = null; }
+      if (current) {
+        hunks.push(current);
+        current = null;
+      }
     } else {
       if (!current) {
         current = {
-          baseStart: d.aIdx !== null ? d.aIdx : (i > 0 ? diff[i - 1].aIdx + 1 : 0),
+          baseStart: d.aIdx !== null ? d.aIdx : i > 0 ? diff[i - 1].aIdx + 1 : 0,
           baseEnd: 0,
-          curStart: d.bIdx !== null ? d.bIdx : (i > 0 ? diff[i - 1].bIdx + 1 : 0),
+          curStart: d.bIdx !== null ? d.bIdx : i > 0 ? diff[i - 1].bIdx + 1 : 0,
           curEnd: 0,
           baseLines: [],
           curLines: [],
@@ -200,14 +238,20 @@ function extractEditHunks(diff) {
       }
       if (d.type === 'delete') {
         current.baseLines.push(d.line);
-        if (d.aIdx !== null) {current.baseEnd = d.aIdx;}
+        if (d.aIdx !== null) {
+          current.baseEnd = d.aIdx;
+        }
       } else if (d.type === 'insert') {
         current.curLines.push(d.line);
-        if (d.bIdx !== null) {current.curEnd = d.bIdx;}
+        if (d.bIdx !== null) {
+          current.curEnd = d.bIdx;
+        }
       }
     }
   }
-  if (current) {hunks.push(current);}
+  if (current) {
+    hunks.push(current);
+  }
 
   return hunks;
 }
@@ -256,8 +300,10 @@ export class IndustrialDiff3Engine {
 
     // ── Step 2: 为每个 hunk 在 base 中找到位置 ──
     const intendedEntries = [];
-    for (const h of (intendedHunks || [])) {
-      if (h.op === 'NOP') {continue;}
+    for (const h of intendedHunks || []) {
+      if (h.op === 'NOP') {
+        continue;
+      }
       intendedEntries.push(_normalizeHunk(h, baseLines));
     }
 
@@ -271,8 +317,12 @@ export class IndustrialDiff3Engine {
       for (const hunk of editHunks) {
         if (_rangesOverlap(intent.baseRange, [hunk.baseStart, hunk.baseEnd])) {
           // 冲突！
-          const baseText_ = baseLines.slice(intent.baseRange[0], intent.baseRange[1] + 1).join('\n');
-          const curText_ = curLines.slice(hunk.curStart, Math.min(hunk.curEnd + 1, curLines.length)).join('\n');
+          const baseText_ = baseLines
+            .slice(intent.baseRange[0], intent.baseRange[1] + 1)
+            .join('\n');
+          const curText_ = curLines
+            .slice(hunk.curStart, Math.min(hunk.curEnd + 1, curLines.length))
+            .join('\n');
           const intendedText = intent.lines.join('\n');
 
           conflicts.push({
@@ -280,7 +330,10 @@ export class IndustrialDiff3Engine {
             baseRange: intent.baseRange,
             currentRange: [hunk.curStart, hunk.curEnd],
             intendedRange: intent.baseRange,
-            baseLines: intent.baseRange[0] <= baseLines.length ? baseLines.slice(intent.baseRange[0], intent.baseRange[1] + 1) : [],
+            baseLines:
+              intent.baseRange[0] <= baseLines.length
+                ? baseLines.slice(intent.baseRange[0], intent.baseRange[1] + 1)
+                : [],
             currentLines: curLines.slice(hunk.curStart, Math.min(hunk.curEnd + 1, curLines.length)),
             intendedLines: intent.lines,
             resolution: 'unresolved',
@@ -314,7 +367,12 @@ export class IndustrialDiff3Engine {
         merged,
         conflicts: [],
         strategy: 'clean',
-        stats: { baseLines: baseLines.length, curLines: curLines.length, conflicts: 0, resolved: resolvedRegions.length },
+        stats: {
+          baseLines: baseLines.length,
+          curLines: curLines.length,
+          conflicts: 0,
+          resolved: resolvedRegions.length,
+        },
       };
     }
 
@@ -328,7 +386,12 @@ export class IndustrialDiff3Engine {
           strategy: 'partial',
           partialMerge: true,
           unresolvedCount: conflicts.length,
-          stats: { baseLines: baseLines.length, curLines: curLines.length, conflicts: conflicts.length, resolved: resolvedRegions.length },
+          stats: {
+            baseLines: baseLines.length,
+            curLines: curLines.length,
+            conflicts: conflicts.length,
+            resolved: resolvedRegions.length,
+          },
         };
       } catch {
         // 无法部分合并
@@ -341,7 +404,12 @@ export class IndustrialDiff3Engine {
       merged: mergedWithMarkers,
       conflicts,
       strategy: 'markers',
-      stats: { baseLines: baseLines.length, curLines: curLines.length, conflicts: conflicts.length, resolved: 0 },
+      stats: {
+        baseLines: baseLines.length,
+        curLines: curLines.length,
+        conflicts: conflicts.length,
+        resolved: 0,
+      },
     };
   }
 }
@@ -354,10 +422,7 @@ function _normalizeHunk(h, baseLines) {
   return {
     op: h.op,
     lines: h.lines || [],
-    baseRange: [
-      start,
-      Math.min(end, baseLines.length - 1),
-    ],
+    baseRange: [start, Math.min(end, baseLines.length - 1)],
   };
 }
 
@@ -402,10 +467,14 @@ function _applyResolvedRegions(curLines, regions, diff) {
   // 合并 diff inserts/deletes 信息
   const diffMap = new Map();
   for (const d of diff) {
-    if (d.type === 'delete') {diffMap.set(d.aIdx, { type: 'delete' });}
+    if (d.type === 'delete') {
+      diffMap.set(d.aIdx, { type: 'delete' });
+    }
     if (d.type === 'insert') {
       const key = d.aIdx;
-      if (!diffMap.has(key)) {diffMap.set(key, { type: 'insert', lines: [] });}
+      if (!diffMap.has(key)) {
+        diffMap.set(key, { type: 'insert', lines: [] });
+      }
       diffMap.get(key).lines = (diffMap.get(key).lines || []).concat(d.line);
     }
   }
@@ -413,11 +482,7 @@ function _applyResolvedRegions(curLines, regions, diff) {
   for (const r of sorted) {
     const [s, e] = r.baseRange;
     const insert = r.intendedLines;
-    result = [
-      ...result.slice(0, s),
-      ...insert,
-      ...result.slice(e + 1),
-    ];
+    result = [...result.slice(0, s), ...insert, ...result.slice(e + 1)];
   }
 
   return result.join('\n');

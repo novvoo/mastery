@@ -20,13 +20,13 @@ import { homedir } from 'os';
 
 const RULES_DIR = '.agent-rules';
 const INSTRUCTIONS_FILE = 'instructions.md';
-const MAX_RULES_DEPTH = 20;       // 最多向上查找 20 层
-const MAX_IMPORT_DEPTH = 5;       // @import 嵌套深度
+const MAX_RULES_DEPTH = 20; // 最多向上查找 20 层
+const MAX_IMPORT_DEPTH = 5; // @import 嵌套深度
 const MAX_RULES_SIZE = 200 * 1024; // 单文件最大 200KB
 
 export class ProjectRules {
   #workingDir;
-  #rules = [];           // { level: 'global'|'project'|'local', path, content }
+  #rules = []; // { level: 'global'|'project'|'local', path, content }
 
   constructor(workingDir) {
     this.#workingDir = resolve(workingDir || process.cwd());
@@ -65,7 +65,9 @@ export class ProjectRules {
    * @returns {string}
    */
   toPromptFragment() {
-    if (this.#rules.length === 0) { return ''; }
+    if (this.#rules.length === 0) {
+      return '';
+    }
 
     const parts = ['## Project Rules & Conventions'];
 
@@ -84,19 +86,25 @@ export class ProjectRules {
     if (grouped.global.length > 0) {
       parts.push('');
       parts.push('### Global Rules');
-      for (const r of grouped.global) { parts.push(r); }
+      for (const r of grouped.global) {
+        parts.push(r);
+      }
     }
 
     if (grouped.project.length > 0) {
       parts.push('');
       parts.push('### Project Rules');
-      for (const r of grouped.project) { parts.push(r); }
+      for (const r of grouped.project) {
+        parts.push(r);
+      }
     }
 
     if (grouped.local.length > 0) {
       parts.push('');
       parts.push('### Local Rules (subdirectory)');
-      for (const r of grouped.local) { parts.push(r); }
+      for (const r of grouped.local) {
+        parts.push(r);
+      }
     }
 
     return parts.join('\n');
@@ -126,7 +134,7 @@ export class ProjectRules {
    * @returns {Array<{level:string, path:string}>}
    */
   getLoadedRules() {
-    return this.#rules.map(r => ({ level: r.level, path: r.path }));
+    return this.#rules.map((r) => ({ level: r.level, path: r.path }));
   }
 
   /**
@@ -138,7 +146,7 @@ export class ProjectRules {
    */
   loadForPath(cwd) {
     const resolvedCwd = resolve(cwd);
-    const loadedPaths = new Set(this.#rules.map(r => dirname(r.path)));
+    const loadedPaths = new Set(this.#rules.map((r) => dirname(r.path)));
 
     // 从 cwd 向上查找
     let current = resolvedCwd;
@@ -158,7 +166,9 @@ export class ProjectRules {
       }
 
       const parent = dirname(current);
-      if (parent === current) { break; }
+      if (parent === current) {
+        break;
+      }
       current = parent;
       depth++;
     }
@@ -172,7 +182,9 @@ export class ProjectRules {
    * 判断路径的规则级别。
    */
   #determineLevel(path) {
-    if (resolve(path) === resolve(this.#workingDir)) { return 'project'; }
+    if (resolve(path) === resolve(this.#workingDir)) {
+      return 'project';
+    }
     return 'local';
   }
 
@@ -202,7 +214,9 @@ export class ProjectRules {
         this.#loadSingle(rulesDir, level, visited);
       }
       const parent = dirname(path);
-      if (parent === path) { break; }
+      if (parent === path) {
+        break;
+      }
       path = parent;
       depth++;
     }
@@ -215,12 +229,16 @@ export class ProjectRules {
     visited.add(rulesDir);
     const mainFile = join(rulesDir, INSTRUCTIONS_FILE);
 
-    if (!existsSync(mainFile)) { return; }
+    if (!existsSync(mainFile)) {
+      return;
+    }
 
     try {
       const stat = statSync(mainFile);
       if (stat.size > MAX_RULES_SIZE) {
-        console.warn(`ProjectRules: ${mainFile} exceeds max size (${MAX_RULES_SIZE} bytes), skipping`);
+        console.warn(
+          `ProjectRules: ${mainFile} exceeds max size (${MAX_RULES_SIZE} bytes), skipping`,
+        );
         return;
       }
 
@@ -240,7 +258,9 @@ export class ProjectRules {
    * 格式：@import path/to/file.md（每行一个）
    */
   #resolveImports(content, baseDir, visited, depth) {
-    if (depth >= MAX_IMPORT_DEPTH) { return content; }
+    if (depth >= MAX_IMPORT_DEPTH) {
+      return content;
+    }
 
     const lines = content.split('\n');
     const result = [];
@@ -276,7 +296,12 @@ export class ProjectRules {
 
         visited.add(resolvedPath);
         let importedContent = readFileSync(resolvedPath, 'utf-8');
-        importedContent = this.#resolveImports(importedContent, dirname(resolvedPath), visited, depth + 1);
+        importedContent = this.#resolveImports(
+          importedContent,
+          dirname(resolvedPath),
+          visited,
+          depth + 1,
+        );
 
         result.push(`<!-- imported from ${importRef} -->`);
         result.push(importedContent);

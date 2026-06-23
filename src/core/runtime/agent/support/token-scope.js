@@ -8,17 +8,17 @@
  */
 
 const DEFAULT_PRICING = {
-  'gpt-4o': { input: 5.00, output: 15.00 },
-  'gpt-4o-mini': { input: 0.15, output: 0.60 },
-  'gpt-4-turbo': { input: 10.00, output: 30.00 },
-  'gpt-4': { input: 30.00, output: 60.00 },
-  'claude-3-opus': { input: 15.00, output: 75.00 },
-  'claude-3-sonnet': { input: 3.00, output: 15.00 },
+  'gpt-4o': { input: 5.0, output: 15.0 },
+  'gpt-4o-mini': { input: 0.15, output: 0.6 },
+  'gpt-4-turbo': { input: 10.0, output: 30.0 },
+  'gpt-4': { input: 30.0, output: 60.0 },
+  'claude-3-opus': { input: 15.0, output: 75.0 },
+  'claude-3-sonnet': { input: 3.0, output: 15.0 },
   'claude-3-haiku': { input: 0.25, output: 1.25 },
-  'claude-3.5-sonnet': { input: 3.00, output: 15.00 },
-  'claude-3.5-haiku': { input: 0.80, output: 4.00 },
-  'gemini-1.5-pro': { input: 3.50, output: 10.50 },
-  'gemini-1.5-flash': { input: 0.075, output: 0.30 },
+  'claude-3.5-sonnet': { input: 3.0, output: 15.0 },
+  'claude-3.5-haiku': { input: 0.8, output: 4.0 },
+  'gemini-1.5-pro': { input: 3.5, output: 10.5 },
+  'gemini-1.5-flash': { input: 0.075, output: 0.3 },
 };
 
 export class TokenScope {
@@ -114,7 +114,9 @@ export class TokenScope {
 
   calculateCost(model, inputTokens, outputTokens) {
     const pricing = this.#pricing[model];
-    if (!pricing) {return 0;}
+    if (!pricing) {
+      return 0;
+    }
 
     const inputCost = (inputTokens / 1_000_000) * pricing.input;
     const outputCost = (outputTokens / 1_000_000) * pricing.output;
@@ -124,7 +126,9 @@ export class TokenScope {
 
   #checkBudget(userId, currentCost) {
     const budget = this.#budgetLimits[userId];
-    if (!budget) {return;}
+    if (!budget) {
+      return;
+    }
 
     const percentage = (currentCost / budget.limit) * 100;
 
@@ -239,7 +243,7 @@ export class TokenScope {
         outputTokens: acc.outputTokens + r.outputTokens,
         cost: acc.cost + r.cost,
       }),
-      { inputTokens: 0, outputTokens: 0, cost: 0 }
+      { inputTokens: 0, outputTokens: 0, cost: 0 },
     );
 
     return {
@@ -270,7 +274,9 @@ export class TokenScope {
   }
 
   getCostTrend(history) {
-    if (history.length === 0) {return [];}
+    if (history.length === 0) {
+      return [];
+    }
 
     const buckets = 24;
     const now = Date.now();
@@ -290,7 +296,7 @@ export class TokenScope {
     for (const record of history) {
       const bucketIndex = Math.min(
         Math.floor((record.timestamp - startTime) / bucketSize),
-        buckets - 1
+        buckets - 1,
       );
       if (bucketIndex >= 0) {
         bucketsData[bucketIndex].cost += record.cost;

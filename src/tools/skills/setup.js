@@ -12,13 +12,15 @@ async function exists(path) {
 }
 
 function slugify(value) {
-  return String(value || 'project')
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'project';
+  return (
+    String(value || 'project')
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/[\s_]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'project'
+  );
 }
 
 export default function setup() {
@@ -46,7 +48,8 @@ export default function setup() {
       },
       test_framework: {
         type: 'string',
-        description: 'Detected or selected test framework such as bun test, jest, vitest, pytest, go test, or cargo test.',
+        description:
+          'Detected or selected test framework such as bun test, jest, vitest, pytest, go test, or cargo test.',
       },
       code_style: {
         type: 'string',
@@ -74,7 +77,7 @@ export default function setup() {
       const adrPath = join(adrDir, '0001-initial-setup.md');
       const styleRules = String(code_style || '')
         .split(',')
-        .map(rule => rule.trim())
+        .map((rule) => rule.trim())
         .filter(Boolean);
 
       await mkdir(adrDir, { recursive: true });
@@ -83,57 +86,68 @@ export default function setup() {
       const skipped = [];
 
       if (overwrite || !(await exists(contextPath))) {
-        await writeFile(contextPath, [
-          `# Project Context`,
-          ``,
-          `## Project`,
-          `- Name: ${project_name}`,
-          `- Issue Tracker: ${issue_tracker}`,
-          `- Docs Path: ${docs_path}`,
-          `- Test Framework: ${test_framework}`,
-          ``,
-          `## Domain Language`,
-          `- TODO: Add shared domain terms and definitions.`,
-          ``,
-          `## Module Map`,
-          `- TODO: List major modules and their responsibilities.`,
-          ``,
-          `## Architecture Decisions`,
-          `- See \`${docs_path}/adr/\` for ADRs.`,
-          ``,
-          `## Code Style`,
-          ...(styleRules.length > 0
-            ? styleRules.map(rule => `- ${rule}`)
-            : [`- Follow existing project conventions.`, `- Keep changes surgical and tied to the request.`]),
-          ``,
-          `## Verification`,
-          `- Default command: \`${test_framework}\``,
-          ``,
-        ].join('\n'), 'utf-8');
+        await writeFile(
+          contextPath,
+          [
+            `# Project Context`,
+            ``,
+            `## Project`,
+            `- Name: ${project_name}`,
+            `- Issue Tracker: ${issue_tracker}`,
+            `- Docs Path: ${docs_path}`,
+            `- Test Framework: ${test_framework}`,
+            ``,
+            `## Domain Language`,
+            `- TODO: Add shared domain terms and definitions.`,
+            ``,
+            `## Module Map`,
+            `- TODO: List major modules and their responsibilities.`,
+            ``,
+            `## Architecture Decisions`,
+            `- See \`${docs_path}/adr/\` for ADRs.`,
+            ``,
+            `## Code Style`,
+            ...(styleRules.length > 0
+              ? styleRules.map((rule) => `- ${rule}`)
+              : [
+                  `- Follow existing project conventions.`,
+                  `- Keep changes surgical and tied to the request.`,
+                ]),
+            ``,
+            `## Verification`,
+            `- Default command: \`${test_framework}\``,
+            ``,
+          ].join('\n'),
+          'utf-8',
+        );
         created.push(contextPath);
       } else {
         skipped.push(contextPath);
       }
 
       if (overwrite || !(await exists(adrPath))) {
-        await writeFile(adrPath, [
-          `# ADR 0001: Initial Project Setup`,
-          ``,
-          `## Status`,
-          `Accepted`,
-          ``,
-          `## Context`,
-          `This repository uses the AI Engineering Mastery methodology as shared operating context for coding agents.`,
-          ``,
-          `## Decision`,
-          `Use \`CONTEXT.md\` for domain language and module ownership, and \`${docs_path}/adr/\` for architecture decisions.`,
-          ``,
-          `## Consequences`,
-          `- Agents should read \`CONTEXT.md\` before non-trivial changes.`,
-          `- Significant architectural decisions should be recorded as ADRs.`,
-          `- Verification should use \`${test_framework}\` unless a narrower command is more appropriate.`,
-          ``,
-        ].join('\n'), 'utf-8');
+        await writeFile(
+          adrPath,
+          [
+            `# ADR 0001: Initial Project Setup`,
+            ``,
+            `## Status`,
+            `Accepted`,
+            ``,
+            `## Context`,
+            `This repository uses the AI Engineering Mastery methodology as shared operating context for coding agents.`,
+            ``,
+            `## Decision`,
+            `Use \`CONTEXT.md\` for domain language and module ownership, and \`${docs_path}/adr/\` for architecture decisions.`,
+            ``,
+            `## Consequences`,
+            `- Agents should read \`CONTEXT.md\` before non-trivial changes.`,
+            `- Significant architectural decisions should be recorded as ADRs.`,
+            `- Verification should use \`${test_framework}\` unless a narrower command is more appropriate.`,
+            ``,
+          ].join('\n'),
+          'utf-8',
+        );
         created.push(adrPath);
       } else {
         skipped.push(adrPath);
@@ -164,10 +178,12 @@ export default function setup() {
         `Base directory: ${baseDir}`,
         ``,
         `## Created`,
-        created.length > 0 ? created.map(path => `- ${path}`).join('\n') : '- None',
+        created.length > 0 ? created.map((path) => `- ${path}`).join('\n') : '- None',
         ``,
         `## Skipped`,
-        skipped.length > 0 ? skipped.map(path => `- ${path} (already exists)`).join('\n') : '- None',
+        skipped.length > 0
+          ? skipped.map((path) => `- ${path} (already exists)`).join('\n')
+          : '- None',
         ``,
         `## Next Steps`,
         `- Use \`zoom_out\` before unfamiliar or cross-module changes.`,

@@ -1,33 +1,95 @@
 const SECTION_KEYWORDS_EN = [
-  'experience', 'work experience', 'professional experience',
-  'education', 'academic background', 'skills', 'technical skills',
-  'projects', 'project', 'summary', 'objective', 'about',
-  'certifications', 'certificates', 'awards', 'honors',
-  'publications', 'references', 'contact', 'languages',
-  'introduction', 'background', 'methodology', 'methods',
-  'results', 'discussion', 'conclusion', 'appendix',
-  'overview', 'key results', 'limitations', 'related work',
+  'experience',
+  'work experience',
+  'professional experience',
+  'education',
+  'academic background',
+  'skills',
+  'technical skills',
+  'projects',
+  'project',
+  'summary',
+  'objective',
+  'about',
+  'certifications',
+  'certificates',
+  'awards',
+  'honors',
+  'publications',
+  'references',
+  'contact',
+  'languages',
+  'introduction',
+  'background',
+  'methodology',
+  'methods',
+  'results',
+  'discussion',
+  'conclusion',
+  'appendix',
+  'overview',
+  'key results',
+  'limitations',
+  'related work',
 ];
 
 const SECTION_KEYWORDS_ZH = [
-  '教育背景', '教育经历', '学历', '学习经历',
-  '工作经历', '工作经验', '职业经历', '任职经历', '从业经历',
-  '项目经验', '项目经历', '项目',
-  '专业技能', '技能', '核心技能', '技术栈',
-  '个人简介', '自我介绍', '个人评价', '自我评价', '简介', '摘要',
-  '荣誉奖项', '获奖情况', '荣誉', '奖项',
-  '证书', '资格证书', '认证',
-  '论文发表', '发表', '出版物',
-  '语言能力', '语言',
-  '联系方式', '联系', '求职意向', '意向',
-  '概述', '背景', '方法', '结果', '讨论', '结论', '附录',
-  '相关工作', '参考文献',
+  '教育背景',
+  '教育经历',
+  '学历',
+  '学习经历',
+  '工作经历',
+  '工作经验',
+  '职业经历',
+  '任职经历',
+  '从业经历',
+  '项目经验',
+  '项目经历',
+  '项目',
+  '专业技能',
+  '技能',
+  '核心技能',
+  '技术栈',
+  '个人简介',
+  '自我介绍',
+  '个人评价',
+  '自我评价',
+  '简介',
+  '摘要',
+  '荣誉奖项',
+  '获奖情况',
+  '荣誉',
+  '奖项',
+  '证书',
+  '资格证书',
+  '认证',
+  '论文发表',
+  '发表',
+  '出版物',
+  '语言能力',
+  '语言',
+  '联系方式',
+  '联系',
+  '求职意向',
+  '意向',
+  '概述',
+  '背景',
+  '方法',
+  '结果',
+  '讨论',
+  '结论',
+  '附录',
+  '相关工作',
+  '参考文献',
 ];
 
-const PREFIX_STRIP_RE = /^(?:\s*(?:\d+[.\)、\)）:]|[①-⑳][.:\s]+|[一二三四五六七八九十]+[、.:\s]+|Chapter\s+\d+[:\s]+|[IVXLCDM]+\.\s*))?\s*/i;
+const PREFIX_STRIP_RE =
+  /^(?:\s*(?:\d+[.\)、\)）:]|[①-⑳][.:\s]+|[一二三四五六七八九十]+[、.:\s]+|Chapter\s+\d+[:\s]+|[IVXLCDM]+\.\s*))?\s*/i;
 
 export function normalizeHeading(raw) {
-  if (!raw) {return '';}
+  if (!raw) {
+    return '';
+  }
   let s = String(raw).trim();
   s = s.replace(PREFIX_STRIP_RE, '');
   s = s.replace(/[:：|\-\s]+$/g, '').trim();
@@ -37,16 +99,26 @@ export function normalizeHeading(raw) {
 }
 
 export function looksLikeHeading(line) {
-  if (!line) {return null;}
+  if (!line) {
+    return null;
+  }
   const trimmed = line.trim();
   const len = Array.from(trimmed).length;
 
-  if (len > 60 || len < 2) {return null;}
-  if (/^[\-\*•\d][\.\)\s]/.test(trimmed)) {return null;}
-  if (/^[①②③④⑤⑥⑦⑧⑨⑩]/.test(trimmed)) {return null;}
+  if (len > 60 || len < 2) {
+    return null;
+  }
+  if (/^[\-\*•\d][\.\)\s]/.test(trimmed)) {
+    return null;
+  }
+  if (/^[①②③④⑤⑥⑦⑧⑨⑩]/.test(trimmed)) {
+    return null;
+  }
 
   const normalized = normalizeHeading(trimmed);
-  if (!normalized) {return null;}
+  if (!normalized) {
+    return null;
+  }
 
   if (/^#{1,6}\s+\S/.test(trimmed)) {
     return { text: normalized, kind: 'markdown' };
@@ -58,17 +130,21 @@ export function looksLikeHeading(line) {
 
   if (/^[A-Z][A-Z0-9\s&/\-]{2,40}$/.test(trimmed) && trimmed === trimmed.toUpperCase()) {
     const lower = normalized.toLowerCase();
-    if (SECTION_KEYWORDS_EN.some(k => lower.includes(k)) || len <= 25) {
+    if (SECTION_KEYWORDS_EN.some((k) => lower.includes(k)) || len <= 25) {
       return { text: normalized, kind: 'allcaps' };
     }
   }
 
   const lowerNorm = normalized.toLowerCase();
-  const zhHit = SECTION_KEYWORDS_ZH.find(k => normalized.includes(k));
-  if (zhHit) {return { text: normalized, kind: 'zh-keyword', matched: zhHit };}
+  const zhHit = SECTION_KEYWORDS_ZH.find((k) => normalized.includes(k));
+  if (zhHit) {
+    return { text: normalized, kind: 'zh-keyword', matched: zhHit };
+  }
 
-  const enHit = SECTION_KEYWORDS_EN.find(k => lowerNorm.includes(k));
-  if (enHit) {return { text: normalized, kind: 'en-keyword', matched: enHit };}
+  const enHit = SECTION_KEYWORDS_EN.find((k) => lowerNorm.includes(k));
+  if (enHit) {
+    return { text: normalized, kind: 'en-keyword', matched: enHit };
+  }
 
   if (/[:：]\s*$/.test(trimmed) && len <= 30) {
     return { text: normalized, kind: 'trailing-colon' };
@@ -78,16 +154,22 @@ export function looksLikeHeading(line) {
 }
 
 export function detectSections(rawText) {
-  if (!rawText) {return [];}
+  if (!rawText) {
+    return [];
+  }
   const lines = rawText.split('\n');
   const hits = [];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (!line || !line.trim()) {continue;}
+    if (!line || !line.trim()) {
+      continue;
+    }
 
     const trimmed = line.trim();
-    if (Array.from(trimmed).length > 60) {continue;}
+    if (Array.from(trimmed).length > 60) {
+      continue;
+    }
 
     const match = looksLikeHeading(trimmed);
     if (match) {
@@ -98,11 +180,13 @@ export function detectSections(rawText) {
   const sections = [];
   for (let i = 0; i < hits.length; i++) {
     const start = hits[i].lineIndex;
-    const end = (i + 1 < hits.length) ? hits[i + 1].lineIndex : lines.length;
+    const end = i + 1 < hits.length ? hits[i + 1].lineIndex : lines.length;
 
     let bodyLines = 0;
     for (let j = start + 1; j < end; j++) {
-      if (lines[j] && lines[j].trim()) {bodyLines++;}
+      if (lines[j] && lines[j].trim()) {
+        bodyLines++;
+      }
     }
 
     if (bodyLines >= 1 || hits.length === 1) {
@@ -116,13 +200,13 @@ export function detectSections(rawText) {
     }
   }
 
-  if (sections.length === 0 && lines.some(line => line && line.trim())) {
+  if (sections.length === 0 && lines.some((line) => line && line.trim())) {
     sections.push({
       startLine: 0,
       endLine: lines.length,
       heading: 'Content',
       kind: 'default',
-      bodyLines: lines.filter(line => line && line.trim()).length,
+      bodyLines: lines.filter((line) => line && line.trim()).length,
     });
   }
 
@@ -130,5 +214,5 @@ export function detectSections(rawText) {
 }
 
 export function buildSectionPaths(sections) {
-  return sections.map(section => [section.heading]);
+  return sections.map((section) => [section.heading]);
 }

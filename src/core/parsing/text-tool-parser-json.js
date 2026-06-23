@@ -23,7 +23,9 @@ export function parseJSONBlockFormat(text, { findBalancedJSON, safeJSONParse, to
   while ((match = blockRegex.exec(text)) !== null) {
     const braceStart = match.index + match[0].length - 1;
     const found = findBalancedJSON(text, braceStart);
-    if (!found) {continue;}
+    if (!found) {
+      continue;
+    }
 
     // verify closing code fence appears within a few characters after the JSON
     const after = text.substring(found.endIdx, found.endIdx + 20);
@@ -74,7 +76,10 @@ export function parseActionTagFormat(text, { safeJSONParse, toolCallsFromJSON })
  * @param {function} deps.parseLooseRawJSONAction
  * @returns {Array<object>}
  */
-export function parseRawJSONActionFormat(text, { safeJSONParse, toolCallsFromJSON, parseLooseRawJSONAction }) {
+export function parseRawJSONActionFormat(
+  text,
+  { safeJSONParse, toolCallsFromJSON, parseLooseRawJSONAction },
+) {
   const trimmed = text.trim();
   if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
     return [];
@@ -96,7 +101,10 @@ export function parseRawJSONActionFormat(text, { safeJSONParse, toolCallsFromJSO
  * @param {object} deps.toolRegistry
  * @returns {Array<object>}
  */
-export function parseLooseRawJSONAction(text, { parseLooseJSONStringObject, normalizeJSONToolCall, toolRegistry }) {
+export function parseLooseRawJSONAction(
+  text,
+  { parseLooseJSONStringObject, normalizeJSONToolCall, toolRegistry },
+) {
   const actionMatch = text.match(/"action"\s*:\s*\{\s*"([^"]+)"\s*:\s*\{([\s\S]*)\}\s*\}\s*$/);
   if (!actionMatch) {
     return [];
@@ -108,12 +116,14 @@ export function parseLooseRawJSONAction(text, { parseLooseJSONStringObject, norm
     return [];
   }
 
-  return [{
-    id: `call_${Date.now()}_0`,
-    name,
-    arguments: args && typeof args === 'object' && !Array.isArray(args) ? args : {},
-    source: 'raw_JSON_action_loose',
-  }];
+  return [
+    {
+      id: `call_${Date.now()}_0`,
+      name,
+      arguments: args && typeof args === 'object' && !Array.isArray(args) ? args : {},
+      source: 'raw_JSON_action_loose',
+    },
+  ];
 }
 
 /**
@@ -125,7 +135,10 @@ export function parseLooseRawJSONAction(text, { parseLooseJSONStringObject, norm
  * @param {function} deps.extractJSONObjectCandidates
  * @returns {Array<object>}
  */
-export function parseEmbeddedJSONActionFormat(text, { safeJSONParse, toolCallsFromJSON, extractJSONObjectCandidates }) {
+export function parseEmbeddedJSONActionFormat(
+  text,
+  { safeJSONParse, toolCallsFromJSON, extractJSONObjectCandidates },
+) {
   if (!text.includes('"action"') && !text.includes("'action'")) {
     return [];
   }
@@ -174,8 +187,12 @@ export function extractJSONObjectCandidates(text) {
         quote = char;
         continue;
       }
-      if (char === '{') {depth++;}
-      if (char === '}') {depth--;}
+      if (char === '{') {
+        depth++;
+      }
+      if (char === '}') {
+        depth--;
+      }
       if (depth === 0) {
         candidates.push(text.slice(start, index + 1));
         break;

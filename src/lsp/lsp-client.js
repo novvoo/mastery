@@ -50,7 +50,7 @@ export class LSPServerError extends Error {
 export class LSPClient extends EventEmitter {
   #proc = null;
   #id = 0;
-  #pending = new Map();           // id -> { resolve, reject, timer }
+  #pending = new Map(); // id -> { resolve, reject, timer }
   #buffer = Buffer.alloc(0);
   #started = false;
   #stopping = false;
@@ -74,11 +74,15 @@ export class LSPClient extends EventEmitter {
 
   // ── 生命周期 ────────────────────────────────────────────────────────────
 
-  get started() { return this.#started && !this.#stopping; }
+  get started() {
+    return this.#started && !this.#stopping;
+  }
 
   /** 启动语言服务器 */
   async start() {
-    if (this.#started) { return; }
+    if (this.#started) {
+      return;
+    }
     return new Promise((resolve, reject) => {
       try {
         this.#proc = spawn(this.command, this.args, {
@@ -93,7 +97,9 @@ export class LSPClient extends EventEmitter {
 
       this.#proc.on('error', (err) => {
         this.emit('error', err);
-        if (!this.#started) { reject(err); }
+        if (!this.#started) {
+          reject(err);
+        }
       });
 
       this.#proc.on('exit', (code, signal) => {
@@ -119,7 +125,9 @@ export class LSPClient extends EventEmitter {
         // eslint-disable-next-line no-constant-condition
         while (true) {
           const headerEnd = stdoutBuffer.indexOf('\r\n\r\n');
-          if (headerEnd === -1) { break; }
+          if (headerEnd === -1) {
+            break;
+          }
           const headerText = stdoutBuffer.slice(0, headerEnd + 4).toString();
           const match = headerText.match(HEADER_RE);
           if (!match) {
@@ -163,14 +171,40 @@ export class LSPClient extends EventEmitter {
           documentSymbol: {},
           semanticTokens: {
             tokenTypes: [
-              'namespace', 'type', 'class', 'enum', 'interface', 'struct',
-              'typeParameter', 'parameter', 'variable', 'property', 'enumMember',
-              'function', 'method', 'macro', 'keyword', 'modifier', 'comment',
-              'string', 'number', 'regexp', 'operator', 'decorator',
+              'namespace',
+              'type',
+              'class',
+              'enum',
+              'interface',
+              'struct',
+              'typeParameter',
+              'parameter',
+              'variable',
+              'property',
+              'enumMember',
+              'function',
+              'method',
+              'macro',
+              'keyword',
+              'modifier',
+              'comment',
+              'string',
+              'number',
+              'regexp',
+              'operator',
+              'decorator',
             ],
             tokenModifiers: [
-              'declaration', 'definition', 'readonly', 'static', 'deprecated',
-              'abstract', 'async', 'modification', 'documentation', 'defaultLibrary',
+              'declaration',
+              'definition',
+              'readonly',
+              'static',
+              'deprecated',
+              'abstract',
+              'async',
+              'modification',
+              'documentation',
+              'defaultLibrary',
             ],
             formats: ['relative'],
           },
@@ -191,11 +225,15 @@ export class LSPClient extends EventEmitter {
 
   /** 优雅关闭 */
   async shutdown() {
-    if (!this.#started || this.#stopping) { return; }
+    if (!this.#started || this.#stopping) {
+      return;
+    }
     this.#stopping = true;
     try {
       await this.request('shutdown', null, 5000);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     this.notify('exit', null);
     this.#kill();
   }
@@ -203,9 +241,17 @@ export class LSPClient extends EventEmitter {
   /** 强制 kill */
   #kill() {
     if (this.#proc) {
-      try { this.#proc.kill('SIGTERM'); } catch { /* ignore */ }
+      try {
+        this.#proc.kill('SIGTERM');
+      } catch {
+        /* ignore */
+      }
       setTimeout(() => {
-        try { this.#proc.kill('SIGKILL'); } catch { /* ignore */ }
+        try {
+          this.#proc.kill('SIGKILL');
+        } catch {
+          /* ignore */
+        }
       }, 2000);
     }
     this.#started = false;
@@ -228,7 +274,9 @@ export class LSPClient extends EventEmitter {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.#pending.delete(id);
-        reject(new LSPClientError(`request ${method} timed out after ${timeout || this.timeout}ms`));
+        reject(
+          new LSPClientError(`request ${method} timed out after ${timeout || this.timeout}ms`),
+        );
       }, timeout || this.timeout);
       this.#pending.set(id, { resolve, reject, timer, method });
     });
@@ -270,10 +318,12 @@ export class LSPClient extends EventEmitter {
         clearTimeout(pending.timer);
         this.#pending.delete(msg.id);
         if (msg.error) {
-          pending.reject(new LSPClientError(
-            msg.error.message || `LSP error`,
-            { code: msg.error.code, data: msg.error.data },
-          ));
+          pending.reject(
+            new LSPClientError(msg.error.message || `LSP error`, {
+              code: msg.error.code,
+              data: msg.error.data,
+            }),
+          );
         } else {
           pending.resolve(msg.result);
         }
@@ -287,7 +337,9 @@ export class LSPClient extends EventEmitter {
       // 自动以 null 响应（表示不支持）
       try {
         this.#send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: null }));
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       return;
     }
 

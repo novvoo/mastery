@@ -60,12 +60,14 @@ export const RUNTIME_STATUS_META = {
  * @returns {{ text: string, icon: string, badgeVariant?: string, tone?: string }}
  */
 export function getRuntimeStatusMeta(status) {
-  return RUNTIME_STATUS_META[status] || {
-    text: '未知',
-    icon: '?',
-    badgeVariant: 'default',
-    tone: 'muted',
-  };
+  return (
+    RUNTIME_STATUS_META[status] || {
+      text: '未知',
+      icon: '?',
+      badgeVariant: 'default',
+      tone: 'muted',
+    }
+  );
 }
 
 /**

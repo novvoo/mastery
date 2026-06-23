@@ -19,19 +19,19 @@ export async function runCLIRuntime(options = {}) {
     platform: PlatformType.CLI,
     workingDirectory,
     debug,
-    maxIterations
+    maxIterations,
   });
 
   try {
     // Initialize engine
     await engine.initialize();
-    
+
     // Return engine for use
     return {
       engine,
       toolRegistry: engine.getToolRegistry(),
       memoryManager: engine.getMemoryManager(),
-      securityPolicy: engine.getSecurityPolicy()
+      securityPolicy: engine.getSecurityPolicy(),
     };
   } catch (error) {
     engine.dispose();

@@ -97,20 +97,22 @@ export function initializeToolGroups(ctx) {
  *     automationEngine, embedder, mcpClient, schedulerEngine, isInitialized
  */
 export async function runInitialization(ctx, registerAllToolsFn, wrapToolCallsFn) {
-  if (ctx.isInitialized) {return;}
+  if (ctx.isInitialized) {
+    return;
+  }
 
   await ctx.pluginManager.triggerHook(HOOKS.BEFORE_INIT, ctx.config);
 
   ctx.eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
     status: 'initializing',
-    message: '正在初始化运行环境...'
+    message: '正在初始化运行环境...',
   });
 
   // 1. 核心组件
   ctx.toolRegistry = new ToolRegistry();
   ctx.memoryManager = new AgentMemory(ctx.config.workingDirectory);
   ctx.securityPolicy = new SecurityPolicy({
-    requireApproval: ctx.config.requireApproval || false
+    requireApproval: ctx.config.requireApproval || false,
   });
   ctx.sessionManager = new SessionManager({ model: ctx.config.model });
 
@@ -121,31 +123,37 @@ export async function runInitialization(ctx, registerAllToolsFn, wrapToolCallsFn
   const experienceDir = ctx.config.workingDirectory + '/.agent-data';
   ctx.experienceMemory = new ExperienceMemory({
     filePath: experienceDir + '/experience-memory.json',
-    maxExperiences: 500
+    maxExperiences: 500,
   });
 
   // 3. TokenJuice
   ctx.tokenJuice = new TokenJuice({
-    maxChars: parseInt(process.env.MAX_RESULT_CHARS || '4000')
+    maxChars: parseInt(process.env.MAX_RESULT_CHARS || '4000'),
   });
 
   // 3.1 TokenScope
   const tokenBudget = ctx.config.tokenBudget ?? (parseFloat(process.env.TOKEN_BUDGET) || null);
   ctx.tokenScope = new TokenScope({
-    ...(tokenBudget ? {
-      budgetLimits: {
-        global: {
-          limit: tokenBudget,
-          warningThreshold: ctx.config.tokenBudgetWarningThreshold ?? 70,
-        },
-      },
-      onBudgetWarning: (info) => {
-        console.warn(`[TokenScope] 预算警告: ${(info.cost).toFixed(4)} / ${info.limit} (${info.percentage}%)`);
-      },
-      onBudgetExceeded: (info) => {
-        console.warn(`[TokenScope] 预算超限: ${(info.cost).toFixed(4)} / ${info.limit} — 停止任务`);
-      },
-    } : {}),
+    ...(tokenBudget
+      ? {
+          budgetLimits: {
+            global: {
+              limit: tokenBudget,
+              warningThreshold: ctx.config.tokenBudgetWarningThreshold ?? 70,
+            },
+          },
+          onBudgetWarning: (info) => {
+            console.warn(
+              `[TokenScope] 预算警告: ${info.cost.toFixed(4)} / ${info.limit} (${info.percentage}%)`,
+            );
+          },
+          onBudgetExceeded: (info) => {
+            console.warn(
+              `[TokenScope] 预算超限: ${info.cost.toFixed(4)} / ${info.limit} — 停止任务`,
+            );
+          },
+        }
+      : {}),
   });
 
   // 4. 智能推理引擎
@@ -153,20 +161,20 @@ export async function runInitialization(ctx, registerAllToolsFn, wrapToolCallsFn
     toolRegistry: ctx.toolRegistry,
     experienceMemory: ctx.experienceMemory,
     intentClassifier: null,
-    config: { maxCandidates: 5, confidenceThreshold: 0.7 }
+    config: { maxCandidates: 5, confidenceThreshold: 0.7 },
   });
 
   // 5. 自动化引擎
   ctx.automationEngine = new AutomationEngine({
     checkIntervalMs: 5000,
     maxConcurrentWorkflows: 5,
-    dataDir: experienceDir + '/.automation'
+    dataDir: experienceDir + '/.automation',
   });
 
   // 6. 嵌入器
   ctx.embedder = new Embedder();
   if (ctx.config.autoDownloadModels && process.env.NODE_ENV !== 'test') {
-    ctx.embedder.prepareModel().catch(error => {
+    ctx.embedder.prepareModel().catch((error) => {
       console.warn('嵌入模型准备失败，将使用备用方案:', error.message);
     });
   }
@@ -182,11 +190,11 @@ export async function runInitialization(ctx, registerAllToolsFn, wrapToolCallsFn
         dataDir: experienceDir,
         checkIntervalMs: 60000,
         maxAgents: 10,
-        securityPolicy: ctx.securityPolicy
+        securityPolicy: ctx.securityPolicy,
       },
       ctx.modelProvider,
       ctx.toolRegistry,
-      ctx.memoryManager
+      ctx.memoryManager,
     );
     await ctx.schedulerEngine.initialize();
   }
@@ -209,6 +217,6 @@ export async function runInitialization(ctx, registerAllToolsFn, wrapToolCallsFn
 
   ctx.eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
     status: 'ready',
-    message: '智能助手已就绪'
+    message: '智能助手已就绪',
   });
 }

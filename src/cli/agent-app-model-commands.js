@@ -1,8 +1,5 @@
 import { select, input } from '@inquirer/prompts';
-import {
-  assertSupportedProvider,
-  createModelProviderForSwitch,
-} from './model-provider-factory.js';
+import { assertSupportedProvider, createModelProviderForSwitch } from './model-provider-factory.js';
 import { enhancedUI } from './enhanced-ui.js';
 
 export async function handleModelCommand(agent, args) {

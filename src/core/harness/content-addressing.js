@@ -10,10 +10,10 @@
 import { createHash } from 'crypto';
 
 // 对象类型
-const TYPE_BLOB = 'blob';      // 文件内容
-const TYPE_TREE = 'tree';      // 目录结构
-const TYPE_COMMIT = 'commit';  // 提交记录
-const TYPE_ANCHOR = 'anchor';  // 锚点引用
+const TYPE_BLOB = 'blob'; // 文件内容
+const TYPE_TREE = 'tree'; // 目录结构
+const TYPE_COMMIT = 'commit'; // 提交记录
+const TYPE_ANCHOR = 'anchor'; // 锚点引用
 
 /**
  * 计算内容哈希
@@ -59,7 +59,7 @@ export class ContentAddressableStore {
       start,
       end,
       text,
-      hash: hashContent(text)
+      hash: hashContent(text),
     };
     return this.store(TYPE_ANCHOR, data);
   }
@@ -120,7 +120,7 @@ export class ContentAddressableStore {
   export() {
     return {
       objects: Array.from(this._objects.entries()),
-      refs: Array.from(this._refs.entries())
+      refs: Array.from(this._refs.entries()),
     };
   }
 
@@ -142,7 +142,7 @@ export class ContentAddressableStore {
   stats() {
     return {
       objects: this._objects.size,
-      refs: this._refs.size
+      refs: this._refs.size,
     };
   }
 }
@@ -176,14 +176,14 @@ export class FileAnalyzer {
         path,
         currentOffset,
         currentOffset + lineWithNewline.length,
-        lineWithNewline
+        lineWithNewline,
       );
 
       anchors.push({
         hash: anchorHash,
         text: lineWithNewline,
         start: currentOffset,
-        end: currentOffset + lineWithNewline.length
+        end: currentOffset + lineWithNewline.length,
       });
 
       currentOffset += lineWithNewline.length;
@@ -208,20 +208,22 @@ export class FileAnalyzer {
       const line = lines[i];
 
       // 检测函数声明
-      const funcMatch = line.match(/^\s*(?:export\s+)?(?:async\s+)?(?:function\s+([a-zA-Z_$][\w$]*)|(?:const|let|var)\s+([a-zA-Z_$][\w$]*)\s*=\s*(?:async\s+)?(?:function|=>))/);
+      const funcMatch = line.match(
+        /^\s*(?:export\s+)?(?:async\s+)?(?:function\s+([a-zA-Z_$][\w$]*)|(?:const|let|var)\s+([a-zA-Z_$][\w$]*)\s*=\s*(?:async\s+)?(?:function|=>))/,
+      );
 
       // 检测类声明
       const classMatch = line.match(/^\s*(?:export\s+)?class\s+([a-zA-Z_$][\w$]*)/);
 
       if (!currentBlock && (funcMatch || classMatch)) {
-        const name = funcMatch ? (funcMatch[1] || funcMatch[2]) : classMatch[1];
+        const name = funcMatch ? funcMatch[1] || funcMatch[2] : classMatch[1];
         const type = funcMatch ? 'function' : 'class';
 
         currentBlock = {
           text: line + '\n',
           type,
           name,
-          start: i
+          start: i,
         };
         braceBalance = 0;
       } else if (currentBlock) {
@@ -235,16 +237,16 @@ export class FileAnalyzer {
           // 块结束，存储
           const blockHash = this._store.storeAnchor(
             path,
-            0,  // 简化，不跟踪精确偏移
+            0, // 简化，不跟踪精确偏移
             0,
-            currentBlock.text
+            currentBlock.text,
           );
 
           blocks.push({
             hash: blockHash,
             text: currentBlock.text,
             type: currentBlock.type,
-            name: currentBlock.name
+            name: currentBlock.name,
           });
 
           currentBlock = null;
@@ -258,5 +260,5 @@ export class FileAnalyzer {
 
 export default {
   ContentAddressableStore,
-  FileAnalyzer
+  FileAnalyzer,
 };

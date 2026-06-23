@@ -138,7 +138,7 @@ export class Schedule {
       lastRunAt: this.lastRunAt,
       nextRunAt: this.nextRunAt,
       createdAt: this.createdAt,
-      updatedAt: this.updatedAt
+      updatedAt: this.updatedAt,
     };
   }
 
@@ -345,14 +345,20 @@ export class CronScheduler {
 
     // 按启用状态过滤
     if (options.enabled !== undefined) {
-      schedules = schedules.filter(s => s.enabled === options.enabled);
+      schedules = schedules.filter((s) => s.enabled === options.enabled);
     }
 
     // 按下次执行时间排序（null排在最后）
     schedules.sort((a, b) => {
-      if (a.nextRunAt === null && b.nextRunAt === null) {return 0;}
-      if (a.nextRunAt === null) {return 1;}
-      if (b.nextRunAt === null) {return -1;}
+      if (a.nextRunAt === null && b.nextRunAt === null) {
+        return 0;
+      }
+      if (a.nextRunAt === null) {
+        return 1;
+      }
+      if (b.nextRunAt === null) {
+        return -1;
+      }
       return a.nextRunAt - b.nextRunAt;
     });
 
@@ -370,7 +376,7 @@ export class CronScheduler {
    * @returns {Array<Schedule>}
    */
   getDueSchedules(now = new Date()) {
-    return Array.from(this.#schedules.values()).filter(schedule => schedule.shouldRun(now));
+    return Array.from(this.#schedules.values()).filter((schedule) => schedule.shouldRun(now));
   }
 
   /**
@@ -441,7 +447,7 @@ export class CronScheduler {
    * @returns {Promise<void>}
    */
   async #persist() {
-    const schedules = Array.from(this.#schedules.values()).map(s => s.toJSON());
+    const schedules = Array.from(this.#schedules.values()).map((s) => s.toJSON());
     await this.store.save(schedules);
   }
 }

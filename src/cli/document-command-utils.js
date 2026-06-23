@@ -5,7 +5,10 @@ import { resolve } from 'path';
 
 export function stripWrappingQuotes(value) {
   const text = String(value || '').trim();
-  if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+  if (
+    (text.startsWith('"') && text.endsWith('"')) ||
+    (text.startsWith("'") && text.endsWith("'"))
+  ) {
     return text.slice(1, -1);
   }
   return text;
@@ -36,13 +39,14 @@ export async function chooseDocumentFile() {
   }
 
   try {
-    return execFileSync('osascript', [
-      '-e',
-      'POSIX path of (choose file with prompt "Choose a document to add to RAG")',
-    ], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
+    return execFileSync(
+      'osascript',
+      ['-e', 'POSIX path of (choose file with prompt "Choose a document to add to RAG")'],
+      {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      },
+    ).trim();
   } catch {
     return '';
   }

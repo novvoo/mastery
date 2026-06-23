@@ -15,7 +15,9 @@ import { ExecutionPlan, TaskStatus } from '../../../planner/graph-planner.js';
 // ============== 工具谓词：根据工具名/args 推断它归属哪一阶段 ==============
 
 export function isWorkspaceInspectionTool(toolName, args) {
-  if (['list_dir', 'glob', 'search', 'semantic_search', 'read_file', 'check_file'].includes(toolName)) {
+  if (
+    ['list_dir', 'glob', 'search', 'semantic_search', 'read_file', 'check_file'].includes(toolName)
+  ) {
     return true;
   }
   if (toolName === 'shell') {
@@ -26,22 +28,45 @@ export function isWorkspaceInspectionTool(toolName, args) {
 }
 
 export function isPlanningTool(toolName) {
-  return ['brainstorm', 'grill', 'zoom_out', 'tdd', 'to_prd', 'to_issues', 'architect', 'setup'].includes(toolName);
+  return [
+    'brainstorm',
+    'grill',
+    'zoom_out',
+    'tdd',
+    'to_prd',
+    'to_issues',
+    'architect',
+    'setup',
+  ].includes(toolName);
 }
 
 export function isMutationTool(toolName, args) {
-  if (['write_file', 'edit_file', 'git_apply_patch', 'git_commit', 'delete_file', 'rename_file', 'mkdir'].includes(toolName)) {
+  if (
+    [
+      'write_file',
+      'edit_file',
+      'git_apply_patch',
+      'git_commit',
+      'delete_file',
+      'rename_file',
+      'mkdir',
+    ].includes(toolName)
+  ) {
     return true;
   }
   if (toolName === 'shell') {
     const command = String(args?.command || args?.input || args?.text || '').toLowerCase();
-    return /(^|\s)(bun|npm|pnpm|yarn|npx|node|python|pytest|vitest|jest|eslint|tsc|git|touch|cp|mv|rm|sed|perl|tee)\b|>|>>|apply_patch/.test(command);
+    return /(^|\s)(bun|npm|pnpm|yarn|npx|node|python|pytest|vitest|jest|eslint|tsc|git|touch|cp|mv|rm|sed|perl|tee)\b|>|>>|apply_patch/.test(
+      command,
+    );
   }
   return false;
 }
 
 export function isChangeInspectionTool(toolName, args) {
-  if (['read_file', 'list_dir', 'glob', 'search', 'check_file'].includes(toolName)) {return true;}
+  if (['read_file', 'list_dir', 'glob', 'search', 'check_file'].includes(toolName)) {
+    return true;
+  }
   if (toolName === 'shell') {
     const command = String(args?.command || '').toLowerCase();
     return /\b(cat|sed|awk|ls|find|rg|grep|git\s+diff|git\s+status)\b/.test(command);
@@ -50,24 +75,45 @@ export function isChangeInspectionTool(toolName, args) {
 }
 
 export function isVerificationTool(toolName, args) {
-  if (['verify', 'review', 'preview'].includes(toolName)) {return true;}
+  if (['verify', 'review', 'preview'].includes(toolName)) {
+    return true;
+  }
   if (toolName === 'shell') {
     const command = String(args?.command || args?.input || args?.text || '').toLowerCase();
-    return /\b(test|lint|check|verify|build|typecheck|tsc|jest|vitest|pytest|bun|node|npm|pnpm|yarn)\b/.test(command);
+    return /\b(test|lint|check|verify|build|typecheck|tsc|jest|vitest|pytest|bun|node|npm|pnpm|yarn)\b/.test(
+      command,
+    );
   }
   return false;
 }
 
 export function isSemanticRiskReviewTool(toolName, args, profile) {
-  if (!profile?.requiresSemanticRiskReview) {return false;}
+  if (!profile?.requiresSemanticRiskReview) {
+    return false;
+  }
   const focusText = String(
-    args?.focus_areas || args?.criteria || args?.claim || args?.evidence ||
-    args?.command || args?.input || args?.text || ''
+    args?.focus_areas ||
+      args?.criteria ||
+      args?.claim ||
+      args?.evidence ||
+      args?.command ||
+      args?.input ||
+      args?.text ||
+      '',
   ).toLowerCase();
-  const mentionsSemanticReview = /semantic|api|unit|timing|time|fps|frame|state|behavior|behaviour|invariant|boundary|语义|单位|时间|速度|状态|行为|边界/.test(focusText);
-  if (toolName === 'review') {return mentionsSemanticReview || !focusText;}
-  if (toolName === 'verify') {return mentionsSemanticReview;}
-  if (toolName === 'shell' && mentionsSemanticReview) {return true;}
+  const mentionsSemanticReview =
+    /semantic|api|unit|timing|time|fps|frame|state|behavior|behaviour|invariant|boundary|语义|单位|时间|速度|状态|行为|边界/.test(
+      focusText,
+    );
+  if (toolName === 'review') {
+    return mentionsSemanticReview || !focusText;
+  }
+  if (toolName === 'verify') {
+    return mentionsSemanticReview;
+  }
+  if (toolName === 'shell' && mentionsSemanticReview) {
+    return true;
+  }
   return false;
 }
 
@@ -75,7 +121,9 @@ export function isSemanticRiskReviewTool(toolName, args, profile) {
 
 export function isSuccessfulToolResult(result) {
   const text = typeof result === 'string' ? result : JSON.stringify(result ?? '');
-  if (!text.trim()) {return false;}
+  if (!text.trim()) {
+    return false;
+  }
   return !/^(Error|Command failed|BLOCKED):/i.test(text.trim());
 }
 
@@ -108,15 +156,36 @@ export class ExecutionPlanManager {
       context: { source: 'react-agent', generatedAt: new Date().toISOString() },
     });
 
-    plan.addTask({ id: 'inspect_workspace', name: 'Inspect workspace', description: 'Discover the relevant project structure and existing files before reading or writing.', dependencies: [] });
-    plan.addTask({ id: 'plan_solution', name: 'Plan solution', description: 'Choose the implementation approach and file split for the requested change.', dependencies: ['inspect_workspace'] });
-    plan.addTask({ id: 'implement_changes', name: 'Implement changes', description: 'Create or edit the required files using the smallest necessary changes.', dependencies: ['plan_solution'] });
-    plan.addTask({ id: 'inspect_changes', name: 'Inspect changes', description: 'Read back or otherwise inspect the files that were created or edited.', dependencies: ['implement_changes'] });
+    plan.addTask({
+      id: 'inspect_workspace',
+      name: 'Inspect workspace',
+      description:
+        'Discover the relevant project structure and existing files before reading or writing.',
+      dependencies: [],
+    });
+    plan.addTask({
+      id: 'plan_solution',
+      name: 'Plan solution',
+      description: 'Choose the implementation approach and file split for the requested change.',
+      dependencies: ['inspect_workspace'],
+    });
+    plan.addTask({
+      id: 'implement_changes',
+      name: 'Implement changes',
+      description: 'Create or edit the required files using the smallest necessary changes.',
+      dependencies: ['plan_solution'],
+    });
+    plan.addTask({
+      id: 'inspect_changes',
+      name: 'Inspect changes',
+      description: 'Read back or otherwise inspect the files that were created or edited.',
+      dependencies: ['implement_changes'],
+    });
     if (profile.requiresSemanticRiskReview) {
       plan.addTask({
         id: 'semantic_risk_review',
         name: 'Semantic/API risk review',
-        description: `Review the changed code against semantic risk domains: ${(profile.semanticRiskDomains || []).map(d => d.label).join('; ')}.`,
+        description: `Review the changed code against semantic risk domains: ${(profile.semanticRiskDomains || []).map((d) => d.label).join('; ')}.`,
         dependencies: ['inspect_changes'],
       });
     }
@@ -124,7 +193,9 @@ export class ExecutionPlanManager {
       id: 'verify_result',
       name: 'Verify result',
       description: 'Run an appropriate command/tool to verify the requested behavior.',
-      dependencies: profile.requiresSemanticRiskReview ? ['semantic_risk_review'] : ['inspect_changes'],
+      dependencies: profile.requiresSemanticRiskReview
+        ? ['semantic_risk_review']
+        : ['inspect_changes'],
     });
 
     plan.status = TaskStatus.RUNNING;
@@ -135,14 +206,24 @@ export class ExecutionPlanManager {
     return plan;
   }
 
-  get plan() { return this.#plan; }
-  get isActive() { return !!this.#plan && this.#plan.status === TaskStatus.RUNNING; }
-  get isCompleted() { return !!this.#plan && this.#plan.status === TaskStatus.COMPLETED; }
+  get plan() {
+    return this.#plan;
+  }
+  get isActive() {
+    return !!this.#plan && this.#plan.status === TaskStatus.RUNNING;
+  }
+  get isCompleted() {
+    return !!this.#plan && this.#plan.status === TaskStatus.COMPLETED;
+  }
 
   /** 记录工具调用后推进计划；返回 plan 的新摘要（若有变化） */
   advance(toolName, args, result) {
-    if (!this.isActive) {return null;}
-    if (!isSuccessfulToolResult(result)) {return null;}
+    if (!this.isActive) {
+      return null;
+    }
+    if (!isSuccessfulToolResult(result)) {
+      return null;
+    }
 
     const plan = this.#plan;
     const before = this.#summarizeProgress(plan);
@@ -152,13 +233,17 @@ export class ExecutionPlanManager {
     this.#startReadyTasks(plan);
 
     // 2) plan_solution — 显式的计划工具 OR 直接开始修改（即跳过计划阶段也可以）
-    this.#completeIf('plan_solution', () => isPlanningTool(toolName) || isMutationTool(toolName, args));
+    this.#completeIf(
+      'plan_solution',
+      () => isPlanningTool(toolName) || isMutationTool(toolName, args),
+    );
     this.#startReadyTasks(plan);
 
     // 3) implement_changes — 记录路径并检查 requiredMutationPaths
     this.#recordMutationPath(toolName, args);
-    this.#completeIf('implement_changes', () =>
-      isMutationTool(toolName, args) && this.#hasCompletedRequiredMutationPaths()
+    this.#completeIf(
+      'implement_changes',
+      () => isMutationTool(toolName, args) && this.#hasCompletedRequiredMutationPaths(),
     );
     this.#startReadyTasks(plan);
 
@@ -167,28 +252,37 @@ export class ExecutionPlanManager {
     this.#startReadyTasks(plan);
 
     // 5) semantic_risk_review（可选）
-    this.#completeIf('semantic_risk_review', () => isSemanticRiskReviewTool(toolName, args, this.#profile));
+    this.#completeIf('semantic_risk_review', () =>
+      isSemanticRiskReviewTool(toolName, args, this.#profile),
+    );
     this.#startReadyTasks(plan);
 
     // 6) verify_result
     this.#completeIf('verify_result', () => isVerificationTool(toolName, args));
     this.#startReadyTasks(plan);
 
-    const allDone = Array.from(plan.tasks.values()).every(t => t.status === TaskStatus.COMPLETED);
+    const allDone = Array.from(plan.tasks.values()).every((t) => t.status === TaskStatus.COMPLETED);
     if (allDone) {
       plan.status = TaskStatus.COMPLETED;
       plan.completedAt = Date.now();
     }
 
     const after = this.#summarizeProgress(plan);
-    return after !== before ? { before, after, isCompleted: plan.status === TaskStatus.COMPLETED } : null;
+    return after !== before
+      ? { before, after, isCompleted: plan.status === TaskStatus.COMPLETED }
+      : null;
   }
 
   /** 生成面向 LLM 的 plan 提示文本 */
   buildPrompt() {
-    if (!this.#plan) {return '';}
+    if (!this.#plan) {
+      return '';
+    }
     const plan = this.#plan;
-    const tasks = plan.toJSON().tasks.map(t => `- ${t.id}: ${t.name} [${t.status}] - ${t.description}`).join('\n');
+    const tasks = plan
+      .toJSON()
+      .tasks.map((t) => `- ${t.id}: ${t.name} [${t.status}] - ${t.description}`)
+      .join('\n');
     return (
       `Automatic task orchestration is active for this request:\n${this.#userInput}\n\n` +
       `Execute this DAG in dependency order. Do not skip ahead, and do not provide FINAL_ANSWER until every task is completed.\n${tasks}\n\n` +
@@ -200,15 +294,21 @@ export class ExecutionPlanManager {
 
   /** 完成状态标记 */
   markCompleted() {
-    if (this.#plan) {this.#plan.status = TaskStatus.COMPLETED;}
+    if (this.#plan) {
+      this.#plan.status = TaskStatus.COMPLETED;
+    }
   }
 
   // ============== 内部实现 ==============
 
   #completeIf(taskId, predicate) {
     const task = this.#plan?.getTask(taskId);
-    if (!task || task.status === TaskStatus.COMPLETED) {return;}
-    if (predicate()) {task.updateStatus(TaskStatus.COMPLETED, { result: { completedBy: 'tool-observation' } });}
+    if (!task || task.status === TaskStatus.COMPLETED) {
+      return;
+    }
+    if (predicate()) {
+      task.updateStatus(TaskStatus.COMPLETED, { result: { completedBy: 'tool-observation' } });
+    }
   }
 
   #startReadyTasks(plan) {
@@ -221,43 +321,65 @@ export class ExecutionPlanManager {
   }
 
   #recordMutationPath(toolName, args) {
-    if (!['write_file', 'edit_file'].includes(toolName)) {return;}
+    if (!['write_file', 'edit_file'].includes(toolName)) {
+      return;
+    }
     const path = args?.path || args?.file_path || args?.file;
-    if (path) {this.#completedMutationPaths.add(String(path));}
+    if (path) {
+      this.#completedMutationPaths.add(String(path));
+    }
   }
 
   #hasCompletedRequiredMutationPaths() {
-    if (this.#requiredMutationPaths.size === 0) {return true;}
+    if (this.#requiredMutationPaths.size === 0) {
+      return true;
+    }
     for (const p of this.#requiredMutationPaths) {
-      if (!this.#completedMutationPaths.has(p)) {return false;}
+      if (!this.#completedMutationPaths.has(p)) {
+        return false;
+      }
     }
     return true;
   }
 
   #extractRequestedFilePaths(text) {
     const paths = new Set();
-    const regex = /\b((?:[\w.-]+\/)*[\w.-]+\.(?:html|js|css|ts|tsx|jsx|json|md|py|java|go|rs|c|cpp|h|hpp))\b/g;
+    const regex =
+      /\b((?:[\w.-]+\/)*[\w.-]+\.(?:html|js|css|ts|tsx|jsx|json|md|py|java|go|rs|c|cpp|h|hpp))\b/g;
     let match;
-    while ((match = regex.exec(text)) !== null) {paths.add(match[1]);}
+    while ((match = regex.exec(text)) !== null) {
+      paths.add(match[1]);
+    }
     const basenamesWithDirectory = new Set(
-      Array.from(paths).filter(p => p.includes('/')).map(p => p.split('/').pop())
+      Array.from(paths)
+        .filter((p) => p.includes('/'))
+        .map((p) => p.split('/').pop()),
     );
     for (const path of Array.from(paths)) {
-      if (!path.includes('/') && basenamesWithDirectory.has(path)) {paths.delete(path);}
+      if (!path.includes('/') && basenamesWithDirectory.has(path)) {
+        paths.delete(path);
+      }
     }
     return paths;
   }
 
   #summarizeProgress(plan) {
-    return plan.toJSON().tasks.map(t => `- ${t.id}: ${t.status}`).join('\n');
+    return plan
+      .toJSON()
+      .tasks.map((t) => `- ${t.id}: ${t.status}`)
+      .join('\n');
   }
 
   #buildSemanticRiskGuidance() {
     const domains = this.#profile?.semanticRiskDomains || [];
-    if (domains.length === 0) {return '';}
+    if (domains.length === 0) {
+      return '';
+    }
     return (
       `Semantic risk domains for this change:\n` +
-      domains.map(d => `  - ${d.label}: ${d.checklist?.[0] || 'review API surface and invariants'}`).join('\n')
+      domains
+        .map((d) => `  - ${d.label}: ${d.checklist?.[0] || 'review API surface and invariants'}`)
+        .join('\n')
     );
   }
 }

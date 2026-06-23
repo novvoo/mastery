@@ -21,7 +21,7 @@ export class UIBridge {
     this.#config = {
       maxQueueSize: config.maxQueueSize || 100,
       autoProcessQueue: config.autoProcessQueue !== false,
-      debug: config.debug || false
+      debug: config.debug || false,
     };
     this.#isConnected = false;
     this.#ipcAdapter = null;
@@ -35,21 +35,21 @@ export class UIBridge {
     if (!ipcRenderer) {
       throw new Error('ipcRenderer 参数必须提供');
     }
-    
+
     this.#ipcAdapter = createRendererProcessIPCAdapter(ipcRenderer, {
-      debug: this.#config.debug
+      debug: this.#config.debug,
     });
-    
+
     await this.#ipcAdapter.initialize();
     this.#isConnected = true;
-    
+
     // 设置 IPC 事件监听
     this.#setupIPCListeners();
-    
+
     if (this.#config.debug) {
       console.log('[UIBridge] 已连接到 IPC');
     }
-    
+
     return this;
   }
 
@@ -57,8 +57,10 @@ export class UIBridge {
    * 设置 IPC 监听器
    */
   #setupIPCListeners() {
-    if (!this.#ipcAdapter) {return;}
-    
+    if (!this.#ipcAdapter) {
+      return;
+    }
+
     // 监听所有运行时事件
     const events = [
       RuntimeEvent.AGENT_START,
@@ -71,15 +73,15 @@ export class UIBridge {
       RuntimeEvent.TOOL_ERROR,
       RuntimeEvent.TOOL_ACTIVITY,
       RuntimeEvent.STATUS_UPDATE,
-      RuntimeEvent.CONFIG_CHANGE
+      RuntimeEvent.CONFIG_CHANGE,
     ];
-    
+
     for (const eventName of events) {
       this.#ipcAdapter.subscribe(eventName, (data) => {
         this.onMessage({
           type: eventName,
           data,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         });
       });
     }
@@ -94,7 +96,7 @@ export class UIBridge {
       this.#messageQueue.shift();
     }
     this.#messageQueue.push(message);
-    
+
     // 分发给监听器
     const listeners = this.#listeners.get(message.type) || [];
     for (const listener of listeners) {
@@ -106,7 +108,7 @@ export class UIBridge {
         }
       }
     }
-    
+
     // 分发给通用监听器
     const allListeners = this.#listeners.get('*') || [];
     for (const listener of allListeners) {
@@ -118,7 +120,7 @@ export class UIBridge {
         }
       }
     }
-    
+
     if (this.#config.debug) {
       console.log(`[UIBridge] 收到消息: ${message.type}`, message.data);
     }
@@ -132,12 +134,12 @@ export class UIBridge {
       this.#listeners.set(type, []);
     }
     this.#listeners.get(type).push(callback);
-    
+
     // 如果有 IPC 适配器，也订阅 IPC 事件
     if (this.#ipcAdapter && type !== '*') {
       this.#ipcAdapter.subscribe(type, callback);
     }
-    
+
     // 返回取消订阅函数
     return () => {
       this.unsubscribe(type, callback);
@@ -154,13 +156,13 @@ export class UIBridge {
       if (index > -1) {
         callbacks.splice(index, 1);
       }
-      
+
       // 如果没有监听器了，删除该类型
       if (callbacks.length === 0) {
         this.#listeners.delete(type);
       }
     }
-    
+
     // 如果有 IPC 适配器，也取消订阅
     if (this.#ipcAdapter && type !== '*') {
       this.#ipcAdapter.unsubscribe(type, callback);
@@ -174,12 +176,12 @@ export class UIBridge {
     if (this.#ipcAdapter) {
       return this.#ipcAdapter.request(type, data);
     }
-    
+
     // 如果没有 IPC 适配器，只是打印日志
     if (this.#config.debug) {
       console.log(`[UIBridge] 发送到核心: ${type}`, data);
     }
-    
+
     return null;
   }
 
@@ -268,7 +270,7 @@ export class UIBridge {
    * 获取特定类型的消息
    */
   getMessagesByType(type) {
-    return this.#messageQueue.filter(msg => msg.type === type);
+    return this.#messageQueue.filter((msg) => msg.type === type);
   }
 
   /**
@@ -293,11 +295,11 @@ export class UIBridge {
       this.#ipcAdapter.disconnect();
       this.#ipcAdapter = null;
     }
-    
+
     this.#isConnected = false;
     this.#listeners.clear();
     this.#messageQueue = [];
-    
+
     if (this.#config.debug) {
       console.log('[UIBridge] 已断开连接');
     }
@@ -316,7 +318,7 @@ export class UIBridge {
       getState: this.getState.bind(this),
       getTools: this.getTools.bind(this),
       getMessageQueue: this.getMessageQueue.bind(this),
-      isConnected: this.isConnected.bind(this)
+      isConnected: this.isConnected.bind(this),
     };
   }
 }

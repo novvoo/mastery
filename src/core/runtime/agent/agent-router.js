@@ -36,8 +36,16 @@ export class AgentRouter {
   #toolResultCacheEnabled = true;
 
   constructor({
-    debugEvent, toolRegistry, textToolParser, ui, config,
-    contentStore, fileAnalyzer, memoryManager, sessionManager, modelProvider,
+    debugEvent,
+    toolRegistry,
+    textToolParser,
+    ui,
+    config,
+    contentStore,
+    fileAnalyzer,
+    memoryManager,
+    sessionManager,
+    modelProvider,
   }) {
     this.#debugEvent = debugEvent;
     this.#toolRegistry = toolRegistry;
@@ -52,7 +60,9 @@ export class AgentRouter {
 
     this.#toolResultCacheEnabled = config.toolResultCacheEnabled !== false;
     const agentDataDir = `${config.workingDirectory}/.agent-data`;
-    this.#toolResultCachePath = this.#toolResultCacheEnabled ? `${agentDataDir}/tool-cache.jsonl` : null;
+    this.#toolResultCachePath = this.#toolResultCacheEnabled
+      ? `${agentDataDir}/tool-cache.jsonl`
+      : null;
     this.#toolResultCacheMaxSize = 500;
     this.#toolResultCacheLoaded = false;
   }
@@ -79,7 +89,8 @@ export class AgentRouter {
         error: 'Invalid tool call: null or invalid input',
       };
     }
-    const rewrittenToolCall = this.#rewriteShellRuntimeToolCall(normalizedToolCall) || normalizedToolCall;
+    const rewrittenToolCall =
+      this.#rewriteShellRuntimeToolCall(normalizedToolCall) || normalizedToolCall;
     const { id, name, arguments: args } = rewrittenToolCall;
     const resultMode = options.resultMode || 'tool';
     const startedAt = Date.now();
@@ -111,9 +122,17 @@ export class AgentRouter {
       if (prediction.canSkip) {
         this.#ui.warn(`⚠️  Skipping ${name}: ${prediction.reason}`);
         this.#debugEvent('Tool call skipped (workspace prediction)', {
-          tool: name, arguments: args, reason: prediction.reason, prediction: prediction.type,
+          tool: name,
+          arguments: args,
+          reason: prediction.reason,
+          prediction: prediction.type,
         });
-        return { name, result: prediction.predicted || { error: prediction.reason }, skipped: true, predicted: true };
+        return {
+          name,
+          result: prediction.predicted || { error: prediction.reason },
+          skipped: true,
+          predicted: true,
+        };
       }
     }
 
@@ -149,7 +168,7 @@ export class AgentRouter {
 
     // 必填参数检查
     if (tool.required && Array.isArray(tool.required)) {
-      const missing = tool.required.filter(param => {
+      const missing = tool.required.filter((param) => {
         const value = effectiveArgs ? effectiveArgs[param] : undefined;
         return value === undefined || value === null || value === '';
       });
@@ -164,14 +183,27 @@ export class AgentRouter {
     // 安全策略
     const securityBlock = this.#enforceToolSecurity(name, args);
     if (securityBlock) {
-      this.#debugEvent('Tool call blocked by security policy', { tool: name, reason: securityBlock });
+      this.#debugEvent('Tool call blocked by security policy', {
+        tool: name,
+        reason: securityBlock,
+      });
       this.#ui.toolError(name, securityBlock);
-      return { name, result: `Error: Security policy blocked ${name}: ${securityBlock}`, error: securityBlock };
+      return {
+        name,
+        result: `Error: Security policy blocked ${name}: ${securityBlock}`,
+        error: securityBlock,
+      };
     }
 
     this.#debugEvent('Tool call started', {
-      id, tool: name, category: tool.category, source: rewrittenToolCall.source || toolCall.source || 'native',
-      resultMode, workingDirectory: this.#config.workingDirectory, arguments: args, purpose: tool.description,
+      id,
+      tool: name,
+      category: tool.category,
+      source: rewrittenToolCall.source || toolCall.source || 'native',
+      resultMode,
+      workingDirectory: this.#config.workingDirectory,
+      arguments: args,
+      purpose: tool.description,
     });
 
     try {
@@ -211,7 +243,7 @@ export class AgentRouter {
       const result = await withTimeout(
         () => tool.handler(effectiveArgs, context),
         60000,
-        `Tool ${name}`
+        `Tool ${name}`,
       );
 
       const finalResult = this.#applyToolSecurityResultPolicy(name, result);
@@ -222,17 +254,28 @@ export class AgentRouter {
       }
 
       this.#debugEvent('Tool call completed', {
-        tool: name, durationMs: Date.now() - startedAt,
-        resultPreview: this.#preview(typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult), 300),
+        tool: name,
+        durationMs: Date.now() - startedAt,
+        resultPreview: this.#preview(
+          typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult),
+          300,
+        ),
       });
       this.#ui.toolResult(name, finalResult);
-      this.#toolResultCache.set(callSignature, typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult));
+      this.#toolResultCache.set(
+        callSignature,
+        typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult),
+      );
       this.#flushToolResultCacheEntry(callSignature, this.#toolResultCache.get(callSignature));
 
       return { name, result: finalResult };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      this.#debugEvent('Tool call failed', { tool: name, durationMs: Date.now() - startedAt, error: errorMsg });
+      this.#debugEvent('Tool call failed', {
+        tool: name,
+        durationMs: Date.now() - startedAt,
+        error: errorMsg,
+      });
       this.#ui.toolError(name, errorMsg);
       return { name, result: `Error: ${errorMsg}`, error: errorMsg };
     }
@@ -241,11 +284,17 @@ export class AgentRouter {
   // ---- 缓存 ----
 
   async #loadToolResultCache() {
-    if (this.#toolResultCacheLoaded) {return;}
+    if (this.#toolResultCacheLoaded) {
+      return;
+    }
     this.#toolResultCacheLoaded = true;
-    if (!this.#toolResultCachePath) {return;}
+    if (!this.#toolResultCachePath) {
+      return;
+    }
     try {
-      if (!existsSync(this.#toolResultCachePath)) {return;}
+      if (!existsSync(this.#toolResultCachePath)) {
+        return;
+      }
       const content = await readFile(this.#toolResultCachePath, 'utf-8');
       const lines = content.split('\n').filter(Boolean);
       for (const line of lines.slice(-this.#toolResultCacheMaxSize)) {
@@ -254,29 +303,44 @@ export class AgentRouter {
           if (signature && typeof result === 'string') {
             this.#toolResultCache.set(signature, result);
           }
-        } catch { /* skip malformed line */ }
+        } catch {
+          /* skip malformed line */
+        }
       }
     } catch (err) {
-      try { console.warn('[ToolCache] 加载失败:', err.message); } catch {}
+      try {
+        console.warn('[ToolCache] 加载失败:', err.message);
+      } catch {}
     }
   }
 
   async #flushToolResultCacheEntry(signature, result) {
-    if (!this.#toolResultCachePath) {return;}
+    if (!this.#toolResultCachePath) {
+      return;
+    }
     try {
-      const dir = this.#toolResultCachePath.substring(0, this.#toolResultCachePath.lastIndexOf('/'));
-      if (!existsSync(dir)) { await mkdir(dir, { recursive: true }); }
+      const dir = this.#toolResultCachePath.substring(
+        0,
+        this.#toolResultCachePath.lastIndexOf('/'),
+      );
+      if (!existsSync(dir)) {
+        await mkdir(dir, { recursive: true });
+      }
       const line = JSON.stringify({ signature, result, createdAt: Date.now() }) + '\n';
       await appendFile(this.#toolResultCachePath, line, 'utf-8');
     } catch (err) {
-      try { console.warn('[ToolCache] 写入失败:', err.message); } catch {}
+      try {
+        console.warn('[ToolCache] 写入失败:', err.message);
+      } catch {}
     }
   }
 
   // ---- 工具调用规范化 ----
 
   #normalizeToolCall(toolCall) {
-    if (!toolCall || typeof toolCall !== 'object') {return toolCall;}
+    if (!toolCall || typeof toolCall !== 'object') {
+      return toolCall;
+    }
     if (toolCall.name) {
       return { ...toolCall, arguments: this.#parseToolArguments(toolCall.arguments) };
     }
@@ -293,26 +357,42 @@ export class AgentRouter {
   }
 
   #parseToolArguments(args) {
-    if (!args) {return {};}
-    if (typeof args === 'object') {return args;}
-    if (typeof args !== 'string') {return {};}
+    if (!args) {
+      return {};
+    }
+    if (typeof args === 'object') {
+      return args;
+    }
+    if (typeof args !== 'string') {
+      return {};
+    }
     try {
       const parsed = JSON.parse(args);
       return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch { return {}; }
+    } catch {
+      return {};
+    }
   }
 
   #rewriteShellRuntimeToolCall(toolCall) {
-    if (toolCall?.name !== 'shell') {return null;}
+    if (toolCall?.name !== 'shell') {
+      return null;
+    }
     const command = String(toolCall.arguments?.command || '').trim();
-    if (!command) {return null;}
+    if (!command) {
+      return null;
+    }
     const parsed = this.#textToolParser
       .parse(`\`\`\`bash\n${command}\n\`\`\``)
-      .filter(call => call.name !== 'shell');
-    if (parsed.length === 0) {return null;}
+      .filter((call) => call.name !== 'shell');
+    if (parsed.length === 0) {
+      return null;
+    }
     const replacement = parsed[0];
     this.#debugEvent('Shell tool call rewritten to runtime tool', {
-      originalCommand: command, replacementTool: replacement.name, replacementArguments: replacement.arguments,
+      originalCommand: command,
+      replacementTool: replacement.name,
+      replacementArguments: replacement.arguments,
     });
     return { ...replacement, id: toolCall.id, source: 'shell_runtime_tool_redirect' };
   }
@@ -321,14 +401,20 @@ export class AgentRouter {
 
   #enforceToolSecurity(name, args) {
     const policy = this.#config.securityPolicy;
-    if (!policy) {return null;}
+    if (!policy) {
+      return null;
+    }
     if (typeof policy.requiresApproval === 'function' && policy.requiresApproval(name)) {
       return 'approval_required';
     }
     if (typeof policy.validateToolCall === 'function') {
       const result = policy.validateToolCall(name, args);
-      if (result === false) {return 'denied';}
-      if (result && result.allowed === false) {return result.reason || 'denied';}
+      if (result === false) {
+        return 'denied';
+      }
+      if (result && result.allowed === false) {
+        return result.reason || 'denied';
+      }
     }
     return null;
   }
@@ -347,10 +433,20 @@ export class AgentRouter {
     const allTools = this.#toolRegistry.getAll();
     const availableToolNames = activeRoutedToolNames
       ? Array.from(activeRoutedToolNames).join(', ')
-      : allTools.map(t => t.name).join(', ');
+      : allTools.map((t) => t.name).join(', ');
 
-    const browserToolPatterns = ['navigate', 'browse', 'browser', 'web', 'url', 'fetch', 'get_weather'];
-    const isBrowserTool = browserToolPatterns.some(pattern => toolName.toLowerCase().includes(pattern));
+    const browserToolPatterns = [
+      'navigate',
+      'browse',
+      'browser',
+      'web',
+      'url',
+      'fetch',
+      'get_weather',
+    ];
+    const isBrowserTool = browserToolPatterns.some((pattern) =>
+      toolName.toLowerCase().includes(pattern),
+    );
 
     let errorMsg = `Unknown tool: "${toolName}". Available tools: ${availableToolNames}`;
     if (isBrowserTool) {
@@ -361,13 +457,13 @@ export class AgentRouter {
       errorMsg += `  3. If no browser server is connected, use "mcp_connect" to connect one`;
     }
 
-    const mcpTools = allTools.filter(t => t.name.includes('/') || t.name.startsWith('mcp_'));
+    const mcpTools = allTools.filter((t) => t.name.includes('/') || t.name.startsWith('mcp_'));
     if (mcpTools.length > 0 && toolName.includes('/') === false && !toolName.startsWith('mcp_')) {
-      const similarTools = mcpTools.filter(t =>
-        t.name.toLowerCase().includes(toolName.toLowerCase().split('/').pop())
+      const similarTools = mcpTools.filter((t) =>
+        t.name.toLowerCase().includes(toolName.toLowerCase().split('/').pop()),
       );
       if (similarTools.length > 0) {
-        errorMsg += `\n\n💡  Did you mean one of these? ${similarTools.map(t => t.name).join(', ')}`;
+        errorMsg += `\n\n💡  Did you mean one of these? ${similarTools.map((t) => t.name).join(', ')}`;
       }
     }
     return errorMsg;
@@ -384,17 +480,23 @@ export class AgentRouter {
 
   // ---- WorkspaceState hook：读/写/列举文件后自动同步 ----
   #updateWorkspaceState(toolName, args, result, ws) {
-    if (!ws || !args) {return;}
+    if (!ws || !args) {
+      return;
+    }
     const filePath = args.path || args.file_path || args.file || args.target || null;
 
     // 1) 任何"带 path 的文件操作"都把该路径标记为"最近引用"
     if (filePath && typeof filePath === 'string') {
-      try { ws.recordReference(filePath, toolName); } catch (_) {}
+      try {
+        ws.recordReference(filePath, toolName);
+      } catch (_) {}
     }
 
     // 2) read_file / read_file_lines → 缓存文件内容快照
-    if ((toolName === 'read_file' || toolName === 'file_read' || toolName === 'cat_file')
-        && filePath) {
+    if (
+      (toolName === 'read_file' || toolName === 'file_read' || toolName === 'cat_file') &&
+      filePath
+    ) {
       try {
         if (result && typeof result === 'object') {
           const text = result.text ?? result.content ?? result.data ?? null;
@@ -411,17 +513,25 @@ export class AgentRouter {
     if ((toolName === 'write_file' || toolName === 'file_write') && filePath) {
       const content = args.content ?? args.text ?? null;
       if (typeof content === 'string' && content.length > 0) {
-        try { ws.setFileSnapshot(filePath, content, toolName); } catch (_) {}
+        try {
+          ws.setFileSnapshot(filePath, content, toolName);
+        } catch (_) {}
       }
     }
 
     // 4) list_dir / glob → 同步标记目录存在（recordDirectoryListing
     if (toolName === 'list_dir' || toolName === 'glob_search' || toolName === 'glob') {
       try {
-        const entries = Array.isArray(result?.entries) ? result.entries
-          : Array.isArray(result?.files) ? result.files
-          : Array.isArray(result) ? result : [];
-        if (filePath) {ws.recordDirectoryListing(filePath, entries.map(String), toolName);}
+        const entries = Array.isArray(result?.entries)
+          ? result.entries
+          : Array.isArray(result?.files)
+            ? result.files
+            : Array.isArray(result)
+              ? result
+              : [];
+        if (filePath) {
+          ws.recordDirectoryListing(filePath, entries.map(String), toolName);
+        }
       } catch (_) {}
     }
   }

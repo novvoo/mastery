@@ -24,7 +24,7 @@ export class PluginManager {
     this.#config = options.config || {};
 
     this.#hookManager.setErrorHandler('*', (error, context) => {
-      const msg = (error && error.message) ? error.message : String(error);
+      const msg = error && error.message ? error.message : String(error);
       console.error(`[HookManager] 钩子执行错误 (${context.hookName}): ${msg}`);
     });
   }
@@ -57,7 +57,7 @@ export class PluginManager {
     }
 
     if (deps.length > 0) {
-      const missingDeps = deps.filter(dep => !this.#plugins.has(dep));
+      const missingDeps = deps.filter((dep) => !this.#plugins.has(dep));
       if (missingDeps.length > 0) {
         throw new Error(`插件 "${plugin.name}" 缺少依赖: ${missingDeps.join(', ')}`);
       }
@@ -74,7 +74,7 @@ export class PluginManager {
       registeredAt: Date.now(),
       enabled: true,
       hooks: [],
-      middlewares: []
+      middlewares: [],
     };
 
     if (options.config) {
@@ -99,7 +99,7 @@ export class PluginManager {
         pluginInstance.state = PluginState.INITIALIZED;
       } catch (error) {
         pluginInstance.state = PluginState.ERROR;
-        const msg = (error && error.message) ? error.message : String(error);
+        const msg = error && error.message ? error.message : String(error);
         console.error(`插件 "${plugin.name}" 初始化失败: ${msg}`);
         this.#plugins.delete(plugin.name);
         this.#dependencyGraph.delete(plugin.name);
@@ -110,9 +110,10 @@ export class PluginManager {
     if (plugin.hooks) {
       for (const [hookName, hookConfig] of Object.entries(plugin.hooks)) {
         const hookFn = typeof hookConfig === 'function' ? hookConfig : hookConfig.fn;
-        const hookOptions = typeof hookConfig === 'function'
-          ? { pluginName: plugin.name }
-          : { ...hookConfig, pluginName: plugin.name };
+        const hookOptions =
+          typeof hookConfig === 'function'
+            ? { pluginName: plugin.name }
+            : { ...hookConfig, pluginName: plugin.name };
 
         const unsubscribe = this.#hookManager.register(hookName, hookFn.bind(plugin), hookOptions);
         pluginInstance.hooks.push({ hookName, unsubscribe });
@@ -123,7 +124,7 @@ export class PluginManager {
       for (const middleware of plugin.middlewares) {
         const remove = this.#toolMiddleware.use({
           ...middleware,
-          name: `${plugin.name}:${middleware.name || 'anonymous'}`
+          name: `${plugin.name}:${middleware.name || 'anonymous'}`,
         });
         pluginInstance.middlewares.push(remove);
       }
@@ -159,7 +160,7 @@ export class PluginManager {
       try {
         await pluginInstance.plugin.cleanup();
       } catch (error) {
-        const msg = (error && error.message) ? error.message : String(error);
+        const msg = error && error.message ? error.message : String(error);
         console.error(`插件 "${pluginName}" 清理失败: ${msg}`);
       }
     }
@@ -173,7 +174,9 @@ export class PluginManager {
 
   async enable(pluginName) {
     const pluginInstance = this.#plugins.get(pluginName);
-    if (!pluginInstance) {return false;}
+    if (!pluginInstance) {
+      return false;
+    }
 
     pluginInstance.enabled = true;
     pluginInstance.state = PluginState.ACTIVE;
@@ -184,7 +187,9 @@ export class PluginManager {
 
   async disable(pluginName) {
     const pluginInstance = this.#plugins.get(pluginName);
-    if (!pluginInstance) {return false;}
+    if (!pluginInstance) {
+      return false;
+    }
 
     pluginInstance.enabled = false;
     pluginInstance.state = PluginState.DISABLED;
@@ -236,7 +241,7 @@ export class PluginManager {
       try {
         await this.unregister(pluginName);
       } catch (error) {
-        const msg = (error && error.message) ? error.message : String(error);
+        const msg = error && error.message ? error.message : String(error);
         console.error(`清理插件 "${pluginName}" 失败: ${msg}`);
       }
     }
@@ -255,7 +260,7 @@ export class PluginManager {
       registerHook: (hookName, fn, options = {}) => {
         const unsubscribe = self.#hookManager.register(hookName, fn, {
           ...options,
-          pluginName: pluginInstance.name
+          pluginName: pluginInstance.name,
         });
         pluginInstance.hooks.push({ hookName, unsubscribe });
         return unsubscribe;
@@ -264,7 +269,7 @@ export class PluginManager {
       useMiddleware: (middleware) => {
         const remove = self.#toolMiddleware.use({
           ...middleware,
-          name: `${pluginInstance.name}:${middleware.name || 'anonymous'}`
+          name: `${pluginInstance.name}:${middleware.name || 'anonymous'}`,
         });
         pluginInstance.middlewares.push(remove);
         return remove;
@@ -279,16 +284,22 @@ export class PluginManager {
         return self.#toolLoader.loadTool(toolModule, options);
       },
       unloadTool: async (toolName) => {
-        if (!self.#toolLoader) {return false;}
+        if (!self.#toolLoader) {
+          return false;
+        }
         return self.#toolLoader.unloadTool(toolName);
-      }
+      },
     };
   }
 
   #detectCircularDependency(startNode, graph) {
-    const WHITE = 0, GRAY = 1, BLACK = 2;
+    const WHITE = 0,
+      GRAY = 1,
+      BLACK = 2;
     const color = new Map();
-    for (const node of graph.keys()) {color.set(node, WHITE);}
+    for (const node of graph.keys()) {
+      color.set(node, WHITE);
+    }
 
     const path = [];
     const dfs = (node) => {
@@ -296,7 +307,9 @@ export class PluginManager {
       path.push(node);
       const deps = graph.get(node) || [];
       for (const dep of deps) {
-        if (!graph.has(dep)) {continue;}
+        if (!graph.has(dep)) {
+          continue;
+        }
         const c = color.get(dep);
         if (c === GRAY) {
           const idx = path.indexOf(dep);
@@ -304,7 +317,9 @@ export class PluginManager {
         }
         if (c === WHITE) {
           const res = dfs(dep);
-          if (res) {return res;}
+          if (res) {
+            return res;
+          }
         }
       }
       path.pop();
@@ -330,7 +345,9 @@ export class PluginManager {
     const order = [];
 
     const visit = (name) => {
-      if (visited.has(name)) {return;}
+      if (visited.has(name)) {
+        return;
+      }
       visited.add(name);
 
       const deps = this.#dependencyGraph.get(name) || [];

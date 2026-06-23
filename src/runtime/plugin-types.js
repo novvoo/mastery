@@ -46,7 +46,7 @@ export const HOOKS = {
   ON_PLUGIN_REGISTER: 'on_plugin_register',
   ON_PLUGIN_UNREGISTER: 'on_plugin_unregister',
   ON_PLUGIN_ENABLE: 'on_plugin_enable',
-  ON_PLUGIN_DISABLE: 'on_plugin_disable'
+  ON_PLUGIN_DISABLE: 'on_plugin_disable',
 };
 
 /**
@@ -59,7 +59,7 @@ export const PluginState = {
   INITIALIZED: 'initialized',
   ACTIVE: 'active',
   DISABLED: 'disabled',
-  ERROR: 'error'
+  ERROR: 'error',
 };
 
 /**
@@ -70,7 +70,7 @@ export const HookPriority = {
   HIGH: 25,
   NORMAL: 50,
   LOW: 75,
-  LOWEST: 100
+  LOWEST: 100,
 };
 
 /**

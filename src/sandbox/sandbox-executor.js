@@ -1,6 +1,6 @@
 /**
  * Sandbox Executor - 安全执行层
- * 
+ *
  * 提供隔离的执行环境，支持:
  * - 资源限制 (CPU, 内存, 时间)
  * - 网络隔离
@@ -28,7 +28,11 @@ export class SandboxConfig {
     this.readOnlyPaths = options.readOnlyPaths || [];
     this.writeablePaths = options.writeablePaths || [];
     this.blockedSyscalls = options.blockedSyscalls || [
-      'execve', 'fork', 'vfork', 'clone', 'ptrace'
+      'execve',
+      'fork',
+      'vfork',
+      'clone',
+      'ptrace',
     ];
   }
 }
@@ -67,7 +71,7 @@ export class SandboxExecutor {
   async createSandbox(options = {}) {
     const sandboxId = randomUUID();
     const config = new SandboxConfig({ ...this.#config, ...options });
-    
+
     // 创建沙盒工作目录
     const sandboxDir = config.workingDir || join(process.cwd(), '.sandboxes', sandboxId);
     if (!existsSync(sandboxDir)) {
@@ -114,7 +118,7 @@ export class SandboxExecutor {
 
       // 构建沙盒化命令
       const sandboxedCommand = this.#buildSandboxCommand(command, sandbox.config);
-      
+
       return new Promise((resolve, reject) => {
         const child = spawn(sandboxedCommand, args, {
           cwd: join(sandbox.dir, 'workspace'),
@@ -132,7 +136,8 @@ export class SandboxExecutor {
         child.stdout?.on('data', (data) => {
           stdout += data.toString();
           // 限制输出大小
-          if (stdout.length > 10 * 1024 * 1024) { // 10MB
+          if (stdout.length > 10 * 1024 * 1024) {
+            // 10MB
             stdout = stdout.substring(0, 10 * 1024 * 1024) + '\n... (output truncated)';
           }
         });
@@ -149,7 +154,7 @@ export class SandboxExecutor {
           killed = true;
           killReason = 'timeout';
           child.kill('SIGTERM');
-          
+
           // 5秒后强制终止
           setTimeout(() => {
             if (!child.killed) {
@@ -177,24 +182,26 @@ export class SandboxExecutor {
           clearInterval(memoryCheck);
 
           const duration = Date.now() - startTime;
-          
-          resolve(new SandboxResult({
-            success: exitCode === 0 && !killed,
-            exitCode,
-            stdout,
-            stderr,
-            duration,
-            memoryUsed: process.memoryUsage().heapUsed,
-            killed,
-            killReason,
-            sandboxId: sandbox.id,
-          }));
+
+          resolve(
+            new SandboxResult({
+              success: exitCode === 0 && !killed,
+              exitCode,
+              stdout,
+              stderr,
+              duration,
+              memoryUsed: process.memoryUsage().heapUsed,
+              killed,
+              killReason,
+              sandboxId: sandbox.id,
+            }),
+          );
         });
 
         child.on('error', (error) => {
           clearTimeout(timeoutId);
           clearInterval(memoryCheck);
-          
+
           reject(new Error(`Sandbox execution failed: ${error.message}`));
         });
       });
@@ -211,10 +218,10 @@ export class SandboxExecutor {
    */
   async executeJavaScript(code, options = {}) {
     const sandbox = await this.createSandbox(options.sandbox);
-    
+
     // 创建临时文件
     const scriptPath = join(sandbox.dir, 'workspace', `script_${Date.now()}.js`);
-    
+
     // 包装代码以提供安全环境
     const wrappedCode = `
       'use strict';
@@ -251,7 +258,7 @@ export class SandboxExecutor {
   async executePython(code, options = {}) {
     const sandbox = await this.createSandbox(options.sandbox);
     const scriptPath = join(sandbox.dir, 'workspace', `script_${Date.now()}.py`);
-    
+
     // 添加安全限制
     const wrappedCode = `
 import sys
@@ -282,7 +289,9 @@ ${code}
    */
   async destroySandbox(sandboxId) {
     const sandbox = this.#sandboxes.get(sandboxId);
-    if (!sandbox) {return false;}
+    if (!sandbox) {
+      return false;
+    }
 
     // 终止所有进程
     for (const proc of sandbox.processes.values()) {
@@ -315,7 +324,7 @@ ${code}
    * 列出所有沙盒
    */
   listSandboxes() {
-    return Array.from(this.#sandboxes.values()).map(s => ({
+    return Array.from(this.#sandboxes.values()).map((s) => ({
       id: s.id,
       createdAt: s.createdAt,
       processCount: s.processes.size,
@@ -326,9 +335,7 @@ ${code}
    * 清理所有沙盒
    */
   async cleanup() {
-    const promises = Array.from(this.#sandboxes.keys()).map(id => 
-      this.destroySandbox(id)
-    );
+    const promises = Array.from(this.#sandboxes.keys()).map((id) => this.destroySandbox(id));
     await Promise.all(promises);
   }
 }

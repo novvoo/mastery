@@ -2,7 +2,11 @@
  * Pure helpers for runtime event records, history, cache, and summaries.
  */
 
-export function createEventRecord(event, data = {}, { source = 'unknown', async = false, idFactory }) {
+export function createEventRecord(
+  event,
+  data = {},
+  { source = 'unknown', async = false, idFactory },
+) {
   return {
     type: event,
     timestamp: Date.now(),
@@ -28,13 +32,13 @@ export function queryHistory(history, options = {}) {
   let result = [...history];
 
   if (options.type) {
-    result = result.filter(event => event.type === options.type);
+    result = result.filter((event) => event.type === options.type);
   }
   if (options.source) {
-    result = result.filter(event => event.source === options.source);
+    result = result.filter((event) => event.source === options.source);
   }
   if (options.since) {
-    result = result.filter(event => event.timestamp >= options.since);
+    result = result.filter((event) => event.timestamp >= options.since);
   }
   if (options.limit && options.limit > 0) {
     result = result.slice(-options.limit);
@@ -46,13 +50,13 @@ export function queryHistory(history, options = {}) {
 export function filterReplayHistory(history, { since, until, type } = {}) {
   let events = [...history];
   if (since) {
-    events = events.filter(event => event.timestamp >= since);
+    events = events.filter((event) => event.timestamp >= since);
   }
   if (until) {
-    events = events.filter(event => event.timestamp <= until);
+    events = events.filter((event) => event.timestamp <= until);
   }
   if (type) {
-    events = events.filter(event => event.type === type);
+    events = events.filter((event) => event.type === type);
   }
   return events.sort((a, b) => a.timestamp - b.timestamp);
 }
@@ -73,7 +77,7 @@ export function isCacheExpired(entry, now = Date.now()) {
 export function summarizeSubscribers(subscribers) {
   const result = {};
   for (const [event, entries] of subscribers) {
-    result[event] = entries.map(subscriber => ({
+    result[event] = entries.map((subscriber) => ({
       priority: subscriber.priority,
       id: subscriber.id,
     }));

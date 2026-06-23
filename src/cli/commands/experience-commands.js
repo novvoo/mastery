@@ -74,7 +74,9 @@ export function createExperienceCommands(deps) {
         message: 'Experience Memory:',
         choices: EXPERIENCE_MENU_CHOICES,
       });
-      if (action === 'back') {return;}
+      if (action === 'back') {
+        return;
+      }
       await this.handleExperienceCommand([action]);
     },
 
@@ -120,7 +122,9 @@ export function createExperienceCommands(deps) {
         });
         query = q;
       }
-      if (!query) {return;}
+      if (!query) {
+        return;
+      }
 
       const results = experienceMemory.recall(query);
       console.log(enhancedUI.createHeader(`Search: "${query}"`));
@@ -133,7 +137,9 @@ export function createExperienceCommands(deps) {
       for (const exp of results) {
         const icon = exp.outcome === 'success' ? '✅' : exp.outcome === 'failure' ? '❌' : '⚠️';
         console.log(`  ${icon} [score: ${exp.score.toFixed(2)}] ${exp.lesson}`);
-        if (exp.tool) {console.log(`     Tool: ${exp.tool}`);}
+        if (exp.tool) {
+          console.log(`     Tool: ${exp.tool}`);
+        }
       }
       console.log('');
     },
@@ -190,7 +196,9 @@ export function createReasoningCommands(deps) {
         message: 'Intelligent Reasoning:',
         choices: REASON_MENU_CHOICES,
       });
-      if (action === 'back') {return;}
+      if (action === 'back') {
+        return;
+      }
 
       const inputText = await input({
         message: 'Enter text:',
@@ -205,7 +213,9 @@ export function createReasoningCommands(deps) {
         });
         text = t;
       }
-      if (!text) {return;}
+      if (!text) {
+        return;
+      }
 
       const intent = await intelligentReasoning.analyzeIntent(text);
       console.log(enhancedUI.createHeader('Intent Analysis'));
@@ -215,7 +225,9 @@ export function createReasoningCommands(deps) {
       console.log('');
       console.log('  Detected intents:');
       for (const [k, v] of Object.entries(intent.intents)) {
-        if (v) {console.log(`    ✓ ${k.replace('is', '')}`);}
+        if (v) {
+          console.log(`    ✓ ${k.replace('is', '')}`);
+        }
       }
       console.log('');
       console.log(`  Keywords: ${intent.keywords.join(', ') || 'none'}`);
@@ -229,7 +241,9 @@ export function createReasoningCommands(deps) {
         });
         text = t;
       }
-      if (!text) {return;}
+      if (!text) {
+        return;
+      }
 
       const intent = await intelligentReasoning.analyzeIntent(text);
       const tools = await intelligentReasoning.selectTools(text, intent);
@@ -241,7 +255,9 @@ export function createReasoningCommands(deps) {
       console.log('');
       console.log('  Recommended tools:');
       for (const t of tools) {
-        const bar = '█'.repeat(Math.round(t.confidence * 10)) + '░'.repeat(10 - Math.round(t.confidence * 10));
+        const bar =
+          '█'.repeat(Math.round(t.confidence * 10)) +
+          '░'.repeat(10 - Math.round(t.confidence * 10));
         console.log(`    ${t.name.padEnd(20)} ${bar} ${(t.confidence * 100).toFixed(0)}%`);
       }
       console.log('');
@@ -254,7 +270,9 @@ export function createReasoningCommands(deps) {
         });
         text = t;
       }
-      if (!text) {return;}
+      if (!text) {
+        return;
+      }
 
       const subtasks = await intelligentReasoning.decomposeTask(text);
       console.log(enhancedUI.createHeader('Task Decomposition'));
@@ -324,7 +342,9 @@ export function createSecurityCommands(deps) {
         message: 'Security Management:',
         choices: SECURITY_MENU_CHOICES,
       });
-      if (action === 'back') {return;}
+      if (action === 'back') {
+        return;
+      }
       await this.handleSecurityCommand([action]);
     },
 
@@ -352,7 +372,16 @@ export function createSecurityCommands(deps) {
 
       console.log('  Permission distribution:');
       for (const [level, tools] of Object.entries(report.byPermission)) {
-        const icon = level === 'dangerous' ? '🔴' : level === 'execute' ? '🟠' : level === 'write' ? '🟡' : level === 'readonly' ? '🟢' : '⚪';
+        const icon =
+          level === 'dangerous'
+            ? '🔴'
+            : level === 'execute'
+              ? '🟠'
+              : level === 'write'
+                ? '🟡'
+                : level === 'readonly'
+                  ? '🟢'
+                  : '⚪';
         console.log(`    ${icon} ${level}: ${tools.length} tool(s)`);
       }
       console.log('');
@@ -387,9 +416,22 @@ export function createSecurityCommands(deps) {
       console.log(enhancedUI.createHeader('Tools by Permission Level'));
 
       for (const [level, tools] of Object.entries(report.byPermission)) {
-        if (tools.length === 0) {continue;}
-        const icon = level === 'dangerous' ? '🔴' : level === 'execute' ? '🟠' : level === 'write' ? '🟡' : level === 'readonly' ? '🟢' : '⚪';
-        console.log(`\n  ${icon} ${enhancedUI.theme.whiteBold(level.toUpperCase())} (${tools.length})`);
+        if (tools.length === 0) {
+          continue;
+        }
+        const icon =
+          level === 'dangerous'
+            ? '🔴'
+            : level === 'execute'
+              ? '🟠'
+              : level === 'write'
+                ? '🟡'
+                : level === 'readonly'
+                  ? '🟢'
+                  : '⚪';
+        console.log(
+          `\n  ${icon} ${enhancedUI.theme.whiteBold(level.toUpperCase())} (${tools.length})`,
+        );
         for (const name of tools) {
           console.log(`    ${name}`);
         }

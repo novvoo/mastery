@@ -20,7 +20,15 @@
 
 import { execSync, spawn } from 'child_process';
 import { createHash } from 'crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync, readdirSync } from 'fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  rmSync,
+  chmodSync,
+  readdirSync,
+} from 'fs';
 import { join } from 'path';
 
 // ── 类型定义 ────────────────────────────────────────────────────────────
@@ -105,14 +113,22 @@ export class LSPSandboxInstaller {
     const previousVersion = this._lockData[serverKey]?.version || null;
     const previousDir = previousVersion ? join(installDir, previousVersion) : null;
 
-    this._reportProgress('prepare', `Preparing sandbox install for ${serverKey}@${config.pinnedVersion}`, 0);
+    this._reportProgress(
+      'prepare',
+      `Preparing sandbox install for ${serverKey}@${config.pinnedVersion}`,
+      0,
+    );
 
     let existingCheck = null;
     try {
       // 1) 检查是否已安装且版本匹配
       existingCheck = this._checkExisting(serverKey, config);
       if (existingCheck.matches) {
-        this._reportProgress('verify', `Already installed: ${serverKey}@${config.pinnedVersion} at ${existingCheck.path}`, 100);
+        this._reportProgress(
+          'verify',
+          `Already installed: ${serverKey}@${config.pinnedVersion} at ${existingCheck.path}`,
+          100,
+        );
         return {
           success: true,
           installPath: existingCheck.path,
@@ -156,13 +172,21 @@ export class LSPSandboxInstaller {
       if (this.verifyChecksum) {
         checksum = this._computeFileChecksum(binaryPath);
         if (config.checksum && checksum !== config.checksum) {
-          this._reportProgress('verify', `Checksum mismatch! Expected ${config.checksum}, got ${checksum}`, 90);
+          this._reportProgress(
+            'verify',
+            `Checksum mismatch! Expected ${config.checksum}, got ${checksum}`,
+            90,
+          );
         }
       }
 
       // 7) 基本功能验证
       const functionalCheck = await this._functionalCheck(binaryPath, config.command);
-      this._reportProgress('verify', `Functional check: ${functionalCheck ? 'PASSED' : 'SKIPPED'}`, 95);
+      this._reportProgress(
+        'verify',
+        `Functional check: ${functionalCheck ? 'PASSED' : 'SKIPPED'}`,
+        95,
+      );
 
       // 8) 更新锁文件
       this._updateLock(serverKey, {
@@ -179,10 +203,18 @@ export class LSPSandboxInstaller {
         // 标记旧版本为 previous，但保留文件
         this._reportProgress('cleanup', `Keeping previous version: ${previousVersion}`, 98);
       } else if (previousDir && previousDir !== versionDir) {
-        try { rmSync(previousDir, { recursive: true }); } catch { /* ignore */ }
+        try {
+          rmSync(previousDir, { recursive: true });
+        } catch {
+          /* ignore */
+        }
       }
 
-      this._reportProgress('complete', `Successfully installed ${serverKey}@${config.pinnedVersion}`, 100);
+      this._reportProgress(
+        'complete',
+        `Successfully installed ${serverKey}@${config.pinnedVersion}`,
+        100,
+      );
 
       return {
         success: true,
@@ -193,7 +225,6 @@ export class LSPSandboxInstaller {
         verified: true,
         durationMs: Date.now() - startTime,
       };
-
     } catch (err) {
       this._reportProgress('error', `Install failed: ${err.message}`, 0);
 
@@ -203,7 +234,9 @@ export class LSPSandboxInstaller {
         try {
           rmSync(versionDir, { recursive: true });
           rolledBack = true;
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
 
       return {
@@ -285,7 +318,9 @@ export class LSPSandboxInstaller {
    */
   _checkExisting(serverKey, config) {
     const entry = this._lockData[serverKey];
-    if (!entry) { return { matches: false }; }
+    if (!entry) {
+      return { matches: false };
+    }
 
     const versionMatch = entry.version === config.pinnedVersion;
     const pathExists = existsSync(entry.installPath || '');
@@ -311,7 +346,9 @@ export class LSPSandboxInstaller {
 
     switch (manager) {
       case 'npm': {
-        const peerInstall = localInstall.peer ? `npm install --prefix "${targetDir}" ${localInstall.peer} && ` : '';
+        const peerInstall = localInstall.peer
+          ? `npm install --prefix "${targetDir}" ${localInstall.peer} && `
+          : '';
         return `${peerInstall}cd "${targetDir}" && npm init -y 2>/dev/null 1>/dev/null && npm install --prefix "${targetDir}" --save-exact ${pkg}${versionSuffix}`;
       }
 
@@ -352,8 +389,6 @@ export class LSPSandboxInstaller {
    * @private
    */
   async _executeInstall(installCmd, localInstall, targetDir) {
-    // 分离命令和参数
-    const parts = installCmd.split(/\s+/);
     // 对于复杂 shell 命令（含 &&, |, >），使用 shell: true
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -422,17 +457,28 @@ export class LSPSandboxInstaller {
       try {
         const files = readdirSync(nmBin);
         for (const f of files) {
-          if (f === command || f.startsWith(command + '.') || f === command + '.cmd' || f === command + '.ps1') {
+          if (
+            f === command ||
+            f.startsWith(command + '.') ||
+            f === command + '.cmd' ||
+            f === command + '.ps1'
+          ) {
             candidates.unshift(join(nmBin, f));
           }
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
 
     for (const candidate of candidates) {
       if (existsSync(candidate)) {
         // 确保有执行权限
-        try { chmodSync(candidate, 0o755); } catch { /* ignore */ }
+        try {
+          chmodSync(candidate, 0o755);
+        } catch {
+          /* ignore */
+        }
         return candidate;
       }
     }
@@ -452,7 +498,9 @@ export class LSPSandboxInstaller {
         const output = execSync(`"${binaryPath}" ${flag} 2>&1 || "${binaryPath}" ${flag} 2>&1`, {
           timeout: 8000,
           encoding: 'utf-8',
-        }).toString().trim();
+        })
+          .toString()
+          .trim();
 
         // 尝试提取版本号
         const versionMatch = output.match(/(\d+\.\d+\.\d+)/);
@@ -460,7 +508,9 @@ export class LSPSandboxInstaller {
           const detectedVersion = versionMatch[1];
           if (expectedVersion && !expectedVersion.includes(detectedVersion)) {
             // 不严格失败，仅警告
-            console.warn(`[LSP Sandbox] Version mismatch: expected ${expectedVersion}, got ${detectedVersion}`);
+            console.warn(
+              `[LSP Sandbox] Version mismatch: expected ${expectedVersion}, got ${detectedVersion}`,
+            );
           }
           return detectedVersion;
         }
@@ -516,7 +566,9 @@ export class LSPSandboxInstaller {
       if (existsSync(this._lockFile)) {
         return JSON.parse(readFileSync(this._lockFile, 'utf-8'));
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     return {};
   }
 
@@ -558,7 +610,11 @@ export class LSPSandboxInstaller {
    */
   _reportProgress(phase, message, percent) {
     if (this.onProgress) {
-      try { this.onProgress(phase, message, percent); } catch { /* ignore */ }
+      try {
+        this.onProgress(phase, message, percent);
+      } catch {
+        /* ignore */
+      }
     }
   }
 }

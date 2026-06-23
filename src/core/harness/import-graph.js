@@ -27,7 +27,16 @@ export class ImportGraph {
   constructor(opts = {}) {
     this.workingDirectory = opts.workingDirectory || process.cwd();
     this._resolver = opts.resolver || null;
-    this.extensions = opts.extensions || ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts'];
+    this.extensions = opts.extensions || [
+      '.ts',
+      '.tsx',
+      '.js',
+      '.jsx',
+      '.mjs',
+      '.cjs',
+      '.mts',
+      '.cts',
+    ];
 
     /** @type {Map<string, {imports: string[], exports: ExportInfo[], resolved: boolean}>} */
     this.graph = new Map();
@@ -54,15 +63,19 @@ export class ImportGraph {
 
     while (queue.length > 0) {
       const batch = queue.splice(0, batchSize);
-      const results = await Promise.all(batch.map(fp => this._analyzeFile(fp)));
+      const results = await Promise.all(batch.map((fp) => this._analyzeFile(fp)));
       for (const r of results) {
-        if (!r) { continue; }
+        if (!r) {
+          continue;
+        }
         this.graph.set(r.path, { imports: r.imports, exports: r.exports, resolved: true });
         // 将新发现的依赖加入队列
         for (const imp of r.imports) {
           if (!seen.has(imp)) {
             seen.add(imp);
-            if (existsSync(imp)) { queue.push(imp); }
+            if (existsSync(imp)) {
+              queue.push(imp);
+            }
           }
         }
       }
@@ -98,11 +111,15 @@ export class ImportGraph {
 
     while (queue.length > 0 && result.length < maxDepth * 100) {
       const current = queue.shift();
-      if (visited.has(current)) { continue; }
+      if (visited.has(current)) {
+        continue;
+      }
       visited.add(current);
 
       const node = this.graph.get(current);
-      if (!node) { continue; }
+      if (!node) {
+        continue;
+      }
 
       for (const imp of node.imports) {
         if (!visited.has(imp)) {
@@ -127,8 +144,14 @@ export class ImportGraph {
     const resolved = this.resolver.resolveModule(modulePath, this.workingDirectory);
     const importers = [];
     for (const [fp, node] of this.graph) {
-      if (node.imports.some(imp =>
-        imp === modulePath || imp === resolved || resolved && imp === resolved.replace(extname(imp), ''))) {
+      if (
+        node.imports.some(
+          (imp) =>
+            imp === modulePath ||
+            imp === resolved ||
+            (resolved && imp === resolved.replace(extname(imp), '')),
+        )
+      ) {
         importers.push(fp);
       }
     }
@@ -175,7 +198,8 @@ export class ImportGraph {
   _extractExports(content, sourcePath) {
     const exports = [];
     // named export: export const/function/class/interface/type name
-    const namedRe = /export\s+(?:const|let|var|function|class|interface|type|enum|abstract\s+class)\s+(\w+)/g;
+    const namedRe =
+      /export\s+(?:const|let|var|function|class|interface|type|enum|abstract\s+class)\s+(\w+)/g;
     let m;
     while ((m = namedRe.exec(content)) !== null) {
       exports.push({
@@ -188,7 +212,10 @@ export class ImportGraph {
     // export { ... }
     const exportListRe = /export\s*{([^}]*)}/g;
     while ((m = exportListRe.exec(content)) !== null) {
-      const items = m[1].split(',').map(s => s.trim()).filter(Boolean);
+      const items = m[1]
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       for (const item of items) {
         const name = item.split(/\s+as\s+/)[0].trim();
         exports.push({
@@ -217,7 +244,10 @@ export class ImportGraph {
     // export { x } from
     const reExportListRe = /export\s*{([^}]*)}\s*from\s+['"]([^'"]+)['"]/g;
     while ((m = reExportListRe.exec(content)) !== null) {
-      const items = m[1].split(',').map(s => s.trim()).filter(Boolean);
+      const items = m[1]
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       for (const item of items) {
         const parts = item.split(/\s+as\s+/);
         const localName = parts[0].trim();
@@ -275,7 +305,11 @@ export class ExportGraph {
     const { exportName, modulePath, scopeFiles = [] } = opts;
     const importers = await this.importGraph.getImporters(modulePath, scopeFiles);
     const node = this.importGraph.graph.get(modulePath);
-    const reExports = node ? node.exports.filter(e => e.name === exportName || (exportName === undefined && e.name === '*')) : [];
+    const reExports = node
+      ? node.exports.filter(
+          (e) => e.name === exportName || (exportName === undefined && e.name === '*'),
+        )
+      : [];
     return { importers, reExports };
   }
 }

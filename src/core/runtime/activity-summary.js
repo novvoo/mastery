@@ -38,9 +38,10 @@ export function buildActivitySummary(runtimeDetails = []) {
       startedAt: previous?.startedAt || detail.timestamp || activity.timestamp,
       updatedAt: detail.timestamp || activity.timestamp || Date.now(),
       // 保留最高进度值
-      progress: activity.progress !== null && activity.progress !== undefined
-        ? Math.max(previous?.progress || 0, activity.progress)
-        : previous?.progress,
+      progress:
+        activity.progress !== null && activity.progress !== undefined
+          ? Math.max(previous?.progress || 0, activity.progress)
+          : previous?.progress,
       counts: mergeCounts(previous?.counts, activity.counts),
     };
     byKey.set(key, next);
@@ -52,25 +53,37 @@ export function buildActivitySummary(runtimeDetails = []) {
   }
 
   const taskStages = buildTaskStages(activities, waitingForUser);
-  const completed = activities.filter(activity => activity.phase === 'completed').length;
-  const failed = activities.filter(activity => activity.phase === 'failed').length;
-  const running = activities.filter(activity => activity.phase === 'running' || activity.phase === 'waiting').length;
-  const reviewable = activities.filter(activity => activity.canReview).length;
-  const undoable = activities.filter(activity => activity.canUndo).length;
+  const completed = activities.filter((activity) => activity.phase === 'completed').length;
+  const failed = activities.filter((activity) => activity.phase === 'failed').length;
+  const running = activities.filter(
+    (activity) => activity.phase === 'running' || activity.phase === 'waiting',
+  ).length;
+  const reviewable = activities.filter((activity) => activity.canReview).length;
+  const undoable = activities.filter((activity) => activity.canUndo).length;
   const fileTargets = new Set(
     activities
-      .filter(activity => ['read', 'write', 'edit', 'delete'].includes(activity.intent) && activity.target)
-      .map(activity => activity.target)
+      .filter(
+        (activity) =>
+          ['read', 'write', 'edit', 'delete'].includes(activity.intent) && activity.target,
+      )
+      .map((activity) => activity.target),
   );
 
   return {
     activities: activities.sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0)),
     plan: buildPlanSummary(planEvents),
     taskStages,
-    progress: taskStages.length > 0
-      ? Math.round((taskStages.filter(stage => stage.status === 'completed').length / taskStages.length) * 100)
-      : 0,
-    files: Array.from(fileStates.values()).sort((a, b) => (a.path || '').localeCompare(b.path || '')),
+    progress:
+      taskStages.length > 0
+        ? Math.round(
+            (taskStages.filter((stage) => stage.status === 'completed').length /
+              taskStages.length) *
+              100,
+          )
+        : 0,
+    files: Array.from(fileStates.values()).sort((a, b) =>
+      (a.path || '').localeCompare(b.path || ''),
+    ),
     completed,
     failed,
     running,
@@ -90,15 +103,18 @@ function getPlanEventFromDetail(detail) {
   const payload = detail.payload || {};
   const plan = detail.plan || payload.plan || payload;
   const tasks = normalizePlanTasks(plan?.tasks || detail.planTasks);
-  const completed = tasks.filter(task => task.status === 'completed').length;
-  const running = tasks.filter(task => task.status === 'running').length;
-  const failed = tasks.filter(task => task.status === 'failed').length;
+  const completed = tasks.filter((task) => task.status === 'completed').length;
+  const running = tasks.filter((task) => task.status === 'running').length;
+  const failed = tasks.filter((task) => task.status === 'failed').length;
   const total = tasks.length;
 
   return {
-    id: detail.id || `${detail.event}:${detail.timestamp || plan?.id || plan?.name || planEventsKey(plan)}`,
+    id:
+      detail.id ||
+      `${detail.event}:${detail.timestamp || plan?.id || plan?.name || planEventsKey(plan)}`,
     type: detail.event === 'plan:created' ? 'created' : 'updated',
-    title: detail.content || (detail.event === 'plan:created' ? '执行计划已创建' : '执行计划已更新'),
+    title:
+      detail.content || (detail.event === 'plan:created' ? '执行计划已创建' : '执行计划已更新'),
     tasks,
     progress: {
       total,
@@ -141,8 +157,8 @@ function buildPlanSummary(planEvents) {
     latest,
     tasks: latest?.tasks || [],
     progress: latest?.progress || { total: 0, completed: 0, running: 0, failed: 0, progress: 0 },
-    created: events.some(event => event.type === 'created'),
-    updateCount: events.filter(event => event.type === 'updated').length,
+    created: events.some((event) => event.type === 'created'),
+    updateCount: events.filter((event) => event.type === 'updated').length,
   };
 }
 
@@ -151,18 +167,27 @@ function planEventsKey(plan) {
 }
 
 function getActivityFromDetail(detail) {
-  const explicitActivity = detail?.activity || detail?.payload?.activity || (detail?.event === 'tool:activity' ? detail.payload : null);
+  const explicitActivity =
+    detail?.activity ||
+    detail?.payload?.activity ||
+    (detail?.event === 'tool:activity' ? detail.payload : null);
   if (explicitActivity?.kind === 'tool_activity') {
     return explicitActivity;
   }
 
-  const toolName = detail?.toolName || detail?.name || detail?.payload?.toolName || detail?.payload?.name;
+  const toolName =
+    detail?.toolName || detail?.name || detail?.payload?.toolName || detail?.payload?.name;
   if (!toolName) {
     return null;
   }
 
   if (detail?.event === 'tool:error') {
-    return describeToolActivity(toolName, getToolArgs(detail), 'failed', detail?.error ?? detail?.payload?.error);
+    return describeToolActivity(
+      toolName,
+      getToolArgs(detail),
+      'failed',
+      detail?.error ?? detail?.payload?.error,
+    );
   }
 
   if (detail?.event === 'tool:call' || detail?.type === 'tool') {
@@ -170,14 +195,20 @@ function getActivityFromDetail(detail) {
   }
 
   if (detail?.event === 'tool:result' || detail?.type === 'tool_result') {
-    return describeToolActivity(toolName, getToolArgs(detail), 'completed', detail?.result ?? detail?.payload?.result);
+    return describeToolActivity(
+      toolName,
+      getToolArgs(detail),
+      'completed',
+      detail?.result ?? detail?.payload?.result,
+    );
   }
 
   return null;
 }
 
 function getToolArgs(detail) {
-  const args = detail?.args ?? detail?.arguments ?? detail?.payload?.args ?? detail?.payload?.arguments;
+  const args =
+    detail?.args ?? detail?.arguments ?? detail?.payload?.args ?? detail?.payload?.arguments;
   return args && typeof args === 'object' ? args : {};
 }
 
@@ -199,9 +230,15 @@ function mergeCounts(previous, next) {
 }
 
 export function getActivityTone(activity) {
-  if (activity.phase === 'failed') {return 'failed';}
-  if (activity.phase === 'completed') {return 'completed';}
-  if (activity.phase === 'waiting') {return 'waiting';}
+  if (activity.phase === 'failed') {
+    return 'failed';
+  }
+  if (activity.phase === 'completed') {
+    return 'completed';
+  }
+  if (activity.phase === 'waiting') {
+    return 'waiting';
+  }
   return 'running';
 }
 
@@ -218,8 +255,10 @@ function buildTaskStages(activities, waitingForUser) {
       if (waitingForUser) {
         return { ...stage, status: 'waiting' };
       }
-      const hasFailure = activities.some(activity => activity.phase === 'failed');
-      const hasRunning = activities.some(activity => ['running', 'waiting'].includes(activity.phase));
+      const hasFailure = activities.some((activity) => activity.phase === 'failed');
+      const hasRunning = activities.some((activity) =>
+        ['running', 'waiting'].includes(activity.phase),
+      );
       const hasAny = activities.length > 0;
       return {
         ...stage,
@@ -227,14 +266,14 @@ function buildTaskStages(activities, waitingForUser) {
       };
     }
 
-    const matching = activities.filter(activity => stage.intents.includes(activity.intent));
+    const matching = activities.filter((activity) => stage.intents.includes(activity.intent));
     if (matching.length === 0) {
       return { ...stage, status: 'pending' };
     }
-    if (matching.some(activity => activity.phase === 'failed')) {
+    if (matching.some((activity) => activity.phase === 'failed')) {
       return { ...stage, status: 'failed' };
     }
-    if (matching.some(activity => ['running', 'waiting'].includes(activity.phase))) {
+    if (matching.some((activity) => ['running', 'waiting'].includes(activity.phase))) {
       return { ...stage, status: 'running' };
     }
     return { ...stage, status: 'completed' };
@@ -313,20 +352,22 @@ function fileStatusForActivity(activity) {
 }
 
 export function getFileStatusLabel(status) {
-  return {
-    read: '已读',
-    write: '写入',
-    edit: '编辑',
-    delete: '删除',
-    edited: '已编辑',
-    created: '已创建',
-    deleted: '已删除',
-    completed: '已完成',
-    running: '进行中',
-    waiting: '等待确认',
-    failed: '失败',
-    pending: '待处理',
-  }[status] || status;
+  return (
+    {
+      read: '已读',
+      write: '写入',
+      edit: '编辑',
+      delete: '删除',
+      edited: '已编辑',
+      created: '已创建',
+      deleted: '已删除',
+      completed: '已完成',
+      running: '进行中',
+      waiting: '等待确认',
+      failed: '失败',
+      pending: '待处理',
+    }[status] || status
+  );
 }
 
 /**
@@ -338,19 +379,62 @@ export function getFileTypeIcon(filePath) {
   }
   const ext = filePath.split('.').pop().toLowerCase();
   const iconMap = {
-    js: 'JS', jsx: 'JX', ts: 'TS', tsx: 'TX', mjs: 'MJ', cjs: 'CJ',
-    json: '{}', jsonc: '{}', json5: '{}',
-    html: 'HT', htm: 'HT', css: 'CS', scss: 'SC', less: 'LS',
-    md: 'MD', mdx: 'MX', txt: 'TX', csv: 'CV',
-    py: 'PY', rb: 'RB', go: 'GO', rs: 'RS', java: 'JV', kt: 'KT',
-    sh: 'SH', bash: 'SH', zsh: 'SH', fish: 'SH',
-    yml: 'YL', yaml: 'YL', toml: 'TM', ini: 'IN', env: 'EN',
-    sql: 'SQ', graphql: 'GQ', prisma: 'PR',
-    png: 'IM', jpg: 'IM', jpeg: 'IM', gif: 'IM', svg: 'SV', webp: 'IM', ico: 'IM',
-    woff: 'WF', woff2: 'WF', ttf: 'TF', eot: 'TF',
-    zip: 'ZP', tar: 'ZP', gz: 'ZP', rar: 'ZP',
-    lock: 'LK', log: 'LG', map: 'MP',
-    dockerfile: 'DK', gitignore: 'GI',
+    js: 'JS',
+    jsx: 'JX',
+    ts: 'TS',
+    tsx: 'TX',
+    mjs: 'MJ',
+    cjs: 'CJ',
+    json: '{}',
+    jsonc: '{}',
+    json5: '{}',
+    html: 'HT',
+    htm: 'HT',
+    css: 'CS',
+    scss: 'SC',
+    less: 'LS',
+    md: 'MD',
+    mdx: 'MX',
+    txt: 'TX',
+    csv: 'CV',
+    py: 'PY',
+    rb: 'RB',
+    go: 'GO',
+    rs: 'RS',
+    java: 'JV',
+    kt: 'KT',
+    sh: 'SH',
+    bash: 'SH',
+    zsh: 'SH',
+    fish: 'SH',
+    yml: 'YL',
+    yaml: 'YL',
+    toml: 'TM',
+    ini: 'IN',
+    env: 'EN',
+    sql: 'SQ',
+    graphql: 'GQ',
+    prisma: 'PR',
+    png: 'IM',
+    jpg: 'IM',
+    jpeg: 'IM',
+    gif: 'IM',
+    svg: 'SV',
+    webp: 'IM',
+    ico: 'IM',
+    woff: 'WF',
+    woff2: 'WF',
+    ttf: 'TF',
+    eot: 'TF',
+    zip: 'ZP',
+    tar: 'ZP',
+    gz: 'ZP',
+    rar: 'ZP',
+    lock: 'LK',
+    log: 'LG',
+    map: 'MP',
+    dockerfile: 'DK',
+    gitignore: 'GI',
   };
   return iconMap[ext] || '🗎';
 }

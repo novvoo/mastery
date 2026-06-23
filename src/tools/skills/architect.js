@@ -14,7 +14,8 @@ export default function architect() {
     params: {
       scope: {
         type: 'string',
-        description: 'The architectural scope to review (e.g., "entire project", "authentication module", "API layer")',
+        description:
+          'The architectural scope to review (e.g., "entire project", "authentication module", "API layer")',
       },
       pain_points: {
         type: 'string',
@@ -26,7 +27,10 @@ export default function architect() {
       const { scope, pain_points = '' } = params;
 
       const painList = pain_points
-        ? pain_points.split(',').map((p) => p.trim()).filter(Boolean)
+        ? pain_points
+            .split(',')
+            .map((p) => p.trim())
+            .filter(Boolean)
         : [];
 
       const currentAnalysis = analyzeCurrentArchitecture(scope, painList);
@@ -37,7 +41,13 @@ export default function architect() {
 
       const improvementPath = generateImprovementPath(opportunities);
 
-      return formatArchitectureReport(scope, currentAnalysis, techDebt, opportunities, improvementPath);
+      return formatArchitectureReport(
+        scope,
+        currentAnalysis,
+        techDebt,
+        opportunities,
+        improvementPath,
+      );
     },
   };
 }
@@ -52,11 +62,16 @@ function analyzeCurrentArchitecture(scope, painPoints) {
   // Infer architectural patterns based on scope keywords
   const patterns = [];
 
-  if (scopeLower.includes('api') || scopeLower.includes('server') || scopeLower.includes('backend')) {
+  if (
+    scopeLower.includes('api') ||
+    scopeLower.includes('server') ||
+    scopeLower.includes('backend')
+  ) {
     patterns.push({
       pattern: 'Client-Server',
       likelihood: 'High',
-      notes: 'Scope suggests a backend/API architecture. Evaluate request handling, middleware chain, and data flow.',
+      notes:
+        'Scope suggests a backend/API architecture. Evaluate request handling, middleware chain, and data flow.',
     });
   }
 
@@ -64,22 +79,29 @@ function analyzeCurrentArchitecture(scope, painPoints) {
     patterns.push({
       pattern: 'Microservices',
       likelihood: 'Medium',
-      notes: 'If services are involved, evaluate service boundaries, inter-service communication, and data ownership.',
+      notes:
+        'If services are involved, evaluate service boundaries, inter-service communication, and data ownership.',
     });
   }
 
-  if (scopeLower.includes('frontend') || scopeLower.includes('ui') || scopeLower.includes('component')) {
+  if (
+    scopeLower.includes('frontend') ||
+    scopeLower.includes('ui') ||
+    scopeLower.includes('component')
+  ) {
     patterns.push({
       pattern: 'Component-Based UI',
       likelihood: 'High',
-      notes: 'Scope suggests a frontend architecture. Evaluate component hierarchy, state management, and data flow.',
+      notes:
+        'Scope suggests a frontend architecture. Evaluate component hierarchy, state management, and data flow.',
     });
   }
 
   patterns.push({
     pattern: 'Layered Architecture',
     likelihood: 'Medium',
-    notes: 'Most projects follow a layered pattern (presentation, business logic, data access). Verify separation of concerns.',
+    notes:
+      'Most projects follow a layered pattern (presentation, business logic, data access). Verify separation of concerns.',
   });
 
   const strengths = [
@@ -88,9 +110,10 @@ function analyzeCurrentArchitecture(scope, painPoints) {
     'Architecture can evolve incrementally without full rewrite',
   ];
 
-  const concerns = painPoints.length > 0
-    ? painPoints.map((p) => `Known pain point: ${p}`)
-    : ['No specific pain points identified - consider running a broader analysis with the team'];
+  const concerns =
+    painPoints.length > 0
+      ? painPoints.map((p) => `Known pain point: ${p}`)
+      : ['No specific pain points identified - consider running a broader analysis with the team'];
 
   return {
     scope,
@@ -155,7 +178,11 @@ function inventoryTechnicalDebt(scope, painPoints) {
   });
 
   // Add debt items based on pain points
-  if (painPoints.some((p) => p.toLowerCase().includes('slow') || p.toLowerCase().includes('performance'))) {
+  if (
+    painPoints.some(
+      (p) => p.toLowerCase().includes('slow') || p.toLowerCase().includes('performance'),
+    )
+  ) {
     debtItems.push({
       id: 'TD-6',
       category: 'Performance',
@@ -167,7 +194,11 @@ function inventoryTechnicalDebt(scope, painPoints) {
     });
   }
 
-  if (painPoints.some((p) => p.toLowerCase().includes('complex') || p.toLowerCase().includes('hard to understand'))) {
+  if (
+    painPoints.some(
+      (p) => p.toLowerCase().includes('complex') || p.toLowerCase().includes('hard to understand'),
+    )
+  ) {
     debtItems.push({
       id: 'TD-7',
       category: 'Complexity',
@@ -175,7 +206,8 @@ function inventoryTechnicalDebt(scope, painPoints) {
       impact: 'High',
       effort: 'High',
       indicator: 'High cognitive load to understand and modify core logic',
-      remediation: 'Decompose complex modules into smaller, focused units. Apply design patterns where appropriate.',
+      remediation:
+        'Decompose complex modules into smaller, focused units. Apply design patterns where appropriate.',
     });
   }
 
@@ -257,7 +289,11 @@ function identifyDeepeningOpportunities(scope, painPoints) {
   ];
 
   // Add opportunities based on pain points
-  if (painPoints.some((p) => p.toLowerCase().includes('deploy') || p.toLowerCase().includes('release'))) {
+  if (
+    painPoints.some(
+      (p) => p.toLowerCase().includes('deploy') || p.toLowerCase().includes('release'),
+    )
+  ) {
     opportunities.push({
       id: 'DO-6',
       name: 'Improve deployment pipeline',
@@ -346,14 +382,12 @@ function formatArchitectureReport(scope, analysis, techDebt, opportunities, impr
   );
 
   techDebt.forEach((d) => {
-    lines.push(`| ${d.id} | ${d.category} | ${d.description} | ${d.impact} | ${d.effort} | ${d.indicator} |`);
+    lines.push(
+      `| ${d.id} | ${d.category} | ${d.description} | ${d.impact} | ${d.effort} | ${d.indicator} |`,
+    );
   });
 
-  lines.push(
-    '',
-    '### Remediation Summary',
-    ''
-  );
+  lines.push('', '### Remediation Summary', '');
 
   techDebt.forEach((d) => {
     lines.push(`**${d.id}**: ${d.remediation}`);
@@ -387,12 +421,7 @@ function formatArchitectureReport(scope, analysis, techDebt, opportunities, impr
     lines.push('');
   });
 
-  lines.push(
-    '---',
-    '',
-    '## 4. Recommended Improvement Path',
-    ''
-  );
+  lines.push('---', '', '## 4. Recommended Improvement Path', '');
 
   improvementPath.forEach((phase) => {
     lines.push(`### ${phase.phase}`);
@@ -411,7 +440,7 @@ function formatArchitectureReport(scope, analysis, techDebt, opportunities, impr
     '> **Important**: This is an incremental improvement plan, NOT a rewrite proposal. Each step should be independently valuable and deployable.',
     '',
     '> **Next Steps**: Start with Phase 1 quick wins. Use the tdd tool for test foundation work and the review tool for ongoing quality checks.',
-    ''
+    '',
   );
 
   return lines.join('\n');

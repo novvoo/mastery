@@ -26,8 +26,12 @@ export class ToolRegistry {
 
     // 规范化 parameters：允许 `params` 或 `parameters.properties` 两种格式
     // —— 这里只做结构记录，不强校验，因为上游工具风格多样
-    const toolParams = tool.params || (tool.parameters && tool.parameters.properties ? tool.parameters.properties : {});
-    const toolRequired = tool.required || (tool.parameters && tool.parameters.required ? tool.parameters.required : []);
+    const toolParams =
+      tool.params ||
+      (tool.parameters && tool.parameters.properties ? tool.parameters.properties : {});
+    const toolRequired =
+      tool.required ||
+      (tool.parameters && tool.parameters.required ? tool.parameters.required : []);
 
     // 统一存储为：schema.normalizedProperties + schema.required
     const normalizedTool = {
@@ -53,12 +57,12 @@ export class ToolRegistry {
 
   /** @param {string[]} names @returns {object[]} */
   getByName(names) {
-    return names.map(name => this.#tools.get(name)).filter(Boolean);
+    return names.map((name) => this.#tools.get(name)).filter(Boolean);
   }
 
   /** @param {string} category @returns {object[]} */
   getByCategory(category) {
-    return this.getAll().filter(t => t.category === category);
+    return this.getAll().filter((t) => t.category === category);
   }
 
   /**
@@ -93,9 +97,13 @@ export class ToolRegistry {
 
     // 2) 类型检查 + coerce
     for (const [key, param] of Object.entries(props)) {
-      if (param === null || typeof param !== 'object') {continue;}
+      if (param === null || typeof param !== 'object') {
+        continue;
+      }
       const value = coerced[key];
-      if (value === undefined || value === null) {continue;}
+      if (value === undefined || value === null) {
+        continue;
+      }
 
       const expectedType = param.type;
       const isArray = Array.isArray(value);
@@ -136,7 +144,10 @@ export class ToolRegistry {
           if (!isArray) {
             if (typeof value === 'string') {
               // 容忍: "a,b,c" 转为数组
-              coerced[key] = value.split(',').map(s => s.trim()).filter(Boolean);
+              coerced[key] = value
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean);
             } else {
               errors.push(`${key} 应为 array，但收到: ${typeof value}`);
             }
@@ -160,15 +171,19 @@ export class ToolRegistry {
   /** Convert selected tools to OpenAI function calling format */
   toFunctionDefinitions(tools = this.getAll()) {
     return tools
-      .map(tool => typeof tool === 'string' ? this.get(tool) : tool)
+      .map((tool) => (typeof tool === 'string' ? this.get(tool) : tool))
       .filter(Boolean)
-      .map(tool => this.#toFunctionDefinition(tool));
+      .map((tool) => this.#toFunctionDefinition(tool));
   }
 
   #toFunctionDefinition(tool) {
     // Support both `params` (skill tools) and `parameters` (scheduler tools) formats
-    const toolParams = tool.params || (tool.parameters && tool.parameters.properties ? tool.parameters.properties : {});
-    const toolRequired = tool.required || (tool.parameters && tool.parameters.required ? tool.parameters.required : []);
+    const toolParams =
+      tool.params ||
+      (tool.parameters && tool.parameters.properties ? tool.parameters.properties : {});
+    const toolRequired =
+      tool.required ||
+      (tool.parameters && tool.parameters.required ? tool.parameters.required : []);
     return {
       name: tool.name,
       description: tool.description,
@@ -181,11 +196,17 @@ export class ToolRegistry {
               type: param.type,
               description: param.description,
             };
-            if (param.enum) {entry.enum = param.enum;}
-            if (param.items) {entry.items = { type: param.items.type, description: param.items.description };}
-            if (param.default !== undefined) {entry.default = param.default;}
+            if (param.enum) {
+              entry.enum = param.enum;
+            }
+            if (param.items) {
+              entry.items = { type: param.items.type, description: param.items.description };
+            }
+            if (param.default !== undefined) {
+              entry.default = param.default;
+            }
             return [key, entry];
-          })
+          }),
         ),
         required: toolRequired,
       },
@@ -198,7 +219,9 @@ export class ToolRegistry {
     const summary = {};
     for (const tool of this.getAll()) {
       const cat = tool.category;
-      if (!summary[cat]) {summary[cat] = [];}
+      if (!summary[cat]) {
+        summary[cat] = [];
+      }
       summary[cat].push(tool.name);
     }
     return summary;

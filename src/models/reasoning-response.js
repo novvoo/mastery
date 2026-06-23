@@ -17,9 +17,9 @@ export function extractReasoningFromChoice(choice = {}) {
   );
   const details = normalizeReasoningDetails(
     message.reasoning_details ||
-    message.reasoningDetails ||
-    choice.reasoning_details ||
-    choice.reasoningDetails
+      message.reasoningDetails ||
+      choice.reasoning_details ||
+      choice.reasoningDetails,
   );
 
   if (!directText && details.length === 0) {
@@ -27,7 +27,7 @@ export function extractReasoningFromChoice(choice = {}) {
   }
 
   const detailsText = details
-    .map(detail => detail.summary || detail.text || detail.content || '')
+    .map((detail) => detail.summary || detail.text || detail.content || '')
     .filter(Boolean)
     .join('\n\n');
 
@@ -53,7 +53,7 @@ function normalizeReasoningDetails(value) {
   }
 
   return value
-    .map(detail => {
+    .map((detail) => {
       if (typeof detail === 'string') {
         return { type: 'text', text: detail };
       }

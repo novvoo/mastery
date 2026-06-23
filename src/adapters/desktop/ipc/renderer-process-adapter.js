@@ -20,13 +20,13 @@ export class RendererProcessIPCAdapter extends IPCAdapterBase {
    */
   async initialize() {
     this.#setupListeners();
-    
+
     // 发送连接请求
     try {
       await this.#ipcRenderer.invoke(IPCMessageType.CONNECT);
       this.isConnected = true;
       this.startHeartbeat();
-      
+
       if (this.config.debug) {
         console.log('[RendererProcessIPC] 已连接到主进程');
       }
@@ -44,7 +44,7 @@ export class RendererProcessIPCAdapter extends IPCAdapterBase {
     this.#ipcRenderer.on(IPCMessageType.RESPONSE, (event, data) => {
       const message = IPCMessage.fromJSON(data);
       const pending = this.pendingRequests.get(message.correlationId);
-      
+
       if (pending) {
         clearTimeout(pending.timer);
         this.pendingRequests.delete(message.correlationId);
@@ -56,13 +56,13 @@ export class RendererProcessIPCAdapter extends IPCAdapterBase {
     this.#ipcRenderer.on(IPCMessageType.ERROR, (event, data) => {
       const message = IPCMessage.fromJSON(data);
       const pending = this.pendingRequests.get(message.correlationId);
-      
+
       if (pending) {
         clearTimeout(pending.timer);
         this.pendingRequests.delete(message.correlationId);
         pending.reject(new Error(message.payload.message || 'IPC 错误'));
       }
-      
+
       this.emit('error', new Error(message.payload.message));
     });
 
@@ -70,7 +70,7 @@ export class RendererProcessIPCAdapter extends IPCAdapterBase {
     this.#ipcRenderer.on(IPCMessageType.EVENT, (event, data) => {
       const message = IPCMessage.fromJSON(data);
       const eventName = message.metadata?.eventName;
-      
+
       if (eventName && this.#eventListeners.has(eventName)) {
         for (const callback of this.#eventListeners.get(eventName)) {
           try {
@@ -80,7 +80,7 @@ export class RendererProcessIPCAdapter extends IPCAdapterBase {
           }
         }
       }
-      
+
       this.emit('event', { eventName, data: message.payload });
     });
 
@@ -107,7 +107,7 @@ export class RendererProcessIPCAdapter extends IPCAdapterBase {
 
     const message = this.createRequest(channel, payload, options);
     const requestId = message.id;
-    
+
     return new Promise((resolve, reject) => {
       // 设置超时
       const timer = setTimeout(() => {
@@ -120,7 +120,7 @@ export class RendererProcessIPCAdapter extends IPCAdapterBase {
 
       // 发送请求
       this.#ipcRenderer.send(IPCMessageType.REQUEST, message.toJSON());
-      
+
       if (this.config.debug) {
         console.log(`[RendererProcessIPC] 发送请求: ${channel}`, payload);
       }
@@ -141,13 +141,13 @@ export class RendererProcessIPCAdapter extends IPCAdapterBase {
   subscribe(eventName, callback) {
     if (!this.#eventListeners.has(eventName)) {
       this.#eventListeners.set(eventName, new Set());
-      
+
       // 通知主进程订阅事件
       this.#ipcRenderer.send('ipc:subscribe', eventName);
     }
-    
+
     this.#eventListeners.get(eventName).add(callback);
-    
+
     // 返回取消订阅函数
     return () => {
       this.unsubscribe(eventName, callback);
@@ -160,7 +160,7 @@ export class RendererProcessIPCAdapter extends IPCAdapterBase {
   unsubscribe(eventName, callback) {
     if (this.#eventListeners.has(eventName)) {
       this.#eventListeners.get(eventName).delete(callback);
-      
+
       // 如果没有监听器了，通知主进程取消订阅
       if (this.#eventListeners.get(eventName).size === 0) {
         this.#eventListeners.delete(eventName);
@@ -225,7 +225,7 @@ export class RendererProcessIPCAdapter extends IPCAdapterBase {
     this.#ipcRenderer.send(IPCMessageType.DISCONNECT);
     super.disconnect();
     this.#eventListeners.clear();
-    
+
     if (this.config.debug) {
       console.log('[RendererProcessIPC] 已断开连接');
     }

@@ -35,7 +35,7 @@ export class DependencyGraph {
       dependencies,
       dependents: [],
       hash: this._hashContent(content),
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     // 更新反向索引
@@ -70,18 +70,22 @@ export class DependencyGraph {
     const result = [];
 
     const traverse = (currentPath, depth) => {
-      if (depth > maxDepth || visited.has(currentPath)) {return;}
+      if (depth > maxDepth || visited.has(currentPath)) {
+        return;
+      }
       visited.add(currentPath);
 
       const node = this._nodes.get(currentPath);
-      if (!node) {return;}
+      if (!node) {
+        return;
+      }
 
       for (const dep of node.dependencies) {
         if (!dep.isExternal) {
           result.push({
             depth: depth + 1,
             path: dep.target,
-            dependencies: this.getDirectDependencies(dep.target)
+            dependencies: this.getDirectDependencies(dep.target),
           });
           traverse(dep.target, depth + 1);
         }
@@ -108,11 +112,15 @@ export class DependencyGraph {
     const result = [];
 
     const traverse = (currentPath, depth) => {
-      if (depth > maxDepth || visited.has(currentPath)) {return;}
+      if (depth > maxDepth || visited.has(currentPath)) {
+        return;
+      }
       visited.add(currentPath);
 
       const node = this._nodes.get(currentPath);
-      if (!node) {return;}
+      if (!node) {
+        return;
+      }
 
       for (const dependent of node.dependents) {
         result.push({ depth: depth + 1, path: dependent });
@@ -129,11 +137,13 @@ export class DependencyGraph {
    */
   analyzeImpact(filePath) {
     const directlyAffects = this.getDirectDependencies(filePath)
-      .filter(d => !d.isExternal)
-      .map(d => d.target);
+      .filter((d) => !d.isExternal)
+      .map((d) => d.target);
 
-    const transitivelyAffects = this.getTransitiveDependencies(filePath)
-      .map(d => ({ depth: d.depth, path: d.path }));
+    const transitivelyAffects = this.getTransitiveDependencies(filePath).map((d) => ({
+      depth: d.depth,
+      path: d.path,
+    }));
 
     const directlyAffectedBy = this.getDependents(filePath);
 
@@ -143,7 +153,7 @@ export class DependencyGraph {
       directlyAffects,
       transitivelyAffects,
       directlyAffectedBy,
-      transitivelyAffectedBy
+      transitivelyAffectedBy,
     };
   }
 
@@ -161,17 +171,21 @@ export class DependencyGraph {
         return path;
       }
 
-      if (visited.has(current)) {continue;}
+      if (visited.has(current)) {
+        continue;
+      }
       visited.add(current);
 
       const node = this._nodes.get(current);
-      if (!node) {continue;}
+      if (!node) {
+        continue;
+      }
 
       for (const dep of node.dependencies) {
         if (!dep.isExternal && !visited.has(dep.target)) {
           queue.push({
             path: [...path, dep.target],
-            current: dep.target
+            current: dep.target,
           });
         }
       }
@@ -193,34 +207,38 @@ export class DependencyGraph {
 
       // ES6 import
       const es6Match = trimmed.match(
-        /^import\s+(?:{([^}]+)}|(\*)\s+as\s+(\w+)|(\w+))\s+from\s+['"]([^'"]+)['"]/
+        /^import\s+(?:{([^}]+)}|(\*)\s+as\s+(\w+)|(\w+))\s+from\s+['"]([^'"]+)['"]/,
       );
 
       if (es6Match) {
         const [, namedImports, , , defaultImport, source] = es6Match;
         const symbols = namedImports
-          ? namedImports.split(',').map(s => s.trim().split(' as ')[0].trim())
-          : defaultImport ? [defaultImport] : [];
+          ? namedImports.split(',').map((s) => s.trim().split(' as ')[0].trim())
+          : defaultImport
+            ? [defaultImport]
+            : [];
 
         dependencies.push({
           source: filePath,
           target: this._resolvePath(filePath, source),
           type: 'import',
           symbols,
-          isExternal: this._isExternalModule(source)
+          isExternal: this._isExternalModule(source),
         });
         continue;
       }
 
       // CommonJS require
-      const cjsMatch = trimmed.match(/^const\s+\{([^}]+)\}\s+=\s+require\s*\(\s*['"]([^'"]+)['"]\s*\)/);
+      const cjsMatch = trimmed.match(
+        /^const\s+\{([^}]+)\}\s+=\s+require\s*\(\s*['"]([^'"]+)['"]\s*\)/,
+      );
       if (cjsMatch) {
         dependencies.push({
           source: filePath,
           target: this._resolvePath(filePath, cjsMatch[2]),
           type: 'require',
-          symbols: cjsMatch[1].split(',').map(s => s.trim().split(' as ')[0].trim()),
-          isExternal: this._isExternalModule(cjsMatch[2])
+          symbols: cjsMatch[1].split(',').map((s) => s.trim().split(' as ')[0].trim()),
+          isExternal: this._isExternalModule(cjsMatch[2]),
         });
         continue;
       }
@@ -232,7 +250,7 @@ export class DependencyGraph {
           source: filePath,
           target: extendsMatch[1], // 需要通过符号索引找到实际文件
           type: 'extends',
-          isExternal: false
+          isExternal: false,
         });
       }
     }
@@ -282,7 +300,7 @@ export class DependencyGraph {
     let mostDependent = [];
 
     for (const [path, node] of this._nodes.entries()) {
-      totalDeps += node.dependencies.filter(d => !d.isExternal).length;
+      totalDeps += node.dependencies.filter((d) => !d.isExternal).length;
       mostDependent.push({ path, count: node.dependents.length });
     }
 
@@ -292,7 +310,7 @@ export class DependencyGraph {
       files: this._nodes.size,
       externalModules: this._externalModules.size,
       avgDependencies: this._nodes.size > 0 ? totalDeps / this._nodes.size : 0,
-      mostDependent: mostDependent.slice(0, 10)
+      mostDependent: mostDependent.slice(0, 10),
     };
   }
 
@@ -307,7 +325,7 @@ export class DependencyGraph {
       nodes.push({
         path,
         hash: node.hash,
-        timestamp: node.timestamp
+        timestamp: node.timestamp,
       });
 
       for (const dep of node.dependencies) {
@@ -315,7 +333,7 @@ export class DependencyGraph {
           edges.push({
             from: path,
             to: dep.target,
-            type: dep.type
+            type: dep.type,
           });
         }
       }

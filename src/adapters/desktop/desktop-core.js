@@ -1,7 +1,7 @@
 /**
  * Desktop Integration Core - 桌面集成核心
  * 完整的 DesktopCore 类实现
- * 
+ *
  * 功能特性：
  * - DesktopCore 类的完整实现
  * - UIBridge 接口实现
@@ -33,7 +33,7 @@ export const DesktopState = {
   READY: 'ready',
   RUNNING: 'running',
   ERROR: 'error',
-  DISPOSED: 'disposed'
+  DISPOSED: 'disposed',
 };
 
 /**
@@ -44,7 +44,7 @@ const DEFAULT_DESKTOP_CONFIG = {
   debug: false,
   maxIterations: 60,
   autoDownloadModels: true,
-  
+
   // IPC 配置
   ipc: {
     enabled: true,
@@ -53,15 +53,15 @@ const DEFAULT_DESKTOP_CONFIG = {
     reconnectDelay: 1000,
     maxReconnectAttempts: 5,
     enableQueue: true,
-    validateMessages: true
+    validateMessages: true,
   },
-  
+
   // UI 配置
   ui: {
     autoAttach: true,
     eventBuffering: true,
-    maxBufferSize: 100
-  }
+    maxBufferSize: 100,
+  },
 };
 
 /**
@@ -71,7 +71,7 @@ const DEFAULT_DESKTOP_CONFIG = {
 export class DesktopCore {
   #config;
   #engine;
-  #runtime;   // runtime-bootstrap 产物：{ engine, toolRegistry, securityPolicy, workspaceState, metricsSink, mcpClient }
+  #runtime; // runtime-bootstrap 产物：{ engine, toolRegistry, securityPolicy, workspaceState, metricsSink, mcpClient }
   #eventBus;
   #ipcAdapter;
   #uiBridge;
@@ -88,9 +88,9 @@ export class DesktopCore {
       ...DEFAULT_DESKTOP_CONFIG,
       ...config,
       ipc: { ...DEFAULT_DESKTOP_CONFIG.ipc, ...config.ipc },
-      ui: { ...DEFAULT_DESKTOP_CONFIG.ui, ...config.ui }
+      ui: { ...DEFAULT_DESKTOP_CONFIG.ui, ...config.ui },
     };
-    
+
     // 初始化内部状态
     this.#eventBus = getEventBus();
     this.#state = DesktopState.IDLE;
@@ -99,7 +99,7 @@ export class DesktopCore {
     this.#subscriptions = [];
     this.#pendingOperations = new Map();
     this.#stateListeners = new Set();
-    
+
     if (this.#config.debug) {
       console.log('[DesktopCore] 实例已创建');
     }
@@ -117,7 +117,7 @@ export class DesktopCore {
     }
 
     this.#setState(DesktopState.INITIALIZING);
-    
+
     try {
       if (this.#config.debug) {
         console.log('[DesktopCore] 开始初始化...');
@@ -142,10 +142,7 @@ export class DesktopCore {
 
       // MCP：自动发现 & 注册
       try {
-        await initializeMCPServersFromEnv(
-          this.#runtime.mcpClient,
-          this.#runtime.toolRegistry,
-        );
+        await initializeMCPServersFromEnv(this.#runtime.mcpClient, this.#runtime.toolRegistry);
       } catch (err) {
         if (this.#config.debug) {
           console.log('[DesktopCore] MCP 初始化跳过:', err.message);
@@ -160,11 +157,11 @@ export class DesktopCore {
 
       this.#isInitialized = true;
       this.#setState(DesktopState.READY);
-      
+
       if (this.#config.debug) {
         console.log('[DesktopCore] 初始化完成');
       }
-      
+
       return this;
     } catch (error) {
       this.#setState(DesktopState.ERROR);
@@ -189,7 +186,9 @@ export class DesktopCore {
           arguments: args,
           timestamp: Date.now(),
         };
-        if (isDebug) {console.log('[UiAdapter] tool:call', name);}
+        if (isDebug) {
+          console.log('[UiAdapter] tool:call', name);
+        }
         eventBus.emit(RuntimeEvent.TOOL_CALL, eventData);
       },
       toolResult(name, result, args = {}) {
@@ -200,7 +199,9 @@ export class DesktopCore {
           result: typeof result === 'string' ? result : (result?.result ?? result),
           timestamp: Date.now(),
         };
-        if (isDebug) {console.log('[UiAdapter] tool:result', name);}
+        if (isDebug) {
+          console.log('[UiAdapter] tool:result', name);
+        }
         eventBus.emit(RuntimeEvent.TOOL_RESULT, eventData);
       },
       toolError(name, error) {
@@ -209,7 +210,9 @@ export class DesktopCore {
           error: typeof error === 'string' ? error : (error?.message ?? String(error)),
           timestamp: Date.now(),
         };
-        if (isDebug) {console.log('[UiAdapter] tool:error', name, eventData.error);}
+        if (isDebug) {
+          console.log('[UiAdapter] tool:error', name, eventData.error);
+        }
         eventBus.emit(RuntimeEvent.TOOL_ERROR, eventData);
       },
       iteration(iteration, maxIterations) {
@@ -221,7 +224,9 @@ export class DesktopCore {
         eventBus.emit(RuntimeEvent.STATUS_UPDATE, eventData);
       },
       finalAnswer(answer) {
-        if (isDebug) {console.log('[UiAdapter] agent:complete');}
+        if (isDebug) {
+          console.log('[UiAdapter] agent:complete');
+        }
         eventBus.emit(RuntimeEvent.AGENT_COMPLETE, { answer, timestamp: Date.now() });
         eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
           status: 'completed',
@@ -248,7 +253,9 @@ export class DesktopCore {
             ...(data || {}),
             timestamp: Date.now(),
           });
-          if (isDebug) {console.log('[UiAdapter] agent:start');}
+          if (isDebug) {
+            console.log('[UiAdapter] agent:start');
+          }
         } else if (name === 'Execution plan created') {
           eventBus.emit(RuntimeEvent.EXECUTION_PLAN_CREATED, {
             ...(data || {}),
@@ -286,7 +293,7 @@ export class DesktopCore {
    */
   #setupEventForwarding() {
     const self = this;
-    
+
     // 定义需要转发的事件
     const eventsToForward = [
       RuntimeEvent.AGENT_START,
@@ -306,7 +313,7 @@ export class DesktopCore {
       RuntimeEvent.STATUS_UPDATE,
       RuntimeEvent.CONFIG_CHANGE,
       RuntimeEvent.MESSAGE_RECEIVED,
-      RuntimeEvent.MESSAGE_SENT
+      RuntimeEvent.MESSAGE_SENT,
     ];
 
     // 订阅并转发事件
@@ -323,23 +330,23 @@ export class DesktopCore {
    */
   #setupStateMonitoring() {
     const self = this;
-    
+
     // 监听引擎状态变化，并保存订阅以便清理
     const unsub1 = this.#eventBus.subscribe(RuntimeEvent.AGENT_START, () => {
       self.#setState(DesktopState.RUNNING);
     });
     this.#subscriptions.push(unsub1);
-    
+
     const unsub2 = this.#eventBus.subscribe(RuntimeEvent.AGENT_COMPLETE, () => {
       self.#setState(DesktopState.READY);
     });
     this.#subscriptions.push(unsub2);
-    
+
     const unsub3 = this.#eventBus.subscribe(RuntimeEvent.AGENT_ERROR, () => {
       self.#setState(DesktopState.ERROR);
     });
     this.#subscriptions.push(unsub3);
-    
+
     const unsub4 = this.#eventBus.subscribe(RuntimeEvent.AGENT_STOP, () => {
       self.#setState(DesktopState.READY);
     });
@@ -353,24 +360,24 @@ export class DesktopCore {
     const message = {
       type: eventName,
       data: eventData,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
-    
+
     // 缓冲事件
     if (this.#config.ui.eventBuffering) {
       this.#bufferEvent(message);
     }
-    
+
     // 发送到 UI Bridge
     if (this.#uiBridge) {
       this.#uiBridge.onMessage(message);
     }
-    
+
     // 发送到 IPC 适配器
     if (this.#ipcAdapter) {
       this.#ipcAdapter.broadcast(eventName, eventData);
     }
-    
+
     // 如果调试模式，打印日志
     if (this.#config.debug) {
       console.log(`[DesktopCore] 转发事件: ${eventName}`, eventData);
@@ -394,7 +401,7 @@ export class DesktopCore {
   #setState(newState) {
     const oldState = this.#state;
     this.#state = newState;
-    
+
     // 通知状态监听器
     for (const listener of this.#stateListeners) {
       try {
@@ -405,11 +412,11 @@ export class DesktopCore {
         }
       }
     }
-    
+
     // 发送状态更新事件
     this.#eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
       status: newState,
-      previousStatus: oldState
+      previousStatus: oldState,
     });
   }
 
@@ -421,19 +428,19 @@ export class DesktopCore {
       operation,
       error: error.message,
       stack: error.stack,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
-    
+
     this.#eventBus.emit(RuntimeEvent.AGENT_ERROR, errorInfo);
-    
+
     if (this.#uiBridge) {
       this.#uiBridge.onMessage({
         type: 'error',
         data: errorInfo,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
     }
-    
+
     if (this.#config.debug) {
       console.error(`[DesktopCore] 错误 (${operation}):`, error);
     }
@@ -446,29 +453,29 @@ export class DesktopCore {
     if (!ipcMain) {
       throw new Error('ipcMain 参数必须提供');
     }
-    
+
     // 如果已附加同一适配器，直接返回
     if (this.#ipcAdapter) {
       return this.#ipcAdapter;
     }
-    
+
     this.#ipcAdapter = createMainProcessIPCAdapter(ipcMain, this.#eventBus, {
       ...this.#config.ipc,
-      debug: this.#config.debug
+      debug: this.#config.debug,
     });
-    
+
     // 初始化 IPC 适配器（建立连接、注册处理器、设置心跳等）
     this.#ipcAdapter.initialize();
-    
+
     // 附加引擎到 IPC 适配器
     if (this.#engine) {
       this.#ipcAdapter.attachEngine(this.#engine);
     }
-    
+
     if (this.#config.debug) {
       console.log('[DesktopCore] IPC 适配器已附加');
     }
-    
+
     return this.#ipcAdapter;
   }
 
@@ -479,12 +486,12 @@ export class DesktopCore {
     if (!bridge) {
       throw new Error('bridge 参数必须提供');
     }
-    
+
     this.#uiBridge = bridge;
-    
+
     // 建立直接连接模式（无 IPC 时也能获取工具/状态）
     bridge.attachCoreRef(this);
-    
+
     // 如果有缓冲的事件，发送给 UI
     if (this.#config.ui.eventBuffering && this.#eventBuffer.length > 0) {
       for (const message of this.#eventBuffer) {
@@ -493,11 +500,11 @@ export class DesktopCore {
       // 清空缓冲
       this.#eventBuffer = [];
     }
-    
+
     if (this.#config.debug) {
       console.log('[DesktopCore] UI Bridge 已附加');
     }
-    
+
     return this;
   }
 
@@ -508,38 +515,38 @@ export class DesktopCore {
     if (!this.#isInitialized) {
       await this.initialize();
     }
-    
+
     if (this.#state !== DesktopState.READY) {
       throw new Error(`DesktopCore 当前状态为 ${this.#state}，无法处理输入`);
     }
-    
+
     // 创建操作 ID
     const operationId = `op_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     // 存储待处理操作
     this.#pendingOperations.set(operationId, {
       input,
       startTime: Date.now(),
-      status: 'pending'
+      status: 'pending',
     });
-    
+
     // 发送输入接收事件
     this.#forwardEvent('input_received', { input, operationId });
-    
+
     try {
       const result = await this.#engine.processInput(input, options);
-      
+
       // 更新操作状态
       this.#pendingOperations.set(operationId, {
         ...this.#pendingOperations.get(operationId),
         status: 'completed',
         result,
-        endTime: Date.now()
+        endTime: Date.now(),
       });
-      
+
       // 发送输出就绪事件
       this.#forwardEvent('output_ready', { result, operationId });
-      
+
       return result;
     } catch (error) {
       // 更新操作状态
@@ -547,9 +554,9 @@ export class DesktopCore {
         ...this.#pendingOperations.get(operationId),
         status: 'error',
         error: error.message,
-        endTime: Date.now()
+        endTime: Date.now(),
       });
-      
+
       this.#handleError(error, 'processInput');
       throw error;
     }
@@ -562,20 +569,20 @@ export class DesktopCore {
     if (this.#engine) {
       this.#engine.stop();
     }
-    
+
     // 清理待处理操作
     for (const [id, operation] of this.#pendingOperations) {
       if (operation.status === 'pending') {
         this.#pendingOperations.set(id, {
           ...operation,
           status: 'cancelled',
-          endTime: Date.now()
+          endTime: Date.now(),
         });
       }
     }
-    
+
     this.#setState(DesktopState.READY);
-    
+
     if (this.#config.debug) {
       console.log('[DesktopCore] 执行已停止');
     }
@@ -592,7 +599,7 @@ export class DesktopCore {
       pendingOperations: this.#pendingOperations.size,
       eventBufferSize: this.#eventBuffer.length,
       ipcConnected: this.#ipcAdapter ? this.#ipcAdapter.isConnected : false,
-      uiBridgeAttached: this.#uiBridge !== null
+      uiBridgeAttached: this.#uiBridge !== null,
     };
   }
 
@@ -601,22 +608,22 @@ export class DesktopCore {
    */
   getDetailedState() {
     const state = this.getState();
-    
+
     return {
       ...state,
       config: {
         workingDirectory: this.#config.workingDirectory,
         debug: this.#config.debug,
-        maxIterations: this.#config.maxIterations
+        maxIterations: this.#config.maxIterations,
       },
       pendingOperations: Array.from(this.#pendingOperations.entries()).map(([id, op]) => ({
         id,
         input: op.input,
         status: op.status,
-        duration: op.endTime ? op.endTime - op.startTime : Date.now() - op.startTime
+        duration: op.endTime ? op.endTime - op.startTime : Date.now() - op.startTime,
       })),
       eventBuffer: this.#eventBuffer.slice(-10), // 最近 10 个事件
-      ipcStats: this.#ipcAdapter ? this.#ipcAdapter.getStats() : null
+      ipcStats: this.#ipcAdapter ? this.#ipcAdapter.getStats() : null,
     };
   }
 
@@ -696,7 +703,9 @@ export class DesktopCore {
    * 动态更新工作目录。下一次 processInput 将使用新路径。
    */
   setWorkingDirectory(directory) {
-    if (!directory || typeof directory !== 'string') {return;}
+    if (!directory || typeof directory !== 'string') {
+      return;
+    }
     this.#config.workingDirectory = directory;
     if (this.#engine && typeof this.#engine.setWorkingDirectory === 'function') {
       this.#engine.setWorkingDirectory(directory);
@@ -704,19 +713,31 @@ export class DesktopCore {
   }
 
   /** 访问 runtime-bootstrap 产物（只读） */
-  getRuntime() { return this.#runtime; }
-  getWorkspaceState() { return this.#runtime?.workspaceState; }
-  getMetricsSink() { return metricsSink; }
-  getMcpClient() { return this.#runtime?.mcpClient; }
-  getSecurityPolicy() { return this.#runtime?.securityPolicy; }
-  getToolRegistry() { return this.#runtime?.toolRegistry; }
+  getRuntime() {
+    return this.#runtime;
+  }
+  getWorkspaceState() {
+    return this.#runtime?.workspaceState;
+  }
+  getMetricsSink() {
+    return metricsSink;
+  }
+  getMcpClient() {
+    return this.#runtime?.mcpClient;
+  }
+  getSecurityPolicy() {
+    return this.#runtime?.securityPolicy;
+  }
+  getToolRegistry() {
+    return this.#runtime?.toolRegistry;
+  }
 
   /**
    * 添加状态监听器
    */
   addStateListener(listener) {
     this.#stateListeners.add(listener);
-    
+
     // 返回移除监听器的函数
     return () => {
       this.#stateListeners.delete(listener);
@@ -744,12 +765,12 @@ export class DesktopCore {
     if (this.#state === targetState) {
       return true;
     }
-    
+
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error(`等待状态 ${targetState} 超时`));
       }, timeout);
-      
+
       const unsubscribe = this.addStateListener(({ newState }) => {
         if (newState === targetState) {
           clearTimeout(timer);
@@ -781,67 +802,75 @@ export class DesktopCore {
     if (this.#state === DesktopState.DISPOSED) {
       return;
     }
-    
+
     // 先设置为 DISPOSED 状态，防止后续操作改变状态
     const previousState = this.#state;
     this.#state = DesktopState.DISPOSED;
-    
+
     // 通知状态监听器（在清理前通知）
     for (const listener of this.#stateListeners) {
       try {
-        listener({ oldState: previousState, newState: DesktopState.DISPOSED, timestamp: Date.now() });
+        listener({
+          oldState: previousState,
+          newState: DesktopState.DISPOSED,
+          timestamp: Date.now(),
+        });
       } catch (error) {
         // 忽略监听器自身错误，确保清理流程继续
       }
     }
-    
+
     try {
       // 停止当前执行（不改变状态）
       if (this.#engine) {
         this.#engine.stop();
       }
-      
+
       // 清理订阅
       for (const unsubscribe of this.#subscriptions) {
         unsubscribe();
       }
       this.#subscriptions = [];
-      
+
       // 清理状态监听器（通知完成后再清理）
       this.#stateListeners.clear();
-      
+
       // 断开 IPC 适配器
       if (this.#ipcAdapter) {
         this.#ipcAdapter.disconnect();
         this.#ipcAdapter = null;
       }
-      
+
       // 断开 UI Bridge
       if (this.#uiBridge) {
         this.#uiBridge.disconnect();
         this.#uiBridge = null;
       }
-      
+
       // 销毁引擎
       if (this.#engine) {
         await this.#engine.dispose();
         this.#engine = null;
       }
-      
+
       // 清理缓冲
       this.#eventBuffer = [];
       this.#pendingOperations.clear();
-      
+
       this.#isInitialized = false;
-      
+
       // 发送状态更新事件（通知 UI）
       this.#eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
         status: DesktopState.DISPOSED,
-        previousStatus: previousState
+        previousStatus: previousState,
       });
-      
+
       if (this.#config.debug) {
-        try { console.log('[DesktopCore] 已销毁'); } catch { /* EIO: pipe already closed during shutdown */ }
+        try {
+          console.log('[DesktopCore] 已销毁');
+        } catch {
+          /* EIO: pipe already closed during shutdown */
+        }
       }
     } catch (error) {
       this.#handleError(error, 'dispose');
@@ -871,5 +900,5 @@ export default {
   DesktopPlugin,
   DesktopState,
   createDesktopCore,
-  createUIBridge
+  createUIBridge,
 };

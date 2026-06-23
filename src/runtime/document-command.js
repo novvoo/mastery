@@ -4,10 +4,14 @@ const DOC_COMMAND_NAMES = new Set(['/doc', '/docs', '/document', '/documents']);
 
 export function parseDocumentCommand(input) {
   const rawInput = String(input || '').trim();
-  if (!rawInput) {return null;}
+  if (!rawInput) {
+    return null;
+  }
 
   const commandName = rawInput.split(/\s+/, 1)[0].toLowerCase();
-  if (!DOC_COMMAND_NAMES.has(commandName)) {return null;}
+  if (!DOC_COMMAND_NAMES.has(commandName)) {
+    return null;
+  }
 
   const argsText = rawInput.slice(commandName.length).trim();
   const [subcommandRaw, ...restParts] = argsText.split(/\s+/).filter(Boolean);
@@ -25,9 +29,15 @@ export function parseDocumentCommand(input) {
 
 export async function handleDocumentCommand(input, options = {}) {
   const parsed = parseDocumentCommand(input);
-  if (!parsed) {return null;}
+  if (!parsed) {
+    return null;
+  }
 
-  const { engine, toolRegistry = engine?.getToolRegistry?.(), modelProvider = engine?.getModelProvider?.() } = options;
+  const {
+    engine,
+    toolRegistry = engine?.getToolRegistry?.(),
+    modelProvider = engine?.getModelProvider?.(),
+  } = options;
   const context = createDocumentToolContext(engine, options);
 
   if (['help', '--help', '-h'].includes(parsed.subcommand)) {
@@ -74,23 +84,24 @@ export async function handleDocumentCommand(input, options = {}) {
     const result = await toolRegistry.execute('document_add', { source }, context);
     return createCommandResult(parsed, {
       success: result?.success !== false,
-      content: result?.success === false
-        ? (result?.error || 'Document indexing failed.')
-        : [
-            `Indexed document: ${result.title}`,
-            `id: ${result.id}`,
-            `kind: ${result.kind}`,
-            `chunks: ${result.chunks}`,
-            `source: ${result.source}`,
-          ].join('\n'),
+      content:
+        result?.success === false
+          ? result?.error || 'Document indexing failed.'
+          : [
+              `Indexed document: ${result.title}`,
+              `id: ${result.id}`,
+              `kind: ${result.kind}`,
+              `chunks: ${result.chunks}`,
+              `source: ${result.source}`,
+            ].join('\n'),
       data: result,
       error: result?.success === false ? result?.error : undefined,
     });
   }
 
   if (['search', 'find', 'query'].includes(parsed.subcommand)) {
-    const flags = new Set(parsed.restParts.filter(p => p.startsWith('--')));
-    const query = parsed.restParts.filter(p => !p.startsWith('--')).join(' ');
+    const flags = new Set(parsed.restParts.filter((p) => p.startsWith('--')));
+    const query = parsed.restParts.filter((p) => !p.startsWith('--')).join(' ');
     const showRaw = flags.has('--debug') || flags.has('--raw');
 
     if (!query) {
@@ -103,21 +114,28 @@ export async function handleDocumentCommand(input, options = {}) {
 
     const rawResult = await toolRegistry.execute('document_search', { query, limit: 5 }, context);
     const searchPayload = rawResult !== null ? String(rawResult) : '';
-    const truncatedSearch = searchPayload.length > 8000 ? searchPayload.slice(0, 8000) + '\n...[truncated]' : searchPayload;
+    const truncatedSearch =
+      searchPayload.length > 8000
+        ? searchPayload.slice(0, 8000) + '\n...[truncated]'
+        : searchPayload;
     let answer = '';
 
     if (modelProvider && searchPayload && !searchPayload.startsWith('No document')) {
       try {
-        const refineResponse = await modelProvider.chat([
-          {
-            role: 'system',
-            content: 'You are a precise document analyst. Based on the user question and search results, extract a concise answer. Use the user\'s language. If insufficient info, say so.',
-          },
-          {
-            role: 'user',
-            content: `Question: ${query}\n\nSearch results:\n${truncatedSearch}`,
-          },
-        ], { maxTokens: 500 });
+        const refineResponse = await modelProvider.chat(
+          [
+            {
+              role: 'system',
+              content:
+                "You are a precise document analyst. Based on the user question and search results, extract a concise answer. Use the user's language. If insufficient info, say so.",
+            },
+            {
+              role: 'user',
+              content: `Question: ${query}\n\nSearch results:\n${truncatedSearch}`,
+            },
+          ],
+          { maxTokens: 500 },
+        );
         answer = normalizeModelText(refineResponse);
       } catch {
         answer = '';
@@ -127,7 +145,9 @@ export async function handleDocumentCommand(input, options = {}) {
     return createCommandResult(parsed, {
       success: true,
       content: answer
-        ? (showRaw ? `${rawResult}\n\nAnswer\n\n${answer}` : answer)
+        ? showRaw
+          ? `${rawResult}\n\nAnswer\n\n${answer}`
+          : answer
         : String(rawResult || ''),
       answer,
       data: {
@@ -140,16 +160,17 @@ export async function handleDocumentCommand(input, options = {}) {
   if (['list', 'ls', ''].includes(parsed.subcommand)) {
     const result = await toolRegistry.execute('document_list', {}, context);
     const documents = result?.documents || [];
-    const content = documents.length === 0
-      ? 'No documents are indexed yet. Use /doc add <path-or-url> or reference one with @path.'
-      : [
-          'Indexed Documents',
-          ...documents.flatMap(doc => [
-            `${doc.id}  ${doc.title}`,
-            `  kind=${doc.kind} chunks=${doc.chunks} chars=${doc.chars}`,
-            `  source=${doc.source}`,
-          ]),
-        ].join('\n');
+    const content =
+      documents.length === 0
+        ? 'No documents are indexed yet. Use /doc add <path-or-url> or reference one with @path.'
+        : [
+            'Indexed Documents',
+            ...documents.flatMap((doc) => [
+              `${doc.id}  ${doc.title}`,
+              `  kind=${doc.kind} chunks=${doc.chunks} chars=${doc.chars}`,
+              `  source=${doc.source}`,
+            ]),
+          ].join('\n');
 
     return createCommandResult(parsed, {
       success: true,
@@ -160,13 +181,20 @@ export async function handleDocumentCommand(input, options = {}) {
 
   if (['clear', 'remove', 'rm'].includes(parsed.subcommand)) {
     const documentId = parsed.restText ? stripWrappingQuotes(parsed.restText) : undefined;
-    const result = await toolRegistry.execute('document_clear', { document_id: documentId }, context);
+    const result = await toolRegistry.execute(
+      'document_clear',
+      { document_id: documentId },
+      context,
+    );
     const target = documentId ? `document ${documentId}` : 'all documents';
     return createCommandResult(parsed, {
       success: result?.success !== false,
-      content: result?.success ? `Cleared ${target}. Removed: ${result.removed}` : `No matching document found for ${documentId}.`,
+      content: result?.success
+        ? `Cleared ${target}. Removed: ${result.removed}`
+        : `No matching document found for ${documentId}.`,
       data: result,
-      error: result?.success === false ? `No matching document found for ${documentId}.` : undefined,
+      error:
+        result?.success === false ? `No matching document found for ${documentId}.` : undefined,
     });
   }
 
@@ -180,9 +208,9 @@ export async function handleDocumentCommand(input, options = {}) {
 export async function handleDocumentBatchAdd(sources = [], options = {}) {
   const { engine, toolRegistry = engine?.getToolRegistry?.() } = options;
   const context = createDocumentToolContext(engine, options);
-  const normalizedSources = Array.from(new Set((sources || [])
-    .map(source => String(source || '').trim())
-    .filter(Boolean)));
+  const normalizedSources = Array.from(
+    new Set((sources || []).map((source) => String(source || '').trim()).filter(Boolean)),
+  );
 
   if (!toolRegistry) {
     return {
@@ -228,8 +256,8 @@ export async function handleDocumentBatchAdd(sources = [], options = {}) {
 
   const content = [
     `Indexed documents: ${documents.length}/${normalizedSources.length}`,
-    ...documents.map(doc => `- ${doc.title} (${doc.id}) chunks=${doc.chunks}`),
-    ...errors.map(item => `- Failed: ${item.source} - ${item.error}`),
+    ...documents.map((doc) => `- ${doc.title} (${doc.id}) chunks=${doc.chunks}`),
+    ...errors.map((item) => `- Failed: ${item.source} - ${item.error}`),
   ].join('\n');
 
   return {
@@ -276,7 +304,10 @@ function formatDocumentHelp() {
 
 function stripWrappingQuotes(value) {
   const text = String(value || '').trim();
-  if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+  if (
+    (text.startsWith('"') && text.endsWith('"')) ||
+    (text.startsWith("'") && text.endsWith("'"))
+  ) {
     return text.slice(1, -1);
   }
   return text;

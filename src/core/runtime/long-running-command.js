@@ -24,17 +24,22 @@ export async function classifyLongRunningCommand(command, options = {}) {
 
   try {
     const response = await withTimeout(
-      () => modelProvider.chat([
-        {
-          role: 'system',
-          content: 'You classify terminal commands for an autonomous coding agent. Return strict JSON only.',
-        },
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ], { maxTokens: 300 }),
-      options.timeoutMs || CLASSIFIER_TIMEOUT_MS
+      () =>
+        modelProvider.chat(
+          [
+            {
+              role: 'system',
+              content:
+                'You classify terminal commands for an autonomous coding agent. Return strict JSON only.',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          { maxTokens: 300 },
+        ),
+      options.timeoutMs || CLASSIFIER_TIMEOUT_MS,
     );
 
     return normalizeClassification(parseJsonObject(response?.text || response));
@@ -49,7 +54,7 @@ export async function classifyLongRunningCommand(command, options = {}) {
 
 function collectCommandContext(command, cwd) {
   const files = extractCommandFiles(command)
-    .map(file => {
+    .map((file) => {
       const absolutePath = resolve(cwd, file);
       if (!existsSync(absolutePath)) {
         return null;
@@ -73,15 +78,13 @@ function collectCommandContext(command, cwd) {
 function extractCommandFiles(command) {
   const tokens = command.match(/"[^"]+"|'[^']+'|[^\s;&|]+/g) || [];
   return tokens
-    .map(token => token.replace(/^['"]|['"]$/g, ''))
-    .filter(token => /\.[A-Za-z0-9]+$/.test(token));
+    .map((token) => token.replace(/^['"]|['"]$/g, ''))
+    .filter((token) => /\.[A-Za-z0-9]+$/.test(token));
 }
 
 function buildClassifierPrompt(command, context) {
   const files = context.files.length
-    ? context.files
-      .map(file => `File: ${file.path}\n---\n${file.snippet}\n---`)
-      .join('\n\n')
+    ? context.files.map((file) => `File: ${file.path}\n---\n${file.snippet}\n---`).join('\n\n')
     : 'No readable entrypoint files were found from the command arguments.';
 
   return `Decide whether this command should be started as a persistent PTY session instead of a foreground shell command.
@@ -124,7 +127,12 @@ function normalizeClassification(raw) {
   return {
     isLongRunning,
     confidence: Number.isFinite(confidence) ? confidence : 0,
-    reason: String(raw?.reason || (isLongRunning ? 'Model classified command as long-running' : 'Model classified command as foreground')),
+    reason: String(
+      raw?.reason ||
+        (isLongRunning
+          ? 'Model classified command as long-running'
+          : 'Model classified command as foreground'),
+    ),
     recommendedTool: isLongRunning ? 'pty_start' : 'shell',
   };
 }
@@ -137,11 +145,11 @@ function withTimeout(factory, timeoutMs) {
 
     Promise.resolve()
       .then(factory)
-      .then(value => {
+      .then((value) => {
         clearTimeout(timer);
         resolvePromise(value);
       })
-      .catch(error => {
+      .catch((error) => {
         clearTimeout(timer);
         reject(error);
       });

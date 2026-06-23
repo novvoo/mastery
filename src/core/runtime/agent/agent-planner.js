@@ -57,7 +57,8 @@ export class AgentPlanner {
     plan.addTask({
       id: 'inspect_workspace',
       name: 'Inspect workspace',
-      description: 'Discover the relevant project structure and existing files before reading or writing.',
+      description:
+        'Discover the relevant project structure and existing files before reading or writing.',
       dependencies: [],
     });
     plan.addTask({
@@ -82,7 +83,7 @@ export class AgentPlanner {
       plan.addTask({
         id: 'semantic_risk_review',
         name: 'Semantic/API risk review',
-        description: `Review the changed code against semantic risk domains: ${taskProfile.semanticRiskDomains.map(d => d.label).join('; ')}.`,
+        description: `Review the changed code against semantic risk domains: ${taskProfile.semanticRiskDomains.map((d) => d.label).join('; ')}.`,
         dependencies: ['inspect_changes'],
       });
     }
@@ -90,7 +91,9 @@ export class AgentPlanner {
       id: 'verify_result',
       name: 'Verify result',
       description: 'Run an appropriate command/tool to verify the requested behavior.',
-      dependencies: taskProfile.requiresSemanticRiskReview ? ['semantic_risk_review'] : ['inspect_changes'],
+      dependencies: taskProfile.requiresSemanticRiskReview
+        ? ['semantic_risk_review']
+        : ['inspect_changes'],
     });
 
     plan.status = TaskStatus.RUNNING;
@@ -126,23 +129,30 @@ export class AgentPlanner {
       return null;
     }
 
-    const runningTask = Array.from(plan.tasks.values())
-      .find(task => task.status === TaskStatus.RUNNING);
+    const runningTask = Array.from(plan.tasks.values()).find(
+      (task) => task.status === TaskStatus.RUNNING,
+    );
 
     if (runningTask) {
       switch (runningTask.id) {
-        case 'inspect_workspace': return 'exploration';
-        case 'plan_solution': return 'planning';
-        case 'implement_changes': return 'implementation';
-        case 'inspect_changes': return 'inspection';
+        case 'inspect_workspace':
+          return 'exploration';
+        case 'plan_solution':
+          return 'planning';
+        case 'implement_changes':
+          return 'implementation';
+        case 'inspect_changes':
+          return 'inspection';
         case 'semantic_risk_review':
-        case 'verify_result': return 'verification';
+        case 'verify_result':
+          return 'verification';
       }
     }
 
     // 所有 task 已完成但 plan 未关闭 → 验证阶段
-    const allCompleted = Array.from(plan.tasks.values())
-      .every(task => task.status === TaskStatus.COMPLETED);
+    const allCompleted = Array.from(plan.tasks.values()).every(
+      (task) => task.status === TaskStatus.COMPLETED,
+    );
     if (allCompleted) {
       return 'verification';
     }
@@ -171,16 +181,21 @@ export class AgentPlanner {
     this.#completeTaskIf('plan_solution', () => isMutationTool(toolName, args));
     this.#startReadyTasks(plan);
     this.#recordMutationPath(toolName, args);
-    this.#completeTaskIf('implement_changes', () => isMutationTool(toolName, args) && this.#hasCompletedRequiredMutationPaths());
+    this.#completeTaskIf(
+      'implement_changes',
+      () => isMutationTool(toolName, args) && this.#hasCompletedRequiredMutationPaths(),
+    );
     this.#startReadyTasks(plan);
     this.#completeTaskIf('inspect_changes', () => isChangeInspectionTool(toolName, args));
     this.#startReadyTasks(plan);
-    this.#completeTaskIf('semantic_risk_review', () => isSemanticRiskReviewTool(toolName, args, this.#activePlan));
+    this.#completeTaskIf('semantic_risk_review', () =>
+      isSemanticRiskReviewTool(toolName, args, this.#activePlan),
+    );
     this.#startReadyTasks(plan);
     this.#completeTaskIf('verify_result', () => isVerificationTool(toolName, args));
     this.#startReadyTasks(plan);
 
-    if (Array.from(plan.tasks.values()).every(task => task.status === TaskStatus.COMPLETED)) {
+    if (Array.from(plan.tasks.values()).every((task) => task.status === TaskStatus.COMPLETED)) {
       plan.status = TaskStatus.COMPLETED;
       plan.completedAt = Date.now();
     }
@@ -194,9 +209,11 @@ export class AgentPlanner {
       });
       this.#sessionManager.addUserMessage(
         `Automatic task orchestration update:\n${after}\n\n` +
-        `${plan.status === TaskStatus.COMPLETED
-          ? 'All orchestrated tasks are complete. You may now provide FINAL_ANSWER with the change and verification summary.'
-          : `Continue with the current ready task: ${this.#currentTaskLabel(plan)}.`}`
+          `${
+            plan.status === TaskStatus.COMPLETED
+              ? 'All orchestrated tasks are complete. You may now provide FINAL_ANSWER with the change and verification summary.'
+              : `Continue with the current ready task: ${this.#currentTaskLabel(plan)}.`
+          }`,
       );
     }
   }
@@ -206,10 +223,13 @@ export class AgentPlanner {
    */
   buildPrompt(userInput, semanticRiskGuidance = '') {
     const plan = this.#activePlan;
-    if (!plan) {return '';}
+    if (!plan) {
+      return '';
+    }
 
-    const tasks = plan.toJSON().tasks
-      .map(task => `- ${task.id}: ${task.name} [${task.status}] - ${task.description}`)
+    const tasks = plan
+      .toJSON()
+      .tasks.map((task) => `- ${task.id}: ${task.name} [${task.status}] - ${task.description}`)
       .join('\n');
 
     return (
@@ -231,7 +251,11 @@ export class AgentPlanner {
 
   #completeTaskIf(taskId, predicate) {
     const task = this.#activePlan?.getTask(taskId);
-    if (!task || task.status === TaskStatus.COMPLETED || !task.checkDependencies(this.#activePlan.tasks)) {
+    if (
+      !task ||
+      task.status === TaskStatus.COMPLETED ||
+      !task.checkDependencies(this.#activePlan.tasks)
+    ) {
       return;
     }
     if (predicate()) {
@@ -249,28 +273,34 @@ export class AgentPlanner {
   }
 
   #summarizeProgress(plan) {
-    return plan.toJSON().tasks
-      .map(task => `- ${task.id}: ${task.status}`)
+    return plan
+      .toJSON()
+      .tasks.map((task) => `- ${task.id}: ${task.status}`)
       .join('\n');
   }
 
   #currentTaskLabel(plan) {
-    const active = Array.from(plan.tasks.values())
-      .find(task => task.status === TaskStatus.RUNNING || task.status === TaskStatus.PENDING || task.status === TaskStatus.BLOCKED);
+    const active = Array.from(plan.tasks.values()).find(
+      (task) =>
+        task.status === TaskStatus.RUNNING ||
+        task.status === TaskStatus.PENDING ||
+        task.status === TaskStatus.BLOCKED,
+    );
     return active ? `${active.id} (${active.name})` : 'none';
   }
 
   #extractRequestedFilePaths(text) {
     const paths = new Set();
-    const regex = /\b((?:[\w.-]+\/)*[\w.-]+\.(?:html|js|css|ts|tsx|jsx|json|md|py|java|go|rs|c|cpp|h|hpp))\b/g;
+    const regex =
+      /\b((?:[\w.-]+\/)*[\w.-]+\.(?:html|js|css|ts|tsx|jsx|json|md|py|java|go|rs|c|cpp|h|hpp))\b/g;
     let match;
     while ((match = regex.exec(text)) !== null) {
       paths.add(match[1]);
     }
     const basenamesWithDirectory = new Set(
       Array.from(paths)
-        .filter(path => path.includes('/'))
-        .map(path => path.split('/').pop())
+        .filter((path) => path.includes('/'))
+        .map((path) => path.split('/').pop()),
     );
     for (const path of Array.from(paths)) {
       if (!path.includes('/') && basenamesWithDirectory.has(path)) {

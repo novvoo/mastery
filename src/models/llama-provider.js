@@ -32,9 +32,12 @@ export class LlamaModelProvider {
   }
 
   async initialize() {
-    if (this.#initialized) {return;}
+    if (this.#initialized) {
+      return;
+    }
 
-    const contextSize = this.#capabilities?.contextWindow || MODEL_CONTEXT_SIZES[this.#model] || this.#contextSize;
+    const contextSize =
+      this.#capabilities?.contextWindow || MODEL_CONTEXT_SIZES[this.#model] || this.#contextSize;
     this.#contextSize = contextSize;
 
     this.#initialized = true;
@@ -53,12 +56,14 @@ export class LlamaModelProvider {
   }
 
   #formatPrompt(messages) {
-    const formattedMessages = messages.map(msg => {
-      if (msg.role === 'system') {
-        return `<<SYS>>\n${msg.content}\n<</SYS>>`;
-      }
-      return `[${msg.role.toUpperCase()}] ${msg.content}`;
-    }).join('\n');
+    const formattedMessages = messages
+      .map((msg) => {
+        if (msg.role === 'system') {
+          return `<<SYS>>\n${msg.content}\n<</SYS>>`;
+        }
+        return `[${msg.role.toUpperCase()}] ${msg.content}`;
+      })
+      .join('\n');
 
     return `${formattedMessages}\n[ASSISTANT]`;
   }
@@ -76,12 +81,14 @@ export class LlamaModelProvider {
   }
 
   getCapabilities() {
-    return this.#capabilities ? { ...this.#capabilities } : {
-      provider: 'llama',
-      model: this.#model,
-      contextWindow: this.#contextSize,
-      source: 'local',
-    };
+    return this.#capabilities
+      ? { ...this.#capabilities }
+      : {
+          provider: 'llama',
+          model: this.#model,
+          contextWindow: this.#contextSize,
+          source: 'local',
+        };
   }
 
   dispose() {

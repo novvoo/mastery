@@ -33,24 +33,58 @@ export const DenyReason = Object.freeze({
 
 // ==================== 内置默认工具白名单 ====================
 const DEFAULT_READ_ONLY_TOOLS = new Set([
-  'list_dir', 'read_file', 'glob', 'search', 'semantic_search',
-  'check_file', 'pwd', 'ls', 'cat', 'find', 'rg', 'grep', 'tree',
-  'git_status', 'git_log', 'git_diff', 'git_branch', 'git_show',
+  'list_dir',
+  'read_file',
+  'glob',
+  'search',
+  'semantic_search',
+  'check_file',
+  'pwd',
+  'ls',
+  'cat',
+  'find',
+  'rg',
+  'grep',
+  'tree',
+  'git_status',
+  'git_log',
+  'git_diff',
+  'git_branch',
+  'git_show',
 ]);
 
 const DEFAULT_WRITE_TOOLS = new Set([
-  'write_file', 'edit_file', 'delete_file', 'mkdir', 'rename_file',
-  'git_add', 'git_commit', 'git_apply_patch',
+  'write_file',
+  'edit_file',
+  'delete_file',
+  'mkdir',
+  'rename_file',
+  'git_add',
+  'git_commit',
+  'git_apply_patch',
 ]);
 
 const DEFAULT_EXECUTE_TOOLS = new Set([
-  'shell', 'pty_run', 'exec', 'run_command',
-  'npm', 'bun', 'node', 'python', 'go', 'cargo',
+  'shell',
+  'pty_run',
+  'exec',
+  'run_command',
+  'npm',
+  'bun',
+  'node',
+  'python',
+  'go',
+  'cargo',
 ]);
 
 const DEFAULT_DANGEROUS_TOOLS = new Set([
-  'git_push', 'git_push_force', 'git_reset_hard', 'git_rebase',
-  'shell_dangerous', 'rm_rf', 'format_disk',
+  'git_push',
+  'git_push_force',
+  'git_reset_hard',
+  'git_rebase',
+  'shell_dangerous',
+  'rm_rf',
+  'format_disk',
 ]);
 
 // ==================== 辅助：权限级别排序 ====================
@@ -133,49 +167,83 @@ export class SecurityPolicy {
 
     // 1. 全局权限上限检查
     if (!permissionGte(policy.permissionLevel, this.#globalPolicy.maxPermissionLevel)) {
-      return this.#finalizeDecision(toolName, args, {
-        decision: Decision.DENY,
-        reason: DenyReason.PERMISSION_MISMATCH,
-        detail: `Tool requires ${policy.permissionLevel} but global cap is ${this.#globalPolicy.maxPermissionLevel}`,
-      }, policy, context);
+      return this.#finalizeDecision(
+        toolName,
+        args,
+        {
+          decision: Decision.DENY,
+          reason: DenyReason.PERMISSION_MISMATCH,
+          detail: `Tool requires ${policy.permissionLevel} but global cap is ${this.#globalPolicy.maxPermissionLevel}`,
+        },
+        policy,
+        context,
+      );
     }
 
     // 2. 外部副作用检查
     if (policy.hasExternalEffect && !this.#globalPolicy.allowExternalEffect) {
-      return this.#finalizeDecision(toolName, args, {
-        decision: Decision.DENY,
-        reason: DenyReason.EXTERNAL_EFFECT_BLOCKED,
-        detail: 'External effects are disabled by global policy',
-      }, policy, context);
+      return this.#finalizeDecision(
+        toolName,
+        args,
+        {
+          decision: Decision.DENY,
+          reason: DenyReason.EXTERNAL_EFFECT_BLOCKED,
+          detail: 'External effects are disabled by global policy',
+        },
+        policy,
+        context,
+      );
     }
 
     // 3. 并发安全检查（当 context 表明是并发调用时）
-    if (context.isConcurrent && !policy.isConcurrencySafe && !this.#globalPolicy.allowConcurrencyUnsafe) {
-      return this.#finalizeDecision(toolName, args, {
-        decision: Decision.DENY,
-        reason: DenyReason.CONCURRENCY_UNSAFE,
-        detail: 'Tool is not safe for concurrent invocation',
-      }, policy, context);
+    if (
+      context.isConcurrent &&
+      !policy.isConcurrencySafe &&
+      !this.#globalPolicy.allowConcurrencyUnsafe
+    ) {
+      return this.#finalizeDecision(
+        toolName,
+        args,
+        {
+          decision: Decision.DENY,
+          reason: DenyReason.CONCURRENCY_UNSAFE,
+          detail: 'Tool is not safe for concurrent invocation',
+        },
+        policy,
+        context,
+      );
     }
 
     // 4. 范围匹配检查
     if (context.scope && policy.scope !== ToolScope.ALL && policy.scope !== context.scope) {
-      return this.#finalizeDecision(toolName, args, {
-        decision: Decision.DENY,
-        reason: DenyReason.SCOPE_MISMATCH,
-        detail: `Tool scoped to ${policy.scope}, requested ${context.scope}`,
-      }, policy, context);
+      return this.#finalizeDecision(
+        toolName,
+        args,
+        {
+          decision: Decision.DENY,
+          reason: DenyReason.SCOPE_MISMATCH,
+          detail: `Tool scoped to ${policy.scope}, requested ${context.scope}`,
+        },
+        policy,
+        context,
+      );
     }
 
     // 5. 参数验证器
     for (const validator of policy.validators) {
       const result = typeof validator === 'function' ? validator(args, context) : true;
       if (result === false || (result && result.valid === false)) {
-        return this.#finalizeDecision(toolName, args, {
-          decision: Decision.DENY,
-          reason: DenyReason.VALIDATION_FAILED,
-          detail: result?.reason || 'Argument validation failed',
-        }, policy, context);
+        return this.#finalizeDecision(
+          toolName,
+          args,
+          {
+            decision: Decision.DENY,
+            reason: DenyReason.VALIDATION_FAILED,
+            detail: result?.reason || 'Argument validation failed',
+          },
+          policy,
+          context,
+        );
       }
     }
 
@@ -184,13 +252,19 @@ export class SecurityPolicy {
       const { windowMs = 60000, maxCalls = 10 } = policy.rateLimit;
       const now = Date.now();
       const bucket = this.#rateLimits.get(toolName) || { calls: [] };
-      bucket.calls = bucket.calls.filter(t => now - t < windowMs);
+      bucket.calls = bucket.calls.filter((t) => now - t < windowMs);
       if (bucket.calls.length >= maxCalls) {
-        return this.#finalizeDecision(toolName, args, {
-          decision: Decision.DENY,
-          reason: DenyReason.RATE_LIMIT_EXCEEDED,
-          detail: `${bucket.calls.length} calls in last ${windowMs}ms, limit ${maxCalls}`,
-        }, policy, context);
+        return this.#finalizeDecision(
+          toolName,
+          args,
+          {
+            decision: Decision.DENY,
+            reason: DenyReason.RATE_LIMIT_EXCEEDED,
+            detail: `${bucket.calls.length} calls in last ${windowMs}ms, limit ${maxCalls}`,
+          },
+          policy,
+          context,
+        );
       }
       bucket.calls.push(now);
       this.#rateLimits.set(toolName, bucket);
@@ -200,22 +274,34 @@ export class SecurityPolicy {
     if (policy.requiresApproval || this.#globalPolicy.requireApproval) {
       const approvalKey = `${toolName}:${JSON.stringify(args ?? {}).substring(0, 80)}`;
       if (!this.#pendingApprovals.has(approvalKey)) {
-        return this.#finalizeDecision(toolName, args, {
-          decision: Decision.REQUIRE_APPROVAL,
-          reason: policy.requiresApproval
-            ? DenyReason.TOOL_POLICY_REQUIRES_APPROVAL
-            : DenyReason.GLOBAL_APPROVAL_REQUIRED,
-          detail: 'User approval required before execution',
-          approvalKey,
-        }, policy, context);
+        return this.#finalizeDecision(
+          toolName,
+          args,
+          {
+            decision: Decision.REQUIRE_APPROVAL,
+            reason: policy.requiresApproval
+              ? DenyReason.TOOL_POLICY_REQUIRES_APPROVAL
+              : DenyReason.GLOBAL_APPROVAL_REQUIRED,
+            detail: 'User approval required before execution',
+            approvalKey,
+          },
+          policy,
+          context,
+        );
       }
     }
 
-    return this.#finalizeDecision(toolName, args, {
-      decision: Decision.ALLOW,
-      reason: null,
-      detail: 'Policy allows this tool call',
-    }, policy, context);
+    return this.#finalizeDecision(
+      toolName,
+      args,
+      {
+        decision: Decision.ALLOW,
+        reason: null,
+        detail: 'Policy allows this tool call',
+      },
+      policy,
+      context,
+    );
   }
 
   // 便捷方法：布尔检查（保留向后兼容）
@@ -287,8 +373,12 @@ export class SecurityPolicy {
 
   getAuditLog({ limit = 100, tool = null, decision = null } = {}) {
     let log = this.#auditLog.slice(-limit);
-    if (tool) {log = log.filter(entry => entry.tool === tool);}
-    if (decision) {log = log.filter(entry => entry.decision === decision);}
+    if (tool) {
+      log = log.filter((entry) => entry.tool === tool);
+    }
+    if (decision) {
+      log = log.filter((entry) => entry.decision === decision);
+    }
     return log;
   }
 
@@ -310,10 +400,18 @@ export class SecurityPolicy {
       byPermission[level] = byPermission[level] || [];
       byPermission[level].push(name);
 
-      if (policy.requiresApproval) {approvalRequired.push(name);}
-      if (!policy.isConcurrencySafe) {notConcurrencySafe.push(name);}
-      if (policy.hasExternalEffect) {withExternalEffects.push(name);}
-      if (level === PermissionLevel.DANGEROUS) {dangerousTools.push(name);}
+      if (policy.requiresApproval) {
+        approvalRequired.push(name);
+      }
+      if (!policy.isConcurrencySafe) {
+        notConcurrencySafe.push(name);
+      }
+      if (policy.hasExternalEffect) {
+        withExternalEffects.push(name);
+      }
+      if (level === PermissionLevel.DANGEROUS) {
+        dangerousTools.push(name);
+      }
     }
 
     for (const entry of this.#auditLog) {
@@ -343,22 +441,48 @@ export class SecurityPolicy {
     const desc = (tool.description || '').toLowerCase();
 
     if (name.includes('reset') && (desc.includes('hard') || name.includes('hard'))) {
-      return { permissionLevel: PermissionLevel.DANGEROUS, hasExternalEffect: true, requiresApproval: true };
+      return {
+        permissionLevel: PermissionLevel.DANGEROUS,
+        hasExternalEffect: true,
+        requiresApproval: true,
+      };
     }
     if (name.includes('force') && name.includes('push')) {
-      return { permissionLevel: PermissionLevel.DANGEROUS, hasExternalEffect: true, requiresApproval: true };
+      return {
+        permissionLevel: PermissionLevel.DANGEROUS,
+        hasExternalEffect: true,
+        requiresApproval: true,
+      };
     }
 
     if (DEFAULT_DANGEROUS_TOOLS.has(name)) {
-      return { permissionLevel: PermissionLevel.DANGEROUS, hasExternalEffect: true, requiresApproval: true };
+      return {
+        permissionLevel: PermissionLevel.DANGEROUS,
+        hasExternalEffect: true,
+        requiresApproval: true,
+      };
     }
     if (DEFAULT_EXECUTE_TOOLS.has(name) || /^(shell|exec|run|pty)/.test(name)) {
-      return { permissionLevel: PermissionLevel.EXECUTE, hasExternalEffect: true, isConcurrencySafe: false };
+      return {
+        permissionLevel: PermissionLevel.EXECUTE,
+        hasExternalEffect: true,
+        isConcurrencySafe: false,
+      };
     }
-    if (DEFAULT_WRITE_TOOLS.has(name) || /^(write|edit|delete|create|rename|move|mkdir|remove)/.test(name)) {
-      return { permissionLevel: PermissionLevel.WRITE, hasExternalEffect: true, isConcurrencySafe: false };
+    if (
+      DEFAULT_WRITE_TOOLS.has(name) ||
+      /^(write|edit|delete|create|rename|move|mkdir|remove)/.test(name)
+    ) {
+      return {
+        permissionLevel: PermissionLevel.WRITE,
+        hasExternalEffect: true,
+        isConcurrencySafe: false,
+      };
     }
-    if (DEFAULT_READ_ONLY_TOOLS.has(name) || /^(read|list|search|show|status|log|diff|check|get|find|ls|pwd|cat)/.test(name)) {
+    if (
+      DEFAULT_READ_ONLY_TOOLS.has(name) ||
+      /^(read|list|search|show|status|log|diff|check|get|find|ls|pwd|cat)/.test(name)
+    ) {
       return { permissionLevel: PermissionLevel.READ_ONLY, isConcurrencySafe: true };
     }
 
@@ -411,7 +535,8 @@ export class SecurityPolicy {
 
   #suggestMessage(decision) {
     switch (decision.decision) {
-      case Decision.ALLOW: return null;
+      case Decision.ALLOW:
+        return null;
       case Decision.DENY:
         return `[Security] ${decision.reason}: ${decision.detail || 'blocked'}`;
       case Decision.REQUIRE_APPROVAL:

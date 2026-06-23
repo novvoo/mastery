@@ -5,8 +5,17 @@
 
 import { RuntimeEvent } from '../../runtime/types.js';
 import { describeToolActivity, summarizeActivityForCLI } from '../../core/tool-activity.js';
-import { buildActivitySummary, getActivityTone, getFileStatusLabel, formatDuration } from '../../core/activity-summary.js';
-import { isRuntimeDetailMessage, isThinkingMessage, isStatusUpdateMessage } from '../../core/runtime-details.js';
+import {
+  buildActivitySummary,
+  getActivityTone,
+  getFileStatusLabel,
+  formatDuration,
+} from '../../core/activity-summary.js';
+import {
+  isRuntimeDetailMessage,
+  isThinkingMessage,
+  isStatusUpdateMessage,
+} from '../../core/runtime-details.js';
 import { getRuntimeStatusText } from '../../core/runtime-status.js';
 
 export class CLIUIAdapter {
@@ -33,7 +42,7 @@ export class CLIUIAdapter {
       this.#eventBus.subscribe(RuntimeEvent.TOOL_CALL, this.#onToolCall.bind(this)),
       this.#eventBus.subscribe(RuntimeEvent.TOOL_RESULT, this.#onToolResult.bind(this)),
       this.#eventBus.subscribe(RuntimeEvent.TOOL_ERROR, this.#onToolError.bind(this)),
-      this.#eventBus.subscribe(RuntimeEvent.STATUS_UPDATE, this.#onStatusUpdate.bind(this))
+      this.#eventBus.subscribe(RuntimeEvent.STATUS_UPDATE, this.#onStatusUpdate.bind(this)),
     ];
   }
 
@@ -41,7 +50,7 @@ export class CLIUIAdapter {
    * Detach from event bus
    */
   detach() {
-    this.#subscriptions.forEach(unsubscribe => unsubscribe());
+    this.#subscriptions.forEach((unsubscribe) => unsubscribe());
     this.#subscriptions = [];
   }
 
@@ -79,11 +88,20 @@ export class CLIUIAdapter {
 
     console.log('\n  ── 活动摘要 ──────────────────────────────');
     console.log(`  状态: ${this.#lastStatusText || '完成'}`);
-    console.log(`  进度: ${summary.progress}%  |  完成: ${summary.completed}  运行: ${summary.running}  失败: ${summary.failed}`);
+    console.log(
+      `  进度: ${summary.progress}%  |  完成: ${summary.completed}  运行: ${summary.running}  失败: ${summary.failed}`,
+    );
 
     if (summary.taskStages.length > 0) {
-      const stageLabels = summary.taskStages.map(s => {
-        const mark = s.status === 'completed' ? '✓' : s.status === 'failed' ? '✗' : s.status === 'running' ? '…' : '·';
+      const stageLabels = summary.taskStages.map((s) => {
+        const mark =
+          s.status === 'completed'
+            ? '✓'
+            : s.status === 'failed'
+              ? '✗'
+              : s.status === 'running'
+                ? '…'
+                : '·';
         return `${mark} ${s.label}`;
       });
       console.log(`  阶段: ${stageLabels.join(' → ')}`);
@@ -91,7 +109,7 @@ export class CLIUIAdapter {
 
     if (summary.files.length > 0) {
       console.log(`  文件: ${summary.fileCount} 个`);
-      summary.files.slice(0, 5).forEach(f => {
+      summary.files.slice(0, 5).forEach((f) => {
         console.log(`    ${f.path}  ${getFileStatusLabel(f.status)}`);
       });
       if (summary.files.length > 5) {
@@ -137,10 +155,16 @@ export class CLIUIAdapter {
    * Handle tool call
    */
   #onToolCall(event) {
-    this.#runtimeDetails.push({ ...event, event: 'tool:call', type: 'tool', timestamp: Date.now() });
+    this.#runtimeDetails.push({
+      ...event,
+      event: 'tool:call',
+      type: 'tool',
+      timestamp: Date.now(),
+    });
     if (this.#ui && this.#ui.theme) {
       const { dim } = this.#ui.theme;
-      const activity = event.activity || describeToolActivity(event.toolName, event.args, 'running');
+      const activity =
+        event.activity || describeToolActivity(event.toolName, event.args, 'running');
       console.log(dim(`\n${summarizeActivityForCLI(activity)}`));
     }
   }
@@ -149,10 +173,16 @@ export class CLIUIAdapter {
    * Handle tool result
    */
   #onToolResult(event) {
-    this.#runtimeDetails.push({ ...event, event: 'tool:result', type: 'tool_result', timestamp: Date.now() });
+    this.#runtimeDetails.push({
+      ...event,
+      event: 'tool:result',
+      type: 'tool_result',
+      timestamp: Date.now(),
+    });
     if (this.#ui && this.#ui.theme) {
       const { success } = this.#ui.theme;
-      const activity = event.activity || describeToolActivity(event.toolName, {}, 'completed', event.result);
+      const activity =
+        event.activity || describeToolActivity(event.toolName, {}, 'completed', event.result);
       console.log(success(summarizeActivityForCLI(activity)));
     }
   }
@@ -161,9 +191,15 @@ export class CLIUIAdapter {
    * Handle tool error
    */
   #onToolError(event) {
-    this.#runtimeDetails.push({ ...event, event: 'tool:error', type: 'tool_result', timestamp: Date.now() });
+    this.#runtimeDetails.push({
+      ...event,
+      event: 'tool:error',
+      type: 'tool_result',
+      timestamp: Date.now(),
+    });
     if (this.#ui && this.#ui.showError) {
-      const activity = event.activity || describeToolActivity(event.toolName, {}, 'failed', event.error);
+      const activity =
+        event.activity || describeToolActivity(event.toolName, {}, 'failed', event.error);
       this.#ui.showError(new Error(summarizeActivityForCLI(activity)));
     }
   }
@@ -172,9 +208,16 @@ export class CLIUIAdapter {
    * Handle status update
    */
   #onStatusUpdate(event) {
-    this.#runtimeDetails.push({ ...event, event: 'status:update', type: 'event', timestamp: Date.now() });
+    this.#runtimeDetails.push({
+      ...event,
+      event: 'status:update',
+      type: 'event',
+      timestamp: Date.now(),
+    });
 
-    if (!this.#ui) {return;}
+    if (!this.#ui) {
+      return;
+    }
 
     const { message, level, eventName, data } = event;
 
@@ -190,14 +233,20 @@ export class CLIUIAdapter {
 
     switch (level) {
       case 'success':
-        if (this.#ui.success) {this.#ui.success(message);}
+        if (this.#ui.success) {
+          this.#ui.success(message);
+        }
         break;
       case 'error':
-        if (this.#ui.error) {this.#ui.error(message);}
+        if (this.#ui.error) {
+          this.#ui.error(message);
+        }
         break;
       case 'info':
       default:
-        if (this.#ui.info) {this.#ui.info(message);}
+        if (this.#ui.info) {
+          this.#ui.info(message);
+        }
         break;
     }
   }

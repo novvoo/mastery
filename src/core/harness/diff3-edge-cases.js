@@ -108,11 +108,7 @@ export class Diff3EdgeCaseHandler {
     );
 
     // ── Step 3: 内容位移补偿 ────────────────────────────────────────────
-    const shiftCompensated = this._compensateContentShift(
-      enhancedConflicts,
-      curNorm,
-      baseNorm,
-    );
+    const shiftCompensated = this._compensateContentShift(enhancedConflicts, curNorm, baseNorm);
 
     // ── Step 4: 按冲突类型采用不同策略 ──────────────────────────────────
     const { merged, conflicts, stats } = this._resolveConflicts(
@@ -157,7 +153,9 @@ export class Diff3EdgeCaseHandler {
    * @private
    */
   _analyzeCrossOverlaps(conflicts, curLines, baseLines) {
-    if (conflicts.length <= 1) {return conflicts;}
+    if (conflicts.length <= 1) {
+      return conflicts;
+    }
 
     const merged = [];
     let i = 0;
@@ -177,7 +175,8 @@ export class Diff3EdgeCaseHandler {
         const nextEnd = next.baseRange?.[1] ?? next.currentRange?.[1] ?? 0;
 
         // 检测重叠：范围有交集
-        if (nextStart <= mergedEnd + 1) { // +1 允许相邻范围合并
+        if (nextStart <= mergedEnd + 1) {
+          // +1 允许相邻范围合并
           mergedEnd = Math.max(mergedEnd, nextEnd);
           overlappingIndices.push(j);
           j++;
@@ -189,7 +188,7 @@ export class Diff3EdgeCaseHandler {
       if (overlappingIndices.length > 1) {
         // 多个冲突重叠：合并为更大的冲突区域
         const combined = this._mergeOverlappingConflicts(
-          overlappingIndices.map(idx => conflicts[idx]),
+          overlappingIndices.map((idx) => conflicts[idx]),
           curLines,
           baseLines,
         );
@@ -209,10 +208,10 @@ export class Diff3EdgeCaseHandler {
    * @private
    */
   _mergeOverlappingConflicts(overlaps, curLines, baseLines) {
-    const allBaseStart = Math.min(...overlaps.map(c => c.baseRange?.[0] ?? Infinity));
-    const allBaseEnd = Math.max(...overlaps.map(c => c.baseRange?.[1] ?? -1));
-    const allCurStart = Math.min(...overlaps.map(c => c.currentRange?.[0] ?? Infinity));
-    const allCurEnd = Math.max(...overlaps.map(c => c.currentRange?.[1] ?? -1));
+    const allBaseStart = Math.min(...overlaps.map((c) => c.baseRange?.[0] ?? Infinity));
+    const allBaseEnd = Math.max(...overlaps.map((c) => c.baseRange?.[1] ?? -1));
+    const allCurStart = Math.min(...overlaps.map((c) => c.currentRange?.[0] ?? Infinity));
+    const allCurEnd = Math.max(...overlaps.map((c) => c.currentRange?.[1] ?? -1));
 
     // 合并所有 base/current/intended 行
     const allBaseLines = [];
@@ -221,10 +220,18 @@ export class Diff3EdgeCaseHandler {
     const reasons = [];
 
     for (const c of overlaps) {
-      if (c.baseLines) {allBaseLines.push(...c.baseLines);}
-      if (c.currentLines) {allCurLines.push(...c.currentLines);}
-      if (c.intendedLines) {allIntendedLines.push(...c.intendedLines);}
-      if (c.reason) {reasons.push(c.reason);}
+      if (c.baseLines) {
+        allBaseLines.push(...c.baseLines);
+      }
+      if (c.currentLines) {
+        allCurLines.push(...c.currentLines);
+      }
+      if (c.intendedLines) {
+        allIntendedLines.push(...c.intendedLines);
+      }
+      if (c.reason) {
+        reasons.push(c.reason);
+      }
     }
 
     // 去重保留顺序
@@ -258,15 +265,19 @@ export class Diff3EdgeCaseHandler {
     const curLines = curText.split('\n');
     const baseLines = baseText.split('\n');
 
-    return conflicts.map(conflict => {
+    return conflicts.map((conflict) => {
       const start = conflict.baseRange?.[0] ?? 0;
       const end = conflict.baseRange?.[1] ?? 0;
 
-      if (start >= baseLines.length || start < 0) {return conflict;}
+      if (start >= baseLines.length || start < 0) {
+        return conflict;
+      }
 
       // 取 conflict 在 base 中的第一行内容
       const baseStartLine = baseLines[start];
-      if (!baseStartLine || baseStartLine.trim().length < 5) {return conflict;}
+      if (!baseStartLine || baseStartLine.trim().length < 5) {
+        return conflict;
+      }
 
       const fp = hashContent(baseStartLine);
 
@@ -283,7 +294,10 @@ export class Diff3EdgeCaseHandler {
           const offset = i - start;
           return {
             ...conflict,
-            currentRange: [(conflict.currentRange?.[0] ?? start) + offset, (conflict.currentRange?.[1] ?? end) + offset],
+            currentRange: [
+              (conflict.currentRange?.[0] ?? start) + offset,
+              (conflict.currentRange?.[1] ?? end) + offset,
+            ],
             shiftCompensated: true,
             shiftAmount: offset,
           };
@@ -301,7 +315,10 @@ export class Diff3EdgeCaseHandler {
         const offset = bestPos - start;
         return {
           ...conflict,
-          currentRange: [(conflict.currentRange?.[0] ?? start) + offset, (conflict.currentRange?.[1] ?? end) + offset],
+          currentRange: [
+            (conflict.currentRange?.[0] ?? start) + offset,
+            (conflict.currentRange?.[1] ?? end) + offset,
+          ],
           shiftCompensated: true,
           shiftAmount: offset,
           shiftConfidence: bestScore,
@@ -426,11 +443,7 @@ export class Diff3EdgeCaseHandler {
       const end = c.currentRange?.[1] ?? start;
 
       if (r.side === 'intended' && c.intendedLines) {
-        result = [
-          ...result.slice(0, start),
-          ...c.intendedLines,
-          ...result.slice(end + 1),
-        ];
+        result = [...result.slice(0, start), ...c.intendedLines, ...result.slice(end + 1)];
       }
       // side === 'current': 保留原样，不需要修改
     }
@@ -445,18 +458,28 @@ export class Diff3EdgeCaseHandler {
    * @private
    */
   _lineSimilarity(a, b) {
-    if (!a || !b) {return 0;}
-    if (a === b) {return 1;}
+    if (!a || !b) {
+      return 0;
+    }
+    if (a === b) {
+      return 1;
+    }
 
-    const aWords = new Set(a.split(/\s+/).filter(w => w.length > 0));
-    const bWords = new Set(b.split(/\s+/).filter(w => w.length > 0));
+    const aWords = new Set(a.split(/\s+/).filter((w) => w.length > 0));
+    const bWords = new Set(b.split(/\s+/).filter((w) => w.length > 0));
 
-    if (aWords.size === 0 && bWords.size === 0) {return 1;}
-    if (aWords.size === 0 || bWords.size === 0) {return 0;}
+    if (aWords.size === 0 && bWords.size === 0) {
+      return 1;
+    }
+    if (aWords.size === 0 || bWords.size === 0) {
+      return 0;
+    }
 
     let intersection = 0;
     for (const w of aWords) {
-      if (bWords.has(w)) {intersection++;}
+      if (bWords.has(w)) {
+        intersection++;
+      }
     }
 
     return intersection / Math.max(aWords.size, bWords.size);
@@ -467,8 +490,12 @@ export class Diff3EdgeCaseHandler {
    * @private
    */
   _textSimilarity(a, b) {
-    if (!a && !b) {return 1;}
-    if (!a || !b) {return 0;}
+    if (!a && !b) {
+      return 1;
+    }
+    if (!a || !b) {
+      return 0;
+    }
 
     const aLines = a.split('\n');
     const bLines = b.split('\n');
@@ -492,8 +519,12 @@ export class Diff3EdgeCaseHandler {
   _levenshtein(a, b) {
     const m = a.length;
     const n = b.length;
-    if (m === 0) {return n;}
-    if (n === 0) {return m;}
+    if (m === 0) {
+      return n;
+    }
+    if (n === 0) {
+      return m;
+    }
 
     let prev = Array.from({ length: n + 1 }, (_, j) => j);
     let cur = new Array(n + 1);
@@ -501,9 +532,8 @@ export class Diff3EdgeCaseHandler {
     for (let i = 1; i <= m; i++) {
       cur[0] = i;
       for (let j = 1; j <= n; j++) {
-        cur[j] = a[i - 1] === b[j - 1]
-          ? prev[j - 1]
-          : 1 + Math.min(prev[j], cur[j - 1], prev[j - 1]);
+        cur[j] =
+          a[i - 1] === b[j - 1] ? prev[j - 1] : 1 + Math.min(prev[j], cur[j - 1], prev[j - 1]);
       }
       [prev, cur] = [cur, prev];
     }

@@ -92,9 +92,13 @@ function readPackageJson(projectRoot) {
 
 function isWebPreviewScript(command = '') {
   const normalized = String(command || '').toLowerCase();
-  return /\b(vite|next\s+dev|astro\s+dev|webpack-dev-server|webpack\s+serve|parcel|serve|http-server|live-server|vite-preview|nuxt\s+dev|svelte-kit\s+dev)\b/.test(normalized)
-    || /\b(dev-server|preview-server)\b/.test(normalized)
-    || /\b(node|bun|tsx|ts-node)\b.*\b(server|app|index)\b/.test(normalized);
+  return (
+    /\b(vite|next\s+dev|astro\s+dev|webpack-dev-server|webpack\s+serve|parcel|serve|http-server|live-server|vite-preview|nuxt\s+dev|svelte-kit\s+dev)\b/.test(
+      normalized,
+    ) ||
+    /\b(dev-server|preview-server)\b/.test(normalized) ||
+    /\b(node|bun|tsx|ts-node)\b.*\b(server|app|index)\b/.test(normalized)
+  );
 }
 
 function findWebPreviewScriptName(scripts = {}) {
@@ -105,7 +109,7 @@ function findWebPreviewScriptName(scripts = {}) {
     }
   }
 
-  return Object.keys(scripts).find(name => isWebPreviewScript(scripts[name])) || null;
+  return Object.keys(scripts).find((name) => isWebPreviewScript(scripts[name])) || null;
 }
 
 function detectNodeCommand(projectRoot, explicitCommand, port) {
@@ -120,9 +124,10 @@ function detectNodeCommand(projectRoot, explicitCommand, port) {
   }
 
   const manager = choosePackageManager(projectRoot);
-  const passthroughArgs = ['dev', 'preview', 'serve'].includes(scriptName) && !hasExplicitPort(scripts[scriptName])
-    ? ` -- --host ${PREVIEW_HOST} --port ${port}`
-    : '';
+  const passthroughArgs =
+    ['dev', 'preview', 'serve'].includes(scriptName) && !hasExplicitPort(scripts[scriptName])
+      ? ` -- --host ${PREVIEW_HOST} --port ${port}`
+      : '';
 
   if (manager === 'bun') {
     return `bun run ${scriptName}${passthroughArgs}`;
@@ -167,8 +172,9 @@ function hasPackageDependencies(pkg) {
   if (!pkg) {
     return false;
   }
-  return ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
-    .some(field => Object.keys(pkg[field] || {}).length > 0);
+  return ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'].some(
+    (field) => Object.keys(pkg[field] || {}).length > 0,
+  );
 }
 
 function findBuildScriptName(scripts = {}) {
@@ -197,7 +203,9 @@ function findStaticOutputRoot(projectRoot) {
 
 function findStaticRootFromPackage(projectRoot) {
   const pkgPath = join(projectRoot, 'package.json');
-  if (!existsSync(pkgPath)) {return null;}
+  if (!existsSync(pkgPath)) {
+    return null;
+  }
 
   let pkg;
   try {
@@ -223,7 +231,9 @@ function findStaticRootFromPackage(projectRoot) {
   }
 
   for (const h of hints) {
-    if (existsSync(join(h, 'index.html'))) {return h;}
+    if (existsSync(join(h, 'index.html'))) {
+      return h;
+    }
   }
   return null;
 }
@@ -232,7 +242,9 @@ function findStaticRootInSourceDirs(projectRoot) {
   const sourceDirs = ['src', 'app', 'website', 'web', 'client', 'frontend', 'public'];
   for (const dir of sourceDirs) {
     const full = join(projectRoot, dir);
-    if (existsSync(join(full, 'index.html'))) {return full;}
+    if (existsSync(join(full, 'index.html'))) {
+      return full;
+    }
   }
   return null;
 }
@@ -244,13 +256,19 @@ function findStaticRootInSourceDirs(projectRoot) {
  */
 function findAnyStaticRoot(projectRoot) {
   const output = findStaticOutputRoot(projectRoot);
-  if (output) {return output;}
+  if (output) {
+    return output;
+  }
 
   const fromPkg = findStaticRootFromPackage(projectRoot);
-  if (fromPkg) {return fromPkg;}
+  if (fromPkg) {
+    return fromPkg;
+  }
 
   const fromSource = findStaticRootInSourceDirs(projectRoot);
-  if (fromSource) {return fromSource;}
+  if (fromSource) {
+    return fromSource;
+  }
 
   const visited = new Set();
   const queue = [projectRoot];
@@ -265,13 +283,19 @@ function findAnyStaticRoot(projectRoot) {
       entries.sort((a, b) => {
         const aIsSource = ['src', 'app', 'website', 'web'].includes(a.name);
         const bIsSource = ['src', 'app', 'website', 'web'].includes(b.name);
-        if (aIsSource !== bIsSource) {return aIsSource ? -1 : 1;}
+        if (aIsSource !== bIsSource) {
+          return aIsSource ? -1 : 1;
+        }
         return a.name.localeCompare(b.name);
       });
       for (const entry of entries) {
-        if (entry.name === 'node_modules' || entry.name.startsWith('.')) {continue;}
+        if (entry.name === 'node_modules' || entry.name.startsWith('.')) {
+          continue;
+        }
         const fullPath = join(current, entry.name);
-        if (visited.has(fullPath)) {continue;}
+        if (visited.has(fullPath)) {
+          continue;
+        }
         visited.add(fullPath);
         if (entry.isDirectory()) {
           queue.push(fullPath);
@@ -297,9 +321,7 @@ function findAnyStaticRoot(projectRoot) {
  */
 function isCommandAvailable(command) {
   try {
-    const probe = process.platform === 'win32'
-      ? `where ${command}`
-      : `command -v ${command}`;
+    const probe = process.platform === 'win32' ? `where ${command}` : `command -v ${command}`;
     const out = execSync(probe, { stdio: ['ignore', 'pipe', 'pipe'], timeout: 2000 });
     return out && out.toString().trim().length > 0;
   } catch {
@@ -309,14 +331,29 @@ function isCommandAvailable(command) {
 
 function nodeEcosystemAvailable(projectRoot) {
   const manager = choosePackageManager(projectRoot);
-  if (!isCommandAvailable('node')) {return { node: false, manager: false, managerName: manager };}
-  if (manager === 'bun') {return { node: true, manager: isCommandAvailable('bun'), managerName: 'bun' };}
-  if (manager === 'pnpm') {return { node: true, manager: isCommandAvailable('pnpm'), managerName: 'pnpm' };}
-  if (manager === 'yarn') {return { node: true, manager: isCommandAvailable('yarn'), managerName: 'yarn' };}
+  if (!isCommandAvailable('node')) {
+    return { node: false, manager: false, managerName: manager };
+  }
+  if (manager === 'bun') {
+    return { node: true, manager: isCommandAvailable('bun'), managerName: 'bun' };
+  }
+  if (manager === 'pnpm') {
+    return { node: true, manager: isCommandAvailable('pnpm'), managerName: 'pnpm' };
+  }
+  if (manager === 'yarn') {
+    return { node: true, manager: isCommandAvailable('yarn'), managerName: 'yarn' };
+  }
   return { node: true, manager: isCommandAvailable('npm'), managerName: 'npm' };
 }
 
-function runCommandStage({ projectRoot, command, name, label, timeoutMs = PREVIEW_STAGE_TIMEOUT_MS, env = {} }) {
+function runCommandStage({
+  projectRoot,
+  command,
+  name,
+  label,
+  timeoutMs = PREVIEW_STAGE_TIMEOUT_MS,
+  env = {},
+}) {
   const stage = {
     name,
     label,
@@ -334,7 +371,7 @@ function runCommandStage({ projectRoot, command, name, label, timeoutMs = PREVIE
   });
 
   let output = '';
-  const append = data => {
+  const append = (data) => {
     output += data.toString();
     if (output.length > STAGE_OUTPUT_LIMIT) {
       output = output.slice(-STAGE_OUTPUT_LIMIT);
@@ -350,18 +387,26 @@ function runCommandStage({ projectRoot, command, name, label, timeoutMs = PREVIE
       stage.status = 'failed';
       stage.completedAt = Date.now();
       stage.durationMs = stage.completedAt - stage.startedAt;
-      rejectStage(new Error(`Preview ${label} stage timed out after ${timeoutMs}ms.\nCommand: ${command}\nOutput:\n${output}`));
+      rejectStage(
+        new Error(
+          `Preview ${label} stage timed out after ${timeoutMs}ms.\nCommand: ${command}\nOutput:\n${output}`,
+        ),
+      );
     }, timeoutMs);
 
-    child.once('error', error => {
+    child.once('error', (error) => {
       clearTimeout(timer);
       stage.status = 'failed';
       stage.completedAt = Date.now();
       stage.durationMs = stage.completedAt - stage.startedAt;
-      rejectStage(new Error(`Preview ${label} stage failed: ${error.message}\nCommand: ${command}\nOutput:\n${output}`));
+      rejectStage(
+        new Error(
+          `Preview ${label} stage failed: ${error.message}\nCommand: ${command}\nOutput:\n${output}`,
+        ),
+      );
     });
 
-    child.once('exit', exitCode => {
+    child.once('exit', (exitCode) => {
       clearTimeout(timer);
       stage.completedAt = Date.now();
       stage.durationMs = stage.completedAt - stage.startedAt;
@@ -372,7 +417,11 @@ function runCommandStage({ projectRoot, command, name, label, timeoutMs = PREVIE
         return;
       }
       stage.status = 'failed';
-      rejectStage(new Error(`Preview ${label} stage failed with exit code ${exitCode}.\nCommand: ${command}\nOutput:\n${output}`));
+      rejectStage(
+        new Error(
+          `Preview ${label} stage failed with exit code ${exitCode}.\nCommand: ${command}\nOutput:\n${output}`,
+        ),
+      );
     });
   });
 }
@@ -391,23 +440,34 @@ async function preparePackagePreview(projectRoot, { scripts, explicitCommand, pi
       result.installOk = false;
       result.note = `Skipped install: ${eco.managerName} not found on PATH. Will fall back to static serving.`;
       pipeline.push({
-        name: 'install', label: 'install', command: `${eco.managerName} install`,
-        status: 'skipped', completedAt: Date.now(), durationMs: 0,
+        name: 'install',
+        label: 'install',
+        command: `${eco.managerName} install`,
+        status: 'skipped',
+        completedAt: Date.now(),
+        durationMs: 0,
         output: `Package manager '${eco.managerName}' is not available. Skipping dependency install.`,
       });
     } else {
       const command = createPackageManagerCommand(projectRoot, 'install');
       try {
         const stage = await runCommandStage({
-          projectRoot, command, name: 'install', label: 'install',
+          projectRoot,
+          command,
+          name: 'install',
+          label: 'install',
         });
         pipeline.push(stage);
       } catch (error) {
         result.installOk = false;
         result.note = `Install failed: ${error.message}. Will fall back to static serving.`;
         pipeline.push({
-          name: 'install', label: 'install', command,
-          status: 'failed', completedAt: Date.now(), durationMs: 0,
+          name: 'install',
+          label: 'install',
+          command,
+          status: 'failed',
+          completedAt: Date.now(),
+          durationMs: 0,
           output: error.message || 'command failed',
         });
       }
@@ -419,26 +479,41 @@ async function preparePackagePreview(projectRoot, { scripts, explicitCommand, pi
   if (!hasRunnableServer && buildScriptName) {
     if (!eco.node || !eco.manager) {
       result.buildOk = false;
-      result.note = (result.note ? result.note + ' ' : '') + `Skipped build: ${eco.managerName} not found on PATH.`;
+      result.note =
+        (result.note ? result.note + ' ' : '') +
+        `Skipped build: ${eco.managerName} not found on PATH.`;
       pipeline.push({
-        name: 'build', label: 'build', command: `${eco.managerName} run ${buildScriptName}`,
-        status: 'skipped', completedAt: Date.now(), durationMs: 0,
+        name: 'build',
+        label: 'build',
+        command: `${eco.managerName} run ${buildScriptName}`,
+        status: 'skipped',
+        completedAt: Date.now(),
+        durationMs: 0,
         output: `Package manager '${eco.managerName}' is not available. Skipping build.`,
       });
     } else {
       const command = createPackageManagerCommand(projectRoot, buildScriptName);
       try {
         const stage = await runCommandStage({
-          projectRoot, command, name: 'build', label: 'build',
+          projectRoot,
+          command,
+          name: 'build',
+          label: 'build',
           env: { HOST: PREVIEW_HOST },
         });
         pipeline.push(stage);
       } catch (error) {
         result.buildOk = false;
-        result.note = (result.note ? result.note + ' ' : '') + `Build failed: ${error.message}. Will fall back to static serving.`;
+        result.note =
+          (result.note ? result.note + ' ' : '') +
+          `Build failed: ${error.message}. Will fall back to static serving.`;
         pipeline.push({
-          name: 'build', label: 'build', command,
-          status: 'failed', completedAt: Date.now(), durationMs: 0,
+          name: 'build',
+          label: 'build',
+          command,
+          status: 'failed',
+          completedAt: Date.now(),
+          durationMs: 0,
           output: error.message || 'command failed',
         });
       }
@@ -490,7 +565,7 @@ function assertPortAvailable(port) {
 }
 
 function wait(ms) {
-  return new Promise(resolveWait => setTimeout(resolveWait, ms));
+  return new Promise((resolveWait) => setTimeout(resolveWait, ms));
 }
 
 function hasExplicitPort(command = '') {
@@ -498,7 +573,8 @@ function hasExplicitPort(command = '') {
 }
 
 function extractLocalHttpUrl(text = '') {
-  const matches = String(text).match(/https?:\/\/(?:127\.0\.0\.1|localhost):\d+(?:\/[^\s]*)?/gi) || [];
+  const matches =
+    String(text).match(/https?:\/\/(?:127\.0\.0\.1|localhost):\d+(?:\/[^\s]*)?/gi) || [];
   for (const match of matches) {
     try {
       const parsed = new URL(match);
@@ -518,9 +594,8 @@ async function waitForNodePreviewHttp(session, getOutput, timeoutMs = SERVER_REA
 
   while (Date.now() < deadline) {
     const detectedUrl = extractLocalHttpUrl(getOutput());
-    const urlsToTry = detectedUrl && detectedUrl !== session.url
-      ? [detectedUrl, session.url]
-      : [session.url];
+    const urlsToTry =
+      detectedUrl && detectedUrl !== session.url ? [detectedUrl, session.url] : [session.url];
 
     for (const url of urlsToTry) {
       try {
@@ -667,7 +742,9 @@ async function startStaticPreview({ workingDirectory, target, port, pipeline = [
   }
 
   if (!existsSync(join(root, entry))) {
-    throw new Error(`No index.html or static entry found in ${resolved}. Create an index.html or specify a file path.`);
+    throw new Error(
+      `No index.html or static entry found in ${resolved}. Create an index.html or specify a file path.`,
+    );
   }
 
   const previewPort = await findAvailablePort(port);
@@ -699,7 +776,8 @@ async function startStaticPreview({ workingDirectory, target, port, pipeline = [
 
 async function startNodePreview({ workingDirectory, target, command, port }) {
   const { resolved } = resolveInsideWorkspace(workingDirectory, target || '.');
-  const projectRoot = existsSync(resolved) && statSync(resolved).isFile() ? dirname(resolved) : resolved;
+  const projectRoot =
+    existsSync(resolved) && statSync(resolved).isFile() ? dirname(resolved) : resolved;
   const previewPort = await findAvailablePort(port);
   const pipeline = [];
   const scripts = readPackageScripts(projectRoot);
@@ -741,9 +819,11 @@ async function startNodePreview({ workingDirectory, target, command, port }) {
         });
 
         let output = '';
-        const append = data => {
+        const append = (data) => {
           output += data.toString();
-          if (output.length > 20000) {output = output.slice(-20000);}
+          if (output.length > 20000) {
+            output = output.slice(-20000);
+          }
         };
         child.stdout.on('data', append);
         child.stderr.on('data', append);
@@ -762,10 +842,18 @@ async function startNodePreview({ workingDirectory, target, command, port }) {
           command: nodeCommand,
           pipeline: [
             ...pipeline,
-            { name: 'start', label: 'start', command: nodeCommand, status: 'running', startedAt: Date.now() },
+            {
+              name: 'start',
+              label: 'start',
+              command: nodeCommand,
+              status: 'running',
+              startedAt: Date.now(),
+            },
           ],
           startedAt: Date.now(),
-          get output() { return output; },
+          get output() {
+            return output;
+          },
         };
 
         child.once('exit', (exitCode, signal) => {
@@ -795,7 +883,9 @@ async function startNodePreview({ workingDirectory, target, command, port }) {
   //           project already has an index.html somewhere → fall back to it.
   const staticRoot = findAnyStaticRoot(projectRoot);
   if (staticRoot) {
-    const buildSucceeded = pipeline.some(stage => stage.name === 'build' && stage.status === 'completed');
+    const buildSucceeded = pipeline.some(
+      (stage) => stage.name === 'build' && stage.status === 'completed',
+    );
     if (!buildSucceeded && (nodeServerError || prepareResult?.note)) {
       // Case (b): record the fallback so callers know we didn't run the full pipeline.
       pipeline.push({
@@ -806,7 +896,8 @@ async function startNodePreview({ workingDirectory, target, command, port }) {
         startedAt: Date.now(),
         output: nodeServerError
           ? `Fell back to static serving because the Node pipeline failed: ${nodeServerError.message || String(nodeServerError)}`
-          : prepareResult?.note || 'No runnable package script found; serving static HTML with the built-in http server.',
+          : prepareResult?.note ||
+            'No runnable package script found; serving static HTML with the built-in http server.',
       });
     }
     const staticTarget = relative(projectRoot, staticRoot) || '.';
@@ -822,7 +913,7 @@ async function startNodePreview({ workingDirectory, target, command, port }) {
   //     Surface the *original* error from the failed build stage (if any)
   //     so the user sees the real compilation problem instead of a generic
   //     "no index.html" message.
-  const failedBuild = pipeline.find(stage => stage.name === 'build' && stage.status === 'failed');
+  const failedBuild = pipeline.find((stage) => stage.name === 'build' && stage.status === 'failed');
   if (failedBuild) {
     throw new Error(failedBuild.output || 'Preview build stage failed');
   }
@@ -831,16 +922,22 @@ async function startNodePreview({ workingDirectory, target, command, port }) {
   }
 
   const reasons = [];
-  if (!eco.node) {reasons.push('node not found on PATH');}
-  if (!eco.manager) {reasons.push(`${eco.managerName} not found on PATH`);}
-  if (!findWebPreviewScriptName(scripts)) {reasons.push('no dev/preview/serve script in package.json');}
+  if (!eco.node) {
+    reasons.push('node not found on PATH');
+  }
+  if (!eco.manager) {
+    reasons.push(`${eco.managerName} not found on PATH`);
+  }
+  if (!findWebPreviewScriptName(scripts)) {
+    reasons.push('no dev/preview/serve script in package.json');
+  }
   reasons.push('no index.html found anywhere in the project');
 
   const reasonText = `Reasons: ${reasons.join('; ')}. `;
   throw new Error(
-    'Could not start a preview. '
-    + reasonText
-    + 'Add a package.json script (dev/build/start/preview/serve) that produces index.html, or put an index.html file in the project root.',
+    'Could not start a preview. ' +
+      reasonText +
+      'Add a package.json script (dev/build/start/preview/serve) that produces index.html, or put an index.html file in the project root.',
   );
 }
 
@@ -871,7 +968,12 @@ export async function startPreview(options = {}) {
   const target = options.target || options.path || '.';
   const kind = inferPreviewKind({ workingDirectory, target, kind: options.kind || 'auto' });
   if (kind === 'node') {
-    return startNodePreview({ workingDirectory, target, command: options.command, port: options.port });
+    return startNodePreview({
+      workingDirectory,
+      target,
+      command: options.command,
+      port: options.port,
+    });
   }
   return startStaticPreview({ workingDirectory, target, port: options.port });
 }
@@ -914,14 +1016,15 @@ function serializeSession(session) {
     target: session.target,
     entry: session.entry,
     command: session.command,
-    pipeline: session.pipeline?.map(stage => ({
-      name: stage.name,
-      label: stage.label,
-      command: stage.command,
-      status: stage.status,
-      duration_ms: stage.durationMs,
-      output: stage.output ? stage.output.slice(-STAGE_OUTPUT_LIMIT) : undefined,
-    })) || [],
+    pipeline:
+      session.pipeline?.map((stage) => ({
+        name: stage.name,
+        label: stage.label,
+        command: stage.command,
+        status: stage.status,
+        duration_ms: stage.durationMs,
+        output: stage.output ? stage.output.slice(-STAGE_OUTPUT_LIMIT) : undefined,
+      })) || [],
     status: session.process?.exitCode === null || session.server ? 'running' : 'exited',
     output: session.output ? session.output.slice(-4000) : undefined,
     started_at: new Date(session.startedAt).toISOString(),

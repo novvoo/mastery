@@ -37,14 +37,16 @@ export class OpenAIModelProvider {
     const traceEnabled = process.env.AGENT_TRACE === 'true' || process.env.DEBUG === 'true';
     const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const timeoutMs = options.timeoutMs || DEFAULT_API_TIMEOUT_MS;
-    
+
     let lastError;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       const startedAt = Date.now();
       let heartbeat;
 
       if (traceEnabled) {
-        console.log(`🔍 [model:${requestId}] request attempt=${attempt}/${MAX_RETRIES} url=${url} model=${this.#model} messages=${messages.length} maxTokens=${options.maxTokens ?? 'default'}`);
+        console.log(
+          `🔍 [model:${requestId}] request attempt=${attempt}/${MAX_RETRIES} url=${url} model=${this.#model} messages=${messages.length} maxTokens=${options.maxTokens ?? 'default'}`,
+        );
         heartbeat = setInterval(() => {
           const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
           console.log(`🔍 [model:${requestId}] waiting for response ${elapsedSeconds}s`);
@@ -54,7 +56,7 @@ export class OpenAIModelProvider {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-        
+
         try {
           const body = {
             model: this.#model,
@@ -67,7 +69,7 @@ export class OpenAIModelProvider {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${this.#apiKey}`,
+              Authorization: `Bearer ${this.#apiKey}`,
             },
             body: JSON.stringify(body),
             signal: controller.signal,
@@ -75,7 +77,9 @@ export class OpenAIModelProvider {
 
           if (traceEnabled) {
             const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
-            console.log(`🔍 [model:${requestId}] response status=${response.status} ${response.statusText} after=${elapsedSeconds}s`);
+            console.log(
+              `🔍 [model:${requestId}] response status=${response.status} ${response.statusText} after=${elapsedSeconds}s`,
+            );
           }
 
           if (!response.ok) {
@@ -88,7 +92,9 @@ export class OpenAIModelProvider {
           const reasoning = extractReasoningFromChoice(choice);
 
           if (traceEnabled) {
-            console.log(`🔍 [model:${requestId}] parsed finishReason=${choice?.finish_reason ?? 'none'} contentChars=${choice?.message?.content?.length ?? 0} reasoningChars=${reasoning?.text?.length ?? 0} toolCalls=${choice?.message?.tool_calls?.length ?? 0}`);
+            console.log(
+              `🔍 [model:${requestId}] parsed finishReason=${choice?.finish_reason ?? 'none'} contentChars=${choice?.message?.content?.length ?? 0} reasoningChars=${reasoning?.text?.length ?? 0} toolCalls=${choice?.message?.tool_calls?.length ?? 0}`,
+            );
           }
 
           return {
@@ -109,14 +115,16 @@ export class OpenAIModelProvider {
         }
       } catch (error) {
         lastError = error;
-        
+
         // 判断是否可以重试
         const isRetryable = this.#isRetryableError(error);
         if (!isRetryable || attempt >= MAX_RETRIES) {
           throw error;
         }
-        
-        console.warn(`🔍 [model:${requestId}] request failed, retrying in ${RETRY_DELAY_MS}ms... (attempt ${attempt}/${MAX_RETRIES})`);
+
+        console.warn(
+          `🔍 [model:${requestId}] request failed, retrying in ${RETRY_DELAY_MS}ms... (attempt ${attempt}/${MAX_RETRIES})`,
+        );
         await this.#sleep(RETRY_DELAY_MS * attempt);
       } finally {
         if (heartbeat) {
@@ -124,7 +132,7 @@ export class OpenAIModelProvider {
         }
       }
     }
-    
+
     throw lastError;
   }
 
@@ -155,7 +163,9 @@ export class OpenAIModelProvider {
       let heartbeat;
 
       if (traceEnabled) {
-        console.log(`🔍 [model:${requestId}] stream attempt=${attempt}/${MAX_RETRIES} url=${url} model=${this.#model}`);
+        console.log(
+          `🔍 [model:${requestId}] stream attempt=${attempt}/${MAX_RETRIES} url=${url} model=${this.#model}`,
+        );
         heartbeat = setInterval(() => {
           const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
           console.log(`🔍 [model:${requestId}] streaming ${elapsedSeconds}s`);
@@ -180,7 +190,7 @@ export class OpenAIModelProvider {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${this.#apiKey}`,
+              Authorization: `Bearer ${this.#apiKey}`,
             },
             body: JSON.stringify(body),
             signal: controller.signal,
@@ -188,7 +198,9 @@ export class OpenAIModelProvider {
 
           if (traceEnabled) {
             const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
-            console.log(`🔍 [model:${requestId}] stream status=${response.status} after=${elapsedSeconds}s`);
+            console.log(
+              `🔍 [model:${requestId}] stream status=${response.status} after=${elapsedSeconds}s`,
+            );
           }
 
           if (!response.ok) {
@@ -232,8 +244,12 @@ export class OpenAIModelProvider {
                     if (!state.toolCalls[idx]) {
                       state.toolCalls[idx] = { index: idx, name: '', arguments: '' };
                     }
-                    if (evt.name) {state.toolCalls[idx].name += evt.name;}
-                    if (evt.arguments) {state.toolCalls[idx].arguments += evt.arguments;}
+                    if (evt.name) {
+                      state.toolCalls[idx].name += evt.name;
+                    }
+                    if (evt.arguments) {
+                      state.toolCalls[idx].arguments += evt.arguments;
+                    }
                   } else if (evt.type === 'usage') {
                     state.usage = evt.usage;
                   } else if (evt.type === 'finish') {
@@ -242,17 +258,21 @@ export class OpenAIModelProvider {
                   yield evt;
                 }
               } finally {
-                if (heartbeat) {clearInterval(heartbeat);}
+                if (heartbeat) {
+                  clearInterval(heartbeat);
+                }
                 clearTimeout(timeoutId);
               }
             },
             async finalize() {
               const toolCalls = state.toolCalls
-                .filter(tc => tc && tc.name)
-                .map(tc => {
+                .filter((tc) => tc && tc.name)
+                .map((tc) => {
                   let parsedArgs = {};
                   try {
-                    if (tc.arguments) {parsedArgs = JSON.parse(tc.arguments);}
+                    if (tc.arguments) {
+                      parsedArgs = JSON.parse(tc.arguments);
+                    }
                   } catch {
                     parsedArgs = {};
                   }
@@ -271,9 +291,7 @@ export class OpenAIModelProvider {
                 text: state.text,
                 toolCalls,
                 finishReason: state.finishReason,
-                reasoning: state.reasoningText
-                  ? { text: state.reasoningText }
-                  : null,
+                reasoning: state.reasoningText ? { text: state.reasoningText } : null,
                 usage,
               };
             },
@@ -281,7 +299,9 @@ export class OpenAIModelProvider {
           };
         } catch (fetchErr) {
           clearTimeout(timeoutId);
-          if (heartbeat) {clearInterval(heartbeat);}
+          if (heartbeat) {
+            clearInterval(heartbeat);
+          }
           throw fetchErr;
         }
       } catch (error) {
@@ -290,10 +310,14 @@ export class OpenAIModelProvider {
         if (!isRetryable || attempt >= MAX_RETRIES) {
           throw error;
         }
-        console.warn(`🔍 [model:${requestId}] stream failed, retrying in ${RETRY_DELAY_MS}ms... (attempt ${attempt}/${MAX_RETRIES})`);
+        console.warn(
+          `🔍 [model:${requestId}] stream failed, retrying in ${RETRY_DELAY_MS}ms... (attempt ${attempt}/${MAX_RETRIES})`,
+        );
         await this.#sleep(RETRY_DELAY_MS * attempt);
       } finally {
-        if (heartbeat) {clearInterval(heartbeat);}
+        if (heartbeat) {
+          clearInterval(heartbeat);
+        }
       }
     }
 
@@ -304,10 +328,18 @@ export class OpenAIModelProvider {
    * 判断错误是否可重试
    */
   #isRetryableError(error) {
-    if (error.name === 'AbortError') {return false;} // 超时不重试
-    if (error.message?.includes('401') || error.message?.includes('403')) {return false;} // 认证错误不重试
-    if (error.message?.includes('429')) {return true;} // 速率限制可重试
-    if (error.message?.includes('5')) {return true;} // 5xx 服务器错误可重试
+    if (error.name === 'AbortError') {
+      return false;
+    } // 超时不重试
+    if (error.message?.includes('401') || error.message?.includes('403')) {
+      return false;
+    } // 认证错误不重试
+    if (error.message?.includes('429')) {
+      return true;
+    } // 速率限制可重试
+    if (error.message?.includes('5')) {
+      return true;
+    } // 5xx 服务器错误可重试
     return true; // 其他网络错误可重试
   }
 
@@ -315,7 +347,7 @@ export class OpenAIModelProvider {
    * 延迟函数
    */
   #sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   getMaxContextTokens() {

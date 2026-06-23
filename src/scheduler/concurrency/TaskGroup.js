@@ -6,7 +6,7 @@
 // 执行策略枚举
 export const ExecutionStrategy = {
   SERIAL: 'serial',
-  PARALLEL: 'parallel'
+  PARALLEL: 'parallel',
 };
 
 /**
@@ -105,7 +105,7 @@ export class TaskGroup {
       taskCount: this.taskIds.size,
       runningCount: this.runningTaskIds.size,
       resourceLocks: this.resourceLocks,
-      canStartNew: this.canStartNewTask()
+      canStartNew: this.canStartNewTask(),
     };
   }
 
@@ -120,7 +120,7 @@ export class TaskGroup {
       strategy: this.strategy,
       resourceLocks: this.resourceLocks,
       priority: this.priority,
-      concurrencyLimit: this.concurrencyLimit
+      concurrencyLimit: this.concurrencyLimit,
     };
   }
 }

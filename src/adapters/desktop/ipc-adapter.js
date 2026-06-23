@@ -5,7 +5,12 @@
  * boundaries stay small while this legacy import path remains stable.
  */
 
-export { IPCMessage, IPCMessageStatus, IPCMessageType, MessageQueue } from './protocol/ipc-protocol.js';
+export {
+  IPCMessage,
+  IPCMessageStatus,
+  IPCMessageType,
+  MessageQueue,
+} from './protocol/ipc-protocol.js';
 export { IPCAdapterBase } from './ipc/base-adapter.js';
 export { MainProcessIPCAdapter } from './ipc/main-process-adapter.js';
 export { RendererProcessIPCAdapter } from './ipc/renderer-process-adapter.js';

@@ -11,14 +11,14 @@ import { VectorIndex } from './vector-index.js';
 
 const DEFAULT_PATTERN = '**/*.{js,mjs,cjs,ts,tsx,jsx,json,md,txt,yml,yaml,css,html}';
 const MAX_FILE_BYTES = 256 * 1024;
-const CHUNK_TOKENS_TARGET = 750;       // 600-900 范围
+const CHUNK_TOKENS_TARGET = 750; // 600-900 范围
 const CHUNK_TOKENS_MIN = 600;
 const CHUNK_TOKENS_MAX = 900;
-const OVERLAP_TOKENS = 125;            // 100-150 范围
-const BUILD_TIMEOUT_MS = 60000;        // 60秒构建超时
-const MAX_INDEX_SIZE_MB = 50;          // 索引最大50MB
-const MIN_SEMANTIC_SCORE = 0.2;        // 过滤极不相关的 chunk
-const MMR_LAMBDA = 0.65;               // 平衡 relevance / diversity
+const OVERLAP_TOKENS = 125; // 100-150 范围
+const BUILD_TIMEOUT_MS = 60000; // 60秒构建超时
+const MAX_INDEX_SIZE_MB = 50; // 索引最大50MB
+const MIN_SEMANTIC_SCORE = 0.2; // 过滤极不相关的 chunk
+const MMR_LAMBDA = 0.65; // 平衡 relevance / diversity
 
 const indexCache = new Map();
 let embedderPromise = null;
@@ -91,7 +91,9 @@ function chunkFile(path, content) {
 
   function emitChunk(srcLines, s, e, tokens) {
     const text = srcLines.slice(s, e).join('\n').trim();
-    if (!text) {return;}
+    if (!text) {
+      return;
+    }
     chunks.push({
       text,
       metadata: { path, startLine: s + 1, endLine: e, tokens: tokens || tokenCount(text) },
@@ -109,9 +111,13 @@ function chunkFile(path, content) {
         currentTokens += tokenCount(srcLines[endIdx]);
         endIdx++;
       }
-      if (endIdx === startIdx) {endIdx = Math.min(e, startIdx + 1);}
+      if (endIdx === startIdx) {
+        endIdx = Math.min(e, startIdx + 1);
+      }
       emitChunk(srcLines, startIdx, endIdx, currentTokens);
-      if (endIdx >= e) {break;}
+      if (endIdx >= e) {
+        break;
+      }
       // Advance by roughly (CHUNK_TOKENS_TARGET - OVERLAP_TOKENS) tokens
       let advanceTokens = 0;
       let newStart = startIdx;
@@ -120,7 +126,9 @@ function chunkFile(path, content) {
         advanceTokens += tokenCount(srcLines[newStart]);
         newStart++;
       }
-      if (newStart <= startIdx) {newStart = startIdx + 1;}
+      if (newStart <= startIdx) {
+        newStart = startIdx + 1;
+      }
       startIdx = newStart;
     }
   }
@@ -128,11 +136,17 @@ function chunkFile(path, content) {
 
 function tokenCount(text) {
   try {
-    if (typeof heuristicCountTokens === 'function') {return heuristicCountTokens(text);}
-  } catch { /* noop */ }
+    if (typeof heuristicCountTokens === 'function') {
+      return heuristicCountTokens(text);
+    }
+  } catch {
+    /* noop */
+  }
   // Ultra-light fallback: ~4 chars per token for CJK-heavy, ~0.75 words for Latin
   const s = String(text || '');
-  if (!s) {return 0;}
+  if (!s) {
+    return 0;
+  }
   const cjk = (s.match(/[\u4e00-\u9fff]/g) || []).length;
   const words = (s.match(/[\p{L}\p{N}_-]+/gu) || []).length;
   return Math.max(1, Math.round(cjk + words * 1.3));
@@ -169,7 +183,9 @@ function splitByTopLevelIndentation(lines, rangeStart, rangeEnd) {
     const trimmed = line.trim();
 
     // Skip blank lines inside the section
-    if (!trimmed) {continue;}
+    if (!trimmed) {
+      continue;
+    }
 
     const indent = line.length - trimmed.length;
 
@@ -200,7 +216,9 @@ async function buildIndex(workingDirectory, scopePath, pattern) {
   const root = resolve(workingDirectory, scopePath || '.');
   const cacheKey = `${root}\0${pattern}`;
   const cached = indexCache.get(cacheKey);
-  if (cached) {return cached.chunks;}
+  if (cached) {
+    return cached.chunks;
+  }
 
   // Try persistent on-disk index (survives agent restarts)
   const vIndex = new VectorIndex(workingDirectory);
@@ -241,27 +259,39 @@ async function buildIndex(workingDirectory, scopePath, pattern) {
     // 限制文件数量，避免超大项目卡死
     const MAX_FILES = 500;
     const slice = files.slice(0, MAX_FILES);
-    
+
     // Read files concurrently (max 20 at a time)
     const fileEntries = [];
     const CONCURRENCY = 20;
-    
+
     for (let i = 0; i < slice.length; i += CONCURRENCY) {
-      if (timedOut) {break;}
-      
-      const batch = await Promise.all(slice.slice(i, i + CONCURRENCY).map(async (file) => {
-        try {
-          const fileStat = await stat(file);
-          if (fileStat.size > MAX_FILE_BYTES) {return [];}
-          const text = await readFile(file, 'utf-8');
-          if (text.includes('\0')) {return [];}
-          const relPath = relative(workingDirectory, file);
-          return chunkFile(relPath, text);
-        } catch { return []; }
-      }));
-      for (const result of batch) {fileEntries.push(...result);}
+      if (timedOut) {
+        break;
+      }
+
+      const batch = await Promise.all(
+        slice.slice(i, i + CONCURRENCY).map(async (file) => {
+          try {
+            const fileStat = await stat(file);
+            if (fileStat.size > MAX_FILE_BYTES) {
+              return [];
+            }
+            const text = await readFile(file, 'utf-8');
+            if (text.includes('\0')) {
+              return [];
+            }
+            const relPath = relative(workingDirectory, file);
+            return chunkFile(relPath, text);
+          } catch {
+            return [];
+          }
+        }),
+      );
+      for (const result of batch) {
+        fileEntries.push(...result);
+      }
     }
-    
+
     return fileEntries;
   })();
 
@@ -280,8 +310,10 @@ async function buildIndex(workingDirectory, scopePath, pattern) {
 
   const MAX_CHUNKS = 2000;
   if (chunks.length > MAX_CHUNKS) {
-    if (typeof process !== "undefined" && process.emitWarning) {
-      process.emitWarning("semantic_search: truncating " + chunks.length + " chunks to " + MAX_CHUNKS);
+    if (typeof process !== 'undefined' && process.emitWarning) {
+      process.emitWarning(
+        'semantic_search: truncating ' + chunks.length + ' chunks to ' + MAX_CHUNKS,
+      );
     }
     chunks.length = MAX_CHUNKS;
   }
@@ -292,8 +324,16 @@ async function buildIndex(workingDirectory, scopePath, pattern) {
   if (estimatedSize > MAX_INDEX_BYTES) {
     const keepRatio = MAX_INDEX_BYTES / estimatedSize;
     const keepCount = Math.floor(chunks.length * keepRatio);
-    if (typeof process !== "undefined" && process.emitWarning) {
-      process.emitWarning("semantic_search: index too large (" + Math.round(estimatedSize / 1024 / 1024) + "MB), keeping " + keepCount + " of " + chunks.length + " chunks");
+    if (typeof process !== 'undefined' && process.emitWarning) {
+      process.emitWarning(
+        'semantic_search: index too large (' +
+          Math.round(estimatedSize / 1024 / 1024) +
+          'MB), keeping ' +
+          keepCount +
+          ' of ' +
+          chunks.length +
+          ' chunks',
+      );
     }
     chunks.length = keepCount;
   }
@@ -312,29 +352,41 @@ function formatResults(results) {
     return 'No semantic matches found.';
   }
 
-  return results.map((result, index) => {
-    const { path, startLine, endLine } = result.metadata;
-    const preview = result.text
-      .split('\n')
-      .slice(0, 12)
-      .join('\n');
-    return [
-      `${index + 1}. ${path}:${startLine}-${endLine} score=${result.score.toFixed(3)}`,
-      preview,
-    ].join('\n');
-  }).join('\n\n') + '\n\n---\nChunks are split at structural boundaries (blank lines, indentation). If a chunk looks truncated (starts/ends mid-definition), use read_file on the full file and let the LLM extract the relevant section — do not rely solely on the partial chunk text.';
+  return (
+    results
+      .map((result, index) => {
+        const { path, startLine, endLine } = result.metadata;
+        const preview = result.text.split('\n').slice(0, 12).join('\n');
+        return [
+          `${index + 1}. ${path}:${startLine}-${endLine} score=${result.score.toFixed(3)}`,
+          preview,
+        ].join('\n');
+      })
+      .join('\n\n') +
+    '\n\n---\nChunks are split at structural boundaries (blank lines, indentation). If a chunk looks truncated (starts/ends mid-definition), use read_file on the full file and let the LLM extract the relevant section — do not rely solely on the partial chunk text.'
+  );
 }
 
 export function createSemanticSearchTool() {
   return {
     name: 'semantic_search',
-    description: 'Search the workspace by meaning using embeddings. Use this proactively when the user asks where a concept is implemented, when lexical search may miss synonyms, when recalling project context, or before broad codebase changes.',
+    description:
+      'Search the workspace by meaning using embeddings. Use this proactively when the user asks where a concept is implemented, when lexical search may miss synonyms, when recalling project context, or before broad codebase changes.',
     category: ToolCategory.FILESYSTEM,
     params: {
       query: { type: 'string', description: 'Natural-language search query or concept' },
-      path: { type: 'string', description: 'Optional directory relative to working directory to limit indexing' },
-      pattern: { type: 'string', description: `Optional glob pattern relative to path (default ${DEFAULT_PATTERN})` },
-      limit: { type: 'number', description: 'Maximum number of matching chunks to return (default 5, max 20)' },
+      path: {
+        type: 'string',
+        description: 'Optional directory relative to working directory to limit indexing',
+      },
+      pattern: {
+        type: 'string',
+        description: `Optional glob pattern relative to path (default ${DEFAULT_PATTERN})`,
+      },
+      limit: {
+        type: 'number',
+        description: 'Maximum number of matching chunks to return (default 5, max 20)',
+      },
     },
     required: ['query'],
     handler: async ({ query, path, pattern, limit }, ctx) => {
@@ -342,7 +394,7 @@ export function createSemanticSearchTool() {
       const chunks = await buildIndex(
         ctx.workingDirectory,
         path || '.',
-        pattern || DEFAULT_PATTERN
+        pattern || DEFAULT_PATTERN,
       );
 
       if (chunks.length === 0) {
@@ -360,7 +412,7 @@ export function createSemanticSearchTool() {
       });
 
       const minScore = Number(ctx?.args?.min_score) || MIN_SEMANTIC_SCORE;
-      const filtered = (allScored || []).filter(r => Number(r.score) >= minScore);
+      const filtered = (allScored || []).filter((r) => Number(r.score) >= minScore);
 
       const reranked = mmrReRank(filtered, {
         lambda: Number(ctx?.args?.mmr_lambda) || MMR_LAMBDA,

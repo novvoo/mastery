@@ -9,7 +9,7 @@
 export const PlatformType = {
   CLI: 'cli',
   DESKTOP: 'desktop',
-  WEB: 'web'
+  WEB: 'web',
 };
 
 /**
@@ -37,19 +37,19 @@ export const RuntimeEvent = {
   TOOL_PROGRESS: 'tool:progress',
   TOOL_LOADED: 'tool:loaded',
   TOOL_UNLOADED: 'tool:unloaded',
-  
+
   // 消息事件
   MESSAGE_RECEIVED: 'message:received',
   MESSAGE_SENT: 'message:sent',
-  
+
   // 状态事件
   STATUS_UPDATE: 'status:update',
   CONFIG_CHANGE: 'config:change',
-  
+
   // 内存事件
   MEMORY_UPDATE: 'memory:update',
   MEMORY_CLEAR: 'memory:clear',
-  
+
   // 插件事件
   PLUGIN_REGISTER: 'plugin:register',
   PLUGIN_UNREGISTER: 'plugin:unregister',
@@ -60,7 +60,7 @@ export const RuntimeEvent = {
   EXECUTION_PLAN_CREATED: 'plan:created',
   EXECUTION_PLAN_UPDATED: 'plan:updated',
   PLAN_DECOMPOSED: 'plan:decomposed',
-  PLAN_EXECUTED: 'plan:executed'
+  PLAN_EXECUTED: 'plan:executed',
 };
 
 /**
@@ -129,7 +129,7 @@ export class AgentState {
   constructor() {
     this.status = 'idle'; // idle, running, completed, error
     this.currentTask = null;
-    this.currentPlanId = null;  // GraphPlanner 的执行计划ID
+    this.currentPlanId = null; // GraphPlanner 的执行计划ID
     this.iteration = 0;
     this.startTime = null;
     this.lastActivity = null;
@@ -215,7 +215,7 @@ export class ToolDefinition {
     this.enabled = options.enabled !== false;
     this.priority = options.priority || 50;
     this.group = options.group || null;
-    
+
     // 中间件相关
     this.beforeHooks = options.beforeHooks || [];
     this.afterHooks = options.afterHooks || [];
@@ -227,19 +227,19 @@ export class ToolDefinition {
    */
   validate() {
     const errors = [];
-    
+
     if (!this.name) {
       errors.push('工具名称是必需的');
     }
-    
+
     if (!this.description) {
       errors.push('工具描述是必需的');
     }
-    
+
     if (!this.handler || typeof this.handler !== 'function') {
       errors.push('工具处理器必须是函数');
     }
-    
+
     return { valid: errors.length === 0, errors };
   }
 
@@ -330,23 +330,23 @@ export class MiddlewareDefinition {
    */
   validate() {
     const errors = [];
-    
+
     if (!this.before && !this.after && !this.error) {
       errors.push('中间件必须至少有一个钩子函数（before/after/error）');
     }
-    
+
     if (this.before && typeof this.before !== 'function') {
       errors.push('before 钩子必须是函数');
     }
-    
+
     if (this.after && typeof this.after !== 'function') {
       errors.push('after 钩子必须是函数');
     }
-    
+
     if (this.error && typeof this.error !== 'function') {
       errors.push('error 钩子必须是函数');
     }
-    
+
     return { valid: errors.length === 0, errors };
   }
 }

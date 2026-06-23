@@ -26,7 +26,10 @@ export default function grill() {
       const { task, assumptions = '' } = params;
 
       const explicitAssumptions = assumptions
-        ? assumptions.split(',').map((a) => a.trim()).filter(Boolean)
+        ? assumptions
+            .split(',')
+            .map((a) => a.trim())
+            .filter(Boolean)
         : [];
 
       const implicitAssumptions = inferImplicitAssumptions(task, explicitAssumptions);
@@ -46,7 +49,13 @@ export default function grill() {
 
       const questions = generateQuestions(task, allAssumptions, boundaryConditions);
 
-      return formatAlignmentDocument(task, allAssumptions, boundaryConditions, acceptanceCriteria, questions);
+      return formatAlignmentDocument(
+        task,
+        allAssumptions,
+        boundaryConditions,
+        acceptanceCriteria,
+        questions,
+      );
     },
   };
 }
@@ -128,17 +137,28 @@ function inferImplicitAssumptions(task, explicitList) {
 
   // Filter out any that overlap with explicit assumptions
   return implicit.filter(
-    (ia) => !explicitList.some((ea) => ea.toLowerCase() === ia.text.toLowerCase())
+    (ia) => !explicitList.some((ea) => ea.toLowerCase() === ia.text.toLowerCase()),
   );
 }
 
 function rateAssumptionRisk(text) {
   const textLower = text.toLowerCase();
-  const highRiskKeywords = ['security', 'data loss', 'breaking', 'untrusted', 'reliable', 'persistence'];
+  const highRiskKeywords = [
+    'security',
+    'data loss',
+    'breaking',
+    'untrusted',
+    'reliable',
+    'persistence',
+  ];
   const mediumRiskKeywords = ['performance', 'compatibility', 'convention', 'migration', 'session'];
 
-  if (highRiskKeywords.some((kw) => textLower.includes(kw))) {return 'High';}
-  if (mediumRiskKeywords.some((kw) => textLower.includes(kw))) {return 'Medium';}
+  if (highRiskKeywords.some((kw) => textLower.includes(kw))) {
+    return 'High';
+  }
+  if (mediumRiskKeywords.some((kw) => textLower.includes(kw))) {
+    return 'Medium';
+  }
   return 'Low';
 }
 
@@ -158,7 +178,11 @@ function generateBoundaryConditions(task) {
     question: 'How should the system handle input that does not match expected types or formats?',
   });
 
-  if (taskLower.includes('list') || taskLower.includes('array') || taskLower.includes('collection')) {
+  if (
+    taskLower.includes('list') ||
+    taskLower.includes('array') ||
+    taskLower.includes('collection')
+  ) {
     conditions.push({
       category: 'Scale',
       condition: 'Empty collection',
@@ -180,7 +204,8 @@ function generateBoundaryConditions(task) {
   conditions.push({
     category: 'Error',
     condition: 'Downstream dependency failure',
-    question: 'How should the system behave if an external dependency (API, database, service) is unavailable?',
+    question:
+      'How should the system behave if an external dependency (API, database, service) is unavailable?',
   });
 
   conditions.push({
@@ -248,19 +273,25 @@ function generateQuestions(task, assumptions, boundaries) {
 
   questions.push({
     id: 'Q-2',
-    question: 'Are there any stakeholders or downstream consumers of this change who should be notified?',
+    question:
+      'Are there any stakeholders or downstream consumers of this change who should be notified?',
     items: ['- [ ] No downstream impact', '- [ ] Yes (specify who)'],
   });
 
   questions.push({
     id: 'Q-3',
     question: 'Is there a rollback plan if the implementation causes unexpected issues?',
-    items: ['- [ ] Yes, rollback plan documented', '- [ ] No rollback needed (greenfield)', '- [ ] Need to define rollback plan'],
+    items: [
+      '- [ ] Yes, rollback plan documented',
+      '- [ ] No rollback needed (greenfield)',
+      '- [ ] Need to define rollback plan',
+    ],
   });
 
   questions.push({
     id: 'Q-4',
-    question: 'Are there any non-functional requirements (performance, accessibility, i18n) that apply?',
+    question:
+      'Are there any non-functional requirements (performance, accessibility, i18n) that apply?',
     items: ['- [ ] No NFRs beyond basic functionality', '- [ ] Yes (specify requirements)'],
   });
 
@@ -290,7 +321,12 @@ function formatAlignmentDocument(task, assumptions, boundaries, criteria, questi
   ];
 
   assumptions.forEach((a, i) => {
-    const badge = a.riskRating === 'High' ? ':red_circle:' : a.riskRating === 'Medium' ? ':yellow_circle:' : ':green_circle:';
+    const badge =
+      a.riskRating === 'High'
+        ? ':red_circle:'
+        : a.riskRating === 'Medium'
+          ? ':yellow_circle:'
+          : ':green_circle:';
     lines.push(`| ${i + 1} | ${a.source} | ${a.text} | ${badge} **${a.riskRating}** |`);
   });
 
@@ -301,20 +337,14 @@ function formatAlignmentDocument(task, assumptions, boundaries, criteria, questi
     '## 3. Boundary Conditions',
     '',
     '| Category | Condition | Open Question |',
-    '|----------|-----------|---------------|'
+    '|----------|-----------|---------------|',
   );
 
   boundaries.forEach((b) => {
     lines.push(`| ${b.category} | ${b.condition} | ${b.question} |`);
   });
 
-  lines.push(
-    '',
-    '---',
-    '',
-    '## 4. Acceptance Criteria',
-    ''
-  );
+  lines.push('', '---', '', '## 4. Acceptance Criteria', '');
 
   criteria.forEach((c) => {
     lines.push(`### ${c.id}: ${c.criterion}`);
@@ -322,12 +352,7 @@ function formatAlignmentDocument(task, assumptions, boundaries, criteria, questi
     lines.push('');
   });
 
-  lines.push(
-    '---',
-    '',
-    '## 5. Questions for User',
-    ''
-  );
+  lines.push('---', '', '## 5. Questions for User', '');
 
   questions.forEach((q) => {
     lines.push(`### ${q.id}: ${q.question}`);
@@ -341,7 +366,7 @@ function formatAlignmentDocument(task, assumptions, boundaries, criteria, questi
     '---',
     '',
     '> **Next Steps**: Resolve all High-risk assumptions and answer open questions, then proceed with implementation using the tdd tool.',
-    ''
+    '',
   );
 
   return lines.join('\n');

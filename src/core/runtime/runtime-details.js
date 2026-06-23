@@ -102,24 +102,26 @@ export function getRuntimeDetailContent(msg) {
     source: msg.source,
     payloadSummary: msg.payloadSummary,
   };
-  const fallbackText = formatRuntimeDetailValue(Object.fromEntries(
-    Object.entries(fallbackFields).filter(([, value]) => value !== undefined && value !== '')
-  ));
+  const fallbackText = formatRuntimeDetailValue(
+    Object.fromEntries(
+      Object.entries(fallbackFields).filter(([, value]) => value !== undefined && value !== ''),
+    ),
+  );
 
   return sections.join('\n\n') || fallbackText || '(无内容)';
 }
 
 export function buildThinkingSummary(runtimeDetails = []) {
   const thinkingMessages = runtimeDetails.filter(isThinkingMessage);
-  const iterations = thinkingMessages.map(msg => msg.iteration).filter(value => value !== null && value !== undefined);
+  const iterations = thinkingMessages
+    .map((msg) => msg.iteration)
+    .filter((value) => value !== null && value !== undefined);
   const latest = thinkingMessages.at(-1);
   const fullText = thinkingMessages
-    .map(msg => msg.thinkingText || msg.content || msg.message || '')
+    .map((msg) => msg.thinkingText || msg.content || msg.message || '')
     .filter(Boolean)
     .join('\n\n');
-  const summaries = thinkingMessages
-    .map(msg => msg.summary || msg.content || '')
-    .filter(Boolean);
+  const summaries = thinkingMessages.map((msg) => msg.summary || msg.content || '').filter(Boolean);
   const summary = latest?.summary || summarizeText(summaries.join(' '), 180);
 
   return {
@@ -159,11 +161,11 @@ export function getRuntimeDetailPreviewText(msg) {
     return typeof payload === 'string'
       ? payload.split('\n')[0].trim()
       : JSON.stringify({
-        event: msg.event,
-        type: msg.type,
-        status: msg.status,
-        source: msg.source,
-      });
+          event: msg.event,
+          type: msg.type,
+          status: msg.status,
+          source: msg.source,
+        });
   }
   return '(无内容)';
 }
@@ -174,19 +176,11 @@ export function getStatusUpdateText(msg) {
   }
   const payload = msg.payload || msg.raw || {};
   return (
-    msg.content ||
-    msg.message ||
-    payload.message ||
-    payload.status ||
-    msg.status ||
-    '状态更新'
+    msg.content || msg.message || payload.message || payload.status || msg.status || '状态更新'
   );
 }
 
-export function createConversationGroups(messages, {
-  messageIsVisible,
-  messageMatchesSearch,
-}) {
+export function createConversationGroups(messages, { messageIsVisible, messageMatchesSearch }) {
   const groups = [];
   let currentGroup = null;
 
@@ -220,16 +214,17 @@ export function createConversationGroups(messages, {
     currentGroup.messages.push(msg);
   });
 
-  return groups.filter(group => group.messages.length > 0 || group.runtimeDetails.length > 0);
+  return groups.filter((group) => group.messages.length > 0 || group.runtimeDetails.length > 0);
 }
 
 export function createRuntimeDetailId(groupId, msg, index) {
-  const stablePart = msg.id || `${msg.event || msg.type || 'runtime'}_${msg.timestamp || 'no_time'}_${index}`;
+  const stablePart =
+    msg.id || `${msg.event || msg.type || 'runtime'}_${msg.timestamp || 'no_time'}_${index}`;
   return `${groupId}_${stablePart}`;
 }
 
 export function buildRuntimeDetailsExportData(details) {
-  return details.map(msg => ({
+  return details.map((msg) => ({
     event: msg.event || msg.type || 'unknown',
     type: msg.type || 'unknown',
     timestamp: msg.timestamp ? new Date(msg.timestamp).toISOString() : null,

@@ -217,9 +217,10 @@ export function createMCPTools(mcpClient) {
       handler: async () => {
         try {
           const servers = mcpClient.getConnectedServers();
-          const isConnected = typeof mcpClient.isConnected === 'function'
-            ? mcpClient.isConnected()
-            : Boolean(mcpClient.isConnected || servers.length > 0);
+          const isConnected =
+            typeof mcpClient.isConnected === 'function'
+              ? mcpClient.isConnected()
+              : Boolean(mcpClient.isConnected || servers.length > 0);
           const tools = mcpClient.getTools();
           const resources = mcpClient.getResources();
 
@@ -266,18 +267,24 @@ export function createMCPTools(mcpClient) {
             for (const p of candidates) {
               try {
                 const text = await mcpClient.readTextFile(p);
-                if (!text) {continue;}
+                if (!text) {
+                  continue;
+                }
                 const parsed = parseMCPConfig(text);
                 if (parsed && parsed.servers.length) {
                   found.push({ path: p, ...parsed });
                 }
-              } catch (_) { /* 找不到就跳过 */ }
+              } catch (_) {
+                /* 找不到就跳过 */
+              }
             }
           }
 
           const all = [];
           for (const item of found) {
-            for (const s of item.servers) {all.push({ source: item.path, ...s });}
+            for (const s of item.servers) {
+              all.push({ source: item.path, ...s });
+            }
           }
           return {
             success: true,
@@ -298,17 +305,20 @@ function parseMCPConfig(text) {
     const json = JSON.parse(text);
     const mcpServers = json?.mcpServers;
     const servers = json?.servers;
-    const raw = Array.isArray(servers) ? servers
-      : (mcpServers && typeof mcpServers === 'object') ? Object.entries(mcpServers).map(([name, cfg]) => ({
-          name,
-          command: cfg.command,
-          args: cfg.args || [],
-          env: cfg.env || {},
-        })) : [];
+    const raw = Array.isArray(servers)
+      ? servers
+      : mcpServers && typeof mcpServers === 'object'
+        ? Object.entries(mcpServers).map(([name, cfg]) => ({
+            name,
+            command: cfg.command,
+            args: cfg.args || [],
+            env: cfg.env || {},
+          }))
+        : [];
     return {
       servers: raw
-        .filter(s => typeof s.command === 'string' || typeof s.transport === 'object')
-        .map(s => ({
+        .filter((s) => typeof s.command === 'string' || typeof s.transport === 'object')
+        .map((s) => ({
           name: s.name || deriveName(s.command),
           command: s.command,
           args: s.args || [],
@@ -321,7 +331,9 @@ function parseMCPConfig(text) {
   }
 }
 function deriveName(command) {
-  if (!command) {return 'server';}
+  if (!command) {
+    return 'server';
+  }
   const parts = String(command).split(/[\\\/]/);
   return parts[parts.length - 1] || 'server';
 }

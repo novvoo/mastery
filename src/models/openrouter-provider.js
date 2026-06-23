@@ -13,7 +13,12 @@ export class OpenRouterModelProvider {
   #contextSize;
   #capabilities;
 
-  constructor(apiKey, baseURL = 'https://openrouter.ai/api/v1', model = 'anthropic/claude-3.5-sonnet', options = {}) {
+  constructor(
+    apiKey,
+    baseURL = 'https://openrouter.ai/api/v1',
+    model = 'anthropic/claude-3.5-sonnet',
+    options = {},
+  ) {
     this.#apiKey = apiKey;
     this.#baseURL = baseURL;
     this.#model = model;
@@ -26,7 +31,7 @@ export class OpenRouterModelProvider {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.#apiKey}`,
+        Authorization: `Bearer ${this.#apiKey}`,
         'HTTP-Referer': 'https://github.com/novvoo/mastery',
         'X-Title': 'AI Engineering Mastery Agent',
       },

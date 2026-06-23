@@ -4,7 +4,14 @@
  */
 
 import { input, select, confirm } from '@inquirer/prompts';
-import { enhancedUI, createTable, formatStatus, formatTime, formatDuration, truncate } from '../enhanced-ui.js';
+import {
+  enhancedUI,
+  createTable,
+  formatStatus,
+  formatTime,
+  formatDuration,
+  truncate,
+} from '../enhanced-ui.js';
 import { SCHEDULE_MENU_CHOICES } from '../enhanced-command-utils.js';
 
 /**
@@ -124,7 +131,7 @@ export function createScheduleCommands(deps) {
 
       const scheduleId = await select({
         message: 'Select schedule:',
-        choices: schedules.map(s => ({
+        choices: schedules.map((s) => ({
           name: `${truncate(s.id, 15)} - ${s.name}`,
           value: s.id,
         })),
@@ -145,12 +152,24 @@ export function createScheduleCommands(deps) {
       table.push(
         [enhancedUI.theme.primaryBold('ID'), schedule.id],
         [enhancedUI.theme.primaryBold('Name'), schedule.name],
-        [enhancedUI.theme.primaryBold('Status'), schedule.enabled ? formatStatus('enabled') : formatStatus('disabled')],
+        [
+          enhancedUI.theme.primaryBold('Status'),
+          schedule.enabled ? formatStatus('enabled') : formatStatus('disabled'),
+        ],
         [enhancedUI.theme.primaryBold('Cron'), schedule.cron],
-        [enhancedUI.theme.primaryBold('Next Run'), schedule.nextRunAt ? formatTime(schedule.nextRunAt) : 'N/A'],
-        [enhancedUI.theme.primaryBold('Last Run'), schedule.lastRunAt ? formatTime(schedule.lastRunAt) : 'N/A'],
-        [enhancedUI.theme.primaryBold('Run Count'), `${schedule.runCount}${schedule.maxRuns ? '/' + schedule.maxRuns : ''}`],
-        [enhancedUI.theme.primaryBold('Task Type'), schedule.taskType]
+        [
+          enhancedUI.theme.primaryBold('Next Run'),
+          schedule.nextRunAt ? formatTime(schedule.nextRunAt) : 'N/A',
+        ],
+        [
+          enhancedUI.theme.primaryBold('Last Run'),
+          schedule.lastRunAt ? formatTime(schedule.lastRunAt) : 'N/A',
+        ],
+        [
+          enhancedUI.theme.primaryBold('Run Count'),
+          `${schedule.runCount}${schedule.maxRuns ? '/' + schedule.maxRuns : ''}`,
+        ],
+        [enhancedUI.theme.primaryBold('Task Type'), schedule.taskType],
       );
 
       console.log(table.toString());
@@ -166,7 +185,7 @@ export function createScheduleCommands(deps) {
 
       const scheduleId = await select({
         message: 'Select schedule to toggle:',
-        choices: schedules.map(s => ({
+        choices: schedules.map((s) => ({
           name: `${truncate(s.id, 15)} - ${s.name} (${s.enabled ? 'enabled' : 'disabled'})`,
           value: s.id,
         })),
@@ -174,7 +193,9 @@ export function createScheduleCommands(deps) {
 
       const schedule = await cronScheduler.toggle(scheduleId);
       if (schedule) {
-        enhancedUI.success(`Schedule ${scheduleId} is now ${schedule.enabled ? 'enabled' : 'disabled'}`);
+        enhancedUI.success(
+          `Schedule ${scheduleId} is now ${schedule.enabled ? 'enabled' : 'disabled'}`,
+        );
       } else {
         enhancedUI.error(`Schedule ${scheduleId} not found`);
       }
@@ -195,7 +216,9 @@ export function createScheduleCommands(deps) {
           if (args[1]) {
             const schedule = await cronScheduler.toggle(args[1]);
             if (schedule) {
-              enhancedUI.success(`Schedule ${args[1]} is now ${schedule.enabled ? 'enabled' : 'disabled'}`);
+              enhancedUI.success(
+                `Schedule ${args[1]} is now ${schedule.enabled ? 'enabled' : 'disabled'}`,
+              );
             } else {
               enhancedUI.error(`Schedule ${args[1]} not found`);
             }

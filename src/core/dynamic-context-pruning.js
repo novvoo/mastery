@@ -40,26 +40,29 @@ export class DynamicContextPruning {
     const typeWeight = MESSAGE_TYPE_PRIORITY[message.role] || 50;
     const lengthScore = Math.min(message.content?.length || 0 / 500, 1) * 30;
     const hasCode = /```|```[\s\S]*?```|\bfunction\b|\bclass\b|\bconst\b|\blet\b/.test(
-      message.content || ''
+      message.content || '',
     )
       ? 20
       : 0;
     const hasKeyTerms =
       /\b(important|critical|must|should|need|require|fix|bug|error|issue)\b/i.test(
-        message.content || ''
+        message.content || '',
       )
         ? 15
         : 0;
-    const referencesOther =
-      /\b(above|previous|earlier|mentioned|following)\b/i.test(message.content || '')
-        ? 25
-        : 0;
+    const referencesOther = /\b(above|previous|earlier|mentioned|following)\b/i.test(
+      message.content || '',
+    )
+      ? 25
+      : 0;
 
     return Math.min(100, typeWeight + lengthScore + hasCode + hasKeyTerms + referencesOther);
   }
 
   #defaultTokenCounter(text) {
-    if (!text) {return 0;}
+    if (!text) {
+      return 0;
+    }
     const chineseChars = (text.match(/[\u4e00-\u9fff]/g) || []).length;
     const otherChars = text.length - chineseChars;
     return Math.ceil(chineseChars * 2.0 + otherChars / 3.5);
@@ -149,7 +152,7 @@ export class DynamicContextPruning {
     }
 
     const keptMessages = remaining.filter(
-      (m) => !toRemove.some((r) => r.originalIndex === m.originalIndex)
+      (m) => !toRemove.some((r) => r.originalIndex === m.originalIndex),
     );
 
     const result = [
@@ -339,45 +342,56 @@ export class DynamicContextPruning {
     this.#config = { ...this.#config, ...newConfig };
   }
   #injectPruneSummary(allMessages, prunedMessages, config) {
-    if (prunedMessages.length === allMessages.length) {return prunedMessages;}
+    if (prunedMessages.length === allMessages.length) {
+      return prunedMessages;
+    }
 
-    const prunedIndices = new Set(prunedMessages.map(m => m.originalIndex));
-    const removed = allMessages.filter(m => !prunedIndices.has(m.originalIndex));
+    const prunedIndices = new Set(prunedMessages.map((m) => m.originalIndex));
+    const removed = allMessages.filter((m) => !prunedIndices.has(m.originalIndex));
 
     // 构建更智能的摘要
     const summaryParts = [];
-    
+
     // 提取用户消息的关键内容（更长的截取）
-    const userMessages = removed.filter(m => m.role === 'user');
+    const userMessages = removed.filter((m) => m.role === 'user');
     if (userMessages.length > 0) {
       const userTopics = userMessages
-        .map(m => {
+        .map((m) => {
           const content = String(m.content || '');
           // 提取第一个句子或前200个字符
           const firstSentence = content.split(/[.!?。！？\n]/)[0] || '';
-          return (firstSentence.length > 200 ? firstSentence.substring(0, 200) + '...' : firstSentence).trim();
+          return (
+            firstSentence.length > 200 ? firstSentence.substring(0, 200) + '...' : firstSentence
+          ).trim();
         })
         .filter(Boolean);
-      
+
       if (userTopics.length > 0) {
         summaryParts.push(`User topics (${userTopics.length}): ${userTopics.join(' | ')}`);
       }
     }
 
     // 提取关键的工具执行结果
-    const toolResults = removed.filter(m => m.role === 'tool' || m.role === 'tool_result');
+    const toolResults = removed.filter((m) => m.role === 'tool' || m.role === 'tool_result');
     if (toolResults.length > 0) {
       summaryParts.push(`Tool results: ${toolResults.length} operations`);
     }
 
     // 提取助手的关键回应
-    const assistantMessages = removed.filter(m => m.role === 'assistant');
+    const assistantMessages = removed.filter((m) => m.role === 'assistant');
     if (assistantMessages.length > 0) {
       // 检查是否有最终答案相关的关键词
-      const hasCompletion = assistantMessages.some(m => 
-        String(m.content || '').toLowerCase().includes('final') ||
-        String(m.content || '').toLowerCase().includes('complete') ||
-        String(m.content || '').toLowerCase().includes('done')
+      const hasCompletion = assistantMessages.some(
+        (m) =>
+          String(m.content || '')
+            .toLowerCase()
+            .includes('final') ||
+          String(m.content || '')
+            .toLowerCase()
+            .includes('complete') ||
+          String(m.content || '')
+            .toLowerCase()
+            .includes('done'),
       );
       if (hasCompletion) {
         summaryParts.push('Note: Prior assistant responses included task completion');
@@ -385,7 +399,9 @@ export class DynamicContextPruning {
       summaryParts.push(`Assistant responses: ${assistantMessages.length}`);
     }
 
-    if (summaryParts.length === 0) {return prunedMessages;}
+    if (summaryParts.length === 0) {
+      return prunedMessages;
+    }
 
     const summaryText = '[Context summary: ' + summaryParts.join('. ') + ']';
     const summary = {

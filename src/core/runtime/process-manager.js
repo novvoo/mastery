@@ -1,7 +1,7 @@
 /**
  * Process Manager
  * 进程管理器 - 处理跨平台兼容性、进程生命周期、竞态条件
- * 
+ *
  * 功能：
  * - 跨平台命令适配 (Windows/macOS/Linux)
  * - 进程互斥锁（防止竞态）
@@ -12,7 +12,15 @@
 
 import { spawn } from 'child_process';
 import { platform, tmpdir } from 'os';
-import { existsSync, writeFileSync, readFileSync, unlinkSync, mkdirSync, readdirSync, statSync } from 'fs';
+import {
+  existsSync,
+  writeFileSync,
+  readFileSync,
+  unlinkSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+} from 'fs';
 import { join } from 'path';
 import { EventEmitter } from 'events';
 
@@ -77,38 +85,38 @@ export class ProcessManager extends EventEmitter {
    */
   adaptCommand(command) {
     const info = ProcessManager.getPlatformInfo();
-    
+
     // Windows 适配
     if (IS_WINDOWS) {
       // 转换路径分隔符
       command = command.replace(/\//g, '\\');
-      
+
       // 处理 which/where
       command = command.replace(/\bwhich\b/g, 'where');
-      
+
       // 处理 rm -rf
       command = command.replace(/\brm\s+-rf\s+/g, 'rmdir /s /q ');
       command = command.replace(/\brm\s+-f\s+/g, 'del /f ');
-      
+
       // 处理 cp
       command = command.replace(/\bcp\s+-r\s+/g, 'xcopy /e /i ');
       command = command.replace(/\bcp\s+/g, 'copy ');
-      
+
       // 处理 mv
       command = command.replace(/\bmv\s+/g, 'move ');
-      
+
       // 处理 cat
       command = command.replace(/\bcat\s+/g, 'type ');
-      
+
       // 处理 touch
       command = command.replace(/\btouch\s+/g, 'type nul > ');
-      
+
       // 处理 mkdir -p
       command = command.replace(/\bmkdir\s+-p\s+/g, 'mkdir ');
-      
+
       // 处理 grep
       command = command.replace(/\bgrep\s+/g, 'findstr ');
-      
+
       // 处理 && 和 ||
       // Windows cmd 支持 && 和 ||，但 PowerShell 需要特殊处理
     }
@@ -165,7 +173,7 @@ export class ProcessManager extends EventEmitter {
       const timeoutId = setTimeout(() => {
         killed = true;
         child.kill('SIGTERM');
-        
+
         // 强制终止
         setTimeout(() => {
           if (!child.killed) {
@@ -208,12 +216,10 @@ export class ProcessManager extends EventEmitter {
           resolve(result);
         } else {
           this.emit('process:failed', result);
-          
+
           // 自动重试逻辑
           if (options.retry !== false && this.shouldRetry(result)) {
-            this.#retryExecution(command, options, processId)
-              .then(resolve)
-              .catch(reject);
+            this.#retryExecution(command, options, processId).then(resolve).catch(reject);
           } else {
             reject(new Error(`Command failed: ${stderr || 'Unknown error'} (exit code: ${code})`));
           }
@@ -235,17 +241,21 @@ export class ProcessManager extends EventEmitter {
    */
   shouldRetry(result) {
     // 超时错误重试
-    if (result.killed) {return true;}
-    
+    if (result.killed) {
+      return true;
+    }
+
     // 特定退出码重试
     const retryableCodes = [1, 126, 127, 130, 137, 143]; // 各种错误码
-    if (retryableCodes.includes(result.exitCode)) {return true;}
-    
+    if (retryableCodes.includes(result.exitCode)) {
+      return true;
+    }
+
     // 网络相关错误重试
     if (result.stderr && /ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(result.stderr)) {
       return true;
     }
-    
+
     return false;
   }
 
@@ -254,21 +264,23 @@ export class ProcessManager extends EventEmitter {
    */
   async #retryExecution(command, options, originalProcessId) {
     const processInfo = this.#activeProcesses.get(originalProcessId);
-    if (!processInfo) {return;}
+    if (!processInfo) {
+      return;
+    }
 
     if (processInfo.restartCount >= this.#config.maxRestartAttempts) {
       throw new Error(`Max retry attempts (${this.#config.maxRestartAttempts}) exceeded`);
     }
 
     processInfo.restartCount++;
-    this.emit('process:retry', { 
-      processId: originalProcessId, 
-      attempt: processInfo.restartCount 
+    this.emit('process:retry', {
+      processId: originalProcessId,
+      attempt: processInfo.restartCount,
     });
 
     // 延迟后重试
     await this.delay(this.#config.restartDelay * processInfo.restartCount);
-    
+
     // 递归调用，但设置 retry: false 防止无限递归
     return this.execute(command, { ...options, retry: false });
   }
@@ -279,7 +291,9 @@ export class ProcessManager extends EventEmitter {
    * @returns {Promise<number>} 可用端口
    */
   async getAvailablePort(preferredPort = 0) {
-    const allocation = this.#portAllocationQueue.then(() => this.#allocateAvailablePort(preferredPort));
+    const allocation = this.#portAllocationQueue.then(() =>
+      this.#allocateAvailablePort(preferredPort),
+    );
     this.#portAllocationQueue = allocation.catch(() => {});
     return allocation;
   }
@@ -328,19 +342,19 @@ export class ProcessManager extends EventEmitter {
    */
   async isPortAvailable(port) {
     const net = await import('net');
-    
+
     return new Promise((resolve) => {
       const server = net.createServer();
-      
+
       server.once('error', () => {
         resolve(false);
       });
-      
+
       server.once('listening', () => {
         server.close();
         resolve(true);
       });
-      
+
       server.listen(port, '127.0.0.1');
     });
   }
@@ -352,12 +366,12 @@ export class ProcessManager extends EventEmitter {
    */
   acquireLock(lockName) {
     const lockFile = join(LOCK_DIR, `${lockName}.lock`);
-    
+
     try {
       // 检查锁是否存在且有效
       if (existsSync(lockFile)) {
         const lockData = JSON.parse(readFileSync(lockFile, 'utf-8'));
-        
+
         // 检查锁是否过期（5分钟）
         if (Date.now() - lockData.timestamp < 300000) {
           // 检查进程是否仍在运行
@@ -369,13 +383,16 @@ export class ProcessManager extends EventEmitter {
           }
         }
       }
-      
+
       // 创建锁文件
-      writeFileSync(lockFile, JSON.stringify({
-        pid: process.pid,
-        timestamp: Date.now(),
-      }));
-      
+      writeFileSync(
+        lockFile,
+        JSON.stringify({
+          pid: process.pid,
+          timestamp: Date.now(),
+        }),
+      );
+
       return true;
     } catch (error) {
       console.error(`Failed to acquire lock ${lockName}:`, error);
@@ -388,11 +405,11 @@ export class ProcessManager extends EventEmitter {
    */
   releaseLock(lockName) {
     const lockFile = join(LOCK_DIR, `${lockName}.lock`);
-    
+
     try {
       if (existsSync(lockFile)) {
         const lockData = JSON.parse(readFileSync(lockFile, 'utf-8'));
-        
+
         // 只能释放自己持有的锁
         if (lockData.pid === process.pid) {
           unlinkSync(lockFile);
@@ -402,7 +419,7 @@ export class ProcessManager extends EventEmitter {
     } catch (error) {
       console.error(`Failed to release lock ${lockName}:`, error);
     }
-    
+
     return false;
   }
 
@@ -411,19 +428,19 @@ export class ProcessManager extends EventEmitter {
    */
   checkLock(lockName) {
     const lockFile = join(LOCK_DIR, `${lockName}.lock`);
-    
+
     try {
       if (!existsSync(lockFile)) {
         return { locked: false };
       }
-      
+
       const lockData = JSON.parse(readFileSync(lockFile, 'utf-8'));
-      
+
       // 检查锁是否过期
       if (Date.now() - lockData.timestamp > 300000) {
         return { locked: false, expired: true };
       }
-      
+
       // 检查进程是否存在
       try {
         process.kill(lockData.pid, 0);
@@ -451,17 +468,17 @@ export class ProcessManager extends EventEmitter {
   #performHealthCheck() {
     const now = Date.now();
     const staleProcessIds = [];
-    
+
     for (const [processId, info] of this.#activeProcesses) {
       const duration = now - info.startTime;
-      
+
       // 检查是否超时
       if (duration > info.timeout) {
         console.warn(`Process ${processId} exceeded timeout, terminating...`);
         this.terminateProcess(processId);
         continue;
       }
-      
+
       // 检查进程是否还活着
       if (info.process && !info.process.killed) {
         try {
@@ -473,35 +490,39 @@ export class ProcessManager extends EventEmitter {
         }
       }
     }
-    
+
     // 清理已死的进程记录
     for (const processId of staleProcessIds) {
       this.#activeProcesses.delete(processId);
     }
-    
+
     // 清理过期锁文件
     this.#cleanupStaleLocks();
   }
-  
+
   /**
    * 清理过期的锁文件
    */
   #cleanupStaleLocks() {
     try {
-      if (!existsSync(LOCK_DIR)) {return;}
-      
+      if (!existsSync(LOCK_DIR)) {
+        return;
+      }
+
       const files = readdirSync(LOCK_DIR);
       const now = Date.now();
       const LOCK_TTL_MS = 30 * 60 * 1000; // 30分钟后锁过期
-      
+
       for (const file of files) {
-        if (!file.endsWith('.lock')) {continue;}
-        
+        if (!file.endsWith('.lock')) {
+          continue;
+        }
+
         try {
           const filePath = join(LOCK_DIR, file);
           const stats = statSync(filePath);
           const age = now - stats.mtimeMs;
-          
+
           if (age > LOCK_TTL_MS) {
             // 检查持有锁的进程是否还活着
             let lockData;
@@ -510,7 +531,7 @@ export class ProcessManager extends EventEmitter {
             } catch {
               // 无法解析锁文件，直接删除
             }
-            
+
             let shouldDelete = true;
             if (lockData && lockData.pid) {
               try {
@@ -521,7 +542,7 @@ export class ProcessManager extends EventEmitter {
                 // 进程不在了，可以删除
               }
             }
-            
+
             if (shouldDelete) {
               unlinkSync(filePath);
               console.log(`process-manager: cleaned up stale lock ${file}`);
@@ -541,14 +562,16 @@ export class ProcessManager extends EventEmitter {
    */
   terminateProcess(processId, force = false) {
     const info = this.#activeProcesses.get(processId);
-    if (!info || !info.process) {return false;}
+    if (!info || !info.process) {
+      return false;
+    }
 
     try {
       if (force) {
         info.process.kill('SIGKILL');
       } else {
         info.process.kill('SIGTERM');
-        
+
         // 5秒后强制终止
         setTimeout(() => {
           if (!info.process.killed) {
@@ -556,7 +579,7 @@ export class ProcessManager extends EventEmitter {
           }
         }, 5000);
       }
-      
+
       return true;
     } catch (error) {
       console.error(`Failed to terminate process ${processId}:`, error);
@@ -569,11 +592,11 @@ export class ProcessManager extends EventEmitter {
    */
   async terminateAllProcesses(force = false) {
     const promises = [];
-    
+
     for (const [processId] of this.#activeProcesses) {
       promises.push(this.terminateProcess(processId, force));
     }
-    
+
     await Promise.all(promises);
     this.#activeProcesses.clear();
   }
@@ -583,7 +606,7 @@ export class ProcessManager extends EventEmitter {
    */
   async getSystemStats() {
     const os = await import('os');
-    
+
     return {
       platform: PLATFORM,
       arch: os.arch(),
@@ -601,7 +624,7 @@ export class ProcessManager extends EventEmitter {
    * 延迟函数
    */
   delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -613,13 +636,13 @@ export class ProcessManager extends EventEmitter {
       clearInterval(this.#healthCheckInterval);
       this.#healthCheckInterval = null;
     }
-    
+
     // 终止所有进程
     await this.terminateAllProcesses(true);
-    
+
     // 清理端口锁
     this.#portLocks.clear();
-    
+
     // 移除所有监听器
     this.removeAllListeners();
   }

@@ -43,9 +43,13 @@ export class MemoryProvenance {
     // 获取当前 commit
     try {
       provenance.createdAtCommit = execSync('git rev-parse HEAD', {
-        cwd: workingDir, encoding: 'utf-8', timeout: 3000,
+        cwd: workingDir,
+        encoding: 'utf-8',
+        timeout: 3000,
       }).trim();
-    } catch { /* no git */ }
+    } catch {
+      /* no git */
+    }
 
     // 记录引用的源文件
     if (memory.source) {
@@ -79,7 +83,10 @@ export class MemoryProvenance {
     if (memory._referencedFiles) {
       for (const rf of memory._referencedFiles) {
         const filePath = join(workingDir, rf.path || rf);
-        if (existsSync(filePath) && !provenance.sourceFiles.some(s => s.path === (rf.path || rf))) {
+        if (
+          existsSync(filePath) &&
+          !provenance.sourceFiles.some((s) => s.path === (rf.path || rf))
+        ) {
           const hash = ProvenanceUtils.fileContentHash(filePath);
           provenance.sourceFiles.push({
             path: rf.path || rf,
@@ -103,9 +110,13 @@ export class MemoryProvenance {
   static reverify(provenance, workingDir) {
     try {
       provenance.lastVerifiedCommit = execSync('git rev-parse HEAD', {
-        cwd: workingDir, encoding: 'utf-8', timeout: 3000,
+        cwd: workingDir,
+        encoding: 'utf-8',
+        timeout: 3000,
       }).trim();
-    } catch { /* no git */ }
+    } catch {
+      /* no git */
+    }
 
     provenance.lastVerifiedAt = Date.now();
 
@@ -146,7 +157,9 @@ export class GitDiffStaleDetector {
   getChangedFiles() {
     try {
       const currentCommit = execSync('git rev-parse HEAD', {
-        cwd: this.workingDir, encoding: 'utf-8', timeout: 3000,
+        cwd: this.workingDir,
+        encoding: 'utf-8',
+        timeout: 3000,
       }).trim();
 
       if (!this.lastCommitHash) {
@@ -154,10 +167,11 @@ export class GitDiffStaleDetector {
         return { changedFiles: [], currentCommit };
       }
 
-      const diff = execSync(
-        `git diff --name-only ${this.lastCommitHash}..${currentCommit}`,
-        { cwd: this.workingDir, encoding: 'utf-8', timeout: 5000 },
-      ).trim();
+      const diff = execSync(`git diff --name-only ${this.lastCommitHash}..${currentCommit}`, {
+        cwd: this.workingDir,
+        encoding: 'utf-8',
+        timeout: 5000,
+      }).trim();
 
       const changedFiles = diff ? diff.split('\n').filter(Boolean) : [];
       this.lastCommitHash = currentCommit;
@@ -174,12 +188,15 @@ export class GitDiffStaleDetector {
    * @returns {string[]}
    */
   getChangedFilesSince(sinceCommit) {
-    if (!sinceCommit) {return [];}
+    if (!sinceCommit) {
+      return [];
+    }
     try {
-      const diff = execSync(
-        `git diff --name-only ${sinceCommit} HEAD`,
-        { cwd: this.workingDir, encoding: 'utf-8', timeout: 5000 },
-      ).trim();
+      const diff = execSync(`git diff --name-only ${sinceCommit} HEAD`, {
+        cwd: this.workingDir,
+        encoding: 'utf-8',
+        timeout: 5000,
+      }).trim();
       return diff ? diff.split('\n').filter(Boolean) : [];
     } catch {
       return [];
@@ -197,15 +214,19 @@ export class GitDiffStaleDetector {
 
     for (const [id, memory] of memories) {
       const provenance = memory.provenance || memory._provenance;
-      if (!provenance || !provenance.sourceFiles) {continue;}
+      if (!provenance || !provenance.sourceFiles) {
+        continue;
+      }
 
       for (const sf of provenance.sourceFiles) {
         // 检查变更文件是否匹配 sourceFiles 中的某个
         for (const changed of changedFiles) {
-          if (sf.path === changed ||
-              sf.path.endsWith('/' + changed) ||
-              changed.endsWith('/' + sf.path) ||
-              this._pathsOverlap(sf.path, changed)) {
+          if (
+            sf.path === changed ||
+            sf.path.endsWith('/' + changed) ||
+            changed.endsWith('/' + sf.path) ||
+            this._pathsOverlap(sf.path, changed)
+          ) {
             staleMemories.push(id);
             break;
           }
@@ -257,14 +278,20 @@ export class MemoryVerifier {
     const fileModified = fileStat.mtime.getTime();
 
     if (memory.timestamp < fileModified) {
-      return { valid: false, message: `File was modified after memory was created. File: ${memory.source.path}` };
+      return {
+        valid: false,
+        message: `File was modified after memory was created. File: ${memory.source.path}`,
+      };
     }
 
     if (memory.source.contentHash) {
       const content = readFileSync(filePath, 'utf-8');
       const hash = ProvenanceUtils.fileContentHash(filePath);
       if (hash !== memory.source.contentHash) {
-        return { valid: false, message: `File content has changed. Expected hash: ${memory.source.contentHash}, actual: ${hash}` };
+        return {
+          valid: false,
+          message: `File content has changed. Expected hash: ${memory.source.contentHash}, actual: ${hash}`,
+        };
       }
     }
 
@@ -284,11 +311,13 @@ export class MemoryVerifier {
     const content = readFileSync(filePath, 'utf-8');
     const functionName = memory.source.name;
 
-    if (!content.includes(`function ${functionName}`) &&
-        !content.includes(`${functionName} = `) &&
-        !content.includes(`${functionName}: `) &&
-        !content.includes(`class ${functionName}`) &&
-        !content.includes(`${functionName}(`)) {
+    if (
+      !content.includes(`function ${functionName}`) &&
+      !content.includes(`${functionName} = `) &&
+      !content.includes(`${functionName}: `) &&
+      !content.includes(`class ${functionName}`) &&
+      !content.includes(`${functionName}(`)
+    ) {
       return { valid: false, message: `Function not found in file: ${functionName}` };
     }
 
@@ -323,9 +352,16 @@ export class MemoryVerifier {
 
     const expectedValue = memory.source.value;
     if (expectedValue !== undefined) {
-      const match = content.match(new RegExp(`${flagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*=\\s*["']?([^"'\n]+)["']?`));
+      const match = content.match(
+        new RegExp(
+          `${flagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*=\\s*["']?([^"'\n]+)["']?`,
+        ),
+      );
       if (!match || match[1] !== expectedValue) {
-        return { valid: false, message: `Flag value mismatch. Expected: ${expectedValue}, found: ${match ? match[1] : 'not found'}` };
+        return {
+          valid: false,
+          message: `Flag value mismatch. Expected: ${expectedValue}, found: ${match ? match[1] : 'not found'}`,
+        };
       }
     }
 
@@ -338,10 +374,14 @@ export class MemoryVerifier {
     }
 
     switch (memory.source.type) {
-      case 'file': return this.verifyFileReference(memory);
-      case 'function': return this.verifyFunctionReference(memory);
-      case 'flag': return this.verifyFlag(memory);
-      default: return { valid: true, message: `Unknown source type: ${memory.source.type}` };
+      case 'file':
+        return this.verifyFileReference(memory);
+      case 'function':
+        return this.verifyFunctionReference(memory);
+      case 'flag':
+        return this.verifyFlag(memory);
+      default:
+        return { valid: true, message: `Unknown source type: ${memory.source.type}` };
     }
   }
 
@@ -406,9 +446,10 @@ export class MemoryVerifier {
    * @returns {Promise<{valid: string[], stale: string[], results: object}>}
    */
   async verifyAll(memories) {
-    const entries = memories instanceof Map
-      ? [...memories.entries()]
-      : memories.map((m, i) => [m.id || String(i), m]);
+    const entries =
+      memories instanceof Map
+        ? [...memories.entries()]
+        : memories.map((m, i) => [m.id || String(i), m]);
 
     const valid = [];
     const stale = [];
@@ -437,9 +478,8 @@ export class MemoryVerifier {
    */
   async detectStaleByGitDiff(memories) {
     const { changedFiles, currentCommit } = this.#staleDetector.getChangedFiles();
-    const memoryMap = memories instanceof Map
-      ? memories
-      : new Map(memories.map((m, i) => [m.id || String(i), m]));
+    const memoryMap =
+      memories instanceof Map ? memories : new Map(memories.map((m, i) => [m.id || String(i), m]));
 
     const staleIds = this.#staleDetector.findStaleMemories(changedFiles, memoryMap);
     return { staleIds, changedFiles, currentCommit };
@@ -472,7 +512,9 @@ export class MemoryVerifier {
     const byTopic = {};
     for (const entry of entries) {
       const topic = entry.topic || entry.type || 'general';
-      if (!byTopic[topic]) {byTopic[topic] = [];}
+      if (!byTopic[topic]) {
+        byTopic[topic] = [];
+      }
       byTopic[topic].push(entry);
     }
 
@@ -496,8 +538,8 @@ export class MemoryVerifier {
           ];
 
           for (const [signals, reason] of contraSignals) {
-            const foundA = signals.find(s => textA.includes(s));
-            const foundB = signals.find(s => textB.includes(s));
+            const foundA = signals.find((s) => textA.includes(s));
+            const foundB = signals.find((s) => textB.includes(s));
             if (foundA && foundB && foundA !== foundB) {
               contradictions.push({
                 a: { id: a.id, title: a.title },
@@ -550,12 +592,14 @@ export class MemoryVerifier {
         }
         // 从 merged 中移除旧条目
         for (const r of toRemove) {
-          const idx = merged.findIndex(m => m.id === r.id);
-          if (idx >= 0) {merged.splice(idx, 1);}
+          const idx = merged.findIndex((m) => m.id === r.id);
+          if (idx >= 0) {
+            merged.splice(idx, 1);
+          }
         }
         // 确保最新的条目在 merged 中
         const best = group[0];
-        if (!merged.find(m => m.id === best.id)) {
+        if (!merged.find((m) => m.id === best.id)) {
           merged.push(best);
         }
       }

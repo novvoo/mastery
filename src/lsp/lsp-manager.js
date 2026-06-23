@@ -56,14 +56,18 @@ const EXT_TO_LANGUAGE = {
  */
 export function detectLanguage(filePath) {
   for (const [ext, lang] of Object.entries(EXT_TO_LANGUAGE)) {
-    if (filePath.endsWith(ext)) { return lang; }
+    if (filePath.endsWith(ext)) {
+      return lang;
+    }
   }
   // 检查双扩展名
   const parts = filePath.split('.');
   if (parts.length >= 2) {
     const lastTwo = '.' + parts.slice(-2).join('.');
     for (const [ext, lang] of Object.entries(EXT_TO_LANGUAGE)) {
-      if (lastTwo.endsWith(ext)) { return lang; }
+      if (lastTwo.endsWith(ext)) {
+        return lang;
+      }
     }
   }
   return null;
@@ -150,7 +154,8 @@ const DEFAULT_SERVER_CONFIGS = {
     command: 'dart',
     args: ['language-server', '--client-id=agent-mastery'],
     languageIds: ['dart'],
-    installCommand: 'flutter pub global activate dart_language_server || dart pub global activate dart_language_server',
+    installCommand:
+      'flutter pub global activate dart_language_server || dart pub global activate dart_language_server',
     fallback: { command: 'dart_language_server', args: [] },
   },
   kotlin: {
@@ -190,7 +195,7 @@ const DEFAULT_SERVER_CONFIGS = {
     command: 'R',
     args: ['--slave', '-e', 'languageserver::run()'],
     languageIds: ['r'],
-    installCommand: 'R -e "install.packages(\'languageserver\', repos=\'https://cran.rstudio.com\')"',
+    installCommand: "R -e \"install.packages('languageserver', repos='https://cran.rstudio.com')\"",
   },
 };
 
@@ -204,7 +209,9 @@ function findExecutable(command) {
     if (result.status === 0 && result.stdout.trim()) {
       return result.stdout.trim();
     }
-  } catch { /* which 不可用 */ }
+  } catch {
+    /* which 不可用 */
+  }
 
   // 尝试 node_modules/.bin
   try {
@@ -269,7 +276,7 @@ export class ServerManager {
     };
     // 构建 languageId -> serverKey 映射
     for (const [key, cfg] of Object.entries(this.#serverConfigs)) {
-      for (const langId of (cfg.languageIds || [])) {
+      for (const langId of cfg.languageIds || []) {
         this.#languageMap.set(langId, key);
       }
     }
@@ -322,7 +329,10 @@ export class ServerManager {
     let bestLen = 0;
     for (const wf of this.workspaceFolders) {
       if (filePath.startsWith(wf + '/') || filePath === wf) {
-        if (wf.length > bestLen) { best = wf; bestLen = wf.length; }
+        if (wf.length > bestLen) {
+          best = wf;
+          bestLen = wf.length;
+        }
       }
     }
     return best;
@@ -389,12 +399,8 @@ export class ServerManager {
     }
 
     if (!command) {
-      const hint = config.installCommand
-        ? `\nInstall with: ${config.installCommand}`
-        : '';
-      throw new LSPClientError(
-        `LSP server '${config.command}' not found.${hint}`,
-      );
+      const hint = config.installCommand ? `\nInstall with: ${config.installCommand}` : '';
+      throw new LSPClientError(`LSP server '${config.command}' not found.${hint}`);
     }
 
     const client = new LSPClient({
@@ -408,14 +414,22 @@ export class ServerManager {
     client.on('diagnostics', (params) => {
       this.#diagnostics.set(params.uri, params.diagnostics || []);
       for (const cb of this.#_diagListeners) {
-        try { cb(params); } catch { /* 忽略回调错误 */ }
+        try {
+          cb(params);
+        } catch {
+          /* 忽略回调错误 */
+        }
       }
     });
 
     // 服务端退出时清除
     client.on('exit', () => {
-      if (entry) { entry.client = null; }
-      if (poolForLang) { poolForLang.delete(wsRoot); }
+      if (entry) {
+        entry.client = null;
+      }
+      if (poolForLang) {
+        poolForLang.delete(wsRoot);
+      }
     });
 
     await client.start();
@@ -424,7 +438,7 @@ export class ServerManager {
     await client.initialize({
       rootUri: `file://${wsRoot}`,
       rootPath: wsRoot,
-      workspaceFolders: this.workspaceFolders.map(f => ({
+      workspaceFolders: this.workspaceFolders.map((f) => ({
         uri: `file://${f}`,
         name: f.split('/').pop() || f,
       })),
@@ -446,7 +460,10 @@ export class ServerManager {
       let oldestKey = null;
       let oldestTime = Infinity;
       for (const [k, e] of poolForLang) {
-        if (e.lastUsed < oldestTime) { oldestTime = e.lastUsed; oldestKey = k; }
+        if (e.lastUsed < oldestTime) {
+          oldestTime = e.lastUsed;
+          oldestKey = k;
+        }
       }
       if (oldestKey) {
         const oldEntry = poolForLang.get(oldestKey);
@@ -477,7 +494,10 @@ export class ServerManager {
       let oldestKey = null;
       let oldestTime = Infinity;
       for (const [k, e] of this.#servers) {
-        if (e.lastUsed < oldestTime) { oldestTime = e.lastUsed; oldestKey = k; }
+        if (e.lastUsed < oldestTime) {
+          oldestTime = e.lastUsed;
+          oldestKey = k;
+        }
       }
       if (oldestKey) {
         const e = this.#servers.get(oldestKey);
@@ -485,7 +505,9 @@ export class ServerManager {
         // 也从 pool 清理
         if (e.workspaceRoot) {
           const p = this.#serverPool.get(oldestKey);
-          if (p) { p.delete(e.workspaceRoot); }
+          if (p) {
+            p.delete(e.workspaceRoot);
+          }
         }
         e.client.shutdown().catch(() => {});
       }
@@ -510,8 +532,12 @@ export class ServerManager {
 
       let stdout = '';
       let stderr = '';
-      proc.stdout.on('data', (data) => { stdout += data.toString(); });
-      proc.stderr.on('data', (data) => { stderr += data.toString(); });
+      proc.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+      proc.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
 
       proc.on('close', (code) => {
         if (code === 0) {
@@ -539,8 +565,13 @@ export class ServerManager {
   async #withLock(serverKey, fn) {
     const prev = this.#locks.get(serverKey) || Promise.resolve();
     let release;
-    const next = new Promise((r) => { release = r; });
-    this.#locks.set(serverKey, prev.then(() => next).catch(() => next));
+    const next = new Promise((r) => {
+      release = r;
+    });
+    this.#locks.set(
+      serverKey,
+      prev.then(() => next).catch(() => next),
+    );
     await prev;
     try {
       return await fn();
@@ -558,7 +589,9 @@ export class ServerManager {
    */
   async syncDocument(filePath, content) {
     const languageId = detectLanguage(filePath);
-    if (!languageId) { return; }
+    if (!languageId) {
+      return;
+    }
     const uri = `file://${filePath}`;
     const existing = this.#openDocs.get(uri);
 
@@ -595,13 +628,19 @@ export class ServerManager {
   async closeDocument(filePath) {
     const uri = `file://${filePath}`;
     const doc = this.#openDocs.get(uri);
-    if (!doc) { return; }
+    if (!doc) {
+      return;
+    }
     const languageId = doc.languageId;
-    if (!languageId) { return; }
+    if (!languageId) {
+      return;
+    }
     try {
       const client = await this.#getClient(languageId, filePath);
       client.notify('textDocument/didClose', { textDocument: { uri } });
-    } catch { /* server 可能已下线 */ }
+    } catch {
+      /* server 可能已下线 */
+    }
     this.#openDocs.delete(uri);
   }
 
@@ -618,7 +657,14 @@ export class ServerManager {
    * @param {number} [timeout]     超时 ms
    * @returns {Promise<any>}
    */
-  async request(method, filePath, extraParams = {}, position = null, content = null, timeout = null) {
+  async request(
+    method,
+    filePath,
+    extraParams = {},
+    position = null,
+    content = null,
+    timeout = null,
+  ) {
     // 先同步文档
     if (content !== null && content !== undefined) {
       await this.syncDocument(filePath, content);
@@ -674,7 +720,7 @@ export class ServerManager {
   onDiagnostics(callback) {
     this.#_diagListeners.push(callback);
     return () => {
-      this.#_diagListeners = this.#_diagListeners.filter(cb => cb !== callback);
+      this.#_diagListeners = this.#_diagListeners.filter((cb) => cb !== callback);
     };
   }
 
@@ -689,7 +735,9 @@ export class ServerManager {
   async getSemanticTokens(filePath) {
     try {
       const languageId = detectLanguage(filePath);
-      if (!languageId) { return null; }
+      if (!languageId) {
+        return null;
+      }
       await this.syncDocument(filePath, undefined);
       return await this.request('textDocument/semanticTokens/full', filePath);
     } catch {
@@ -707,7 +755,9 @@ export class ServerManager {
   async getHover(filePath, position) {
     try {
       const languageId = detectLanguage(filePath);
-      if (!languageId) { return null; }
+      if (!languageId) {
+        return null;
+      }
       await this.syncDocument(filePath, undefined);
       return await this.request('textDocument/hover', filePath, position);
     } catch {
@@ -768,16 +818,26 @@ export class ServerManager {
   async checkServerVersion(serverKey) {
     const config = this.#serverConfigs[serverKey];
     if (!config) {
-      return { installed: false, version: null, meetsMinimum: false, message: `Unknown server key: ${serverKey}` };
+      return {
+        installed: false,
+        version: null,
+        meetsMinimum: false,
+        message: `Unknown server key: ${serverKey}`,
+      };
     }
 
     const command = config.command;
     const { execSync } = await import('child_process');
     try {
-      const output = execSync(`${command} --version 2>&1 || ${command} version 2>&1 || ${command} -v 2>&1`, {
-        timeout: 5000,
-        encoding: 'utf-8',
-      }).toString().trim();
+      const output = execSync(
+        `${command} --version 2>&1 || ${command} version 2>&1 || ${command} -v 2>&1`,
+        {
+          timeout: 5000,
+          encoding: 'utf-8',
+        },
+      )
+        .toString()
+        .trim();
       const versionMatch = output.match(/(\d+\.\d+\.\d+)/);
       const version = versionMatch ? versionMatch[1] : output.substring(0, 50);
 
@@ -787,8 +847,11 @@ export class ServerManager {
       if (minVersion && versionMatch) {
         const [minMajor, minMinor, minPatch] = minVersion.split('.').map(Number);
         const [curMajor, curMinor, curPatch] = versionMatch[1].split('.').map(Number);
-        if (curMajor < minMajor || (curMajor === minMajor && curMinor < minMinor) ||
-            (curMajor === minMajor && curMinor === minMinor && curPatch < minPatch)) {
+        if (
+          curMajor < minMajor ||
+          (curMajor === minMajor && curMinor < minMinor) ||
+          (curMajor === minMajor && curMinor === minMinor && curPatch < minPatch)
+        ) {
           meetsMinimum = false;
         }
       }
@@ -825,7 +888,9 @@ export class ServerManager {
 
   /** 优雅关闭所有 server。 */
   async shutdown() {
-    if (this.#idleTimer) { clearTimeout(this.#idleTimer); }
+    if (this.#idleTimer) {
+      clearTimeout(this.#idleTimer);
+    }
     const promises = [];
     for (const [, entry] of this.#servers) {
       promises.push(entry.client.shutdown().catch(() => {}));

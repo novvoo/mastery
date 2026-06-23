@@ -10,7 +10,9 @@ export const VALID_MODEL_PROVIDERS = ['openai', 'llama', 'zhipu', 'deepseek', 'o
 
 export function assertSupportedProvider(provider) {
   if (!VALID_MODEL_PROVIDERS.includes(provider)) {
-    throw new Error(`Unknown provider: ${provider}. Supported: ${VALID_MODEL_PROVIDERS.join(', ')}`);
+    throw new Error(
+      `Unknown provider: ${provider}. Supported: ${VALID_MODEL_PROVIDERS.join(', ')}`,
+    );
   }
 }
 
@@ -45,7 +47,7 @@ function instantiateModelProvider({
       baseURL,
       model,
       false,
-      capabilities ? { capabilities } : undefined
+      capabilities ? { capabilities } : undefined,
     );
   }
   if (provider === 'llama') {
@@ -56,22 +58,36 @@ function instantiateModelProvider({
     });
   }
   if (provider === 'zhipu') {
-    return new ZhipuModelProvider(apiKey, baseURL, model, capabilities ? { capabilities } : undefined);
+    return new ZhipuModelProvider(
+      apiKey,
+      baseURL,
+      model,
+      capabilities ? { capabilities } : undefined,
+    );
   }
   if (provider === 'deepseek') {
-    return new DeepSeekModelProvider(apiKey, baseURL, model, capabilities ? { capabilities } : undefined);
+    return new DeepSeekModelProvider(
+      apiKey,
+      baseURL,
+      model,
+      capabilities ? { capabilities } : undefined,
+    );
   }
   if (provider === 'openrouter') {
-    return new OpenRouterModelProvider(apiKey, baseURL, model, capabilities ? { capabilities } : undefined);
+    return new OpenRouterModelProvider(
+      apiKey,
+      baseURL,
+      model,
+      capabilities ? { capabilities } : undefined,
+    );
   }
   assertSupportedProvider(provider);
 }
 
-export async function createConfiguredModelProvider(config, {
-  debug = false,
-  env = process.env,
-  onCapabilitiesResolved,
-} = {}) {
+export async function createConfiguredModelProvider(
+  config,
+  { debug = false, env = process.env, onCapabilitiesResolved } = {},
+) {
   assertSupportedProvider(config.provider);
   const apiKey = getProviderApiKey(config.provider, env);
   const modelCapabilities = await resolveModelCapabilities({
@@ -94,11 +110,11 @@ export async function createConfiguredModelProvider(config, {
   });
 }
 
-export function createModelProviderForSwitch(provider, model, {
-  temperature,
-  debug = false,
-  env = process.env,
-} = {}) {
+export function createModelProviderForSwitch(
+  provider,
+  model,
+  { temperature, debug = false, env = process.env } = {},
+) {
   assertSupportedProvider(provider);
   assertProviderConfigured(provider, env);
 

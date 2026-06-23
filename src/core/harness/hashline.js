@@ -62,7 +62,9 @@ export function hashContent(content) {
  * @returns {string}
  */
 export function normalizeText(text) {
-  if (text === null || text === undefined) { return ''; }
+  if (text === null || text === undefined) {
+    return '';
+  }
   // 统一换行
   let t = String(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   // 去掉行尾空白
@@ -73,7 +75,9 @@ export function normalizeText(text) {
   // 去掉结尾多余空行
   t = t.replace(/\n+$/g, '');
   // 保证以单个换行结尾（非空文件）
-  if (t.length > 0) { t += '\n'; }
+  if (t.length > 0) {
+    t += '\n';
+  }
   return t;
 }
 
@@ -151,12 +155,20 @@ export class DiskFilesystem extends Filesystem {
     const resolved = resolve(root, path || '.');
 
     // 拒绝 .. 遍历逃逸：若 path 包含 .. 路径段且解析结果跑出 root，拒绝
-    if (/(?:^|\/)\.\.(?:$|\/)/.test(path) && !resolved.startsWith(root + '/') && resolved !== root) {
+    if (
+      /(?:^|\/)\.\.(?:$|\/)/.test(path) &&
+      !resolved.startsWith(root + '/') &&
+      resolved !== root
+    ) {
       throw new Error(`path escapes root directory: "${path}" -> "${resolved}"`);
     }
 
     // 拒绝绝对路径逃逸：任何非 root 内的绝对路径
-    if (resolved !== root && !resolved.startsWith(root + '/') && !resolved.startsWith(root + '\\')) {
+    if (
+      resolved !== root &&
+      !resolved.startsWith(root + '/') &&
+      !resolved.startsWith(root + '\\')
+    ) {
       throw new Error(`path escapes root directory: "${path}" -> "${resolved}"`);
     }
 
@@ -169,20 +181,22 @@ export class DiskFilesystem extends Filesystem {
         const targetReal = this._getRealpath(resolved);
         if (!targetReal.startsWith(rootReal + '/') && targetReal !== rootReal) {
           throw new Error(
-            `symlink escape detected: "${path}" resolves to "${targetReal}" which is outside root "${rootReal}" (${root})`
+            `symlink escape detected: "${path}" resolves to "${targetReal}" which is outside root "${rootReal}" (${root})`,
           );
         }
         return resolved;
       }
       // 目标文件尚不存在：逐级检查父目录是否通过 symlink 逃逸
       const _resolveParent = (p) => {
-        if (p === rootReal || p === '/' || p === '.') {return;}
+        if (p === rootReal || p === '/' || p === '.') {
+          return;
+        }
         const parent = resolve(p, '..');
         if (existsSync(parent)) {
           const parentReal = this._getRealpath(parent);
           if (!parentReal.startsWith(rootReal + '/') && parentReal !== rootReal) {
             throw new Error(
-              `symlink escape detected in parent of "${path}": "${parent}" resolves outside root "${rootReal}"`
+              `symlink escape detected in parent of "${path}": "${parent}" resolves outside root "${rootReal}"`,
             );
           }
           _resolveParent(parent);
@@ -190,7 +204,9 @@ export class DiskFilesystem extends Filesystem {
       };
       _resolveParent(resolved);
     } catch (err) {
-      if (err.message.includes('symlink escape')) {throw err;}
+      if (err.message.includes('symlink escape')) {
+        throw err;
+      }
       // realpath 失败可能是文件尚不存在，fallback 到字符串路径检测
     }
     // ── /symlink 逃逸防护 ──
@@ -203,8 +219,12 @@ export class DiskFilesystem extends Filesystem {
    * @private
    */
   _getRealpath(p) {
-    if (!this._realpathCache) { this._realpathCache = new Map(); }
-    if (this._realpathCache.has(p)) {return this._realpathCache.get(p);}
+    if (!this._realpathCache) {
+      this._realpathCache = new Map();
+    }
+    if (this._realpathCache.has(p)) {
+      return this._realpathCache.get(p);
+    }
     // 同步检查：如果路径本身是 symlink，读它指向的目标
     try {
       if (existsSync(p)) {
@@ -357,11 +377,17 @@ export class InMemorySnapshotStore {
     const lines = String(text).split('\n');
     // 限制 seen 行数量以控制内存
     const cap = 4096;
-    if (set.size > cap) { return; }
+    if (set.size > cap) {
+      return;
+    }
     for (const l of lines) {
-      if (l.trim().length === 0) { continue; }
+      if (l.trim().length === 0) {
+        continue;
+      }
       set.add(hashContent(l));
-      if (set.size >= cap) { break; }
+      if (set.size >= cap) {
+        break;
+      }
     }
   }
 
@@ -372,7 +398,9 @@ export class InMemorySnapshotStore {
    */
   head(path) {
     const v = this._versions.get(path);
-    if (!v || v.length === 0) { return null; }
+    if (!v || v.length === 0) {
+      return null;
+    }
     return v[v.length - 1];
   }
 
@@ -384,9 +412,13 @@ export class InMemorySnapshotStore {
    */
   byHash(path, tag) {
     const v = this._versions.get(path);
-    if (!v) { return null; }
+    if (!v) {
+      return null;
+    }
     const idx = this._index.get(path);
-    if (!idx || !idx.has(tag)) { return null; }
+    if (!idx || !idx.has(tag)) {
+      return null;
+    }
     return v[idx.get(tag)];
   }
 
@@ -419,7 +451,9 @@ export class InMemorySnapshotStore {
   invalidate(path) {
     const v = this._versions.get(path);
     if (v) {
-      for (const e of v) { this._totalBytes -= e.text.length; }
+      for (const e of v) {
+        this._totalBytes -= e.text.length;
+      }
     }
     this._versions.delete(path);
     this._index.delete(path);
@@ -441,7 +475,9 @@ export class InMemorySnapshotStore {
    */
   stats() {
     let versions = 0;
-    for (const v of this._versions.values()) { versions += v.length; }
+    for (const v of this._versions.values()) {
+      versions += v.length;
+    }
     return {
       paths: this._versions.size,
       versions,
@@ -455,7 +491,9 @@ export class InMemorySnapshotStore {
     const v = this._versions.get(path);
     const idx = this._index.get(path);
     idx.clear();
-    for (let i = 0; i < v.length; i++) { idx.set(v[i].tag, i); }
+    for (let i = 0; i < v.length; i++) {
+      idx.set(v[i].tag, i);
+    }
   }
 
   _evict(path) {
@@ -560,7 +598,9 @@ export function parsePatch(text) {
 
   const flushOp = () => {
     if (pendingOp) {
-      if (!cur) { throw new PatchParseError('content line before any [path#tag] section'); }
+      if (!cur) {
+        throw new PatchParseError('content line before any [path#tag] section');
+      }
       cur.hunks.push(pendingOp);
       pendingOp = null;
     }
@@ -579,7 +619,9 @@ export function parsePatch(text) {
 
     // 注释 / 空行（在操作之间被忽略）
     const trimmed = line.trim();
-    if (trimmed === '' || trimmed.startsWith('#')) { continue; }
+    if (trimmed === '' || trimmed.startsWith('#')) {
+      continue;
+    }
 
     // 节区头
     const sectionMatch = line.match(/^\[([^\]#]+)#([^\]]+)\]\s*$/);
@@ -590,7 +632,9 @@ export function parsePatch(text) {
     }
 
     if (!cur) {
-      throw new PatchParseError(`unexpected token at line ${lineNo}: '${line}' (no [path#tag] section open)`);
+      throw new PatchParseError(
+        `unexpected token at line ${lineNo}: '${line}' (no [path#tag] section open)`,
+      );
     }
 
     // 操作头：SWAP / DEL / INS.PRE / INS.POST
@@ -661,15 +705,21 @@ export function serializePatch(patch) {
     for (const h of s.hunks) {
       if (h.op === OP_SWAP) {
         out.push(`SWAP ${h.start}.=${h.end}:`);
-        for (const l of h.lines) { out.push(`+${l}`); }
+        for (const l of h.lines) {
+          out.push(`+${l}`);
+        }
       } else if (h.op === OP_DEL) {
         out.push(`DEL ${h.start}.=${h.end}`);
       } else if (h.op === OP_INS_PRE) {
         out.push(`INS.PRE ${h.start}=`);
-        for (const l of h.lines) { out.push(`+${l}`); }
+        for (const l of h.lines) {
+          out.push(`+${l}`);
+        }
       } else if (h.op === OP_INS_POST) {
         out.push(`INS.POST ${h.start}=`);
-        for (const l of h.lines) { out.push(`+${l}`); }
+        for (const l of h.lines) {
+          out.push(`+${l}`);
+        }
       }
     }
     out.push('');
@@ -870,13 +920,17 @@ export class Patcher {
             conflicts: c.conflicts || [],
           });
         } catch (err) {
-          throw new PatchApplyError(`failed to write ${c.path}: ${err.message}`, { path: c.path, section: c.section, recoverable: false });
+          throw new PatchApplyError(`failed to write ${c.path}: ${err.message}`, {
+            path: c.path,
+            section: c.section,
+            recoverable: false,
+          });
         }
       }
 
       // 4c) 全部写入成功：更新 snapshots 和 bridge
       for (const c of computed) {
-        const result = sectionResults.find(r => r.path === c.path);
+        const result = sectionResults.find((r) => r.path === c.path);
         if (this.autoRecord) {
           this.snapshots.record(c.path, c.newText);
         }
@@ -884,7 +938,6 @@ export class Patcher {
           this.bridge.recordApply(c.path, c.originalText, c.newText, c.section.tag, result.newTag);
         }
       }
-
     } catch (err) {
       // 4d) 回滚：恢复所有已写入的文件
       for (const path of writtenPaths) {
@@ -937,9 +990,15 @@ export class Patcher {
     // Generated / binary / minified 文件检查
     const pathLower = path.toLowerCase();
     const generatedPatterns = [
-      /\.d\.ts$/, /\.generated\./, /\.min\.(js|css)$/,
-      /\/dist\//, /\/build\//, /\/\.next\//, /\/node_modules\//,
-      /\.bundle\./, /-bundle\./,
+      /\.d\.ts$/,
+      /\.generated\./,
+      /\.min\.(js|css)$/,
+      /\/dist\//,
+      /\/build\//,
+      /\/\.next\//,
+      /\/node_modules\//,
+      /\.bundle\./,
+      /-bundle\./,
     ];
     for (const pattern of generatedPatterns) {
       if (pattern.test(pathLower)) {
@@ -949,9 +1008,14 @@ export class Patcher {
 
     // Lockfile 只读保护
     const lockfilePatterns = [
-      /package-lock\.json$/, /yarn\.lock$/, /pnpm-lock\.yaml$/,
-      /Cargo\.lock$/, /Gemfile\.lock$/, /poetry\.lock$/,
-      /composer\.lock$/, /Pipfile\.lock$/,
+      /package-lock\.json$/,
+      /yarn\.lock$/,
+      /pnpm-lock\.yaml$/,
+      /Cargo\.lock$/,
+      /Gemfile\.lock$/,
+      /poetry\.lock$/,
+      /composer\.lock$/,
+      /Pipfile\.lock$/,
     ];
     for (const pattern of lockfilePatterns) {
       if (pattern.test(pathLower)) {
@@ -1033,8 +1097,12 @@ export class Patcher {
   }
 
   _checkRange(hunk, lineCount) {
-    if (hunk.start < 1) { return `hunk at src line ${hunk.srcLine}: start line ${hunk.start} < 1`; }
-    if (hunk.end < hunk.start) { return `hunk at src line ${hunk.srcLine}: end ${hunk.end} < start ${hunk.start}`; }
+    if (hunk.start < 1) {
+      return `hunk at src line ${hunk.srcLine}: start line ${hunk.start} < 1`;
+    }
+    if (hunk.end < hunk.start) {
+      return `hunk at src line ${hunk.srcLine}: end ${hunk.end} < start ${hunk.start}`;
+    }
     if (hunk.op === OP_INS_PRE) {
       // INS.PRE N: 在第 N 行前插入；N 可以为 lineCount+1（追加到末尾）
       if (hunk.start > lineCount + 1) {
@@ -1098,10 +1166,13 @@ export class Patcher {
       warnings.push(`recovered via snapshot store (base tag known)`);
       // ── P4: 使用 Diff3MergeEngine 做真正 base/current/intended 三方 merge ──
       const diff3Result = Diff3MergeEngine.merge(
-        baseText, currentText, section.hunks, section.path
+        baseText,
+        currentText,
+        section.hunks,
+        section.path,
       );
       if (diff3Result.conflicts.length > 0) {
-        conflicts = diff3Result.conflicts.map(c => ({
+        conflicts = diff3Result.conflicts.map((c) => ({
           type: 'conflict',
           hunk: { start: c.baseRange[0], end: c.baseRange[1] },
           baseContent: c.baseText,
@@ -1110,7 +1181,9 @@ export class Patcher {
           message: `Diff3 conflict: ${c.reason || HashlineErrorCode.CONFLICT_CONTENT_DIVERGED}`,
         }));
         for (const c of diff3Result.conflicts) {
-          warnings.push(`diff3 conflict: ${c.reason || 'content diverged'} at lines ${c.baseRange.join('-')}`);
+          warnings.push(
+            `diff3 conflict: ${c.reason || 'content diverged'} at lines ${c.baseRange.join('-')}`,
+          );
         }
       }
       if (diff3Result.merged !== null) {
@@ -1132,7 +1205,7 @@ export class Patcher {
       if (this._lastConflicts && this._lastConflicts.length > 0) {
         for (const c of this._lastConflicts) {
           if (c.type === 'conflict') {
-            if (!conflicts.some(ex => ex.message === c.message)) {
+            if (!conflicts.some((ex) => ex.message === c.message)) {
               conflicts.push(c);
             }
             warnings.push(`fallback conflict: base and current differ in hunk range`);
@@ -1150,7 +1223,12 @@ export class Patcher {
     for (const h of recoveredHunks) {
       const rangeErr = this._checkRange(h, lineCount);
       if (rangeErr) {
-        throw new PatchApplyError(rangeErr, { path: section.path, section, hunk: h, recoverable: false });
+        throw new PatchApplyError(rangeErr, {
+          path: section.path,
+          section,
+          hunk: h,
+          recoverable: false,
+        });
       }
     }
 
@@ -1191,18 +1269,26 @@ export class Patcher {
     const curIndex = new Map();
     for (let i = 0; i < curLines.length; i++) {
       const fp = hashContent(curLines[i]);
-      if (!curIndex.has(fp)) { curIndex.set(fp, []); }
+      if (!curIndex.has(fp)) {
+        curIndex.set(fp, []);
+      }
       curIndex.get(fp).push(i + 1);
     }
 
     const scoreNeighbors = (b, c, window = 3) => {
       let score = 0;
       for (let d = -window; d <= window; d++) {
-        if (d === 0) { continue; }
+        if (d === 0) {
+          continue;
+        }
         const bl = baseLines[b - 1 + d];
         const cl = curLines[c - 1 + d];
-        if (bl === undefined || cl === undefined) { continue; }
-        if (hashContent(bl) === hashContent(cl)) { score++; }
+        if (bl === undefined || cl === undefined) {
+          continue;
+        }
+        if (hashContent(bl) === hashContent(cl)) {
+          score++;
+        }
       }
       return score;
     };
@@ -1249,9 +1335,11 @@ export class Patcher {
               const c = candidates[k];
               const sc = scoreNeighbors(h.start, c);
               const dlt = Math.abs(c - h.start);
-              if (sc > bestScore ||
-                  (sc === bestScore && dlt < bestDelta) ||
-                  (sc === bestScore && dlt === bestDelta && c > best)) {
+              if (
+                sc > bestScore ||
+                (sc === bestScore && dlt < bestDelta) ||
+                (sc === bestScore && dlt === bestDelta && c > best)
+              ) {
                 best = c;
                 bestScore = sc;
                 bestDelta = dlt;
@@ -1264,8 +1352,10 @@ export class Patcher {
         }
       }
 
-      const baseContent = h.start <= baseLines.length ? baseLines.slice(h.start - 1, h.end).join('\n') : '';
-      const curContent = mappedStart <= curLines.length ? curLines.slice(mappedStart - 1, mappedEnd).join('\n') : '';
+      const baseContent =
+        h.start <= baseLines.length ? baseLines.slice(h.start - 1, h.end).join('\n') : '';
+      const curContent =
+        mappedStart <= curLines.length ? curLines.slice(mappedStart - 1, mappedEnd).join('\n') : '';
 
       if (h.op !== OP_INS_PRE && h.op !== OP_INS_POST) {
         if (baseContent !== '' && curContent !== '' && baseContent !== curContent) {
@@ -1295,8 +1385,12 @@ export class Patcher {
       remapped.start = mappedStart;
       remapped.end = mappedEnd;
 
-      if (remapped.end > curLines.length) { remapped.end = curLines.length; }
-      if (remapped.start > curLines.length) { remapped.start = curLines.length; }
+      if (remapped.end > curLines.length) {
+        remapped.end = curLines.length;
+      }
+      if (remapped.start > curLines.length) {
+        remapped.start = curLines.length;
+      }
 
       result.push(remapped);
     }
@@ -1341,7 +1435,9 @@ export class Patcher {
     const n = a.length;
     const m = b.length;
 
-    if (n === 0 || m === 0) { return []; }
+    if (n === 0 || m === 0) {
+      return [];
+    }
 
     const SAFE_SIZE = 1000000;
     if (n * m > SAFE_SIZE) {
@@ -1360,7 +1456,8 @@ export class Patcher {
     }
 
     const lcs = [];
-    let i = 0, j = 0;
+    let i = 0,
+      j = 0;
     while (i < n && j < m) {
       if (a[i] === b[j]) {
         lcs.push({ baseIdx: i, curIdx: j });
@@ -1395,7 +1492,7 @@ export class Patcher {
     for (let i = 0; i < a.length; i++) {
       const fp = hashContent(a[i]);
       const candidates = fingerprintMap.get(fp) || [];
-      const found = candidates.find(c => c > lastCurIdx);
+      const found = candidates.find((c) => c > lastCurIdx);
       if (found !== undefined) {
         lcs.push({ baseIdx: i, curIdx: found });
         lastCurIdx = found;
@@ -1500,13 +1597,17 @@ export class Patcher {
  * @returns {string}
  */
 export function applyHunksToText(text, hunks) {
-  if (hunks.length === 0) { return text; }
+  if (hunks.length === 0) {
+    return text;
+  }
 
   // 把 INS.PRE/POST 归一成等价的 SWAP：空区间替换。
   // NOP hunk 直接跳过。
   const edits = [];
   for (const h of hunks) {
-    if (h.op === 'NOP') { continue; }  // 冲突跳过的 hunk
+    if (h.op === 'NOP') {
+      continue;
+    } // 冲突跳过的 hunk
     if (h.op === OP_INS_PRE) {
       edits.push({ start: h.start, end: h.start - 1, lines: h.lines });
     } else if (h.op === OP_INS_POST) {
@@ -1563,14 +1664,16 @@ export function applyHunksToText(text, hunks) {
   // 从后往前应用（行号 1-based）。相同 start 时，非空区间（替换/删除）先于
   // 空区间（插入）应用，保证“替换第 N 行”与“在第 N 行前/后插入”共存时顺序正确。
   const desc = edits.slice().sort((a, b) => {
-    if (b.start !== a.start) { return b.start - a.start; }
+    if (b.start !== a.start) {
+      return b.start - a.start;
+    }
     const aEmpty = a.end < a.start ? 1 : 0;
     const bEmpty = b.end < b.start ? 1 : 0;
     return aEmpty - bEmpty; // 非空(0) 排在 空区间(1) 前面
   });
   for (const e of desc) {
     const s = e.start; // 1-based
-    const en = e.end;  // 1-based, inclusive
+    const en = e.end; // 1-based, inclusive
     // lines 是 0-based 数组
     // 删除 [s-1, en-1]，插入 e.lines
     const before = lines.slice(0, Math.max(0, s - 1));
@@ -1610,7 +1713,9 @@ export class HashlineBridge {
    * @param {string} newTag
    */
   recordApply(path, originalText, newText, oldTag, newTag) {
-    if (!this.store) { return; }
+    if (!this.store) {
+      return;
+    }
     try {
       // 记录旧 blob / anchor
       this.store.storeBlob(originalText);
@@ -1797,7 +1902,9 @@ export function formatHashlineError(code, message, sourceSpan = null, context = 
       span: sourceSpan.span || null,
     };
   }
-  if (context) { err.context = context; }
+  if (context) {
+    err.context = context;
+  }
   return err;
 }
 
@@ -1921,10 +2028,17 @@ export function parsePatchExtended(text) {
 
     // 注释 / 空行
     const trimmed = line.trim();
-    if (trimmed === '' || trimmed.startsWith('#')) { continue; }
+    if (trimmed === '' || trimmed.startsWith('#')) {
+      continue;
+    }
 
     // 检测统一 diff 格式混入
-    if (trimmed.startsWith('@@ ') || trimmed.startsWith('--- ') || trimmed.startsWith('+++ ') || trimmed.startsWith('diff ')) {
+    if (
+      trimmed.startsWith('@@ ') ||
+      trimmed.startsWith('--- ') ||
+      trimmed.startsWith('+++ ') ||
+      trimmed.startsWith('diff ')
+    ) {
       throw new StructuredParseError(
         `Unified diff format detected at line ${lineNo}: '${trimmed.substring(0, 40)}...'. Use Hashline patch format instead.`,
         { code: HashlineErrorCode.PARSE_UNIFIED_DIFF_DETECTED, srcLine: lineNo, span: trimmed },
@@ -2056,10 +2170,11 @@ export function parsePatchExtended(text) {
       continue;
     }
 
-    throw new StructuredParseError(
-      `Unrecognized patch line ${lineNo}: '${line}'`,
-      { code: HashlineErrorCode.PARSE_UNEXPECTED_TOKEN, srcLine: lineNo, span: line },
-    );
+    throw new StructuredParseError(`Unrecognized patch line ${lineNo}: '${line}'`, {
+      code: HashlineErrorCode.PARSE_UNEXPECTED_TOKEN,
+      srcLine: lineNo,
+      span: line,
+    });
   }
 
   flushSection();
@@ -2074,15 +2189,21 @@ export function parsePatchExtended(text) {
  * 增强版 applyHunksToText，支持所有扩展 DSL 操作。
  */
 export function applyHunksToTextExtended(text, hunks) {
-  if (hunks.length === 0) { return text; }
+  if (hunks.length === 0) {
+    return text;
+  }
 
   const lines = text.split('\n');
   const totalLines = lines.length;
   const edits = [];
 
   for (const h of hunks) {
-    if (h.op === 'NOP') { continue; }
-    if (h.op === OP_ABORT) { continue; }
+    if (h.op === 'NOP') {
+      continue;
+    }
+    if (h.op === OP_ABORT) {
+      continue;
+    }
 
     switch (h.op) {
       case OP_INS_PRE:
@@ -2150,11 +2271,17 @@ export function applyHunksToTextExtended(text, hunks) {
           let blkStart = h.start;
           let blkEnd = h.start;
           for (let i4 = h.start - 1; i4 >= 1; i4--) {
-            if (lines[i4 - 1].trim() === '') { blkStart = i4 + 1; break; }
+            if (lines[i4 - 1].trim() === '') {
+              blkStart = i4 + 1;
+              break;
+            }
             blkStart = i4;
           }
           for (let i5 = blkStart; i5 <= totalLines; i5++) {
-            if (i5 === totalLines || lines[i5 - 1].trim() === '') { blkEnd = i5 - 1; break; }
+            if (i5 === totalLines || lines[i5 - 1].trim() === '') {
+              blkEnd = i5 - 1;
+              break;
+            }
           }
           if (blkEnd >= blkStart) {
             edits.push({ start: blkStart, end: blkEnd, lines: [] });
@@ -2174,13 +2301,17 @@ export function applyHunksToTextExtended(text, hunks) {
     const prevIsEmpty = prev.end < prev.start;
     const curIsEmpty = cur.end < cur.start;
     if (!prevIsEmpty && !curIsEmpty && cur.start <= prev.end) {
-      throw new PatchApplyError(`overlapping hunks: previous up to ${prev.end}, next starts at ${cur.start}`);
+      throw new PatchApplyError(
+        `overlapping hunks: previous up to ${prev.end}, next starts at ${cur.start}`,
+      );
     }
   }
 
   // 从后往前应用
   const desc = edits.slice().sort((a, b) => {
-    if (b.start !== a.start) { return b.start - a.start; }
+    if (b.start !== a.start) {
+      return b.start - a.start;
+    }
     const aEmpty = a.end < a.start ? 1 : 0;
     const bEmpty = b.end < b.start ? 1 : 0;
     return aEmpty - bEmpty;
@@ -2237,7 +2368,12 @@ export class Diff3MergeEngine {
     const unresolvedHunks = [];
 
     for (const h of hunks) {
-      if (h.op === OP_INS_PRE || h.op === OP_INS_POST || h.op === OP_INS_HEAD || h.op === OP_INS_TAIL) {
+      if (
+        h.op === OP_INS_PRE ||
+        h.op === OP_INS_POST ||
+        h.op === OP_INS_HEAD ||
+        h.op === OP_INS_TAIL
+      ) {
         // 插入操作：找出在 current 中的正确位置
         // 简化处理：如果能映射就映射，否则用 seen-line 方法
         let targetLine = baseToCurMapping[h.start];
@@ -2261,32 +2397,36 @@ export class Diff3MergeEngine {
         const curEnd = Diff3MergeEngine._findLineByContent(curLines, baseLines[h.end - 1]);
 
         if (curStart === -1 || curEnd === -1) {
-          conflicts.push(createDiff3Conflict({
-            path: filePath,
-            baseRange: [h.start, h.end],
-            currentRange: [-1, -1],
-            patchRange: [h.start, h.end],
-            baseText: baseLines.slice(h.start - 1, h.end).join('\n'),
-            currentText: '',
-            patchText: h.lines.join('\n'),
-            reason: HashlineErrorCode.CONFLICT_DELETED_ANCHOR,
-          }));
+          conflicts.push(
+            createDiff3Conflict({
+              path: filePath,
+              baseRange: [h.start, h.end],
+              currentRange: [-1, -1],
+              patchRange: [h.start, h.end],
+              baseText: baseLines.slice(h.start - 1, h.end).join('\n'),
+              currentText: '',
+              patchText: h.lines.join('\n'),
+              reason: HashlineErrorCode.CONFLICT_DELETED_ANCHOR,
+            }),
+          );
           unresolvedHunks.push(h);
           continue;
         }
 
         // 找到但位置不同 → moved block
         if (Math.abs(curStart - h.start) > 2 || Math.abs(curEnd - h.end) > 2) {
-          conflicts.push(createDiff3Conflict({
-            path: filePath,
-            baseRange: [h.start, h.end],
-            currentRange: [curStart, curEnd],
-            patchRange: [h.start, h.end],
-            baseText: baseLines.slice(h.start - 1, h.end).join('\n'),
-            currentText: curLines.slice(curStart - 1, curEnd).join('\n'),
-            patchText: h.lines.join('\n'),
-            reason: HashlineErrorCode.CONFLICT_MOVED_BLOCK,
-          }));
+          conflicts.push(
+            createDiff3Conflict({
+              path: filePath,
+              baseRange: [h.start, h.end],
+              currentRange: [curStart, curEnd],
+              patchRange: [h.start, h.end],
+              baseText: baseLines.slice(h.start - 1, h.end).join('\n'),
+              currentText: curLines.slice(curStart - 1, curEnd).join('\n'),
+              patchText: h.lines.join('\n'),
+              reason: HashlineErrorCode.CONFLICT_MOVED_BLOCK,
+            }),
+          );
         }
 
         resolvedHunks.push({ ...h, start: curStart, end: curEnd });
@@ -2298,16 +2438,18 @@ export class Diff3MergeEngine {
       const baseContent = baseLines.slice(h.start - 1, h.end).join('\n');
 
       if (curContent !== baseContent) {
-        conflicts.push(createDiff3Conflict({
-          path: filePath,
-          baseRange: [h.start, h.end],
-          currentRange: [baseStart, baseEnd],
-          patchRange: [h.start, h.end],
-          baseText: baseContent,
-          currentText: curContent,
-          patchText: h.lines.join('\n'),
-          reason: HashlineErrorCode.CONFLICT_CONTENT_DIVERGED,
-        }));
+        conflicts.push(
+          createDiff3Conflict({
+            path: filePath,
+            baseRange: [h.start, h.end],
+            currentRange: [baseStart, baseEnd],
+            patchRange: [h.start, h.end],
+            baseText: baseContent,
+            currentText: curContent,
+            patchText: h.lines.join('\n'),
+            reason: HashlineErrorCode.CONFLICT_CONTENT_DIVERGED,
+          }),
+        );
         unresolvedHunks.push(h);
         continue;
       }
@@ -2375,7 +2517,9 @@ export class Diff3MergeEngine {
     const curHashIndex = new Map(); // hash → [line1, line2, ...]
     for (let i = 0; i < m; i++) {
       const fp = hashContent(curLines[i]);
-      if (!curHashIndex.has(fp)) { curHashIndex.set(fp, []); }
+      if (!curHashIndex.has(fp)) {
+        curHashIndex.set(fp, []);
+      }
       curHashIndex.get(fp).push(i + 1);
     }
 
@@ -2402,13 +2546,19 @@ export class Diff3MergeEngine {
     for (let k = 0; k < candidates.length; k++) {
       const { bi } = candidates[k];
       // 二分查找：找到 tails 中第一个 >= bi 的位置
-      let lo = 0, hi = lisTails.length;
+      let lo = 0,
+        hi = lisTails.length;
       while (lo < hi) {
         const mid = (lo + hi) >>> 1;
-        if (lisTails[mid] < bi) { lo = mid + 1; }
-        else { hi = mid; }
+        if (lisTails[mid] < bi) {
+          lo = mid + 1;
+        } else {
+          hi = mid;
+        }
       }
-      if (lo > 0) { prev[k] = lisIndices[lo - 1]; }
+      if (lo > 0) {
+        prev[k] = lisIndices[lo - 1];
+      }
       if (lo === lisTails.length) {
         lisTails.push(bi);
         lisIndices.push(k);
@@ -2433,18 +2583,25 @@ export class Diff3MergeEngine {
     // 对未匹配的 base 行，尝试用编辑距离在未使用的 cur 行中找最近匹配
     const unmatchedBase = [];
     for (let bi = 1; bi <= n; bi++) {
-      if (mapping[bi] === undefined) { unmatchedBase.push(bi); }
+      if (mapping[bi] === undefined) {
+        unmatchedBase.push(bi);
+      }
     }
     const unusedCur = [];
     for (let ci = 1; ci <= m; ci++) {
-      if (!usedCi.has(ci)) { unusedCur.push(ci); }
+      if (!usedCi.has(ci)) {
+        unusedCur.push(ci);
+      }
     }
 
     for (const bi of unmatchedBase) {
       const bLine = baseLines[bi - 1].trim();
-      if (bLine.length < 8) { continue; } // 太短的行不模糊匹配
+      if (bLine.length < 8) {
+        continue;
+      } // 太短的行不模糊匹配
 
-      let bestCi = -1, bestDist = Infinity;
+      let bestCi = -1,
+        bestDist = Infinity;
       for (const ci of unusedCur) {
         const cLine = curLines[ci - 1].trim();
         const dist = Diff3MergeEngine._editDistance(bLine, cLine);
@@ -2459,7 +2616,9 @@ export class Diff3MergeEngine {
         mapping[bi] = bestCi;
         usedCi.add(bestCi);
         const idx = unusedCur.indexOf(bestCi);
-        if (idx > -1) { unusedCur.splice(idx, 1); }
+        if (idx > -1) {
+          unusedCur.splice(idx, 1);
+        }
       }
     }
 
@@ -2473,22 +2632,28 @@ export class Diff3MergeEngine {
   static _editDistance(a, b) {
     const lenA = a.length;
     const lenB = b.length;
-    if (lenA === 0) { return lenB; }
-    if (lenB === 0) { return lenA; }
+    if (lenA === 0) {
+      return lenB;
+    }
+    if (lenB === 0) {
+      return lenA;
+    }
 
     // 使用两行 DP 节省空间
     let prev = new Array(lenB + 1);
     let cur = new Array(lenB + 1);
-    for (let j = 0; j <= lenB; j++) { prev[j] = j; }
+    for (let j = 0; j <= lenB; j++) {
+      prev[j] = j;
+    }
 
     for (let i = 1; i <= lenA; i++) {
       cur[0] = i;
       for (let j = 1; j <= lenB; j++) {
         const cost = a[i - 1] === b[j - 1] ? 0 : 1;
         cur[j] = Math.min(
-          prev[j] + 1,      // deletion
-          cur[j - 1] + 1,   // insertion
-          prev[j - 1] + cost // substitution
+          prev[j] + 1, // deletion
+          cur[j - 1] + 1, // insertion
+          prev[j - 1] + cost, // substitution
         );
       }
       [prev, cur] = [cur, prev];
@@ -2501,16 +2666,22 @@ export class Diff3MergeEngine {
    * @private
    */
   static _findLineByContent(curLines, baseLine) {
-    if (!baseLine) { return -1; }
+    if (!baseLine) {
+      return -1;
+    }
     const fp = hashContent(baseLine);
     for (let i = 0; i < curLines.length; i++) {
-      if (hashContent(curLines[i]) === fp) { return i + 1; }
+      if (hashContent(curLines[i]) === fp) {
+        return i + 1;
+      }
     }
     // 宽松匹配：前缀匹配
     const trimmed = baseLine.trim();
     if (trimmed.length > 10) {
       for (let i = 0; i < curLines.length; i++) {
-        if (curLines[i].trim() === trimmed) { return i + 1; }
+        if (curLines[i].trim() === trimmed) {
+          return i + 1;
+        }
       }
     }
     return -1;

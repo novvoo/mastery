@@ -148,17 +148,28 @@ export class EnhancedImportGraph extends ImportGraph {
       const content = readFileSync(filePath, 'utf-8');
       // 简单的 YAML 解析（提取 packages: 下的 glob 列表）
       const packagesMatch = content.match(/packages:\s*\n((?:\s*-\s*.+\n?)+)/);
-      if (!packagesMatch) {return;}
+      if (!packagesMatch) {
+        return;
+      }
 
       const globLines = packagesMatch[1]
         .split('\n')
-        .map(l => l.trim().replace(/^-\s*'?/, '').replace(/'?\s*$/, '').replace(/^"/, '').replace(/"$/, ''))
-        .filter(l => l.length > 0);
+        .map((l) =>
+          l
+            .trim()
+            .replace(/^-\s*'?/, '')
+            .replace(/'?\s*$/, '')
+            .replace(/^"/, '')
+            .replace(/"$/, ''),
+        )
+        .filter((l) => l.length > 0);
 
       for (const glob of globLines) {
         // 简化 glob 处理：将 * 展开为直接子目录
         const baseDir = join(this.projectRoot, glob.replace(/\*$/, '').replace(/\/\*$/, ''));
-        if (!existsSync(baseDir)) {continue;}
+        if (!existsSync(baseDir)) {
+          continue;
+        }
 
         try {
           const entries = readdirSync(baseDir, { withFileTypes: true });
@@ -171,7 +182,9 @@ export class EnhancedImportGraph extends ImportGraph {
               }
             }
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
     } catch (err) {
       console.warn(`[EnhancedImportGraph] Failed to parse pnpm-workspace.yaml: ${err.message}`);
@@ -187,9 +200,11 @@ export class EnhancedImportGraph extends ImportGraph {
       const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
       const workspaces = pkg.workspaces || (pkg.workspaces && pkg.packages) || [];
 
-      for (const glob of (Array.isArray(workspaces) ? workspaces : workspaces.packages || [])) {
+      for (const glob of Array.isArray(workspaces) ? workspaces : workspaces.packages || []) {
         const baseDir = join(this.projectRoot, glob.replace(/\*$/, '').replace(/\/\*$/, ''));
-        if (!existsSync(baseDir)) {continue;}
+        if (!existsSync(baseDir)) {
+          continue;
+        }
 
         try {
           const entries = readdirSync(baseDir, { withFileTypes: true });
@@ -201,7 +216,9 @@ export class EnhancedImportGraph extends ImportGraph {
               }
             }
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
     } catch (err) {
       console.warn(`[EnhancedImportGraph] Failed to parse npm workspaces: ${err.message}`);
@@ -229,7 +246,9 @@ export class EnhancedImportGraph extends ImportGraph {
           ...(pkgJson.peerDependencies || {}),
         },
       });
-    } catch { /* ignore invalid package.json */ }
+    } catch {
+      /* ignore invalid package.json */
+    }
   }
 
   // ── Package exports 条件解析 ──────────────────────────────────────────
@@ -244,9 +263,13 @@ export class EnhancedImportGraph extends ImportGraph {
    */
   resolvePackageExports(packageName, subpath = '.', conditions = ['import', 'default']) {
     const wp = this._workspacePackages.get(packageName);
-    const pkgPath = wp ? join(wp.root, 'package.json') : this._resolveNodeModulePkgJson(packageName);
+    const pkgPath = wp
+      ? join(wp.root, 'package.json')
+      : this._resolveNodeModulePkgJson(packageName);
 
-    if (!pkgPath) {return null;}
+    if (!pkgPath) {
+      return null;
+    }
 
     const cacheKey = `${packageName}:${subpath}:${conditions.join(',')}`;
     if (this.cacheResolutions && this._resolutionCache.has(cacheKey)) {
@@ -258,24 +281,33 @@ export class EnhancedImportGraph extends ImportGraph {
 
       // 1) 先尝试 exports 字段
       if (pkg.exports) {
-        const result = this._resolveExportsField(pkg.exports, subpath, conditions, dirname(pkgPath));
+        const result = this._resolveExportsField(
+          pkg.exports,
+          subpath,
+          conditions,
+          dirname(pkgPath),
+        );
         if (result) {
-          if (this.cacheResolutions) {this._resolutionCache.set(cacheKey, result);}
+          if (this.cacheResolutions) {
+            this._resolutionCache.set(cacheKey, result);
+          }
           return result;
         }
       }
 
       // 2) 回退到 main/module/types 字段
       if (subpath === '.' || subpath === '') {
-        const mainField = conditions.includes('import') && pkg.module
-          ? pkg.module : pkg.main || 'index.js';
+        const mainField =
+          conditions.includes('import') && pkg.module ? pkg.module : pkg.main || 'index.js';
         const resolved = resolve(dirname(pkgPath), mainField);
         const result = {
           condition: 'default',
           resolvedPath: resolved,
           sourceField: conditions.includes('import') && pkg.module ? 'module' : 'main',
         };
-        if (this.cacheResolutions) {this._resolutionCache.set(cacheKey, result);}
+        if (this.cacheResolutions) {
+          this._resolutionCache.set(cacheKey, result);
+        }
         return result;
       }
 
@@ -290,7 +322,9 @@ export class EnhancedImportGraph extends ImportGraph {
             resolvedPath: withExt,
             sourceField: 'exports',
           };
-          if (this.cacheResolutions) {this._resolutionCache.set(cacheKey, result);}
+          if (this.cacheResolutions) {
+            this._resolutionCache.set(cacheKey, result);
+          }
           return result;
         }
       }
@@ -306,11 +340,12 @@ export class EnhancedImportGraph extends ImportGraph {
    * @private
    */
   _resolveExportsField(exports, subpath, conditions, pkgDir) {
-    const entry = typeof exports === 'string'
-      ? exports
-      : exports[subpath] || exports['.' + subpath] || exports;
+    const entry =
+      typeof exports === 'string' ? exports : exports[subpath] || exports['.' + subpath] || exports;
 
-    if (!entry) {return null;}
+    if (!entry) {
+      return null;
+    }
 
     // 字符串：直接路径
     if (typeof entry === 'string') {
@@ -400,7 +435,9 @@ export class EnhancedImportGraph extends ImportGraph {
 
     // 解析入口点
     let currentFile = this._resolveEntryPoint(entryPackage);
-    if (!currentFile) {return chain;}
+    if (!currentFile) {
+      return chain;
+    }
 
     let currentExport = exportName;
     const visited = new Set();
@@ -408,12 +445,16 @@ export class EnhancedImportGraph extends ImportGraph {
 
     while (depth < maxDepth) {
       const fileKey = `${currentFile}#${currentExport}`;
-      if (visited.has(fileKey)) {break;} // 循环引用终止
+      if (visited.has(fileKey)) {
+        break;
+      } // 循环引用终止
       visited.add(fileKey);
 
       // 解析当前文件中的导出
       const exportInfo = this._resolveExportInFile(currentFile, currentExport);
-      if (!exportInfo) {break;}
+      if (!exportInfo) {
+        break;
+      }
 
       if (exportInfo.isOriginal) {
         // 找到原始定义
@@ -437,8 +478,14 @@ export class EnhancedImportGraph extends ImportGraph {
       }
 
       // 追踪到下一层
-      const nextFile = this._resolveReExportSource(currentFile, exportInfo.source, exportInfo.originalName || currentExport);
-      if (!nextFile || nextFile === currentFile) {break;}
+      const nextFile = this._resolveReExportSource(
+        currentFile,
+        exportInfo.source,
+        exportInfo.originalName || currentExport,
+      );
+      if (!nextFile || nextFile === currentFile) {
+        break;
+      }
 
       currentFile = nextFile;
       currentExport = exportInfo.originalName || currentExport;
@@ -501,12 +548,22 @@ export class EnhancedImportGraph extends ImportGraph {
       const pkg = this._readPackageJson(wp.root);
       const entryFile = pkg.main || pkg.module || 'src/index.ts';
       const resolved = resolve(wp.root, entryFile);
-      if (existsSync(resolved)) {return resolved;}
+      if (existsSync(resolved)) {
+        return resolved;
+      }
 
       // 尝试常见入口
-      for (const candidate of ['src/index.ts', 'src/index.tsx', 'src/index.js', 'index.ts', 'index.js']) {
+      for (const candidate of [
+        'src/index.ts',
+        'src/index.tsx',
+        'src/index.js',
+        'index.ts',
+        'index.js',
+      ]) {
         const p = join(wp.root, candidate);
-        if (existsSync(p)) {return p;}
+        if (existsSync(p)) {
+          return p;
+        }
       }
       return join(wp.root, entryFile); // 返回推测路径
     }
@@ -520,7 +577,9 @@ export class EnhancedImportGraph extends ImportGraph {
    * @private
    */
   _resolveExportInFile(filePath, exportName) {
-    if (!existsSync(filePath)) {return null;}
+    if (!existsSync(filePath)) {
+      return null;
+    }
 
     // 检查缓存
     const cacheKey = `${filePath}:${exportName}`;
@@ -536,19 +595,25 @@ export class EnhancedImportGraph extends ImportGraph {
       const patterns = [
         // export { Foo } from './bar'
         {
-          regex: new RegExp(`export\\s*\\{\\s*[^}]*\\b${this._escapeRegex(exportName)}\\b[^}]*\\}\\s*from\\s*['"]([^'"]+)['"]`),
+          regex: new RegExp(
+            `export\\s*\\{\\s*[^}]*\\b${this._escapeRegex(exportName)}\\b[^}]*\\}\\s*from\\s*['"]([^'"]+)['"]`,
+          ),
           kind: 'named',
         },
         // export { Foo as Bar } from './bar'
         {
-          regex: new RegExp(`export\\s*\\{\\s*[^}]*\\b(\\w+)\\s+as\\s+${this._escapeRegex(exportName)}\\b[^}]*\\}\\s*from\\s*['"]([^'"]+)['"]`),
+          regex: new RegExp(
+            `export\\s*\\{\\s*[^}]*\\b(\\w+)\\s+as\\s+${this._escapeRegex(exportName)}\\b[^}]*\\}\\s*from\\s*['"]([^'"]+)['"]`,
+          ),
           kind: 'named',
           captureOriginal: 1, // 被重命名的原始名
           captureSource: 2,
         },
         // export { default as Foo } from './bar'
         {
-          regex: new RegExp(`export\\s*\\{\\s*default\\s+as\\s+${this._escapeRegex(exportName)}\\s*\\}\\s*from\\s*['"]([^'"]+)['"]`),
+          regex: new RegExp(
+            `export\\s*\\{\\s*default\\s+as\\s+${this._escapeRegex(exportName)}\\s*\\}\\s*from\\s*['"]([^'"]+)['"]`,
+          ),
           kind: 'default',
         },
         // export * from './bar'
@@ -559,13 +624,17 @@ export class EnhancedImportGraph extends ImportGraph {
         },
         // export default function Foo() { ... }
         {
-          regex: new RegExp(`export\\s+default\\s+(?:function|class|const|let|var)\\s+${this._escapeRegex(exportName)}\\b`),
+          regex: new RegExp(
+            `export\\s+default\\s+(?:function|class|const|let|var)\\s+${this._escapeRegex(exportName)}\\b`,
+          ),
           kind: 'original',
           isOriginal: true,
         },
         // export function/class/const Foo = ...
         {
-          regex: new RegExp(`export\\s+(?:function|class|const|let|var|type|interface|enum)\\s+${this._escapeRegex(exportName)}\\b`),
+          regex: new RegExp(
+            `export\\s+(?:function|class|const|let|var|type|interface|enum)\\s+${this._escapeRegex(exportName)}\\b`,
+          ),
           kind: 'original',
           isOriginal: true,
         },
@@ -587,7 +656,9 @@ export class EnhancedImportGraph extends ImportGraph {
           if (match) {
             if (pattern.isOriginal) {
               const result = { isOriginal: true, kind: 'original' };
-              if (this.cacheResolutions) {this._resolutionCache.set(cacheKey, result);}
+              if (this.cacheResolutions) {
+                this._resolutionCache.set(cacheKey, result);
+              }
               return result;
             }
 
@@ -595,16 +666,21 @@ export class EnhancedImportGraph extends ImportGraph {
               // export * from: 尝试在目标文件中找到该导出
               const source = match[1];
               const result = { kind: 'namespace', source, originalName: exportName };
-              if (this.cacheResolutions) {this._resolutionCache.set(cacheKey, result);}
+              if (this.cacheResolutions) {
+                this._resolutionCache.set(cacheKey, result);
+              }
               return result;
             }
 
             const sourceIdx = pattern.captureSource !== undefined ? pattern.captureSource : 1;
             const source = match[sourceIdx];
-            const originalName = pattern.captureOriginal !== undefined ? match[pattern.captureOriginal] : exportName;
+            const originalName =
+              pattern.captureOriginal !== undefined ? match[pattern.captureOriginal] : exportName;
 
             const result = { kind: pattern.kind, source, originalName };
-            if (this.cacheResolutions) {this._resolutionCache.set(cacheKey, result);}
+            if (this.cacheResolutions) {
+              this._resolutionCache.set(cacheKey, result);
+            }
             return result;
           }
         }
@@ -612,9 +688,15 @@ export class EnhancedImportGraph extends ImportGraph {
 
       // 未找到特定导出模式：检查是否是本地定义
       for (const line of lines) {
-        if (new RegExp(`\\b(?:const|let|var|function|class|type|interface|enum)\\s+${this._escapeRegex(exportName)}\\b`).test(line)) {
+        if (
+          new RegExp(
+            `\\b(?:const|let|var|function|class|type|interface|enum)\\s+${this._escapeRegex(exportName)}\\b`,
+          ).test(line)
+        ) {
           const result = { isOriginal: true, kind: 'original' };
-          if (this.cacheResolutions) {this._resolutionCache.set(cacheKey, result);}
+          if (this.cacheResolutions) {
+            this._resolutionCache.set(cacheKey, result);
+          }
           return result;
         }
       }
@@ -630,7 +712,9 @@ export class EnhancedImportGraph extends ImportGraph {
    * @private
    */
   _resolveReExportSource(fromFile, source, exportName) {
-    if (!source) {return null;}
+    if (!source) {
+      return null;
+    }
 
     // 相对路径
     if (source.startsWith('.') || source.startsWith('/')) {
@@ -638,12 +722,16 @@ export class EnhancedImportGraph extends ImportGraph {
       // 尝试扩展名
       for (const ext of ['', '.ts', '.tsx', '.js', '.jsx', '.mjs']) {
         const withExt = resolved + ext;
-        if (existsSync(withExt)) {return withExt;}
+        if (existsSync(withExt)) {
+          return withExt;
+        }
       }
       // 尝试 index 文件
       for (const idx of ['/index.ts', '/index.tsx', '/index.js', '/index.jsx']) {
         const withIdx = resolved + idx;
-        if (existsSync(withIdx)) {return withIdx;}
+        if (existsSync(withIdx)) {
+          return withIdx;
+        }
       }
       return resolved + '.ts'; // 推测
     }
@@ -682,7 +770,9 @@ export class EnhancedImportGraph extends ImportGraph {
     }
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-      if (this.cacheResolutions) {this._pkgJsonCache.set(pkgPath, pkg);}
+      if (this.cacheResolutions) {
+        this._pkgJsonCache.set(pkgPath, pkg);
+      }
       return pkg;
     } catch {
       return {};
@@ -695,7 +785,9 @@ export class EnhancedImportGraph extends ImportGraph {
    */
   _resolveNodeModuleEntry(packageName) {
     const pkgJsonPath = this._resolveNodeModulePkgJson(packageName);
-    if (!pkgJsonPath) {return null;}
+    if (!pkgJsonPath) {
+      return null;
+    }
 
     const pkgDir = dirname(pkgJsonPath);
     const pkg = this._readPackageJson(pkgDir);
@@ -727,12 +819,16 @@ export class EnhancedImportGraph extends ImportGraph {
             const scopeDir = join(nmDir, parts[0]);
             const pkgDir = join(scopeDir, parts.slice(1).join('/'));
             const pkgJson = join(pkgDir, 'package.json');
-            if (existsSync(pkgJson)) {return pkgJson;}
+            if (existsSync(pkgJson)) {
+              return pkgJson;
+            }
           }
 
           const pkgDir = join(nmDir, packageName);
           const pkgJson = join(pkgDir, 'package.json');
-          if (existsSync(pkgJson)) {return pkgJson;}
+          if (existsSync(pkgJson)) {
+            return pkgJson;
+          }
         }
         current = resolve(current, '..');
       }
@@ -773,7 +869,9 @@ export class EnhancedImportGraph extends ImportGraph {
   findWorkspaceDependents(packageName) {
     const dependents = [];
     for (const [name, wp] of this._workspacePackages) {
-      if (name === packageName) {continue;}
+      if (name === packageName) {
+        continue;
+      }
       const deps = wp.dependencies || {};
       if (deps[packageName]) {
         dependents.push({

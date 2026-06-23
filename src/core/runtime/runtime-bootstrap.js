@@ -97,14 +97,22 @@ export function createDefaultToolRegistry({
   const registry = new ToolRegistry();
   const coreTools = createCoreTools({ workingDirectory, mcpClient, includeExperimentalTools });
   for (const tool of coreTools) {
-    try { registry.register(tool); } catch (_) { /* 重复注册忽略 */ }
+    try {
+      registry.register(tool);
+    } catch (_) {
+      /* 重复注册忽略 */
+    }
   }
   // Skill 工具（architect/to_issues 等）——按需注册，避免依赖过重
   for (const creator of SKILL_TOOL_CREATORS) {
     try {
       const tool = typeof creator === 'function' ? creator() : creator;
-      if (tool && tool.name) {registry.register(tool);}
-    } catch (_) { /* 忽略 */ }
+      if (tool && tool.name) {
+        registry.register(tool);
+      }
+    } catch (_) {
+      /* 忽略 */
+    }
   }
   return registry;
 }
@@ -124,7 +132,9 @@ export async function bootstrapRuntime(options = {}) {
     ? (() => {
         const p = String(options.workingDirectory);
         if (!existsSync(p)) {
-          try { mkdirSync(p, { recursive: true }); } catch (_) {}
+          try {
+            mkdirSync(p, { recursive: true });
+          } catch (_) {}
         }
         return p;
       })()
@@ -134,7 +144,10 @@ export async function bootstrapRuntime(options = {}) {
   const maxIterations = options.maxIterations || 60;
 
   // 1) SecurityPolicy
-  const securityPolicy = resolveSecurityPolicy(options.securityPolicy, options.securityPolicyOptions || {});
+  const securityPolicy = resolveSecurityPolicy(
+    options.securityPolicy,
+    options.securityPolicyOptions || {},
+  );
 
   // 2) MCP client（空壳，随后调用 initializeMCPServersFromEnv 才会连接）
   const mcpClient = new MCPClient(options.mcp || {});
@@ -257,13 +270,17 @@ export async function initializeMCPServersFromEnv(mcpClient, toolRegistry, onLog
  * 幂等：已注册同名工具会被跳过。
  */
 export function registerMCPTools(mcpClient, toolRegistry, serverName) {
-  if (!mcpClient || !toolRegistry) {return 0;}
+  if (!mcpClient || !toolRegistry) {
+    return 0;
+  }
   const tools = Array.isArray(mcpClient.getTools)
     ? mcpClient.getTools().filter((t) => t.serverName === serverName)
     : [];
   let registered = 0;
   for (const mcpTool of tools) {
-    if (toolRegistry.has?.(mcpTool.fullName)) {continue;}
+    if (toolRegistry.has?.(mcpTool.fullName)) {
+      continue;
+    }
     const tool = {
       name: mcpTool.fullName,
       description: mcpTool.description,
@@ -280,7 +297,9 @@ export function registerMCPTools(mcpClient, toolRegistry, serverName) {
     try {
       toolRegistry.register(tool);
       registered++;
-    } catch (_) { /* 已注册 */ }
+    } catch (_) {
+      /* 已注册 */
+    }
   }
   return registered;
 }
@@ -293,7 +312,9 @@ export function registerMCPTools(mcpClient, toolRegistry, serverName) {
  * 在已有 engine 上挂载一个 modelProvider（用于延迟初始化 provider 的场景）。
  */
 export function attachModelProvider(engine, provider) {
-  if (!engine) {return null;}
+  if (!engine) {
+    return null;
+  }
   if (typeof engine.attachModelProvider === 'function') {
     engine.attachModelProvider(provider);
   }
@@ -304,6 +325,10 @@ export function attachModelProvider(engine, provider) {
  * 销毁一份 runtime，释放 MCP 连接等资源。
  */
 export function disposeRuntime({ engine, mcpClient }) {
-  try { engine?.dispose?.(); } catch (_) {}
-  try { mcpClient?.disconnect?.(); } catch (_) {}
+  try {
+    engine?.dispose?.();
+  } catch (_) {}
+  try {
+    mcpClient?.disconnect?.();
+  } catch (_) {}
 }

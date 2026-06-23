@@ -16,14 +16,16 @@ export const BM25_B = 0.75;
 export class BM25Index {
   constructor(chunkList) {
     this.docs = [];
-    this.docFreq = new Map();   // term → doc count
+    this.docFreq = new Map(); // term → doc count
     this.avgdl = 0;
     this.totalLen = 0;
     this._build(chunkList);
   }
 
   _tokenize(text) {
-    if (!text) { return []; }
+    if (!text) {
+      return [];
+    }
     const t = String(text).toLowerCase();
     // CJK chars → individual tokens; words → whole word tokens.
     const out = [];
@@ -31,12 +33,16 @@ export class BM25Index {
     const wordRe = /[\p{L}\p{N}_-]+/gu;
     let match;
     while ((match = wordRe.exec(t)) !== null) {
-      if (match[0].length >= 2) { out.push(match[0]); }
+      if (match[0].length >= 2) {
+        out.push(match[0]);
+      }
     }
     // CJK chars as individual tokens (bigrams would be better for recall,
     // but unigrams are fine for ranking and cheap to compute).
     for (const ch of t) {
-      if (/[\u4e00-\u9fff]/.test(ch)) { out.push(ch); }
+      if (/[\u4e00-\u9fff]/.test(ch)) {
+        out.push(ch);
+      }
     }
     return out;
   }
@@ -59,18 +65,24 @@ export class BM25Index {
 
   score(query, docIndex) {
     const queryTokens = this._tokenize(query);
-    if (queryTokens.length === 0) { return 0; }
+    if (queryTokens.length === 0) {
+      return 0;
+    }
     const doc = this.docs[docIndex];
-    if (!doc) { return 0; }
+    if (!doc) {
+      return 0;
+    }
     const N = this.docs.length;
     let score = 0;
     for (const qt of queryTokens) {
       const f = doc.tokens.get(qt) || 0;
-      if (f === 0) { continue; }
+      if (f === 0) {
+        continue;
+      }
       const df = this.docFreq.get(qt) || 0;
       const idf = Math.max(0.0001, Math.log((N - df + 0.5) / (df + 0.5) + 1));
       const denom = f + BM25_K1 * (1 - BM25_B + BM25_B * (doc.length / Math.max(1, this.avgdl)));
-      score += idf * (f * (BM25_K1 + 1)) / denom;
+      score += (idf * (f * (BM25_K1 + 1))) / denom;
     }
     return score;
   }
@@ -80,7 +92,9 @@ export class BM25Index {
     const scored = [];
     for (let i = 0; i < this.docs.length; i++) {
       const s = this.score(query, i);
-      if (s > 0) { scored.push({ index: i, score: s }); }
+      if (s > 0) {
+        scored.push({ index: i, score: s });
+      }
     }
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, max);

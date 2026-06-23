@@ -81,7 +81,10 @@ export function findBalancedJSON(text, startIdx) {
  * @param {function} deps.recoverCallArguments - Recover call arguments
  * @returns {Array<object>} Parsed tool calls
  */
-export function parseCALLFormat(text, { toolRegistry, safeJSONParse, normalizeJSONToolCall, recoverCallArguments }) {
+export function parseCALLFormat(
+  text,
+  { toolRegistry, safeJSONParse, normalizeJSONToolCall, recoverCallArguments },
+) {
   const toolCalls = [];
   // Find each CALL header, then scan for balanced JSON argument object.
   // A naive /\{[\s\S]*?\}/ non-greedy match stops at the first }, which
@@ -93,7 +96,9 @@ export function parseCALLFormat(text, { toolRegistry, safeJSONParse, normalizeJS
     const toolName = match[1];
     const braceStart = match.index + match[0].length - 1;
     const found = findBalancedJSON(text, braceStart);
-    if (!found) {continue;}
+    if (!found) {
+      continue;
+    }
 
     try {
       let args = safeJSONParse(found.content);
@@ -121,9 +126,10 @@ export function parseCALLFormat(text, { toolRegistry, safeJSONParse, normalizeJS
         toolCalls.push({
           id: `call_${Date.now()}_${toolCalls.length}`,
           name,
-          arguments: normalizedArgs && typeof normalizedArgs === 'object' && !Array.isArray(normalizedArgs)
-            ? normalizedArgs
-            : args,
+          arguments:
+            normalizedArgs && typeof normalizedArgs === 'object' && !Array.isArray(normalizedArgs)
+              ? normalizedArgs
+              : args,
           source: 'CALL_format',
         });
       }
@@ -154,10 +160,14 @@ export function parseCALLFormat(text, { toolRegistry, safeJSONParse, normalizeJS
  * @returns {object | null}
  */
 export function recoverCallArguments(rawContent, extractRecoveredValue) {
-  if (!rawContent || typeof rawContent !== 'string') {return null;}
+  if (!rawContent || typeof rawContent !== 'string') {
+    return null;
+  }
 
   const content = rawContent.trim();
-  if (!content.startsWith('{')) {return null;}
+  if (!content.startsWith('{')) {
+    return null;
+  }
 
   // Work on the text inside the outer braces.
   const endBrace = findMatchingBrace(content, 0);
@@ -170,13 +180,13 @@ export function recoverCallArguments(rawContent, extractRecoveredValue) {
   const result = {};
   for (let i = 0; i < keyPositions.length; i++) {
     const { key, keyEnd } = keyPositions[i];
-    const nextStart = i + 1 < keyPositions.length
-      ? keyPositions[i + 1].keyStart
-      : inner.length;
+    const nextStart = i + 1 < keyPositions.length ? keyPositions[i + 1].keyStart : inner.length;
     // Extract the value slice between this key's `:` and the next
     // key (or the end of the inner text).
     let valueRaw = inner.slice(keyEnd, nextStart).trim();
-    if (valueRaw.endsWith(',')) { valueRaw = valueRaw.slice(0, -1).trim(); }
+    if (valueRaw.endsWith(',')) {
+      valueRaw = valueRaw.slice(0, -1).trim();
+    }
     const value = extractRecoveredValue(valueRaw);
     if (value !== null && value !== undefined) {
       result[key] = value;
@@ -193,7 +203,9 @@ export function recoverCallArguments(rawContent, extractRecoveredValue) {
  * @returns {number} Index of matching '}', or -1
  */
 export function findMatchingBrace(text, openIdx) {
-  if (text[openIdx] !== '{') {return -1;}
+  if (text[openIdx] !== '{') {
+    return -1;
+  }
   let depth = 0;
   let inString = false;
   let stringChar = '';
@@ -201,16 +213,33 @@ export function findMatchingBrace(text, openIdx) {
   for (let i = openIdx; i < text.length; i++) {
     const ch = text[i];
     if (inString) {
-      if (escaped) {escaped = false; continue;}
-      if (ch === '\\') {escaped = true; continue;}
-      if (ch === stringChar) {inString = false;}
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === stringChar) {
+        inString = false;
+      }
       continue;
     }
-    if (ch === '"' || ch === "'") {inString = true; stringChar = ch; continue;}
-    if (ch === '{' || ch === '[') {depth++; continue;}
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      stringChar = ch;
+      continue;
+    }
+    if (ch === '{' || ch === '[') {
+      depth++;
+      continue;
+    }
     if (ch === '}' || ch === ']') {
       depth--;
-      if (depth === 0 && ch === '}') {return i + 1;}
+      if (depth === 0 && ch === '}') {
+        return i + 1;
+      }
     }
   }
   return -1;
@@ -231,13 +260,23 @@ export function findTopLevelKeyPositions(text) {
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (inString) {
-      if (escaped) {escaped = false; continue;}
-      if (ch === '\\') {escaped = true; continue;}
-      if (ch === stringChar) {inString = false;}
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === stringChar) {
+        inString = false;
+      }
       continue;
     }
     if (ch === '"' || ch === "'") {
-      if (depth > 0) {continue;}
+      if (depth > 0) {
+        continue;
+      }
       const quoteChar = ch;
       const afterOpen = i + 1;
       const closeIdx = findNextUnescapedQuote(text, afterOpen, quoteChar);
@@ -250,7 +289,9 @@ export function findTopLevelKeyPositions(text) {
         continue;
       }
       let j = closeIdx;
-      while (j < text.length && /\s/.test(text[j])) {j++;}
+      while (j < text.length && /\s/.test(text[j])) {
+        j++;
+      }
       if (j < text.length && (text[j] === ':' || text[j] === '=')) {
         positions.push({
           key: candidateKey,
@@ -263,8 +304,14 @@ export function findTopLevelKeyPositions(text) {
       i = closeIdx - 1;
       continue;
     }
-    if (ch === '{' || ch === '[') {depth++; continue;}
-    if (ch === '}' || ch === ']') {depth = Math.max(0, depth - 1); continue;}
+    if (ch === '{' || ch === '[') {
+      depth++;
+      continue;
+    }
+    if (ch === '}' || ch === ']') {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
   }
   return positions;
 }
@@ -280,9 +327,17 @@ export function findNextUnescapedQuote(text, start, quoteChar) {
   let escaped = false;
   for (let i = start; i < text.length; i++) {
     const ch = text[i];
-    if (escaped) {escaped = false; continue;}
-    if (ch === '\\') {escaped = true; continue;}
-    if (ch === quoteChar) {return i + 1;}
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (ch === quoteChar) {
+      return i + 1;
+    }
   }
   return -1;
 }
@@ -294,7 +349,9 @@ export function findNextUnescapedQuote(text, start, quoteChar) {
  * @returns {number} Index of matching ']', or -1
  */
 export function findMatchingBracket(text, openIdx) {
-  if (text[openIdx] !== '[') {return -1;}
+  if (text[openIdx] !== '[') {
+    return -1;
+  }
   let depth = 0;
   let inString = false;
   let stringChar = '';
@@ -302,16 +359,33 @@ export function findMatchingBracket(text, openIdx) {
   for (let i = openIdx; i < text.length; i++) {
     const ch = text[i];
     if (inString) {
-      if (escaped) {escaped = false; continue;}
-      if (ch === '\\') {escaped = true; continue;}
-      if (ch === stringChar) {inString = false;}
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === stringChar) {
+        inString = false;
+      }
       continue;
     }
-    if (ch === '"' || ch === "'") {inString = true; stringChar = ch; continue;}
-    if (ch === '[' || ch === '{') {depth++; continue;}
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      stringChar = ch;
+      continue;
+    }
+    if (ch === '[' || ch === '{') {
+      depth++;
+      continue;
+    }
     if (ch === ']' || ch === '}') {
       depth--;
-      if (depth === 0 && ch === ']') {return i + 1;}
+      if (depth === 0 && ch === ']') {
+        return i + 1;
+      }
     }
   }
   return -1;
@@ -324,11 +398,17 @@ export function findMatchingBracket(text, openIdx) {
  * @returns {*}
  */
 export function extractRecoveredValue(raw, safeJSONParse) {
-  if (!raw || typeof raw !== 'string') {return null;}
+  if (!raw || typeof raw !== 'string') {
+    return null;
+  }
   let value = raw.trim();
 
-  if (value.endsWith(',')) {value = value.slice(0, -1).trim();}
-  if (value.length === 0) {return '';}
+  if (value.endsWith(',')) {
+    value = value.slice(0, -1).trim();
+  }
+  if (value.length === 0) {
+    return '';
+  }
 
   if (value.startsWith('"') || value.startsWith("'")) {
     const openQuote = value[0];

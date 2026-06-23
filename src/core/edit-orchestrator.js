@@ -22,9 +22,13 @@
 
 import { writeFile, readFile } from 'fs/promises';
 import {
-  Patch, Patcher, PatchApplyError,
-  InMemorySnapshotStore, DiskFilesystem,
-  computeTag, hashContent,
+  Patch,
+  Patcher,
+  PatchApplyError,
+  InMemorySnapshotStore,
+  DiskFilesystem,
+  computeTag,
+  hashContent,
 } from './harness/hashline.js';
 import { DiagnosticsGate } from './diagnostics-gate.js';
 
@@ -77,12 +81,14 @@ export class EditOrchestrator {
     this.memoryRules = opts.memoryRules || {};
 
     // 诊断门控（默认启用 autoRepair）
-    this.diagGate = opts.diagGate || new DiagnosticsGate({
-      lspManager: this.lspManager,
-      hashlinePatcher: this.hashlinePatcher,
-      snapshotStore: this.snapshotStore,
-      workingDirectory: this.workingDirectory,
-    });
+    this.diagGate =
+      opts.diagGate ||
+      new DiagnosticsGate({
+        lspManager: this.lspManager,
+        hashlinePatcher: this.hashlinePatcher,
+        snapshotStore: this.snapshotStore,
+        workingDirectory: this.workingDirectory,
+      });
 
     // 编辑历史（用于 memory 反馈闭环）
     this.editHistory = [];
@@ -141,11 +147,15 @@ export class EditOrchestrator {
           if (exists) {
             const st = await this.hashlinePatcher.fs.stat(section.path);
             if (st.size > memoryPolicy.maxFileSize) {
-              result.filesFailed.push(`${section.path}: file too large (${st.size} > ${memoryPolicy.maxFileSize})`);
+              result.filesFailed.push(
+                `${section.path}: file too large (${st.size} > ${memoryPolicy.maxFileSize})`,
+              );
               continue;
             }
           }
-        } catch { /* skip stat errors */ }
+        } catch {
+          /* skip stat errors */
+        }
       }
     }
 
@@ -173,7 +183,7 @@ export class EditOrchestrator {
     }
 
     result.success = true;
-    result.filesChanged = applyResult.sections.map(s => s.path);
+    result.filesChanged = applyResult.sections.map((s) => s.path);
     result.totalEdits = applyResult.sections.reduce((sum, s) => sum + s.hunksApplied, 0);
 
     // 收集 conflicts
@@ -189,7 +199,9 @@ export class EditOrchestrator {
         try {
           const content = await readFile(fp, 'utf-8');
           await this.lspManager.syncDocument(fp, content);
-        } catch { /* sync not critical */ }
+        } catch {
+          /* sync not critical */
+        }
       }
     }
 
@@ -200,8 +212,12 @@ export class EditOrchestrator {
       for (const fp of result.filesChanged) {
         try {
           const snap = this.snapshotStore.head(fp);
-          if (snap?.text) {snapshotData.files[fp] = snap.text;}
-        } catch { /* skip */ }
+          if (snap?.text) {
+            snapshotData.files[fp] = snap.text;
+          }
+        } catch {
+          /* skip */
+        }
       }
 
       const diagResult = await this.diagGate.gate(result.filesChanged, baselineDiags, snapshotData);
@@ -293,8 +309,12 @@ export class EditOrchestrator {
     let prepareResult;
     try {
       prepareResult = await this.lspManager.request(
-        'textDocument/prepareRename', filePath,
-        {}, position, fileContent, 15000,
+        'textDocument/prepareRename',
+        filePath,
+        {},
+        position,
+        fileContent,
+        15000,
       );
     } catch (err) {
       result.error = `prepareRename failed: ${err.message}`;
@@ -310,8 +330,12 @@ export class EditOrchestrator {
     let workspaceEdit;
     try {
       workspaceEdit = await this.lspManager.request(
-        'textDocument/rename', filePath,
-        { newName }, position, fileContent, 30000,
+        'textDocument/rename',
+        filePath,
+        { newName },
+        position,
+        fileContent,
+        30000,
       );
     } catch (err) {
       result.error = `Rename failed: ${err.message}`;
@@ -348,14 +372,17 @@ export class EditOrchestrator {
           if (syncResult?.synced?.length > 0) {
             editResult.barrelSyncs = syncResult.synced;
           }
-        } catch { /* barrel sync is best-effort */ }
+        } catch {
+          /* barrel sync is best-effort */
+        }
       }
     }
 
     this.editHistory.push({
       timestamp: Date.now(),
       type: 'lsp_rename',
-      filePath, newName,
+      filePath,
+      newName,
       result: editResult,
     });
 
@@ -393,9 +420,13 @@ export class EditOrchestrator {
         try {
           originalContent = await readFile(filePath, 'utf-8');
           exists = true;
-        } catch { exists = false; }
+        } catch {
+          exists = false;
+        }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     // 收集基线 diagnostics
     const baselineDiags = this.lspManager?.getAllDiagnostics?.() || null;
@@ -442,19 +473,23 @@ export class EditOrchestrator {
     const totalLines = normalizedOrig.split('\n').length;
 
     // 生成 Hashline patch
-    const patchLines = [
-      `[${filePath}#${tag}]`,
-    ];
+    const patchLines = [`[${filePath}#${tag}]`];
     if (totalLines === 0 && lines.length === 1) {
       // 空文件 → 追加内容
       patchLines.push(`INS.POST 0=`);
-      for (const l of lines) {patchLines.push(`+${l}`);}
+      for (const l of lines) {
+        patchLines.push(`+${l}`);
+      }
     } else if (totalLines === 0) {
       patchLines.push(`INS.POST 0=`);
-      for (const l of lines) {patchLines.push(`+${l}`);}
+      for (const l of lines) {
+        patchLines.push(`+${l}`);
+      }
     } else {
       patchLines.push(`SWAP 1.=${Math.max(1, totalLines)}:`);
-      for (const l of lines) {patchLines.push(`+${l}`);}
+      for (const l of lines) {
+        patchLines.push(`+${l}`);
+      }
     }
     const patchText = patchLines.join('\n');
 
@@ -513,9 +548,7 @@ export class EditOrchestrator {
     // 构建 Hashline patch
     const tag = computeTag(normalized);
     const newLines = normalizedNew.split('\n');
-    const patchLines = [
-      `[${filePath}#${tag}]`,
-    ];
+    const patchLines = [`[${filePath}#${tag}]`];
 
     if (newLines.length === 1 && newLines[0] === '') {
       // 纯删除
@@ -560,21 +593,28 @@ export class EditOrchestrator {
 
     const changes = workspaceEdit.changes || {};
     for (const [uri, edits] of Object.entries(changes)) {
-      if (edits.length > 0) {collectEdits(uri, edits);}
+      if (edits.length > 0) {
+        collectEdits(uri, edits);
+      }
     }
 
     if (workspaceEdit.documentChanges) {
       for (const dc of workspaceEdit.documentChanges) {
         if (dc.kind === 'create' && dc.uri) {
-          const fp = (dc.uri.startsWith('file://') ? dc.uri.slice(7) : dc.uri);
+          const fp = dc.uri.startsWith('file://') ? dc.uri.slice(7) : dc.uri;
           documentOps.push({ kind: 'create', path: fp, options: dc.options || {} });
         } else if (dc.kind === 'delete' && dc.uri) {
-          const fp = (dc.uri.startsWith('file://') ? dc.uri.slice(7) : dc.uri);
+          const fp = dc.uri.startsWith('file://') ? dc.uri.slice(7) : dc.uri;
           documentOps.push({ kind: 'delete', path: fp, options: dc.options || {} });
         } else if (dc.kind === 'rename' && dc.oldUri && dc.newUri) {
-          const oldFp = (dc.oldUri.startsWith('file://') ? dc.oldUri.slice(7) : dc.oldUri);
-          const newFp = (dc.newUri.startsWith('file://') ? dc.newUri.slice(7) : dc.newUri);
-          documentOps.push({ kind: 'rename', oldPath: oldFp, newPath: newFp, options: dc.options || {} });
+          const oldFp = dc.oldUri.startsWith('file://') ? dc.oldUri.slice(7) : dc.oldUri;
+          const newFp = dc.newUri.startsWith('file://') ? dc.newUri.slice(7) : dc.newUri;
+          documentOps.push({
+            kind: 'rename',
+            oldPath: oldFp,
+            newPath: newFp,
+            options: dc.options || {},
+          });
         } else if (dc.textDocument && dc.edits) {
           collectEdits(dc.textDocument.uri, dc.edits);
         }
@@ -596,7 +636,13 @@ export class EditOrchestrator {
           totalEdits: documentOps.length,
         };
       }
-      return { success: false, error: 'No edits to apply', filesChanged: [], filesFailed: [], totalEdits: 0 };
+      return {
+        success: false,
+        error: 'No edits to apply',
+        filesChanged: [],
+        filesFailed: [],
+        totalEdits: 0,
+      };
     }
 
     // 读取原始内容 + 构建 Hashline patch
@@ -616,7 +662,9 @@ export class EditOrchestrator {
         return {
           success: false,
           error: `Failed to read ${fp}: ${err.message}`,
-          filesChanged: docOpResults.paths, filesFailed: [fp], totalEdits: 0,
+          filesChanged: docOpResults.paths,
+          filesFailed: [fp],
+          totalEdits: 0,
         };
       }
     }
@@ -648,8 +696,11 @@ export class EditOrchestrator {
               await mkdir(dir, { recursive: true });
             }
             if (op.options?.overwrite === false) {
-              try { await import('fs').then(fs => fs.existsSync(op.path)); }
-              catch { /* doesn't exist, proceed */ }
+              try {
+                await import('fs').then((fs) => fs.existsSync(op.path));
+              } catch {
+                /* doesn't exist, proceed */
+              }
             }
             if (this.hashlinePatcher?.fs) {
               await this.hashlinePatcher.fs.write(op.path, '');
@@ -692,7 +743,9 @@ export class EditOrchestrator {
    * 多个 edit 可能修改同一行或重叠范围，合并它们避免二次应用时的冲突。
    */
   _mergeOverlappingEdits(edits) {
-    if (edits.length <= 1) {return edits;}
+    if (edits.length <= 1) {
+      return edits;
+    }
 
     // 按位置降序排序
     const sorted = [...edits].sort((a, b) => {
@@ -789,7 +842,9 @@ export class EditOrchestrator {
           } else {
             lines.push(`SWAP ${startLine}.=${startLine}:`);
             const replacement = before + after;
-            if (replacement !== '') {lines.push(`+${replacement}`);}
+            if (replacement !== '') {
+              lines.push(`+${replacement}`);
+            }
           }
         }
         // 情况3：替换（oldText和newText都非空）
@@ -813,7 +868,9 @@ export class EditOrchestrator {
       // 多行编辑
       else {
         lines.push(`SWAP ${startLine}.=${endLine}:`);
-        for (const nl of newText.split('\n')) {lines.push(`+${nl}`);}
+        for (const nl of newText.split('\n')) {
+          lines.push(`+${nl}`);
+        }
       }
 
       currentContent = this._applyTextEdits(currentContent, [edit]);
@@ -824,19 +881,26 @@ export class EditOrchestrator {
 
   _applyTextEdits(text, edits) {
     const sorted = [...edits].sort((a, b) => {
-      if (b.range.start.line !== a.range.start.line) {return b.range.start.line - a.range.start.line;}
+      if (b.range.start.line !== a.range.start.line) {
+        return b.range.start.line - a.range.start.line;
+      }
       return b.range.start.character - a.range.start.character;
     });
     let result = text;
     for (const edit of sorted) {
       const lines = result.split('\n');
       let startOffset = 0;
-      for (let i = 0; i < edit.range.start.line; i++) {startOffset += lines[i].length + 1;}
+      for (let i = 0; i < edit.range.start.line; i++) {
+        startOffset += lines[i].length + 1;
+      }
       startOffset += edit.range.start.character;
       let endOffset = 0;
-      for (let i = 0; i < edit.range.end.line; i++) {endOffset += lines[i].length + 1;}
+      for (let i = 0; i < edit.range.end.line; i++) {
+        endOffset += lines[i].length + 1;
+      }
       endOffset += edit.range.end.character;
-      result = result.substring(0, startOffset) + (edit.newText || '') + result.substring(endOffset);
+      result =
+        result.substring(0, startOffset) + (edit.newText || '') + result.substring(endOffset);
     }
     return result;
   }
@@ -877,11 +941,15 @@ export class EditOrchestrator {
     if (this.memoryManager) {
       try {
         const rulesCtx = this.memoryManager.getRulesContext?.() || '';
-        if (rulesCtx.includes('禁止直接编辑 generated files') ||
-            rulesCtx.includes('do not edit generated files')) {
+        if (
+          rulesCtx.includes('禁止直接编辑 generated files') ||
+          rulesCtx.includes('do not edit generated files')
+        ) {
           policy.denyGeneratedFiles = true;
         }
-      } catch { /* no rules */ }
+      } catch {
+        /* no rules */
+      }
     }
 
     return policy;
@@ -889,33 +957,48 @@ export class EditOrchestrator {
 
   /** @private 从 Memory rules 中获取特定规则 */
   _getMemoryRule(ruleName) {
-    if (!this.memoryManager) { return null; }
+    if (!this.memoryManager) {
+      return null;
+    }
     try {
       const rulesCtx = this.memoryManager.getRulesContext?.() || '';
       // 简单的规则匹配
       if (ruleName === 'barrel_auto_sync') {
-        if (rulesCtx.includes('更新 barrel') || rulesCtx.includes('update barrel') ||
-            rulesCtx.includes('sync barrel')) {
+        if (
+          rulesCtx.includes('更新 barrel') ||
+          rulesCtx.includes('update barrel') ||
+          rulesCtx.includes('sync barrel')
+        ) {
           return true;
         }
         return true; // 默认启用
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     return null;
   }
 
   _isGeneratedPath(path) {
     const generatedPatterns = [
-      /\.d\.ts$/, /\.generated\./, /-generated\./,
-      /\/generated\//, /\/dist\//, /\/build\//, /\/\.next\//,
-      /\/coverage\//, /\/node_modules\//,
+      /\.d\.ts$/,
+      /\.generated\./,
+      /-generated\./,
+      /\/generated\//,
+      /\/dist\//,
+      /\/build\//,
+      /\/\.next\//,
+      /\/coverage\//,
+      /\/node_modules\//,
     ];
-    return generatedPatterns.some(p => p.test(path));
+    return generatedPatterns.some((p) => p.test(path));
   }
 
   /** @private */
   async _recordEditToMemory(result) {
-    if (!this.memoryManager) { return; }
+    if (!this.memoryManager) {
+      return;
+    }
     try {
       if (result.filesChanged.length > 0) {
         const summary = `Edited ${result.filesChanged.length} file(s): ${result.filesChanged.join(', ')}`;
@@ -927,28 +1010,37 @@ export class EditOrchestrator {
           });
         }
       }
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }
 
   /** @private */
   async _recordRenameToMemory(filePath, newName, result) {
-    if (!this.memoryManager) { return; }
+    if (!this.memoryManager) {
+      return;
+    }
     try {
       const summary = `LSP rename: ${filePath} → ${newName}, ${result.filesChanged.length} files changed`;
       if (typeof this.memoryManager.addEpisodic === 'function') {
         this.memoryManager.addEpisodic(summary, {
           type: 'lsp_rename',
-          filePath, newName,
+          filePath,
+          newName,
           filesChanged: result.filesChanged,
           timestamp: Date.now(),
         });
       }
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }
 
   /** @private */
   _recordConflictToMemory(patch, applyResult) {
-    if (!this.memoryManager) { return; }
+    if (!this.memoryManager) {
+      return;
+    }
     try {
       const conflicts = this.hashlinePatcher?.getLastConflicts?.() || [];
       if (conflicts.length > 0) {
@@ -961,12 +1053,16 @@ export class EditOrchestrator {
           });
         }
       }
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }
 
   /** @private */
   _recordDiagnosticFailureToMemory(newErrors) {
-    if (!this.memoryManager) { return; }
+    if (!this.memoryManager) {
+      return;
+    }
     try {
       const diagPatterns = {};
       for (const e of newErrors) {
@@ -982,7 +1078,9 @@ export class EditOrchestrator {
           timestamp: Date.now(),
         });
       }
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }
 
   // ── 公共 API：获取编辑统计 ──────────────────────────────────────────

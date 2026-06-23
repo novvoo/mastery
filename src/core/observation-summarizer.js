@@ -1,6 +1,6 @@
 /**
  * ObservationSummarizer - 观察结果提炼器
- * 
+ *
  * 核心功能：
  * - 将原始的工具调用结果转化为结构化的事实
  * - 提取关键信息，丢弃冗余内容
@@ -27,7 +27,7 @@ export class ObservationSummarizer {
     if (handler) {
       return handler.call(this, args, result);
     }
-    
+
     // 默认处理
     return {
       summary: this.#defaultSummary(toolName, args, result),
@@ -68,7 +68,9 @@ export class ObservationSummarizer {
     const summary = this.#workspaceState.getSummary();
     const lines = [];
 
-    lines.push(`工作区已探索: ${summary.trackedFiles} 个文件, ${summary.trackedDirectories} 个目录`);
+    lines.push(
+      `工作区已探索: ${summary.trackedFiles} 个文件, ${summary.trackedDirectories} 个目录`,
+    );
 
     if (summary.knownNotFound > 0) {
       lines.push(`已知不存在的路径: ${summary.knownNotFound} 个`);
@@ -91,27 +93,29 @@ export class ObservationSummarizer {
   #handlers = {
     list_dir: (args, result) => {
       const path = args?.path || args?.dir || '.';
-      
+
       if (typeof result === 'string') {
         const entries = result
           .split('\n')
-          .map(line => line.trim())
+          .map((line) => line.trim())
           .filter(Boolean);
-        
+
         // 记录到工作区状态
         this.#workspaceState.recordDirectoryListing(path, entries, 'list_dir');
-        
+
         return {
           summary: `目录 ${path} 包含 ${entries.length} 个条目`,
-          facts: [{
-            type: 'directory_listing',
-            value: { path, count: entries.length, entries: entries.slice(0, 10) },
-            priority: 'medium',
-          }],
+          facts: [
+            {
+              type: 'directory_listing',
+              value: { path, count: entries.length, entries: entries.slice(0, 10) },
+              priority: 'medium',
+            },
+          ],
           shouldCache: true,
         };
       }
-      
+
       return {
         summary: `列出目录 ${path}`,
         facts: [],
@@ -121,33 +125,38 @@ export class ObservationSummarizer {
 
     read_file: (args, result) => {
       const path = args?.path || args?.file_path || args?.file;
-      const success = !result?.toString().startsWith('Error:') && !result?.toString().includes('No such file');
-      
+      const success =
+        !result?.toString().startsWith('Error:') && !result?.toString().includes('No such file');
+
       if (success) {
         this.#workspaceState.recordFileRead(path, true, result);
-        
+
         // 提取关键信息
         const keyInfo = this.#extractKeyInfo(result);
-        
+
         return {
           summary: `已读取文件 ${path} (${keyInfo.lines} 行)`,
-          facts: [{
-            type: 'file_content_summary',
-            value: { path, ...keyInfo },
-            priority: 'high',
-          }],
+          facts: [
+            {
+              type: 'file_content_summary',
+              value: { path, ...keyInfo },
+              priority: 'high',
+            },
+          ],
           shouldCache: true,
         };
       } else {
         this.#workspaceState.recordFileRead(path, false, { error: result });
-        
+
         return {
           summary: `无法读取文件 ${path}: ${result}`,
-          facts: [{
-            type: 'path_not_found',
-            value: { path, error: result },
-            priority: 'high',
-          }],
+          facts: [
+            {
+              type: 'path_not_found',
+              value: { path, error: result },
+              priority: 'high',
+            },
+          ],
           shouldCache: true,
         };
       }
@@ -155,21 +164,23 @@ export class ObservationSummarizer {
 
     write_file: (args, result) => {
       const path = args?.path || args?.file_path || args?.file;
-      
+
       if (result?.toString().includes('success') || result?.toString().includes('written')) {
         this.#workspaceState.recordFileWrite(path);
-        
+
         return {
           summary: `成功写入文件 ${path}`,
-          facts: [{
-            type: 'file_created',
-            value: { path },
-            priority: 'high',
-          }],
+          facts: [
+            {
+              type: 'file_created',
+              value: { path },
+              priority: 'high',
+            },
+          ],
           shouldCache: true,
         };
       }
-      
+
       return {
         summary: `写入文件 ${path} 结果: ${result}`,
         facts: [],
@@ -179,19 +190,21 @@ export class ObservationSummarizer {
 
     edit_file: (args, result) => {
       const path = args?.path || args?.file_path;
-      
+
       if (result?.toString().includes('success') || result?.toString().includes('edited')) {
         return {
           summary: `成功编辑文件 ${path}`,
-          facts: [{
-            type: 'file_modified',
-            value: { path },
-            priority: 'high',
-          }],
+          facts: [
+            {
+              type: 'file_modified',
+              value: { path },
+              priority: 'high',
+            },
+          ],
           shouldCache: true,
         };
       }
-      
+
       return {
         summary: `编辑文件 ${path} 结果: ${result}`,
         facts: [],
@@ -201,21 +214,23 @@ export class ObservationSummarizer {
 
     glob: (args, result) => {
       const pattern = args?.pattern || args?.glob;
-      
+
       if (Array.isArray(result)) {
         this.#workspaceState.recordGlobResults(pattern, result);
-        
+
         return {
           summary: `Glob 模式 ${pattern} 匹配 ${result.length} 个文件`,
-          facts: [{
-            type: 'glob_matches',
-            value: { pattern, count: result.length, examples: result.slice(0, 5) },
-            priority: 'medium',
-          }],
+          facts: [
+            {
+              type: 'glob_matches',
+              value: { pattern, count: result.length, examples: result.slice(0, 5) },
+              priority: 'medium',
+            },
+          ],
           shouldCache: true,
         };
       }
-      
+
       return {
         summary: `Glob 搜索 ${pattern}`,
         facts: [],
@@ -225,21 +240,23 @@ export class ObservationSummarizer {
 
     search: (args, result) => {
       const query = args?.query || args?.text || args?.search;
-      
+
       if (typeof result === 'string') {
         const matches = (result.match(/---\n/g) || []).length;
-        
+
         return {
           summary: `搜索 "${query}" 找到 ${matches} 处匹配`,
-          facts: [{
-            type: 'search_results',
-            value: { query, count: matches },
-            priority: 'medium',
-          }],
+          facts: [
+            {
+              type: 'search_results',
+              value: { query, count: matches },
+              priority: 'medium',
+            },
+          ],
           shouldCache: true,
         };
       }
-      
+
       return {
         summary: `搜索 "${query}"`,
         facts: [],
@@ -249,32 +266,36 @@ export class ObservationSummarizer {
 
     shell: (args, result) => {
       const command = args?.command || args?.input || '';
-      
+
       // 从命令中提取关键信息
       if (command.includes('git status')) {
         return {
           summary: this.#parseGitStatus(result),
-          facts: [{
-            type: 'git_status',
-            value: this.#parseGitStatus(result),
-            priority: 'medium',
-          }],
+          facts: [
+            {
+              type: 'git_status',
+              value: this.#parseGitStatus(result),
+              priority: 'medium',
+            },
+          ],
           shouldCache: true,
         };
       }
-      
+
       if (command.includes('ls') || command.includes('find')) {
         return {
           summary: `Shell 命令执行: ${command.substring(0, 50)}...`,
-          facts: [{
-            type: 'shell_output',
-            value: { command, output: result?.toString().substring(0, 200) },
-            priority: 'low',
-          }],
+          facts: [
+            {
+              type: 'shell_output',
+              value: { command, output: result?.toString().substring(0, 200) },
+              priority: 'low',
+            },
+          ],
           shouldCache: true,
         };
       }
-      
+
       return {
         summary: `执行命令: ${command.substring(0, 50)}...`,
         facts: [],
@@ -284,7 +305,7 @@ export class ObservationSummarizer {
 
     pty_start: (args, result) => {
       const command = args?.command;
-      
+
       return {
         summary: `启动交互式终端: ${command?.substring(0, 50) || 'command'}`,
         facts: [],
@@ -311,7 +332,9 @@ export class ObservationSummarizer {
 
     const lines = content.split('\n').length;
     const chars = content.length;
-    const hasCode = /```|```[\s\S]*?```|\bfunction\b|\bclass\b|\bconst\b|\blet\b|\bimport\b/.test(content);
+    const hasCode = /```|```[\s\S]*?```|\bfunction\b|\bclass\b|\bconst\b|\blet\b|\bimport\b/.test(
+      content,
+    );
     const hasError = /\berror\b|\bfail\b|\bexception\b/i.test(content);
 
     return {
@@ -328,9 +351,9 @@ export class ObservationSummarizer {
     }
 
     const lines = result.split('\n').filter(Boolean);
-    const modified = lines.filter(l => l.startsWith(' M') || l.startsWith('M ')).length;
-    const newFiles = lines.filter(l => l.startsWith('??') || l.startsWith('A ')).length;
-    const deleted = lines.filter(l => l.startsWith(' D') || l.startsWith('D ')).length;
+    const modified = lines.filter((l) => l.startsWith(' M') || l.startsWith('M ')).length;
+    const newFiles = lines.filter((l) => l.startsWith('??') || l.startsWith('A ')).length;
+    const deleted = lines.filter((l) => l.startsWith(' D') || l.startsWith('D ')).length;
 
     return `Git: ${modified} 修改, ${newFiles} 新文件, ${deleted} 删除`;
   }
@@ -338,26 +361,26 @@ export class ObservationSummarizer {
   #summarizeFactType(type, facts) {
     switch (type) {
       case 'path_not_found':
-        return `❌ 不存在的路径: ${facts.map(f => f.value.path).join(', ')}`;
-      
+        return `❌ 不存在的路径: ${facts.map((f) => f.value.path).join(', ')}`;
+
       case 'directory_listing':
         return `📁 目录 ${facts[0]?.value?.path}: ${facts[0]?.value?.count || 0} 个条目`;
-      
+
       case 'file_readable':
-        return `✅ 可读文件: ${facts.map(f => f.value.path).join(', ')}`;
-      
+        return `✅ 可读文件: ${facts.map((f) => f.value.path).join(', ')}`;
+
       case 'file_created':
-        return `✨ 新建文件: ${facts.map(f => f.value.path).join(', ')}`;
-      
+        return `✨ 新建文件: ${facts.map((f) => f.value.path).join(', ')}`;
+
       case 'file_modified':
-        return `📝 已修改: ${facts.map(f => f.value.path).join(', ')}`;
-      
+        return `📝 已修改: ${facts.map((f) => f.value.path).join(', ')}`;
+
       case 'glob_matches':
         return `🔍 Glob ${facts[0]?.value?.pattern}: ${facts[0]?.value?.count || 0} 匹配`;
-      
+
       case 'git_status':
         return facts[0]?.value || 'Git 状态';
-      
+
       default:
         return `${type}: ${facts.length} 条记录`;
     }

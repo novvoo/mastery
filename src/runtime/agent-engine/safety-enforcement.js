@@ -40,29 +40,39 @@ export async function dispose(ctx) {
 
   // 停止调度器
   if (ctx.schedulerEngine) {
-    try { await ctx.schedulerEngine.stop(); } catch (_) {}
+    try {
+      await ctx.schedulerEngine.stop();
+    } catch (_) {}
   }
 
   // 停止 MCP 客户端
   if (ctx.mcpClient && typeof ctx.mcpClient.dispose === 'function') {
-    try { await ctx.mcpClient.dispose(); } catch (_) {}
+    try {
+      await ctx.mcpClient.dispose();
+    } catch (_) {}
   }
 
   // 停止自动化引擎
   if (ctx.automationEngine && typeof ctx.automationEngine.stop === 'function') {
-    try { await ctx.automationEngine.stop(); } catch (_) {}
+    try {
+      await ctx.automationEngine.stop();
+    } catch (_) {}
   }
 
   // 清理 Agent 实例
   if (ctx.agent && typeof ctx.agent.dispose === 'function') {
-    try { ctx.agent.dispose(); } catch (_) {}
+    try {
+      ctx.agent.dispose();
+    } catch (_) {}
   }
 
   // 发射 AGENT_STOP 事件（在 clear 之前）
   ctx.eventBus.emit(RuntimeEvent.AGENT_STOP, {});
 
   // 清理插件管理器
-  try { await ctx.pluginManager.dispose(); } catch (_) {}
+  try {
+    await ctx.pluginManager.dispose();
+  } catch (_) {}
 
   // 清理事件总线
   ctx.eventBus.clear();

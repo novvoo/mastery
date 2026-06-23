@@ -48,7 +48,14 @@ export default function zoom_out() {
 
       const changeOrder = recommendChangeOrder(impact, cascadingEffects);
 
-      return formatSystemContextReport(proposed_change, structure, fileAnalysis, impact, cascadingEffects, changeOrder);
+      return formatSystemContextReport(
+        proposed_change,
+        structure,
+        fileAnalysis,
+        impact,
+        cascadingEffects,
+        changeOrder,
+      );
     },
   };
 }
@@ -76,11 +83,22 @@ async function analyzeProjectStructure(baseDir) {
 }
 
 async function walkDirectory(dir, baseDir, modules, dependencies, maxDepth, currentDepth = 0) {
-  if (currentDepth > maxDepth) {return;}
+  if (currentDepth > maxDepth) {
+    return;
+  }
 
   const skipDirs = new Set([
-    'node_modules', '.git', 'dist', 'build', '.next', '.cache',
-    'coverage', '.nyc_output', '__pycache__', '.venv', 'vendor',
+    'node_modules',
+    '.git',
+    'dist',
+    'build',
+    '.next',
+    '.cache',
+    'coverage',
+    '.nyc_output',
+    '__pycache__',
+    '.venv',
+    'vendor',
   ]);
 
   let entries;
@@ -91,7 +109,9 @@ async function walkDirectory(dir, baseDir, modules, dependencies, maxDepth, curr
   }
 
   for (const entry of entries) {
-    if (skipDirs.has(entry) || entry.startsWith('.')) {continue;}
+    if (skipDirs.has(entry) || entry.startsWith('.')) {
+      continue;
+    }
 
     const fullPath = join(dir, entry);
     let fileStat;
@@ -107,8 +127,21 @@ async function walkDirectory(dir, baseDir, modules, dependencies, maxDepth, curr
     } else {
       const ext = extname(entry).toLowerCase();
       const codeExtensions = new Set([
-        '.js', '.jsx', '.ts', '.tsx', '.py', '.rb', '.go', '.rs',
-        '.java', '.cpp', '.c', '.cs', '.php', '.swift', '.kt',
+        '.js',
+        '.jsx',
+        '.ts',
+        '.tsx',
+        '.py',
+        '.rb',
+        '.go',
+        '.rs',
+        '.java',
+        '.cpp',
+        '.c',
+        '.cs',
+        '.php',
+        '.swift',
+        '.kt',
       ]);
 
       if (codeExtensions.has(ext)) {
@@ -139,13 +172,10 @@ function scanImportsExports(content, filePath, dependencies) {
     const trimmed = line.trim();
 
     // Detect imports
-    const importMatch = trimmed.match(
-      /(?:import\s+.*?from\s+['"])(.*?)(?:['"])/
-    ) || trimmed.match(
-      /(?:require\s*\(\s*['"])(.*?)(?:['"])/
-    ) || trimmed.match(
-      /(?:from\s+['"])(.*?)(?:['"])/
-    );
+    const importMatch =
+      trimmed.match(/(?:import\s+.*?from\s+['"])(.*?)(?:['"])/) ||
+      trimmed.match(/(?:require\s*\(\s*['"])(.*?)(?:['"])/) ||
+      trimmed.match(/(?:from\s+['"])(.*?)(?:['"])/);
 
     if (importMatch) {
       const importPath = importMatch[1];
@@ -159,7 +189,9 @@ function scanImportsExports(content, filePath, dependencies) {
     }
 
     // Detect exports
-    const exportMatch = trimmed.match(/export\s+(?:default\s+)?(?:function|class|const|let|var|async\s+function)\s+(\w+)/);
+    const exportMatch = trimmed.match(
+      /export\s+(?:default\s+)?(?:function|class|const|let|var|async\s+function)\s+(\w+)/,
+    );
     if (exportMatch) {
       dependencies.exports.push({
         file: filePath,
@@ -191,15 +223,17 @@ async function analyzeFocusFile(absolutePath, baseDir) {
   for (const line of lines) {
     const trimmed = line.trim();
 
-    const importMatch = trimmed.match(
-      /(?:import\s+(?:\{[^}]*}\s+)?(?:\w+\s+)?)?from\s+['"]([^'"]+)['"]/
-    ) || trimmed.match(/require\s*\(\s*['"]([^'"]+)['"]\s*\)/);
+    const importMatch =
+      trimmed.match(/(?:import\s+(?:\{[^}]*}\s+)?(?:\w+\s+)?)?from\s+['"]([^'"]+)['"]/) ||
+      trimmed.match(/require\s*\(\s*['"]([^'"]+)['"]\s*\)/);
 
     if (importMatch) {
       imports.push(importMatch[1]);
     }
 
-    const exportMatch = trimmed.match(/export\s+(?:default\s+)?(?:function|class|const|let|var|async\s+function)\s+(\w+)/);
+    const exportMatch = trimmed.match(
+      /export\s+(?:default\s+)?(?:function|class|const|let|var|async\s+function)\s+(\w+)/,
+    );
     if (exportMatch) {
       exportNames.push(exportMatch[1]);
     }
@@ -228,7 +262,11 @@ function analyzeChangeImpact(proposedChange, structure, fileAnalysis) {
   const impactAreas = [];
 
   // Analyze based on change description keywords
-  if (changeLower.includes('api') || changeLower.includes('endpoint') || changeLower.includes('route')) {
+  if (
+    changeLower.includes('api') ||
+    changeLower.includes('endpoint') ||
+    changeLower.includes('route')
+  ) {
     impactAreas.push({
       area: 'API Layer',
       risk: 'High',
@@ -237,7 +275,11 @@ function analyzeChangeImpact(proposedChange, structure, fileAnalysis) {
     });
   }
 
-  if (changeLower.includes('database') || changeLower.includes('schema') || changeLower.includes('migration')) {
+  if (
+    changeLower.includes('database') ||
+    changeLower.includes('schema') ||
+    changeLower.includes('migration')
+  ) {
     impactAreas.push({
       area: 'Data Layer',
       risk: 'High',
@@ -246,25 +288,46 @@ function analyzeChangeImpact(proposedChange, structure, fileAnalysis) {
     });
   }
 
-  if (changeLower.includes('auth') || changeLower.includes('permission') || changeLower.includes('security')) {
+  if (
+    changeLower.includes('auth') ||
+    changeLower.includes('permission') ||
+    changeLower.includes('security')
+  ) {
     impactAreas.push({
       area: 'Security / Auth',
       risk: 'Critical',
       reason: 'Security changes have wide impact and must be thoroughly tested.',
-      affected: ['Authentication flows', 'Authorization checks', 'Session management', 'All protected routes'],
+      affected: [
+        'Authentication flows',
+        'Authorization checks',
+        'Session management',
+        'All protected routes',
+      ],
     });
   }
 
-  if (changeLower.includes('config') || changeLower.includes('environment') || changeLower.includes('setting')) {
+  if (
+    changeLower.includes('config') ||
+    changeLower.includes('environment') ||
+    changeLower.includes('setting')
+  ) {
     impactAreas.push({
       area: 'Configuration',
       risk: 'Medium',
       reason: 'Configuration changes affect all environments and deployments.',
-      affected: ['All services reading this config', 'Deployment scripts', 'Environment documentation'],
+      affected: [
+        'All services reading this config',
+        'Deployment scripts',
+        'Environment documentation',
+      ],
     });
   }
 
-  if (changeLower.includes('refactor') || changeLower.includes('restructure') || changeLower.includes('rename')) {
+  if (
+    changeLower.includes('refactor') ||
+    changeLower.includes('restructure') ||
+    changeLower.includes('rename')
+  ) {
     impactAreas.push({
       area: 'Code Structure',
       risk: 'Medium',
@@ -273,7 +336,11 @@ function analyzeChangeImpact(proposedChange, structure, fileAnalysis) {
     });
   }
 
-  if (changeLower.includes('dependency') || changeLower.includes('upgrade') || changeLower.includes('package')) {
+  if (
+    changeLower.includes('dependency') ||
+    changeLower.includes('upgrade') ||
+    changeLower.includes('package')
+  ) {
     impactAreas.push({
       area: 'Dependencies',
       risk: 'Medium',
@@ -324,7 +391,8 @@ function identifyCascadingEffects(impact, structure) {
       effects.push({
         effect: `Changes to ${area.area} may cascade to: ${area.affected.join(', ')}`,
         severity: area.risk,
-        mitigation: 'Update all consumers before deploying. Run full test suite. Consider a feature flag for gradual rollout.',
+        mitigation:
+          'Update all consumers before deploying. Run full test suite. Consider a feature flag for gradual rollout.',
       });
     }
   });
@@ -348,7 +416,8 @@ function identifyCascadingEffects(impact, structure) {
           effects.push({
             effect: `Potential circular dependency detected between "${file}" and "${resolvedDep}"`,
             severity: 'Warning',
-            mitigation: 'Refactor to remove the circular dependency. Consider introducing an intermediate module or event-based communication.',
+            mitigation:
+              'Refactor to remove the circular dependency. Consider introducing an intermediate module or event-based communication.',
           });
         }
       }
@@ -373,7 +442,8 @@ function recommendChangeOrder(impact, cascadingEffects) {
   steps.push({
     order: 1,
     action: 'Review current state',
-    detail: 'Use the review tool on all files that will be modified. Understand the existing behavior before changing anything.',
+    detail:
+      'Use the review tool on all files that will be modified. Understand the existing behavior before changing anything.',
     tool: 'review',
   });
 
@@ -381,7 +451,8 @@ function recommendChangeOrder(impact, cascadingEffects) {
   steps.push({
     order: 2,
     action: 'Characterize existing behavior with tests',
-    detail: 'Write tests that capture the current behavior of the code you plan to change. These tests ensure you don\'t break existing functionality.',
+    detail:
+      "Write tests that capture the current behavior of the code you plan to change. These tests ensure you don't break existing functionality.",
     tool: 'tdd (red phase)',
   });
 
@@ -398,7 +469,8 @@ function recommendChangeOrder(impact, cascadingEffects) {
     steps.push({
       order: 3,
       action: 'Implement changes incrementally',
-      detail: 'Make changes in small, testable increments. Each increment should leave the system in a working state.',
+      detail:
+        'Make changes in small, testable increments. Each increment should leave the system in a working state.',
       tool: 'tdd (green phase)',
     });
   }
@@ -407,7 +479,8 @@ function recommendChangeOrder(impact, cascadingEffects) {
   steps.push({
     order: 4,
     action: 'Update all consumers and dependencies',
-    detail: 'After core changes are made, update all files that depend on the changed modules. Ensure imports and API calls are updated.',
+    detail:
+      'After core changes are made, update all files that depend on the changed modules. Ensure imports and API calls are updated.',
     tool: 'review',
   });
 
@@ -415,7 +488,8 @@ function recommendChangeOrder(impact, cascadingEffects) {
   steps.push({
     order: 5,
     action: 'Refactor for quality',
-    detail: 'With all tests passing, refactor the code for readability, performance, and maintainability.',
+    detail:
+      'With all tests passing, refactor the code for readability, performance, and maintainability.',
     tool: 'tdd (refactor phase)',
   });
 
@@ -430,7 +504,14 @@ function recommendChangeOrder(impact, cascadingEffects) {
   return steps;
 }
 
-function formatSystemContextReport(proposedChange, structure, fileAnalysis, impact, cascadingEffects, changeOrder) {
+function formatSystemContextReport(
+  proposedChange,
+  structure,
+  fileAnalysis,
+  impact,
+  cascadingEffects,
+  changeOrder,
+) {
   const lines = [
     '# System Context Report',
     '',
@@ -487,7 +568,9 @@ function formatSystemContextReport(proposedChange, structure, fileAnalysis, impa
     lines.push('');
     lines.push(`**Total source files scanned**: ${structure.modules.length}`);
   } else {
-    lines.push('> No source files found in the project directory. The directory may be empty or use an unrecognized structure.');
+    lines.push(
+      '> No source files found in the project directory. The directory may be empty or use an unrecognized structure.',
+    );
   }
 
   // File-specific analysis
@@ -543,34 +626,24 @@ function formatSystemContextReport(proposedChange, structure, fileAnalysis, impa
     lines.push(`| ${area.area} | **${area.risk}** | ${area.reason} | ${affectedStr} |`);
   });
 
-  lines.push(
-    '',
-    '---',
-    '',
-    '## 4. Potential Cascading Effects',
-    ''
-  );
+  lines.push('', '---', '', '## 4. Potential Cascading Effects', '');
 
   cascadingEffects.forEach((effect) => {
-    const severityBadge = effect.severity === 'Critical'
-      ? ':red_circle:'
-      : effect.severity === 'High'
-        ? ':orange_circle:'
-        : effect.severity === 'Warning'
-          ? ':yellow_circle:'
-          : ':green_circle:';
+    const severityBadge =
+      effect.severity === 'Critical'
+        ? ':red_circle:'
+        : effect.severity === 'High'
+          ? ':orange_circle:'
+          : effect.severity === 'Warning'
+            ? ':yellow_circle:'
+            : ':green_circle:';
 
     lines.push(`- ${severityBadge} **${effect.severity}**: ${effect.effect}`);
     lines.push(`  - *Mitigation*: ${effect.mitigation}`);
     lines.push('');
   });
 
-  lines.push(
-    '---',
-    '',
-    '## 5. Recommended Change Order',
-    ''
-  );
+  lines.push('---', '', '## 5. Recommended Change Order', '');
 
   changeOrder.forEach((step) => {
     lines.push(`### Step ${step.order}: ${step.action}`);
@@ -585,7 +658,7 @@ function formatSystemContextReport(proposedChange, structure, fileAnalysis, impa
     '---',
     '',
     '> **Next Steps**: Follow the recommended change order above. Start with Step 1 (review current state) before making any modifications.',
-    ''
+    '',
   );
 
   return lines.join('\n');

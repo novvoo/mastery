@@ -18,11 +18,13 @@ export default function brainstorm() {
       },
       constraints: {
         type: 'string',
-        description: 'Known constraints such as performance targets, tech stack limits, timeline, or compatibility requirements',
+        description:
+          'Known constraints such as performance targets, tech stack limits, timeline, or compatibility requirements',
       },
       approach: {
         type: 'string',
-        description: 'Preferred or initial approach direction, if any (leave empty for open exploration)',
+        description:
+          'Preferred or initial approach direction, if any (leave empty for open exploration)',
       },
     },
     required: ['problem'],
@@ -31,7 +33,10 @@ export default function brainstorm() {
       const { memoryManager } = ctx;
 
       const constraintsList = constraints
-        ? constraints.split(',').map((c) => c.trim()).filter(Boolean)
+        ? constraints
+            .split(',')
+            .map((c) => c.trim())
+            .filter(Boolean)
         : [];
 
       const approaches = generateApproaches(problem, constraintsList, approach);
@@ -46,11 +51,18 @@ export default function brainstorm() {
       if (memoryManager) {
         await memoryManager.addDecision(
           `Design: ${problem}`,
-          `Recommended: ${recommendation.name}. Approaches considered: ${approaches.map((a) => a.name).join(', ')}`
+          `Recommended: ${recommendation.name}. Approaches considered: ${approaches.map((a) => a.name).join(', ')}`,
         );
       }
 
-      return formatDesignDocument(problem, constraintsList, approaches, recommendation, risks, decisionPoints);
+      return formatDesignDocument(
+        problem,
+        constraintsList,
+        approaches,
+        recommendation,
+        risks,
+        decisionPoints,
+      );
     },
   };
 }
@@ -74,7 +86,11 @@ function generateApproaches(problem, constraints, preferred) {
         'Limited flexibility for future extensions',
         'Potential for duplicated logic if requirements expand',
       ],
-      fit: preferred ? (preferred.toLowerCase().includes('simple') || preferred.toLowerCase().includes('direct') ? 'HIGH' : 'MEDIUM') : 'MEDIUM',
+      fit: preferred
+        ? preferred.toLowerCase().includes('simple') || preferred.toLowerCase().includes('direct')
+          ? 'HIGH'
+          : 'MEDIUM'
+        : 'MEDIUM',
     },
     {
       name: 'Approach B: Modular / Plugin Architecture',
@@ -89,7 +105,11 @@ function generateApproaches(problem, constraints, preferred) {
         'More indirection to navigate during debugging',
         'Risk of over-engineering if requirements stay simple',
       ],
-      fit: preferred ? (preferred.toLowerCase().includes('modular') || preferred.toLowerCase().includes('plugin') ? 'HIGH' : 'MEDIUM') : 'MEDIUM',
+      fit: preferred
+        ? preferred.toLowerCase().includes('modular') || preferred.toLowerCase().includes('plugin')
+          ? 'HIGH'
+          : 'MEDIUM'
+        : 'MEDIUM',
     },
     {
       name: 'Approach C: Convention-Based / Config-Driven',
@@ -104,7 +124,12 @@ function generateApproaches(problem, constraints, preferred) {
         'Learning curve for understanding conventions',
         'May require a migration path if conventions change',
       ],
-      fit: preferred ? (preferred.toLowerCase().includes('config') || preferred.toLowerCase().includes('convention') ? 'HIGH' : 'LOW') : 'LOW',
+      fit: preferred
+        ? preferred.toLowerCase().includes('config') ||
+          preferred.toLowerCase().includes('convention')
+          ? 'HIGH'
+          : 'LOW'
+        : 'LOW',
     },
   ];
 
@@ -113,10 +138,18 @@ function generateApproaches(problem, constraints, preferred) {
     candidates[0].fit = 'HIGH';
     candidates[1].cons.push('Additional abstraction layers may impact performance');
   }
-  if (constraints.some((c) => c.toLowerCase().includes('extensib') || c.toLowerCase().includes('scalab'))) {
+  if (
+    constraints.some(
+      (c) => c.toLowerCase().includes('extensib') || c.toLowerCase().includes('scalab'),
+    )
+  ) {
     candidates[1].fit = 'HIGH';
   }
-  if (constraints.some((c) => c.toLowerCase().includes('timeline') || c.toLowerCase().includes('fast'))) {
+  if (
+    constraints.some(
+      (c) => c.toLowerCase().includes('timeline') || c.toLowerCase().includes('fast'),
+    )
+  ) {
     candidates[0].fit = 'HIGH';
   }
 
@@ -147,7 +180,8 @@ function generateRisks(approaches, constraints) {
       description: 'Scope creep expanding beyond initial design',
       probability: 'Medium',
       impact: 'Medium',
-      mitigation: 'Define clear acceptance criteria using the verify tool. Re-run brainstorm if scope changes significantly.',
+      mitigation:
+        'Define clear acceptance criteria using the verify tool. Re-run brainstorm if scope changes significantly.',
     },
     {
       description: 'Integration issues with existing codebase',
@@ -162,7 +196,8 @@ function generateRisks(approaches, constraints) {
       description: 'Performance regression under load',
       probability: 'Medium',
       impact: 'High',
-      mitigation: 'Establish performance benchmarks before and after implementation. Use the verify tool with measurable criteria.',
+      mitigation:
+        'Establish performance benchmarks before and after implementation. Use the verify tool with measurable criteria.',
     });
   }
 
@@ -178,18 +213,27 @@ function generateDecisionPoints(approaches, recommendation) {
     },
     {
       id: 'DP-2',
-      question: 'Are the identified risks acceptable, or do additional mitigations need to be put in place?',
+      question:
+        'Are the identified risks acceptable, or do additional mitigations need to be put in place?',
       options: ['Risks are acceptable', 'Add more mitigations', 'Re-evaluate approach'],
     },
     {
       id: 'DP-3',
-      question: 'Should any additional constraints or requirements be considered before implementation begins?',
+      question:
+        'Should any additional constraints or requirements be considered before implementation begins?',
       options: ['No, proceed as designed', 'Yes, add constraints (specify in follow-up)'],
     },
   ];
 }
 
-function formatDesignDocument(problem, constraints, approaches, recommendation, risks, decisionPoints) {
+function formatDesignDocument(
+  problem,
+  constraints,
+  approaches,
+  recommendation,
+  risks,
+  decisionPoints,
+) {
   const lines = [
     '# Design Exploration Document',
     '',
@@ -211,12 +255,7 @@ function formatDesignDocument(problem, constraints, approaches, recommendation, 
     lines.push('');
   }
 
-  lines.push(
-    '---',
-    '',
-    '## 2. Candidate Approaches',
-    ''
-  );
+  lines.push('---', '', '## 2. Candidate Approaches', '');
 
   approaches.forEach((a, i) => {
     lines.push(`### ${a.name}`);
@@ -250,20 +289,14 @@ function formatDesignDocument(problem, constraints, approaches, recommendation, 
     '## 4. Risks and Mitigations',
     '',
     '| Risk | Probability | Impact | Mitigation |',
-    '|------|-------------|--------|------------|'
+    '|------|-------------|--------|------------|',
   );
 
   risks.forEach((r) => {
     lines.push(`| ${r.description} | ${r.probability} | ${r.impact} | ${r.mitigation} |`);
   });
 
-  lines.push(
-    '',
-    '---',
-    '',
-    '## 5. Decision Points (Require User Confirmation)',
-    ''
-  );
+  lines.push('', '---', '', '## 5. Decision Points (Require User Confirmation)', '');
 
   decisionPoints.forEach((dp) => {
     lines.push(`### ${dp.id}: ${dp.question}`);
@@ -279,7 +312,7 @@ function formatDesignDocument(problem, constraints, approaches, recommendation, 
     '---',
     '',
     '> **Next Steps**: Confirm decision points above, then proceed with the grill tool for deep alignment before coding.',
-    ''
+    '',
   );
 
   return lines.join('\n');

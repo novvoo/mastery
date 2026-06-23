@@ -1,7 +1,7 @@
 /**
  * Enhanced CLI UI utilities
  * 增强版 CLI 界面工具
- * 
+ *
  * Inspired by OpenAI Codex 2026 design:
  * - Summary Panel: Track agent plan, sources, and outputs
  * - Multi-Task: Parallel task execution display
@@ -125,9 +125,13 @@ export function formatPriority(priority) {
  * @returns {string}
  */
 export function truncate(text, maxLength) {
-  if (!text) {return '';}
+  if (!text) {
+    return '';
+  }
   const str = String(text);
-  if (str.length <= maxLength) {return str;}
+  if (str.length <= maxLength) {
+    return str;
+  }
   return str.substring(0, maxLength - 3) + '...';
 }
 
@@ -137,17 +141,25 @@ export function truncate(text, maxLength) {
  * @returns {string}
  */
 export function formatTime(timestamp) {
-  if (!timestamp) {return theme.muted('N/A');}
+  if (!timestamp) {
+    return theme.muted('N/A');
+  }
   const date = new Date(timestamp);
   const now = new Date();
   const diff = now - date;
-  
+
   // 小于1分钟
-  if (diff < 60000) {return theme.success('just now');}
+  if (diff < 60000) {
+    return theme.success('just now');
+  }
   // 小于1小时
-  if (diff < 3600000) {return theme.info(`${Math.floor(diff / 60000)}m ago`);}
+  if (diff < 3600000) {
+    return theme.info(`${Math.floor(diff / 60000)}m ago`);
+  }
   // 小于24小时
-  if (diff < 86400000) {return theme.warning(`${Math.floor(diff / 3600000)}h ago`);}
+  if (diff < 86400000) {
+    return theme.warning(`${Math.floor(diff / 3600000)}h ago`);
+  }
   // 默认显示日期
   return theme.muted(date.toLocaleString());
 }
@@ -158,10 +170,18 @@ export function formatTime(timestamp) {
  * @returns {string}
  */
 export function formatDuration(ms) {
-  if (!ms || ms < 0) {return theme.muted('N/A');}
-  if (ms < 1000) {return `${ms}ms`;}
-  if (ms < 60000) {return `${(ms / 1000).toFixed(1)}s`;}
-  if (ms < 3600000) {return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;}
+  if (!ms || ms < 0) {
+    return theme.muted('N/A');
+  }
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
+  if (ms < 60000) {
+    return `${(ms / 1000).toFixed(1)}s`;
+  }
+  if (ms < 3600000) {
+    return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
+  }
   return `${Math.floor(ms / 3600000)}h ${Math.floor((ms % 3600000) / 60000)}m`;
 }
 
@@ -187,9 +207,14 @@ export function createBox(content, options = {}) {
  * @returns {string}
  */
 export function createHeader(text) {
-  return '\n' + theme.dim('━'.repeat(60)) + '\n' + 
-         theme.primaryBold(`  ${text}`) + '\n' + 
-         theme.dim('━'.repeat(60));
+  return (
+    '\n' +
+    theme.dim('━'.repeat(60)) +
+    '\n' +
+    theme.primaryBold(`  ${text}`) +
+    '\n' +
+    theme.dim('━'.repeat(60))
+  );
 }
 
 /**
@@ -227,7 +252,7 @@ export function createProgressBar(current, total, width = 30) {
   const percentage = Math.min(100, Math.max(0, (current / total) * 100));
   const filled = Math.floor((percentage / 100) * width);
   const empty = width - filled;
-  
+
   const bar = theme.success('█'.repeat(filled)) + theme.dim('░'.repeat(empty));
   return `[${bar}] ${percentage.toFixed(1)}%`;
 }
@@ -243,7 +268,9 @@ function formatDebugValue(value, maxLength = 800) {
       text = String(value);
     }
   }
-  if (!text) {return '';}
+  if (!text) {
+    return '';
+  }
   return text.length > maxLength ? text.substring(0, maxLength) + '... (truncated)' : text;
 }
 
@@ -284,9 +311,7 @@ function formatToolResultPreview(name, result) {
     }
   }
 
-  const text = typeof result === 'string'
-    ? result
-    : JSON.stringify(result);
+  const text = typeof result === 'string' ? result : JSON.stringify(result);
   return truncate(String(text || '').replace(/\n/g, ' '), 180);
 }
 
@@ -310,14 +335,14 @@ export const enhancedUI = {
   // ============================================================
   // CODEX 2026 STYLE: Summary Panel - Track agent plan & outputs
   // ============================================================
-  
+
   /**
    * Display a summary panel showing current plan, sources, and outputs
    * @param {Object} options - { plan, sources, outputs, compact }
    */
   summaryPanel(options = {}) {
     const { plan = [], sources = [], outputs = [], compact = false } = options;
-    
+
     if (compact) {
       // Compact single-line summary
       if (plan.length > 0) {
@@ -325,93 +350,137 @@ export const enhancedUI = {
       }
       return;
     }
-    
+
     console.log('\n' + theme.dim('┌' + '─'.repeat(58) + '┐'));
-    
+
     // Plan section
-    console.log(theme.dim('│') + theme.primaryBold('  📋 CURRENT PLAN') + theme.dim(' '.repeat(37) + '│'));
+    console.log(
+      theme.dim('│') + theme.primaryBold('  📋 CURRENT PLAN') + theme.dim(' '.repeat(37) + '│'),
+    );
     if (plan.length === 0) {
-      console.log(theme.dim('│') + theme.muted('    No active plan') + theme.dim(' '.repeat(40) + '│'));
+      console.log(
+        theme.dim('│') + theme.muted('    No active plan') + theme.dim(' '.repeat(40) + '│'),
+      );
     } else {
       plan.slice(-3).forEach((item, i) => {
         const prefix = i === Math.min(2, plan.length - 1) ? '└─' : '├─';
         const text = truncate(String(item), 48);
-        console.log(theme.dim(`│     ${prefix} ${text}`) + theme.dim(' '.repeat(Math.max(0, 52 - text.length)) + '│'));
+        console.log(
+          theme.dim(`│     ${prefix} ${text}`) +
+            theme.dim(' '.repeat(Math.max(0, 52 - text.length)) + '│'),
+        );
       });
     }
-    
+
     // Sources section
-    console.log(theme.dim('│') + theme.secondaryBold('  📚 SOURCES') + theme.dim(' '.repeat(42) + '│'));
+    console.log(
+      theme.dim('│') + theme.secondaryBold('  📚 SOURCES') + theme.dim(' '.repeat(42) + '│'),
+    );
     if (sources.length === 0) {
-      console.log(theme.dim('│') + theme.muted('    No sources consulted') + theme.dim(' '.repeat(39) + '│'));
+      console.log(
+        theme.dim('│') + theme.muted('    No sources consulted') + theme.dim(' '.repeat(39) + '│'),
+      );
     } else {
       sources.slice(-2).forEach((source, i) => {
-        const icon = source.type === 'file' ? '📄' : source.type === 'web' ? '🌐' : source.type === 'memory' ? '🧠' : '📌';
+        const icon =
+          source.type === 'file'
+            ? '📄'
+            : source.type === 'web'
+              ? '🌐'
+              : source.type === 'memory'
+                ? '🧠'
+                : '📌';
         const text = truncate(String(source.name || source.url || source), 44);
-        console.log(theme.dim(`│     ${icon} ${text}`) + theme.dim(' '.repeat(Math.max(0, 50 - text.length)) + '│'));
+        console.log(
+          theme.dim(`│     ${icon} ${text}`) +
+            theme.dim(' '.repeat(Math.max(0, 50 - text.length)) + '│'),
+        );
       });
     }
-    
+
     // Outputs section
-    console.log(theme.dim('│') + theme.successBold('  📤 OUTPUTS') + theme.dim(' '.repeat(43) + '│'));
+    console.log(
+      theme.dim('│') + theme.successBold('  📤 OUTPUTS') + theme.dim(' '.repeat(43) + '│'),
+    );
     if (outputs.length === 0) {
-      console.log(theme.dim('│') + theme.muted('    No outputs yet') + theme.dim(' '.repeat(41) + '│'));
+      console.log(
+        theme.dim('│') + theme.muted('    No outputs yet') + theme.dim(' '.repeat(41) + '│'),
+      );
     } else {
       outputs.slice(-2).forEach((output, i) => {
         const text = truncate(String(output), 46);
-        console.log(theme.dim(`│     ✅ ${text}`) + theme.dim(' '.repeat(Math.max(0, 49 - text.length)) + '│'));
+        console.log(
+          theme.dim(`│     ✅ ${text}`) +
+            theme.dim(' '.repeat(Math.max(0, 49 - text.length)) + '│'),
+        );
       });
     }
-    
+
     console.log(theme.dim('└' + '─'.repeat(58) + '┘'));
   },
 
   // ============================================================
   // CODEX 2026 STYLE: Multi-Task Display - Parallel execution
   // ============================================================
-  
+
   /**
    * Display parallel task status
    * @param {Array} tasks - Array of { id, name, status, progress }
    */
   multiTaskPanel(tasks = []) {
-    if (tasks.length === 0) {return;}
-    
+    if (tasks.length === 0) {
+      return;
+    }
+
     console.log('\n' + theme.dim('┌' + '─'.repeat(58) + '┐'));
-    console.log(theme.dim('│') + theme.primaryBold('  ⚡ PARALLEL TASKS') + theme.dim(' '.repeat(40) + `(${tasks.length} active)│`));
-    
+    console.log(
+      theme.dim('│') +
+        theme.primaryBold('  ⚡ PARALLEL TASKS') +
+        theme.dim(' '.repeat(40) + `(${tasks.length} active)│`),
+    );
+
     tasks.forEach((task, i) => {
-      const statusIcon = task.status === 'running' ? '▶️' : 
-                         task.status === 'completed' ? '✅' : 
-                         task.status === 'failed' ? '❌' : '⏳';
-      const statusColor = task.status === 'running' ? theme.primary :
-                          task.status === 'completed' ? theme.success :
-                          task.status === 'failed' ? theme.error : theme.muted;
-      
+      const statusIcon =
+        task.status === 'running'
+          ? '▶️'
+          : task.status === 'completed'
+            ? '✅'
+            : task.status === 'failed'
+              ? '❌'
+              : '⏳';
+      const statusColor =
+        task.status === 'running'
+          ? theme.primary
+          : task.status === 'completed'
+            ? theme.success
+            : task.status === 'failed'
+              ? theme.error
+              : theme.muted;
+
       let progressStr = '';
       if (typeof task.progress === 'number') {
         progressStr = ` ${theme.dim('[')}${theme.success('█'.repeat(Math.floor(task.progress * 20)))}${theme.dim('░'.repeat(20 - Math.floor(task.progress * 20)))}${theme.dim(`] ${(task.progress * 100).toFixed(0)}%`)}`;
       }
-      
+
       const text = `${statusIcon} ${statusColor(truncate(task.name || task.id, 35))}${progressStr}`;
       const padding = Math.max(0, 54 - (task.name || task.id).length);
       console.log(theme.dim(`│  ${text}`) + theme.dim(' '.repeat(padding) + '│'));
     });
-    
+
     console.log(theme.dim('└' + '─'.repeat(58) + '┘'));
   },
 
   // ============================================================
   // CODEX 2026 STYLE: Context Annotations - Source tracking
   // ============================================================
-  
+
   /**
    * Display annotated context with source attribution
    * @param {Object} annotation - { text, source, type }
    */
   annotation(annotation = {}) {
     const { text, source, type = 'info' } = annotation;
-    
+
     const typeConfig = {
       info: { icon: '📌', color: theme.info },
       file: { icon: '📄', color: theme.primary },
@@ -419,9 +488,11 @@ export const enhancedUI = {
       memory: { icon: '🧠', color: theme.warning },
       skill: { icon: '🎯', color: theme.success },
     };
-    
+
     const config = typeConfig[type] || typeConfig.info;
-    console.log(`\n  ${config.icon} ${config.color.bold('[' + (source || type.toUpperCase()) + ']')} ${theme.white(text)}`);
+    console.log(
+      `\n  ${config.icon} ${config.color.bold('[' + (source || type.toUpperCase()) + ']')} ${theme.white(text)}`,
+    );
   },
 
   /**
@@ -430,55 +501,64 @@ export const enhancedUI = {
    */
   annotationMode(active = false) {
     if (active) {
-      console.log(theme.success.bold('\n  ✏️  ANNOTATION MODE - Select elements to request changes\n'));
+      console.log(
+        theme.success.bold('\n  ✏️  ANNOTATION MODE - Select elements to request changes\n'),
+      );
     }
   },
 
   // ============================================================
   // CODEX 2026 STYLE: Proactive Suggestions
   // ============================================================
-  
+
   /**
    * Display proactive suggestions based on context
    * @param {Array} suggestions - Array of { text, action, icon }
    */
   suggestions(suggestions = []) {
-    if (suggestions.length === 0) {return;}
-    
+    if (suggestions.length === 0) {
+      return;
+    }
+
     console.log('\n' + theme.dim('┌' + '─'.repeat(58) + '┐'));
-    console.log(theme.dim('│') + theme.warningBold('  💡 SUGGESTIONS') + theme.dim(' '.repeat(42) + '│'));
-    
+    console.log(
+      theme.dim('│') + theme.warningBold('  💡 SUGGESTIONS') + theme.dim(' '.repeat(42) + '│'),
+    );
+
     suggestions.slice(0, 4).forEach((sug, i) => {
       const icon = sug.icon || '👉';
       const text = truncate(String(sug.text || sug), 44);
       const action = sug.action ? ` (${sug.action})` : '';
-      console.log(theme.dim(`│  ${icon} ${text}${theme.secondary(action)}`) + theme.dim(' '.repeat(Math.max(0, 50 - text.length - action.length)) + '│'));
+      console.log(
+        theme.dim(`│  ${icon} ${text}${theme.secondary(action)}`) +
+          theme.dim(' '.repeat(Math.max(0, 50 - text.length - action.length)) + '│'),
+      );
     });
-    
+
     console.log(theme.dim('└' + '─'.repeat(58) + '┘'));
   },
 
   // ============================================================
   // CODEX 2026 STYLE: Role-based Skill Cards
   // ============================================================
-  
+
   /**
    * Display skill cards in a role-based layout
    * @param {Object} roleData - { role, skills: [{ name, description, icon }] }
    */
   skillCards(roleData = {}) {
     const { role = 'General', skills = [] } = roleData;
-    
+
     console.log('\n' + theme.primaryBold(`  🎯 ${role.toUpperCase()} SKILLS`));
     console.log(theme.dim('─'.repeat(60)));
-    
+
     skills.forEach((skill, i) => {
       const icon = skill.icon || '⚡';
       const name = skill.name || skill;
       const desc = skill.description ? theme.dim(` - ${truncate(skill.description, 40)}`) : '';
       console.log(`  ${icon} ${theme.white.bold(name)}${desc}`);
     });
-    
+
     console.log(theme.dim('─'.repeat(60)));
   },
 
@@ -489,10 +569,10 @@ export const enhancedUI = {
   skillBundles(bundles = {}) {
     console.log('\n' + theme.primaryBold('  📦 AVAILABLE SKILL BUNDLES'));
     console.log(theme.dim('─'.repeat(60)));
-    
+
     Object.entries(bundles).forEach(([category, categorySkills]) => {
       console.log(`\n  ${theme.secondary.bold(category)}:`);
-      categorySkills.slice(0, 5).forEach(skill => {
+      categorySkills.slice(0, 5).forEach((skill) => {
         const icon = skill.icon || '⚡';
         const name = skill.name || skill;
         const desc = skill.description ? theme.dim(` - ${truncate(skill.description, 35)}`) : '';
@@ -502,7 +582,7 @@ export const enhancedUI = {
         console.log(`    ${theme.muted(`+${categorySkills.length - 5} more...`)}`);
       }
     });
-    
+
     console.log(theme.dim('─'.repeat(60)));
   },
 
@@ -531,22 +611,38 @@ export const enhancedUI = {
       // 单行摘要
       const tone = getActivityTone(summary);
       const mark = tone === 'positive' ? '✅' : tone === 'negative' ? '❌' : '⏳';
-      console.log(theme.dim(`  ${mark} ${summary.progress}% | ${summary.completed}/${summary.total} done | ${summary.files.length} files`));
+      console.log(
+        theme.dim(
+          `  ${mark} ${summary.progress}% | ${summary.completed}/${summary.total} done | ${summary.files.length} files`,
+        ),
+      );
       return summary;
     }
 
     console.log('\n' + theme.dim('┌' + '─'.repeat(58) + '┐'));
 
     // 状态行
-    const statusText = lastStatusText || (summary.failed > 0 ? '部分失败' : summary.running > 0 ? '运行中' : '已完成');
-    console.log(theme.dim('│') + theme.primaryBold('  📊 ACTIVITY SUMMARY') + theme.dim(' '.repeat(37) + '│'));
-    console.log(theme.dim('│') + `  Status: ${theme.white(statusText)}` + theme.dim(' '.repeat(Math.max(0, 48 - statusText.length - 10)) + '│'));
+    const statusText =
+      lastStatusText ||
+      (summary.failed > 0 ? '部分失败' : summary.running > 0 ? '运行中' : '已完成');
+    console.log(
+      theme.dim('│') + theme.primaryBold('  📊 ACTIVITY SUMMARY') + theme.dim(' '.repeat(37) + '│'),
+    );
+    console.log(
+      theme.dim('│') +
+        `  Status: ${theme.white(statusText)}` +
+        theme.dim(' '.repeat(Math.max(0, 48 - statusText.length - 10)) + '│'),
+    );
 
     // 进度条
     const barWidth = 30;
     const filled = Math.floor((summary.progress / 100) * barWidth);
     const bar = theme.success('█'.repeat(filled)) + theme.dim('░'.repeat(barWidth - filled));
-    console.log(theme.dim('│') + `  ${bar} ${summary.progress}%` + theme.dim(' '.repeat(Math.max(0, 24)) + '│'));
+    console.log(
+      theme.dim('│') +
+        `  ${bar} ${summary.progress}%` +
+        theme.dim(' '.repeat(Math.max(0, 24)) + '│'),
+    );
 
     // 计数
     const counts = `${theme.success('✓' + summary.completed)} ${theme.primary('▶' + summary.running)} ${theme.error('✗' + summary.failed)} ${theme.muted('·' + summary.pending)}`;
@@ -554,32 +650,58 @@ export const enhancedUI = {
 
     // 任务阶段
     if (summary.taskStages.length > 0) {
-      console.log(theme.dim('│') + theme.secondaryBold('  Stages:') + theme.dim(' '.repeat(47) + '│'));
-      summary.taskStages.slice(0, 5).forEach(stage => {
-        const mark = stage.status === 'completed' ? theme.success('✓') : stage.status === 'failed' ? theme.error('✗') : stage.status === 'running' ? theme.primary('…') : theme.muted('·');
+      console.log(
+        theme.dim('│') + theme.secondaryBold('  Stages:') + theme.dim(' '.repeat(47) + '│'),
+      );
+      summary.taskStages.slice(0, 5).forEach((stage) => {
+        const mark =
+          stage.status === 'completed'
+            ? theme.success('✓')
+            : stage.status === 'failed'
+              ? theme.error('✗')
+              : stage.status === 'running'
+                ? theme.primary('…')
+                : theme.muted('·');
         const text = truncate(stage.label, 45);
-        console.log(theme.dim(`│     ${mark} ${text}`) + theme.dim(' '.repeat(Math.max(0, 49 - text.length)) + '│'));
+        console.log(
+          theme.dim(`│     ${mark} ${text}`) +
+            theme.dim(' '.repeat(Math.max(0, 49 - text.length)) + '│'),
+        );
       });
     }
 
     // 文件列表
     if (summary.files.length > 0) {
-      console.log(theme.dim('│') + theme.secondaryBold(`  Files (${summary.fileCount}):`) + theme.dim(' '.repeat(Math.max(0, 44 - String(summary.fileCount).length)) + '│'));
-      summary.files.slice(0, maxFiles).forEach(file => {
+      console.log(
+        theme.dim('│') +
+          theme.secondaryBold(`  Files (${summary.fileCount}):`) +
+          theme.dim(' '.repeat(Math.max(0, 44 - String(summary.fileCount).length)) + '│'),
+      );
+      summary.files.slice(0, maxFiles).forEach((file) => {
         const icon = getFileTypeIcon(file.path);
         const status = getFileStatusLabel(file.status);
         const text = truncate(`${icon} ${file.path}`, 42);
-        console.log(theme.dim(`│     ${text} ${theme.dim(status)}`) + theme.dim(' '.repeat(Math.max(0, 46 - text.length - status.length)) + '│'));
+        console.log(
+          theme.dim(`│     ${text} ${theme.dim(status)}`) +
+            theme.dim(' '.repeat(Math.max(0, 46 - text.length - status.length)) + '│'),
+        );
       });
       if (summary.files.length > maxFiles) {
-        console.log(theme.dim(`│     ${theme.muted(`... +${summary.files.length - maxFiles} more`)}`) + theme.dim(' '.repeat(40) + '│'));
+        console.log(
+          theme.dim(`│     ${theme.muted(`... +${summary.files.length - maxFiles} more`)}`) +
+            theme.dim(' '.repeat(40) + '│'),
+        );
       }
     }
 
     // 耗时
     if (summary.elapsedMs > 0) {
       const elapsed = formatDurationCore(summary.elapsedMs);
-      console.log(theme.dim('│') + `  ⏱  Elapsed: ${theme.white(elapsed)}` + theme.dim(' '.repeat(Math.max(0, 42 - elapsed.length)) + '│'));
+      console.log(
+        theme.dim('│') +
+          `  ⏱  Elapsed: ${theme.white(elapsed)}` +
+          theme.dim(' '.repeat(Math.max(0, 42 - elapsed.length)) + '│'),
+      );
     }
 
     console.log(theme.dim('└' + '─'.repeat(58) + '┘'));
@@ -594,7 +716,9 @@ export const enhancedUI = {
    */
   runtimeDetailMessage(message, options = {}) {
     const { verbose = false, showThinking = false } = options;
-    if (!message) {return;}
+    if (!message) {
+      return;
+    }
 
     // 分类
     if (isThinkingMessage(message)) {
@@ -653,16 +777,30 @@ export const enhancedUI = {
     console.log('');
 
     for (const group of groups) {
-      if (group.type === 'thinking' && !showThinking) {continue;}
-      if (group.type === 'status' && !showStatus) {continue;}
+      if (group.type === 'thinking' && !showThinking) {
+        continue;
+      }
+      if (group.type === 'status' && !showStatus) {
+        continue;
+      }
 
       // 组标题
-      const typeIcon = group.type === 'thinking' ? '💭' :
-                       group.type === 'status' ? 'ℹ️' :
-                       group.type === 'tool' ? '🔧' : '💬';
-      const typeLabel = group.type === 'thinking' ? 'Thinking' :
-                        group.type === 'status' ? 'Status' :
-                        group.type === 'tool' ? 'Tool Call' : 'Message';
+      const typeIcon =
+        group.type === 'thinking'
+          ? '💭'
+          : group.type === 'status'
+            ? 'ℹ️'
+            : group.type === 'tool'
+              ? '🔧'
+              : '💬';
+      const typeLabel =
+        group.type === 'thinking'
+          ? 'Thinking'
+          : group.type === 'status'
+            ? 'Status'
+            : group.type === 'tool'
+              ? 'Tool Call'
+              : 'Message';
       const msgCount = group.messages.length;
 
       if (!compact) {
@@ -683,7 +821,7 @@ export const enhancedUI = {
   // ============================================================
   // IMPROVED VISUAL HIERARCHY - Better spacing and typography
   // ============================================================
-  
+
   /**
    * Create improved header with better visual hierarchy
    * @param {string} text - Header text
@@ -706,7 +844,7 @@ export const enhancedUI = {
    */
   contextCard(card = {}) {
     const { title, items = [], color = theme.primary } = card;
-    
+
     console.log('');
     console.log(color.bold(`  ┌─ ${title}`));
     items.forEach((item, i) => {
@@ -781,7 +919,7 @@ export const enhancedUI = {
       console.log(theme.muted(`     ${key}: ${rendered}`));
     }
   },
-  
+
   // 工具调用显示
   toolCall(name, args) {
     console.log('');
@@ -791,9 +929,10 @@ export const enhancedUI = {
       entries.forEach(([key, value], index) => {
         const isLast = index === entries.length - 1;
         const prefix = isLast ? '└─' : '├─';
-        const display = typeof value === 'string' && value.length > 80
-          ? value.substring(0, 80) + '...'
-          : String(value);
+        const display =
+          typeof value === 'string' && value.length > 80
+            ? value.substring(0, 80) + '...'
+            : String(value);
         console.log(theme.dim(`     ${prefix} ${key}: ${display}`));
       });
     }
@@ -827,7 +966,9 @@ export const enhancedUI = {
   // ============================================================
 
   startStreaming(mode = 'text') {
-    if (streamingState.active) {return;}
+    if (streamingState.active) {
+      return;
+    }
     streamingState.active = true;
     streamingState.text = '';
     streamingState.reasoning = '';
@@ -849,8 +990,12 @@ export const enhancedUI = {
   },
 
   onTextDelta(text) {
-    if (!text) {return;}
-    if (!streamingState.active) {this.startStreaming('text');}
+    if (!text) {
+      return;
+    }
+    if (!streamingState.active) {
+      this.startStreaming('text');
+    }
 
     streamingState.text += text;
     streamingState.tokenCount += text.length;
@@ -866,8 +1011,12 @@ export const enhancedUI = {
   },
 
   onReasoningDelta(text) {
-    if (!text) {return;}
-    if (!streamingState.active) {this.startStreaming('reasoning');}
+    if (!text) {
+      return;
+    }
+    if (!streamingState.active) {
+      this.startStreaming('reasoning');
+    }
 
     streamingState.reasoning += text;
     process.stdout.write(theme.dim(text));
@@ -875,7 +1024,9 @@ export const enhancedUI = {
   },
 
   onToolCallDelta(delta) {
-    if (!delta || (!delta.name && !delta.arguments)) {return;}
+    if (!delta || (!delta.name && !delta.arguments)) {
+      return;
+    }
 
     if (streamingState.firstDelta || !streamingState.active) {
       this.startStreaming('tool_call');
@@ -892,14 +1043,18 @@ export const enhancedUI = {
     }
     if (delta.arguments) {
       const last = streamingState.toolCalls?.[streamingState.toolCalls.length - 1];
-      if (last) {last.arguments += delta.arguments;}
+      if (last) {
+        last.arguments += delta.arguments;
+      }
       process.stdout.write(theme.dim(delta.arguments));
     }
     streamingState.firstDelta = false;
   },
 
   stopStreaming(reason = 'done') {
-    if (!streamingState.active) {return;}
+    if (!streamingState.active) {
+      return;
+    }
     streamingState.active = false;
     if (this.isDebugEnabled()) {
       console.log('');
@@ -921,13 +1076,17 @@ export const enhancedUI = {
 
   // 最终答案显示
   finalAnswer(text) {
-    if (streamingState.active) {this.stopStreaming('final');}
+    if (streamingState.active) {
+      this.stopStreaming('final');
+    }
     console.log('');
-    console.log(createBox(text, { 
-      title: 'Final Answer',
-      titleAlignment: 'center',
-      borderColor: 'green'
-    }));
+    console.log(
+      createBox(text, {
+        title: 'Final Answer',
+        titleAlignment: 'center',
+        borderColor: 'green',
+      }),
+    );
     console.log('');
   },
 
@@ -945,10 +1104,12 @@ export const enhancedUI = {
       theme.dim('Use /help for available commands'),
     ].join('\n');
 
-    console.log(createBox(content, { 
-      borderColor: 'cyan',
-      padding: 1,
-    }));
+    console.log(
+      createBox(content, {
+        borderColor: 'cyan',
+        padding: 1,
+      }),
+    );
     console.log('');
   },
 

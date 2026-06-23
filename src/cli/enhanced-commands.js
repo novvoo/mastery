@@ -7,14 +7,25 @@
  */
 
 import { select } from '@inquirer/prompts';
-import { enhancedUI, createTable, formatStatus, formatTime, formatDuration, truncate } from './enhanced-ui.js';
+import {
+  enhancedUI,
+  createTable,
+  formatStatus,
+  formatTime,
+  formatDuration,
+  truncate,
+} from './enhanced-ui.js';
 import { MAIN_MENU_CHOICES } from './enhanced-command-utils.js';
 
 import { createTaskCommands } from './commands/task-commands.js';
 import { createScheduleCommands } from './commands/schedule-commands.js';
 import { createMcpCommands } from './commands/mcp-commands.js';
 import { createGitCommands } from './commands/git-commands.js';
-import { createExperienceCommands, createReasoningCommands, createSecurityCommands } from './commands/experience-commands.js';
+import {
+  createExperienceCommands,
+  createReasoningCommands,
+  createSecurityCommands,
+} from './commands/experience-commands.js';
 import { createAutomationCommands } from './commands/automation-commands.js';
 
 /**
@@ -86,7 +97,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
         ['Completed', stats.taskQueue.completed],
         ['Failed', stats.taskQueue.failed],
         ['Cancelled', stats.taskQueue.cancelled],
-        ['Total', stats.taskQueue.total]
+        ['Total', stats.taskQueue.total],
       );
       console.log(taskTable.toString());
 
@@ -98,7 +109,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
       scheduleTable.push(
         ['Enabled', stats.cronScheduler.enabledSchedules],
         ['Disabled', stats.cronScheduler.disabledSchedules],
-        ['Total', stats.cronScheduler.totalSchedules]
+        ['Total', stats.cronScheduler.totalSchedules],
       );
       console.log(scheduleTable.toString());
 
@@ -112,7 +123,7 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
         ['Running', stats.subAgentPool.running],
         ['Completed', stats.subAgentPool.completed],
         ['Failed', stats.subAgentPool.failed],
-        ['Total', stats.subAgentPool.total]
+        ['Total', stats.subAgentPool.total],
       );
       console.log(agentTable.toString());
 
@@ -120,7 +131,9 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
       const cleanupStatus = subAgentPool.getAutoCleanupStatus?.();
       if (cleanupStatus) {
         console.log(enhancedUI.theme.primaryBold('\n🧹 Auto Cleanup:'));
-        console.log(`  Status: ${cleanupStatus.enabled ? formatStatus('enabled') : formatStatus('disabled')}`);
+        console.log(
+          `  Status: ${cleanupStatus.enabled ? formatStatus('enabled') : formatStatus('disabled')}`,
+        );
         console.log(`  Running: ${cleanupStatus.running ? 'Yes' : 'No'}`);
         console.log(`  Interval: ${formatDuration(cleanupStatus.intervalMs)}`);
       }
@@ -194,9 +207,9 @@ export function createEnhancedCommands(schedulerEngine, options = {}) {
       const stats = subAgentPool.getStats();
       console.log(
         `  ${formatStatus('running')}: ${stats.running}  ` +
-        `${formatStatus('idle')}: ${stats.idle}  ` +
-        `${formatStatus('completed')}: ${stats.completed}  ` +
-        `${formatStatus('failed')}: ${stats.failed}`
+          `${formatStatus('idle')}: ${stats.idle}  ` +
+          `${formatStatus('completed')}: ${stats.completed}  ` +
+          `${formatStatus('failed')}: ${stats.failed}`,
       );
       console.log('');
     },

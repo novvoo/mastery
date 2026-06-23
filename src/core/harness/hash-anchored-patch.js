@@ -35,7 +35,7 @@ export class HashAnchoredPatcher {
         newContent: originalContent,
         newAnchors: [],
         changes: 0,
-        error: `Anchor not found: ${intent.anchorHash}`
+        error: `Anchor not found: ${intent.anchorHash}`,
       };
     }
 
@@ -48,7 +48,7 @@ export class HashAnchoredPatcher {
         newContent: originalContent,
         newAnchors: [],
         changes: 0,
-        error: `Cannot locate anchor content in current file`
+        error: `Cannot locate anchor content in current file`,
       };
     }
 
@@ -70,7 +70,7 @@ export class HashAnchoredPatcher {
             newContent: originalContent,
             newAnchors: [],
             changes: 0,
-            error: 'REPLACE requires content'
+            error: 'REPLACE requires content',
           };
         }
         newContent = originalContent.slice(0, start) + intent.content + originalContent.slice(end);
@@ -84,7 +84,7 @@ export class HashAnchoredPatcher {
             newContent: originalContent,
             newAnchors: [],
             changes: 0,
-            error: 'INSERT requires content'
+            error: 'INSERT requires content',
           };
         }
         newContent = originalContent.slice(0, end) + intent.content + originalContent.slice(end);
@@ -99,7 +99,7 @@ export class HashAnchoredPatcher {
             newContent: originalContent,
             newAnchors: [],
             changes: 0,
-            error: 'MODIFY requires content'
+            error: 'MODIFY requires content',
           };
         }
         // MODIFY 的 content 应该是完整的新内容
@@ -114,8 +114,8 @@ export class HashAnchoredPatcher {
     return {
       success: true,
       newContent,
-      newAnchors: analysis.anchors.map(a => ({ hash: a.hash, text: a.text })),
-      changes
+      newAnchors: analysis.anchors.map((a) => ({ hash: a.hash, text: a.text })),
+      changes,
     };
   }
 
@@ -136,7 +136,7 @@ export class HashAnchoredPatcher {
           newContent: originalContent,
           newAnchors: [],
           changes: 0,
-          error: result.error
+          error: result.error,
         };
       }
 
@@ -149,7 +149,7 @@ export class HashAnchoredPatcher {
       success: true,
       newContent: content,
       newAnchors: allNewAnchors,
-      changes: totalChanges
+      changes: totalChanges,
     };
   }
 
@@ -187,10 +187,7 @@ export class HashAnchoredPatcher {
    * 标准化空白字符用于模糊匹配
    */
   _normalizeWhitespace(text) {
-    return text
-      .replace(/\r\n/g, '\n')
-      .replace(/\s+/g, ' ')
-      .trim();
+    return text.replace(/\r\n/g, '\n').replace(/\s+/g, ' ').trim();
   }
 
   /**
@@ -217,7 +214,7 @@ export class PatchIntentBuilder {
       type: 'REPLACE',
       anchorHash,
       content: newContent,
-      description
+      description,
     };
   }
 
@@ -229,7 +226,7 @@ export class PatchIntentBuilder {
       type: 'INSERT',
       anchorHash,
       content: newContent,
-      description
+      description,
     };
   }
 
@@ -240,7 +237,7 @@ export class PatchIntentBuilder {
     return {
       type: 'DELETE',
       anchorHash,
-      description
+      description,
     };
   }
 
@@ -252,7 +249,7 @@ export class PatchIntentBuilder {
       type: 'MODIFY',
       anchorHash,
       content: newContent,
-      description
+      description,
     };
   }
 }
@@ -278,7 +275,7 @@ export class StateGraph {
       content,
       parentHashes: [],
       patch: null,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     this._nodes.set(fileHash, node);
@@ -298,7 +295,7 @@ export class StateGraph {
       content: newContent,
       parentHashes: [parentHash],
       patch,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     this._nodes.set(newHash, node);
@@ -343,12 +340,14 @@ export class StateGraph {
 
     while (current && count < limit) {
       const node = this._nodes.get(current);
-      if (!node) {break;}
+      if (!node) {
+        break;
+      }
 
       history.push({
         hash: node.hash,
         timestamp: node.timestamp,
-        patch: node.patch
+        patch: node.patch,
       });
 
       current = node.parentHashes[0] || null;
@@ -362,5 +361,5 @@ export class StateGraph {
 export default {
   HashAnchoredPatcher,
   PatchIntentBuilder,
-  StateGraph
+  StateGraph,
 };

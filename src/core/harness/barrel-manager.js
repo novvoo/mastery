@@ -28,8 +28,10 @@ export class BarrelManager {
    */
   constructor(opts = {}) {
     this.workingDirectory = opts.workingDirectory || process.cwd();
-    this.importGraph = opts.importGraph || new ImportGraph({ workingDirectory: this.workingDirectory });
-    this.moduleResolver = opts.moduleResolver || new ModuleResolver({ workingDirectory: this.workingDirectory });
+    this.importGraph =
+      opts.importGraph || new ImportGraph({ workingDirectory: this.workingDirectory });
+    this.moduleResolver =
+      opts.moduleResolver || new ModuleResolver({ workingDirectory: this.workingDirectory });
     this.barrelPatterns = opts.barrelPatterns || ['index.ts', 'index.tsx', 'index.js', 'index.jsx'];
 
     /** @type {Map<string, BarrelInfo>} barrel 文件信息 */
@@ -53,8 +55,12 @@ export class BarrelManager {
       try {
         const entries = await readdir(dir, { withFileTypes: true });
         for (const entry of entries) {
-          if (entry.name.startsWith('.')) { continue; }
-          if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === 'build') { continue; }
+          if (entry.name.startsWith('.')) {
+            continue;
+          }
+          if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === 'build') {
+            continue;
+          }
           const fullPath = join(dir, entry.name);
           if (entry.isDirectory()) {
             await scan(fullPath);
@@ -62,7 +68,9 @@ export class BarrelManager {
             barrels.push(fullPath);
           }
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     };
 
     await scan(root);
@@ -89,7 +97,9 @@ export class BarrelManager {
           }
           this.sourceToBarrels.get(sf).push(barrelPath);
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
 
     return barrels;
@@ -117,7 +127,9 @@ export class BarrelManager {
     for (const barrelPath of barrels) {
       try {
         const barrelInfo = this.barrels.get(barrelPath);
-        if (!barrelInfo) { continue; }
+        if (!barrelInfo) {
+          continue;
+        }
 
         const barrelDir = barrelInfo.directory;
         const relativePath = relative(barrelDir, sourceFilePath);
@@ -129,9 +141,13 @@ export class BarrelManager {
           if (change.action === 'added') {
             // 检查是否已有这个 re-export
             const escapedName = change.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            if (!content.includes(`export { ${change.name} }`) &&
-                !content.includes(`export * from`) &&
-                !new RegExp(`export\\s*{[^}]*\\b${escapedName}\\b[^}]*}\\s*from\\s*['"]`).test(content)) {
+            if (
+              !content.includes(`export { ${change.name} }`) &&
+              !content.includes(`export * from`) &&
+              !new RegExp(`export\\s*{[^}]*\\b${escapedName}\\b[^}]*}\\s*from\\s*['"]`).test(
+                content,
+              )
+            ) {
               // 在最后一个 export 语句后添加
               const lastExportIdx = content.lastIndexOf('export');
               if (lastExportIdx >= 0) {
@@ -146,7 +162,7 @@ export class BarrelManager {
             // 移除特定的 re-export
             const regex = new RegExp(
               `export\\s*{[^}]*\\b${change.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b[^}]*}\\s*from\\s*['"]\\.?\\/?${relativePath.replace(/^\.\//, '').replace(ext(relativePath), '')}['"];?\\s*\\n?`,
-              'g'
+              'g',
             );
             if (regex.test(content)) {
               content = content.replace(regex, '');
@@ -158,12 +174,12 @@ export class BarrelManager {
             const newName = change.newName;
             const regex = new RegExp(
               `export\\s*{([^}]*)}\\s*from\\s*['"]\\.?\\/?${relativePath.replace(/^\.\//, '').replace(ext(relativePath), '')}['"]`,
-              'g'
+              'g',
             );
             content = content.replace(regex, (_match, names) => {
               const updatedNames = names.replace(
                 new RegExp(`\\b${oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`),
-                newName
+                newName,
               );
               return _match.replace(names, updatedNames);
             });
@@ -206,18 +222,25 @@ export class BarrelManager {
     while (true) {
       // 找到导入了当前文件的 barrel
       const importers = await this.importGraph.getImporters(currentPath);
-      const barrelImporters = importers.filter(imp => this.barrels.has(imp));
+      const barrelImporters = importers.filter((imp) => this.barrels.has(imp));
 
-      if (barrelImporters.length === 0) { break; }
-      if (visited.has(currentPath)) { chain.circular = true; break; }
+      if (barrelImporters.length === 0) {
+        break;
+      }
+      if (visited.has(currentPath)) {
+        chain.circular = true;
+        break;
+      }
       visited.add(currentPath);
 
       for (const barr of barrelImporters) {
         const barrelInfo = this.barrels.get(barr);
-        if (!barrelInfo) { continue; }
+        if (!barrelInfo) {
+          continue;
+        }
 
         const reExport = barrelInfo.reExports.find(
-          re => re.name === exportName || re.name === '*' || re.localName === exportName
+          (re) => re.name === exportName || re.name === '*' || re.localName === exportName,
         );
         if (reExport) {
           chain.steps.push({
@@ -246,13 +269,18 @@ export class BarrelManager {
   async addReExport(barrelPath, sourcePath, exportName) {
     const barrelDir = dirname(barrelPath);
     const relativePath = relative(barrelDir, sourcePath);
-    const importPath = (relativePath.startsWith('.') ? '' : './') + relativePath.replace(ext(relativePath), '');
+    const importPath =
+      (relativePath.startsWith('.') ? '' : './') + relativePath.replace(ext(relativePath), '');
 
     let content = await readFile(barrelPath, 'utf-8');
 
     // 检查是否已有
-    if (content.includes(`export { ${exportName} }`) ||
-        new RegExp(`export\\s*{[^}]*\\b${exportName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b[^}]*}`).test(content)) {
+    if (
+      content.includes(`export { ${exportName} }`) ||
+      new RegExp(
+        `export\\s*{[^}]*\\b${exportName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b[^}]*}`,
+      ).test(content)
+    ) {
       return false;
     }
 
@@ -281,7 +309,7 @@ export class BarrelManager {
     let content = await readFile(barrelPath, 'utf-8');
     const regex = new RegExp(
       `export\\s*{[^}]*\\b${exportName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b[^}]*}\\s*from\\s*['"][^'"]+['"];?\\s*\\n?`,
-      'g'
+      'g',
     );
     if (regex.test(content)) {
       content = content.replace(regex, '');
@@ -311,13 +339,17 @@ export class BarrelManager {
     const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts'];
     for (const ext of extensions) {
       const candidate = basePath + ext;
-      if (existsSync(candidate)) { return candidate; }
+      if (existsSync(candidate)) {
+        return candidate;
+      }
     }
 
     // 尝试 index 文件
     for (const ext of extensions) {
       const candidate = join(basePath, 'index' + ext);
-      if (existsSync(candidate)) { return candidate; }
+      if (existsSync(candidate)) {
+        return candidate;
+      }
     }
 
     return null;
@@ -330,8 +362,12 @@ export class BarrelManager {
     const re = /export\s*{([^}]*)}\s*from\s+['"]([^'"]+)['"]/g;
     let m;
     while ((m = re.exec(content)) !== null) {
-      const items = m[1].split(',').map(s => s.trim()).filter(Boolean);
-      const sourcePath = this._resolveReExportSource(barrelDir, m[2]) || join(barrelDir, m[2] + '.ts');
+      const items = m[1]
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const sourcePath =
+        this._resolveReExportSource(barrelDir, m[2]) || join(barrelDir, m[2] + '.ts');
       for (const item of items) {
         const parts = item.split(/\s+as\s+/);
         reExports.push({
@@ -345,7 +381,8 @@ export class BarrelManager {
     // export * from './foo'
     const starRe = /export\s+\*\s+from\s+['"]([^'"]+)['"]/g;
     while ((m = starRe.exec(content)) !== null) {
-      const sourcePath = this._resolveReExportSource(barrelDir, m[1]) || join(barrelDir, m[1] + '.ts');
+      const sourcePath =
+        this._resolveReExportSource(barrelDir, m[1]) || join(barrelDir, m[1] + '.ts');
       reExports.push({
         name: '*',
         from: m[1],
@@ -374,12 +411,16 @@ export class BarrelManager {
       visited.add(current);
 
       const barrelInfo = this.barrels.get(current);
-      if (!barrelInfo) { break; }
+      if (!barrelInfo) {
+        break;
+      }
 
       const re = barrelInfo.reExports.find(
-        r => r.name === exportName || r.name === '*' || r.localName === exportName
+        (r) => r.name === exportName || r.name === '*' || r.localName === exportName,
       );
-      if (!re) { break; }
+      if (!re) {
+        break;
+      }
 
       // 如果源文件不是 barrel（没有 re-export），则找到终点
       const sourceInfo = this.barrels.get(re.sourcePath);
@@ -405,13 +446,17 @@ export class BarrelManager {
     try {
       const entries = readdirSync(barrelDir, { withFileTypes: true });
       for (const entry of entries) {
-        if (entry.isFile() &&
-            !this.barrelPatterns.includes(entry.name) &&
-            /\.(ts|tsx|js|jsx|mjs|cjs|mts|cts)$/.test(entry.name)) {
+        if (
+          entry.isFile() &&
+          !this.barrelPatterns.includes(entry.name) &&
+          /\.(ts|tsx|js|jsx|mjs|cjs|mts|cts)$/.test(entry.name)
+        ) {
           sourceFiles.push(join(barrelDir, entry.name));
         }
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
     return sourceFiles;
   }
 }

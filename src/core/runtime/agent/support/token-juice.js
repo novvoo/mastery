@@ -100,7 +100,9 @@ export class TokenJuice {
    * 默认 token 计数器
    */
   #defaultTokenCounter(text) {
-    if (!text) {return 0;}
+    if (!text) {
+      return 0;
+    }
     let tokens = 0;
     let lastIndex = 0;
     const cjkMatches = text.matchAll(CJK_CHAR_REGEX);
@@ -371,7 +373,7 @@ export class TokenJuice {
     if (match.argvIncludes?.length) {
       const argvStr = argv?.join(' ') || '';
       const allMatch = match.argvIncludes.every((patterns) =>
-        patterns.every((p) => argvStr.includes(p))
+        patterns.every((p) => argvStr.includes(p)),
       );
       if (allMatch) {
         confidence = Math.max(confidence, 0.8);
@@ -384,7 +386,7 @@ export class TokenJuice {
     if (match.argvIncludesAny?.length) {
       const argvStr = argv?.join(' ') || '';
       const anyMatch = match.argvIncludesAny.some((patterns) =>
-        patterns.some((p) => argvStr.includes(p))
+        patterns.some((p) => argvStr.includes(p)),
       );
       if (anyMatch) {
         confidence = Math.max(confidence, 0.7);
@@ -421,7 +423,9 @@ export class TokenJuice {
    * @returns {string} 压缩后的文本
    */
   compress(text, options = {}) {
-    if (!text || typeof text !== 'string') {return '';}
+    if (!text || typeof text !== 'string') {
+      return '';
+    }
 
     let result = text;
     const maxChars = options.maxChars || this.#maxChars;
@@ -481,12 +485,7 @@ export class TokenJuice {
       const cmdStr = input.command || input.argv?.join(' ') || input.toolName || '';
 
       // 检查是否匹配
-      const match = this.#matchRule(
-        rule.match,
-        input.toolName,
-        input.argv,
-        cmdStr
-      );
+      const match = this.#matchRule(rule.match, input.toolName, input.argv, cmdStr);
 
       if (match.matched) {
         // 应用过滤器
@@ -537,7 +536,9 @@ export class TokenJuice {
    * 应用转换操作
    */
   #applyTransforms(text, transforms) {
-    if (!text || !transforms) {return text;}
+    if (!text || !transforms) {
+      return text;
+    }
 
     let result = text;
 
@@ -566,7 +567,9 @@ export class TokenJuice {
    * 应用摘要规则
    */
   #applySummarize(text, summarize) {
-    if (!text || !summarize) {return text;}
+    if (!text || !summarize) {
+      return text;
+    }
 
     const lines = text.split('\n');
     const result = [];
@@ -595,20 +598,13 @@ export class TokenJuice {
 
     // 查找匹配的规则计数器
     for (const { rule, compiled } of this.#compiledRules) {
-      const match = this.#matchRule(
-        rule.match,
-        input.toolName,
-        input.argv,
-        cmdStr
-      );
+      const match = this.#matchRule(rule.match, input.toolName, input.argv, cmdStr);
 
       if (match.matched && rule.counters?.length) {
         for (const counter of compiled.counters) {
           const matches = text.match(counter.pattern);
           if (matches) {
-            facts[counter.name] = Array.isArray(matches)
-              ? matches.length
-              : 1;
+            facts[counter.name] = Array.isArray(matches) ? matches.length : 1;
           }
         }
       }
@@ -640,7 +636,9 @@ export class TokenJuice {
    * 智能截断 - 在句子/段落边界截断
    */
   #smartTruncate(text, maxChars) {
-    if (text.length <= maxChars) {return text;}
+    if (text.length <= maxChars) {
+      return text;
+    }
 
     // 在最后一个完整段落处截断
     const truncated = text.substring(0, maxChars);
@@ -656,7 +654,7 @@ export class TokenJuice {
       truncated.lastIndexOf('? '),
       truncated.lastIndexOf('。'),
       truncated.lastIndexOf('！'),
-      truncated.lastIndexOf('？')
+      truncated.lastIndexOf('？'),
     );
     if (lastSentence > maxChars * 0.5) {
       return truncated.substring(0, lastSentence + 1) + '... [truncated]';
@@ -675,7 +673,9 @@ export class TokenJuice {
    * 估算 token 数量
    */
   estimateTokens(text) {
-    if (!text) {return 0;}
+    if (!text) {
+      return 0;
+    }
     return this.#tokenCounter(text);
   }
 
@@ -686,7 +686,7 @@ export class TokenJuice {
     const origTokens = this.estimateTokens(original);
     const compTokens = this.estimateTokens(compressed);
     const savings =
-      origTokens > 0 ? ((origTokens - compTokens) / origTokens * 100).toFixed(1) : 0;
+      origTokens > 0 ? (((origTokens - compTokens) / origTokens) * 100).toFixed(1) : 0;
 
     return {
       originalChars: original.length,

@@ -29,11 +29,11 @@ export class SubAgentPool {
   #config;
   #messageBus;
   #maxAgents;
-  #autoCleanupInterval;    // 自动清理定时器
-  #autoCleanupEnabled;     // 是否启用自动清理
-  #autoCleanupIntervalMs;  // 自动清理间隔
-  #enableMemoryShare;      // 是否启用记忆共享
-  #tempDirs;               // 跟踪创建的临时目录
+  #autoCleanupInterval; // 自动清理定时器
+  #autoCleanupEnabled; // 是否启用自动清理
+  #autoCleanupIntervalMs; // 自动清理间隔
+  #enableMemoryShare; // 是否启用记忆共享
+  #tempDirs; // 跟踪创建的临时目录
 
   /**
    * 创建子代理池实例
@@ -78,13 +78,15 @@ export class SubAgentPool {
     }
 
     this.#autoCleanupInterval = setInterval(() => {
-      this.cleanup().then(count => {
-        if (count > 0) {
-          console.log(`Auto-cleanup: removed ${count} completed/failed/stopped agents`);
-        }
-      }).catch(error => {
-        console.error('Auto-cleanup error:', error);
-      });
+      this.cleanup()
+        .then((count) => {
+          if (count > 0) {
+            console.log(`Auto-cleanup: removed ${count} completed/failed/stopped agents`);
+          }
+        })
+        .catch((error) => {
+          console.error('Auto-cleanup error:', error);
+        });
     }, this.#autoCleanupIntervalMs);
 
     console.log(`Auto-cleanup enabled (interval: ${this.#autoCleanupIntervalMs}ms)`);
@@ -118,7 +120,7 @@ export class SubAgentPool {
     if (this.#agents.size >= this.#maxAgents) {
       throw new Error(
         `Maximum number of agents (${this.#maxAgents}) reached. ` +
-        `Please remove some agents before creating new ones.`
+          `Please remove some agents before creating new ones.`,
       );
     }
 
@@ -148,7 +150,7 @@ export class SubAgentPool {
             keyDecisions: ctx?.keyDecisions || [],
             constraints: ctx?.constraints || [],
             fileMap: ctx?.fileMap || {},
-            currentTask: ctx?.currentTask
+            currentTask: ctx?.currentTask,
           };
         }
       }
@@ -157,7 +159,7 @@ export class SubAgentPool {
     // 创建子代理配置
     const subConfig = {
       ...this.#config,
-      workingDirectory: options.workingDir || this.#config.workingDirectory
+      workingDirectory: options.workingDir || this.#config.workingDirectory,
     };
 
     // 创建子代理（传递SubAgentPool引用以支持嵌套创建）
@@ -170,10 +172,10 @@ export class SubAgentPool {
       {
         parentId: options.parentId || null,
         messageBus: this.#messageBus,
-        subAgentPool: this,  // 传递pool以支持嵌套创建
+        subAgentPool: this, // 传递pool以支持嵌套创建
         parentMemory: parentMemory,
-        sharedContext: options.sharedContext || {}
-      }
+        sharedContext: options.sharedContext || {},
+      },
     );
 
     // 存储到池中
@@ -203,7 +205,7 @@ export class SubAgentPool {
    * @returns {Array<Object>} 代理统计信息数组
    */
   list() {
-    return Array.from(this.#agents.values()).map(agent => agent.getStats());
+    return Array.from(this.#agents.values()).map((agent) => agent.getStats());
   }
 
   /**
@@ -287,7 +289,7 @@ export class SubAgentPool {
       running: 0,
       completed: 0,
       failed: 0,
-      stopped: 0
+      stopped: 0,
     };
 
     for (const agent of this.#agents.values()) {
@@ -308,7 +310,7 @@ export class SubAgentPool {
     return {
       enabled: this.#autoCleanupEnabled,
       running: this.#autoCleanupInterval !== null,
-      intervalMs: this.#autoCleanupIntervalMs
+      intervalMs: this.#autoCleanupIntervalMs,
     };
   }
 
@@ -339,13 +341,13 @@ export class SubAgentPool {
    */
   #createSubMemoryManager(workingDir) {
     const dir = workingDir || this.#config.workingDirectory;
-    
+
     // 创建子目录用于隔离
     const subDir = `${dir}/.subagents/${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     // 跟踪临时目录
     this.#tempDirs.set(subDir, Date.now());
-    
+
     return new MemoryManager(subDir);
   }
 
@@ -356,13 +358,13 @@ export class SubAgentPool {
   async #cleanupExpiredTempDirs() {
     const now = Date.now();
     const toRemove = [];
-    
+
     for (const [dirPath, createdAt] of this.#tempDirs) {
       if (now - createdAt > TEMP_DIR_CLEANUP_THRESHOLD_MS) {
         toRemove.push(dirPath);
       }
     }
-    
+
     for (const dirPath of toRemove) {
       try {
         if (existsSync(dirPath)) {

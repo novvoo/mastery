@@ -65,7 +65,9 @@ export function createGitCommands(deps) {
             await this.gitStatus([]);
           } else {
             enhancedUI.error(`Unknown git subcommand: ${subcommand}`);
-            enhancedUI.info('Available: status, diff, add, commit, branch, log, push, pull, stash, reset, menu');
+            enhancedUI.info(
+              'Available: status, diff, add, commit, branch, log, push, pull, stash, reset, menu',
+            );
           }
       }
     },
@@ -79,7 +81,9 @@ export function createGitCommands(deps) {
         choices: GIT_MENU_CHOICES,
       });
 
-      if (action === 'back') {return;}
+      if (action === 'back') {
+        return;
+      }
       await this.handleGitCommand([action]);
     },
 
@@ -111,7 +115,9 @@ export function createGitCommands(deps) {
         const untracked = [];
 
         for (const line of lines.slice(1)) {
-          if (!line.trim()) {continue;}
+          if (!line.trim()) {
+            continue;
+          }
           const status = line.substring(0, 2).trim();
           const file = line.substring(3);
           if (status.startsWith('?')) {
@@ -156,7 +162,7 @@ export function createGitCommands(deps) {
       try {
         const isStaged = args.includes('--staged') || args.includes('--cached');
         const isStat = args.includes('--stat');
-        const files = args.filter(a => !a.startsWith('--'));
+        const files = args.filter((a) => !a.startsWith('--'));
         const gitArgs = ['diff'];
         if (isStaged) {
           gitArgs.push('--cached');
@@ -200,8 +206,9 @@ export function createGitCommands(deps) {
             { name: 'Specify files...', value: 'files' },
           ],
         });
-        if (mode === 'all') {args = ['-A'];}
-        else {
+        if (mode === 'all') {
+          args = ['-A'];
+        } else {
           const filesStr = await input({
             message: 'File paths (space-separated):',
           });
@@ -215,7 +222,9 @@ export function createGitCommands(deps) {
         const isAll = args.includes('-A') || args.includes('--all');
         await runGit(isAll ? ['add', '-A'] : ['add', ...args]);
         spinner.stop();
-        enhancedUI.success(isAll ? 'All changes added to staging area' : `${args.length} file(s) added`);
+        enhancedUI.success(
+          isAll ? 'All changes added to staging area' : `${args.length} file(s) added`,
+        );
       } catch (error) {
         spinner.stop();
         enhancedUI.error(error.message.replace(/\n/g, ' '));
@@ -272,9 +281,7 @@ export function createGitCommands(deps) {
             });
             args[1] = name;
           }
-          const gitArgs = action === 'create'
-            ? ['checkout', '-b', args[1]]
-            : ['checkout', args[1]];
+          const gitArgs = action === 'create' ? ['checkout', '-b', args[1]] : ['checkout', args[1]];
           await runGit(gitArgs);
           enhancedUI.success(`Switched to branch: ${args[1]}`);
         } else if (action === 'delete') {
@@ -295,8 +302,8 @@ export function createGitCommands(deps) {
       const spinner = enhancedUI.spinner('Getting log...');
       spinner.start();
       try {
-        const limit = (args.find(a => a.startsWith('-n')) || '-n 15').replace('-n', '').trim();
-        const files = args.filter(a => !a.startsWith('-'));
+        const limit = (args.find((a) => a.startsWith('-n')) || '-n 15').replace('-n', '').trim();
+        const files = args.filter((a) => !a.startsWith('-'));
         const gitArgs = ['log', '--oneline', '--decorate', '--graph', '-n', limit];
         if (files.length > 0) {
           gitArgs.push('--', ...files);
@@ -354,8 +361,8 @@ export function createGitCommands(deps) {
       spinner.start();
       try {
         const rebase = args.includes('--rebase');
-        const remote = args.find(a => !a.startsWith('-')) || 'origin';
-        const branch = args.filter(a => !a.startsWith('-') && a !== remote)[0] || '';
+        const remote = args.find((a) => !a.startsWith('-')) || 'origin';
+        const branch = args.filter((a) => !a.startsWith('-') && a !== remote)[0] || '';
 
         const gitArgs = ['pull'];
         if (rebase) {
@@ -420,9 +427,9 @@ export function createGitCommands(deps) {
     },
 
     async gitReset(args) {
-      const mode = args.find(a => ['--soft', '--mixed', '--hard'].includes(a)) || '--mixed';
-      const target = args.find(a => !a.startsWith('-')) || 'HEAD';
-      const files = args.filter(a => !a.startsWith('-') && a !== target);
+      const mode = args.find((a) => ['--soft', '--mixed', '--hard'].includes(a)) || '--mixed';
+      const target = args.find((a) => !a.startsWith('-')) || 'HEAD';
+      const files = args.filter((a) => !a.startsWith('-') && a !== target);
 
       const confirmed = await confirm({
         message: `Reset ${mode} ${target}${files.length > 0 ? ' (' + files.join(', ') + ')' : ''}?`,

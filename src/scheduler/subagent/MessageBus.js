@@ -44,7 +44,7 @@ export class MessageBus {
       to: message.to,
       event: message.event,
       data: message.data,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     // 保存到历史
@@ -109,17 +109,17 @@ export class MessageBus {
 
     // 按发送者过滤
     if (options.from) {
-      messages = messages.filter(m => m.from === options.from);
+      messages = messages.filter((m) => m.from === options.from);
     }
 
     // 按接收者过滤
     if (options.to) {
-      messages = messages.filter(m => m.to === options.to);
+      messages = messages.filter((m) => m.to === options.to);
     }
 
     // 按事件类型过滤
     if (options.event) {
-      messages = messages.filter(m => m.event === options.event);
+      messages = messages.filter((m) => m.event === options.event);
     }
 
     // 按时间降序排序（最新的在前）
@@ -150,7 +150,7 @@ export class MessageBus {
           from,
           to: agentId,
           event,
-          data
+          data,
         });
         messages.push(message);
       }
@@ -183,7 +183,7 @@ export class MessageBus {
     return {
       historyCount: this.#history.length,
       subscriberCount: this.#handlers.size,
-      subscribers: Array.from(this.#handlers.keys())
+      subscribers: Array.from(this.#handlers.keys()),
     };
   }
 }

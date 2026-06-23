@@ -17,7 +17,7 @@ export const LoggerPlugin = createPlugin({
       console.log(`[Logger] 调用工具: ${toolName}`, args);
     },
     [HOOKS.ON_TOOL_ERROR]: async (toolName, error) => {
-      const msg = (error && error.message) ? error.message : String(error);
+      const msg = error && error.message ? error.message : String(error);
       console.error(`[Logger] 工具 ${toolName} 执行失败: ${msg}`);
     },
     [HOOKS.ON_CONFIG_CHANGE]: async (key, value) => {
@@ -25,8 +25,8 @@ export const LoggerPlugin = createPlugin({
     },
     [HOOKS.ON_MEMORY_UPDATE]: async (operation, data) => {
       console.log(`[Logger] 内存更新: ${operation}`, data);
-    }
-  }
+    },
+  },
 });
 
 export const PerformancePlugin = createPlugin({
@@ -36,7 +36,7 @@ export const PerformancePlugin = createPlugin({
 
   defaultConfig: {
     logInterval: 5000,
-    trackMemory: true
+    trackMemory: true,
   },
 
   initialize({ eventBus }) {
@@ -49,7 +49,7 @@ export const PerformancePlugin = createPlugin({
       this.calls++;
       this.events.push({
         type: event.type,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
     });
   },
@@ -61,29 +61,29 @@ export const PerformancePlugin = createPlugin({
 
   hooks: {
     [HOOKS.BEFORE_AGENT_START]: {
-      fn: async function() {
+      fn: async function () {
         this.agentStartTime = Date.now();
       },
-      priority: HookPriority.HIGH
+      priority: HookPriority.HIGH,
     },
-    [HOOKS.AFTER_AGENT_COMPLETE]: async function() {
+    [HOOKS.AFTER_AGENT_COMPLETE]: async function () {
       const duration = Date.now() - this.agentStartTime;
       console.log(`[Performance] Agent 执行耗时 ${duration}ms`);
     },
     [HOOKS.BEFORE_TOOL_CALL]: {
-      fn: async function(toolName) {
+      fn: async function (toolName) {
         this.timers.set(toolName, Date.now());
       },
-      priority: HookPriority.HIGHEST
+      priority: HookPriority.HIGHEST,
     },
-    [HOOKS.AFTER_TOOL_CALL]: async function(toolName) {
+    [HOOKS.AFTER_TOOL_CALL]: async function (toolName) {
       const startTime = this.timers.get(toolName);
       if (startTime) {
         const duration = Date.now() - startTime;
         console.log(`[Performance] 工具 ${toolName} 执行耗时 ${duration}ms`);
         this.timers.delete(toolName);
       }
-    }
+    },
   },
 
   middlewares: [
@@ -96,9 +96,9 @@ export const PerformancePlugin = createPlugin({
       after: async (ctx) => {
         const duration = Date.now() - ctx.metadata.startTime;
         console.log(`[Performance] 工具 ${ctx.toolName} 总耗时 ${duration}ms`);
-      }
-    }
-  ]
+      },
+    },
+  ],
 });
 
 export const CachePlugin = createPlugin({
@@ -109,7 +109,7 @@ export const CachePlugin = createPlugin({
 
   defaultConfig: {
     maxSize: 100,
-    ttl: 60000
+    ttl: 60000,
   },
 
   initialize({ config }) {
@@ -148,11 +148,10 @@ export const CachePlugin = createPlugin({
 
           this.cache.set(ctx.metadata.cacheKey, {
             result: ctx.result,
-            timestamp: Date.now()
+            timestamp: Date.now(),
           });
         }
-      }
-    }
-  ]
+      },
+    },
+  ],
 });
-

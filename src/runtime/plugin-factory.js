@@ -9,6 +9,6 @@ export function createPlugin(config) {
     initialize: config.initialize,
     cleanup: config.cleanup,
     hooks: config.hooks || {},
-    middlewares: config.middlewares || []
+    middlewares: config.middlewares || [],
   };
 }

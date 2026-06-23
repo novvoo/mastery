@@ -65,7 +65,9 @@ export function createMcpCommands(deps) {
             await this.mcpStatus();
           } else {
             enhancedUI.error(`Unknown mcp subcommand: ${subcommand}`);
-            enhancedUI.info('Available: status, list, tools, resources, connect, disconnect, call, menu');
+            enhancedUI.info(
+              'Available: status, list, tools, resources, connect, disconnect, call, menu',
+            );
           }
       }
     },
@@ -79,7 +81,9 @@ export function createMcpCommands(deps) {
         choices: MCP_MENU_CHOICES,
       });
 
-      if (action === 'back') {return;}
+      if (action === 'back') {
+        return;
+      }
       await this.handleMcpCommand([action]);
     },
 
@@ -90,11 +94,13 @@ export function createMcpCommands(deps) {
       table.push(
         [
           enhancedUI.theme.primaryBold('Connected'),
-          (typeof mcpClient.isConnected === 'function'
-            ? mcpClient.isConnected()
-            : Boolean(mcpClient.isConnected || mcpClient.getConnectedServers().length > 0))
+          (
+            typeof mcpClient.isConnected === 'function'
+              ? mcpClient.isConnected()
+              : Boolean(mcpClient.isConnected || mcpClient.getConnectedServers().length > 0)
+          )
             ? formatStatus('enabled')
-            : formatStatus('disabled')
+            : formatStatus('disabled'),
         ],
         [enhancedUI.theme.primaryBold('Servers'), mcpClient.getConnectedServers().length],
         [enhancedUI.theme.primaryBold('Tools'), mcpClient.getTools().length],
@@ -167,7 +173,10 @@ export function createMcpCommands(deps) {
     },
 
     async mcpConnect(args) {
-      let name, command, cmdArgs = [], env = {};
+      let name,
+        command,
+        cmdArgs = [],
+        env = {};
 
       if (args.length >= 2) {
         name = args[0];
@@ -176,16 +185,19 @@ export function createMcpCommands(deps) {
       } else {
         name = await input({
           message: 'Server name:',
-          validate: v => v.trim() !== '' || 'Required',
+          validate: (v) => v.trim() !== '' || 'Required',
         });
         command = await input({
           message: 'Command (e.g., npx, python):',
-          validate: v => v.trim() !== '' || 'Required',
+          validate: (v) => v.trim() !== '' || 'Required',
         });
         const argsStr = await input({
           message: 'Arguments (comma-separated):',
         });
-        cmdArgs = argsStr.split(',').map(s => s.trim()).filter(Boolean);
+        cmdArgs = argsStr
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
       }
 
       const spinner = enhancedUI.spinner(`Connecting to ${name}...`);
@@ -196,10 +208,14 @@ export function createMcpCommands(deps) {
         if (success) {
           const registered = typeof registerMcpTools === 'function' ? registerMcpTools(name) : 0;
           enhancedUI.success(`Connected to MCP server: ${name}`);
-          const tools = mcpClient.getTools().filter(t => t.serverName === name || t.fullName?.startsWith(name + '/'));
+          const tools = mcpClient
+            .getTools()
+            .filter((t) => t.serverName === name || t.fullName?.startsWith(name + '/'));
           if (tools.length > 0) {
             const registeredSuffix = registered ? `; registered ${registered} for agent use` : '';
-            enhancedUI.info(`Loaded ${tools.length} tool(s): ${tools.map(t => t.fullName || `${name}/${t.name}`).join(', ')}${registeredSuffix}`);
+            enhancedUI.info(
+              `Loaded ${tools.length} tool(s): ${tools.map((t) => t.fullName || `${name}/${t.name}`).join(', ')}${registeredSuffix}`,
+            );
           }
         } else {
           enhancedUI.error(`Failed to connect to ${name}`);
@@ -245,7 +261,7 @@ export function createMcpCommands(deps) {
       if (!toolName) {
         const selected = await select({
           message: 'Select tool:',
-          choices: tools.map(t => {
+          choices: tools.map((t) => {
             const fullName = t.fullName || t.name;
             return { name: `${fullName} - ${truncate(t.description || '', 40)}`, value: fullName };
           }),
@@ -254,7 +270,7 @@ export function createMcpCommands(deps) {
       }
 
       // 获取工具参数 schema
-      const tool = tools.find(t => (t.fullName || t.name) === toolName);
+      const tool = tools.find((t) => (t.fullName || t.name) === toolName);
       let toolArgs = {};
       if (tool?.parameters?.properties) {
         for (const [key, schema] of Object.entries(tool.parameters.properties)) {

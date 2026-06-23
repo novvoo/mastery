@@ -75,20 +75,22 @@ function generateRedPhase(component, spec, testFile) {
     '',
     '## Test Structure',
     '',
-    testFile ? `**Test File**: \`${testFile}\`` : '**Test File**: (create an appropriate test file for your project\'s test framework)',
+    testFile
+      ? `**Test File**: \`${testFile}\``
+      : "**Test File**: (create an appropriate test file for your project's test framework)",
     '',
     '### Recommended Test Organization',
     '',
     '```',
     `describe('${component}', () => {`,
     '  // Happy path tests',
-    '  describe(\'happy path\', () => { ... });',
+    "  describe('happy path', () => { ... });",
     '',
     '  // Edge case tests',
-    '  describe(\'edge cases\', () => { ... });',
+    "  describe('edge cases', () => { ... });",
     '',
     '  // Error case tests',
-    '  describe(\'error handling\', () => { ... });',
+    "  describe('error handling', () => { ... });",
     '});',
     '```',
     '',
@@ -122,7 +124,7 @@ function generateRedPhase(component, spec, testFile) {
     '- [ ] Edge cases and error paths are covered',
     '',
     '> **Next Step**: Once all tests are written and failing, run the tdd tool with phase "green" to get minimal implementation guidance.',
-    ''
+    '',
   );
 
   return lines.join('\n');
@@ -203,7 +205,7 @@ function generateGreenPhase(component, spec, sourceFile, testFile) {
     '- [ ] Code is syntactically correct and linter passes',
     '',
     '> **Next Step**: Once all tests pass, run the tdd tool with phase "refactor" to improve the code while keeping tests green.',
-    ''
+    '',
   ];
 
   return lines.join('\n');
@@ -293,7 +295,7 @@ function generateRefactorPhase(component, spec, sourceFile, testFile) {
     '- [ ] Code review with the review tool passes without critical issues',
     '',
     '> **Next Step**: Run the verify tool to confirm all acceptance criteria are met with evidence.',
-    ''
+    '',
   ];
 
   return lines.join('\n');
@@ -345,7 +347,11 @@ function deriveTestCases(component, spec) {
     notes: 'Consider numeric limits, string length limits, collection size limits',
   });
 
-  if (specLower.includes('array') || specLower.includes('list') || specLower.includes('collection')) {
+  if (
+    specLower.includes('array') ||
+    specLower.includes('list') ||
+    specLower.includes('collection')
+  ) {
     testCases.push({
       name: 'Single element collection',
       category: 'Edge Case',

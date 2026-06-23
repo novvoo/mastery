@@ -4,7 +4,13 @@
 
 import { BM25Index } from './document-rag-bm25.js';
 import { getEmbedder } from './document-rag-state.js';
-import { normalizeText, extractRelevantSnippet, normalizeSearchText, CHINESE_STOP_TERMS, LEXICAL_SCORE_BOOST } from './document-rag-utils.js';
+import {
+  normalizeText,
+  extractRelevantSnippet,
+  normalizeSearchText,
+  CHINESE_STOP_TERMS,
+  LEXICAL_SCORE_BOOST,
+} from './document-rag-utils.js';
 
 /* ─── constants ─────────────────────────────────────────────────────── */
 export const MIN_SEMANTIC_SCORE = 0.25;
@@ -37,11 +43,13 @@ export async function hybridSearch(query, scopedChunks, opts) {
 
   // --- BM25 ranking (lexical) ---
   const lexicalRaw = scopedBm25.search(query, Math.min(scopedChunks.length, 200));
-  const lexicalByIndex = new Map(lexicalRaw.map(r => [r.index, r.score]));
+  const lexicalByIndex = new Map(lexicalRaw.map((r) => [r.index, r.score]));
 
   // --- Semantic ranking ---
   const embedder = await getEmbedder();
-  const hasPrecomputed = scopedChunks.some(c => Array.isArray(c.embedding) && c.embedding.length > 100);
+  const hasPrecomputed = scopedChunks.some(
+    (c) => Array.isArray(c.embedding) && c.embedding.length > 100,
+  );
   let semanticByIndex;
   let semanticResults;
 
@@ -51,14 +59,18 @@ export async function hybridSearch(query, scopedChunks, opts) {
     const scored = [];
     for (let i = 0; i < scopedChunks.length; i++) {
       const chunk = scopedChunks[i];
-      if (!chunk.embedding) { continue; }
+      if (!chunk.embedding) {
+        continue;
+      }
       let dot = 0;
-      for (let j = 0; j < qEmb.length; j++) { dot += qEmb[j] * chunk.embedding[j]; }
+      for (let j = 0; j < qEmb.length; j++) {
+        dot += qEmb[j] * chunk.embedding[j];
+      }
       scored.push({ index: i, score: dot });
     }
     scored.sort((a, b) => b.score - a.score);
     semanticResults = scored.slice(0, 200);
-    semanticByIndex = new Map(scored.map(r => [r.index, r.score]));
+    semanticByIndex = new Map(scored.map((r) => [r.index, r.score]));
   } else {
     // Embedder-side batch scoring
     semanticResults = await embedder.batchFindSimilar(query, scopedChunks, {
@@ -70,8 +82,10 @@ export async function hybridSearch(query, scopedChunks, opts) {
     semanticByIndex = new Map();
     for (let i = 0; i < semanticResults.length; i++) {
       const r = semanticResults[i];
-      const idx = scopedChunks.findIndex(c => c.text === r.text);
-      if (idx !== -1) { semanticByIndex.set(idx, r.score); }
+      const idx = scopedChunks.findIndex((c) => c.text === r.text);
+      if (idx !== -1) {
+        semanticByIndex.set(idx, r.score);
+      }
     }
     semanticResults = [...semanticByIndex.entries()]
       .map(([index, score]) => ({ index, score }))
@@ -104,17 +118,19 @@ export async function hybridSearch(query, scopedChunks, opts) {
   // Apply min_score filter (on semantic score — BM25 doesn't have a fixed
   // range, so we let lexical hits be kept as long as at least one signal is
   // strong enough).
-  const filtered = results.filter(r => Number(r.semanticScore) >= finalMinScore || r.lexicalScore > 0);
+  const filtered = results.filter(
+    (r) => Number(r.semanticScore) >= finalMinScore || r.lexicalScore > 0,
+  );
   return filtered.length > 0 ? filtered.slice(0, maxResults) : results.slice(0, maxResults);
 }
 
 /* ─── lexical reranking ─────────────────────────────────────────────── */
 export function rerankWithLexicalSignals(query, semanticResults) {
   return semanticResults
-    .map(result => {
+    .map((result) => {
       const semanticScore = Number(result.score) || 0;
       const lexicalScore = computeLexicalScore(query, result.text || '');
-      const score = Math.min(1, semanticScore + (lexicalScore * LEXICAL_SCORE_BOOST));
+      const score = Math.min(1, semanticScore + lexicalScore * LEXICAL_SCORE_BOOST);
       return { ...result, score, semanticScore, lexicalScore };
     })
     .sort((a, b) => b.score - a.score);
@@ -122,10 +138,14 @@ export function rerankWithLexicalSignals(query, semanticResults) {
 
 function computeLexicalScore(query, text) {
   const queryTerms = extractSearchTerms(query);
-  if (queryTerms.length === 0) { return 0; }
+  if (queryTerms.length === 0) {
+    return 0;
+  }
   const normalizedText = normalizeSearchText(text);
   const matchedWeight = queryTerms.reduce((sum, term) => {
-    if (!normalizedText.includes(term.value)) { return sum; }
+    if (!normalizedText.includes(term.value)) {
+      return sum;
+    }
     return sum + term.weight;
   }, 0);
   const totalWeight = queryTerms.reduce((sum, term) => sum + term.weight, 0);
@@ -147,12 +167,14 @@ function extractSearchTerms(query) {
 
 function addSearchTerm(terms, value, weight) {
   const normalized = normalizeSearchText(value);
-  if (normalized.length < 2 || CHINESE_STOP_TERMS.has(normalized)) { return; }
+  if (normalized.length < 2 || CHINESE_STOP_TERMS.has(normalized)) {
+    return;
+  }
   terms.set(normalized, Math.max(terms.get(normalized) || 0, weight));
 }
 
 function createCjkGrams(text, size) {
-  const chars = Array.from(text).filter(char => /[\p{Script=Han}]/u.test(char));
+  const chars = Array.from(text).filter((char) => /[\p{Script=Han}]/u.test(char));
   const grams = [];
   for (let i = 0; i <= chars.length - size; i++) {
     grams.push(chars.slice(i, i + size).join(''));

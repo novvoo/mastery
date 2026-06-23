@@ -16,7 +16,15 @@
  *   - content hash dedup
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync, statSync } from 'fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  unlinkSync,
+  statSync,
+} from 'fs';
 import { join, dirname } from 'path';
 import { createHash } from 'crypto';
 import { computeTag } from './hashline.js';
@@ -28,14 +36,30 @@ import { computeTag } from './hashline.js';
  * 任何实现以下方法的对象都可以作为 snapshot store backend。
  */
 export class AbstractSnapshotStore {
-  record(/* path, fullText */) { throw new Error('not implemented'); }
-  head(/* path */) { throw new Error('not implemented'); }
-  byHash(/* path, tag */) { throw new Error('not implemented'); }
-  has(/* path, tag */) { throw new Error('not implemented'); }
-  history(/* path */) { throw new Error('not implemented'); }
-  invalidate(/* path */) { throw new Error('not implemented'); }
-  clear() { throw new Error('not implemented'); }
-  stats() { throw new Error('not implemented'); }
+  record(/* path, fullText */) {
+    throw new Error('not implemented');
+  }
+  head(/* path */) {
+    throw new Error('not implemented');
+  }
+  byHash(/* path, tag */) {
+    throw new Error('not implemented');
+  }
+  has(/* path, tag */) {
+    throw new Error('not implemented');
+  }
+  history(/* path */) {
+    throw new Error('not implemented');
+  }
+  invalidate(/* path */) {
+    throw new Error('not implemented');
+  }
+  clear() {
+    throw new Error('not implemented');
+  }
+  stats() {
+    throw new Error('not implemented');
+  }
 }
 
 // ── ProjectSnapshotStore（文件系统持久化） ────────────────────────────────
@@ -64,12 +88,12 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
     this.objectsDir = join(this.baseDir, 'objects');
     this.historyDir = join(this.baseDir, 'history');
     this.seenLinesDir = join(this.baseDir, 'seen-lines');
-    this.walDir = join(this.baseDir, 'wal');         // Write-Ahead Log
+    this.walDir = join(this.baseDir, 'wal'); // Write-Ahead Log
     this.indexPath = join(this.baseDir, 'index.json');
     this.maxVersionsPerPath = opts.maxVersionsPerPath || 10;
     this.maxTotalSize = opts.maxTotalSize || 256_000_000;
     this.gcIntervalMs = opts.gcIntervalMs || 300_000;
-    this.enableWAL = opts.enableWAL !== false;       // WAL enabled by default
+    this.enableWAL = opts.enableWAL !== false; // WAL enabled by default
     this._lastGC = Date.now();
     this._index = null; // lazy load
     this._ensureDirs();
@@ -81,13 +105,23 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
   }
 
   _ensureDirs() {
-    for (const d of [this.baseDir, this.objectsDir, this.historyDir, this.seenLinesDir, this.walDir]) {
-      if (!existsSync(d)) { mkdirSync(d, { recursive: true }); }
+    for (const d of [
+      this.baseDir,
+      this.objectsDir,
+      this.historyDir,
+      this.seenLinesDir,
+      this.walDir,
+    ]) {
+      if (!existsSync(d)) {
+        mkdirSync(d, { recursive: true });
+      }
     }
   }
 
   _loadIndex() {
-    if (this._index !== null) { return this._index; }
+    if (this._index !== null) {
+      return this._index;
+    }
     try {
       if (existsSync(this.indexPath)) {
         this._index = JSON.parse(readFileSync(this.indexPath, 'utf-8'));
@@ -103,7 +137,9 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
   _saveIndex() {
     try {
       writeFileSync(this.indexPath, JSON.stringify(this._index, null, 2), 'utf-8');
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }
 
   _objectPath(tag) {
@@ -113,13 +149,17 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
   _writeObject(tag, text) {
     const path = this._objectPath(tag);
     const dir = dirname(path);
-    if (!existsSync(dir)) { mkdirSync(dir, { recursive: true }); }
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
     writeFileSync(path, text, 'utf-8');
   }
 
   _readObject(tag) {
     const path = this._objectPath(tag);
-    if (!existsSync(path)) { return null; }
+    if (!existsSync(path)) {
+      return null;
+    }
     return readFileSync(path, 'utf-8');
   }
 
@@ -139,7 +179,9 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
       if (existsSync(hp)) {
         return JSON.parse(readFileSync(hp, 'utf-8'));
       }
-    } catch { /* corrupt file */ }
+    } catch {
+      /* corrupt file */
+    }
     return [];
   }
 
@@ -147,7 +189,9 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
     const hp = this._historyPath(path);
     try {
       writeFileSync(hp, JSON.stringify(versions, null, 2), 'utf-8');
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }
 
   _seenLinesPath(path) {
@@ -194,7 +238,9 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
       if (!this._isTagReferencedElsewhere(removed.tag, path, index)) {
         try {
           unlinkSync(this._objectPath(removed.tag));
-        } catch { /* already removed */ }
+        } catch {
+          /* already removed */
+        }
       }
     }
 
@@ -213,25 +259,33 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
 
   head(path) {
     const history = this._loadHistory(path);
-    if (history.length === 0) { return null; }
+    if (history.length === 0) {
+      return null;
+    }
     const latest = history[history.length - 1];
     const text = this._readObject(latest.tag);
-    if (text === null) { return null; }
+    if (text === null) {
+      return null;
+    }
     return { tag: latest.tag, text, ts: latest.ts };
   }
 
   byHash(path, tag) {
     const history = this._loadHistory(path);
-    const found = history.find(e => e.tag === tag);
-    if (!found) { return null; }
+    const found = history.find((e) => e.tag === tag);
+    if (!found) {
+      return null;
+    }
     const text = this._readObject(tag);
-    if (text === null) { return null; }
+    if (text === null) {
+      return null;
+    }
     return { tag: found.tag, text, ts: found.ts };
   }
 
   has(path, tag) {
     const history = this._loadHistory(path);
-    return history.some(e => e.tag === tag) && this._objectExists(tag);
+    return history.some((e) => e.tag === tag) && this._objectExists(tag);
   }
 
   history(path) {
@@ -244,7 +298,9 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
       if (existsSync(sp)) {
         return new Set(JSON.parse(readFileSync(sp, 'utf-8')));
       }
-    } catch { /* corrupt */ }
+    } catch {
+      /* corrupt */
+    }
     return new Set();
   }
 
@@ -254,8 +310,12 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
     this._saveIndex();
     try {
       const hp = this._historyPath(path);
-      if (existsSync(hp)) { unlinkSync(hp); }
-    } catch { /* already removed */ }
+      if (existsSync(hp)) {
+        unlinkSync(hp);
+      }
+    } catch {
+      /* already removed */
+    }
   }
 
   clear() {
@@ -266,10 +326,14 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
       for (const f of readdirSync(this.seenLinesDir)) {
         unlinkSync(join(this.seenLinesDir, f));
       }
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
     this._index = {};
     if (existsSync(this.indexPath)) {
-      try { unlinkSync(this.indexPath); } catch {}
+      try {
+        unlinkSync(this.indexPath);
+      } catch {}
     }
   }
 
@@ -308,11 +372,17 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
     const lines = text.split('\n');
     const seen = this.seenLines(path);
     const cap = 4096;
-    if (seen.size > cap) { return; }
+    if (seen.size > cap) {
+      return;
+    }
     for (const l of lines) {
-      if (l.trim().length === 0) { continue; }
+      if (l.trim().length === 0) {
+        continue;
+      }
       seen.add(createHash('sha256').update(l).digest('hex').substring(0, 16));
-      if (seen.size >= cap) { break; }
+      if (seen.size >= cap) {
+        break;
+      }
     }
     try {
       writeFileSync(this._seenLinesPath(path), JSON.stringify([...seen]), 'utf-8');
@@ -321,13 +391,17 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
 
   _isTagReferencedElsewhere(tag, exclusivePath, index) {
     for (const [p, t] of Object.entries(index)) {
-      if (p !== exclusivePath && t === tag) { return true; }
+      if (p !== exclusivePath && t === tag) {
+        return true;
+      }
     }
     return false;
   }
 
   _maybeGC() {
-    if (Date.now() - this._lastGC < this.gcIntervalMs) { return; }
+    if (Date.now() - this._lastGC < this.gcIntervalMs) {
+      return;
+    }
     this._lastGC = Date.now();
 
     try {
@@ -350,20 +424,29 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
         for (const [p, tag] of Object.entries(index)) {
           activeTags.add(tag);
           const h = this._loadHistory(p);
-          for (const e of h) { activeTags.add(e.tag); }
+          for (const e of h) {
+            activeTags.add(e.tag);
+          }
         }
 
         // 清理孤立对象（按 mtime 从旧到新）
         objFiles.sort((a, b) => a.mtime - b.mtime);
         for (const f of objFiles) {
-          if (totalSize <= this.maxTotalSize * 0.7) { break; }
+          if (totalSize <= this.maxTotalSize * 0.7) {
+            break;
+          }
           const tag = f.path.replace(this.objectsDir + '/', '').replace('/', '');
           if (!activeTags.has(tag)) {
-            try { unlinkSync(f.path); totalSize -= f.size; } catch {}
+            try {
+              unlinkSync(f.path);
+              totalSize -= f.size;
+            } catch {}
           }
         }
       }
-    } catch { /* best-effort GC */ }
+    } catch {
+      /* best-effort GC */
+    }
   }
 
   // ── Write-Ahead Log (WAL) 方法 ──────────────────────────────────────
@@ -384,7 +467,9 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
    * @param {object} payload 操作负载
    */
   _appendWAL(op, payload) {
-    if (!this.enableWAL) { return; }
+    if (!this.enableWAL) {
+      return;
+    }
     try {
       const entry = JSON.stringify({
         op,
@@ -392,7 +477,9 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
         payload,
       });
       writeFileSync(this._walPath(), entry + '\n', 'utf-8');
-    } catch { /* WAL write failure is best-effort */ }
+    } catch {
+      /* WAL write failure is best-effort */
+    }
   }
 
   /**
@@ -402,9 +489,11 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
    */
   _recoverFromWAL() {
     try {
-      if (!existsSync(this.walDir)) { return; }
+      if (!existsSync(this.walDir)) {
+        return;
+      }
       const logFiles = readdirSync(this.walDir)
-        .filter(f => f.startsWith('wal-') && f.endsWith('.log'))
+        .filter((f) => f.startsWith('wal-') && f.endsWith('.log'))
         .sort(); // 按时间排序
 
       let recovered = 0;
@@ -414,7 +503,9 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
           const content = readFileSync(lp, 'utf-8');
           const lines = content.trim().split('\n');
           for (const line of lines) {
-            if (!line.trim()) { continue; }
+            if (!line.trim()) {
+              continue;
+            }
             try {
               const entry = JSON.parse(line);
               if (entry.op === 'record') {
@@ -432,18 +523,26 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
               } else if (entry.op === 'clear') {
                 this.clear();
               }
-            } catch { /* skip corrupted line */ }
+            } catch {
+              /* skip corrupted line */
+            }
           }
           // 恢复完成后删除 WAL 文件
-          try { unlinkSync(lp); } catch {}
-        } catch { /* skip corrupted WAL file */ }
+          try {
+            unlinkSync(lp);
+          } catch {}
+        } catch {
+          /* skip corrupted WAL file */
+        }
       }
 
       if (recovered > 0) {
         // 重新保存 index
         this._saveIndex();
       }
-    } catch { /* best-effort crash recovery */ }
+    } catch {
+      /* best-effort crash recovery */
+    }
   }
 
   /**
@@ -452,13 +551,20 @@ export class ProjectSnapshotStore extends AbstractSnapshotStore {
    */
   _truncateWAL() {
     try {
-      if (!existsSync(this.walDir)) { return; }
-      const logFiles = readdirSync(this.walDir)
-        .filter(f => f.startsWith('wal-') && f.endsWith('.log'));
-      for (const f of logFiles) {
-        try { unlinkSync(join(this.walDir, f)); } catch {}
+      if (!existsSync(this.walDir)) {
+        return;
       }
-    } catch { /* best-effort */ }
+      const logFiles = readdirSync(this.walDir).filter(
+        (f) => f.startsWith('wal-') && f.endsWith('.log'),
+      );
+      for (const f of logFiles) {
+        try {
+          unlinkSync(join(this.walDir, f));
+        } catch {}
+      }
+    } catch {
+      /* best-effort */
+    }
   }
 
   /**
@@ -522,7 +628,9 @@ export class GitObjectSnapshotStore extends AbstractSnapshotStore {
 
   _ensureDirs() {
     for (const d of [this.baseDir, this.objectsDir, this.refsDir]) {
-      if (!existsSync(d)) { mkdirSync(d, { recursive: true }); }
+      if (!existsSync(d)) {
+        mkdirSync(d, { recursive: true });
+      }
     }
   }
 
@@ -533,7 +641,9 @@ export class GitObjectSnapshotStore extends AbstractSnapshotStore {
   _writeObject(hash, content) {
     const p = this._objectPath(hash);
     const d = dirname(p);
-    if (!existsSync(d)) { mkdirSync(d, { recursive: true }); }
+    if (!existsSync(d)) {
+      mkdirSync(d, { recursive: true });
+    }
     writeFileSync(p, content, 'utf-8');
   }
 
@@ -568,13 +678,17 @@ export class GitObjectSnapshotStore extends AbstractSnapshotStore {
     // 更新 HEAD ref
     const headRef = this._refPath(path, 'paths');
     const headDir = dirname(headRef);
-    if (!existsSync(headDir)) { mkdirSync(headDir, { recursive: true }); }
+    if (!existsSync(headDir)) {
+      mkdirSync(headDir, { recursive: true });
+    }
     writeFileSync(headRef, tag, 'utf-8');
 
     // 更新版本历史
     const histRef = this._refPath(path, 'history');
     const histDir = dirname(histRef);
-    if (!existsSync(histDir)) { mkdirSync(histDir, { recursive: true }); }
+    if (!existsSync(histDir)) {
+      mkdirSync(histDir, { recursive: true });
+    }
     let history = [];
     try {
       if (existsSync(histRef)) {
@@ -593,10 +707,14 @@ export class GitObjectSnapshotStore extends AbstractSnapshotStore {
   head(path) {
     const headRef = this._refPath(path, 'paths');
     try {
-      if (!existsSync(headRef)) { return null; }
+      if (!existsSync(headRef)) {
+        return null;
+      }
       const tag = readFileSync(headRef, 'utf-8').trim();
       const text = this._readObject(tag);
-      if (!text) { return null; }
+      if (!text) {
+        return null;
+      }
       return { tag, text, ts: Date.now() };
     } catch {
       return null;
@@ -606,12 +724,18 @@ export class GitObjectSnapshotStore extends AbstractSnapshotStore {
   byHash(path, tag) {
     const histRef = this._refPath(path, 'history');
     try {
-      if (!existsSync(histRef)) { return null; }
+      if (!existsSync(histRef)) {
+        return null;
+      }
       const history = JSON.parse(readFileSync(histRef, 'utf-8'));
-      const found = history.find(e => e.tag === tag);
-      if (!found) { return null; }
+      const found = history.find((e) => e.tag === tag);
+      if (!found) {
+        return null;
+      }
       const text = this._readObject(tag);
-      if (!text) { return null; }
+      if (!text) {
+        return null;
+      }
       return { tag: found.tag, text, ts: found.ts };
     } catch {
       return null;
@@ -625,7 +749,9 @@ export class GitObjectSnapshotStore extends AbstractSnapshotStore {
   history(path) {
     const histRef = this._refPath(path, 'history');
     try {
-      if (!existsSync(histRef)) { return []; }
+      if (!existsSync(histRef)) {
+        return [];
+      }
       return JSON.parse(readFileSync(histRef, 'utf-8'));
     } catch {
       return [];
@@ -635,7 +761,9 @@ export class GitObjectSnapshotStore extends AbstractSnapshotStore {
   seenLines(path) {
     const ref = this._refPath(path, 'seen-lines');
     try {
-      if (!existsSync(ref)) { return new Set(); }
+      if (!existsSync(ref)) {
+        return new Set();
+      }
       return new Set(JSON.parse(readFileSync(ref, 'utf-8')));
     } catch {
       return new Set();
@@ -645,19 +773,29 @@ export class GitObjectSnapshotStore extends AbstractSnapshotStore {
   invalidate(path) {
     try {
       const headRef = this._refPath(path, 'paths');
-      if (existsSync(headRef)) { unlinkSync(headRef); }
+      if (existsSync(headRef)) {
+        unlinkSync(headRef);
+      }
       const histRef = this._refPath(path, 'history');
-      if (existsSync(histRef)) { unlinkSync(histRef); }
+      if (existsSync(histRef)) {
+        unlinkSync(histRef);
+      }
     } catch {}
   }
 
   clear() {
     try {
       const rimraf = (dir) => {
-        if (!existsSync(dir)) { return; }
+        if (!existsSync(dir)) {
+          return;
+        }
         for (const f of readdirSync(dir)) {
           const p = join(dir, f);
-          if (statSync(p).isDirectory()) { rimraf(p); } else { unlinkSync(p); }
+          if (statSync(p).isDirectory()) {
+            rimraf(p);
+          } else {
+            unlinkSync(p);
+          }
         }
       };
       rimraf(this.objectsDir);
@@ -671,10 +809,14 @@ export class GitObjectSnapshotStore extends AbstractSnapshotStore {
     let totalBytes = 0;
     try {
       const scanDir = (dir) => {
-        if (!existsSync(dir)) { return; }
+        if (!existsSync(dir)) {
+          return;
+        }
         for (const f of readdirSync(dir)) {
           const p = join(dir, f);
-          if (statSync(p).isDirectory()) { scanDir(p); } else {
+          if (statSync(p).isDirectory()) {
+            scanDir(p);
+          } else {
             totalObjects++;
             totalBytes += statSync(p).size;
           }

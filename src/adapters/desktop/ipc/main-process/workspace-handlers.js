@@ -39,7 +39,9 @@ export function resolveWorkspacePath(filePath, { engine }) {
 
 export async function handleReadWorkspaceFile(payload = {}, { engine }) {
   try {
-    const { absolutePath, relativePath } = resolveWorkspacePath(payload?.path || payload?.target, { engine });
+    const { absolutePath, relativePath } = resolveWorkspacePath(payload?.path || payload?.target, {
+      engine,
+    });
     const stat = fs.statSync(absolutePath);
     if (!stat.isFile()) {
       return { success: false, error: 'Selected path is not a file.', path: relativePath };
@@ -71,7 +73,10 @@ export async function handleReadWorkspaceFile(payload = {}, { engine }) {
 
 export async function handleWriteWorkspaceFile(payload = {}, { engine, broadcast }) {
   try {
-    const { absolutePath, relativePath, workingDirectory } = resolveWorkspacePath(payload?.path || payload?.target, { engine });
+    const { absolutePath, relativePath, workingDirectory } = resolveWorkspacePath(
+      payload?.path || payload?.target,
+      { engine },
+    );
     const content = String(payload?.content ?? '');
     fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
     fs.writeFileSync(absolutePath, content, 'utf8');
@@ -119,8 +124,10 @@ export async function handleFileDiff(payload = {}, { engine }) {
     try {
       const absPath = path.isAbsolute(filePath) ? filePath : path.join(workingDirectory, filePath);
       const newContent = fs.readFileSync(absPath, 'utf8');
-      const oldContent = engine?.workspaceState?.getFileSnapshot(filePath)?.content ||
-                         engine?.workspaceState?.getFileSnapshot(absPath)?.content || '';
+      const oldContent =
+        engine?.workspaceState?.getFileSnapshot(filePath)?.content ||
+        engine?.workspaceState?.getFileSnapshot(absPath)?.content ||
+        '';
 
       const diff = computeDiff({ path: filePath, oldContent, newContent });
       const hasDiff = !isNoop(diff);

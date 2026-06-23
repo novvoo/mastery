@@ -23,8 +23,15 @@ import { Decision } from './support/security-policy.js';
 const TOOL_RESULT_CACHE_MAX = 500;
 const TOOL_RESULT_CACHE_TTL_MS = 5 * 60 * 1000;
 const READ_ONLY_TOOLS = new Set([
-  'list_dir', 'read_file', 'glob', 'tree', 'stat_file', 'search_codebase',
-  'file_analyzer', 'view_patch', 'workspace_knowledge',
+  'list_dir',
+  'read_file',
+  'glob',
+  'tree',
+  'stat_file',
+  'search_codebase',
+  'file_analyzer',
+  'view_patch',
+  'workspace_knowledge',
 ]);
 
 export class ToolExecutor {
@@ -45,11 +52,28 @@ export class ToolExecutor {
   #hashlinePatcher;
   #lspManager;
 
-  constructor({ toolRegistry, securityPolicy, textToolParser, ui, config, contentStore, fileAnalyzer, snapshotStore, hashlinePatcher, lspManager }) {
+  constructor({
+    toolRegistry,
+    securityPolicy,
+    textToolParser,
+    ui,
+    config,
+    contentStore,
+    fileAnalyzer,
+    snapshotStore,
+    hashlinePatcher,
+    lspManager,
+  }) {
     this.#toolRegistry = toolRegistry;
     this.#securityPolicy = securityPolicy || null;
     this.#textToolParser = textToolParser || new TextToolParser(toolRegistry);
-    this.#ui = ui || { toolCall: () => {}, toolResult: () => {}, toolError: () => {}, warn: () => {}, debug: () => {} };
+    this.#ui = ui || {
+      toolCall: () => {},
+      toolResult: () => {},
+      toolError: () => {},
+      warn: () => {},
+      debug: () => {},
+    };
     this.#config = config || {};
     this.#contentStore = contentStore || null;
     this.#fileAnalyzer = fileAnalyzer || null;
@@ -62,19 +86,25 @@ export class ToolExecutor {
 
   /** 动态计算缓存路径 — 确保工作目录切换后使用新目录 */
   get #toolResultCachePath() {
-    if (this.#config.toolResultCacheEnabled === false) {return null;}
+    if (this.#config.toolResultCacheEnabled === false) {
+      return null;
+    }
     const workingDir = this.#config.workingDirectory || process.cwd();
     return `${workingDir}/.agent-data/tool-cache.jsonl`;
   }
 
-  get events() { return this.#events.slice(); }
+  get events() {
+    return this.#events.slice();
+  }
 
   /** 订阅工具事件（返回取消函数） */
   onEvent(fn) {
     this.#observerHooks.push(fn);
     return () => {
       const idx = this.#observerHooks.indexOf(fn);
-      if (idx >= 0) {this.#observerHooks.splice(idx, 1);}
+      if (idx >= 0) {
+        this.#observerHooks.splice(idx, 1);
+      }
     };
   }
 
@@ -103,8 +133,8 @@ export class ToolExecutor {
     // ============ 去重：内存 + 持久化缓存（读工具不使用持久化缓存，失败调用不阻止重试） ============
     await this.#loadResultCache();
     const isReadOnly = READ_ONLY_TOOLS.has(name);
-    const cacheHit = this.#callHistory.has(callSignature)
-      || (!isReadOnly && this.#resultCache.has(callSignature));
+    const cacheHit =
+      this.#callHistory.has(callSignature) || (!isReadOnly && this.#resultCache.has(callSignature));
 
     if (cacheHit) {
       this.#ui.warn?.(`Duplicate tool call detected: ${name}. Skipping.`);
@@ -118,14 +148,22 @@ export class ToolExecutor {
     }
 
     // ============ 基于工作区状态的智能预测（若提供） ============
-    if (this.#config.workspaceState && typeof this.#config.workspaceState.predictToolResult === 'function') {
+    if (
+      this.#config.workspaceState &&
+      typeof this.#config.workspaceState.predictToolResult === 'function'
+    ) {
       const prediction = this.#config.workspaceState.predictToolResult(name, args);
       if (prediction.canSkip) {
         this.#ui.warn?.(`⚠️  Skipping ${name}: ${prediction.reason}`);
         const observation = `Based on previous exploration:\n${prediction.reason}\n\nThis operation would fail. Consider a different approach or check workspace_knowledge first.`;
         options.emitObservation?.(id, name, observation, resultMode);
         this.#recordEvent(name, args, false, prediction.reason);
-        return { name, result: prediction.predicted || { error: prediction.reason }, skipped: true, predicted: true };
+        return {
+          name,
+          result: prediction.predicted || { error: prediction.reason },
+          skipped: true,
+          predicted: true,
+        };
       }
     }
 
@@ -144,13 +182,15 @@ export class ToolExecutor {
     let effectiveArgs = args || {};
     if (typeof this.#toolRegistry.validateAndCoerceArgs === 'function') {
       const v = this.#toolRegistry.validateAndCoerceArgs(name, args);
-      if (!v.valid) {this.#ui.warn?.(`[Tool args] ${name}: ${(v.errors || []).join('; ')}`);}
+      if (!v.valid) {
+        this.#ui.warn?.(`[Tool args] ${name}: ${(v.errors || []).join('; ')}`);
+      }
       effectiveArgs = v.coercedArgs;
     }
 
     // ============ 必填参数检查（兜底，对没定义 schema 的工具） ============
     if (Array.isArray(tool.required) && tool.required.length > 0) {
-      const missing = tool.required.filter(param => {
+      const missing = tool.required.filter((param) => {
         const value = effectiveArgs ? effectiveArgs[param] : undefined;
         return value === undefined || value === null || value === '';
       });
@@ -166,10 +206,19 @@ export class ToolExecutor {
     // ============ 安全策略评估 ============
     const securityBlock = this.#enforceSecurity(name, effectiveArgs);
     if (securityBlock) {
-      options.emitObservation?.(id, name, `Error: Security policy blocked ${name}: ${securityBlock}`, resultMode);
+      options.emitObservation?.(
+        id,
+        name,
+        `Error: Security policy blocked ${name}: ${securityBlock}`,
+        resultMode,
+      );
       this.#recordEvent(name, args, false, `Security policy blocked tool call: ${securityBlock}`);
       this.#ui.toolError?.(name, securityBlock);
-      return { name, result: `Error: Security policy blocked ${name}: ${securityBlock}`, error: securityBlock };
+      return {
+        name,
+        result: `Error: Security policy blocked ${name}: ${securityBlock}`,
+        error: securityBlock,
+      };
     }
 
     // ============ write_file 审批（若配置了 writeFileApproval） ============
@@ -204,7 +253,7 @@ export class ToolExecutor {
       snapshotStore: this.#snapshotStore,
       hashlinePatcher: this.#hashlinePatcher,
       lspManager: this.#lspManager,
-      toolEventsSnapshot: this.#events.map(e => ({ ...e })),
+      toolEventsSnapshot: this.#events.map((e) => ({ ...e })),
     };
 
     let finalResult;
@@ -212,7 +261,7 @@ export class ToolExecutor {
       const rawResult = await withTimeout(
         () => tool.handler(effectiveArgs, executionContext),
         60000,
-        `Tool ${name}`
+        `Tool ${name}`,
       );
       finalResult = this.#applySecurityResultPolicy(name, rawResult);
       this.#recordEvent(name, effectiveArgs, true, finalResult);
@@ -224,7 +273,8 @@ export class ToolExecutor {
       }
       // 读工具不写持久化缓存（文件系统会变化），写工具才持久化
       if (!isReadOnly) {
-        const cachedValue = typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult);
+        const cachedValue =
+          typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult);
         this.#resultCache.set(callSignature, cachedValue);
         this.#flushCacheEntry(callSignature, cachedValue);
       }
@@ -244,20 +294,34 @@ export class ToolExecutor {
 
   #enforceSecurity(name, args) {
     const policy = this.#securityPolicy;
-    if (!policy) {return null;}
+    if (!policy) {
+      return null;
+    }
     if (typeof policy.evaluate === 'function') {
       const decision = policy.evaluate(name, args, {});
-      if (decision.decision === Decision.DENY) {return decision.suggestedMessage || decision.detail || 'denied';}
-      if (decision.decision === Decision.REQUIRE_APPROVAL) {return decision.suggestedMessage || 'approval required';}
-      if (decision.decision === Decision.RATE_LIMITED) {return decision.suggestedMessage || 'rate limited';}
+      if (decision.decision === Decision.DENY) {
+        return decision.suggestedMessage || decision.detail || 'denied';
+      }
+      if (decision.decision === Decision.REQUIRE_APPROVAL) {
+        return decision.suggestedMessage || 'approval required';
+      }
+      if (decision.decision === Decision.RATE_LIMITED) {
+        return decision.suggestedMessage || 'rate limited';
+      }
       return null;
     }
     // 向后兼容：旧 API
-    if (typeof policy.requiresApproval === 'function' && policy.requiresApproval(name)) {return 'approval_required';}
+    if (typeof policy.requiresApproval === 'function' && policy.requiresApproval(name)) {
+      return 'approval_required';
+    }
     if (typeof policy.validateToolCall === 'function') {
       const r = policy.validateToolCall(name, args);
-      if (r === false) {return 'denied';}
-      if (r && r.allowed === false) {return r.reason || 'denied';}
+      if (r === false) {
+        return 'denied';
+      }
+      if (r && r.allowed === false) {
+        return r.reason || 'denied';
+      }
     }
     return null;
   }
@@ -273,11 +337,17 @@ export class ToolExecutor {
   // ============== 内部：缓存与历史 ==============
 
   async #loadResultCache() {
-    if (this.#cacheLoaded) {return;}
+    if (this.#cacheLoaded) {
+      return;
+    }
     this.#cacheLoaded = true;
-    if (!this.#toolResultCachePath) {return;}
+    if (!this.#toolResultCachePath) {
+      return;
+    }
     try {
-      if (!existsSync(this.#toolResultCachePath)) {return;}
+      if (!existsSync(this.#toolResultCachePath)) {
+        return;
+      }
       const content = await readFile(this.#toolResultCachePath, 'utf8');
       const lines = content.split('\n').filter(Boolean);
       const now = Date.now();
@@ -290,39 +360,59 @@ export class ToolExecutor {
               this.#resultCache.set(signature, result);
             }
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   async #flushCacheEntry(signature, result) {
-    if (!this.#toolResultCachePath) {return;}
+    if (!this.#toolResultCachePath) {
+      return;
+    }
     try {
-      const dir = this.#toolResultCachePath.substring(0, this.#toolResultCachePath.lastIndexOf('/'));
-      if (!existsSync(dir)) {await mkdir(dir, { recursive: true });}
+      const dir = this.#toolResultCachePath.substring(
+        0,
+        this.#toolResultCachePath.lastIndexOf('/'),
+      );
+      if (!existsSync(dir)) {
+        await mkdir(dir, { recursive: true });
+      }
       await appendFile(
         this.#toolResultCachePath,
         JSON.stringify({ signature, result, createdAt: Date.now() }) + '\n',
-        'utf8'
+        'utf8',
       );
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   #recordEvent(name, args, success, result) {
-    const preview = typeof result === 'string'
-      ? result.substring(0, 300)
-      : JSON.stringify(result ?? '').substring(0, 300);
+    const preview =
+      typeof result === 'string'
+        ? result.substring(0, 300)
+        : JSON.stringify(result ?? '').substring(0, 300);
     const event = { name, args, success, resultPreview: preview };
     this.#events.push(event);
     for (const fn of this.#observerHooks) {
-      try { fn(event); } catch { /* ignore */ }
+      try {
+        fn(event);
+      } catch {
+        /* ignore */
+      }
     }
   }
 
   // ============== 内部：规范化与重写 ==============
 
   #normalizeToolCall(toolCall) {
-    if (!toolCall || typeof toolCall !== 'object') {return toolCall;}
+    if (!toolCall || typeof toolCall !== 'object') {
+      return toolCall;
+    }
     if (toolCall.name) {
       return { ...toolCall, arguments: this.#parseArgs(toolCall.arguments) };
     }
@@ -339,9 +429,15 @@ export class ToolExecutor {
   }
 
   #parseArgs(args) {
-    if (!args) {return {};}
-    if (typeof args === 'object') {return args;}
-    if (typeof args !== 'string') {return {};}
+    if (!args) {
+      return {};
+    }
+    if (typeof args === 'object') {
+      return args;
+    }
+    if (typeof args !== 'string') {
+      return {};
+    }
     try {
       const parsed = JSON.parse(args);
       return parsed && typeof parsed === 'object' ? parsed : {};
@@ -351,11 +447,19 @@ export class ToolExecutor {
   }
 
   #rewriteShellRuntimeToolCall(toolCall) {
-    if (toolCall?.name !== 'shell') {return null;}
+    if (toolCall?.name !== 'shell') {
+      return null;
+    }
     const command = String(toolCall.arguments?.command || '').trim();
-    if (!command) {return null;}
-    const parsed = this.#textToolParser.parse(`\`\`\`bash\n${command}\n\`\`\``).filter(c => c.name !== 'shell');
-    if (parsed.length === 0) {return null;}
+    if (!command) {
+      return null;
+    }
+    const parsed = this.#textToolParser
+      .parse(`\`\`\`bash\n${command}\n\`\`\``)
+      .filter((c) => c.name !== 'shell');
+    if (parsed.length === 0) {
+      return null;
+    }
     const replacement = parsed[0];
     return { ...replacement, id: toolCall.id, source: 'shell_runtime_tool_redirect' };
   }

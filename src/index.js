@@ -115,10 +115,7 @@ export {
   createRuntimeDetailId,
   buildRuntimeDetailsExportData,
 } from './core/runtime/runtime-details.js';
-export {
-  normalizePreviewUrlInput,
-  formatPreviewUrlInput,
-} from './core/runtime/preview-url.js';
+export { normalizePreviewUrlInput, formatPreviewUrlInput } from './core/runtime/preview-url.js';
 export {
   RUNTIME_STATUS_META,
   getRuntimeStatusMeta,

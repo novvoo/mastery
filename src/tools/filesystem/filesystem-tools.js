@@ -40,15 +40,15 @@ function tryDecodeBase64(content) {
 
   // 2) 纯 base64 字符串检测 — 必须是无空白的纯 base64 字符
   const trimmed = content.trim();
-  if (trimmed.length > 40
-      && trimmed.length % 4 === 0
-      && /^[A-Za-z0-9+/]+={0,2}$/.test(trimmed)) {
+  if (trimmed.length > 40 && trimmed.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(trimmed)) {
     try {
       const buf = Buffer.from(trimmed, 'base64');
       // 反向验证：解码后重新编码应接近原字符串
       const reencoded = buf.toString('base64');
-      if (reencoded === trimmed
-          || reencoded === trimmed.replace(/=+$/, '') + '=='.slice((3 - (trimmed.length % 4)) % 3)) {
+      if (
+        reencoded === trimmed ||
+        reencoded === trimmed.replace(/=+$/, '') + '=='.slice((3 - (trimmed.length % 4)) % 3)
+      ) {
         return { isBase64: true, decoded: buf };
       }
     } catch {
@@ -84,7 +84,10 @@ function safeResolvePath(workingDirectory, userPath) {
   let effectivePath = trimmed;
   if (isAbsolute(trimmed)) {
     const resolved = resolve(trimmed);
-    if (resolved.startsWith(normalizedWorkingDir) || resolved === normalizedWorkingDir.slice(0, -1)) {
+    if (
+      resolved.startsWith(normalizedWorkingDir) ||
+      resolved === normalizedWorkingDir.slice(0, -1)
+    ) {
       effectivePath = resolved.slice(normalizedWorkingDir.length);
     } else {
       return { ok: false, error: `Error: Absolute path is outside working directory: ${trimmed}` };
@@ -101,7 +104,10 @@ function safeResolvePath(workingDirectory, userPath) {
 
   const fullPath = resolve(join(workingDirectory, effectivePath));
 
-  if (!fullPath.startsWith(normalizedWorkingDir) && fullPath !== normalizedWorkingDir.slice(0, -1)) {
+  if (
+    !fullPath.startsWith(normalizedWorkingDir) &&
+    fullPath !== normalizedWorkingDir.slice(0, -1)
+  ) {
     return { ok: false, error: `Error: Path escapes working directory: ${effectivePath}` };
   }
 
@@ -122,28 +128,39 @@ function hashContent(content) {
 function generateUnifiedDiff(oldText, newText, filename) {
   const a = oldText.split('\n');
   const b = newText.split('\n');
-  if (a.length > 0 && a[a.length - 1] === '') {a.pop();}
-  if (b.length > 0 && b[b.length - 1] === '') {b.pop();}
+  if (a.length > 0 && a[a.length - 1] === '') {
+    a.pop();
+  }
+  if (b.length > 0 && b[b.length - 1] === '') {
+    b.pop();
+  }
   const n = a.length;
   const m = b.length;
-  if (n === 0 && m === 0) {return '(no changes)';}
+  if (n === 0 && m === 0) {
+    return '(no changes)';
+  }
 
   // Build LCS DP table. For large diffs, fall back to whole-file presentation.
   const SAFE_CELLS = 16_000_000;
   const ops = [];
   if (n * m <= SAFE_CELLS) {
-    const dp = Array.from({length: n + 1}, () => new Uint32Array(m + 1));
+    const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
     for (let i = n - 1; i >= 0; i--) {
       for (let j = m - 1; j >= 0; j--) {
-        if (a[i] === b[j]) {dp[i][j] = dp[i + 1][j + 1] + 1;}
-        else {dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);}
+        if (a[i] === b[j]) {
+          dp[i][j] = dp[i + 1][j + 1] + 1;
+        } else {
+          dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+        }
       }
     }
-    let i = 0, j = 0;
+    let i = 0,
+      j = 0;
     while (i < n || j < m) {
       if (i < n && j < m && a[i] === b[j]) {
         ops.push({ type: 'equal', oldIdx: i, newIdx: j, text: a[i] });
-        i++; j++;
+        i++;
+        j++;
       } else if (i < n && (j === m || dp[i + 1][j] >= dp[i][j + 1])) {
         ops.push({ type: 'del', oldIdx: i, newIdx: j, text: a[i] });
         i++;
@@ -154,49 +171,74 @@ function generateUnifiedDiff(oldText, newText, filename) {
     }
   } else {
     // Large diff fallback: delete all then add all
-    for (let i = 0; i < n; i++) {ops.push({ type: 'del', oldIdx: i, newIdx: 0, text: a[i] });}
-    for (let j = 0; j < m; j++) {ops.push({ type: 'add', oldIdx: n, newIdx: j, text: b[j] });}
+    for (let i = 0; i < n; i++) {
+      ops.push({ type: 'del', oldIdx: i, newIdx: 0, text: a[i] });
+    }
+    for (let j = 0; j < m; j++) {
+      ops.push({ type: 'add', oldIdx: n, newIdx: j, text: b[j] });
+    }
   }
 
   const CONTEXT = 3;
   const hunks = [];
   let k = 0;
   while (k < ops.length) {
-    if (ops[k].type === 'equal') { k++; continue; }
+    if (ops[k].type === 'equal') {
+      k++;
+      continue;
+    }
     let startIdx = Math.max(0, k - CONTEXT);
     let nonEqEnd = k;
-    while (nonEqEnd < ops.length && ops[nonEqEnd].type !== 'equal') {nonEqEnd++;}
+    while (nonEqEnd < ops.length && ops[nonEqEnd].type !== 'equal') {
+      nonEqEnd++;
+    }
     let endIdx = Math.min(ops.length, nonEqEnd + CONTEXT);
 
     const firstOp = ops[startIdx];
     const lastOp = ops[endIdx - 1];
     const oldStart = firstOp.oldIdx;
     const newStart = firstOp.newIdx;
-    let oldCount = 0, newCount = 0;
+    let oldCount = 0,
+      newCount = 0;
     for (let p = startIdx; p < endIdx; p++) {
       const o = ops[p];
-      if (o.type === 'equal') { oldCount++; newCount++; }
-      else if (o.type === 'del') { oldCount++; }
-      else { newCount++; }
+      if (o.type === 'equal') {
+        oldCount++;
+        newCount++;
+      } else if (o.type === 'del') {
+        oldCount++;
+      } else {
+        newCount++;
+      }
     }
     const body = [];
     for (let p = startIdx; p < endIdx; p++) {
       const o = ops[p];
-      if (o.type === 'equal') {body.push(' ' + o.text);}
-      else if (o.type === 'del') {body.push('-' + o.text);}
-      else {body.push('+' + o.text);}
+      if (o.type === 'equal') {
+        body.push(' ' + o.text);
+      } else if (o.type === 'del') {
+        body.push('-' + o.text);
+      } else {
+        body.push('+' + o.text);
+      }
     }
-    hunks.push(`@@ -${oldStart + 1},${oldCount} +${newStart + 1},${newCount} @@\n${body.join('\n')}`);
+    hunks.push(
+      `@@ -${oldStart + 1},${oldCount} +${newStart + 1},${newCount} @@\n${body.join('\n')}`,
+    );
     k = endIdx;
   }
 
-  if (hunks.length === 0) {return '(no changes)';}
+  if (hunks.length === 0) {
+    return '(no changes)';
+  }
   return `--- a/${filename}\n+++ b/${filename}\n${hunks.join('\n')}\n`;
 }
 
 // Count occurrences of a substring in a string
 function countOccurrences(text, sub) {
-  if (!sub) {return 0;}
+  if (!sub) {
+    return 0;
+  }
   let count = 0;
   let idx = 0;
   while ((idx = text.indexOf(sub, idx)) !== -1) {
@@ -213,7 +255,11 @@ export function createFileSystemTools() {
       description: 'Read multiple files at once for efficiency. Returns contents of all files.',
       category: ToolCategory.FILESYSTEM,
       params: {
-        paths: { type: 'array', items: { type: 'string' }, description: 'Array of file paths to read' },
+        paths: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of file paths to read',
+        },
       },
       required: ['paths'],
       handler: async ({ paths }, ctx) => {
@@ -236,23 +282,29 @@ export function createFileSystemTools() {
 
           try {
             const content = await readFile(safe.fullPath, 'utf-8');
-            const numbered = content.split('\n').map((line, i) => `${i + 1}: ${line}`).join('\n');
+            const numbered = content
+              .split('\n')
+              .map((line, i) => `${i + 1}: ${line}`)
+              .join('\n');
             results.push(`=== ${path} ===\n${numbered}\n`);
             if (ctx.memoryManager && typeof ctx.memoryManager.updateFileMap === 'function') {
               ctx.memoryManager.updateFileMap(path, 'read').catch(() => {});
             }
           } catch (error) {
-            results.push(`=== ${path} ===\nError: ${error instanceof Error ? error.message : error}\n`);
+            results.push(
+              `=== ${path} ===\nError: ${error instanceof Error ? error.message : error}\n`,
+            );
           }
         }
-        
+
         return results.join('\n' + '='.repeat(40) + '\n\n');
       },
     },
 
     {
       name: 'read_file',
-      description: 'Read the contents of a single file. For multiple files, use read_files for efficiency.',
+      description:
+        'Read the contents of a single file. For multiple files, use read_files for efficiency.',
       category: ToolCategory.FILESYSTEM,
       params: {
         path: { type: 'string', description: 'File path relative to working directory' },
@@ -262,9 +314,13 @@ export function createFileSystemTools() {
       required: ['path'],
       handler: async ({ path, offset, limit }, ctx) => {
         const safe = safeResolvePath(ctx.workingDirectory, path);
-        if (!safe.ok) {return safe.error;}
+        if (!safe.ok) {
+          return safe.error;
+        }
         const fullPath = safe.fullPath;
-        if (!existsSync(fullPath)) {return `Error: File not found: ${path}`;}
+        if (!existsSync(fullPath)) {
+          return `Error: File not found: ${path}`;
+        }
 
         try {
           let rawContent = await readFile(fullPath, 'utf-8');
@@ -274,14 +330,13 @@ export function createFileSystemTools() {
           if (ctx.snapshotStore && typeof ctx.snapshotStore.record === 'function') {
             try {
               ctx.snapshotStore.record(path, rawContent);
-            } catch {
-            }
+            } catch {}
           }
 
           let content;
           if (offset || limit) {
-            const start = ((offset) || 1) - 1;
-            const end = start + ((limit) || lines.length);
+            const start = (offset || 1) - 1;
+            const end = start + (limit || lines.length);
             const sliced = lines.slice(start, end);
             content = sliced.map((line, i) => `${start + i + 1}: ${line}`).join('\n');
           } else {
@@ -301,7 +356,8 @@ export function createFileSystemTools() {
 
     {
       name: 'write_file',
-      description: 'Write content to a file. Creates the file if it does not exist, overwrites if it does.',
+      description:
+        'Write content to a file. Creates the file if it does not exist, overwrites if it does.',
       category: ToolCategory.FILESYSTEM,
       params: {
         path: { type: 'string', description: 'File path relative to working directory' },
@@ -310,7 +366,9 @@ export function createFileSystemTools() {
       required: ['path', 'content'],
       handler: async ({ path, content }, ctx) => {
         const safe = safeResolvePath(ctx.workingDirectory, path);
-        if (!safe.ok) {return safe.error;}
+        if (!safe.ok) {
+          return safe.error;
+        }
         const fullPath = safe.fullPath;
 
         try {
@@ -355,16 +413,14 @@ export function createFileSystemTools() {
               if (ctx.fileAnalyzer && typeof ctx.fileAnalyzer.analyzeFile === 'function') {
                 ctx.fileAnalyzer.analyzeFile(path, content);
               }
-            } catch {
-            }
+            } catch {}
           }
 
           // 自动记录 snapshot 到 Hashline SnapshotStore
           if (ctx.snapshotStore && typeof ctx.snapshotStore.record === 'function') {
             try {
               ctx.snapshotStore.record(path, content);
-            } catch {
-            }
+            } catch {}
           }
 
           return `File written successfully: ${path} (${content.split('\n').length} lines)`;
@@ -381,15 +437,23 @@ export function createFileSystemTools() {
       category: ToolCategory.FILESYSTEM,
       params: {
         path: { type: 'string', description: 'File path relative to working directory' },
-        old_text: { type: 'string', description: 'The exact text to find and replace (must match exactly one location in the file)' },
+        old_text: {
+          type: 'string',
+          description:
+            'The exact text to find and replace (must match exactly one location in the file)',
+        },
         new_text: { type: 'string', description: 'The replacement text' },
       },
       required: ['path', 'old_text', 'new_text'],
       handler: async ({ path, old_text, new_text }, ctx) => {
         const safe = safeResolvePath(ctx.workingDirectory, path);
-        if (!safe.ok) {return safe.error;}
+        if (!safe.ok) {
+          return safe.error;
+        }
         const fullPath = safe.fullPath;
-        if (!existsSync(fullPath)) {return `Error: File not found: ${path}`;}
+        if (!existsSync(fullPath)) {
+          return `Error: File not found: ${path}`;
+        }
 
         try {
           const content = await readFile(fullPath, 'utf-8');
@@ -400,9 +464,13 @@ export function createFileSystemTools() {
             return `Error: The specified old_text was not found in the file. Make sure it matches exactly (including whitespace/indentation).`;
           }
           if (occurrences > 1) {
-            const firstMatchLine = content.substring(0, content.indexOf(old_text)).split('\n').length;
-            return `Error: old_text matches ${occurrences} locations in the file (first match around line ${firstMatchLine}). ` +
-                   `Make old_text more specific by including surrounding context lines so it matches exactly one location.`;
+            const firstMatchLine = content
+              .substring(0, content.indexOf(old_text))
+              .split('\n').length;
+            return (
+              `Error: old_text matches ${occurrences} locations in the file (first match around line ${firstMatchLine}). ` +
+              `Make old_text more specific by including surrounding context lines so it matches exactly one location.`
+            );
           }
 
           // --- Anchor hash: hash of the 200-char context window around the match.
@@ -419,10 +487,15 @@ export function createFileSystemTools() {
           if (ctx.contentStore) {
             const storedAnchor = ctx.contentStore.getAnchor(anchorHash);
             if (storedAnchor) {
-              const knownSnippet = storedAnchor.text.slice(0, Math.min(storedAnchor.text.length, 50));
+              const knownSnippet = storedAnchor.text.slice(
+                0,
+                Math.min(storedAnchor.text.length, 50),
+              );
               if (!anchorContext.includes(knownSnippet)) {
-                return `Error: Anchor hash ${anchorHash.substring(0, 12)}... no longer matches file content. ` +
-                       `The file was modified underneath this edit. Re-read the file and try again.`;
+                return (
+                  `Error: Anchor hash ${anchorHash.substring(0, 12)}... no longer matches file content. ` +
+                  `The file was modified underneath this edit. Re-read the file and try again.`
+                );
               }
             }
           }
@@ -440,22 +513,25 @@ export function createFileSystemTools() {
           // --- Record edit in the harness ContentAddressableStore (if available) ---
           if (ctx.contentStore) {
             try {
-              ctx.contentStore.storeAnchor(path, matchOffset, matchOffset + old_text.length, old_text);
+              ctx.contentStore.storeAnchor(
+                path,
+                matchOffset,
+                matchOffset + old_text.length,
+                old_text,
+              );
               const newBlobHash = ctx.contentStore.storeBlob(newContent);
               ctx.contentStore.setRef(`file:${path}`, newBlobHash);
               if (ctx.fileAnalyzer && typeof ctx.fileAnalyzer.analyzeFile === 'function') {
                 ctx.fileAnalyzer.analyzeFile(path, newContent);
               }
-            } catch {
-            }
+            } catch {}
           }
 
           // 自动记录 snapshot 到 Hashline SnapshotStore
           if (ctx.snapshotStore && typeof ctx.snapshotStore.record === 'function') {
             try {
               ctx.snapshotStore.record(path, newContent);
-            } catch {
-            }
+            } catch {}
           }
 
           const oldLineCount = old_text.split('\n').length;
@@ -511,7 +587,10 @@ INS.POST 6=
 **Important:** Use the tag (content hash) from the most recent read of the file. If you don't know the tag, use read_file first to get the current content, then compute the tag using the sha256 of the normalized text (trailing newlines trimmed, lines joined with \\n).`,
       category: ToolCategory.FILESYSTEM,
       params: {
-        patch: { type: 'string', description: 'The complete Hashline patch text in the DSL format described above.' },
+        patch: {
+          type: 'string',
+          description: 'The complete Hashline patch text in the DSL format described above.',
+        },
       },
       required: ['patch'],
       handler: async ({ patch }, ctx) => {
@@ -529,18 +608,20 @@ INS.POST 6=
           const { patch: parsedPatch, preflight } = await patcher.preflight(patch);
 
           // 汇总 preflight 结果
-          const preflightSummary = preflight.map(p => {
-            if (p.ok) {
-              return `  ✓ ${p.path}: tag matches (${p.tag.substring(0, 12)}...)`;
-            }
-            if (p.recoverable) {
-              return `  ⚠ ${p.path}: stale tag, will attempt recovery`;
-            }
-            return `  ✗ ${p.path}: ${p.error}`;
-          }).join('\n');
+          const preflightSummary = preflight
+            .map((p) => {
+              if (p.ok) {
+                return `  ✓ ${p.path}: tag matches (${p.tag.substring(0, 12)}...)`;
+              }
+              if (p.recoverable) {
+                return `  ⚠ ${p.path}: stale tag, will attempt recovery`;
+              }
+              return `  ✗ ${p.path}: ${p.error}`;
+            })
+            .join('\n');
 
           // 如果有不可恢复的 section，提前返回 preflight 结果
-          const fatalSection = preflight.find(p => !p.ok && !p.recoverable);
+          const fatalSection = preflight.find((p) => !p.ok && !p.recoverable);
           if (fatalSection) {
             return `Hashline patch preflight FAILED:\n${preflightSummary}\n\nPatch NOT applied. Fix the following and retry:\n  - ${fatalSection.path}: ${fatalSection.error}`;
           }
@@ -553,13 +634,16 @@ INS.POST 6=
           }
 
           // 汇总 apply 结果
-          const applySummary = result.sections.map(s => {
-            const status = s.recovered ? 'RECOVERED' : 'applied';
-            const warnStr = (s.warnings && s.warnings.length > 0)
-              ? `\n    warnings: ${s.warnings.join('; ')}`
-              : '';
-            return `  ✓ ${s.path}: ${status} (${s.hunksApplied} hunks)${warnStr}\n    tag: ${s.tag.substring(0, 12)}... → ${s.newTag.substring(0, 12)}...`;
-          }).join('\n');
+          const applySummary = result.sections
+            .map((s) => {
+              const status = s.recovered ? 'RECOVERED' : 'applied';
+              const warnStr =
+                s.warnings && s.warnings.length > 0
+                  ? `\n    warnings: ${s.warnings.join('; ')}`
+                  : '';
+              return `  ✓ ${s.path}: ${status} (${s.hunksApplied} hunks)${warnStr}\n    tag: ${s.tag.substring(0, 12)}... → ${s.newTag.substring(0, 12)}...`;
+            })
+            .join('\n');
 
           // 更新 memoryManager 文件映射
           for (const s of result.sections) {
@@ -577,12 +661,22 @@ INS.POST 6=
 
     {
       name: 'search',
-      description: 'Search for a pattern in files within the working directory. Returns matching lines with file paths and line numbers.',
+      description:
+        'Search for a pattern in files within the working directory. Returns matching lines with file paths and line numbers.',
       category: ToolCategory.FILESYSTEM,
       params: {
-        pattern: { type: 'string', description: 'Search pattern (plain text; regex metachars are matched literally)' },
-        file_pattern: { type: 'string', description: 'File glob pattern to filter files (e.g., "*.ts")' },
-        max_results: { type: 'number', description: 'Maximum number of results to return (default 20, max 100)' },
+        pattern: {
+          type: 'string',
+          description: 'Search pattern (plain text; regex metachars are matched literally)',
+        },
+        file_pattern: {
+          type: 'string',
+          description: 'File glob pattern to filter files (e.g., "*.ts")',
+        },
+        max_results: {
+          type: 'number',
+          description: 'Maximum number of results to return (default 20, max 100)',
+        },
       },
       required: ['pattern'],
       handler: async ({ pattern, file_pattern, max_results }, ctx) => {
@@ -592,23 +686,27 @@ INS.POST 6=
         if (pattern.length > 512) {
           return 'Error: search pattern too long (max 512 chars).';
         }
-        if (file_pattern !== undefined && (typeof file_pattern !== 'string' || file_pattern.length > 128)) {
+        if (
+          file_pattern !== undefined &&
+          (typeof file_pattern !== 'string' || file_pattern.length > 128)
+        ) {
           return 'Error: file_pattern must be a string under 128 chars.';
         }
 
         try {
           const HARD_MAX_RESULTS = 100;
           const SEARCH_TIMEOUT_MS = 30000;
-          const max = Math.max(1, Math.min((max_results || 20), HARD_MAX_RESULTS));
+          const max = Math.max(1, Math.min(max_results || 20, HARD_MAX_RESULTS));
 
           // Build the grep argument list as an array -- execFile never spawns a
           // shell, so there is no risk of command injection regardless of what
           // the user-supplied pattern contains.
           const grepArgs = [
             '-rn',
-            '-F',              // treat pattern as plain text, not regex
+            '-F', // treat pattern as plain text, not regex
             '--color=never',
-            '-m', String(max),
+            '-m',
+            String(max),
           ];
 
           if (file_pattern) {
@@ -622,8 +720,16 @@ INS.POST 6=
           }
 
           const excludeDirs = [
-            '.git', 'node_modules', '.agent-data', '.automation',
-            '.test-temp', 'dist', 'build', 'coverage', '.next', '.cache'
+            '.git',
+            'node_modules',
+            '.agent-data',
+            '.automation',
+            '.test-temp',
+            'dist',
+            'build',
+            'coverage',
+            '.next',
+            '.cache',
           ];
           for (const dir of excludeDirs) {
             grepArgs.push(`--exclude-dir=${dir}`);
@@ -634,22 +740,29 @@ INS.POST 6=
           grepArgs.push(ctx.workingDirectory);
 
           const result = await new Promise((resolve, reject) => {
-            execFile('grep', grepArgs, {
-              encoding: 'utf-8',
-              maxBuffer: 5 * 1024 * 1024,
-              timeout: SEARCH_TIMEOUT_MS,
-            }, (err, stdout) => {
-              // grep exits with code 1 when there are no matches -- that is not
-              // an error for us.
-              if (err && err.code !== 1) {
-                reject(err);
-              } else {
-                resolve(stdout);
-              }
-            });
+            execFile(
+              'grep',
+              grepArgs,
+              {
+                encoding: 'utf-8',
+                maxBuffer: 5 * 1024 * 1024,
+                timeout: SEARCH_TIMEOUT_MS,
+              },
+              (err, stdout) => {
+                // grep exits with code 1 when there are no matches -- that is not
+                // an error for us.
+                if (err && err.code !== 1) {
+                  reject(err);
+                } else {
+                  resolve(stdout);
+                }
+              },
+            );
           });
 
-          if (!result.trim()) {return `No matches found for pattern: ${pattern}`;}
+          if (!result.trim()) {
+            return `No matches found for pattern: ${pattern}`;
+          }
 
           const lines = result.trim().split('\n');
           const limitedLines = lines.slice(0, HARD_MAX_RESULTS);
@@ -684,7 +797,9 @@ INS.POST 6=
             absolute: false,
             ignore: ['**/node_modules/**', '**/.git/**'],
           });
-          if (files.length === 0) {return `No files matched pattern: ${pattern}`;}
+          if (files.length === 0) {
+            return `No files matched pattern: ${pattern}`;
+          }
           return files.join('\n');
         } catch (error) {
           return `Error globbing: ${error instanceof Error ? error.message : error}`;
@@ -694,38 +809,60 @@ INS.POST 6=
 
     {
       name: 'tree',
-      description: 'Recursively list directory structure as a tree for efficient workspace inspection.',
+      description:
+        'Recursively list directory structure as a tree for efficient workspace inspection.',
       category: ToolCategory.FILESYSTEM,
       params: {
-        path: { type: 'string', description: 'Directory path relative to working directory (default: root)' },
-        max_depth: { type: 'number', description: 'Maximum depth to traverse (default: 3, max: 8)' },
+        path: {
+          type: 'string',
+          description: 'Directory path relative to working directory (default: root)',
+        },
+        max_depth: {
+          type: 'number',
+          description: 'Maximum depth to traverse (default: 3, max: 8)',
+        },
       },
       required: [],
       handler: async ({ path, max_depth }, ctx) => {
         const safe = safeResolvePath(ctx.workingDirectory, path || '.');
-        if (!safe.ok) {return safe.error;}
+        if (!safe.ok) {
+          return safe.error;
+        }
         const rootPath = safe.fullPath;
         const maxDepth = Math.min(max_depth || 3, 8);
 
         const excludeDirs = new Set([
-          '.git', 'node_modules', '.agent-data', '.automation',
-          '.test-temp', 'dist', 'build', 'coverage', '.next', '.cache', '__pycache__'
+          '.git',
+          'node_modules',
+          '.agent-data',
+          '.automation',
+          '.test-temp',
+          'dist',
+          'build',
+          'coverage',
+          '.next',
+          '.cache',
+          '__pycache__',
         ]);
 
         try {
-          if (!existsSync(rootPath)) {return `Error: Directory not found: ${path || '.'}`;}
+          if (!existsSync(rootPath)) {
+            return `Error: Directory not found: ${path || '.'}`;
+          }
 
           const results = [];
-          
+
           async function traverse(currentPath, depth, prefix) {
-            if (depth > maxDepth) {return;}
+            if (depth > maxDepth) {
+              return;
+            }
 
             const entries = await readdir(currentPath);
             const sortedEntries = entries
-              .filter(e => !excludeDirs.has(e))
+              .filter((e) => !excludeDirs.has(e))
               .sort((a, b) => {
-                const aIsDir = stat(join(currentPath, a)).then(s => s.isDirectory());
-                return 0; 
+                const aIsDir = stat(join(currentPath, a)).then((s) => s.isDirectory());
+                return 0;
               });
 
             for (let i = 0; i < sortedEntries.length; i++) {
@@ -735,9 +872,9 @@ INS.POST 6=
               const isLast = i === sortedEntries.length - 1;
               const connector = isLast ? '└── ' : '├── ';
               const relPath = fullPath.replace(rootPath + '/', '').replace(rootPath, '');
-              
+
               results.push(`${prefix}${connector}${entry}${s.isDirectory() ? '/' : ''}`);
-              
+
               if (s.isDirectory()) {
                 const newPrefix = prefix + (isLast ? '    ' : '│   ');
                 await traverse(fullPath, depth + 1, newPrefix);
@@ -745,9 +882,11 @@ INS.POST 6=
             }
           }
 
-          results.push(`${rootPath.replace(ctx.workingDirectory + '/', '').replace(ctx.workingDirectory, '.')}/`);
+          results.push(
+            `${rootPath.replace(ctx.workingDirectory + '/', '').replace(ctx.workingDirectory, '.')}/`,
+          );
           await traverse(rootPath, 1, '');
-          
+
           return results.join('\n');
         } catch (error) {
           return `Error building tree: ${error instanceof Error ? error.message : error}`;
@@ -760,16 +899,23 @@ INS.POST 6=
       description: 'List files and directories at a given path. For full tree, use tree tool.',
       category: ToolCategory.FILESYSTEM,
       params: {
-        path: { type: 'string', description: 'Directory path relative to working directory (default: root)' },
+        path: {
+          type: 'string',
+          description: 'Directory path relative to working directory (default: root)',
+        },
       },
       required: [],
       handler: async ({ path }, ctx) => {
         const safe = safeResolvePath(ctx.workingDirectory, path || '.');
-        if (!safe.ok) {return safe.error;}
+        if (!safe.ok) {
+          return safe.error;
+        }
         const dirPath = safe.fullPath;
 
         try {
-          if (!existsSync(dirPath)) {return `Error: Directory not found: ${path || '.'}`;}
+          if (!existsSync(dirPath)) {
+            return `Error: Directory not found: ${path || '.'}`;
+          }
           const entries = await readdir(dirPath);
           /** @type {string[]} */
           const results = [];

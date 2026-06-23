@@ -37,23 +37,68 @@ export class MetricsSink {
     return runId;
   }
 
-  finishRun(runId, { success = true, iterations = 0, durationMs = 0, reason = null, toolCount = 0, llmRequestCount = 0 } = {}) {
+  finishRun(
+    runId,
+    {
+      success = true,
+      iterations = 0,
+      durationMs = 0,
+      reason = null,
+      toolCount = 0,
+      llmRequestCount = 0,
+    } = {},
+  ) {
     this.emit('session', {
-      runId, phase: 'finish', success, iterations, durationMs, reason, toolCount, llmRequestCount,
+      runId,
+      phase: 'finish',
+      success,
+      iterations,
+      durationMs,
+      reason,
+      toolCount,
+      llmRequestCount,
     });
   }
 
-  recordLLMRequest({ runId, model, durationMs, tokensIn = null, tokensOut = null, success = true, error = null, attempt = 1 }) {
+  recordLLMRequest({
+    runId,
+    model,
+    durationMs,
+    tokensIn = null,
+    tokensOut = null,
+    success = true,
+    error = null,
+    attempt = 1,
+  }) {
     this.emit('request', {
       runId: runId || this._lastRunId,
-      model, durationMs, tokensIn, tokensOut, success, error: error ? String(error) : null, attempt,
+      model,
+      durationMs,
+      tokensIn,
+      tokensOut,
+      success,
+      error: error ? String(error) : null,
+      attempt,
     });
   }
 
-  recordToolCall({ runId, toolName, durationMs, success = true, error = null, predicted = false, skipped = false }) {
+  recordToolCall({
+    runId,
+    toolName,
+    durationMs,
+    success = true,
+    error = null,
+    predicted = false,
+    skipped = false,
+  }) {
     this.emit('tool', {
       runId: runId || this._lastRunId,
-      toolName, durationMs, success, error: error ? String(error) : null, predicted, skipped,
+      toolName,
+      durationMs,
+      success,
+      error: error ? String(error) : null,
+      predicted,
+      skipped,
     });
   }
 
@@ -73,32 +118,56 @@ export class MetricsSink {
   /** 直接发一个自定义事件（暴露给外部订阅） */
   emit(type, payload) {
     const event = { type, ts: new Date().toISOString(), ...payload };
-    this._latestSnapshot[type + 's'] = [event, ...(this._latestSnapshot[type + 's'] || [])].slice(0, 100);
+    this._latestSnapshot[type + 's'] = [event, ...(this._latestSnapshot[type + 's'] || [])].slice(
+      0,
+      100,
+    );
     this._lineCount++;
-    if (!this.enabled) {return;}
+    if (!this.enabled) {
+      return;
+    }
     try {
       const file = this._pickFile();
-      if (!file) {return;}
+      if (!file) {
+        return;
+      }
       fs.appendFileSync(file, JSON.stringify(event) + '\n', 'utf8');
-      if (this._lineCount % 1000 === 0) {this._maybeRoll(file);}
-    } catch (_) { /* 磁盘不可写时静默失败 */ }
+      if (this._lineCount % 1000 === 0) {
+        this._maybeRoll(file);
+      }
+    } catch (_) {
+      /* 磁盘不可写时静默失败 */
+    }
   }
 
   // ---------- 内部 ----------
 
   _resolveLogDir() {
     try {
-      const cwd = (typeof process !== 'undefined' && process.cwd) ? process.cwd() : null;
+      const cwd = typeof process !== 'undefined' && process.cwd ? process.cwd() : null;
       const base = this.logDir || (cwd ? path.join(cwd, '.agent-logs') : null);
       return base;
-    } catch (_) { return null; }
+    } catch (_) {
+      return null;
+    }
   }
 
   _ensureDir() {
-    if (this._ensureDirCalled) {return;}
+    if (this._ensureDirCalled) {
+      return;
+    }
     const dir = this._resolveLogDir();
-    if (!dir) { this.enabled = false; return; }
-    try { if (!fs.existsSync(dir)) {fs.mkdirSync(dir, { recursive: true });} } catch (_) { this.enabled = false; }
+    if (!dir) {
+      this.enabled = false;
+      return;
+    }
+    try {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+    } catch (_) {
+      this.enabled = false;
+    }
     this._ensureDirCalled = true;
     this._currentFile = path.join(dir, `metrics-${this._dateKey()}.ndjson`);
   }
@@ -112,7 +181,10 @@ export class MetricsSink {
     try {
       const stat = fs.statSync(file);
       if (stat.size > 8 * 1024 * 1024) {
-        this._currentFile = path.join(this._resolveLogDir(), `metrics-${this._dateKey()}-${Date.now()}.ndjson`);
+        this._currentFile = path.join(
+          this._resolveLogDir(),
+          `metrics-${this._dateKey()}-${Date.now()}.ndjson`,
+        );
       }
     } catch (_) {}
   }

@@ -13,12 +13,7 @@ import {
   createModelProviderForSwitch,
 } from './model-provider-factory.js';
 
-import {
-  createAgentEngine,
-  PlatformType,
-  getEventBus,
-  RuntimeEvent,
-} from '../runtime/index.js';
+import { createAgentEngine, PlatformType, getEventBus, RuntimeEvent } from '../runtime/index.js';
 
 import {
   bootstrapRuntime,
@@ -108,22 +103,22 @@ async function promptForRuntimeConfig() {
   const apiKey = await password({
     message: `Enter ${requirement.keyVar}:`,
     mask: '*',
-    validate: value => value.trim() !== '' || `${requirement.keyVar} is required`,
+    validate: (value) => value.trim() !== '' || `${requirement.keyVar} is required`,
   });
   const baseUrl = await input({
     message: `Enter ${requirement.baseUrlVar}:`,
     default: getProviderBaseUrl(provider),
-    validate: value => value.trim() !== '' || `${requirement.baseUrlVar} is required`,
+    validate: (value) => value.trim() !== '' || `${requirement.baseUrlVar} is required`,
   });
   const model = await input({
     message: `Enter ${requirement.modelVar}:`,
     default: getProviderModel(provider),
-    validate: value => value.trim() !== '' || `${requirement.modelVar} is required`,
+    validate: (value) => value.trim() !== '' || `${requirement.modelVar} is required`,
   });
   const workingDirectory = await input({
     message: 'Enter working directory:',
     default: process.env.WORKING_DIRECTORY || resolve(process.cwd(), 'workspace'),
-    validate: value => value.trim() !== '' || 'WORKING_DIRECTORY is required',
+    validate: (value) => value.trim() !== '' || 'WORKING_DIRECTORY is required',
   });
 
   return {
@@ -275,7 +270,9 @@ export function setupEventForwarding(engine, debugMode) {
 
   eventBus.subscribe(RuntimeEvent.TOOL_CALL, (event) => {
     if (debugMode) {
-      console.log(enhancedUI.theme.dim(`  ${event.activity?.statusText || `Calling: ${event.toolName}`}`));
+      console.log(
+        enhancedUI.theme.dim(`  ${event.activity?.statusText || `Calling: ${event.toolName}`}`),
+      );
     }
   });
 
@@ -338,10 +335,14 @@ export async function initializeMCPServers(mcpClient, toolRegistry, onRegisterMC
           console.log(enhancedUI.theme.success(`  ✓ Connected to MCP server: ${config.name}`));
           onRegisterMCPTools(toolRegistry, config.name);
         } else {
-          console.log(enhancedUI.theme.error(`  ✗ Failed to connect to MCP server: ${config.name}`));
+          console.log(
+            enhancedUI.theme.error(`  ✗ Failed to connect to MCP server: ${config.name}`),
+          );
         }
       } catch (error) {
-        console.log(enhancedUI.theme.error(`  ✗ MCP connection error (${config.name}): ${error.message}`));
+        console.log(
+          enhancedUI.theme.error(`  ✗ MCP connection error (${config.name}): ${error.message}`),
+        );
       }
     }
   }
@@ -352,7 +353,7 @@ export async function initializeMCPServers(mcpClient, toolRegistry, onRegisterMC
  * Returns the count of newly registered tools
  */
 export function registerMCPTools(mcpClient, toolRegistry, serverName) {
-  const tools = mcpClient.getTools().filter(t => t.serverName === serverName);
+  const tools = mcpClient.getTools().filter((t) => t.serverName === serverName);
   let registered = 0;
 
   for (const mcpTool of tools) {

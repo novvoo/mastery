@@ -55,20 +55,16 @@ export default function askUser() {
 
 function normalizeList(value) {
   if (Array.isArray(value)) {
-    return value.map(item => String(item || '').trim()).filter(Boolean);
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
   }
   return String(value || '')
     .split(/\n|[,，]/)
-    .map(item => item.trim())
+    .map((item) => item.trim())
     .filter(Boolean);
 }
 
 function formatUserInputRequest({ reason, questions, blockingFacts, suggestions }) {
-  const lines = [
-    '需要你补充一点信息后我才能继续。',
-    '',
-    `原因：${reason}`,
-  ];
+  const lines = ['需要你补充一点信息后我才能继续。', '', `原因：${reason}`];
 
   if (blockingFacts.length > 0) {
     lines.push('', '缺少的信息：');

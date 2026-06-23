@@ -26,11 +26,14 @@ export function createSchedulerCommands(schedulerEngine) {
       switch (subcommand) {
         case 'list': {
           // 解析过滤参数
-          const status = args.find(arg => arg.startsWith('--status='))?.split('=')[1];
-          const limit = parseInt(args.find(arg => arg.startsWith('--limit='))?.split('=')[1]) || 20;
+          const status = args.find((arg) => arg.startsWith('--status='))?.split('=')[1];
+          const limit =
+            parseInt(args.find((arg) => arg.startsWith('--limit='))?.split('=')[1]) || 20;
 
           const options = {};
-          if (status) {options.status = status;}
+          if (status) {
+            options.status = status;
+          }
           options.limit = limit;
 
           const tasks = taskQueue.list(options);
@@ -41,27 +44,30 @@ export function createSchedulerCommands(schedulerEngine) {
             return;
           }
 
-          console.log(`  ${ui.brand('ID')} | ${'Type'.padEnd(20)} | ${'Status'.padEnd(10)} | ${'Priority'.padEnd(8)} | Created`);
+          console.log(
+            `  ${ui.brand('ID')} | ${'Type'.padEnd(20)} | ${'Status'.padEnd(10)} | ${'Priority'.padEnd(8)} | Created`,
+          );
           console.log('  ' + '─'.repeat(90));
 
           for (const task of tasks) {
-            const statusColor = {
-              pending: (s) => s,
-              running: (s) => ui.brand(s),
-              completed: (s) => ui.success(s),
-              failed: (s) => ui.error(s),
-              cancelled: (s) => ui.warn(s)
-            }[task.status] || ((s) => s);
+            const statusColor =
+              {
+                pending: (s) => s,
+                running: (s) => ui.brand(s),
+                completed: (s) => ui.success(s),
+                failed: (s) => ui.error(s),
+                cancelled: (s) => ui.warn(s),
+              }[task.status] || ((s) => s);
 
             const priorityLabels = ['CRIT', 'HIGH', 'NORM', 'LOW', 'BG'];
             const priority = priorityLabels[task.priority] || String(task.priority);
 
             console.log(
               `  ${task.id.substring(0, 20).padEnd(20)} | ` +
-              `${task.type.substring(0, 20).padEnd(20)} | ` +
-              `${statusColor(task.status).padEnd(10)} | ` +
-              `${priority.padEnd(8)} | ` +
-              `${new Date(task.createdAt).toLocaleString()}`
+                `${task.type.substring(0, 20).padEnd(20)} | ` +
+                `${statusColor(task.status).padEnd(10)} | ` +
+                `${priority.padEnd(8)} | ` +
+                `${new Date(task.createdAt).toLocaleString()}`,
             );
           }
           console.log('');
@@ -90,11 +96,15 @@ export function createSchedulerCommands(schedulerEngine) {
           console.log(`  ${ui.brand('Updated:')}     ${new Date(task.updatedAt).toLocaleString()}`);
 
           if (task.startedAt) {
-            console.log(`  ${ui.brand('Started:')}     ${new Date(task.startedAt).toLocaleString()}`);
+            console.log(
+              `  ${ui.brand('Started:')}     ${new Date(task.startedAt).toLocaleString()}`,
+            );
           }
 
           if (task.completedAt) {
-            console.log(`  ${ui.brand('Completed:')}   ${new Date(task.completedAt).toLocaleString()}`);
+            console.log(
+              `  ${ui.brand('Completed:')}   ${new Date(task.completedAt).toLocaleString()}`,
+            );
           }
 
           console.log(`  ${ui.brand('Retries:')}     ${task.retryCount}/${task.maxRetries}`);
@@ -109,13 +119,26 @@ export function createSchedulerCommands(schedulerEngine) {
 
           if (Object.keys(task.payload).length > 0) {
             console.log(`  ${ui.brand('Payload:')}`);
-            console.log(JSON.stringify(task.payload, null, 4).split('\n').map(l => '    ' + l).join('\n'));
+            console.log(
+              JSON.stringify(task.payload, null, 4)
+                .split('\n')
+                .map((l) => '    ' + l)
+                .join('\n'),
+            );
           }
 
           if (task.result !== null) {
             console.log(`  ${ui.brand('Result:')}`);
-            const resultStr = typeof task.result === 'object' ? JSON.stringify(task.result, null, 2) : String(task.result);
-            console.log(resultStr.split('\n').map(l => '    ' + l).join('\n'));
+            const resultStr =
+              typeof task.result === 'object'
+                ? JSON.stringify(task.result, null, 2)
+                : String(task.result);
+            console.log(
+              resultStr
+                .split('\n')
+                .map((l) => '    ' + l)
+                .join('\n'),
+            );
           }
 
           if (task.error) {
@@ -161,7 +184,9 @@ export function createSchedulerCommands(schedulerEngine) {
         case 'list': {
           const enabledOnly = args.includes('--enabled');
           const options = {};
-          if (enabledOnly) {options.enabled = true;}
+          if (enabledOnly) {
+            options.enabled = true;
+          }
 
           const schedules = cronScheduler.list(options);
 
@@ -171,7 +196,9 @@ export function createSchedulerCommands(schedulerEngine) {
             return;
           }
 
-          console.log(`  ${ui.brand('ID')} | ${'Name'.padEnd(20)} | ${'Status'.padEnd(8)} | ${'Cron'.padEnd(15)} | ${'Next Run'.padEnd(20)} | Runs`);
+          console.log(
+            `  ${ui.brand('ID')} | ${'Name'.padEnd(20)} | ${'Status'.padEnd(8)} | ${'Cron'.padEnd(15)} | ${'Next Run'.padEnd(20)} | Runs`,
+          );
           console.log('  ' + '─'.repeat(110));
 
           for (const schedule of schedules) {
@@ -182,11 +209,11 @@ export function createSchedulerCommands(schedulerEngine) {
 
             console.log(
               `  ${schedule.id.substring(0, 15).padEnd(15)} | ` +
-              `${schedule.name.substring(0, 20).padEnd(20)} | ` +
-              `${statusStr.padEnd(8)} | ` +
-              `${schedule.cron.padEnd(15)} | ` +
-              `${nextRun.padEnd(20)} | ` +
-              `${schedule.runCount}${schedule.maxRuns ? '/' + schedule.maxRuns : ''}`
+                `${schedule.name.substring(0, 20).padEnd(20)} | ` +
+                `${statusStr.padEnd(8)} | ` +
+                `${schedule.cron.padEnd(15)} | ` +
+                `${nextRun.padEnd(20)} | ` +
+                `${schedule.runCount}${schedule.maxRuns ? '/' + schedule.maxRuns : ''}`,
             );
           }
           console.log('');
@@ -234,24 +261,27 @@ export function createSchedulerCommands(schedulerEngine) {
             return;
           }
 
-          console.log(`  ${ui.brand('ID')} | ${'Status'.padEnd(10)} | ${'Parent'.padEnd(15)} | ${'Started'.padEnd(20)} | Iterations`);
+          console.log(
+            `  ${ui.brand('ID')} | ${'Status'.padEnd(10)} | ${'Parent'.padEnd(15)} | ${'Started'.padEnd(20)} | Iterations`,
+          );
           console.log('  ' + '─'.repeat(90));
 
           for (const agent of agents) {
-            const statusColor = {
-              idle: (s) => s,
-              running: (s) => ui.brand(s),
-              completed: (s) => ui.success(s),
-              failed: (s) => ui.error(s),
-              stopped: (s) => ui.warn(s)
-            }[agent.status] || ((s) => s);
+            const statusColor =
+              {
+                idle: (s) => s,
+                running: (s) => ui.brand(s),
+                completed: (s) => ui.success(s),
+                failed: (s) => ui.error(s),
+                stopped: (s) => ui.warn(s),
+              }[agent.status] || ((s) => s);
 
             console.log(
               `  ${agent.id.substring(0, 20).padEnd(20)} | ` +
-              `${statusColor(agent.status).padEnd(10)} | ` +
-              `${(agent.parentId || 'N/A').substring(0, 15).padEnd(15)} | ` +
-              `${new Date(agent.createdAt).toLocaleString().padEnd(20)} | ` +
-              `${agent.iterationCount || 0}`
+                `${statusColor(agent.status).padEnd(10)} | ` +
+                `${(agent.parentId || 'N/A').substring(0, 15).padEnd(15)} | ` +
+                `${new Date(agent.createdAt).toLocaleString().padEnd(20)} | ` +
+                `${agent.iterationCount || 0}`,
             );
           }
           console.log('');
@@ -260,7 +290,9 @@ export function createSchedulerCommands(schedulerEngine) {
           // 显示统计信息
           const stats = subAgentPool.getStats();
           console.log('');
-          ui.info(`Stats: ${stats.running} running, ${stats.idle} idle, ${stats.completed} completed, ${stats.failed} failed`);
+          ui.info(
+            `Stats: ${stats.running} running, ${stats.idle} idle, ${stats.completed} completed, ${stats.failed} failed`,
+          );
           break;
         }
 
@@ -288,7 +320,7 @@ export function createSchedulerCommands(schedulerEngine) {
           ui.error(`Unknown subagent subcommand: ${subcommand}`);
           ui.info('Available subcommands: list, stop');
       }
-    }
+    },
   };
 }
 

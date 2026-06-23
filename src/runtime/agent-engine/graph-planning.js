@@ -26,20 +26,23 @@ export function attachModelProvider(ctx, modelProvider) {
         dataDir: experienceDir,
         checkIntervalMs: 60000,
         maxAgents: 10,
-        securityPolicy: ctx.securityPolicy
+        securityPolicy: ctx.securityPolicy,
       },
       ctx.modelProvider,
       ctx.toolRegistry,
-      ctx.memoryManager
+      ctx.memoryManager,
     );
-    ctx.schedulerEngine.initialize().then(() => {
-      // 注册调度器工具（延迟导入避免循环依赖）
-      import('./tool-orchestration.js').then(mod => {
-        mod.registerSchedulerTools(ctx);
+    ctx.schedulerEngine
+      .initialize()
+      .then(() => {
+        // 注册调度器工具（延迟导入避免循环依赖）
+        import('./tool-orchestration.js').then((mod) => {
+          mod.registerSchedulerTools(ctx);
+        });
+      })
+      .catch((error) => {
+        console.warn('调度器引擎初始化失败:', error.message);
       });
-    }).catch(error => {
-      console.warn('调度器引擎初始化失败:', error.message);
-    });
   }
 
   // 为 memoryManager 设置 modelProvider，启用 LLM 选择器
@@ -75,7 +78,9 @@ export function setModelProvider(ctx, modelProvider, options = {}) {
 }
 
 export async function connectMcpServer(ctx, name, config) {
-  if (!ctx.mcpClient) {throw new Error('MCP 客户端未初始化');}
+  if (!ctx.mcpClient) {
+    throw new Error('MCP 客户端未初始化');
+  }
 
   const success = await ctx.mcpClient.connect(name, config);
   if (success) {

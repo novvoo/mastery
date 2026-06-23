@@ -25,7 +25,7 @@ function initializeExpander(workingDirectory) {
     globalDepGraph = new DependencyGraph();
     globalExpander = new OnDemandContextExpansion({
       symbolIndex: globalSymbolIndex,
-      dependencyGraph: globalDepGraph
+      dependencyGraph: globalDepGraph,
     });
   }
   return globalExpander;
@@ -43,36 +43,39 @@ export function createContextExpansionTools(workingDirectory) {
      */
     {
       name: 'context_index',
-      description: '索引项目文件，构建符号索引、依赖关系图和 AST 元数据。这是使用其他上下文扩展工具的前置步骤。',
+      description:
+        '索引项目文件，构建符号索引、依赖关系图和 AST 元数据。这是使用其他上下文扩展工具的前置步骤。',
       category: ToolCategory.FILESYSTEM,
       params: {
         file_patterns: {
           type: 'array',
           items: { type: 'string' },
           description: '要索引的文件模式，如 ["**/*.js", "**/*.ts"]',
-          default: ['**/*.{js,ts,jsx,tsx}']
-        }
+          default: ['**/*.{js,ts,jsx,tsx}'],
+        },
       },
       required: [],
       handler: async ({ file_patterns }, ctx) => {
         try {
           const result = await globalExpander.indexProject(
             ctx.workingDirectory,
-            file_patterns || ['**/*.{js,ts,jsx,tsx}']
+            file_patterns || ['**/*.{js,ts,jsx,tsx}'],
           );
 
           const stats = globalExpander.getStats();
 
-          return `项目索引完成\n` +
-                 `  文件数: ${result.filesIndexed}\n` +
-                 `  符号数: ${result.symbolsFound}\n` +
-                 `  依赖关系: ${stats.dependencyGraph.files} 个文件\n` +
-                 `  缓存条目: ${stats.expansionCache}\n\n` +
-                 `现在可以使用 context_expand 或 context_assess 工具了。`;
+          return (
+            `项目索引完成\n` +
+            `  文件数: ${result.filesIndexed}\n` +
+            `  符号数: ${result.symbolsFound}\n` +
+            `  依赖关系: ${stats.dependencyGraph.files} 个文件\n` +
+            `  缓存条目: ${stats.expansionCache}\n\n` +
+            `现在可以使用 context_expand 或 context_assess 工具了。`
+          );
         } catch (error) {
           return `索引失败: ${error}`;
         }
-      }
+      },
     },
 
     /**
@@ -80,13 +83,14 @@ export function createContextExpansionTools(workingDirectory) {
      */
     {
       name: 'context_assess',
-      description: '评估当前上下文对特定目标的置信度。当置信度不足时，建议使用 context_expand 扩展上下文。',
+      description:
+        '评估当前上下文对特定目标的置信度。当置信度不足时，建议使用 context_expand 扩展上下文。',
       category: ToolCategory.FILESYSTEM,
       params: {
         file: { type: 'string', description: '目标文件路径' },
         line: { type: 'number', description: '目标行号（可选）' },
         symbol_name: { type: 'string', description: '符号名称（可选）' },
-        anchor_hash: { type: 'string', description: '锚点哈希（可选）' }
+        anchor_hash: { type: 'string', description: '锚点哈希（可选）' },
       },
       required: ['file'],
       handler: async ({ file, line, symbol_name, anchor_hash }, ctx) => {
@@ -96,14 +100,14 @@ export function createContextExpansionTools(workingDirectory) {
           file: fullPath,
           line,
           symbolName: symbol_name,
-          anchorHash: anchor_hash
+          anchorHash: anchor_hash,
         });
 
         const confidenceIcon = {
           high: '✅',
           medium: '⚠️',
           low: '❌',
-          unknown: '❓'
+          unknown: '❓',
         }[result.level];
 
         let response = `上下文置信度评估: ${confidenceIcon} ${result.level.toUpperCase()}\n\n`;
@@ -120,7 +124,7 @@ export function createContextExpansionTools(workingDirectory) {
         }
 
         return response;
-      }
+      },
     },
 
     /**
@@ -128,14 +132,19 @@ export function createContextExpansionTools(workingDirectory) {
      */
     {
       name: 'context_expand',
-      description: '按需扩展上下文（load on demand），只加载实际需要的部分，而非整个文件。这避免了上下文膨胀，同时确保模型有足够的信息做出正确决策。',
+      description:
+        '按需扩展上下文（load on demand），只加载实际需要的部分，而非整个文件。这避免了上下文膨胀，同时确保模型有足够的信息做出正确决策。',
       category: ToolCategory.FILESYSTEM,
       params: {
         file: { type: 'string', description: '目标文件路径' },
         line: { type: 'number', description: '目标行号（可选）' },
         symbol_name: { type: 'string', description: '符号名称（可选）' },
-        dependency_level: { type: 'number', description: '依赖扩展深度（0-3），0 表示不加载依赖', default: 1 },
-        context_lines: { type: 'number', description: '周围上下文行数', default: 30 }
+        dependency_level: {
+          type: 'number',
+          description: '依赖扩展深度（0-3），0 表示不加载依赖',
+          default: 1,
+        },
+        context_lines: { type: 'number', description: '周围上下文行数', default: 30 },
       },
       required: ['file'],
       handler: async ({ file, line, symbol_name, dependency_level, context_lines }, ctx) => {
@@ -146,7 +155,7 @@ export function createContextExpansionTools(workingDirectory) {
           line,
           symbolName: symbol_name,
           dependencyLevel: dependency_level,
-          contextLines: context_lines
+          contextLines: context_lines,
         });
 
         let response = `上下文扩展结果\n`;
@@ -196,7 +205,7 @@ export function createContextExpansionTools(workingDirectory) {
         }
 
         return response;
-      }
+      },
     },
 
     /**
@@ -204,11 +213,12 @@ export function createContextExpansionTools(workingDirectory) {
      */
     {
       name: 'context_expand_symbol',
-      description: '获取特定符号的完整上下文，包括定义、调用者、被调用者、类型信息。这对于理解函数的用途和影响范围至关重要。',
+      description:
+        '获取特定符号的完整上下文，包括定义、调用者、被调用者、类型信息。这对于理解函数的用途和影响范围至关重要。',
       category: ToolCategory.FILESYSTEM,
       params: {
         symbol_name: { type: 'string', description: '符号名称' },
-        file: { type: 'string', description: '文件路径（可选，限定搜索范围）' }
+        file: { type: 'string', description: '文件路径（可选，限定搜索范围）' },
       },
       required: ['symbol_name'],
       handler: async ({ symbol_name, file }, ctx) => {
@@ -240,7 +250,7 @@ export function createContextExpansionTools(workingDirectory) {
         if (result.typeInfo) {
           response += `类型信息:\n`;
           if ('params' in result.typeInfo) {
-            response += `  参数: ${result.typeInfo.params.map(p => `${p.name}${p.type ? `: ${p.type}` : ''}`).join(', ')}\n`;
+            response += `  参数: ${result.typeInfo.params.map((p) => `${p.name}${p.type ? `: ${p.type}` : ''}`).join(', ')}\n`;
             if (result.typeInfo.returnType) {
               response += `  返回: ${result.typeInfo.returnType}\n`;
             }
@@ -268,7 +278,7 @@ export function createContextExpansionTools(workingDirectory) {
         }
 
         return response;
-      }
+      },
     },
 
     /**
@@ -282,10 +292,10 @@ export function createContextExpansionTools(workingDirectory) {
         query_type: {
           type: 'string',
           enum: ['symbol', 'type', 'dependency', 'impact'],
-          description: '查询类型'
+          description: '查询类型',
         },
         name: { type: 'string', description: '符号或文件名' },
-        file: { type: 'string', description: '文件路径（可选）' }
+        file: { type: 'string', description: '文件路径（可选）' },
       },
       required: ['query_type', 'name'],
       handler: async ({ query_type, name, file }, ctx) => {
@@ -316,8 +326,13 @@ export function createContextExpansionTools(workingDirectory) {
               return `未找到类型为 "${name}" 的符号`;
             }
 
-            return `类型为 "${name}" 的符号 (${byType.length}):\n` +
-                   byType.slice(0, 20).map(s => `  - ${s.name} (${s.file})`).join('\n');
+            return (
+              `类型为 "${name}" 的符号 (${byType.length}):\n` +
+              byType
+                .slice(0, 20)
+                .map((s) => `  - ${s.name} (${s.file})`)
+                .join('\n')
+            );
           }
 
           case 'dependency': {
@@ -381,7 +396,7 @@ export function createContextExpansionTools(workingDirectory) {
           default:
             return `未知的查询类型: ${query_type}`;
         }
-      }
+      },
     },
 
     /**
@@ -389,16 +404,17 @@ export function createContextExpansionTools(workingDirectory) {
      */
     {
       name: 'context_evidence',
-      description: '生成基于证据的修改意图（Evidence-Based Change Intent）。这是避免幻觉的关键：模型生成的不是"基于不完整上下文的代码臆测"，而是"基于证据的修改意图"。',
+      description:
+        '生成基于证据的修改意图（Evidence-Based Change Intent）。这是避免幻觉的关键：模型生成的不是"基于不完整上下文的代码臆测"，而是"基于证据的修改意图"。',
       category: ToolCategory.FILESYSTEM,
       params: {
         file: { type: 'string', description: '目标文件' },
         change_type: {
           type: 'string',
           enum: ['modify', 'extend', 'delete', 'replace', 'refactor'],
-          description: '修改类型'
+          description: '修改类型',
         },
-        change_description: { type: 'string', description: '修改描述' }
+        change_description: { type: 'string', description: '修改描述' },
       },
       required: ['file', 'change_type', 'change_description'],
       handler: async ({ file, change_type, change_description }, ctx) => {
@@ -407,7 +423,7 @@ export function createContextExpansionTools(workingDirectory) {
         const result = await globalExpander.generateEvidenceBasedIntent({
           targetFile: fullPath,
           changeType: change_type,
-          changeDescription: change_description
+          changeDescription: change_description,
         });
 
         const confidenceIcon = { high: '✅', medium: '⚠️', low: '❌', unknown: '❓' };
@@ -456,7 +472,7 @@ export function createContextExpansionTools(workingDirectory) {
         }
 
         return response;
-      }
+      },
     },
 
     /**
@@ -471,19 +487,21 @@ export function createContextExpansionTools(workingDirectory) {
       handler: async (_, ctx) => {
         const stats = globalExpander.getStats();
 
-        return `上下文索引统计:\n\n` +
-               `符号索引:\n` +
-               `  文件: ${stats.symbolIndex.files}\n` +
-               `  符号总数: ${stats.symbolIndex.symbols}\n` +
-               `  按类型: ${JSON.stringify(stats.symbolIndex.byType)}\n\n` +
-               `依赖图:\n` +
-               `  文件: ${stats.dependencyGraph.files}\n` +
-               `  外部模块: ${stats.dependencyGraph.externalModules}\n` +
-               `  平均依赖: ${stats.dependencyGraph.avgDependencies.toFixed(2)}\n\n` +
-               `扩展缓存:\n` +
-               `  条目数: ${stats.expansionCache}\n`;
-      }
-    }
+        return (
+          `上下文索引统计:\n\n` +
+          `符号索引:\n` +
+          `  文件: ${stats.symbolIndex.files}\n` +
+          `  符号总数: ${stats.symbolIndex.symbols}\n` +
+          `  按类型: ${JSON.stringify(stats.symbolIndex.byType)}\n\n` +
+          `依赖图:\n` +
+          `  文件: ${stats.dependencyGraph.files}\n` +
+          `  外部模块: ${stats.dependencyGraph.externalModules}\n` +
+          `  平均依赖: ${stats.dependencyGraph.avgDependencies.toFixed(2)}\n\n` +
+          `扩展缓存:\n` +
+          `  条目数: ${stats.expansionCache}\n`
+        );
+      },
+    },
   ];
 }
 
@@ -495,11 +513,11 @@ export function getContextExpansionSystem() {
   return {
     expander: globalExpander,
     symbolIndex: globalSymbolIndex,
-    dependencyGraph: globalDepGraph
+    dependencyGraph: globalDepGraph,
   };
 }
 
 export default {
   createContextExpansionTools,
-  getContextExpansionSystem
+  getContextExpansionSystem,
 };

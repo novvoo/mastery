@@ -38,7 +38,7 @@ export async function registerAllTools(ctx) {
       workingDirectory: config?.workingDirectory,
       mcpClient: ctx.mcpClient,
     }),
-    '核心工具'
+    '核心工具',
   );
 
   if (schedulerEngine) {
@@ -69,7 +69,9 @@ export async function registerAllTools(ctx) {
  */
 export async function registerSchedulerTools(ctx) {
   const { schedulerEngine, toolRegistry, pluginManager } = ctx;
-  if (!schedulerEngine) {return;}
+  if (!schedulerEngine) {
+    return;
+  }
   try {
     for (const tool of createSchedulerTools(schedulerEngine)) {
       toolRegistry.register(tool);
@@ -85,7 +87,9 @@ export async function registerSchedulerTools(ctx) {
  * 幂等：多次调用安全。
  */
 export function wrapToolCalls(ctx) {
-  if (ctx.toolCallsWrapped) {return;}
+  if (ctx.toolCallsWrapped) {
+    return;
+  }
 
   const originalExecute = ctx.toolRegistry.execute.bind(ctx.toolRegistry);
   const eventBus = ctx.eventBus;
@@ -93,39 +97,44 @@ export function wrapToolCalls(ctx) {
   const toolMiddleware = pluginManager.getToolMiddleware();
 
   ctx.toolRegistry.execute = async (toolName, args, context) => {
-    return toolMiddleware.execute(
-      toolName,
-      args,
-      context,
-      async (name, arguments_, execCtx) => {
-        await pluginManager.triggerHook(HOOKS.BEFORE_TOOL_CALL, name, arguments_);
+    return toolMiddleware.execute(toolName, args, context, async (name, arguments_, execCtx) => {
+      await pluginManager.triggerHook(HOOKS.BEFORE_TOOL_CALL, name, arguments_);
 
+      {
+        const activity = describeToolActivity(name, arguments_, 'running');
+        eventBus.emit(RuntimeEvent.TOOL_CALL, { toolName: name, args: arguments_, activity });
+        eventBus.emit(RuntimeEvent.TOOL_ACTIVITY, activity);
+      }
+
+      try {
+        const result = await originalExecute(name, arguments_, execCtx);
         {
-          const activity = describeToolActivity(name, arguments_, 'running');
-          eventBus.emit(RuntimeEvent.TOOL_CALL, { toolName: name, args: arguments_, activity });
+          const activity = describeToolActivity(name, arguments_, 'completed', result);
+          eventBus.emit(RuntimeEvent.TOOL_RESULT, {
+            toolName: name,
+            args: arguments_,
+            result,
+            activity,
+          });
           eventBus.emit(RuntimeEvent.TOOL_ACTIVITY, activity);
         }
-
-        try {
-          const result = await originalExecute(name, arguments_, execCtx);
-          {
-            const activity = describeToolActivity(name, arguments_, 'completed', result);
-            eventBus.emit(RuntimeEvent.TOOL_RESULT, { toolName: name, args: arguments_, result, activity });
-            eventBus.emit(RuntimeEvent.TOOL_ACTIVITY, activity);
-          }
-          await pluginManager.triggerHook(HOOKS.AFTER_TOOL_CALL, name, result);
-          return result;
-        } catch (error) {
-          {
-            const activity = describeToolActivity(name, arguments_, 'failed', error.message);
-            eventBus.emit(RuntimeEvent.TOOL_ERROR, { toolName: name, args: arguments_, error: error.message, activity });
-            eventBus.emit(RuntimeEvent.TOOL_ACTIVITY, activity);
-          }
-          await pluginManager.triggerHook(HOOKS.ON_TOOL_ERROR, name, error);
-          throw error;
+        await pluginManager.triggerHook(HOOKS.AFTER_TOOL_CALL, name, result);
+        return result;
+      } catch (error) {
+        {
+          const activity = describeToolActivity(name, arguments_, 'failed', error.message);
+          eventBus.emit(RuntimeEvent.TOOL_ERROR, {
+            toolName: name,
+            args: arguments_,
+            error: error.message,
+            activity,
+          });
+          eventBus.emit(RuntimeEvent.TOOL_ACTIVITY, activity);
         }
+        await pluginManager.triggerHook(HOOKS.ON_TOOL_ERROR, name, error);
+        throw error;
       }
-    );
+    });
   };
 
   ctx.toolCallsWrapped = true;
@@ -136,13 +145,17 @@ export function wrapToolCalls(ctx) {
  */
 export async function loadTool(ctx, toolModule, options = {}) {
   const loader = ctx.pluginManager.getToolLoader();
-  if (!loader) {throw new Error('工具加载器未初始化');}
+  if (!loader) {
+    throw new Error('工具加载器未初始化');
+  }
   return loader.loadTool(toolModule, options);
 }
 
 export async function unloadTool(ctx, toolName) {
   const loader = ctx.pluginManager.getToolLoader();
-  if (!loader) {return false;}
+  if (!loader) {
+    return false;
+  }
   return loader.unloadTool(toolName);
 }
 
@@ -169,9 +182,9 @@ export function getToolSummary(ctx) {
 export function getToolsWithGroups(ctx) {
   const tools = ctx.toolRegistry.getAll();
   const groups = ctx.pluginManager.getToolGroups();
-  return tools.map(tool => ({
+  return tools.map((tool) => ({
     ...tool,
-    group: groups.getToolGroup(tool.name)
+    group: groups.getToolGroup(tool.name),
   }));
 }
 
@@ -180,9 +193,11 @@ export function getToolsWithGroups(ctx) {
  * 在 connectMcpServer 成功后被调用。
  */
 export function registerMcpTools(ctx, serverName) {
-  const tools = ctx.mcpClient.getTools().filter(t => t.serverName === serverName);
+  const tools = ctx.mcpClient.getTools().filter((t) => t.serverName === serverName);
   for (const mcpTool of tools) {
-    if (ctx.toolRegistry.has(mcpTool.fullName)) {continue;}
+    if (ctx.toolRegistry.has(mcpTool.fullName)) {
+      continue;
+    }
 
     const tool = {
       name: mcpTool.fullName,
@@ -190,7 +205,7 @@ export function registerMcpTools(ctx, serverName) {
       category: 'MCP',
       parameters: mcpTool.inputSchema.properties || {},
       required: mcpTool.inputSchema.required || [],
-      handler: async (args) => await ctx.mcpClient.callTool(mcpTool.fullName, args)
+      handler: async (args) => await ctx.mcpClient.callTool(mcpTool.fullName, args),
     };
     ctx.toolRegistry.register(tool);
     ctx.pluginManager.triggerHook(HOOKS.ON_TOOL_REGISTER, tool.name, tool);

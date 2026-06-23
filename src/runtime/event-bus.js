@@ -1,7 +1,7 @@
 /**
  * Event Bus for cross-platform communication
  * Enables decoupled communication between runtime and adapters
- * 
+ *
  * 增强功能：
  * - 事件优先级支持（high/medium/low）
  * - 事件过滤器功能（支持按类型、来源、数据过滤）
@@ -35,50 +35,50 @@ export { EventPriority };
 /**
  * 运行时事件总线类
  * 支持优先级、过滤器、批量处理、历史记录、异步事件等功能
- * 
+ *
  * 注意：为了支持优先级功能，我们使用自定义的订阅者管理，
  * 而不是依赖 EventEmitter 的默认监听器顺序。
  */
 export class RuntimeEventBus extends EventEmitter {
   constructor(options = {}) {
     super();
-    
+
     // 订阅者映射表，存储事件到订阅者数组的映射
     // 每个订阅者包含 { callback, priority, weight, id }
     this.subscribers = new Map();
-    
+
     // 延迟订阅队列，用于延迟订阅激活
     this.pendingSubscriptions = new Map();
-    
+
     // 通配符订阅者（匹配所有事件）
     this.wildcardSubscribers = [];
-    
+
     // 事件过滤器映射表
     this.filters = new Map();
-    
+
     // 全局过滤器
     this.globalFilter = createDefaultFilter();
-    
+
     // 事件历史记录
     this.history = [];
     this.historyConfig = { ...DEFAULT_HISTORY_CONFIG, ...options.history };
-    
+
     // 事件缓存
     this.cache = new Map();
     this.cacheConfig = { ...DEFAULT_CACHE_CONFIG, ...options.cache };
-    
+
     // 批量处理配置
     this.batchConfig = { ...DEFAULT_BATCH_CONFIG, ...options.batch };
     this.batchQueue = [];
     this.batchTimer = null;
-    
+
     // 事件统计信息
     this.stats = {
       totalEvents: 0,
       filteredEvents: 0,
-      cachedHits: 0
+      cachedHits: 0,
     };
-    
+
     // 错误处理器，防止未捕获的错误导致进程崩溃
     this._setupErrorHandler();
   }
@@ -107,10 +107,7 @@ export class RuntimeEventBus extends EventEmitter {
    * @returns {Function} 取消订阅函数
    */
   subscribe(event, callback, options = {}) {
-    const {
-      priority = EventPriority.MEDIUM,
-      deferred = false
-    } = options;
+    const { priority = EventPriority.MEDIUM, deferred = false } = options;
 
     // 如果是延迟订阅，添加到待处理队列
     if (deferred) {
@@ -122,7 +119,7 @@ export class RuntimeEventBus extends EventEmitter {
       callback,
       priority,
       weight: PRIORITY_WEIGHT[priority] || PRIORITY_WEIGHT[EventPriority.MEDIUM],
-      id: this._generateId()
+      id: this._generateId(),
     };
 
     // 通配符订阅：匹配所有事件
@@ -154,7 +151,7 @@ export class RuntimeEventBus extends EventEmitter {
       event,
       callback,
       priority,
-      id: this._generateId()
+      id: this._generateId(),
     };
 
     if (!this.pendingSubscriptions.has(event)) {
@@ -166,7 +163,7 @@ export class RuntimeEventBus extends EventEmitter {
     return () => {
       const subs = this.pendingSubscriptions.get(event);
       if (subs) {
-        const index = subs.findIndex(s => s.id === subscription.id);
+        const index = subs.findIndex((s) => s.id === subscription.id);
         if (index > -1) {
           subs.splice(index, 1);
         }
@@ -179,9 +176,7 @@ export class RuntimeEventBus extends EventEmitter {
    * @param {string} event - 可选，指定要激活的事件，不指定则激活所有
    */
   activateDeferred(event) {
-    const eventsToActivate = event 
-      ? [event] 
-      : Array.from(this.pendingSubscriptions.keys());
+    const eventsToActivate = event ? [event] : Array.from(this.pendingSubscriptions.keys());
 
     for (const evt of eventsToActivate) {
       const subs = this.pendingSubscriptions.get(evt);
@@ -202,7 +197,7 @@ export class RuntimeEventBus extends EventEmitter {
   unsubscribe(event, callback) {
     // 通配符取消订阅
     if (event === '*') {
-      const index = this.wildcardSubscribers.findIndex(s => s.callback === callback);
+      const index = this.wildcardSubscribers.findIndex((s) => s.callback === callback);
       if (index > -1) {
         this.wildcardSubscribers.splice(index, 1);
       }
@@ -212,7 +207,7 @@ export class RuntimeEventBus extends EventEmitter {
     // 从订阅者列表中移除
     if (this.subscribers.has(event)) {
       const subscribers = this.subscribers.get(event);
-      const index = subscribers.findIndex(s => s.callback === callback);
+      const index = subscribers.findIndex((s) => s.callback === callback);
       if (index > -1) {
         subscribers.splice(index, 1);
       }
@@ -327,7 +322,7 @@ export class RuntimeEventBus extends EventEmitter {
 
     // 获取订阅者并按优先级顺序执行
     const subscribers = this.subscribers.get(event) || [];
-    
+
     // 按优先级顺序执行异步回调
     for (const subscriber of subscribers) {
       try {
@@ -553,7 +548,7 @@ export class RuntimeEventBus extends EventEmitter {
           this._handleCallbackError(error, event.type, subscriber);
         }
       }
-      
+
       // 通知通配符订阅者
       for (const subscriber of this.wildcardSubscribers) {
         try {
@@ -562,10 +557,10 @@ export class RuntimeEventBus extends EventEmitter {
           this._handleCallbackError(error, event.type, subscriber);
         }
       }
-      
+
       // 触发 EventEmitter 监听器
       super.emit(event.type, replayData);
-      
+
       if (delay > 0) {
         await this._sleep(delay);
       }
@@ -600,7 +595,7 @@ export class RuntimeEventBus extends EventEmitter {
    */
   getCachedEvent(event) {
     const entry = this.cache.get(event);
-    
+
     if (!entry) {
       return null;
     }
@@ -645,7 +640,7 @@ export class RuntimeEventBus extends EventEmitter {
     if (event) {
       return this.subscribers.get(event) || [];
     }
-    
+
     // 返回所有订阅者的摘要信息
     return summarizeSubscribers(this.subscribers);
   }
@@ -657,13 +652,13 @@ export class RuntimeEventBus extends EventEmitter {
   getStats() {
     // 计算总订阅者数：事件特定订阅者 + 通配符订阅者
     const totalSubs = countSubscribers(this.subscribers, this.wildcardSubscribers);
-    
+
     return {
       ...this.stats,
       subscriberCount: totalSubs > 0 ? totalSubs : this.subscribers.size,
       historySize: this.history.length,
       cacheSize: this.cache.size,
-      pendingSubscriptions: this.pendingSubscriptions.size
+      pendingSubscriptions: this.pendingSubscriptions.size,
     };
   }
 
@@ -674,7 +669,7 @@ export class RuntimeEventBus extends EventEmitter {
     this.stats = {
       totalEvents: 0,
       filteredEvents: 0,
-      cachedHits: 0
+      cachedHits: 0,
     };
   }
 
@@ -702,10 +697,10 @@ export class RuntimeEventBus extends EventEmitter {
     this.history = [];
     this.cache.clear();
     this.batchQueue = [];
-    
+
     // 重置统计
     this.resetStats();
-    
+
     // 重新设置错误处理器
     this._setupErrorHandler();
   }
@@ -733,11 +728,11 @@ export class RuntimeEventBus extends EventEmitter {
       subscriberId: subscriber.id,
       error: {
         message: error.message,
-        stack: error.stack
+        stack: error.stack,
       },
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
-    
+
     // 使用 super.emit 直接发射，避免触发我们的订阅者系统
     super.emit('subscriber_error', errorData);
     super.emit('error', errorData);
@@ -756,7 +751,7 @@ export class RuntimeEventBus extends EventEmitter {
    * @private
    */
   _sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 

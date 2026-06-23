@@ -38,9 +38,7 @@ export async function handlePreviewCommand(agent, argsText = '') {
   }
 
   const kind = ['static', 'node', 'auto'].includes(subcommand) ? subcommand : 'auto';
-  const target = ['static', 'node', 'auto'].includes(subcommand)
-    ? (args[1] || '.')
-    : (args[0] || '.');
+  const target = ['static', 'node', 'auto'].includes(subcommand) ? args[1] || '.' : args[0] || '.';
   const command = kind === 'node' && args.length > 2 ? args.slice(2).join(' ') : undefined;
   const spinner = enhancedUI.spinner('Starting preview...');
   spinner.start();

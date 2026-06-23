@@ -54,11 +54,7 @@ import {
   registerHook,
 } from './agent-engine/plugin-bridge.js';
 
-import {
-  setUIAdapter,
-  getEventBus,
-  emit,
-} from './agent-engine/event-emission.js';
+import { setUIAdapter, getEventBus, emit } from './agent-engine/event-emission.js';
 
 import {
   attachModelProvider,
@@ -168,23 +164,41 @@ export class AgentEngine {
         target[prop] = value;
         const privateKey = `#${prop}`;
         // 只在匹配的字段名上同步
-        if (prop === 'isInitialized') {this.#isInitialized = value;}
-        else if (prop === 'toolRegistry') {this.#toolRegistry = value;}
-        else if (prop === 'memoryManager') {this.#memoryManager = value;}
-        else if (prop === 'securityPolicy') {this.#securityPolicy = value;}
-        else if (prop === 'sessionManager') {this.#sessionManager = value;}
-        else if (prop === 'experienceMemory') {this.#experienceMemory = value;}
-        else if (prop === 'tokenJuice') {this.#tokenJuice = value;}
-        else if (prop === 'tokenScope') {this.#tokenScope = value;}
-        else if (prop === 'intelligentReasoning') {this.#intelligentReasoning = value;}
-        else if (prop === 'automationEngine') {this.#automationEngine = value;}
-        else if (prop === 'embedder') {this.#embedder = value;}
-        else if (prop === 'mcpClient') {this.#mcpClient = value;}
-        else if (prop === 'schedulerEngine') {this.#schedulerEngine = value;}
-        else if (prop === 'toolCallsWrapped') {this.#toolCallsWrapped = value;}
-        else if (prop === 'modelProvider') {this.#modelProvider = value;}
-        else if (prop === 'uiAdapter') {this.#uiAdapter = value;}
-        else if (prop === 'agent') {this.#agent = value;}
+        if (prop === 'isInitialized') {
+          this.#isInitialized = value;
+        } else if (prop === 'toolRegistry') {
+          this.#toolRegistry = value;
+        } else if (prop === 'memoryManager') {
+          this.#memoryManager = value;
+        } else if (prop === 'securityPolicy') {
+          this.#securityPolicy = value;
+        } else if (prop === 'sessionManager') {
+          this.#sessionManager = value;
+        } else if (prop === 'experienceMemory') {
+          this.#experienceMemory = value;
+        } else if (prop === 'tokenJuice') {
+          this.#tokenJuice = value;
+        } else if (prop === 'tokenScope') {
+          this.#tokenScope = value;
+        } else if (prop === 'intelligentReasoning') {
+          this.#intelligentReasoning = value;
+        } else if (prop === 'automationEngine') {
+          this.#automationEngine = value;
+        } else if (prop === 'embedder') {
+          this.#embedder = value;
+        } else if (prop === 'mcpClient') {
+          this.#mcpClient = value;
+        } else if (prop === 'schedulerEngine') {
+          this.#schedulerEngine = value;
+        } else if (prop === 'toolCallsWrapped') {
+          this.#toolCallsWrapped = value;
+        } else if (prop === 'modelProvider') {
+          this.#modelProvider = value;
+        } else if (prop === 'uiAdapter') {
+          this.#uiAdapter = value;
+        } else if (prop === 'agent') {
+          this.#agent = value;
+        }
         return true;
       },
     });
@@ -216,7 +230,9 @@ export class AgentEngine {
     return unregisterPlugin(this.#ctx(), pluginName);
   }
 
-  getPluginManager() { return this.#pluginManager; }
+  getPluginManager() {
+    return this.#pluginManager;
+  }
 
   registerHook(hookName, fn, options = {}) {
     return registerHook(this.#ctx(), hookName, fn, options);
@@ -235,8 +251,12 @@ export class AgentEngine {
     return createToolGroup(this.#ctx(), name, options);
   }
 
-  getToolGroups() { return getToolGroups(this.#ctx()); }
-  getGroupTools(groupName) { return getGroupTools(this.#ctx(), groupName); }
+  getToolGroups() {
+    return getToolGroups(this.#ctx());
+  }
+  getGroupTools(groupName) {
+    return getGroupTools(this.#ctx(), groupName);
+  }
 
   addToolMiddleware(middleware) {
     return addToolMiddleware(this.#ctx(), middleware);
@@ -256,9 +276,15 @@ export class AgentEngine {
     }
   }
 
-  getTools() { return this.#toolRegistry.getAll(); }
-  getToolsWithGroups() { return getToolsWithGroups(this.#ctx()); }
-  getToolSummary() { return getToolSummary(this.#ctx()); }
+  getTools() {
+    return this.#toolRegistry.getAll();
+  }
+  getToolsWithGroups() {
+    return getToolsWithGroups(this.#ctx());
+  }
+  getToolSummary() {
+    return getToolSummary(this.#ctx());
+  }
 
   // ——— MCP ———
   async connectMcpServer(name, config) {
@@ -280,12 +306,20 @@ export class AgentEngine {
     return stopAgent(this.#ctx());
   }
 
-  clearSession() { return clearSession(this.#ctx()); }
+  clearSession() {
+    return clearSession(this.#ctx());
+  }
 
-  setDebugMode(enabled) { return setDebugMode(this.#ctx(), enabled); }
-  getDebugMode() { return getDebugMode(this.#ctx()); }
+  setDebugMode(enabled) {
+    return setDebugMode(this.#ctx(), enabled);
+  }
+  getDebugMode() {
+    return getDebugMode(this.#ctx());
+  }
 
-  setUIAdapter(adapter) { return setUIAdapter(this.#ctx(), adapter); }
+  setUIAdapter(adapter) {
+    return setUIAdapter(this.#ctx(), adapter);
+  }
 
   setWorkingDirectory(directory) {
     if (this.#config && typeof directory === 'string' && directory.trim()) {
@@ -294,30 +328,74 @@ export class AgentEngine {
   }
 
   // ——— 内存与配置 ———
-  async updateMemory(operation, data) { return updateMemory(this.#ctx(), operation, data); }
-  async clearMemory() { return clearMemory(this.#ctx()); }
-  async updateConfig(key, value) { return updateConfig(this.#ctx(), key, value); }
+  async updateMemory(operation, data) {
+    return updateMemory(this.#ctx(), operation, data);
+  }
+  async clearMemory() {
+    return clearMemory(this.#ctx());
+  }
+  async updateConfig(key, value) {
+    return updateConfig(this.#ctx(), key, value);
+  }
 
   // ——— Getters ———
-  getState() { return { ...this.#state }; }
-  getToolRegistry() { return this.#toolRegistry; }
-  getMemoryManager() { return this.#memoryManager; }
-  getSecurityPolicy() { return this.#securityPolicy; }
-  getExperienceMemory() { return this.#experienceMemory; }
-  getSessionManager() { return this.#sessionManager; }
-  getTokenJuice() { return this.#tokenJuice; }
-  getTokenScope() { return this.#tokenScope; }
-  getIntelligentReasoning() { return this.#intelligentReasoning; }
-  getAutomationEngine() { return this.#automationEngine; }
-  getEmbedder() { return this.#embedder; }
-  getMcpClient() { return this.#mcpClient; }
-  getSchedulerEngine() { return this.#schedulerEngine; }
-  getGraphPlanner() { return this.#graphPlanner; }
-  getEventBus() { return this.#eventBus; }
-  getModelProvider() { return this.#modelProvider; }
-  isInitialized() { return this.#isInitialized; }
-  getConfig() { return this.#config; }
-  getAgent() { return this.#agent; }
+  getState() {
+    return { ...this.#state };
+  }
+  getToolRegistry() {
+    return this.#toolRegistry;
+  }
+  getMemoryManager() {
+    return this.#memoryManager;
+  }
+  getSecurityPolicy() {
+    return this.#securityPolicy;
+  }
+  getExperienceMemory() {
+    return this.#experienceMemory;
+  }
+  getSessionManager() {
+    return this.#sessionManager;
+  }
+  getTokenJuice() {
+    return this.#tokenJuice;
+  }
+  getTokenScope() {
+    return this.#tokenScope;
+  }
+  getIntelligentReasoning() {
+    return this.#intelligentReasoning;
+  }
+  getAutomationEngine() {
+    return this.#automationEngine;
+  }
+  getEmbedder() {
+    return this.#embedder;
+  }
+  getMcpClient() {
+    return this.#mcpClient;
+  }
+  getSchedulerEngine() {
+    return this.#schedulerEngine;
+  }
+  getGraphPlanner() {
+    return this.#graphPlanner;
+  }
+  getEventBus() {
+    return this.#eventBus;
+  }
+  getModelProvider() {
+    return this.#modelProvider;
+  }
+  isInitialized() {
+    return this.#isInitialized;
+  }
+  getConfig() {
+    return this.#config;
+  }
+  getAgent() {
+    return this.#agent;
+  }
 
   // ——— 资源释放 ———
   async dispose() {

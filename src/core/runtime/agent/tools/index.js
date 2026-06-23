@@ -12,7 +12,7 @@ import { createLSPTools as createLSPToolsImpl } from '../../../../lsp/lsp-tools.
 
 export function createHashlineTools() {
   const fsTools = createFileSystemTools();
-  return fsTools.filter(t => t.name === 'apply_hashline_patch');
+  return fsTools.filter((t) => t.name === 'apply_hashline_patch');
 }
 
 export function createLSPTools(options) {

@@ -42,7 +42,9 @@ async function loadLocalFile(path, title, workingDirectory) {
   const absolutePath = isAbsolute(path) ? path : resolve(workingDirectory, path);
   const fileStat = await stat(absolutePath);
   if (fileStat.size > MAX_DOCUMENT_BYTES) {
-    throw new Error(`Document is too large (${fileStat.size} bytes). Limit is ${MAX_DOCUMENT_BYTES} bytes.`);
+    throw new Error(
+      `Document is too large (${fileStat.size} bytes). Limit is ${MAX_DOCUMENT_BYTES} bytes.`,
+    );
   }
 
   const buffer = await readFile(absolutePath);
@@ -67,7 +69,9 @@ async function loadURL(url, title) {
   const arrayBuffer = await response.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
   if (buffer.length > MAX_DOCUMENT_BYTES) {
-    throw new Error(`Document is too large (${buffer.length} bytes). Limit is ${MAX_DOCUMENT_BYTES} bytes.`);
+    throw new Error(
+      `Document is too large (${buffer.length} bytes). Limit is ${MAX_DOCUMENT_BYTES} bytes.`,
+    );
   }
 
   const kind = inferKind(url, contentType);
@@ -124,7 +128,7 @@ function ensurePdfJsNodeGlobals() {
 async function withSuppressedPdfJsCanvasWarnings(fn) {
   const originalWarn = console.warn;
   console.warn = (...args) => {
-    const message = args.map(arg => String(arg)).join(' ');
+    const message = args.map((arg) => String(arg)).join(' ');
     if (
       message.includes('Cannot load "@napi-rs/canvas"') ||
       message.includes('Cannot polyfill `DOMMatrix`') ||
@@ -147,23 +151,39 @@ async function withSuppressedPdfJsCanvasWarnings(fn) {
 export function inferKind(source, contentType = '') {
   const ext = extname(getURLSafePath(source)).toLowerCase();
   const type = contentType.toLowerCase();
-  if (ext === '.pdf' || type.includes('application/pdf')) { return 'pdf'; }
-  if (ext === '.docx' || type.includes('wordprocessingml.document')) { return 'docx'; }
-  if (ext === '.html' || ext === '.htm' || type.includes('text/html')) { return 'html'; }
-  if (ext === '.json' || type.includes('application/json')) { return 'json'; }
-  if (ext === '.md' || ext === '.markdown') { return 'markdown'; }
+  if (ext === '.pdf' || type.includes('application/pdf')) {
+    return 'pdf';
+  }
+  if (ext === '.docx' || type.includes('wordprocessingml.document')) {
+    return 'docx';
+  }
+  if (ext === '.html' || ext === '.htm' || type.includes('text/html')) {
+    return 'html';
+  }
+  if (ext === '.json' || type.includes('application/json')) {
+    return 'json';
+  }
+  if (ext === '.md' || ext === '.markdown') {
+    return 'markdown';
+  }
   return 'text';
 }
 
 function getURLSafePath(source) {
-  try { return new URL(source).pathname; } catch { return source; }
+  try {
+    return new URL(source).pathname;
+  } catch {
+    return source;
+  }
 }
 
 function inferTitleFromURL(url) {
   try {
     const parsed = new URL(url);
     return basename(parsed.pathname) || parsed.hostname;
-  } catch { return url; }
+  } catch {
+    return url;
+  }
 }
 
 async function fetchWithTimeout(url, timeoutMs = 15000) {
@@ -174,7 +194,8 @@ async function fetchWithTimeout(url, timeoutMs = 15000) {
       signal: controller.signal,
       headers: {
         'user-agent': USER_AGENT,
-        accept: 'text/html,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,*/*;q=0.8',
+        accept:
+          'text/html,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,*/*;q=0.8',
       },
     });
   } finally {

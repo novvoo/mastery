@@ -11,7 +11,7 @@ export const TaskStatus = {
   COMPLETED: 'completed',
   FAILED: 'failed',
   CANCELLED: 'cancelled',
-  WAITING: 'waiting'  // 新增：等待依赖任务完成
+  WAITING: 'waiting', // 新增：等待依赖任务完成
 };
 
 // 任务优先级枚举（数值越小优先级越高）
@@ -20,7 +20,7 @@ export const TaskPriority = {
   HIGH: 1,
   NORMAL: 2,
   LOW: 3,
-  BACKGROUND: 4
+  BACKGROUND: 4,
 };
 
 /**
@@ -148,7 +148,7 @@ export class Task {
    * @param {string} taskId - 要移除的依赖任务ID
    */
   removeDependency(taskId) {
-    this.dependsOn = this.dependsOn.filter(id => id !== taskId);
+    this.dependsOn = this.dependsOn.filter((id) => id !== taskId);
     this.completedDependencies.delete(taskId);
   }
 
@@ -172,7 +172,7 @@ export class Task {
     if (this.dependsOn.length === 0) {
       return true;
     }
-    return this.dependsOn.every(id => this.completedDependencies.has(id));
+    return this.dependsOn.every((id) => this.completedDependencies.has(id));
   }
 
   /**
@@ -180,7 +180,7 @@ export class Task {
    * @returns {string[]}
    */
   getPendingDependencies() {
-    return this.dependsOn.filter(id => !this.completedDependencies.has(id));
+    return this.dependsOn.filter((id) => !this.completedDependencies.has(id));
   }
 
   /**
@@ -188,8 +188,10 @@ export class Task {
    * @returns {boolean}
    */
   isReadyToRun() {
-    return this.areDependenciesMet() && 
-           (this.status === TaskStatus.PENDING || this.status === TaskStatus.WAITING);
+    return (
+      this.areDependenciesMet() &&
+      (this.status === TaskStatus.PENDING || this.status === TaskStatus.WAITING)
+    );
   }
 
   /**
@@ -214,7 +216,7 @@ export class Task {
       parentId: this.parentId,
       scheduleId: this.scheduleId,
       dependsOn: this.dependsOn,
-      completedDependencies: Array.from(this.completedDependencies)
+      completedDependencies: Array.from(this.completedDependencies),
     };
   }
 

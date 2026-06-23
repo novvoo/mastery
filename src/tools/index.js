@@ -72,17 +72,16 @@ export function createCoreTools({
   ];
 
   if (includeExperimentalTools) {
-    tools.push(
-      ...createStateCentricTools(),
-      ...createStateGraphTools(),
-    );
+    tools.push(...createStateCentricTools(), ...createStateGraphTools());
   }
 
   return tools;
 }
 
 export function createSchedulerTools(schedulerEngine) {
-  if (!schedulerEngine) {return [];}
+  if (!schedulerEngine) {
+    return [];
+  }
   return [
     ...createTaskTools(schedulerEngine),
     ...createScheduleTools(schedulerEngine),

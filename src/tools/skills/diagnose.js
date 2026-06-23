@@ -22,11 +22,13 @@ export default function diagnose() {
       },
       context: {
         type: 'string',
-        description: 'Context about the environment, system state, or conditions when the symptom occurs',
+        description:
+          'Context about the environment, system state, or conditions when the symptom occurs',
       },
       recent_changes: {
         type: 'string',
-        description: 'Recent code changes, deployments, or configuration modifications that may be related',
+        description:
+          'Recent code changes, deployments, or configuration modifications that may be related',
       },
     },
     required: ['symptom'],
@@ -57,28 +59,60 @@ function analyzeSymptom(symptom, errorOutput) {
   let severity = 'Medium';
   let category = 'Functional';
 
-  if (symptomLower.includes('crash') || symptomLower.includes('segfault') || symptomLower.includes('fatal')) {
+  if (
+    symptomLower.includes('crash') ||
+    symptomLower.includes('segfault') ||
+    symptomLower.includes('fatal')
+  ) {
     severity = 'Critical';
     category = 'Stability';
-  } else if (symptomLower.includes('slow') || symptomLower.includes('timeout') || symptomLower.includes('hang')) {
+  } else if (
+    symptomLower.includes('slow') ||
+    symptomLower.includes('timeout') ||
+    symptomLower.includes('hang')
+  ) {
     severity = 'High';
     category = 'Performance';
-  } else if (symptomLower.includes('wrong') || symptomLower.includes('incorrect') || symptomLower.includes('unexpected')) {
+  } else if (
+    symptomLower.includes('wrong') ||
+    symptomLower.includes('incorrect') ||
+    symptomLower.includes('unexpected')
+  ) {
     severity = 'Medium';
     category = 'Correctness';
-  } else if (symptomLower.includes('leak') || symptomLower.includes('memory') || symptomLower.includes('oom')) {
+  } else if (
+    symptomLower.includes('leak') ||
+    symptomLower.includes('memory') ||
+    symptomLower.includes('oom')
+  ) {
     severity = 'High';
     category = 'Resource';
-  } else if (symptomLower.includes('security') || symptomLower.includes('vulnerability') || symptomLower.includes('xss')) {
+  } else if (
+    symptomLower.includes('security') ||
+    symptomLower.includes('vulnerability') ||
+    symptomLower.includes('xss')
+  ) {
     severity = 'Critical';
     category = 'Security';
   }
 
-  if (errorLower.includes('typeerror') || errorLower.includes('referenceerror') || errorLower.includes('cannot read')) {
+  if (
+    errorLower.includes('typeerror') ||
+    errorLower.includes('referenceerror') ||
+    errorLower.includes('cannot read')
+  ) {
     category = 'Runtime Error';
-  } else if (errorLower.includes('enoent') || errorLower.includes('eacces') || errorLower.includes('permission')) {
+  } else if (
+    errorLower.includes('enoent') ||
+    errorLower.includes('eacces') ||
+    errorLower.includes('permission')
+  ) {
     category = 'File System / Permissions';
-  } else if (errorLower.includes('econnrefused') || errorLower.includes('timeout') || errorLower.includes('network')) {
+  } else if (
+    errorLower.includes('econnrefused') ||
+    errorLower.includes('timeout') ||
+    errorLower.includes('network')
+  ) {
     category = 'Network / Connectivity';
   }
 
@@ -95,13 +129,15 @@ function analyzeSymptom(symptom, errorOutput) {
 
 function extractKeyObservation(errorOutput) {
   const lines = errorOutput.split('\n').filter((l) => l.trim());
-  if (lines.length === 0) {return 'Empty error output';}
+  if (lines.length === 0) {
+    return 'Empty error output';
+  }
 
   // Look for error type lines
-  const errorLine = lines.find((l) =>
-    /error|exception|failed|panic|fatal/i.test(l)
-  );
-  if (errorLine) {return errorLine.trim();}
+  const errorLine = lines.find((l) => /error|exception|failed|panic|fatal/i.test(l));
+  if (errorLine) {
+    return errorLine.trim();
+  }
 
   return lines[0].trim();
 }
@@ -111,37 +147,43 @@ function generateInfoCollectionPlan(symptom, context) {
     {
       id: 'IC-1',
       action: 'Capture exact reproduction steps',
-      detail: 'Write down the precise sequence of actions that triggers the symptom. Include inputs, state, and timing.',
+      detail:
+        'Write down the precise sequence of actions that triggers the symptom. Include inputs, state, and timing.',
       priority: 'HIGH',
     },
     {
       id: 'IC-2',
       action: 'Collect relevant logs',
-      detail: 'Gather application logs, system logs, and any third-party service logs from the time the symptom occurred.',
+      detail:
+        'Gather application logs, system logs, and any third-party service logs from the time the symptom occurred.',
       priority: 'HIGH',
     },
     {
       id: 'IC-3',
       action: 'Check environment state',
-      detail: 'Verify environment variables, configuration files, dependency versions, and system resources.',
+      detail:
+        'Verify environment variables, configuration files, dependency versions, and system resources.',
       priority: 'HIGH',
     },
     {
       id: 'IC-4',
       action: 'Review recent changes',
-      detail: 'Examine git history, deployment logs, and configuration changes made around the time the symptom first appeared.',
+      detail:
+        'Examine git history, deployment logs, and configuration changes made around the time the symptom first appeared.',
       priority: 'HIGH',
     },
     {
       id: 'IC-5',
       action: 'Isolate the failure',
-      detail: 'Determine the narrowest reproduction case. Can the symptom be reproduced in isolation (unit test, minimal script)?',
+      detail:
+        'Determine the narrowest reproduction case. Can the symptom be reproduced in isolation (unit test, minimal script)?',
       priority: 'MEDIUM',
     },
     {
       id: 'IC-6',
       action: 'Compare with known-good state',
-      detail: 'If available, compare the failing state with a known-working version to identify differences.',
+      detail:
+        'If available, compare the failing state with a known-working version to identify differences.',
       priority: 'MEDIUM',
     },
   ];
@@ -183,7 +225,8 @@ function generateHypotheses(symptom, errorOutput, context, recentChanges) {
     id: 'H-2',
     hypothesis: 'Environment or state mismatch',
     probability: 'Medium',
-    reasoning: 'The symptom may be caused by incorrect environment configuration, stale state, or resource exhaustion.',
+    reasoning:
+      'The symptom may be caused by incorrect environment configuration, stale state, or resource exhaustion.',
     verificationSteps: [
       'Check environment variables and configuration files',
       'Clear caches, temp files, and restart services',
@@ -193,12 +236,18 @@ function generateHypotheses(symptom, errorOutput, context, recentChanges) {
   });
 
   // Hypothesis 3: Logic error
-  if (errorLower.includes('typeerror') || errorLower.includes('referenceerror') || symptomLower.includes('wrong') || symptomLower.includes('incorrect')) {
+  if (
+    errorLower.includes('typeerror') ||
+    errorLower.includes('referenceerror') ||
+    symptomLower.includes('wrong') ||
+    symptomLower.includes('incorrect')
+  ) {
     hypotheses.push({
       id: 'H-3',
       hypothesis: 'Logic error in the code path',
       probability: 'High',
-      reasoning: 'The error output suggests a runtime type or reference error, indicating a logic issue in the affected code path.',
+      reasoning:
+        'The error output suggests a runtime type or reference error, indicating a logic issue in the affected code path.',
       verificationSteps: [
         'Add debug logging at key points in the affected code path',
         'Write a failing test that reproduces the exact error',
@@ -213,22 +262,29 @@ function generateHypotheses(symptom, errorOutput, context, recentChanges) {
     id: 'H-4',
     hypothesis: 'Integration or dependency issue',
     probability: 'Medium',
-    reasoning: 'The symptom may be caused by a breaking change in a dependency, API incompatibility, or service degradation.',
+    reasoning:
+      'The symptom may be caused by a breaking change in a dependency, API incompatibility, or service degradation.',
     verificationSteps: [
       'Check dependency versions and changelogs for recent breaking changes',
       'Test with a known-compatible version of the dependency',
-        'Check API contracts and response formats',
+      'Check API contracts and response formats',
       'Verify network connectivity to external services',
     ],
   });
 
   // Hypothesis 5: Race condition / concurrency
-  if (symptomLower.includes('intermittent') || symptomLower.includes('sometimes') || symptomLower.includes('race') || symptomLower.includes('concurrent')) {
+  if (
+    symptomLower.includes('intermittent') ||
+    symptomLower.includes('sometimes') ||
+    symptomLower.includes('race') ||
+    symptomLower.includes('concurrent')
+  ) {
     hypotheses.push({
       id: 'H-5',
       hypothesis: 'Race condition or concurrency issue',
       probability: 'High',
-      reasoning: 'The intermittent nature of the symptom suggests a timing-dependent issue, possibly a race condition.',
+      reasoning:
+        'The intermittent nature of the symptom suggests a timing-dependent issue, possibly a race condition.',
       verificationSteps: [
         'Add synchronization or locking to the suspected shared resource',
         'Run the reproduction steps under load to increase frequency',
@@ -243,7 +299,8 @@ function generateHypotheses(symptom, errorOutput, context, recentChanges) {
     id: 'H-6',
     hypothesis: 'Corrupted or invalid data',
     probability: 'Low',
-    reasoning: 'The symptom could be caused by corrupted data in a database, cache, or file that the system is consuming.',
+    reasoning:
+      'The symptom could be caused by corrupted data in a database, cache, or file that the system is consuming.',
     verificationSteps: [
       'Inspect the data being processed when the symptom occurs',
       'Check for data migration issues or schema mismatches',
@@ -267,19 +324,23 @@ function generateRootCauseTemplate() {
       },
       {
         title: 'Why It Happened',
-        prompt: 'Explain the chain of events that led to the symptom. What was the original mistake or oversight?',
+        prompt:
+          'Explain the chain of events that led to the symptom. What was the original mistake or oversight?',
       },
       {
-        title: 'Why It Wasn\'t Caught',
-        prompt: 'Explain why existing tests, reviews, or checks did not catch this issue. What gap in the process allowed it?',
+        title: "Why It Wasn't Caught",
+        prompt:
+          'Explain why existing tests, reviews, or checks did not catch this issue. What gap in the process allowed it?',
       },
       {
         title: 'Fix Description',
-        prompt: 'Describe the minimal fix that resolves the root cause without introducing new issues.',
+        prompt:
+          'Describe the minimal fix that resolves the root cause without introducing new issues.',
       },
       {
         title: 'Prevention',
-        prompt: 'What test, check, or process change would prevent this class of bug from recurring?',
+        prompt:
+          'What test, check, or process change would prevent this class of bug from recurring?',
       },
     ],
   };
@@ -327,13 +388,7 @@ function formatDiagnosisReport(symptomSummary, infoPlan, hypotheses, rootCauseTe
     lines.push(`| ${step.id} | ${step.action} | ${step.detail} | **${step.priority}** |`);
   });
 
-  lines.push(
-    '',
-    '---',
-    '',
-    '## 3. Hypotheses (Ranked by Probability)',
-    ''
-  );
+  lines.push('', '---', '', '## 3. Hypotheses (Ranked by Probability)', '');
 
   hypotheses.forEach((h) => {
     lines.push(`### ${h.id}: ${h.hypothesis}`);
@@ -354,7 +409,7 @@ function formatDiagnosisReport(symptomSummary, infoPlan, hypotheses, rootCauseTe
     '## 4. Root Cause Analysis Template',
     '',
     '> Fill in each section once the root cause has been identified.',
-    ''
+    '',
   );
 
   rootCauseTemplate.sections.forEach((section) => {
@@ -370,7 +425,7 @@ function formatDiagnosisReport(symptomSummary, infoPlan, hypotheses, rootCauseTe
     '---',
     '',
     '> **Next Steps**: Follow the Information Collection Plan, then verify hypotheses in order of probability. Document findings in the Root Cause Analysis section.',
-    ''
+    '',
   );
 
   return lines.join('\n');

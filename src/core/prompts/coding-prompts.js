@@ -5,9 +5,7 @@ export function buildSemanticRiskGuidance(domains = []) {
     return '';
   }
 
-  const checklist = domains
-    .map(domain => `- ${domain.label}: ${domain.checklist}`)
-    .join('\n');
+  const checklist = domains.map((domain) => `- ${domain.label}: ${domain.checklist}`).join('\n');
 
   return (
     `Semantic/API risk review is required before completion because this task touches high-risk behavior semantics.\n` +
@@ -53,15 +51,22 @@ export function buildCodingCompletionGatePrompt({
   semanticRiskGuidance = '',
   requiresSemanticRiskReview = false,
 }) {
-  const reasonText = {
-    no_tool_evidence: 'You are trying to finish a coding task without any successful tool evidence.',
-    missing_methodology_step: 'You have not used the built-in coding methodology yet.',
-    missing_code_change: 'You have not produced a successful code/file change yet.',
-    missing_verification: 'You changed code/files but have not verified the result with fresh evidence.',
-    missing_semantic_risk_review: 'This task touches high-risk behavior semantics but has no semantic/API risk review evidence yet.',
-    final_answer_missing_verification_summary: 'Your final answer claims completion but does not summarize verification.',
-    automatic_plan_incomplete: 'The automatic task orchestration plan is not complete yet.',
-  }[gate?.reason] || gate?.reason || 'insufficient evidence';
+  const reasonText =
+    {
+      no_tool_evidence:
+        'You are trying to finish a coding task without any successful tool evidence.',
+      missing_methodology_step: 'You have not used the built-in coding methodology yet.',
+      missing_code_change: 'You have not produced a successful code/file change yet.',
+      missing_verification:
+        'You changed code/files but have not verified the result with fresh evidence.',
+      missing_semantic_risk_review:
+        'This task touches high-risk behavior semantics but has no semantic/API risk review evidence yet.',
+      final_answer_missing_verification_summary:
+        'Your final answer claims completion but does not summarize verification.',
+      automatic_plan_incomplete: 'The automatic task orchestration plan is not complete yet.',
+    }[gate?.reason] ||
+    gate?.reason ||
+    'insufficient evidence';
 
   return (
     `Coding completion gate blocked the final answer.\n` +

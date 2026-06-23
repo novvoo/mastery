@@ -4,7 +4,15 @@
  */
 
 import { input, select } from '@inquirer/prompts';
-import { enhancedUI, createTable, formatStatus, formatPriority, formatTime, formatDuration, truncate } from '../enhanced-ui.js';
+import {
+  enhancedUI,
+  createTable,
+  formatStatus,
+  formatPriority,
+  formatTime,
+  formatDuration,
+  truncate,
+} from '../enhanced-ui.js';
 import { TASK_MENU_CHOICES, TASK_PRIORITY_CHOICES } from '../enhanced-command-utils.js';
 
 /**
@@ -64,11 +72,12 @@ export function createTaskCommands(deps) {
       });
 
       for (const task of tasks) {
-        const duration = task.startedAt && task.completedAt
-          ? formatDuration(task.completedAt - task.startedAt)
-          : task.startedAt
-            ? formatDuration(Date.now() - task.startedAt) + ' (running)'
-            : 'N/A';
+        const duration =
+          task.startedAt && task.completedAt
+            ? formatDuration(task.completedAt - task.startedAt)
+            : task.startedAt
+              ? formatDuration(Date.now() - task.startedAt) + ' (running)'
+              : 'N/A';
 
         table.push([
           truncate(task.id, 20),
@@ -88,10 +97,10 @@ export function createTaskCommands(deps) {
       const stats = taskQueue.getStats();
       console.log(
         `  ${formatStatus('pending')}: ${stats.pending}  ` +
-        `${formatStatus('waiting')}: ${stats.waiting}  ` +
-        `${formatStatus('running')}: ${stats.running}  ` +
-        `${formatStatus('completed')}: ${stats.completed}  ` +
-        `${formatStatus('failed')}: ${stats.failed}`
+          `${formatStatus('waiting')}: ${stats.waiting}  ` +
+          `${formatStatus('running')}: ${stats.running}  ` +
+          `${formatStatus('completed')}: ${stats.completed}  ` +
+          `${formatStatus('failed')}: ${stats.failed}`,
       );
       console.log('');
     },
@@ -118,7 +127,10 @@ export function createTaskCommands(deps) {
       const dependsOnStr = await input({
         message: 'Depends on (comma-separated task IDs, optional):',
       });
-      const dependsOn = dependsOnStr.split(',').map(s => s.trim()).filter(Boolean);
+      const dependsOn = dependsOnStr
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
 
       try {
         const task = await taskQueue.add({
@@ -146,7 +158,7 @@ export function createTaskCommands(deps) {
 
       const taskId = await select({
         message: 'Select task:',
-        choices: tasks.map(t => ({
+        choices: tasks.map((t) => ({
           name: `${truncate(t.id, 15)} - ${t.type} (${t.status})`,
           value: t.id,
         })),
@@ -196,7 +208,10 @@ export function createTaskCommands(deps) {
 
       if (task.dependsOn && task.dependsOn.length > 0) {
         details.push(['Dependencies', task.dependsOn.join(', ')]);
-        details.push(['Completed Deps', Array.from(task.completedDependencies).join(', ') || 'None']);
+        details.push([
+          'Completed Deps',
+          Array.from(task.completedDependencies).join(', ') || 'None',
+        ]);
       }
 
       const table = createTable({
@@ -218,9 +233,10 @@ export function createTaskCommands(deps) {
       if (task.result !== null) {
         console.log('');
         console.log(enhancedUI.theme.successBold('Result:'));
-        const resultStr = typeof task.result === 'object'
-          ? enhancedUI.formatJSON(task.result, 2)
-          : String(task.result);
+        const resultStr =
+          typeof task.result === 'object'
+            ? enhancedUI.formatJSON(task.result, 2)
+            : String(task.result);
         console.log(resultStr);
       }
 
@@ -237,7 +253,9 @@ export function createTaskCommands(deps) {
      * 交互式取消任务
      */
     async cancelTaskInteractive() {
-      const tasks = taskQueue.list({ status: 'pending' }).concat(taskQueue.list({ status: 'running' }));
+      const tasks = taskQueue
+        .list({ status: 'pending' })
+        .concat(taskQueue.list({ status: 'running' }));
       if (tasks.length === 0) {
         enhancedUI.info('No cancellable tasks');
         return;
@@ -245,7 +263,7 @@ export function createTaskCommands(deps) {
 
       const taskId = await select({
         message: 'Select task to cancel:',
-        choices: tasks.map(t => ({
+        choices: tasks.map((t) => ({
           name: `${truncate(t.id, 15)} - ${t.type} (${t.status})`,
           value: t.id,
         })),
@@ -271,7 +289,7 @@ export function createTaskCommands(deps) {
 
       const taskId = await select({
         message: 'Select task to retry:',
-        choices: tasks.map(t => ({
+        choices: tasks.map((t) => ({
           name: `${truncate(t.id, 15)} - ${t.type} (${t.retryCount}/${t.maxRetries} retries)`,
           value: t.id,
         })),

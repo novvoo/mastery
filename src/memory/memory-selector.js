@@ -8,9 +8,9 @@ export class RuleBasedSelector {
 
   keywordMatch(query, candidates, limit) {
     const queryLower = query.toLowerCase();
-    const keywords = queryLower.split(/\s+/).filter(w => w.length > 2);
+    const keywords = queryLower.split(/\s+/).filter((w) => w.length > 2);
 
-    const scored = candidates.map(c => {
+    const scored = candidates.map((c) => {
       let score = 0;
       const text = `${c.title} ${c.content} ${c.tags.join(' ')}`.toLowerCase();
 
@@ -32,7 +32,7 @@ export class RuleBasedSelector {
     });
 
     return scored
-      .filter(s => s.score > 0)
+      .filter((s) => s.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
   }
@@ -79,9 +79,7 @@ export class MemorySelector {
   }
 
   #buildSelectionPrompt(query, candidates) {
-    const candidatesList = candidates
-      .map((c, i) => `${i + 1}. [${c.type}] ${c.title}`)
-      .join('\n');
+    const candidatesList = candidates.map((c, i) => `${i + 1}. [${c.type}] ${c.title}`).join('\n');
 
     return `You are a memory selector for an AI agent. Your task is to select the most relevant memories for the current query.
 
@@ -115,7 +113,7 @@ Selection:`;
       const index = parseInt(num) - 1;
       if (index >= 0 && index < candidates.length) {
         const candidate = candidates[index];
-        if (!selected.find(s => s.id === candidate.id)) {
+        if (!selected.find((s) => s.id === candidate.id)) {
           selected.push(candidate);
         }
       }

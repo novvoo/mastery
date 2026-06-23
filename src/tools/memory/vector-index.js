@@ -27,11 +27,11 @@ export class VectorIndex {
     try {
       await mkdir(this.#indexDir, { recursive: true });
       const files = await readdir(this.#indexDir);
-      const indexFiles = files.filter(f => f.endsWith('.json'));
-      
+      const indexFiles = files.filter((f) => f.endsWith('.json'));
+
       let totalSize = 0;
       const fileInfo = [];
-      
+
       for (const file of indexFiles) {
         try {
           const filePath = join(this.#indexDir, file);
@@ -42,16 +42,18 @@ export class VectorIndex {
           // 忽略无法访问的文件
         }
       }
-      
+
       // 检查总大小是否超限
       const MAX_TOTAL_BYTES = MAX_TOTAL_INDEX_SIZE_MB * 1024 * 1024;
       if (totalSize > MAX_TOTAL_BYTES) {
         // 按修改时间排序，删除最旧的
         fileInfo.sort((a, b) => a.mtime - b.mtime);
-        
+
         let bytesToDelete = totalSize - MAX_TOTAL_BYTES;
         for (const info of fileInfo) {
-          if (bytesToDelete <= 0) {break;}
+          if (bytesToDelete <= 0) {
+            break;
+          }
           try {
             await unlink(info.path);
             bytesToDelete -= info.size;
@@ -76,7 +78,12 @@ export class VectorIndex {
     try {
       const raw = await readFile(indexPath, 'utf-8');
       const data = JSON.parse(raw);
-      if (data && data.version === INDEX_VERSION && Array.isArray(data.chunks) && data.chunks.length > 0) {
+      if (
+        data &&
+        data.version === INDEX_VERSION &&
+        Array.isArray(data.chunks) &&
+        data.chunks.length > 0
+      ) {
         const isStale = await this.#checkIfStale(data);
         return { chunks: data.chunks, stale: isStale, fileMeta: data.fileMeta };
       }
@@ -94,23 +101,29 @@ export class VectorIndex {
   async save(cacheKey, chunks) {
     const indexPath = this.#getIndexPath(cacheKey);
     await mkdir(this.#indexDir, { recursive: true });
-    
+
     // 先尝试清理旧索引
     await this.cleanup();
-    
+
     // 检查单个索引大小
     const MAX_SINGLE_BYTES = MAX_SINGLE_INDEX_SIZE_MB * 1024 * 1024;
     let trimmedChunks = chunks;
-    
+
     // 如果预估大小超限，裁剪 chunks
     let estimatedSize = JSON.stringify(chunks).length;
     if (estimatedSize > MAX_SINGLE_BYTES) {
       const keepRatio = MAX_SINGLE_BYTES / estimatedSize;
       const keepCount = Math.floor(chunks.length * keepRatio);
       trimmedChunks = chunks.slice(0, keepCount);
-      console.warn('vector-index: index too large, trimmed from', chunks.length, 'to', keepCount, 'chunks');
+      console.warn(
+        'vector-index: index too large, trimmed from',
+        chunks.length,
+        'to',
+        keepCount,
+        'chunks',
+      );
     }
-    
+
     // 收集文件元数据用于过期检测
     const fileMeta = {};
     const paths = new Set();
@@ -138,13 +151,13 @@ export class VectorIndex {
       chunks: trimmedChunks,
       fileMeta,
     };
-    
+
     const jsonData = JSON.stringify(data);
     if (jsonData.length > MAX_SINGLE_BYTES) {
       console.warn('vector-index: index still too large after trimming, skipping save');
       return;
     }
-    
+
     await writeFile(indexPath, jsonData, 'utf-8');
   }
 
@@ -185,7 +198,7 @@ export class VectorIndex {
   #simpleHash(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
-      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash = (hash << 5) - hash + str.charCodeAt(i);
     }
     return Math.abs(hash).toString(36);
   }

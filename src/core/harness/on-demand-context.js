@@ -46,9 +46,9 @@ export class OnDemandContextExpansion {
 
     // 置信度阈值
     this._confidenceThresholds = {
-      high: 0.9,   // 90% 以上的置信度
+      high: 0.9, // 90% 以上的置信度
       medium: 0.6, // 60% - 90%
-      low: 0.3     // 30% - 60%
+      low: 0.3, // 30% - 60%
     };
 
     // 扩展缓存
@@ -67,7 +67,7 @@ export class OnDemandContextExpansion {
     for (const pattern of filePatterns) {
       const files = await glob(pattern, {
         cwd: workingDirectory,
-        ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/build/**']
+        ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/build/**'],
       });
 
       for (const file of files) {
@@ -124,7 +124,7 @@ export class OnDemandContextExpansion {
       level: this._getConfidenceLevel(confidence),
       reason,
       expansionNeeded: confidence < this._confidenceThresholds.high,
-      suggestions
+      suggestions,
     };
   }
 
@@ -151,17 +151,21 @@ export class OnDemandContextExpansion {
         type: 'file',
         name: request.file,
         definition: '',
-        hash: ''
+        hash: '',
       },
       supportingContext: [],
       dependencies: [],
       recommendations: [],
-      tokens: 0
+      tokens: 0,
     };
 
     // 1. 加载主要上下文
     if (request.file) {
-      const fileContext = await this._loadFileContext(request.file, request.line, request.contextLines);
+      const fileContext = await this._loadFileContext(
+        request.file,
+        request.line,
+        request.contextLines,
+      );
       result.primaryContent = fileContext;
       result.tokens += this._estimateTokens(fileContext.definition);
     }
@@ -175,7 +179,7 @@ export class OnDemandContextExpansion {
           name: sym.name,
           file: sym.file,
           preview: sym.signature || sym.type,
-          importance: 'critical'
+          importance: 'critical',
         });
       }
     }
@@ -184,13 +188,13 @@ export class OnDemandContextExpansion {
     if (request.file && request.dependencyLevel) {
       const deps = this._dependencyGraph.getTransitiveDependencies(
         request.file,
-        request.dependencyLevel
+        request.dependencyLevel,
       );
 
-      result.dependencies = deps.map(d => ({
+      result.dependencies = deps.map((d) => ({
         file: d.path,
-        symbols: d.dependencies.map(dep => dep.target).filter(Boolean),
-        distance: d.depth
+        symbols: d.dependencies.map((dep) => dep.target).filter(Boolean),
+        distance: d.depth,
       }));
 
       for (const dep of deps.slice(0, 5)) {
@@ -200,7 +204,7 @@ export class OnDemandContextExpansion {
           name: dep.path,
           file: dep.path,
           preview: `${depSymbols.length} symbols`,
-          importance: dep.depth === 1 ? 'critical' : 'helpful'
+          importance: dep.depth === 1 ? 'critical' : 'helpful',
         });
       }
     }
@@ -227,20 +231,20 @@ export class OnDemandContextExpansion {
   async generateEvidenceBasedIntent(request) {
     const intent = {
       target: {
-        file: request.targetFile
+        file: request.targetFile,
       },
       intent: request.changeType,
       evidence: {
         reason: request.changeDescription,
         confidence: CONFIDENCE_UNKNOWN,
         supportingFacts: [],
-        missingInformation: []
+        missingInformation: [],
       },
       requiredContext: {
         toLoad: [],
-        reason: ''
+        reason: '',
       },
-      potentialSideEffects: []
+      potentialSideEffects: [],
     };
 
     // 1. 收集证据
@@ -263,11 +267,13 @@ export class OnDemandContextExpansion {
       const impact = this._dependencyGraph.analyzeImpact(request.targetFile);
       if (impact.directlyAffectedBy.length > 0) {
         facts.push(`有 ${impact.directlyAffectedBy.length} 个文件依赖此文件`);
-        intent.potentialSideEffects.push(...impact.transitivelyAffectedBy.slice(0, 3).map(f => ({
-          file: f.path,
-          reason: '此文件被修改可能影响依赖方',
-          severity: 'medium'
-        })));
+        intent.potentialSideEffects.push(
+          ...impact.transitivelyAffectedBy.slice(0, 3).map((f) => ({
+            file: f.path,
+            reason: '此文件被修改可能影响依赖方',
+            severity: 'medium',
+          })),
+        );
       }
     } else {
       missingInfo.push('目标文件不存在');
@@ -292,7 +298,7 @@ export class OnDemandContextExpansion {
    * 批量扩展上下文（用于复杂修改）
    */
   async expandContextBatch(requests) {
-    return Promise.all(requests.map(r => this.expandContext(r)));
+    return Promise.all(requests.map((r) => this.expandContext(r)));
   }
 
   /**
@@ -302,7 +308,7 @@ export class OnDemandContextExpansion {
     // 查找定义
     let definitions = this._symbolIndex.findByName(symbolName);
     if (filePath) {
-      definitions = definitions.filter(d => d.file === filePath);
+      definitions = definitions.filter((d) => d.file === filePath);
     }
     const definition = definitions[0] || null;
 
@@ -313,7 +319,7 @@ export class OnDemandContextExpansion {
     if (definition) {
       // 获取 AST 元数据
       const astData = await this._astExtractor.extract(definition.file);
-      const funcMeta = astData.functions.find(f => f.name === symbolName);
+      const funcMeta = astData.functions.find((f) => f.name === symbolName);
 
       if (funcMeta) {
         // 查找调用者
@@ -329,7 +335,7 @@ export class OnDemandContextExpansion {
         const depSymbols = this._symbolIndex.findInFile(depFile);
         for (const sym of depSymbols) {
           const depAst = await this._astExtractor.extract(depFile);
-          const depFunc = depAst.functions.find(f => f.calls.includes(symbolName));
+          const depFunc = depAst.functions.find((f) => f.calls.includes(symbolName));
           if (depFunc) {
             callers.push(sym);
           }
@@ -343,7 +349,7 @@ export class OnDemandContextExpansion {
       const contextResult = await this._symbolIndex.getSymbolContext(
         definition.file,
         definition.line,
-        30
+        30,
       );
       context = contextResult?.context || '';
     }
@@ -352,8 +358,10 @@ export class OnDemandContextExpansion {
     let typeInfo = null;
     if (definition) {
       const astData = await this._astExtractor.extract(definition.file);
-      typeInfo = astData.functions.find(f => f.name === symbolName) ||
-                 astData.classes.find(f => f.name === symbolName) || null;
+      typeInfo =
+        astData.functions.find((f) => f.name === symbolName) ||
+        astData.classes.find((f) => f.name === symbolName) ||
+        null;
     }
 
     return {
@@ -361,7 +369,7 @@ export class OnDemandContextExpansion {
       callers,
       callees,
       typeInfo,
-      context
+      context,
     };
   }
 
@@ -378,14 +386,18 @@ export class OnDemandContextExpansion {
     // 如果指定了行号，提取局部上下文
     if (line !== undefined) {
       const symbols = this._symbolIndex.findInFile(filePath);
-      const symbol = symbols.find(s => s.line <= line && s.endLine >= line);
+      const symbol = symbols.find((s) => s.line <= line && s.endLine >= line);
 
       if (symbol) {
         const start = Math.max(0, symbol.line - 1);
         const end = Math.min(lines.length, symbol.endLine);
         definition = lines.slice(start, end).join('\n');
-        type = symbol.type === 'function' || symbol.type === 'method' ? 'function' :
-               symbol.type === 'class' ? 'class' : 'symbol';
+        type =
+          symbol.type === 'function' || symbol.type === 'method'
+            ? 'function'
+            : symbol.type === 'class'
+              ? 'class'
+              : 'symbol';
       } else if (contextLines) {
         const start = Math.max(0, line - 1 - contextLines);
         const end = Math.min(lines.length, line + contextLines);
@@ -400,7 +412,7 @@ export class OnDemandContextExpansion {
       type,
       name: filePath.split('/').pop(),
       definition,
-      hash
+      hash,
     };
   }
 
@@ -451,9 +463,15 @@ export class OnDemandContextExpansion {
    * 获取置信度级别
    */
   _getConfidenceLevel(score) {
-    if (score >= this._confidenceThresholds.high) {return CONFIDENCE_HIGH;}
-    if (score >= this._confidenceThresholds.medium) {return CONFIDENCE_MEDIUM;}
-    if (score >= this._confidenceThresholds.low) {return CONFIDENCE_LOW;}
+    if (score >= this._confidenceThresholds.high) {
+      return CONFIDENCE_HIGH;
+    }
+    if (score >= this._confidenceThresholds.medium) {
+      return CONFIDENCE_MEDIUM;
+    }
+    if (score >= this._confidenceThresholds.low) {
+      return CONFIDENCE_LOW;
+    }
     return CONFIDENCE_UNKNOWN;
   }
 
@@ -481,7 +499,7 @@ export class OnDemandContextExpansion {
     return {
       symbolIndex: this._symbolIndex.getStats(),
       dependencyGraph: this._dependencyGraph.getStats(),
-      expansionCache: this._expansionCache.size
+      expansionCache: this._expansionCache.size,
     };
   }
 

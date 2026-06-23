@@ -14,7 +14,7 @@ export class CronExpression {
     hour: { min: 0, max: 23 },
     day: { min: 1, max: 31 },
     month: { min: 1, max: 12 },
-    dayOfWeek: { min: 0, max: 6 }
+    dayOfWeek: { min: 0, max: 6 },
   };
 
   // 预定义表达式
@@ -25,7 +25,7 @@ export class CronExpression {
     '@weekly': '0 0 * * 0',
     '@daily': '0 0 * * *',
     '@midnight': '0 0 * * *',
-    '@hourly': '0 * * * *'
+    '@hourly': '0 * * * *',
   };
 
   /**
@@ -54,7 +54,9 @@ export class CronExpression {
     const parts = this.expression.trim().split(/\s+/);
 
     if (parts.length !== 5) {
-      throw new Error(`Invalid cron expression: '${this.expression}'. Expected 5 fields, got ${parts.length}.`);
+      throw new Error(
+        `Invalid cron expression: '${this.expression}'. Expected 5 fields, got ${parts.length}.`,
+      );
     }
 
     const fieldNames = ['minute', 'hour', 'day', 'month', 'dayOfWeek'];
@@ -123,7 +125,7 @@ export class CronExpression {
         start = min;
         end = max;
       } else if (range.includes('-')) {
-        [start, end] = range.split('-').map(v => parseInt(v, 10));
+        [start, end] = range.split('-').map((v) => parseInt(v, 10));
       } else {
         start = parseInt(range, 10);
         end = max;
@@ -225,7 +227,9 @@ export class CronExpression {
 
     for (let i = 0; i < count; i++) {
       const nextDate = this.getNextDate(currentDate);
-      if (!nextDate) {break;}
+      if (!nextDate) {
+        break;
+      }
       dates.push(nextDate);
       currentDate = nextDate;
     }

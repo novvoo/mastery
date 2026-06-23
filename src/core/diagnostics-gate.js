@@ -81,9 +81,7 @@ export class DiagnosticsGate {
 
     // Step 4: 有新的 blocking errors → 尝试自动修复
     if (this.autoRepair) {
-      const repairResult = await this._attemptCodeActionRepair(
-        diagResult.newErrors, filePaths
-      );
+      const repairResult = await this._attemptCodeActionRepair(diagResult.newErrors, filePaths);
       result.repaired = repairResult.repaired;
       result.repairFailed = repairResult.failed;
 
@@ -100,7 +98,7 @@ export class DiagnosticsGate {
       const rolledBack = await this._rollback(snapshotData, filePaths);
       result.rolledBack = rolledBack;
       result.ok = false;
-      result.rollbackReason = `New blocking errors remain after repair: ${result.newErrors.map(e => `${e.file}:${e.line} ${e.message}`).join('; ')}`;
+      result.rollbackReason = `New blocking errors remain after repair: ${result.newErrors.map((e) => `${e.file}:${e.line} ${e.message}`).join('; ')}`;
     } else if (result.newErrors.length > 0) {
       result.ok = false;
     }
@@ -142,11 +140,13 @@ export class DiagnosticsGate {
           if (this.lspManager?.syncDocument) {
             await this.lspManager.syncDocument(fp, content);
           }
-        } catch { /* skip unreadable */ }
+        } catch {
+          /* skip unreadable */
+        }
       }
 
       // 等待 diagnostics 推送
-      await new Promise(r => setTimeout(r, this.waitMs));
+      await new Promise((r) => setTimeout(r, this.waitMs));
 
       // 收集 diagnostics
       for (const fp of filePaths) {
@@ -178,10 +178,12 @@ export class DiagnosticsGate {
       }
 
       // 如果本批次没有新错误或已达最大重试，跳出
-      if (attempt >= this.maxRetries - 1 || newErrors.length === 0) {break;}
+      if (attempt >= this.maxRetries - 1 || newErrors.length === 0) {
+        break;
+      }
 
       // 可能 diagnostics 还没完全到达，等待并重试
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 500));
       newErrors.length = 0;
     }
 
@@ -193,14 +195,18 @@ export class DiagnosticsGate {
     const failed = [];
 
     if (!this.lspManager || !this.lspManager.request) {
-      return { repaired: [], failed: errors.map(e => ({ ...e, reason: 'No LSP manager for repair' })) };
+      return {
+        repaired: [],
+        failed: errors.map((e) => ({ ...e, reason: 'No LSP manager for repair' })),
+      };
     }
 
     for (const error of errors) {
       try {
         const fileDir = existsSync(error.file) ? dirname(error.file) : this.workingDirectory;
         const codeActions = await this.lspManager.request(
-          'textDocument/codeAction', fileDir,
+          'textDocument/codeAction',
+          fileDir,
           {
             textDocument: { uri: this._fileUri(error.file) },
             range: {
@@ -209,21 +215,30 @@ export class DiagnosticsGate {
             },
             context: { diagnostics: [error.diagnostic] },
           },
-          null, null, this.repairTimeout,
+          null,
+          null,
+          this.repairTimeout,
         );
 
         if (Array.isArray(codeActions) && codeActions.length > 0) {
           // 优先使用 "quickfix" 类型的 action
-          const quickfix = codeActions.find(a => a.kind?.includes('quickfix')) || codeActions[0];
+          const quickfix = codeActions.find((a) => a.kind?.includes('quickfix')) || codeActions[0];
 
           // 如果 action 需要 resolve
           let resolvedAction = quickfix;
           if (!quickfix.edit && this.lspManager.request) {
             try {
               resolvedAction = await this.lspManager.request(
-                'codeAction/resolve', fileDir, quickfix, null, null, this.repairTimeout,
+                'codeAction/resolve',
+                fileDir,
+                quickfix,
+                null,
+                null,
+                this.repairTimeout,
               );
-            } catch { /* keep original */ }
+            } catch {
+              /* keep original */
+            }
           }
 
           if (resolvedAction?.edit) {
@@ -254,7 +269,9 @@ export class DiagnosticsGate {
   }
 
   async _rollback(snapshotData, filePaths) {
-    if (!snapshotData) {return false;}
+    if (!snapshotData) {
+      return false;
+    }
 
     try {
       // 如果有 hashline patcher，使用它的 rollback
@@ -281,12 +298,15 @@ export class DiagnosticsGate {
   }
 
   _wasInBaseline(filePath, diagnostic, baselineDiags) {
-    if (!baselineDiags || !baselineDiags[filePath]) {return false;}
+    if (!baselineDiags || !baselineDiags[filePath]) {
+      return false;
+    }
     const baseline = baselineDiags[filePath];
-    return baseline.some(b =>
-      b.message === diagnostic.message &&
-      (b.range?.start?.line || 0) === (diagnostic.range?.start?.line || 0) &&
-      (b.range?.start?.character || 0) === (diagnostic.range?.start?.character || 0)
+    return baseline.some(
+      (b) =>
+        b.message === diagnostic.message &&
+        (b.range?.start?.line || 0) === (diagnostic.range?.start?.line || 0) &&
+        (b.range?.start?.character || 0) === (diagnostic.range?.start?.character || 0),
     );
   }
 

@@ -53,10 +53,7 @@ export default function verify() {
       else if (params.task || params.changes || params.verification_passed) {
         claim = params.task || 'Task completed';
         criteria = 'Changes made,Verification performed';
-        evidence = [
-          params.changes,
-          params.verification_passed
-        ].filter(Boolean).join(', ');
+        evidence = [params.changes, params.verification_passed].filter(Boolean).join(', ');
       }
       // Fallback
       else {
@@ -83,7 +80,14 @@ export default function verify() {
 
       const conclusion = drawConclusion(results, crossWarnings);
 
-      return formatVerificationReport(claim, criteriaList, evidenceList, results, conclusion, crossWarnings);
+      return formatVerificationReport(
+        claim,
+        criteriaList,
+        evidenceList,
+        results,
+        conclusion,
+        crossWarnings,
+      );
     },
   };
 }
@@ -139,9 +143,14 @@ function evaluateCriteria(criteriaList, evidenceList, crossWarnings = []) {
 }
 
 function findMatchingEvidence(criterion, evidenceList) {
-  if (evidenceList.length === 0) {return [];}
+  if (evidenceList.length === 0) {
+    return [];
+  }
 
-  const criterionWords = criterion.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+  const criterionWords = criterion
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 3);
 
   return evidenceList.filter((evidence) => {
     const evidenceLower = evidence.toLowerCase();
@@ -178,7 +187,11 @@ function isSpecificEvidence(evidence, criterion) {
   // Extract key domain words from criterion
   const domainWords = criterionLower
     .split(/\s+/)
-    .filter((w) => w.length > 4 && !['should', 'must', 'shall', 'needs', 'require', 'ensure', 'verify', 'check'].includes(w));
+    .filter(
+      (w) =>
+        w.length > 4 &&
+        !['should', 'must', 'shall', 'needs', 'require', 'ensure', 'verify', 'check'].includes(w),
+    );
 
   return domainWords.some((word) => evidenceLower.includes(word));
 }
@@ -193,21 +206,50 @@ function crossCheckClaimAgainstEvidence(claim, evidenceList) {
   const evidenceJoined = evidenceList.join(' ').toLowerCase();
 
   // Test-related claims need test evidence
-  const testKeywords = ['test', 'tests', 'pass', 'passed', 'lint', 'build', 'compile', 'typecheck', 'verify', '验证', '测试', '通过'];
-  if (testKeywords.some(k => claimLower.includes(k))) {
-    const evidenceHasTest = testKeywords.some(k => evidenceJoined.includes(k))
-      || /\b(run|executed|ran|passed|passing|0 failing)\b/i.test(evidenceJoined)
-      || /\b(node|npm|pnpm|bun|python|pytest|cargo|go)\b/i.test(evidenceJoined);
+  const testKeywords = [
+    'test',
+    'tests',
+    'pass',
+    'passed',
+    'lint',
+    'build',
+    'compile',
+    'typecheck',
+    'verify',
+    '验证',
+    '测试',
+    '通过',
+  ];
+  if (testKeywords.some((k) => claimLower.includes(k))) {
+    const evidenceHasTest =
+      testKeywords.some((k) => evidenceJoined.includes(k)) ||
+      /\b(run|executed|ran|passed|passing|0 failing)\b/i.test(evidenceJoined) ||
+      /\b(node|npm|pnpm|bun|python|pytest|cargo|go)\b/i.test(evidenceJoined);
     if (!evidenceHasTest && evidenceList.length < 3) {
       warnings.push('claim_references_tests_but_evidence_lacks_verification_details');
     }
   }
 
   // Modification claims need modification evidence
-  const modifyKeywords = ['implement', 'implemented', 'created', 'modified', 'changed', 'fixed', 'added', 'refactor', '实现', '创建', '修改', '修复', '写了'];
-  if (modifyKeywords.some(k => claimLower.includes(k))) {
-    const evidenceHasModify = modifyKeywords.some(k => evidenceJoined.includes(k))
-      || /\b(file|files|write|write_file|edit_file|edit)\b/i.test(evidenceJoined);
+  const modifyKeywords = [
+    'implement',
+    'implemented',
+    'created',
+    'modified',
+    'changed',
+    'fixed',
+    'added',
+    'refactor',
+    '实现',
+    '创建',
+    '修改',
+    '修复',
+    '写了',
+  ];
+  if (modifyKeywords.some((k) => claimLower.includes(k))) {
+    const evidenceHasModify =
+      modifyKeywords.some((k) => evidenceJoined.includes(k)) ||
+      /\b(file|files|write|write_file|edit_file|edit)\b/i.test(evidenceJoined);
     if (!evidenceHasModify && evidenceList.length < 3) {
       warnings.push('claim_references_changes_but_evidence_lacks_file_details');
     }
@@ -252,7 +294,14 @@ function drawConclusion(results, crossWarnings = []) {
   };
 }
 
-function formatVerificationReport(claim, criteriaList, evidenceList, results, conclusion, crossWarnings = []) {
+function formatVerificationReport(
+  claim,
+  criteriaList,
+  evidenceList,
+  results,
+  conclusion,
+  crossWarnings = [],
+) {
   const lines = [
     '# Verification Report',
     '',
@@ -273,28 +322,21 @@ function formatVerificationReport(claim, criteriaList, evidenceList, results, co
   ];
 
   results.forEach((r) => {
-    const statusBadge = r.status === 'PASS'
-      ? ':white_check_mark: PASS'
-      : r.status === 'FAIL'
-        ? ':x: FAIL'
-        : ':warning: NEEDS_CHECK';
+    const statusBadge =
+      r.status === 'PASS'
+        ? ':white_check_mark: PASS'
+        : r.status === 'FAIL'
+          ? ':x: FAIL'
+          : ':warning: NEEDS_CHECK';
 
-    const evidenceStr = r.evidence.length > 0
-      ? r.evidence.join('; ')
-      : '(none)';
+    const evidenceStr = r.evidence.length > 0 ? r.evidence.join('; ') : '(none)';
 
     const gapStr = r.gap || '-';
 
     lines.push(`| ${r.id} | ${r.criterion} | ${statusBadge} | ${evidenceStr} | ${gapStr} |`);
   });
 
-  lines.push(
-    '',
-    '---',
-    '',
-    '## Evidence Chain',
-    ''
-  );
+  lines.push('', '---', '', '## Evidence Chain', '');
 
   if (evidenceList.length === 0) {
     lines.push('> **No evidence provided.** Verification cannot proceed without evidence.');
@@ -306,13 +348,7 @@ function formatVerificationReport(claim, criteriaList, evidenceList, results, co
     });
   }
 
-  lines.push(
-    '',
-    '---',
-    '',
-    '## Missing Evidence',
-    ''
-  );
+  lines.push('', '---', '', '## Missing Evidence', '');
 
   const missingEvidence = results.filter((r) => r.status !== 'PASS');
   if (missingEvidence.length === 0) {
@@ -325,37 +361,28 @@ function formatVerificationReport(claim, criteriaList, evidenceList, results, co
 
   // Cross-check warnings section
   if (crossWarnings.length > 0) {
+    lines.push('', '---', '', '## Claim-Evidence Cross-Check', '');
     lines.push(
-      '',
-      '---',
-      '',
-      '## Claim-Evidence Cross-Check',
-      ''
+      '> **Warning**: The following mismatches were detected between the claim and the evidence provided:',
     );
-    lines.push('> **Warning**: The following mismatches were detected between the claim and the evidence provided:');
     lines.push('');
     crossWarnings.forEach((w) => {
       lines.push(`- :warning: **${w}**`);
     });
     lines.push(
       '',
-      '> These warnings indicate that the claim may be stronger than the evidence supports. Consider running additional verification before finalizing.'
+      '> These warnings indicate that the claim may be stronger than the evidence supports. Consider running additional verification before finalizing.',
     );
   }
 
-  lines.push(
-    '',
-    '---',
-    '',
-    '## Conclusion',
-    '',
-  );
+  lines.push('', '---', '', '## Conclusion', '');
 
-  const verdictBadge = conclusion.verdict === 'PASS'
-    ? ':white_check_mark:'
-    : conclusion.verdict === 'FAIL'
-      ? ':x:'
-      : ':warning:';
+  const verdictBadge =
+    conclusion.verdict === 'PASS'
+      ? ':white_check_mark:'
+      : conclusion.verdict === 'FAIL'
+        ? ':x:'
+        : ':warning:';
 
   lines.push(`### ${verdictBadge} ${conclusion.verdict}`);
   lines.push('');
@@ -365,7 +392,9 @@ function formatVerificationReport(claim, criteriaList, evidenceList, results, co
 
   if (conclusion.verdict !== 'PASS') {
     lines.push('');
-    lines.push('> **Reminder**: Do not mark this task as complete. The Iron Law requires fresh, specific evidence for every criterion.');
+    lines.push(
+      '> **Reminder**: Do not mark this task as complete. The Iron Law requires fresh, specific evidence for every criterion.',
+    );
   }
 
   lines.push('');

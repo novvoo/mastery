@@ -18,19 +18,23 @@ export default function coverageCheck() {
       },
       current_evidence: {
         type: 'string',
-        description: 'Evidence currently available from context, files, RAG chunks, web pages, command output, or prior tool results.',
+        description:
+          'Evidence currently available from context, files, RAG chunks, web pages, command output, or prior tool results.',
       },
       required_facts: {
         type: 'string',
-        description: 'Optional comma-separated facts that must be known to answer safely. If omitted, the tool infers likely requirements from the question.',
+        description:
+          'Optional comma-separated facts that must be known to answer safely. If omitted, the tool infers likely requirements from the question.',
       },
       available_sources: {
         type: 'string',
-        description: 'Optional comma-separated source types available now, such as context, code, rag, web, logs, tests, user.',
+        description:
+          'Optional comma-separated source types available now, such as context, code, rag, web, logs, tests, user.',
       },
       answer_goal: {
         type: 'string',
-        description: 'Optional answer goal, such as explain, recommend, compare, debug, summarize, or decide.',
+        description:
+          'Optional answer goal, such as explain, recommend, compare, debug, summarize, or decide.',
       },
       risk_level: {
         type: 'string',
@@ -44,15 +48,18 @@ export default function coverageCheck() {
       const evidence = normalizeText(params.current_evidence);
       const answerGoal = normalizeText(params.answer_goal);
       const riskLevel = normalizeRisk(params.risk_level, question);
-      const availableSources = splitList(params.available_sources).map(item => item.toLowerCase());
+      const availableSources = splitList(params.available_sources).map((item) =>
+        item.toLowerCase(),
+      );
       const requiredFacts = splitList(params.required_facts);
-      const inferredFacts = requiredFacts.length > 0
-        ? requiredFacts
-        : inferRequiredFacts(question, answerGoal, riskLevel);
+      const inferredFacts =
+        requiredFacts.length > 0
+          ? requiredFacts
+          : inferRequiredFacts(question, answerGoal, riskLevel);
 
       const evidenceItems = splitEvidence(evidence);
-      const factAssessments = inferredFacts.map(fact => assessFactCoverage(fact, evidenceItems));
-      const missingFacts = factAssessments.filter(item => item.status !== 'covered');
+      const factAssessments = inferredFacts.map((fact) => assessFactCoverage(fact, evidenceItems));
+      const missingFacts = factAssessments.filter((item) => item.status !== 'covered');
       const retrievals = suggestRetrievals(missingFacts, question, availableSources, riskLevel);
       const readiness = determineReadiness({ missingFacts, retrievals, riskLevel, evidenceItems });
 
@@ -81,10 +88,18 @@ function normalizeRisk(value, question) {
   }
 
   const text = question.toLowerCase();
-  if (/安全|权限|漏洞|线上|生产|医疗|法律|金融|合规|隐私|security|prod|production|medical|legal|finance|compliance|privacy/.test(text)) {
+  if (
+    /安全|权限|漏洞|线上|生产|医疗|法律|金融|合规|隐私|security|prod|production|medical|legal|finance|compliance|privacy/.test(
+      text,
+    )
+  ) {
     return 'high';
   }
-  if (/最新|当前|今天|版本|价格|政策|法规|api|依赖|current|latest|today|version|price|policy|regulation/.test(text)) {
+  if (
+    /最新|当前|今天|版本|价格|政策|法规|api|依赖|current|latest|today|version|price|policy|regulation/.test(
+      text,
+    )
+  ) {
     return 'medium';
   }
   return 'low';
@@ -93,7 +108,7 @@ function normalizeRisk(value, question) {
 function splitList(value) {
   return normalizeText(value)
     .split(/[,，\n]/)
-    .map(item => item.trim())
+    .map((item) => item.trim())
     .filter(Boolean);
 }
 
@@ -104,7 +119,7 @@ function splitEvidence(value) {
   }
   return text
     .split(/\n{2,}|(?:^|\n)\s*[-*]\s+/)
-    .map(item => item.trim())
+    .map((item) => item.trim())
     .filter(Boolean);
 }
 
@@ -119,17 +134,27 @@ function inferRequiredFacts(question, answerGoal, riskLevel) {
     facts.push('Document source identity and whether it is current enough');
   }
 
-  if (/代码|实现|bug|错误|报错|栈|日志|文件|函数|模块|code|implementation|error|stack|log|file|function|module/.test(text)) {
+  if (
+    /代码|实现|bug|错误|报错|栈|日志|文件|函数|模块|code|implementation|error|stack|log|file|function|module/.test(
+      text,
+    )
+  ) {
     facts.push('Relevant code locations or logs');
     facts.push('Observed behavior or reproduction evidence');
   }
 
-  if (/最新|当前|今天|现在|实时|价格|版本|政策|法规|新闻|weather|latest|current|today|now|real-time|price|version|policy|regulation|news/.test(text)) {
+  if (
+    /最新|当前|今天|现在|实时|价格|版本|政策|法规|新闻|weather|latest|current|today|now|real-time|price|version|policy|regulation|news/.test(
+      text,
+    )
+  ) {
     facts.push('Fresh external source with date or timestamp');
     facts.push('Reliable source attribution');
   }
 
-  if (/比较|选择|推荐|方案|架构|设计|compare|choose|recommend|option|architecture|design/.test(text)) {
+  if (
+    /比较|选择|推荐|方案|架构|设计|compare|choose|recommend|option|architecture|design/.test(text)
+  ) {
     facts.push('Decision criteria or constraints');
     facts.push('Tradeoffs for each viable option');
   }
@@ -161,9 +186,9 @@ function assessFactCoverage(fact, evidenceItems) {
   }
 
   const factKeywords = keywords(fact);
-  const matches = evidenceItems.filter(item => {
+  const matches = evidenceItems.filter((item) => {
     const itemText = item.toLowerCase();
-    return factKeywords.some(keyword => itemText.includes(keyword));
+    return factKeywords.some((keyword) => itemText.includes(keyword));
   });
 
   if (matches.length > 0) {
@@ -175,7 +200,7 @@ function assessFactCoverage(fact, evidenceItems) {
     };
   }
 
-  const genericEvidence = evidenceItems.filter(item => item.length > 24).slice(0, 2);
+  const genericEvidence = evidenceItems.filter((item) => item.length > 24).slice(0, 2);
   return {
     fact,
     status: 'uncertain',
@@ -188,23 +213,40 @@ function keywords(text) {
   const normalized = text.toLowerCase();
   const words = normalized
     .split(/[^a-z0-9_\u4e00-\u9fa5]+/)
-    .map(word => word.trim())
-    .filter(word => word.length >= 3)
-    .filter(word => ![
-      'the', 'and', 'for', 'with', 'from', 'that', 'this', 'must', 'known',
-      'evidence', 'source', 'relevant', 'current', 'enough', 'fact', 'facts'
-    ].includes(word));
+    .map((word) => word.trim())
+    .filter((word) => word.length >= 3)
+    .filter(
+      (word) =>
+        ![
+          'the',
+          'and',
+          'for',
+          'with',
+          'from',
+          'that',
+          'this',
+          'must',
+          'known',
+          'evidence',
+          'source',
+          'relevant',
+          'current',
+          'enough',
+          'fact',
+          'facts',
+        ].includes(word),
+    );
 
   const phraseAliases = {
-    'document': ['document', 'rag', 'pdf', 'docx', 'spec', 'manual', '文档', '资料'],
-    'code': ['code', 'implementation', 'file', 'function', 'module', '代码', '实现', '文件'],
-    'fresh': ['fresh', 'latest', 'current', 'today', 'timestamp', '最新', '当前', '今天'],
-    'security': ['security', 'permission', 'privacy', '安全', '权限', '隐私'],
-    'criteria': ['criteria', 'constraint', 'tradeoff', '标准', '约束', '取舍'],
+    document: ['document', 'rag', 'pdf', 'docx', 'spec', 'manual', '文档', '资料'],
+    code: ['code', 'implementation', 'file', 'function', 'module', '代码', '实现', '文件'],
+    fresh: ['fresh', 'latest', 'current', 'today', 'timestamp', '最新', '当前', '今天'],
+    security: ['security', 'permission', 'privacy', '安全', '权限', '隐私'],
+    criteria: ['criteria', 'constraint', 'tradeoff', '标准', '约束', '取舍'],
   };
 
   for (const [trigger, aliases] of Object.entries(phraseAliases)) {
-    if (normalized.includes(trigger) || aliases.some(alias => normalized.includes(alias))) {
+    if (normalized.includes(trigger) || aliases.some((alias) => normalized.includes(alias))) {
       words.push(...aliases);
     }
   }
@@ -214,8 +256,11 @@ function keywords(text) {
 
 function suggestRetrievals(missingFacts, question, availableSources, riskLevel) {
   const retrievals = [];
-  const missingText = missingFacts.map(item => item.fact).join(' ').toLowerCase();
-  const hasSource = source => availableSources.includes(source);
+  const missingText = missingFacts
+    .map((item) => item.fact)
+    .join(' ')
+    .toLowerCase();
+  const hasSource = (source) => availableSources.includes(source);
 
   if (/document|rag|pdf|docx|spec|manual|文档|资料|知识库/.test(missingText)) {
     retrievals.push({
@@ -233,7 +278,11 @@ function suggestRetrievals(missingFacts, question, availableSources, riskLevel) 
     });
   }
 
-  if (/fresh|external|timestamp|latest|current|today|policy|regulation|price|news|最新|当前|今天|政策|法规|价格/.test(missingText)) {
+  if (
+    /fresh|external|timestamp|latest|current|today|policy|regulation|price|news|最新|当前|今天|政策|法规|价格/.test(
+      missingText,
+    )
+  ) {
     retrievals.push({
       tool: 'web_search',
       query: makeQuery(question, 'official source latest current'),
@@ -249,7 +298,7 @@ function suggestRetrievals(missingFacts, question, availableSources, riskLevel) 
     });
   }
 
-  if (riskLevel === 'high' && !retrievals.some(item => item.tool === 'verify')) {
+  if (riskLevel === 'high' && !retrievals.some((item) => item.tool === 'verify')) {
     retrievals.push({
       tool: 'verify',
       query: 'Verify high-risk claims against fresh evidence before final answer.',
@@ -281,7 +330,8 @@ function determineReadiness({ missingFacts, retrievals, riskLevel, evidenceItems
     };
   }
 
-  const onlyUserGaps = retrievals.length > 0 && retrievals.every(item => item.tool === 'ask_user');
+  const onlyUserGaps =
+    retrievals.length > 0 && retrievals.every((item) => item.tool === 'ask_user');
   if (onlyUserGaps) {
     return {
       status: 'ASK_USER',
@@ -370,7 +420,9 @@ function formatCoverageReport({
   } else if (readiness.status === 'ASK_USER') {
     lines.push('Ask the user for the missing constraint before answering.');
   } else {
-    lines.push('Run the suggested retrievals, then call coverage_check again or answer with remaining uncertainty clearly stated.');
+    lines.push(
+      'Run the suggested retrievals, then call coverage_check again or answer with remaining uncertainty clearly stated.',
+    );
   }
 
   return lines.join('\n');
@@ -390,7 +442,7 @@ function unique(items) {
 
 function dedupeRetrievals(retrievals) {
   const seen = new Set();
-  return retrievals.filter(item => {
+  return retrievals.filter((item) => {
     const key = `${item.tool}:${item.query}`;
     if (seen.has(key)) {
       return false;

@@ -14,7 +14,11 @@
 
 import { ToolCategory } from '../../core/types.js';
 import { ContentAddressableStore, FileAnalyzer } from '../../core/harness/content-addressing.js';
-import { HashAnchoredPatcher, PatchIntentBuilder, StateGraph } from '../../core/harness/hash-anchored-patch.js';
+import {
+  HashAnchoredPatcher,
+  PatchIntentBuilder,
+  StateGraph,
+} from '../../core/harness/hash-anchored-patch.js';
 import { readFile, writeFile } from 'fs/promises';
 import { resolve, join } from 'path';
 import { existsSync } from 'fs';
@@ -53,7 +57,12 @@ export function createStateCentricTools() {
       category: ToolCategory.FILESYSTEM,
       params: {
         path: { type: 'string', description: '文件路径' },
-        mode: { type: 'string', enum: ['lines', 'blocks'], description: '分析模式：按行(lines)或按块(blocks)', default: 'lines' }
+        mode: {
+          type: 'string',
+          enum: ['lines', 'blocks'],
+          description: '分析模式：按行(lines)或按块(blocks)',
+          default: 'lines',
+        },
       },
       required: ['path'],
       handler: async ({ path, mode }, ctx) => {
@@ -65,9 +74,10 @@ export function createStateCentricTools() {
         try {
           const content = await readFile(fullPath, 'utf-8');
 
-          const result = mode === 'blocks'
-            ? globalPatcher['_analyzer'].analyzeByBlocks(path, content)
-            : globalPatcher.initializeFile(path, content);
+          const result =
+            mode === 'blocks'
+              ? globalPatcher['_analyzer'].analyzeByBlocks(path, content)
+              : globalPatcher.initializeFile(path, content);
 
           // 初始化状态图
           globalStateGraph.createInitialNode(path, content);
@@ -76,18 +86,20 @@ export function createStateCentricTools() {
           const anchorSummary = result.anchors.slice(0, 20).map((a, i) => ({
             index: i,
             hash: a.hash.substring(0, 16) + '...',
-            preview: (a.text || '').substring(0, 80).replace(/\n/g, ' ↵ ')
+            preview: (a.text || '').substring(0, 80).replace(/\n/g, ' ↵ '),
           }));
 
-          return `File analyzed: ${path}\n` +
-                 `File Hash: ${result.fileHash.substring(0, 16)}...\n` +
-                 `Anchors: ${result.anchors.length} (showing first ${Math.min(20, result.anchors.length)})\n` +
-                 `${anchorSummary.map(a => `  [${a.index}] ${a.hash} "${a.preview}"`).join('\n')}\n\n` +
-                 `Use these anchor hashes with harness_replace/harness_insert/harness_delete.`;
+          return (
+            `File analyzed: ${path}\n` +
+            `File Hash: ${result.fileHash.substring(0, 16)}...\n` +
+            `Anchors: ${result.anchors.length} (showing first ${Math.min(20, result.anchors.length)})\n` +
+            `${anchorSummary.map((a) => `  [${a.index}] ${a.hash} "${a.preview}"`).join('\n')}\n\n` +
+            `Use these anchor hashes with harness_replace/harness_insert/harness_delete.`
+          );
         } catch (error) {
           return `Error analyzing file: ${error}`;
         }
-      }
+      },
     },
 
     /**
@@ -101,7 +113,7 @@ export function createStateCentricTools() {
         path: { type: 'string', description: '文件路径' },
         anchor_hash: { type: 'string', description: '要替换的锚点哈希（至少 16 个字符）' },
         new_content: { type: 'string', description: '新的内容' },
-        description: { type: 'string', description: '修改说明（可选）' }
+        description: { type: 'string', description: '修改说明（可选）' },
       },
       required: ['path', 'anchor_hash', 'new_content'],
       handler: async ({ path, anchor_hash, new_content, description }, ctx) => {
@@ -147,15 +159,17 @@ export function createStateCentricTools() {
           // 重新分析生成新锚点
           const newAnchors = globalPatcher.initializeFile(path, result.newContent);
 
-          return `Successfully replaced content\n` +
-                 `File: ${path}\n` +
-                 `Changes: ${result.changes}\n` +
-                 `New anchors: ${newAnchors.anchors.length}\n` +
-                 `First new anchor: ${newAnchors.anchors[0]?.hash.substring(0, 16)}...`;
+          return (
+            `Successfully replaced content\n` +
+            `File: ${path}\n` +
+            `Changes: ${result.changes}\n` +
+            `New anchors: ${newAnchors.anchors.length}\n` +
+            `First new anchor: ${newAnchors.anchors[0]?.hash.substring(0, 16)}...`
+          );
         } catch (error) {
           return `Error: ${error}`;
         }
-      }
+      },
     },
 
     /**
@@ -169,7 +183,7 @@ export function createStateCentricTools() {
         path: { type: 'string', description: '文件路径' },
         anchor_hash: { type: 'string', description: '锚点哈希' },
         content: { type: 'string', description: '要插入的内容' },
-        description: { type: 'string', description: '修改说明' }
+        description: { type: 'string', description: '修改说明' },
       },
       required: ['path', 'anchor_hash', 'content'],
       handler: async ({ path, anchor_hash, content, description }, ctx) => {
@@ -207,12 +221,14 @@ export function createStateCentricTools() {
             globalStateGraph.createNodeFromPatch(parentHash, intent, result.newContent);
           }
 
-          return `Successfully inserted content after anchor ${anchor_hash}\n` +
-                 `Changes: ${result.changes}`;
+          return (
+            `Successfully inserted content after anchor ${anchor_hash}\n` +
+            `Changes: ${result.changes}`
+          );
         } catch (error) {
           return `Error: ${error}`;
         }
-      }
+      },
     },
 
     /**
@@ -225,7 +241,7 @@ export function createStateCentricTools() {
       params: {
         path: { type: 'string', description: '文件路径' },
         anchor_hash: { type: 'string', description: '锚点哈希' },
-        description: { type: 'string', description: '修改说明' }
+        description: { type: 'string', description: '修改说明' },
       },
       required: ['path', 'anchor_hash'],
       handler: async ({ path, anchor_hash, description }, ctx) => {
@@ -262,12 +278,13 @@ export function createStateCentricTools() {
             globalStateGraph.createNodeFromPatch(parentHash, intent, result.newContent);
           }
 
-          return `Successfully deleted content at anchor ${anchor_hash}\n` +
-                 `Changes: ${result.changes}`;
+          return (
+            `Successfully deleted content at anchor ${anchor_hash}\n` + `Changes: ${result.changes}`
+          );
         } catch (error) {
           return `Error: ${error}`;
         }
-      }
+      },
     },
 
     /**
@@ -281,10 +298,10 @@ export function createStateCentricTools() {
         query_type: {
           type: 'string',
           enum: ['status', 'history', 'anchors', 'objects'],
-          description: '查询类型'
+          description: '查询类型',
         },
         path: { type: 'string', description: '文件路径（可选）' },
-        limit: { type: 'number', description: '结果数量限制', default: 10 }
+        limit: { type: 'number', description: '结果数量限制', default: 10 },
       },
       required: ['query_type'],
       handler: async ({ query_type, path, limit }, ctx) => {
@@ -292,47 +309,62 @@ export function createStateCentricTools() {
           case 'status':
             const stats = globalStore.stats();
             const head = globalStateGraph.getCurrentHead();
-            return `Harness Status:\n` +
-                   `  Objects: ${stats.objects}\n` +
-                   `  Refs: ${stats.refs}\n` +
-                   `  Current Head: ${head ? head.substring(0, 16) + '...' : 'none'}`;
+            return (
+              `Harness Status:\n` +
+              `  Objects: ${stats.objects}\n` +
+              `  Refs: ${stats.refs}\n` +
+              `  Current Head: ${head ? head.substring(0, 16) + '...' : 'none'}`
+            );
 
           case 'history':
             const history = globalStateGraph.getHistory(limit);
-            return `Edit History (last ${history.length}):\n` +
-                   history.map((h, i) => {
-                     const patchInfo = h.patch
-                       ? `${h.patch.type} ${h.patch.anchorHash.substring(0, 16)}...`
-                       : '(initial)';
-                     return `  [${i}] ${h.hash.substring(0, 16)}... - ${patchInfo}`;
-                   }).join('\n');
+            return (
+              `Edit History (last ${history.length}):\n` +
+              history
+                .map((h, i) => {
+                  const patchInfo = h.patch
+                    ? `${h.patch.type} ${h.patch.anchorHash.substring(0, 16)}...`
+                    : '(initial)';
+                  return `  [${i}] ${h.hash.substring(0, 16)}... - ${patchInfo}`;
+                })
+                .join('\n')
+            );
 
           case 'anchors':
-            const anchorObjects = globalStore.listObjects()
-              .filter(hash => {
+            const anchorObjects = globalStore
+              .listObjects()
+              .filter((hash) => {
                 const obj = globalStore.get(hash);
                 return obj && obj.type === 'anchor' && (!path || obj.data.path === path);
               })
               .slice(0, limit);
 
-            return `Anchors${path ? ` in ${path}` : ''} (${anchorObjects.length}):\n` +
-                   anchorObjects.map(hash => {
-                     const obj = globalStore.get(hash);
-                     return `  ${hash.substring(0, 16)}...: ${obj.data.text.substring(0, 60).replace(/\n/g, ' ↵ ')}`;
-                   }).join('\n');
+            return (
+              `Anchors${path ? ` in ${path}` : ''} (${anchorObjects.length}):\n` +
+              anchorObjects
+                .map((hash) => {
+                  const obj = globalStore.get(hash);
+                  return `  ${hash.substring(0, 16)}...: ${obj.data.text.substring(0, 60).replace(/\n/g, ' ↵ ')}`;
+                })
+                .join('\n')
+            );
 
           case 'objects':
             const allObjects = globalStore.listObjects().slice(0, limit);
-            return `All Objects (${globalStore.listObjects().length} total, showing ${allObjects.length}):\n` +
-                   allObjects.map(hash => {
-                     const obj = globalStore.get(hash);
-                     return `  ${hash.substring(0, 16)}...: ${obj.type}`;
-                   }).join('\n');
+            return (
+              `All Objects (${globalStore.listObjects().length} total, showing ${allObjects.length}):\n` +
+              allObjects
+                .map((hash) => {
+                  const obj = globalStore.get(hash);
+                  return `  ${hash.substring(0, 16)}...: ${obj.type}`;
+                })
+                .join('\n')
+            );
 
           default:
             return `Unknown query type: ${query_type}`;
         }
-      }
+      },
     },
 
     /**
@@ -344,7 +376,7 @@ export function createStateCentricTools() {
       category: ToolCategory.FILESYSTEM,
       params: {
         target_hash: { type: 'string', description: '目标状态哈希' },
-        path: { type: 'string', description: '文件路径' }
+        path: { type: 'string', description: '文件路径' },
       },
       required: ['target_hash', 'path'],
       handler: async ({ target_hash, path }, ctx) => {
@@ -369,8 +401,8 @@ export function createStateCentricTools() {
         } catch (error) {
           return `Error: ${error}`;
         }
-      }
-    }
+      },
+    },
   ];
 }
 
@@ -384,11 +416,11 @@ export function getHarnessSystem() {
     store: globalStore,
     patcher: globalPatcher,
     stateGraph: globalStateGraph,
-    patchBuilder: globalPatchBuilder
+    patchBuilder: globalPatchBuilder,
   };
 }
 
 export default {
   createStateCentricTools,
-  getHarnessSystem
+  getHarnessSystem,
 };

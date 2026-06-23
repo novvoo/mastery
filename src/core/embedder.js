@@ -34,26 +34,28 @@ export function getDefaultEmbeddingModelPath() {
     'models',
     DEFAULT_EMBEDDING_REPO,
     DEFAULT_EMBEDDING_REVISION,
-    DEFAULT_EMBEDDING_FILE
+    DEFAULT_EMBEDDING_FILE,
   );
 }
 
 export function resolveEmbeddingModelDownloadCandidates(options = {}) {
   return resolveEmbeddingFileDownloadCandidates(
     options.file || process.env.EMBEDDING_MODEL_FILE || DEFAULT_EMBEDDING_FILE,
-    { ...options, allowModelUrl: true }
+    { ...options, allowModelUrl: true },
   );
 }
 
 export function resolveEmbeddingFileDownloadCandidates(file, options = {}) {
-  const resolvedFile = file || options.file || process.env.EMBEDDING_MODEL_FILE || DEFAULT_EMBEDDING_FILE;
+  const resolvedFile =
+    file || options.file || process.env.EMBEDDING_MODEL_FILE || DEFAULT_EMBEDDING_FILE;
 
   if (options.allowModelUrl && (options.modelUrl || process.env.EMBEDDING_MODEL_URL)) {
     return [options.modelUrl || process.env.EMBEDDING_MODEL_URL];
   }
 
   const repo = options.repo || process.env.EMBEDDING_MODEL_REPO || DEFAULT_EMBEDDING_REPO;
-  const revision = options.revision || process.env.EMBEDDING_MODEL_REVISION || DEFAULT_EMBEDDING_REVISION;
+  const revision =
+    options.revision || process.env.EMBEDDING_MODEL_REVISION || DEFAULT_EMBEDDING_REVISION;
   const extraMirrors = [
     options.hfEndpoint || process.env.HF_ENDPOINT,
     ...(options.mirrors || splitEnvList(process.env.EMBEDDING_MODEL_MIRRORS)),
@@ -61,9 +63,9 @@ export function resolveEmbeddingFileDownloadCandidates(file, options = {}) {
   ];
   const endpoints = uniqueStrings([DEFAULT_HF_ENDPOINT, ...extraMirrors])
     .filter(Boolean)
-    .map(endpoint => endpoint.replace(/\/+$/, ''));
+    .map((endpoint) => endpoint.replace(/\/+$/, ''));
 
-  return endpoints.map(endpoint => `${endpoint}/${repo}/resolve/${revision}/${resolvedFile}`);
+  return endpoints.map((endpoint) => `${endpoint}/${repo}/resolve/${revision}/${resolvedFile}`);
 }
 
 export class Embedder {
@@ -84,25 +86,42 @@ export class Embedder {
   #maxTokens;
 
   constructor(options = {}) {
-    this.#modelPath = options.modelPath || process.env.EMBEDDING_MODEL_PATH || getDefaultEmbeddingModelPath();
+    this.#modelPath =
+      options.modelPath || process.env.EMBEDDING_MODEL_PATH || getDefaultEmbeddingModelPath();
     const modelDirectory = dirname(this.#modelPath);
-    const modelRoot = basename(modelDirectory) === 'onnx' ? dirname(modelDirectory) : modelDirectory;
-    this.#tokenizerPath = options.tokenizerPath || process.env.EMBEDDING_TOKENIZER_PATH || join(modelRoot, DEFAULT_TOKENIZER_FILE);
-    this.#tokenizerConfigPath = options.tokenizerConfigPath || process.env.EMBEDDING_TOKENIZER_CONFIG_PATH || join(modelRoot, DEFAULT_TOKENIZER_CONFIG_FILE);
+    const modelRoot =
+      basename(modelDirectory) === 'onnx' ? dirname(modelDirectory) : modelDirectory;
+    this.#tokenizerPath =
+      options.tokenizerPath ||
+      process.env.EMBEDDING_TOKENIZER_PATH ||
+      join(modelRoot, DEFAULT_TOKENIZER_FILE);
+    this.#tokenizerConfigPath =
+      options.tokenizerConfigPath ||
+      process.env.EMBEDDING_TOKENIZER_CONFIG_PATH ||
+      join(modelRoot, DEFAULT_TOKENIZER_CONFIG_FILE);
     this.#dimension = options.dimension || 768;
     this.#batchSize = options.batchSize || 32;
-    this.#pooling = normalizePooling(options.pooling || process.env.EMBEDDING_POOLING || DEFAULT_POOLING);
-    this.#maxTokens = Number(options.maxTokens || process.env.EMBEDDING_MAX_TOKENS || DEFAULT_MAX_TOKENS);
+    this.#pooling = normalizePooling(
+      options.pooling || process.env.EMBEDDING_POOLING || DEFAULT_POOLING,
+    );
+    this.#maxTokens = Number(
+      options.maxTokens || process.env.EMBEDDING_MAX_TOKENS || DEFAULT_MAX_TOKENS,
+    );
     this.#initialized = false;
     this.#onnxRuntime = null;
     this.#model = null;
     this.#tokenizer = null;
-    this.#autoDownload = options.autoDownload ?? process.env.EMBEDDING_MODEL_AUTO_DOWNLOAD !== 'false';
+    this.#autoDownload =
+      options.autoDownload ?? process.env.EMBEDDING_MODEL_AUTO_DOWNLOAD !== 'false';
     this.#downloadTimeoutMs = Number(
-      options.downloadTimeoutMs || process.env.EMBEDDING_MODEL_DOWNLOAD_TIMEOUT_MS || DEFAULT_DOWNLOAD_TIMEOUT_MS
+      options.downloadTimeoutMs ||
+        process.env.EMBEDDING_MODEL_DOWNLOAD_TIMEOUT_MS ||
+        DEFAULT_DOWNLOAD_TIMEOUT_MS,
     );
     this.#probeTimeoutMs = Number(
-      options.probeTimeoutMs || process.env.EMBEDDING_MODEL_PROBE_TIMEOUT_MS || DEFAULT_PROBE_TIMEOUT_MS
+      options.probeTimeoutMs ||
+        process.env.EMBEDDING_MODEL_PROBE_TIMEOUT_MS ||
+        DEFAULT_PROBE_TIMEOUT_MS,
     );
     this.#fallbackReason = null;
   }
@@ -173,7 +192,9 @@ export class Embedder {
       const ort = await import('onnxruntime-node');
       return ort;
     } catch (error) {
-      throw new Error('ONNX Runtime not available. Install a compatible ONNX runtime package or use the fallback embedder.');
+      throw new Error(
+        'ONNX Runtime not available. Install a compatible ONNX runtime package or use the fallback embedder.',
+      );
     }
   }
 
@@ -220,15 +241,24 @@ export class Embedder {
       await this.#downloadModel(selected.url, options);
     } catch (error) {
       const probeSummary = rankedCandidates
-        .map(candidate => `${candidate.url}: ${candidate.available ? 'available' : candidate.error || 'unavailable'}`)
+        .map(
+          (candidate) =>
+            `${candidate.url}: ${candidate.available ? 'available' : candidate.error || 'unavailable'}`,
+        )
         .join('; ');
-      throw new Error(`Embedding model is missing and selected download failed. Selected: ${selected.url}: ${error.message}. Probes: ${probeSummary}`);
+      throw new Error(
+        `Embedding model is missing and selected download failed. Selected: ${selected.url}: ${error.message}. Probes: ${probeSummary}`,
+      );
     }
   }
 
   async #ensureTokenizerFilesAvailable(options = {}) {
     await this.#ensureAuxiliaryFileAvailable(this.#tokenizerPath, DEFAULT_TOKENIZER_FILE, options);
-    await this.#ensureAuxiliaryFileAvailable(this.#tokenizerConfigPath, DEFAULT_TOKENIZER_CONFIG_FILE, options);
+    await this.#ensureAuxiliaryFileAvailable(
+      this.#tokenizerConfigPath,
+      DEFAULT_TOKENIZER_CONFIG_FILE,
+      options,
+    );
   }
 
   async #ensureAuxiliaryFileAvailable(path, file, options = {}) {
@@ -250,18 +280,26 @@ export class Embedder {
 
   async #rankDownloadCandidates(candidates, options = {}) {
     if (candidates.length <= 1 || options.probeCandidates === false) {
-      return candidates.map((url, index) => ({ url, index, available: true, durationMs: 0, totalBytes: null }));
+      return candidates.map((url, index) => ({
+        url,
+        index,
+        available: true,
+        durationMs: 0,
+        totalBytes: null,
+      }));
     }
 
     options.onDownloadProbeStart?.({ candidates, timeoutMs: this.#probeTimeoutMs });
-    const probes = await Promise.all(candidates.map((url, index) => this.#probeDownloadCandidate(url, index)));
+    const probes = await Promise.all(
+      candidates.map((url, index) => this.#probeDownloadCandidate(url, index)),
+    );
 
     for (const probe of probes) {
       options.onDownloadProbeResult?.(probe);
     }
 
     const available = probes
-      .filter(probe => probe.available)
+      .filter((probe) => probe.available)
       .sort((a, b) => a.durationMs - b.durationMs || a.index - b.index);
 
     if (available.length > 0) {
@@ -282,10 +320,10 @@ export class Embedder {
         signal: controller.signal,
       });
       const durationMs = Date.now() - startedAt;
-      const totalBytes = Number(
-        response.headers?.get?.('content-length') ||
-        response.headers?.get?.('x-linked-size')
-      ) || null;
+      const totalBytes =
+        Number(
+          response.headers?.get?.('content-length') || response.headers?.get?.('x-linked-size'),
+        ) || null;
 
       if (!response.ok) {
         return {
@@ -316,9 +354,10 @@ export class Embedder {
         status: null,
         durationMs: Date.now() - startedAt,
         totalBytes: null,
-        error: error?.name === 'AbortError'
-          ? `probe timed out after ${this.#probeTimeoutMs}ms`
-          : error.message,
+        error:
+          error?.name === 'AbortError'
+            ? `probe timed out after ${this.#probeTimeoutMs}ms`
+            : error.message,
       };
     } finally {
       clearTimeout(timeout);
@@ -382,11 +421,13 @@ export class Embedder {
     }
 
     const texts = Array.isArray(text) ? text : [text];
-    
+
     // 限制输入大小
-    const normalizedTexts = texts.map(t => {
+    const normalizedTexts = texts.map((t) => {
       if (typeof t === 'string' && t.length > MAX_INPUT_TEXT_CHARS) {
-        console.warn(`Embedder: truncating input from ${t.length} to ${MAX_INPUT_TEXT_CHARS} chars`);
+        console.warn(
+          `Embedder: truncating input from ${t.length} to ${MAX_INPUT_TEXT_CHARS} chars`,
+        );
         return t.substring(0, MAX_INPUT_TEXT_CHARS);
       }
       return t;
@@ -395,18 +436,20 @@ export class Embedder {
     // 超时控制
     const timeoutMs = options.timeoutMs || EMBEDDING_BATCH_TIMEOUT_MS;
     let timer;
-    
+
     try {
       const embeddings = await Promise.race([
         this.#generateEmbeddings(normalizedTexts, options),
         new Promise((_, reject) => {
           timer = setTimeout(() => reject(new Error('Embedding generation timed out')), timeoutMs);
-        })
+        }),
       ]);
 
       return Array.isArray(text) ? embeddings : embeddings[0];
     } finally {
-      if (timer) {clearTimeout(timer);}
+      if (timer) {
+        clearTimeout(timer);
+      }
     }
   }
 
@@ -435,16 +478,13 @@ export class Embedder {
   }
 
   async #processWithONNX(texts) {
-    const encodings = texts.map(text => this.#tokenizer.encode(text));
+    const encodings = texts.map((text) => this.#tokenizer.encode(text));
 
     // Truncate to max sequence length at the TOKEN level (not character level).
     // We reserve 2 positions for <[BOS_never_used_51bce0c785ca2f68081bfa7d91973934]>/sep_token equivalent bookend tokens
     // that the tokenizer may add implicitly.
     const maxTokens = Math.max(8, this.#maxTokens - 2);
-    const maxLength = Math.min(
-      Math.max(...encodings.map((e) => e.ids.length)),
-      this.#maxTokens
-    );
+    const maxLength = Math.min(Math.max(...encodings.map((e) => e.ids.length)), this.#maxTokens);
 
     const paddedIds = encodings.map((e) => {
       const ids = [...e.ids];
@@ -463,13 +503,13 @@ export class Embedder {
     const feeds = {
       input_ids: new this.#onnxRuntime.Tensor(
         'int64',
-        BigInt64Array.from(paddedIds.flat().map(value => BigInt(value))),
-        [texts.length, maxLength]
+        BigInt64Array.from(paddedIds.flat().map((value) => BigInt(value))),
+        [texts.length, maxLength],
       ),
       attention_mask: new this.#onnxRuntime.Tensor(
         'int64',
-        BigInt64Array.from(attentionMask.flat().map(value => BigInt(value))),
-        [texts.length, maxLength]
+        BigInt64Array.from(attentionMask.flat().map((value) => BigInt(value))),
+        [texts.length, maxLength],
       ),
     };
 
@@ -519,7 +559,7 @@ export class Embedder {
         return embedding;
       }
 
-      return embedding.map(value => value / tokenCount);
+      return embedding.map((value) => value / tokenCount);
     });
   }
 
@@ -581,10 +621,7 @@ export class Embedder {
       throw new Error('Embedding dimensions must match');
     }
 
-    const dotProduct = embedding1.reduce(
-      (sum, val, i) => sum + val * embedding2[i],
-      0
-    );
+    const dotProduct = embedding1.reduce((sum, val, i) => sum + val * embedding2[i], 0);
 
     return Math.max(-1, Math.min(1, dotProduct));
   }
@@ -681,7 +718,7 @@ export class Embedder {
   countTokens(textOrTexts) {
     const texts = Array.isArray(textOrTexts) ? textOrTexts : [textOrTexts];
     if (this.#tokenizer) {
-      return texts.map(t => {
+      return texts.map((t) => {
         try {
           return this.#tokenizer.encode(String(t || '')).ids.length;
         } catch {
@@ -689,7 +726,7 @@ export class Embedder {
         }
       });
     }
-    return texts.map(t => heuristicCountTokens(String(t || '')));
+    return texts.map((t) => heuristicCountTokens(String(t || '')));
   }
 
   /**
@@ -702,15 +739,22 @@ export class Embedder {
     const textStr = String(text || '');
     const target = Number(options.targetTokens) || 750;
     const overlap = Number(options.overlapTokens) || 100;
-    const hardCap = Math.max(32, Math.min(this.#maxTokens, Number(options.maxTokensPerChunk) || this.#maxTokens));
+    const hardCap = Math.max(
+      32,
+      Math.min(this.#maxTokens, Number(options.maxTokensPerChunk) || this.#maxTokens),
+    );
     const finalTarget = Math.min(target, hardCap);
     const finalOverlap = Math.min(overlap, Math.max(8, Math.floor(finalTarget * 0.2)));
 
-    if (!textStr) {return [];}
+    if (!textStr) {
+      return [];
+    }
 
     // Fast path: small text → one chunk
     const totalTokens = this.countTokens(textStr)[0];
-    if (totalTokens <= finalTarget) {return [textStr];}
+    if (totalTokens <= finalTarget) {
+      return [textStr];
+    }
 
     // Split into natural segments (newlines / sentences) first, then
     // greedily pack segments into chunks, recomputing token counts per
@@ -728,7 +772,7 @@ export class Embedder {
       const segTokens = this.countTokens(seg)[0];
 
       // Check if adding this segment would exceed the hard cap
-      if (buffer && (bufferTokens + segTokens) > finalTarget) {
+      if (buffer && bufferTokens + segTokens > finalTarget) {
         chunks.push(buffer.trim());
         // Carry overlap from the tail of the finished chunk
         if (finalOverlap > 0) {
@@ -743,12 +787,16 @@ export class Embedder {
         bufferTokens = overlapTailTokens;
       }
 
-      buffer = buffer ? buffer + (buffer.endsWith(' ') || seg.startsWith(' ') ? '' : ' ') + seg : seg;
+      buffer = buffer
+        ? buffer + (buffer.endsWith(' ') || seg.startsWith(' ') ? '' : ' ') + seg
+        : seg;
       bufferTokens += segTokens;
     }
 
     const trimmed = buffer.trim();
-    if (trimmed) {chunks.push(trimmed);}
+    if (trimmed) {
+      chunks.push(trimmed);
+    }
 
     // Final safety: if any chunk still exceeds hardCap, forcibly split it
     const finalChunks = [];
@@ -763,7 +811,7 @@ export class Embedder {
         let subTokens = 0;
         for (const w of words) {
           const wTokens = this.countTokens(w)[0];
-          if (sub && (subTokens + wTokens) > hardCap) {
+          if (sub && subTokens + wTokens > hardCap) {
             finalChunks.push(sub.trim());
             sub = w;
             subTokens = wTokens;
@@ -772,7 +820,9 @@ export class Embedder {
             subTokens += wTokens;
           }
         }
-        if (sub.trim()) {finalChunks.push(sub.trim());}
+        if (sub.trim()) {
+          finalChunks.push(sub.trim());
+        }
       }
     }
     return finalChunks;
@@ -782,7 +832,7 @@ export class Embedder {
 function splitEnvList(value) {
   return String(value || '')
     .split(',')
-    .map(item => item.trim())
+    .map((item) => item.trim())
     .filter(Boolean);
 }
 
@@ -815,10 +865,16 @@ function normalizePooling(value) {
  */
 export function heuristicCountTokens(text) {
   const s = String(text || '');
-  if (!s) {return 0;}
-  const cjkMatches = s.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu) || [];
+  if (!s) {
+    return 0;
+  }
+  const cjkMatches =
+    s.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu) || [];
   const cjkCount = cjkMatches.length;
-  const stripped = s.replace(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu, ' ');
+  const stripped = s.replace(
+    /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu,
+    ' ',
+  );
   const latinTokens = stripped.match(/[\p{L}\p{N}_-]+/gu) || [];
   // 1.3 rough compensation for sub-word tokenization on Latin text
   return Math.round(cjkCount + latinTokens.length * 1.3);
@@ -834,10 +890,14 @@ export function heuristicCountTokens(text) {
 export function mmrReRank(items, { lambda = 0.7, limit = 5, minScore = -Infinity } = {}) {
   const candidates = items
     .map((it, i) => ({ ...it, _origIndex: i }))
-    .filter(it => Number(it.score) >= minScore);
+    .filter((it) => Number(it.score) >= minScore);
 
-  if (candidates.length === 0) {return [];}
-  if (candidates.length <= limit) {return candidates;}
+  if (candidates.length === 0) {
+    return [];
+  }
+  if (candidates.length <= limit) {
+    return candidates;
+  }
 
   const selected = [];
   const remaining = candidates.slice();
@@ -851,7 +911,9 @@ export function mmrReRank(items, { lambda = 0.7, limit = 5, minScore = -Infinity
       let maxSimToSelected = 0;
       for (const sel of selected) {
         const sim = fastSimilarity(cand, sel);
-        if (sim > maxSimToSelected) {maxSimToSelected = sim;}
+        if (sim > maxSimToSelected) {
+          maxSimToSelected = sim;
+        }
       }
       const mmr = lambda * rel - (1 - lambda) * maxSimToSelected;
       if (mmr > bestScore) {
@@ -859,7 +921,9 @@ export function mmrReRank(items, { lambda = 0.7, limit = 5, minScore = -Infinity
         bestIdx = i;
       }
     }
-    if (bestIdx < 0) {break;}
+    if (bestIdx < 0) {
+      break;
+    }
     selected.push(remaining[bestIdx]);
     remaining.splice(bestIdx, 1);
   }
@@ -867,9 +931,15 @@ export function mmrReRank(items, { lambda = 0.7, limit = 5, minScore = -Infinity
 }
 
 function fastSimilarity(a, b) {
-  if (Array.isArray(a.embedding) && Array.isArray(b.embedding) && a.embedding.length === b.embedding.length) {
+  if (
+    Array.isArray(a.embedding) &&
+    Array.isArray(b.embedding) &&
+    a.embedding.length === b.embedding.length
+  ) {
     let dot = 0;
-    for (let i = 0; i < a.embedding.length; i++) {dot += a.embedding[i] * b.embedding[i];}
+    for (let i = 0; i < a.embedding.length; i++) {
+      dot += a.embedding[i] * b.embedding[i];
+    }
     return Math.max(-1, Math.min(1, dot));
   }
   // Fallback: bag-of-words jaccard over tokens
@@ -877,12 +947,20 @@ function fastSimilarity(a, b) {
 }
 
 function jaccardSimilarity(a, b) {
-  if (!a || !b) {return 0;}
+  if (!a || !b) {
+    return 0;
+  }
   const ta = new Set(a.toLowerCase().match(/[\p{L}\p{N}_-]{2,}/gu) || []);
   const tb = new Set(b.toLowerCase().match(/[\p{L}\p{N}_-]{2,}/gu) || []);
-  if (ta.size === 0 || tb.size === 0) {return 0;}
+  if (ta.size === 0 || tb.size === 0) {
+    return 0;
+  }
   let inter = 0;
-  for (const t of ta) {if (tb.has(t)) {inter++;}}
+  for (const t of ta) {
+    if (tb.has(t)) {
+      inter++;
+    }
+  }
   const union = ta.size + tb.size - inter;
   return union > 0 ? inter / union : 0;
 }
@@ -893,22 +971,30 @@ function jaccardSimilarity(a, b) {
  * may have been split across multiple chunks.
  */
 export function mergeAdjacentChunks(items) {
-  if (!Array.isArray(items) || items.length === 0) {return items;}
+  if (!Array.isArray(items) || items.length === 0) {
+    return items;
+  }
   const byDoc = new Map();
   for (const it of items) {
     const docId = it.metadata?.documentId || '__global__';
-    if (!byDoc.has(docId)) {byDoc.set(docId, []);}
+    if (!byDoc.has(docId)) {
+      byDoc.set(docId, []);
+    }
     byDoc.get(docId).push(it);
   }
   const out = [];
   for (const group of byDoc.values()) {
-    group.sort((a, b) => (Number(a.metadata?.chunkIndex) || 0) - (Number(b.metadata?.chunkIndex) || 0));
+    group.sort(
+      (a, b) => (Number(a.metadata?.chunkIndex) || 0) - (Number(b.metadata?.chunkIndex) || 0),
+    );
     let i = 0;
     while (i < group.length) {
       let current = { ...group[i] };
       while (i + 1 < group.length) {
         const next = group[i + 1];
-        if (next.metadata?.documentId !== current.metadata?.documentId) {break;}
+        if (next.metadata?.documentId !== current.metadata?.documentId) {
+          break;
+        }
         // Merge if chunk indices are consecutive and content differs
         if (shouldMerge(current, next)) {
           current = mergeTwo(current, next);
@@ -927,11 +1013,15 @@ export function mergeAdjacentChunks(items) {
 function shouldMerge(a, b) {
   const idxA = Number(a.metadata?.chunkIndex) || 0;
   const idxB = Number(b.metadata?.chunkIndex) || 0;
-  if (idxB - idxA !== 1) {return false;}
+  if (idxB - idxA !== 1) {
+    return false;
+  }
   // Don't merge if one text is already fully contained in the other
   const tA = String(a.text || '').toLowerCase();
   const tB = String(b.text || '').toLowerCase();
-  if (tA.includes(tB) || tB.includes(tA)) {return true;}
+  if (tA.includes(tB) || tB.includes(tA)) {
+    return true;
+  }
   return true;
 }
 

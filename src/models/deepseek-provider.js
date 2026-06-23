@@ -13,7 +13,12 @@ export class DeepSeekModelProvider {
   #contextSize;
   #capabilities;
 
-  constructor(apiKey, baseURL = 'https://api.deepseek.com/v1', model = 'deepseek-chat', options = {}) {
+  constructor(
+    apiKey,
+    baseURL = 'https://api.deepseek.com/v1',
+    model = 'deepseek-chat',
+    options = {},
+  ) {
     this.#apiKey = apiKey;
     this.#baseURL = baseURL;
     this.#model = model;
@@ -26,7 +31,7 @@ export class DeepSeekModelProvider {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.#apiKey}`,
+        Authorization: `Bearer ${this.#apiKey}`,
       },
       body: JSON.stringify({
         model: this.#model,

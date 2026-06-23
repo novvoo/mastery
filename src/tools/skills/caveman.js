@@ -38,8 +38,16 @@ export default function caveman() {
 
       // Remove filler words
       const fillers = [
-        'just', 'really', 'basically', 'actually', 'simply',
-        'very', 'quite', 'rather', 'somewhat', 'in order to',
+        'just',
+        'really',
+        'basically',
+        'actually',
+        'simply',
+        'very',
+        'quite',
+        'rather',
+        'somewhat',
+        'in order to',
       ];
       for (const filler of fillers) {
         processed = processed.replace(new RegExp(`\\b${filler}\\b`, 'gi'), '');
@@ -47,9 +55,18 @@ export default function caveman() {
 
       // Remove pleasantries
       const pleasantries = [
-        'sure', 'certainly', 'happy to', 'glad to', 'of course',
-        'i would love to', 'i appreciate', 'thanks', 'thank you',
-        'please note', 'i hope this helps', 'hope that helps',
+        'sure',
+        'certainly',
+        'happy to',
+        'glad to',
+        'of course',
+        'i would love to',
+        'i appreciate',
+        'thanks',
+        'thank you',
+        'please note',
+        'i hope this helps',
+        'hope that helps',
       ];
       for (const p of pleasantries) {
         processed = processed.replace(new RegExp(`\\b${p}\\b`, 'gi'), '');
@@ -93,7 +110,7 @@ export default function caveman() {
       // Prefix error lines with "Error:"
       processed = processed.replace(
         /^(?!(?:Error:|Bug:|TODO:|Rec:|Alt:|Next:|Created|Built|Added|Fixed|Updated|Removed|Changed|Modified|Implemented|Refactored|Tested|Deployed|Configured|Installed|Wrote|Returns|Takes|Does|Result:|__CODE_BLOCK_))/gm,
-        (match) => match
+        (match) => match,
       );
 
       // Clean up extra whitespace (multiple spaces -> single space)

@@ -28,7 +28,7 @@ export function createSubAgentTools(schedulerEngine) {
           callbacks.resolve({
             success: true,
             taskId: task.id,
-            result: task.result
+            result: task.result,
           });
         } else {
           callbacks.reject(new Error(task.error || 'Task failed'));
@@ -51,55 +51,55 @@ export function createSubAgentTools(schedulerEngine) {
         properties: {
           taskType: {
             type: 'string',
-            description: '任务类型'
+            description: '任务类型',
           },
           taskPayload: {
             type: 'object',
-            description: '任务载荷数据'
+            description: '任务载荷数据',
           },
           maxIterations: {
             type: 'number',
             description: '最大迭代次数',
-            default: 10
+            default: 10,
           },
           waitForCompletion: {
             type: 'boolean',
             description: '是否等待任务完成（同步模式）',
-            default: false
+            default: false,
           },
           timeout: {
             type: 'number',
             description: '超时时间（毫秒），仅在同步模式下有效',
-            default: 60000
+            default: 60000,
           },
           priority: {
             type: 'number',
             description: '任务优先级（0-4，数值越小优先级越高）',
-            default: 1
+            default: 1,
           },
           dependsOn: {
             type: 'array',
             items: { type: 'string' },
             description: '依赖的任务ID列表，这些任务完成后才会执行',
-            default: []
+            default: [],
           },
           sharedContext: {
             type: 'object',
             description: '共享上下文数据，会传递给子代理',
-            default: {}
-          }
+            default: {},
+          },
         },
-        required: ['taskType', 'taskPayload']
+        required: ['taskType', 'taskPayload'],
       },
-      handler: async ({ 
-        taskType, 
-        taskPayload, 
-        maxIterations = 10, 
+      handler: async ({
+        taskType,
+        taskPayload,
+        maxIterations = 10,
         waitForCompletion = false,
         timeout = 60000,
         priority = 1,
         dependsOn = [],
-        sharedContext = {}
+        sharedContext = {},
       }) => {
         try {
           // 创建任务（支持依赖）
@@ -107,7 +107,7 @@ export function createSubAgentTools(schedulerEngine) {
             type: taskType,
             payload: taskPayload,
             priority: priority,
-            dependsOn: dependsOn.length > 0 ? dependsOn : undefined
+            dependsOn: dependsOn.length > 0 ? dependsOn : undefined,
           });
 
           // 同步模式：等待任务完成
@@ -133,7 +133,7 @@ export function createSubAgentTools(schedulerEngine) {
                 reject: (error) => {
                   clearTimeout(timeoutId);
                   originalReject(error);
-                }
+                },
               });
 
               // 启动子代理执行
@@ -143,7 +143,7 @@ export function createSubAgentTools(schedulerEngine) {
                   // 创建子代理（传递共享上下文）
                   subAgent = subAgentPool.create({
                     parentId: 'scheduler',
-                    sharedContext: sharedContext
+                    sharedContext: sharedContext,
                   });
 
                   // 更新任务状态为运行中
@@ -159,7 +159,7 @@ export function createSubAgentTools(schedulerEngine) {
                   // 更新任务状态为完成
                   await taskQueue.update(task.id, {
                     status: 'completed',
-                    result: result
+                    result: result,
                   });
                 } catch (error) {
                   if (subAgent) {
@@ -168,7 +168,7 @@ export function createSubAgentTools(schedulerEngine) {
                   // 更新任务状态为失败
                   await taskQueue.update(task.id, {
                     status: 'failed',
-                    error: error instanceof Error ? error.message : String(error)
+                    error: error instanceof Error ? error.message : String(error),
                   });
                 }
               });
@@ -182,7 +182,7 @@ export function createSubAgentTools(schedulerEngine) {
               // 创建子代理（传递共享上下文）
               subAgent = subAgentPool.create({
                 parentId: 'scheduler',
-                sharedContext: sharedContext
+                sharedContext: sharedContext,
               });
 
               // 更新任务状态为运行中
@@ -198,7 +198,7 @@ export function createSubAgentTools(schedulerEngine) {
               // 更新任务状态为完成
               await taskQueue.update(task.id, {
                 status: 'completed',
-                result: result
+                result: result,
               });
 
               // 发送消息通知（如果有消息总线）
@@ -206,7 +206,7 @@ export function createSubAgentTools(schedulerEngine) {
                 messageBus.broadcast('scheduler', 'task:completed', {
                   taskId: task.id,
                   type: taskType,
-                  result: result
+                  result: result,
                 });
               }
             } catch (error) {
@@ -216,7 +216,7 @@ export function createSubAgentTools(schedulerEngine) {
               // 更新任务状态为失败
               await taskQueue.update(task.id, {
                 status: 'failed',
-                error: error instanceof Error ? error.message : String(error)
+                error: error instanceof Error ? error.message : String(error),
               });
 
               // 发送失败通知
@@ -224,7 +224,7 @@ export function createSubAgentTools(schedulerEngine) {
                 messageBus.broadcast('scheduler', 'task:failed', {
                   taskId: task.id,
                   type: taskType,
-                  error: error instanceof Error ? error.message : String(error)
+                  error: error instanceof Error ? error.message : String(error),
                 });
               }
             }
@@ -234,15 +234,15 @@ export function createSubAgentTools(schedulerEngine) {
             success: true,
             message: 'SubAgent spawned asynchronously',
             mode: 'async',
-            task: task.toJSON()
+            task: task.toJSON(),
           };
         } catch (error) {
           return {
             success: false,
-            error: error.message
+            error: error.message,
           };
         }
-      }
+      },
     },
     {
       name: 'subagent_get_result',
@@ -253,29 +253,29 @@ export function createSubAgentTools(schedulerEngine) {
         properties: {
           taskId: {
             type: 'string',
-            description: '任务ID'
+            description: '任务ID',
           },
           wait: {
             type: 'boolean',
             description: '如果任务未完成，是否等待',
-            default: false
+            default: false,
           },
           timeout: {
             type: 'number',
             description: '等待超时时间（毫秒）',
-            default: 30000
-          }
+            default: 30000,
+          },
         },
-        required: ['taskId']
+        required: ['taskId'],
       },
       handler: async ({ taskId, wait = false, timeout = 30000 }) => {
         try {
           const task = taskQueue.get(taskId);
-          
+
           if (!task) {
             return {
               success: false,
-              error: `Task ${taskId} not found`
+              error: `Task ${taskId} not found`,
             };
           }
 
@@ -284,7 +284,7 @@ export function createSubAgentTools(schedulerEngine) {
             return {
               success: true,
               status: 'completed',
-              result: task.result
+              result: task.result,
             };
           }
 
@@ -292,7 +292,7 @@ export function createSubAgentTools(schedulerEngine) {
             return {
               success: false,
               status: 'failed',
-              error: task.error
+              error: task.error,
             };
           }
 
@@ -301,7 +301,7 @@ export function createSubAgentTools(schedulerEngine) {
             return {
               success: true,
               status: task.status,
-              message: `Task is ${task.status}. Use wait=true to wait for completion.`
+              message: `Task is ${task.status}. Use wait=true to wait for completion.`,
             };
           }
 
@@ -320,16 +320,16 @@ export function createSubAgentTools(schedulerEngine) {
               reject: (error) => {
                 clearTimeout(timeoutId);
                 reject(error);
-              }
+              },
             });
           });
         } catch (error) {
           return {
             success: false,
-            error: error.message
+            error: error.message,
           };
         }
-      }
+      },
     },
     {
       name: 'subagent_list',
@@ -341,16 +341,16 @@ export function createSubAgentTools(schedulerEngine) {
           includeStats: {
             type: 'boolean',
             description: '是否包含统计信息',
-            default: true
-          }
-        }
+            default: true,
+          },
+        },
       },
       handler: async ({ includeStats = true }) => {
         const agents = subAgentPool.list();
         const result = {
           success: true,
           count: agents.length,
-          agents: agents
+          agents: agents,
         };
 
         if (includeStats) {
@@ -359,7 +359,7 @@ export function createSubAgentTools(schedulerEngine) {
         }
 
         return result;
-      }
+      },
     },
     {
       name: 'subagent_stop',
@@ -370,10 +370,10 @@ export function createSubAgentTools(schedulerEngine) {
         properties: {
           id: {
             type: 'string',
-            description: '子代理ID'
-          }
+            description: '子代理ID',
+          },
         },
-        required: ['id']
+        required: ['id'],
       },
       handler: async ({ id }) => {
         try {
@@ -381,20 +381,20 @@ export function createSubAgentTools(schedulerEngine) {
           if (!result) {
             return {
               success: false,
-              error: `SubAgent ${id} not found`
+              error: `SubAgent ${id} not found`,
             };
           }
           return {
             success: true,
-            message: `SubAgent ${id} stopped and removed successfully`
+            message: `SubAgent ${id} stopped and removed successfully`,
           };
         } catch (error) {
           return {
             success: false,
-            error: error.message
+            error: error.message,
           };
         }
-      }
+      },
     },
     {
       name: 'subagent_create_nested',
@@ -406,43 +406,40 @@ export function createSubAgentTools(schedulerEngine) {
         properties: {
           taskType: {
             type: 'string',
-            description: '任务类型'
+            description: '任务类型',
           },
           taskPayload: {
             type: 'object',
-            description: '任务载荷数据'
+            description: '任务载荷数据',
           },
           maxIterations: {
             type: 'number',
             description: '最大迭代次数',
-            default: 10
+            default: 10,
           },
           inheritMemory: {
             type: 'boolean',
             description: '是否继承父代理的记忆',
-            default: true
+            default: true,
           },
           sharedContext: {
             type: 'object',
             description: '额外共享上下文',
-            default: {}
-          }
+            default: {},
+          },
         },
-        required: ['taskType', 'taskPayload']
+        required: ['taskType', 'taskPayload'],
       },
-      handler: async ({ 
-        taskType, 
-        taskPayload, 
-        maxIterations = 10,
-        inheritMemory = true,
-        sharedContext = {}
-      }, ctx) => {
+      handler: async (
+        { taskType, taskPayload, maxIterations = 10, inheritMemory = true, sharedContext = {} },
+        ctx,
+      ) => {
         try {
           // 检查是否在SubAgent上下文中
           if (!ctx || !ctx.subAgent) {
             return {
               success: false,
-              error: 'This tool can only be called within a SubAgent context'
+              error: 'This tool can only be called within a SubAgent context',
             };
           }
 
@@ -451,7 +448,7 @@ export function createSubAgentTools(schedulerEngine) {
           // 使用SubAgent的原生嵌套API创建子代理
           const nestedSubAgent = parentSubAgent.createSubAgent({
             inheritMemory,
-            sharedContext
+            sharedContext,
           });
 
           // 创建任务
@@ -459,7 +456,7 @@ export function createSubAgentTools(schedulerEngine) {
             type: taskType,
             payload: taskPayload,
             priority: 1,
-            parentId: parentSubAgent.id
+            parentId: parentSubAgent.id,
           });
 
           // 异步运行嵌套代理
@@ -470,13 +467,13 @@ export function createSubAgentTools(schedulerEngine) {
               await subAgentPool.remove(nestedSubAgent.id);
               await taskQueue.update(task.id, {
                 status: 'completed',
-                result: result
+                result: result,
               });
             } catch (error) {
               await subAgentPool.remove(nestedSubAgent.id);
               await taskQueue.update(task.id, {
                 status: 'failed',
-                error: error instanceof Error ? error.message : String(error)
+                error: error instanceof Error ? error.message : String(error),
               });
             }
           });
@@ -485,16 +482,16 @@ export function createSubAgentTools(schedulerEngine) {
             success: true,
             message: 'Nested SubAgent created successfully',
             nestedAgentId: nestedSubAgent.id,
-            task: task.toJSON()
+            task: task.toJSON(),
           };
         } catch (error) {
           return {
             success: false,
-            error: error.message
+            error: error.message,
           };
         }
-      }
-    }
+      },
+    },
   ];
 }
 

@@ -15,10 +15,10 @@ export class AgentMemory extends MemoryManager {
   #modelProvider;
   #projectRules;
   #rulesLoaded = false;
-  #advancedMemory;  // 会话内三层记忆（与结构化记忆互补）
+  #advancedMemory; // 会话内三层记忆（与结构化记忆互补）
 
   constructor(workingDir, modelProvider = null) {
-    super(workingDir, '.agent-memory');  // CONTEXT.md 统一存入 .agent-memory/
+    super(workingDir, '.agent-memory'); // CONTEXT.md 统一存入 .agent-memory/
     this.#modelProvider = modelProvider;
     this.#structuredMemory = new StructuredMemory(workingDir);
     this.#verifier = new MemoryVerifier(workingDir);
@@ -71,23 +71,22 @@ export class AgentMemory extends MemoryManager {
   async retrieve(query, options = {}) {
     const { limit = 5, types = null, forceVerification = false } = options;
 
-    const allMemories = types
-      ? this.getAll().filter(m => types.includes(m.type))
-      : this.getAll();
+    const allMemories = types ? this.getAll().filter((m) => types.includes(m.type)) : this.getAll();
 
     if (allMemories.length === 0) {
       return [];
     }
 
-    const candidates = allMemories.filter(m => !m.isExpired());
+    const candidates = allMemories.filter((m) => !m.isExpired());
 
     const selected = await this.#selector.select(query, candidates, { limit });
 
     const results = [];
     for (const memory of selected) {
-      const verificationResult = forceVerification || memory.isStale()
-        ? await this.#verifier.verifyMemory(memory)
-        : { valid: true, message: 'No verification needed' };
+      const verificationResult =
+        forceVerification || memory.isStale()
+          ? await this.#verifier.verifyMemory(memory)
+          : { valid: true, message: 'No verification needed' };
 
       results.push({
         ...memory,
@@ -131,7 +130,9 @@ export class AgentMemory extends MemoryManager {
         for (const mem of relevant) {
           const staleMarker = mem.isStale ? mem.isStale() : false;
           parts.push(`- [${mem.type}] ${mem.title}${staleMarker ? ' ⚠️STALE' : ''}`);
-          parts.push(`  Content: ${mem.content.substring(0, 150)}${mem.content.length > 150 ? '...' : ''}`);
+          parts.push(
+            `  Content: ${mem.content.substring(0, 150)}${mem.content.length > 150 ? '...' : ''}`,
+          );
         }
       }
     }
@@ -144,7 +145,11 @@ export class AgentMemory extends MemoryManager {
    */
   getRulesContext() {
     if (!this.#rulesLoaded) {
-      try { this.#projectRules.load(); } catch { /* 静默 */ }
+      try {
+        this.#projectRules.load();
+      } catch {
+        /* 静默 */
+      }
       this.#rulesLoaded = true;
     }
     return this.#projectRules.toPromptFragment();
@@ -174,7 +179,11 @@ export class AgentMemory extends MemoryManager {
    */
   ensureRulesForPath(cwd) {
     if (!this.#rulesLoaded) {
-      try { this.#projectRules.load(); } catch { /* 静默 */ }
+      try {
+        this.#projectRules.load();
+      } catch {
+        /* 静默 */
+      }
       this.#rulesLoaded = true;
     }
 
@@ -182,9 +191,9 @@ export class AgentMemory extends MemoryManager {
     this.#projectRules.loadForPath(cwd);
     const after = this.#projectRules.getLoadedRules();
 
-    const newRules = after.filter(a => !before.some(b => b.path === a.path));
+    const newRules = after.filter((a) => !before.some((b) => b.path === a.path));
     return {
-      loaded: newRules.map(r => r.path),
+      loaded: newRules.map((r) => r.path),
       hasNewRules: newRules.length > 0,
     };
   }
@@ -192,15 +201,13 @@ export class AgentMemory extends MemoryManager {
   retrieveSync(query, options = {}) {
     const { limit = 5, types = null } = options;
 
-    const allMemories = types
-      ? this.getAll().filter(m => types.includes(m.type))
-      : this.getAll();
+    const allMemories = types ? this.getAll().filter((m) => types.includes(m.type)) : this.getAll();
 
     if (allMemories.length === 0) {
       return [];
     }
 
-    const candidates = allMemories.filter(m => !m.isExpired());
+    const candidates = allMemories.filter((m) => !m.isExpired());
     return this.#fallbackSelector.select(query, candidates, { limit });
   }
 
@@ -307,13 +314,15 @@ export class AgentMemory extends MemoryManager {
     const written = [];
 
     // 持久化摘要（通常是高价值知识）
-    const { summaries = [], semantic = [] } = this.#advancedMemory.generateContext('', stats.total * 4);
+    const { summaries = [], semantic = [] } = this.#advancedMemory.generateContext(
+      '',
+      stats.total * 4,
+    );
     for (const summary of summaries) {
       if (summary && summary.length > 30) {
-        const entry = this.#structuredMemory.addProject(
-          'Session Summary', summary,
-          { tags: ['session-summary', 'auto'] },
-        );
+        const entry = this.#structuredMemory.addProject('Session Summary', summary, {
+          tags: ['session-summary', 'auto'],
+        });
         written.push({ id: entry.id, source: 'summary' });
       }
     }
@@ -471,34 +480,35 @@ export class AgentMemory extends MemoryManager {
 
     // 来源质量加权
     const sourceWeights = {
-      feedback: 0.90,     // 用户纠正确认
-      reference: 0.85,    // 问题模式识别
-      project: 0.70,      // 项目发现
-      user: 0.75,         // 用户偏好
+      feedback: 0.9, // 用户纠正确认
+      reference: 0.85, // 问题模式识别
+      project: 0.7, // 项目发现
+      user: 0.75, // 用户偏好
     };
     factors.source = sourceWeights[suggestion.type] || 0.6;
 
     // 时效性惩罚：距今超过 maxAgeMs 按线性衰减
     const now = Date.now();
-    const ts = suggestion.timestamp || (now - 1000); // 假设 1s 前
+    const ts = suggestion.timestamp || now - 1000; // 假设 1s 前
     const ageWeight = Math.max(0.2, 1 - (now - ts) / maxAgeMs);
     factors.age = ageWeight;
 
     // 已有相似记忆：加权
-    const existing = this.getAll()
-      .filter(m => m.title && suggestion.title &&
+    const existing = this.getAll().filter(
+      (m) =>
+        m.title &&
+        suggestion.title &&
         (m.title.toLowerCase().includes(suggestion.title.toLowerCase().substring(0, 10)) ||
-         suggestion.title.toLowerCase().includes((m.title || '').toLowerCase().substring(0, 10))))
-      .length;
+          suggestion.title.toLowerCase().includes((m.title || '').toLowerCase().substring(0, 10))),
+    ).length;
     factors.existingSimilar = Math.min(1, existing * 0.1 + 0.8);
 
     // 加权综合（来源 40%，基础 25%，相似性 20%，时效性 15%）
-    const composite = (
-      factors.source * 0.40 +
+    const composite =
+      factors.source * 0.4 +
       factors.base * 0.25 +
-      factors.existingSimilar * 0.20 +
-      factors.age * 0.15
-    );
+      factors.existingSimilar * 0.2 +
+      factors.age * 0.15;
 
     return { confidence: Math.min(1, Math.max(0, composite)), factors };
   }
@@ -530,13 +540,15 @@ export class AgentMemory extends MemoryManager {
       // 矛盾检测：检查新建议是否与已有记忆矛盾
       const conflictIds = [];
       if (checkContradictions) {
-        const { contradictions: existingConflicts } = MemoryVerifier.detectContradictions(this.getAll());
-        const myConflicts = existingConflicts.filter(c =>
-          c.memories.some(m => m.title === s.title || m.topic === s.type)
+        const { contradictions: existingConflicts } = MemoryVerifier.detectContradictions(
+          this.getAll(),
+        );
+        const myConflicts = existingConflicts.filter((c) =>
+          c.memories.some((m) => m.title === s.title || m.topic === s.type),
         );
         for (const c of myConflicts) {
           // 根据置信度决定保留哪一个
-          const other = c.memories.find(m => m.title !== s.title);
+          const other = c.memories.find((m) => m.title !== s.title);
           if (other && adjustedConfidence > 0.8) {
             // 新记忆置信度更高：标记旧记忆为 superseded
             if (other.id) {
@@ -558,13 +570,22 @@ export class AgentMemory extends MemoryManager {
 
       if (adjustedConfidence >= autoWriteThreshold) {
         // 高置信度：直接写入
-        const entry = this.#addWithTopic(s.type, s.title, s.content, { tags: ['auto'], reason: s.reason });
+        const entry = this.#addWithTopic(s.type, s.title, s.content, {
+          tags: ['auto'],
+          reason: s.reason,
+        });
         written.push({ id: entry.id, topic: entry.topic, confidence: adjustedConfidence });
       } else if (adjustedConfidence >= 0.6 && this.#modelProvider) {
         // 中等置信度：LLM 判断
-        const isWorth = await this.isWorthRemembering(s.content, { type: s.type, reason: s.reason });
+        const isWorth = await this.isWorthRemembering(s.content, {
+          type: s.type,
+          reason: s.reason,
+        });
         if (isWorth) {
-          const entry = this.#addWithTopic(s.type, s.title, s.content, { tags: ['auto'], reason: s.reason });
+          const entry = this.#addWithTopic(s.type, s.title, s.content, {
+            tags: ['auto'],
+            reason: s.reason,
+          });
           written.push({ id: entry.id, topic: entry.topic, confidence: adjustedConfidence });
         }
       } else {
@@ -586,7 +607,9 @@ export class AgentMemory extends MemoryManager {
    */
   _scheduleCompaction() {
     const allMemories = this.getAll();
-    if (allMemories.length < 10) { return; } // 少于 10 条不触发
+    if (allMemories.length < 10) {
+      return;
+    } // 少于 10 条不触发
 
     const { removedIds } = MemoryVerifier.compact(allMemories);
     for (const id of removedIds) {
@@ -594,7 +617,9 @@ export class AgentMemory extends MemoryManager {
         if (this.#structuredMemory?.remove) {
           this.#structuredMemory.remove(id);
         }
-      } catch { /* best-effort removal */ }
+      } catch {
+        /* best-effort removal */
+      }
     }
     if (removedIds.length > 0) {
       // 静默日志
@@ -615,7 +640,10 @@ export class AgentMemory extends MemoryManager {
   async isWorthRemembering(candidateText, ctx = {}) {
     if (!this.#modelProvider) {
       // 无模型时使用启发式规则
-      return candidateText.length > 30 && !/^(ok|好的|嗯|哦|thanks|got it|明白了|好)[\s,.!]*$/i.test(candidateText.trim());
+      return (
+        candidateText.length > 30 &&
+        !/^(ok|好的|嗯|哦|thanks|got it|明白了|好)[\s,.!]*$/i.test(candidateText.trim())
+      );
     }
 
     const prompt = `You are a memory quality filter. Determine if this information is worth remembering for future AI agent tasks.
@@ -662,14 +690,18 @@ Answer ONLY "YES" or "NO":`;
    */
   getAutoMemoryPrompt(sessionContext = {}) {
     const { shouldSuggest, suggestions } = this.autoSuggestMemory(sessionContext);
-    if (!shouldSuggest) { return ''; }
+    if (!shouldSuggest) {
+      return '';
+    }
 
     const lines = ['## Auto-Memory Suggestions'];
     lines.push('The following items may be worth remembering for future tasks.');
     lines.push('Use `write_memory` tool to persist important items:');
     lines.push('');
     for (const s of suggestions) {
-      lines.push(`- [${s.type}] ${s.title} (confidence: ${(s.confidence * 100).toFixed(0)}%, reason: ${s.reason})`);
+      lines.push(
+        `- [${s.type}] ${s.title} (confidence: ${(s.confidence * 100).toFixed(0)}%, reason: ${s.reason})`,
+      );
       lines.push(`  > ${s.content.substring(0, 120)}`);
     }
 
@@ -730,7 +762,9 @@ Answer ONLY "YES" or "NO":`;
         for (const mem of relevant) {
           const staleMarker = mem.isStale ? mem.isStale() : false;
           const line = `- [${mem.type}] ${mem.title}${staleMarker ? ' ⚠️STALE' : ''}: ${mem.content.substring(0, 120)}\n`;
-          if (estimateTokens(taskCtx + line) + used > budget * 0.95) {break;}
+          if (estimateTokens(taskCtx + line) + used > budget * 0.95) {
+            break;
+          }
           taskCtx += line;
           counted++;
         }
@@ -744,14 +778,16 @@ Answer ONLY "YES" or "NO":`;
     // Priority 4: 最近 N 条记忆（按时间排序，去重）
     if (used < budget * 0.5) {
       const allMemories = this.getAll()
-        .filter(m => !m.isExpired || !m.isExpired())
+        .filter((m) => !m.isExpired || !m.isExpired())
         .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
         .slice(0, 10);
       let recentCtx = '[RECENT MEMORIES]\n';
       let counted = 0;
       for (const mem of allMemories) {
         const line = `- [${mem.type}] ${mem.title || 'untitled'}\n`;
-        if (estimateTokens(recentCtx + line) + used > budget * 0.9) {break;}
+        if (estimateTokens(recentCtx + line) + used > budget * 0.9) {
+          break;
+        }
         recentCtx += line;
         counted++;
       }
@@ -777,11 +813,7 @@ Answer ONLY "YES" or "NO":`;
    * @returns {Promise<MemoryHealthResult>}
    */
   async runMemoryHealthCheck(opts = {}) {
-    const {
-      detectContradictions = true,
-      compactDuplicates = true,
-      detectStale = true,
-    } = opts;
+    const { detectContradictions = true, compactDuplicates = true, detectStale = true } = opts;
 
     const result = {
       contradictions: [],
@@ -814,7 +846,7 @@ Answer ONLY "YES" or "NO":`;
     if (detectStale && allMemories.length > 0) {
       try {
         const verifyResult = await this.#verifier.verifyAll(allMemories);
-        result.staleIds = (verifyResult.stale || []);
+        result.staleIds = verifyResult.stale || [];
         if (result.staleIds.length > 0) {
           result.actions.push(`Detected ${result.staleIds.length} stale entries`);
         }
@@ -898,10 +930,14 @@ Answer ONLY "YES" or "NO":`;
 
   #isWorthyCorrection(text) {
     // 过滤太短/无意义的内容
-    if (!text || text.length < 10) { return false; }
+    if (!text || text.length < 10) {
+      return false;
+    }
     // 排除纯情绪表达
     const noisePatterns = /^(ok|好的|嗯|哦|thanks|got it|明白了|好)[\s,.!]*$/i;
-    if (noisePatterns.test(text.trim())) { return false; }
+    if (noisePatterns.test(text.trim())) {
+      return false;
+    }
     // 排除已有相似记忆
     const existing = this.retrieveSync(text, { limit: 2 });
     if (existing.length > 0) {
@@ -917,10 +953,17 @@ Answer ONLY "YES" or "NO":`;
   }
 
   #isNovelDiscovery(text) {
-    if (!text || text.length < 20) { return false; }
-    const existing = this.retrieveSync(text, { limit: 2, types: [MemoryType.PROJECT, MemoryType.REFERENCE] });
+    if (!text || text.length < 20) {
+      return false;
+    }
+    const existing = this.retrieveSync(text, {
+      limit: 2,
+      types: [MemoryType.PROJECT, MemoryType.REFERENCE],
+    });
     for (const mem of existing) {
-      if (this.#textSimilarity(mem.content, text) > 0.5) { return false; }
+      if (this.#textSimilarity(mem.content, text) > 0.5) {
+        return false;
+      }
     }
     return true;
   }
@@ -932,7 +975,7 @@ Answer ONLY "YES" or "NO":`;
 
   #summarizeDiscovery(text) {
     const lines = text.split('\n');
-    const firstMeaningful = lines.find(l => l.trim().length > 10) || lines[0] || '';
+    const firstMeaningful = lines.find((l) => l.trim().length > 10) || lines[0] || '';
     return firstMeaningful.substring(0, 60).trim();
   }
 
@@ -966,10 +1009,14 @@ Answer ONLY "YES" or "NO":`;
   #textSimilarity(a, b) {
     const wordsA = new Set(a.toLowerCase().split(/\s+/));
     const wordsB = new Set(b.toLowerCase().split(/\s+/));
-    if (wordsA.size === 0 || wordsB.size === 0) { return 0; }
+    if (wordsA.size === 0 || wordsB.size === 0) {
+      return 0;
+    }
     let intersection = 0;
     for (const w of wordsA) {
-      if (wordsB.has(w)) { intersection++; }
+      if (wordsB.has(w)) {
+        intersection++;
+      }
     }
     return intersection / Math.max(wordsA.size, wordsB.size);
   }

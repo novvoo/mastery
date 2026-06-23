@@ -20,7 +20,8 @@ export default function review() {
       },
       focus_areas: {
         type: 'string',
-        description: 'Comma-separated list of focus areas for the review (e.g., "security,performance,readability")',
+        description:
+          'Comma-separated list of focus areas for the review (e.g., "security,performance,readability")',
       },
     },
     required: ['file_path'],
@@ -29,7 +30,10 @@ export default function review() {
       const { workingDirectory } = ctx;
 
       const focusList = focus_areas
-        ? focus_areas.split(',').map((f) => f.trim()).filter(Boolean)
+        ? focus_areas
+            .split(',')
+            .map((f) => f.trim())
+            .filter(Boolean)
         : [];
 
       // Resolve the file path relative to working directory if not absolute
@@ -61,9 +65,21 @@ function generateOverview(filePath, content, lines) {
 
   // Detect language
   const langMap = {
-    js: 'JavaScript', jsx: 'JavaScript (JSX)', ts: 'TypeScript', tsx: 'TypeScript (JSX)',
-    py: 'Python', rb: 'Ruby', go: 'Go', rs: 'Rust', java: 'Java',
-    cpp: 'C++', c: 'C', cs: 'C#', php: 'PHP', swift: 'Swift', kt: 'Kotlin',
+    js: 'JavaScript',
+    jsx: 'JavaScript (JSX)',
+    ts: 'TypeScript',
+    tsx: 'TypeScript (JSX)',
+    py: 'Python',
+    rb: 'Ruby',
+    go: 'Go',
+    rs: 'Rust',
+    java: 'Java',
+    cpp: 'C++',
+    c: 'C',
+    cs: 'C#',
+    php: 'PHP',
+    swift: 'Swift',
+    kt: 'Kotlin',
   };
 
   const language = langMap[ext] || ext.toUpperCase() || 'Unknown';
@@ -75,7 +91,10 @@ function generateOverview(filePath, content, lines) {
   const codeLines = totalLines - blankLines - commentLines;
 
   // Detect exports / public API surface
-  const exports = content.match(/export\s+(default\s+)?(function|class|const|let|var|async\s+function)\s+(\w+)/g) || [];
+  const exports =
+    content.match(
+      /export\s+(default\s+)?(function|class|const|let|var|async\s+function)\s+(\w+)/g,
+    ) || [];
 
   return {
     language,
@@ -100,9 +119,12 @@ function analyzeCode(content, lines, focusAreas) {
           severity: 'Critical',
           category: 'Security',
           description: 'Use of eval() detected',
-          detail: 'eval() executes arbitrary code and is a serious security risk. It can lead to code injection attacks.',
-          suggestedFix: 'Use JSON.parse() for data deserialization, or Function constructor with explicit parameters if dynamic code execution is truly necessary.',
-          reasoning: 'eval() bypasses all security boundaries and can execute malicious code if the input is not fully controlled.',
+          detail:
+            'eval() executes arbitrary code and is a serious security risk. It can lead to code injection attacks.',
+          suggestedFix:
+            'Use JSON.parse() for data deserialization, or Function constructor with explicit parameters if dynamic code execution is truly necessary.',
+          reasoning:
+            'eval() bypasses all security boundaries and can execute malicious code if the input is not fully controlled.',
         });
       }
     });
@@ -115,24 +137,32 @@ function analyzeCode(content, lines, focusAreas) {
           severity: 'Critical',
           category: 'Security',
           description: 'Unsanitized innerHTML assignment',
-          detail: 'Setting innerHTML without sanitization can lead to XSS (Cross-Site Scripting) vulnerabilities.',
-          suggestedFix: 'Use textContent for plain text, or sanitize HTML with a library like DOMPurify before assignment.',
-          reasoning: 'XSS attacks can steal user data, hijack sessions, and perform actions on behalf of users.',
+          detail:
+            'Setting innerHTML without sanitization can lead to XSS (Cross-Site Scripting) vulnerabilities.',
+          suggestedFix:
+            'Use textContent for plain text, or sanitize HTML with a library like DOMPurify before assignment.',
+          reasoning:
+            'XSS attacks can steal user data, hijack sessions, and perform actions on behalf of users.',
         });
       }
     });
 
     // Check for hardcoded secrets
     lines.forEach((line, i) => {
-      if (/(password|secret|api_key|apikey|token|private_key)\s*[:=]\s*['"][^'"]{8,}/i.test(line) && !/process\.env|ENV|placeholder|example|xxx|dummy/i.test(line)) {
+      if (
+        /(password|secret|api_key|apikey|token|private_key)\s*[:=]\s*['"][^'"]{8,}/i.test(line) &&
+        !/process\.env|ENV|placeholder|example|xxx|dummy/i.test(line)
+      ) {
         issues.push({
           line: i + 1,
           severity: 'Critical',
           category: 'Security',
           description: 'Potential hardcoded secret detected',
           detail: 'Secrets, API keys, or passwords appear to be hardcoded in the source file.',
-          suggestedFix: 'Move secrets to environment variables or a secrets management service. Use process.env or equivalent.',
-          reasoning: 'Hardcoded secrets in source code are visible to anyone with repository access and are a major security risk.',
+          suggestedFix:
+            'Move secrets to environment variables or a secrets management service. Use process.env or equivalent.',
+          reasoning:
+            'Hardcoded secrets in source code are visible to anyone with repository access and are a major security risk.',
         });
       }
     });
@@ -148,9 +178,12 @@ function analyzeCode(content, lines, focusAreas) {
           severity: 'Warning',
           category: 'Performance',
           description: 'Synchronous file system operation detected',
-          detail: 'Synchronous I/O operations block the event loop and can cause performance degradation.',
-          suggestedFix: 'Use the async equivalents (readFile, writeFile, exists) with await or callbacks.',
-          reasoning: 'In server environments, blocking the event loop affects all concurrent requests.',
+          detail:
+            'Synchronous I/O operations block the event loop and can cause performance degradation.',
+          suggestedFix:
+            'Use the async equivalents (readFile, writeFile, exists) with await or callbacks.',
+          reasoning:
+            'In server environments, blocking the event loop affects all concurrent requests.',
         });
       }
     });
@@ -168,8 +201,10 @@ function analyzeCode(content, lines, focusAreas) {
           category: 'Performance',
           description: 'Deeply nested loops detected (depth >= 3)',
           detail: 'Three or more nested loops can result in O(n^3) or worse time complexity.',
-          suggestedFix: 'Consider using hash maps, sorting, or algorithmic optimization to reduce nesting.',
-          reasoning: 'Deep nesting often indicates an algorithm that will degrade badly with larger inputs.',
+          suggestedFix:
+            'Consider using hash maps, sorting, or algorithmic optimization to reduce nesting.',
+          reasoning:
+            'Deep nesting often indicates an algorithm that will degrade badly with larger inputs.',
         });
         loopDepth = 0; // Report once
       }
@@ -188,7 +223,7 @@ function analyzeCode(content, lines, focusAreas) {
           description: 'Loose equality (==) detected',
           detail: 'Using == instead of === can lead to unexpected type coercion.',
           suggestedFix: 'Use strict equality (===) to avoid type coercion surprises.',
-          reasoning: 'JavaScript\'s type coercion rules with == are complex and error-prone.',
+          reasoning: "JavaScript's type coercion rules with == are complex and error-prone.",
         });
       }
     });
@@ -202,8 +237,10 @@ function analyzeCode(content, lines, focusAreas) {
           category: 'Correctness',
           description: 'Empty catch block detected',
           detail: 'Errors are being silently swallowed without any handling or logging.',
-          suggestedFix: 'At minimum, log the error. Consider whether the error should be propagated or handled.',
-          reasoning: 'Silent error swallowing makes debugging extremely difficult and can mask serious issues.',
+          suggestedFix:
+            'At minimum, log the error. Consider whether the error should be propagated or handled.',
+          reasoning:
+            'Silent error swallowing makes debugging extremely difficult and can mask serious issues.',
         });
       }
     }
@@ -221,7 +258,8 @@ function analyzeCode(content, lines, focusAreas) {
             category: 'Correctness',
             description: `Potentially unused variable: ${varName}`,
             detail: `The variable "${varName}" is declared but does not appear to be used elsewhere in the file.`,
-            suggestedFix: 'Remove the unused variable or verify it is used in a way not detected by this analysis.',
+            suggestedFix:
+              'Remove the unused variable or verify it is used in a way not detected by this analysis.',
             reasoning: 'Unused variables add noise and may indicate dead code or a mistake.',
           });
         }
@@ -240,7 +278,8 @@ function analyzeCode(content, lines, focusAreas) {
           category: 'Readability',
           description: `Line exceeds 120 characters (${line.length} chars)`,
           detail: 'Long lines reduce readability and make diffs harder to review.',
-          suggestedFix: 'Break the line into multiple lines following your project\'s line length convention.',
+          suggestedFix:
+            "Break the line into multiple lines following your project's line length convention.",
           reasoning: 'Most code style guides recommend lines under 100-120 characters.',
         });
       }
@@ -250,7 +289,10 @@ function analyzeCode(content, lines, focusAreas) {
     let functionStart = -1;
     let braceCount = 0;
     for (let i = 0; i < lines.length; i++) {
-      if (/function\s+\w+|=>\s*\{|const\s+\w+\s*=\s*(async\s+)?\(/.test(lines[i]) && functionStart === -1) {
+      if (
+        /function\s+\w+|=>\s*\{|const\s+\w+\s*=\s*(async\s+)?\(/.test(lines[i]) &&
+        functionStart === -1
+      ) {
         functionStart = i;
         braceCount = 0;
       }
@@ -266,7 +308,8 @@ function analyzeCode(content, lines, focusAreas) {
               category: 'Readability',
               description: `Long function detected (~${funcLength} lines)`,
               detail: 'Functions exceeding 50 lines are harder to understand, test, and maintain.',
-              suggestedFix: 'Consider breaking the function into smaller, focused helper functions.',
+              suggestedFix:
+                'Consider breaking the function into smaller, focused helper functions.',
               reasoning: 'Shorter functions are easier to name, test, reason about, and reuse.',
             });
           }
@@ -382,7 +425,7 @@ function formatReviewReport(filePath, absolutePath, overview, categorized, focus
     '---',
     '',
     '> **Next Steps**: Address Critical issues before merging. Warnings should be addressed if time permits. Suggestions are optional improvements.',
-    ''
+    '',
   );
 
   return lines.join('\n');

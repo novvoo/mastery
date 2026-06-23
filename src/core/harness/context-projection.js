@@ -28,28 +28,30 @@ export class ContextProjectionGenerator {
       strategy: 'symbol_and_context',
       includeHistory: true,
       maxDepth: 3,
-      ...options
+      ...options,
     };
 
     const projectionId = `edit:${filePath}:${lineNumber}:${Date.now()}`;
 
     // 找到相关的符号
     const relatedSymbols = this.index.symbols.findInFile(filePath);
-    const relevantSymbol = relatedSymbols.find(s =>
-      lineNumber >= s.startLine && lineNumber <= s.endLine
-    ) || relatedSymbols[0];
+    const relevantSymbol =
+      relatedSymbols.find((s) => lineNumber >= s.startLine && lineNumber <= s.endLine) ||
+      relatedSymbols[0];
 
     const nodeIds = [];
 
     // 添加符号节点
     if (relevantSymbol) {
       const symbolNodes = this.index.symbols.findByName(relevantSymbol.name);
-      nodeIds.push(...symbolNodes.map(s => {
-        // 存储中查找
-        const store = this.index.store;
-        // 简化实现：返回占位符
-        return 'symbol:' + relevantSymbol.name;
-      }));
+      nodeIds.push(
+        ...symbolNodes.map((s) => {
+          // 存储中查找
+          const store = this.index.store;
+          // 简化实现：返回占位符
+          return 'symbol:' + relevantSymbol.name;
+        }),
+      );
     }
 
     // 添加文件节点
@@ -68,7 +70,7 @@ export class ContextProjectionGenerator {
       projectionId,
       'Editing file: ' + filePath,
       nodeIds,
-      this.generateAdditionalContext(filePath, lineNumber, relevantSymbol)
+      this.generateAdditionalContext(filePath, lineNumber, relevantSymbol),
     );
 
     return projection.context;
@@ -81,7 +83,7 @@ export class ContextProjectionGenerator {
     const opts = {
       strategy: 'minimal_for_task',
       includeDependencies: true,
-      ...options
+      ...options,
     };
 
     const projectionId = `understand:${Date.now()}`;
@@ -102,7 +104,7 @@ export class ContextProjectionGenerator {
       projectionId,
       'Understanding query: ' + query.substring(0, 50),
       nodeIds,
-      `\nQuery context: ${query}\n`
+      `\nQuery context: ${query}\n`,
     );
 
     return projection.context;
@@ -115,21 +117,13 @@ export class ContextProjectionGenerator {
     if (taskType === 'edit' && focus.filePath && focus.symbolName) {
       const symbols = this.index.symbols.findByName(focus.symbolName);
       if (symbols.length > 0) {
-        return this.projectForEditing(
-          symbols[0].file,
-          symbols[0].startLine,
-          options
-        );
+        return this.projectForEditing(symbols[0].file, symbols[0].startLine, options);
       }
     }
 
     if (taskType === 'understand' && focus.query) {
       const relevantFiles = []; // 实际应该通过查询找到
-      return this.projectForUnderstanding(
-        focus.query,
-        relevantFiles,
-        options
-      );
+      return this.projectForUnderstanding(focus.query, relevantFiles, options);
     }
 
     // 默认返回最小投影
@@ -233,8 +227,7 @@ export class HistoryProjection {
       lines.push('(no changes)');
     } else {
       for (const change of diff) {
-        const icon = change.type === 'add' ? '+' :
-                    change.type === 'delete' ? '-' : '~';
+        const icon = change.type === 'add' ? '+' : change.type === 'delete' ? '-' : '~';
         lines.push(`${icon} ${change.type.toUpperCase()} ${change.nodeId.substring(0, 12)}`);
       }
     }
@@ -245,5 +238,5 @@ export class HistoryProjection {
 
 export default {
   ContextProjectionGenerator,
-  HistoryProjection
+  HistoryProjection,
 };

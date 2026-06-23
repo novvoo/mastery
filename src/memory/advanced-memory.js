@@ -1,6 +1,6 @@
 /**
  * Advanced Memory System - 三层记忆系统
- * 
+ *
  * 支持:
  * - Episodic Memory: 情景记忆 (具体事件/经历)
  * - Semantic Memory: 语义记忆 (知识/概念)
@@ -20,9 +20,9 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
  * 与 memory-types.js 的 MemoryType（持久化分类）正交。
  */
 export const AdvancedMemoryType = {
-  EPISODIC: 'episodic',    // 情景记忆
-  SEMANTIC: 'semantic',    // 语义记忆
-  SUMMARY: 'summary',      // 摘要记忆
+  EPISODIC: 'episodic', // 情景记忆
+  SEMANTIC: 'semantic', // 语义记忆
+  SUMMARY: 'summary', // 摘要记忆
 };
 
 /**
@@ -34,23 +34,24 @@ export class AdvancedMemoryEntry {
     this.type = data.type || AdvancedMemoryType.EPISODIC;
     this.content = data.content;
     this.timestamp = data.timestamp || Date.now();
-    this.importance = data.importance || 0.5;  // 0-1
+    this.importance = data.importance || 0.5; // 0-1
     this.accessCount = 0;
     this.lastAccessed = this.timestamp;
-    
+
     // 向量嵌入 (用于语义检索)
     this.embedding = data.embedding || null;
-    
+
     // 元数据
     this.metadata = data.metadata || {};
     this.tags = data.tags || [];
-    
+
     // 关联
     this.relatedIds = data.relatedIds || [];
-    
+
     // 压缩信息
     this.compressionLevel = data.compressionLevel || 0;
-    this.originalLength = data.originalLength || (typeof data.content === 'string' ? data.content.length : 0);
+    this.originalLength =
+      data.originalLength || (typeof data.content === 'string' ? data.content.length : 0);
   }
 
   /**
@@ -68,13 +69,13 @@ export class AdvancedMemoryEntry {
   calculateScore() {
     const age = Date.now() - this.timestamp;
     const recency = Date.now() - this.lastAccessed;
-    
+
     // 重要性 + 访问频率 - 年龄衰减 - 访问间隔
     return (
       this.importance * 100 +
       Math.log(this.accessCount + 1) * 10 -
-      age / (1000 * 60 * 60 * 24) * 0.1 -  // 每天衰减0.1
-      recency / (1000 * 60 * 60) * 0.5      // 每小时衰减0.5
+      (age / (1000 * 60 * 60 * 24)) * 0.1 - // 每天衰减0.1
+      (recency / (1000 * 60 * 60)) * 0.5 // 每小时衰减0.5
     );
   }
 }
@@ -94,19 +95,19 @@ export class ContextCompressor {
   compress(context, targetTokens = null) {
     const target = targetTokens || this.maxTokens * this.compressionRatio;
     const currentTokens = this.estimateTokens(context);
-    
+
     if (currentTokens <= target) {
       return { compressed: context, ratio: 1.0 };
     }
 
     // 策略1: 移除低重要性内容
     let compressed = this.removeLowImportance(context, target);
-    
+
     // 策略2: 摘要长内容
     if (this.estimateTokens(compressed) > target) {
       compressed = this.summarizeContent(compressed, target);
     }
-    
+
     // 策略3: 截断历史
     if (this.estimateTokens(compressed) > target) {
       compressed = this.truncateHistory(compressed, target);
@@ -139,16 +140,16 @@ export class ContextCompressor {
    * 移除低重要性内容
    */
   removeLowImportance(context, targetTokens) {
-    if (!Array.isArray(context)) {return context;}
-    
+    if (!Array.isArray(context)) {
+      return context;
+    }
+
     // 按重要性排序
-    const sorted = [...context].sort((a, b) => 
-      (b.importance || 0.5) - (a.importance || 0.5)
-    );
-    
+    const sorted = [...context].sort((a, b) => (b.importance || 0.5) - (a.importance || 0.5));
+
     let result = [];
     let tokens = 0;
-    
+
     for (const item of sorted) {
       const itemTokens = this.estimateTokens(item.content || item);
       if (tokens + itemTokens <= targetTokens) {
@@ -156,7 +157,7 @@ export class ContextCompressor {
         tokens += itemTokens;
       }
     }
-    
+
     // 按原始顺序排序
     return result.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
   }
@@ -168,23 +169,27 @@ export class ContextCompressor {
     if (typeof context === 'string') {
       // 简单摘要: 保留开头和结尾
       const tokens = this.estimateTokens(context);
-      if (tokens <= targetTokens) {return context;}
-      
+      if (tokens <= targetTokens) {
+        return context;
+      }
+
       const ratio = targetTokens / tokens;
       const keepLength = Math.floor(context.length * ratio * 0.8);
-      
-      return context.substring(0, keepLength / 2) + 
-             '\n... [content summarized] ...\n' +
-             context.substring(context.length - keepLength / 2);
+
+      return (
+        context.substring(0, keepLength / 2) +
+        '\n... [content summarized] ...\n' +
+        context.substring(context.length - keepLength / 2)
+      );
     }
-    
+
     if (Array.isArray(context)) {
-      return context.map(item => ({
+      return context.map((item) => ({
         ...item,
         content: this.summarizeContent(item.content, targetTokens / context.length),
       }));
     }
-    
+
     return context;
   }
 
@@ -192,16 +197,18 @@ export class ContextCompressor {
    * 截断历史
    */
   truncateHistory(context, targetTokens) {
-    if (!Array.isArray(context)) {return context;}
-    
+    if (!Array.isArray(context)) {
+      return context;
+    }
+
     // 保留最新的内容
     let result = [];
     let tokens = 0;
-    
+
     for (let i = context.length - 1; i >= 0; i--) {
       const item = context[i];
       const itemTokens = this.estimateTokens(item.content || item);
-      
+
       if (tokens + itemTokens <= targetTokens) {
         result.unshift(item);
         tokens += itemTokens;
@@ -209,7 +216,7 @@ export class ContextCompressor {
         break;
       }
     }
-    
+
     return result;
   }
 }
@@ -220,7 +227,7 @@ export class ContextCompressor {
 export class AdvancedMemoryManager extends EventEmitter {
   #memories = new Map();
   #episodic = [];
-  #semantic = new Map();  // key -> AdvancedMemoryEntry
+  #semantic = new Map(); // key -> AdvancedMemoryEntry
   #summaries = [];
   #compressor;
   #config;
@@ -296,7 +303,7 @@ export class AdvancedMemoryManager extends EventEmitter {
 
     // 限制摘要数量
     if (this.#summaries.length > this.#config.maxSummaries) {
-      this.#summaries.shift();  // 移除最旧的
+      this.#summaries.shift(); // 移除最旧的
     }
 
     this.emit('summary:added', entry);
@@ -307,12 +314,7 @@ export class AdvancedMemoryManager extends EventEmitter {
    * 检索记忆
    */
   retrieve(query, options = {}) {
-    const {
-      type = null,
-      limit = 10,
-      minImportance = 0,
-      tags = [],
-    } = options;
+    const { type = null, limit = 10, minImportance = 0, tags = [] } = options;
 
     let candidates = [];
 
@@ -328,9 +330,13 @@ export class AdvancedMemoryManager extends EventEmitter {
     }
 
     // 过滤
-    candidates = candidates.filter(m => {
-      if (m.importance < minImportance) {return false;}
-      if (tags.length > 0 && !tags.some(t => m.tags.includes(t))) {return false;}
+    candidates = candidates.filter((m) => {
+      if (m.importance < minImportance) {
+        return false;
+      }
+      if (tags.length > 0 && !tags.some((t) => m.tags.includes(t))) {
+        return false;
+      }
       return true;
     });
 
@@ -343,7 +349,7 @@ export class AdvancedMemoryManager extends EventEmitter {
 
     // 访问记录
     const results = candidates.slice(0, limit);
-    results.forEach(r => r.access());
+    results.forEach((r) => r.access());
 
     return results;
   }
@@ -353,20 +359,22 @@ export class AdvancedMemoryManager extends EventEmitter {
    */
   semanticRetrieve(queryEmbedding, options = {}) {
     const { limit = 10, threshold = 0.7 } = options;
-    
+
     const results = [];
-    
+
     for (const memory of this.#memories.values()) {
-      if (!memory.embedding) {continue;}
-      
+      if (!memory.embedding) {
+        continue;
+      }
+
       const similarity = this.#cosineSimilarity(queryEmbedding, memory.embedding);
       if (similarity >= threshold) {
         results.push({ memory, similarity });
       }
     }
-    
+
     results.sort((a, b) => b.similarity - a.similarity);
-    return results.slice(0, limit).map(r => r.memory);
+    return results.slice(0, limit).map((r) => r.memory);
   }
 
   /**
@@ -374,13 +382,11 @@ export class AdvancedMemoryManager extends EventEmitter {
    */
   #compressOldMemories() {
     // 按得分排序
-    const sorted = [...this.#episodic].sort((a, b) => 
-      a.calculateScore() - b.calculateScore()
-    );
+    const sorted = [...this.#episodic].sort((a, b) => a.calculateScore() - b.calculateScore());
 
     // 移除低分记忆
     const toRemove = sorted.slice(0, Math.floor(sorted.length * 0.2));
-    
+
     for (const memory of toRemove) {
       // 创建摘要
       this.addSummary(memory.content, {
@@ -388,9 +394,9 @@ export class AdvancedMemoryManager extends EventEmitter {
         originalType: memory.type,
         tags: ['compressed', ...memory.tags],
       });
-      
+
       // 移除原记忆
-      this.#episodic = this.#episodic.filter(m => m.id !== memory.id);
+      this.#episodic = this.#episodic.filter((m) => m.id !== memory.id);
       this.#memories.delete(memory.id);
     }
 
@@ -412,14 +418,14 @@ export class AdvancedMemoryManager extends EventEmitter {
       type: AdvancedMemoryType.SUMMARY,
       limit: 5,
     });
-    context.summaries = relevantSummaries.map(m => m.content);
+    context.summaries = relevantSummaries.map((m) => m.content);
 
     // 2. 添加语义知识
     const relevantSemantic = this.retrieve(currentQuery, {
       type: AdvancedMemoryType.SEMANTIC,
       limit: 10,
     });
-    context.semantic = relevantSemantic.map(m => ({
+    context.semantic = relevantSemantic.map((m) => ({
       key: m.metadata.key,
       content: m.content,
       importance: m.importance,
@@ -430,14 +436,14 @@ export class AdvancedMemoryManager extends EventEmitter {
       type: AdvancedMemoryType.EPISODIC,
       limit: 20,
     });
-    context.episodic = relevantEpisodic.map(m => ({
+    context.episodic = relevantEpisodic.map((m) => ({
       timestamp: m.timestamp,
       content: m.content,
     }));
 
     // 压缩上下文
     const compressed = this.#compressor.compress(context, maxTokens);
-    
+
     return {
       ...compressed.compressed,
       compressionRatio: compressed.ratio,
@@ -448,21 +454,24 @@ export class AdvancedMemoryManager extends EventEmitter {
    * 计算相关性
    */
   #calculateRelevance(memory, query) {
-    if (!query) {return 0;}
-    
-    const content = typeof memory.content === 'string' 
-      ? memory.content 
-      : JSON.stringify(memory.content);
-    
+    if (!query) {
+      return 0;
+    }
+
+    const content =
+      typeof memory.content === 'string' ? memory.content : JSON.stringify(memory.content);
+
     // 简单关键词匹配
     const queryWords = query.toLowerCase().split(/\s+/);
     const contentWords = content.toLowerCase();
-    
+
     let matches = 0;
     for (const word of queryWords) {
-      if (contentWords.includes(word)) {matches++;}
+      if (contentWords.includes(word)) {
+        matches++;
+      }
     }
-    
+
     return matches / queryWords.length;
   }
 
@@ -470,18 +479,20 @@ export class AdvancedMemoryManager extends EventEmitter {
    * 余弦相似度
    */
   #cosineSimilarity(a, b) {
-    if (!a || !b || a.length !== b.length) {return 0;}
-    
+    if (!a || !b || a.length !== b.length) {
+      return 0;
+    }
+
     let dotProduct = 0;
     let normA = 0;
     let normB = 0;
-    
+
     for (let i = 0; i < a.length; i++) {
       dotProduct += a[i] * b[i];
       normA += a[i] * a[i];
       normB += b[i] * b[i];
     }
-    
+
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
   }
 
@@ -508,32 +519,56 @@ export class AdvancedMemoryManager extends EventEmitter {
     const serialized = {
       version: 1,
       timestamp: Date.now(),
-      episodic: this.#episodic.map(m => ({
-        id: m.id, type: m.type, content: m.content, timestamp: m.timestamp,
-        importance: m.importance, accessCount: m.accessCount,
-        lastAccessed: m.lastAccessed, metadata: m.metadata,
-        tags: m.tags, relatedIds: m.relatedIds,
-        compressionLevel: m.compressionLevel, originalLength: m.originalLength,
+      episodic: this.#episodic.map((m) => ({
+        id: m.id,
+        type: m.type,
+        content: m.content,
+        timestamp: m.timestamp,
+        importance: m.importance,
+        accessCount: m.accessCount,
+        lastAccessed: m.lastAccessed,
+        metadata: m.metadata,
+        tags: m.tags,
+        relatedIds: m.relatedIds,
+        compressionLevel: m.compressionLevel,
+        originalLength: m.originalLength,
       })),
       semantic: Array.from(this.#semantic.entries()).map(([key, m]) => ({
-        key, id: m.id, type: m.type, content: m.content, timestamp: m.timestamp,
-        importance: m.importance, accessCount: m.accessCount,
-        lastAccessed: m.lastAccessed, metadata: m.metadata,
-        tags: m.tags, relatedIds: m.relatedIds,
+        key,
+        id: m.id,
+        type: m.type,
+        content: m.content,
+        timestamp: m.timestamp,
+        importance: m.importance,
+        accessCount: m.accessCount,
+        lastAccessed: m.lastAccessed,
+        metadata: m.metadata,
+        tags: m.tags,
+        relatedIds: m.relatedIds,
       })),
-      summaries: this.#summaries.map(m => ({
-        id: m.id, type: m.type, content: m.content, timestamp: m.timestamp,
-        importance: m.importance, accessCount: m.accessCount,
-        lastAccessed: m.lastAccessed, metadata: m.metadata,
-        tags: m.tags, relatedIds: m.relatedIds,
+      summaries: this.#summaries.map((m) => ({
+        id: m.id,
+        type: m.type,
+        content: m.content,
+        timestamp: m.timestamp,
+        importance: m.importance,
+        accessCount: m.accessCount,
+        lastAccessed: m.lastAccessed,
+        metadata: m.metadata,
+        tags: m.tags,
+        relatedIds: m.relatedIds,
       })),
     };
 
     writeFileSync(filePath, JSON.stringify(serialized, null, 2), 'utf-8');
-    this.emit('memory:saved', { path: filePath, total: serialized.episodic.length + serialized.semantic.length + serialized.summaries.length });
+    this.emit('memory:saved', {
+      path: filePath,
+      total: serialized.episodic.length + serialized.semantic.length + serialized.summaries.length,
+    });
     return {
       path: filePath,
-      totalEntries: serialized.episodic.length + serialized.semantic.length + serialized.summaries.length,
+      totalEntries:
+        serialized.episodic.length + serialized.semantic.length + serialized.summaries.length,
     };
   }
 
@@ -614,7 +649,9 @@ export class AdvancedMemoryManager extends EventEmitter {
 
     parts.push('# Session Memory Summary');
     parts.push(`> Generated: ${new Date().toISOString()}`);
-    parts.push(`> Total: ${this.#memories.size} (Episodic: ${this.#episodic.length}, Semantic: ${this.#semantic.size}, Summaries: ${this.#summaries.length})`);
+    parts.push(
+      `> Total: ${this.#memories.size} (Episodic: ${this.#episodic.length}, Semantic: ${this.#semantic.size}, Summaries: ${this.#summaries.length})`,
+    );
     parts.push('');
 
     // 摘要（最高价值）
@@ -632,9 +669,13 @@ export class AdvancedMemoryManager extends EventEmitter {
       parts.push('## Semantic Knowledge');
       let count = 0;
       for (const [key, m] of this.#semantic) {
-        if (count >= maxEntries) { break; }
+        if (count >= maxEntries) {
+          break;
+        }
         const age = this.#formatAge(m.timestamp);
-        parts.push(`- **${key}**: ${this.#truncate(m.content, 150)}${includeMetadata ? ` (importance: ${m.importance.toFixed(1)})` : ''}`);
+        parts.push(
+          `- **${key}**: ${this.#truncate(m.content, 150)}${includeMetadata ? ` (importance: ${m.importance.toFixed(1)})` : ''}`,
+        );
         count++;
       }
       parts.push('');
@@ -656,16 +697,24 @@ export class AdvancedMemoryManager extends EventEmitter {
   }
 
   #truncate(text, maxLen) {
-    if (!text) { return ''; }
+    if (!text) {
+      return '';
+    }
     const str = String(text).replace(/\n/g, ' ');
     return str.length > maxLen ? str.substring(0, maxLen - 3) + '...' : str;
   }
 
   #formatAge(ts) {
     const agoMs = Date.now() - ts;
-    if (agoMs < 60000) { return '<1m ago'; }
-    if (agoMs < 3600000) { return `${Math.floor(agoMs / 60000)}m ago`; }
-    if (agoMs < 86400000) { return `${Math.floor(agoMs / 3600000)}h ago`; }
+    if (agoMs < 60000) {
+      return '<1m ago';
+    }
+    if (agoMs < 3600000) {
+      return `${Math.floor(agoMs / 60000)}m ago`;
+    }
+    if (agoMs < 86400000) {
+      return `${Math.floor(agoMs / 3600000)}h ago`;
+    }
     return `${Math.floor(agoMs / 86400000)}d ago`;
   }
 

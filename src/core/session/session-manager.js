@@ -33,9 +33,7 @@ export class SessionManager {
   /** @param {string} content */
   addSystemMessage(content) {
     // Append to existing system prompt
-    this.#systemPrompt = this.#systemPrompt
-      ? `${this.#systemPrompt}\n\n${content}`
-      : content;
+    this.#systemPrompt = this.#systemPrompt ? `${this.#systemPrompt}\n\n${content}` : content;
   }
 
   /**
@@ -99,14 +97,25 @@ export class SessionManager {
     for (let i = this.#messages.length - 1; i >= 0; i--) {
       const msg = this.#messages[i];
       if (msg.role === 'assistant') {
-        const text = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
+        const text =
+          typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
         const lower = text.toLowerCase();
         const decisionKeywords = [
-          'decision', 'we should', 'we will', 'i will',
-          'let us', 'let\'s', 'therefore',
-          '决定', '因此', '所以', '应该', '要做', '将使用',
+          'decision',
+          'we should',
+          'we will',
+          'i will',
+          'let us',
+          "let's",
+          'therefore',
+          '决定',
+          '因此',
+          '所以',
+          '应该',
+          '要做',
+          '将使用',
         ];
-        if (decisionKeywords.some(kw => lower.includes(kw))) {
+        if (decisionKeywords.some((kw) => lower.includes(kw))) {
           msg.priority = SessionManager.PRIORITY.DECISION;
         }
         break;
@@ -139,7 +148,9 @@ export class SessionManager {
   }
 
   setTokenizerModel(model) {
-    if (this.#usesCustomTokenCounter) {return;}
+    if (this.#usesCustomTokenCounter) {
+      return;
+    }
     this.#tokenizerModel = model || 'gpt-4o';
     this.#tokenCounter = Tokenizer.createTokenCounter({ model: this.#tokenizerModel });
   }
@@ -157,7 +168,7 @@ export class SessionManager {
     const minPriority = options.minPriority || SessionManager.PRIORITY.EVIDENCE; // 默认保留 evidence 及以上
 
     // Step 1: 先收集所有高 priority 消息（决策 + 证据），它们必须被保留
-    const highPriorityMessages = this.#messages.filter(m => (m.priority || 1) >= minPriority);
+    const highPriorityMessages = this.#messages.filter((m) => (m.priority || 1) >= minPriority);
     let usedTokens = highPriorityMessages.reduce((sum, m) => sum + this.#countTokens(m.content), 0);
 
     /** @type {Array} */
@@ -167,7 +178,9 @@ export class SessionManager {
     // Step 2: 从尾部倒序，把低 priority 消息塞进剩余 budget
     for (let i = this.#messages.length - 1; i >= 0; i--) {
       const msg = this.#messages[i];
-      if (keptSet.has(msg)) {continue;}
+      if (keptSet.has(msg)) {
+        continue;
+      }
       const msgTokens = this.#countTokens(msg.content);
       if (usedTokens + msgTokens > availableTokens) {
         break;
@@ -203,14 +216,14 @@ export class SessionManager {
     const originalMessages = [...this.#messages];
     const pruned = pruner.prune(this.getMessages(), options);
     const messages = pruned.messages || [];
-    const system = messages.find(message => message.role === 'system');
+    const system = messages.find((message) => message.role === 'system');
     if (system) {
       this.#systemPrompt = system.content || '';
     }
-    const keptMessages = messages.filter(message => message.role !== 'system');
+    const keptMessages = messages.filter((message) => message.role !== 'system');
     const minRecentMessages = Math.max(
       0,
-      options.minRecentMessages || options.preserveRecentMessages || 0
+      options.minRecentMessages || options.preserveRecentMessages || 0,
     );
 
     if (minRecentMessages > 0) {
@@ -232,7 +245,9 @@ export class SessionManager {
     let pairs = 0;
     for (let i = this.#messages.length - 1; i >= 0 && pairs < count; i--) {
       exchanges.unshift(this.#messages[i]);
-      if (this.#messages[i].role === 'user') {pairs++;}
+      if (this.#messages[i].role === 'user') {
+        pairs++;
+      }
     }
     return exchanges;
   }

@@ -35,8 +35,12 @@ export class AgentContext {
   #cachedWorkspaceHint = '';
 
   constructor({
-    debugEvent, sessionManager, contextPruner,
-    workspaceState, observationSummarizer, workspaceIndex,
+    debugEvent,
+    sessionManager,
+    contextPruner,
+    workspaceState,
+    observationSummarizer,
+    workspaceIndex,
   }) {
     this.#debugEvent = debugEvent;
     this.#sessionManager = sessionManager;
@@ -63,9 +67,10 @@ export class AgentContext {
     const currentTokens = this.#sessionManager.getTokenCount();
 
     // 渐进式裁剪强度
-    const progress = iterationBudget > 0
-      ? this.#sessionManager.getHistory().length / (iterationBudget * 1.5)
-      : 0.5;
+    const progress =
+      iterationBudget > 0
+        ? this.#sessionManager.getHistory().length / (iterationBudget * 1.5)
+        : 0.5;
 
     const thresholdBase = 0.7;
     const thresholdMin = 0.4;
@@ -79,18 +84,30 @@ export class AgentContext {
 
     if (currentTokens > threshold) {
       this.#debugEvent('Context window trimming', {
-        currentTokens, maxTokens, threshold, targetTokens,
+        currentTokens,
+        maxTokens,
+        threshold,
+        targetTokens,
         preserveRecentMessages: preserveMessages,
         messagesBefore: this.#sessionManager.getHistory().length,
       });
 
       if (this.#contextPruner) {
-        this.#contextPruner.updateConfig?.({ maxTokens, targetTokens, preserveRecentMessages: preserveMessages });
+        this.#contextPruner.updateConfig?.({
+          maxTokens,
+          targetTokens,
+          preserveRecentMessages: preserveMessages,
+        });
         this.#sessionManager.trimWithPruner(this.#contextPruner, {
-          maxTokens, targetTokens, preserveRecentMessages: preserveMessages, minMessages,
+          maxTokens,
+          targetTokens,
+          preserveRecentMessages: preserveMessages,
+          minMessages,
         });
       } else {
-        this.#sessionManager.trimToContextWindow(targetTokens, { minRecentMessages: preserveMessages });
+        this.#sessionManager.trimToContextWindow(targetTokens, {
+          minRecentMessages: preserveMessages,
+        });
       }
 
       this.#debugEvent('Context window trimmed', {
@@ -106,7 +123,9 @@ export class AgentContext {
    * 注入工作区状态摘要（上下文裁剪后保留关键信息）
    */
   #injectWorkspaceStateSummary() {
-    if (!this.#workspaceState) {return;}
+    if (!this.#workspaceState) {
+      return;
+    }
 
     const now = Date.now();
     const cacheAge = now - this.#lastWorkspaceHintUpdate;
@@ -127,15 +146,19 @@ export class AgentContext {
   }
 
   #generateWorkspaceHint() {
-    if (!this.#workspaceState || !this.#observationSummarizer) {return '';}
+    if (!this.#workspaceState || !this.#observationSummarizer) {
+      return '';
+    }
 
     const summary = this.#workspaceState.getSummary();
-    if (summary.trackedFiles === 0 && summary.trackedDirectories === 0) {return '';}
+    if (summary.trackedFiles === 0 && summary.trackedDirectories === 0) {
+      return '';
+    }
 
     const criticalFacts = this.#workspaceState.getCriticalFacts();
     const knownNonExistent = criticalFacts
-      .filter(f => f.type === 'path_not_found')
-      .map(f => f.value?.path)
+      .filter((f) => f.type === 'path_not_found')
+      .map((f) => f.value?.path)
       .filter(Boolean);
 
     const workspaceDescription = this.#observationSummarizer.generateWorkspaceDescription();
@@ -153,17 +176,16 @@ export class AgentContext {
       }
     }
 
-    const importantFacts = criticalFacts
-      .filter(f => f.type !== 'path_not_found')
-      .slice(-5);
+    const importantFacts = criticalFacts.filter((f) => f.type !== 'path_not_found').slice(-5);
 
     if (importantFacts.length > 0) {
       parts.push('');
       parts.push('### 关键发现');
       for (const fact of importantFacts) {
-        const value = typeof fact.value === 'object'
-          ? JSON.stringify(fact.value).substring(0, 100)
-          : fact.value;
+        const value =
+          typeof fact.value === 'object'
+            ? JSON.stringify(fact.value).substring(0, 100)
+            : fact.value;
         parts.push(`- ${fact.type}: ${value}`);
       }
     }
@@ -178,20 +200,24 @@ export class AgentContext {
    * 停滞检测与 nudge 注入
    */
   injectStagnationNudge(iteration, maxIterations, planSummary = null) {
-    if (iteration < 3) {return;}
+    if (iteration < 3) {
+      return;
+    }
 
     // 进度检查点
     if (iteration % PROGRESS_CHECKPOINT_INTERVAL === 0) {
       const planStatus = planSummary || 'not available';
       this.#sessionManager.addUserMessage(
-        `[Progress checkpoint @iter ${iteration}/${maxIterations}]\nPlan status:\n${planStatus}\nIf you have enough information to answer, provide FINAL_ANSWER now.\nIf you are stuck, try a fundamentally different approach instead of repeating the same pattern.`
+        `[Progress checkpoint @iter ${iteration}/${maxIterations}]\nPlan status:\n${planStatus}\nIf you have enough information to answer, provide FINAL_ANSWER now.\nIf you are stuck, try a fundamentally different approach instead of repeating the same pattern.`,
       );
       return;
     }
 
     // 降级预算
-    if (this.#consecutiveSameTool >= STAGNATION_SAME_TOOL_LIMIT ||
-        this.#stagnationWindow.length >= STAGNATION_LOOKBACK) {
+    if (
+      this.#consecutiveSameTool >= STAGNATION_SAME_TOOL_LIMIT ||
+      this.#stagnationWindow.length >= STAGNATION_LOOKBACK
+    ) {
       if (this.#lastMutationIteration + STAGNATION_NO_MUTATION_LIMIT < iteration) {
         if (this.#lastStagnationNudge >= MAX_STAGNATION_NUDGES) {
           // 预算降级由外部处理
@@ -203,12 +229,12 @@ export class AgentContext {
     const window = this.#stagnationWindow;
     if (window.length >= STAGNATION_SAME_TOOL_LIMIT) {
       const recentTools = window.slice(-STAGNATION_SAME_TOOL_LIMIT);
-      const uniqueTools = new Set(recentTools.map(t => t.toolName));
-      if (uniqueTools.size <= 2 && window.every(t => !t.isMutation)) {
+      const uniqueTools = new Set(recentTools.map((t) => t.toolName));
+      if (uniqueTools.size <= 2 && window.every((t) => !t.isMutation)) {
         this.#lastStagnationNudge++;
         const toolList = [...uniqueTools].join(', ');
         this.#sessionManager.addUserMessage(
-          `[Efficiency note] You have called ${toolList} repeatedly for ${STAGNATION_SAME_TOOL_LIMIT} consecutive iterations with no modifications.\nConsider: (1) call a different tool to make progress, (2) provide FINAL_ANSWER if you already have enough information, or (3) ask the user for clarification.`
+          `[Efficiency note] You have called ${toolList} repeatedly for ${STAGNATION_SAME_TOOL_LIMIT} consecutive iterations with no modifications.\nConsider: (1) call a different tool to make progress, (2) provide FINAL_ANSWER if you already have enough information, or (3) ask the user for clarification.`,
         );
         this.#consecutiveSameTool = 0;
         return;
@@ -216,13 +242,15 @@ export class AgentContext {
     }
 
     // 模式 2：长时间无修改操作
-    if (this.#lastMutationIteration > 0 &&
-        this.#lastMutationIteration + STAGNATION_NO_MUTATION_LIMIT <= iteration &&
-        window.length >= STAGNATION_NO_MUTATION_LIMIT) {
+    if (
+      this.#lastMutationIteration > 0 &&
+      this.#lastMutationIteration + STAGNATION_NO_MUTATION_LIMIT <= iteration &&
+      window.length >= STAGNATION_NO_MUTATION_LIMIT
+    ) {
       this.#lastStagnationNudge++;
       const planStatus = planSummary || 'not available';
       this.#sessionManager.addUserMessage(
-        `[Efficiency note] No modifications were made in the last ${STAGNATION_NO_MUTATION_LIMIT} iterations.\nPlan status:\n${planStatus}\nIf you are still investigating, try narrowing your search. Otherwise, provide FINAL_ANSWER with what you have found so far.`
+        `[Efficiency note] No modifications were made in the last ${STAGNATION_NO_MUTATION_LIMIT} iterations.\nPlan status:\n${planStatus}\nIf you are still investigating, try narrowing your search. Otherwise, provide FINAL_ANSWER with what you have found so far.`,
       );
       this.#lastMutationIteration = iteration;
     }
@@ -232,7 +260,9 @@ export class AgentContext {
    * 记录工具调用到停滞检测窗口
    */
   recordToolCallForStagnation(toolResult, iteration, isMutationFn) {
-    if (!toolResult || !toolResult.name) {return;}
+    if (!toolResult || !toolResult.name) {
+      return;
+    }
     const isMutation = isMutationFn ? isMutationFn(toolResult.name, toolResult) : false;
     this.#stagnationWindow.push({
       toolName: toolResult.name,

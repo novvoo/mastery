@@ -44,17 +44,17 @@ export const ErrorSeverity = Object.freeze({
 // ============ Permission Types ============
 
 export const PermissionLevel = Object.freeze({
-  NONE: 'none',           // 无需权限（如 current_time）
-  READ_ONLY: 'readonly',  // 只读操作（如 file_read, git_status）
-  WRITE: 'write',         // 写入操作（如 file_write, git_commit）
-  EXECUTE: 'execute',     // 执行命令（如 shell, git_push）
-  DANGEROUS: 'dangerous',  // 危险操作（如 git_reset --hard）
+  NONE: 'none', // 无需权限（如 current_time）
+  READ_ONLY: 'readonly', // 只读操作（如 file_read, git_status）
+  WRITE: 'write', // 写入操作（如 file_write, git_commit）
+  EXECUTE: 'execute', // 执行命令（如 shell, git_push）
+  DANGEROUS: 'dangerous', // 危险操作（如 git_reset --hard）
 });
 
 export const ToolScope = Object.freeze({
-  ALL: 'all',             // 所有场景可用
-  AGENT_ONLY: 'agent',    // 仅 Agent 循环可用
-  CLI_ONLY: 'cli',        // 仅 CLI 命令可用
+  ALL: 'all', // 所有场景可用
+  AGENT_ONLY: 'agent', // 仅 Agent 循环可用
+  CLI_ONLY: 'cli', // 仅 CLI 命令可用
 });
 
 // ============ Agent Experience Types ============

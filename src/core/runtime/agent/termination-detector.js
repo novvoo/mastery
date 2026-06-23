@@ -22,14 +22,22 @@ import {
 // ============== 终止检测 ==============
 
 export function isTermination(response) {
-  if (!response) {return false;}
-  if (TERMINATION_KEYWORDS.some(keyword => response.includes(keyword))) {return true;}
-  if (response.trim().length === 0) {return true;}
+  if (!response) {
+    return false;
+  }
+  if (TERMINATION_KEYWORDS.some((keyword) => response.includes(keyword))) {
+    return true;
+  }
+  if (response.trim().length === 0) {
+    return true;
+  }
   return false;
 }
 
 export function extractFinalAnswer(response) {
-  if (!response) {return '';}
+  if (!response) {
+    return '';
+  }
   for (const keyword of TERMINATION_KEYWORDS) {
     const idx = response.indexOf(keyword);
     if (idx !== -1) {
@@ -41,30 +49,50 @@ export function extractFinalAnswer(response) {
 
 export function normalizeFinalAnswer(response) {
   const text = String(response || '').trim();
-  if (!text) {return text;}
+  if (!text) {
+    return text;
+  }
 
-  const isToolCallFormat = /<action\b|<tool_call\b|<function_call\b|<tool_code\b|<invoke\b/i.test(text);
+  const isToolCallFormat = /<action\b|<tool_call\b|<function_call\b|<tool_code\b|<invoke\b/i.test(
+    text,
+  );
   if (isToolCallFormat) {
-    const trimmedNoTags = text.replace(/<\/?(?:action|tool_call|function_call|tool_code|invoke)\b[^>]*>/gi, '').trim();
-    if (trimmedNoTags.length < text.length * 0.5) {return '';}
+    const trimmedNoTags = text
+      .replace(/<\/?(?:action|tool_call|function_call|tool_code|invoke)\b[^>]*>/gi, '')
+      .trim();
+    if (trimmedNoTags.length < text.length * 0.5) {
+      return '';
+    }
   }
 
   const parsed = safeParseJSON(text);
   const doneText = parsed?.action?.done?.text || parsed?.done?.text;
-  if (typeof doneText === 'string' && doneText.trim()) {return doneText.trim();}
+  if (typeof doneText === 'string' && doneText.trim()) {
+    return doneText.trim();
+  }
 
   const directText = parsed?.text || parsed?.answer || parsed?.final_answer;
-  if (typeof directText === 'string' && directText.trim()) {return directText.trim();}
+  if (typeof directText === 'string' && directText.trim()) {
+    return directText.trim();
+  }
 
   return text;
 }
 
 function safeParseJSON(text) {
-  try { return JSON.parse(text); } catch {
+  try {
+    return JSON.parse(text);
+  } catch {
     const firstBrace = text.indexOf('{');
     const lastBrace = text.lastIndexOf('}');
-    if (firstBrace === -1 || lastBrace <= firstBrace) {return null;}
-    try { return JSON.parse(text.slice(firstBrace, lastBrace + 1)); } catch { return null; }
+    if (firstBrace === -1 || lastBrace <= firstBrace) {
+      return null;
+    }
+    try {
+      return JSON.parse(text.slice(firstBrace, lastBrace + 1));
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -86,17 +114,22 @@ export class StagnationDetector {
   }
 
   recordTool(toolName, args, iteration, isMutationPredicate) {
-    const isMutation = typeof isMutationPredicate === 'function'
-      ? isMutationPredicate(toolName, args)
-      : false;
+    const isMutation =
+      typeof isMutationPredicate === 'function' ? isMutationPredicate(toolName, args) : false;
     this.#window.push({ toolName, iteration, isMutation });
-    if (this.#window.length > STAGNATION_LOOKBACK) {this.#window.shift();}
-    if (isMutation) {this.#lastMutationIteration = iteration;}
+    if (this.#window.length > STAGNATION_LOOKBACK) {
+      this.#window.shift();
+    }
+    if (isMutation) {
+      this.#lastMutationIteration = iteration;
+    }
   }
 
   /** 检查并返回需要注入的 nudge 消息；返回 null 表示无需 nudge */
   nudge(iteration, maxIterations, { planSummary } = {}) {
-    if (iteration < 3) {return null;}
+    if (iteration < 3) {
+      return null;
+    }
 
     // 1. 进度检查点
     if (iteration % PROGRESS_CHECKPOINT_INTERVAL === 0) {
@@ -104,17 +137,18 @@ export class StagnationDetector {
       const planStatus = planSummary || 'not available';
       return {
         type: 'progress_checkpoint',
-        message: `[Progress checkpoint @iter ${iteration}/${maxIterations}]\n` +
-                 `Plan status:\n${planStatus}\n` +
-                 `If you have enough information to answer, provide FINAL_ANSWER now.\n` +
-                 `If you are stuck, try a fundamentally different approach instead of repeating the same pattern.`,
+        message:
+          `[Progress checkpoint @iter ${iteration}/${maxIterations}]\n` +
+          `Plan status:\n${planStatus}\n` +
+          `If you have enough information to answer, provide FINAL_ANSWER now.\n` +
+          `If you are stuck, try a fundamentally different approach instead of repeating the same pattern.`,
       };
     }
 
     // 2. 评估是否需要降级预算（超过最大 nudge 次数后）
     const shouldDegradeBudget =
       (this.#consecutiveSameTool >= STAGNATION_SAME_TOOL_LIMIT ||
-       this.#window.length >= STAGNATION_LOOKBACK) &&
+        this.#window.length >= STAGNATION_LOOKBACK) &&
       this.#lastMutationIteration + STAGNATION_NO_MUTATION_LIMIT < iteration &&
       this.#lastStagnationNudge >= MAX_STAGNATION_NUDGES;
 
@@ -122,32 +156,36 @@ export class StagnationDetector {
     const window = this.#window;
     if (window.length >= STAGNATION_SAME_TOOL_LIMIT) {
       const recent = window.slice(-STAGNATION_SAME_TOOL_LIMIT);
-      const uniqueTools = new Set(recent.map(t => t.toolName));
-      if (uniqueTools.size <= 2 && window.every(t => !t.isMutation)) {
+      const uniqueTools = new Set(recent.map((t) => t.toolName));
+      if (uniqueTools.size <= 2 && window.every((t) => !t.isMutation)) {
         this.#lastStagnationNudge++;
         const toolList = [...uniqueTools].join(', ');
         this.#consecutiveSameTool = 0;
         return {
           type: 'same_tool_repetition',
-          message: `[Efficiency note] You have called ${toolList} repeatedly for ${STAGNATION_SAME_TOOL_LIMIT} consecutive iterations with no modifications.\n` +
-                   `Consider: (1) call a different tool to make progress, (2) provide FINAL_ANSWER if you already have enough information, or (3) ask the user for clarification.`,
+          message:
+            `[Efficiency note] You have called ${toolList} repeatedly for ${STAGNATION_SAME_TOOL_LIMIT} consecutive iterations with no modifications.\n` +
+            `Consider: (1) call a different tool to make progress, (2) provide FINAL_ANSWER if you already have enough information, or (3) ask the user for clarification.`,
           shouldDegradeBudget,
         };
       }
     }
 
     // 4. 长时间无修改操作
-    if (this.#lastMutationIteration > 0 &&
-        this.#lastMutationIteration + STAGNATION_NO_MUTATION_LIMIT <= iteration &&
-        window.length >= STAGNATION_NO_MUTATION_LIMIT) {
+    if (
+      this.#lastMutationIteration > 0 &&
+      this.#lastMutationIteration + STAGNATION_NO_MUTATION_LIMIT <= iteration &&
+      window.length >= STAGNATION_NO_MUTATION_LIMIT
+    ) {
       this.#lastStagnationNudge++;
       this.#lastMutationIteration = iteration;
       const planStatus = planSummary || 'not available';
       return {
         type: 'no_mutation_stagnation',
-        message: `[Efficiency note] No modifications were made in the last ${STAGNATION_NO_MUTATION_LIMIT} iterations.\n` +
-                 `Plan status:\n${planStatus}\n` +
-                 `If you are still investigating, try narrowing your search. Otherwise, provide FINAL_ANSWER with what you have found so far.`,
+        message:
+          `[Efficiency note] No modifications were made in the last ${STAGNATION_NO_MUTATION_LIMIT} iterations.\n` +
+          `Plan status:\n${planStatus}\n` +
+          `If you are still investigating, try narrowing your search. Otherwise, provide FINAL_ANSWER with what you have found so far.`,
         shouldDegradeBudget,
       };
     }

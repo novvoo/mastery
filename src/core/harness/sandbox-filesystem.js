@@ -28,14 +28,51 @@ import { constants as fsConstants } from 'fs';
  * 通过文件扩展名和魔数检测二进制文件。
  */
 const BINARY_EXTENSIONS = new Set([
-  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp', '.svg',
-  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-  '.zip', '.tar', '.gz', '.bz2', '.xz', '.7z', '.rar',
-  '.exe', '.dll', '.so', '.dylib', '.wasm',
-  '.mp3', '.mp4', '.avi', '.mov', '.wav', '.flac', '.ogg',
-  '.ttf', '.otf', '.woff', '.woff2', '.eot',
-  '.db', '.sqlite', '.sqlite3',
-  '.pak', '.bin', '.dat',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.bmp',
+  '.ico',
+  '.webp',
+  '.svg',
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.xls',
+  '.xlsx',
+  '.ppt',
+  '.pptx',
+  '.zip',
+  '.tar',
+  '.gz',
+  '.bz2',
+  '.xz',
+  '.7z',
+  '.rar',
+  '.exe',
+  '.dll',
+  '.so',
+  '.dylib',
+  '.wasm',
+  '.mp3',
+  '.mp4',
+  '.avi',
+  '.mov',
+  '.wav',
+  '.flac',
+  '.ogg',
+  '.ttf',
+  '.otf',
+  '.woff',
+  '.woff2',
+  '.eot',
+  '.db',
+  '.sqlite',
+  '.sqlite3',
+  '.pak',
+  '.bin',
+  '.dat',
 ]);
 
 const GENERATED_FILE_PATTERNS = [
@@ -56,11 +93,7 @@ const GENERATED_FILE_PATTERNS = [
   /bun\.lock$/,
 ];
 
-const MINIFIED_FILE_PATTERNS = [
-  /\.min\.js$/,
-  /\.min\.css$/,
-  /\.min\.mjs$/,
-];
+const MINIFIED_FILE_PATTERNS = [/\.min\.js$/, /\.min\.css$/, /\.min\.mjs$/];
 
 const LOCKFILE_PATTERNS = [
   /package-lock\.json$/,
@@ -85,7 +118,10 @@ async function safeResolve(root, userPath) {
   // 1) 检查 ../ 逃逸
   if (/(?:^|\/)\.\.(?:$|\/)/.test(userPath)) {
     const rel = relative(rootResolved, pathResolved);
-    if (rel.startsWith('..') || pathResolved !== rootResolved && !pathResolved.startsWith(rootResolved + '/')) {
+    if (
+      rel.startsWith('..') ||
+      (pathResolved !== rootResolved && !pathResolved.startsWith(rootResolved + '/'))
+    ) {
       throw new SandboxError(`path traversal detected: "${userPath}" escapes root`);
     }
   }
@@ -98,7 +134,9 @@ async function safeResolve(root, userPath) {
       throw new SandboxError(`symlink escape detected: "${userPath}" → "${real}" outside root`);
     }
   } catch (err) {
-    if (err instanceof SandboxError) { throw err; }
+    if (err instanceof SandboxError) {
+      throw err;
+    }
     // ENOENT 等是正常的（文件可能不存在）
   }
 
@@ -114,7 +152,10 @@ function safeResolveSync(root, userPath) {
 
   if (/(?:^|\/)\.\.(?:$|\/)/.test(userPath)) {
     const rel = relative(rootResolved, pathResolved);
-    if (rel.startsWith('..') || pathResolved !== rootResolved && !pathResolved.startsWith(rootResolved + '/')) {
+    if (
+      rel.startsWith('..') ||
+      (pathResolved !== rootResolved && !pathResolved.startsWith(rootResolved + '/'))
+    ) {
       throw new SandboxError(`path traversal detected: "${userPath}" escapes root`);
     }
   }
@@ -128,7 +169,9 @@ function safeResolveSync(root, userPath) {
 function isBinaryExtension(filePath) {
   const lower = filePath.toLowerCase();
   for (const ext of BINARY_EXTENSIONS) {
-    if (lower.endsWith(ext)) { return true; }
+    if (lower.endsWith(ext)) {
+      return true;
+    }
   }
   return false;
 }
@@ -137,21 +180,21 @@ function isBinaryExtension(filePath) {
  * 判断是否为 generated 文件。
  */
 function isGeneratedFile(filePath) {
-  return GENERATED_FILE_PATTERNS.some(p => p.test(filePath));
+  return GENERATED_FILE_PATTERNS.some((p) => p.test(filePath));
 }
 
 /**
  * 判断是否为 minified 文件。
  */
 function isMinifiedFile(filePath) {
-  return MINIFIED_FILE_PATTERNS.some(p => p.test(filePath));
+  return MINIFIED_FILE_PATTERNS.some((p) => p.test(filePath));
 }
 
 /**
  * 判断是否为 lockfile。
  */
 function isLockfile(filePath) {
-  return LOCKFILE_PATTERNS.some(p => p.test(filePath));
+  return LOCKFILE_PATTERNS.some((p) => p.test(filePath));
 }
 
 /**
@@ -161,7 +204,9 @@ function isLockfile(filePath) {
 function isBinaryContent(buffer) {
   const sample = buffer instanceof Buffer ? buffer : Buffer.from(buffer.slice(0, 512));
   for (let i = 0; i < sample.length; i++) {
-    if (sample[i] === 0) { return true; }
+    if (sample[i] === 0) {
+      return true;
+    }
   }
   return false;
 }
@@ -269,7 +314,9 @@ export class SandboxedFilesystem {
     this.resolveSymlinks = opts.resolveSymlinks !== false;
   }
 
-  get rootPath() { return this.root; }
+  get rootPath() {
+    return this.root;
+  }
 
   /**
    * 安全读取文件。

@@ -16,10 +16,7 @@ import {
   computeIterationBudget,
   getCompletionGates,
 } from './risk-budget.js';
-import {
-  SEMANTIC_RISK_DOMAINS,
-  MAX_ITERATIONS_DEFAULT,
-} from './agent-constants.js';
+import { SEMANTIC_RISK_DOMAINS, MAX_ITERATIONS_DEFAULT } from './agent-constants.js';
 
 const DEFAULT_CONFIDENCE_THRESHOLD = 0.75;
 
@@ -87,12 +84,14 @@ export class IntentClassifier {
       lines.push(`- recommended tools: ${intent.recommendedTools.join(', ')}`);
     }
     if (intent.firstActionHint?.tool) {
-      lines.push(`- recommended first action: CALL ${intent.firstActionHint.tool}(${JSON.stringify(intent.firstActionHint.arguments || {})})`);
+      lines.push(
+        `- recommended first action: CALL ${intent.firstActionHint.tool}(${JSON.stringify(intent.firstActionHint.arguments || {})})`,
+      );
     }
 
     lines.push(
       '',
-      'Use this only as a routing hint. If the intent requires fresh/current data, do not answer from memory; call an appropriate tool first.'
+      'Use this only as a routing hint. If the intent requires fresh/current data, do not answer from memory; call an appropriate tool first.',
     );
 
     return lines.join('\n');
@@ -107,10 +106,10 @@ export class IntentClassifier {
     const explicitDirectReply = [
       /只回复|只回答|不要解释|不用解释|直接回复|直接回答/,
       /\b(just reply|only reply|answer only|no explanation|respond only)\b/i,
-    ].some(pattern => pattern.test(input));
-    const memoryOnly = [
-      /记住|记一下|remember this|keep this in mind/i,
-    ].some(pattern => pattern.test(input));
+    ].some((pattern) => pattern.test(input));
+    const memoryOnly = [/记住|记一下|remember this|keep this in mind/i].some((pattern) =>
+      pattern.test(input),
+    );
     if (explicitDirectReply || memoryOnly) {
       return false;
     }
@@ -158,7 +157,7 @@ export class IntentClassifier {
     const recentMessages = Array.isArray(context.recentMessages) ? context.recentMessages : [];
     const recent = recentMessages
       .slice(-6)
-      .map(message => `${message.role}: ${String(message.content || '').slice(0, 240)}`)
+      .map((message) => `${message.role}: ${String(message.content || '').slice(0, 240)}`)
       .join('\n');
 
     return [
@@ -168,14 +167,16 @@ export class IntentClassifier {
       recent ? `\nRecent conversation context:\n${recent}` : '',
       '',
       'Return JSON only.',
-    ].filter(Boolean).join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
   }
 
   #summarizeTools() {
     const tools = this.#toolRegistry?.getAll?.() || [];
     return tools
       .slice(0, this.#config.maxTools)
-      .map(tool => `- ${tool.name}: ${String(tool.description || '').slice(0, 180)}`)
+      .map((tool) => `- ${tool.name}: ${String(tool.description || '').slice(0, 180)}`)
       .join('\n');
   }
 
@@ -214,7 +215,9 @@ export class IntentClassifier {
       ? Math.max(0, Math.min(1, Number(value.confidence)))
       : 0;
     const recommendedTools = Array.isArray(value.recommendedTools)
-      ? value.recommendedTools.filter(tool => typeof tool === 'string' && this.#toolRegistry?.has?.(tool))
+      ? value.recommendedTools.filter(
+          (tool) => typeof tool === 'string' && this.#toolRegistry?.has?.(tool),
+        )
       : [];
     const firstActionHint = this.#normalizeFirstActionHint(value.firstActionHint);
     const isCodingRelated = Boolean(value.isCodingRelated);
@@ -228,7 +231,10 @@ export class IntentClassifier {
       intent,
       confidence,
       normalizedTask: typeof value.normalizedTask === 'string' ? value.normalizedTask.trim() : '',
-      slots: value.slots && typeof value.slots === 'object' && !Array.isArray(value.slots) ? value.slots : {},
+      slots:
+        value.slots && typeof value.slots === 'object' && !Array.isArray(value.slots)
+          ? value.slots
+          : {},
       requiresFreshData: Boolean(value.requiresFreshData),
       isCodingRelated,
       requiresCodeModification,
@@ -258,7 +264,8 @@ export class IntentClassifier {
       return null;
     }
 
-    const weatherLike = /天气|气温|温度|降雨|下雨|雨吗|带伞|预报|weather|temperature|forecast|rain/i.test(input);
+    const weatherLike =
+      /天气|气温|温度|降雨|下雨|雨吗|带伞|预报|weather|temperature|forecast|rain/i.test(input);
     if (!weatherLike) {
       return null;
     }
@@ -296,14 +303,18 @@ export class IntentClassifier {
       return quoted[1].trim();
     }
 
-    const beforeKeyword = input.match(/([\p{Script=Han}A-Za-z\s·.-]{1,30}?)(?:天气|气温|温度|预报)/u);
+    const beforeKeyword = input.match(
+      /([\p{Script=Han}A-Za-z\s·.-]{1,30}?)(?:天气|气温|温度|预报)/u,
+    );
     if (beforeKeyword?.[1]) {
       return beforeKeyword[1]
         .replace(/^(查询|查|看|搜索|搜|今天|明天|后天|本周|这周|当前|现在)/, '')
         .trim();
     }
 
-    const afterKeyword = input.match(/(?:天气|气温|温度|预报).*?(?:在|查询|查|看)?\s*([\p{Script=Han}A-Za-z\s·.-]{1,30})/u);
+    const afterKeyword = input.match(
+      /(?:天气|气温|温度|预报).*?(?:在|查询|查|看)?\s*([\p{Script=Han}A-Za-z\s·.-]{1,30})/u,
+    );
     if (afterKeyword?.[1]) {
       return afterKeyword[1].trim();
     }
@@ -335,9 +346,10 @@ export class IntentClassifier {
     if (!tool || !this.#toolRegistry?.has?.(tool)) {
       return null;
     }
-    const args = value.arguments && typeof value.arguments === 'object' && !Array.isArray(value.arguments)
-      ? value.arguments
-      : {};
+    const args =
+      value.arguments && typeof value.arguments === 'object' && !Array.isArray(value.arguments)
+        ? value.arguments
+        : {};
     return { tool, arguments: args };
   }
 
@@ -360,8 +372,7 @@ export class IntentClassifier {
       isBugTask: risk.isBugTask,
       isLikelyTrivial: risk.isLikelyTrivial,
       requiresAutomaticPlanning: risk.isModificationTask,
-      requiresSemanticRiskReview:
-        risk.semanticDomains.length > 0 && risk.isModificationTask,
+      requiresSemanticRiskReview: risk.semanticDomains.length > 0 && risk.isModificationTask,
       semanticRiskDomains: risk.semanticDomains,
       riskLevel: risk.riskLevel,
       riskScore: risk.score,
@@ -372,17 +383,23 @@ export class IntentClassifier {
 
   /** 基于任务 profile 计算自适应迭代预算 */
   budgetFor(profile) {
-    if (!profile || profile.isLikelyTrivial) {return Math.min(8, this.#config.maxIterations || MAX_ITERATIONS_DEFAULT);}
-    if (profile.isBugTask) {return Math.min(40, this.#config.maxIterations || MAX_ITERATIONS_DEFAULT);}
-    if (profile.isModificationTask) {return Math.min(25, this.#config.maxIterations || MAX_ITERATIONS_DEFAULT);}
+    if (!profile || profile.isLikelyTrivial) {
+      return Math.min(8, this.#config.maxIterations || MAX_ITERATIONS_DEFAULT);
+    }
+    if (profile.isBugTask) {
+      return Math.min(40, this.#config.maxIterations || MAX_ITERATIONS_DEFAULT);
+    }
+    if (profile.isModificationTask) {
+      return Math.min(25, this.#config.maxIterations || MAX_ITERATIONS_DEFAULT);
+    }
     return this.#config.maxIterations || MAX_ITERATIONS_DEFAULT;
   }
 
   /** 从用户输入推断语义风险域 */
   inferSemanticRiskDomains(userInput) {
     const text = String(userInput || '');
-    return SEMANTIC_RISK_DOMAINS.filter(domain => domain.pattern.test(text)).map(
-      ({ id, label, checklist }) => ({ id, label, checklist })
+    return SEMANTIC_RISK_DOMAINS.filter((domain) => domain.pattern.test(text)).map(
+      ({ id, label, checklist }) => ({ id, label, checklist }),
     );
   }
 
@@ -393,7 +410,9 @@ export class IntentClassifier {
 
   /** completion gates — 对编码完成的后门策略 */
   completionGates(profile) {
-    if (!profile?.isModificationTask) {return [];}
+    if (!profile?.isModificationTask) {
+      return [];
+    }
     return getCompletionGates?.() ?? [];
   }
 

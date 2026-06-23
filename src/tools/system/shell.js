@@ -77,7 +77,9 @@ function executeAsync(command, options = {}) {
       killed = true;
       child.kill('SIGTERM');
       setTimeout(() => {
-        if (!child.killed) {child.kill('SIGKILL');}
+        if (!child.killed) {
+          child.kill('SIGKILL');
+        }
       }, 5000);
     }, options.timeout || 30000);
 
@@ -90,12 +92,17 @@ export function createShellTool(options = {}) {
 
   return {
     name: 'shell',
-    description: 'Execute a shell command in the working directory. Returns stdout and stderr. Supports optional sandboxed execution for filesystem/network isolation.',
+    description:
+      'Execute a shell command in the working directory. Returns stdout and stderr. Supports optional sandboxed execution for filesystem/network isolation.',
     category: ToolCategory.SYSTEM,
     params: {
       command: { type: 'string', description: 'The shell command to execute' },
       timeout: { type: 'number', description: 'Timeout in milliseconds (default 30000)' },
-      foreground: { type: 'boolean', description: 'Force foreground shell execution even if the command looks long-running (default false)' },
+      foreground: {
+        type: 'boolean',
+        description:
+          'Force foreground shell execution even if the command looks long-running (default false)',
+      },
     },
     required: ['command'],
     handler: async ({ command, timeout, foreground }, ctx) => {
@@ -139,11 +146,14 @@ export function createShellTool(options = {}) {
         modelProvider: ctx.modelProvider,
       });
       if (longRunning.isLongRunning && !foreground) {
-        const sessionJson = await startPtyCommand({
-          command: cmd,
-          wait_ms: Math.min(ms, 1500),
-          max_chars: 6000,
-        }, ctx);
+        const sessionJson = await startPtyCommand(
+          {
+            command: cmd,
+            wait_ms: Math.min(ms, 1500),
+            max_chars: 6000,
+          },
+          ctx,
+        );
         return [
           `Long-running command detected: ${longRunning.reason}.`,
           'Started it as a PTY session instead of waiting for shell completion.',
@@ -220,13 +230,19 @@ export function createShellTool(options = {}) {
           const stderr = result.stderr.trim();
           const stdout = result.stdout.trim();
           let msg = `Command failed with exit code ${result.exitCode}`;
-          if (stdout) {msg += `\nstdout: ${stdout}`;}
-          if (stderr) {msg += `\nstderr: ${stderr}`;}
+          if (stdout) {
+            msg += `\nstdout: ${stdout}`;
+          }
+          if (stderr) {
+            msg += `\nstderr: ${stderr}`;
+          }
           return msg;
         }
 
         const output = result.stdout.trim();
-        if (!output) {return '(command produced no output)';}
+        if (!output) {
+          return '(command produced no output)';
+        }
         if (output.length > 5000) {
           return output.substring(0, 5000) + '\n... (truncated, ' + output.length + ' chars total)';
         }

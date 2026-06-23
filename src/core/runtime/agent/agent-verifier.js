@@ -43,9 +43,15 @@ export class AgentVerifier {
    * 编码任务完成门控
    * 决定是否阻止 Agent 提前给出最终答案
    */
-  shouldBlockCodingFinal({ responseText, taskProfile, runToolEvents, activePlan, activePlanManager }) {
-    const successfulEvents = runToolEvents.filter(event => event.success);
-    const hasMutationEvidence = successfulEvents.some(event => evIsMutationEvent(event));
+  shouldBlockCodingFinal({
+    responseText,
+    taskProfile,
+    runToolEvents,
+    activePlan,
+    activePlanManager,
+  }) {
+    const successfulEvents = runToolEvents.filter((event) => event.success);
+    const hasMutationEvidence = successfulEvents.some((event) => evIsMutationEvent(event));
 
     if (!taskProfile?.isModificationTask) {
       const text = String(responseText || '').trim();
@@ -162,7 +168,9 @@ export class AgentVerifier {
       const extensions = new Set();
       for (const p of changedFiles) {
         const m = p.match(/\.[a-zA-Z0-9]+$/);
-        if (m) { extensions.add(m[0].toLowerCase()); }
+        if (m) {
+          extensions.add(m[0].toLowerCase());
+        }
       }
 
       let recommendedCommands = [];
@@ -182,7 +190,7 @@ export class AgentVerifier {
             ['start', /^(start|dev|serve)$/i],
           ];
           for (const [label, regex] of priority) {
-            const name = Object.keys(scripts).find(s => regex.test(s));
+            const name = Object.keys(scripts).find((s) => regex.test(s));
             if (name) {
               recommendedCommands.push(`bun run ${name}  # ${label} (npm run ${name} 作为备选)`);
             }
@@ -203,7 +211,9 @@ export class AgentVerifier {
           extBasedCommands.push('npx tsc --noEmit  # typecheck');
           extBasedCommands.push('bun test  # if tests exist (npm test 作为备选)');
         } else if (['.py'].includes(ext)) {
-          extBasedCommands.push('python -c "import py_compile; py_compile.compile(\'<file>\', doraise=True)"  # syntax check');
+          extBasedCommands.push(
+            'python -c "import py_compile; py_compile.compile(\'<file>\', doraise=True)"  # syntax check',
+          );
           extBasedCommands.push('pytest  # if tests exist');
         } else if (['.go'].includes(ext)) {
           extBasedCommands.push('go build ./...');
@@ -225,7 +235,11 @@ export class AgentVerifier {
       }
       for (const ext of verificationHintExts) {
         if (['.json', '.yml', '.yaml', '.toml'].includes(ext)) {
-          if (ext === '.json') { extBasedCommands.push('node -e "JSON.parse(require(\'fs\').readFileSync(\'<file>\',\'utf8\'))"  # syntax check JSON'); }
+          if (ext === '.json') {
+            extBasedCommands.push(
+              "node -e \"JSON.parse(require('fs').readFileSync('<file>','utf8'))\"  # syntax check JSON",
+            );
+          }
         } else {
           unverifiableExts.push(ext);
         }
@@ -238,18 +252,26 @@ export class AgentVerifier {
       }
       if (recommendedCommands.length > 0) {
         lines.push('Recommended verification commands (from package.json):');
-        for (const c of recommendedCommands.slice(0, 4)) { lines.push(`  - ${c}`); }
+        for (const c of recommendedCommands.slice(0, 4)) {
+          lines.push(`  - ${c}`);
+        }
       }
       if (extBasedCommands.length > 0) {
         lines.push('File-extension-based verification commands:');
-        for (const c of extBasedCommands.slice(0, 6)) { lines.push(`  - ${c}`); }
+        for (const c of extBasedCommands.slice(0, 6)) {
+          lines.push(`  - ${c}`);
+        }
       }
       if (unverifiableExts.length > 0) {
-        lines.push(`Files with extensions ${unverifiableExts.join(', ')} may not have meaningful runtime verification; ` +
-                    'use read_file to inspect correctness instead of claiming "tested".');
+        lines.push(
+          `Files with extensions ${unverifiableExts.join(', ')} may not have meaningful runtime verification; ` +
+            'use read_file to inspect correctness instead of claiming "tested".',
+        );
       }
       if (lines.length === 0) {
-        lines.push('Before finishing, run a shell command that exercises your changes (for example: a test, linter, typechecker, or build).');
+        lines.push(
+          'Before finishing, run a shell command that exercises your changes (for example: a test, linter, typechecker, or build).',
+        );
       }
       return lines.join('\n');
     } catch {
@@ -288,15 +310,16 @@ export class AgentVerifier {
 
   #extractRequestedFilePaths(text) {
     const paths = new Set();
-    const regex = /\b((?:[\w.-]+\/)*[\w.-]+\.(?:html|js|css|ts|tsx|jsx|json|md|py|java|go|rs|c|cpp|h|hpp))\b/g;
+    const regex =
+      /\b((?:[\w.-]+\/)*[\w.-]+\.(?:html|js|css|ts|tsx|jsx|json|md|py|java|go|rs|c|cpp|h|hpp))\b/g;
     let match;
     while ((match = regex.exec(text)) !== null) {
       paths.add(match[1]);
     }
     const basenamesWithDirectory = new Set(
       Array.from(paths)
-        .filter(path => path.includes('/'))
-        .map(path => path.split('/').pop())
+        .filter((path) => path.includes('/'))
+        .map((path) => path.split('/').pop()),
     );
     for (const path of Array.from(paths)) {
       if (!path.includes('/') && basenamesWithDirectory.has(path)) {

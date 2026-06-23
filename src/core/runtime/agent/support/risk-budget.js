@@ -72,10 +72,7 @@ export const CODING_VERB_CONTEXT_PATTERNS = [
 ];
 
 // 合并所有编码识别关键词（用于 quickAssess）
-export const CODING_KEYWORDS = [
-  ...CODING_CONTEXT_KEYWORDS,
-  ...CODING_VERB_CONTEXT_PATTERNS,
-];
+export const CODING_KEYWORDS = [...CODING_CONTEXT_KEYWORDS, ...CODING_VERB_CONTEXT_PATTERNS];
 
 // 只读检查关键词（用于区分 inspection vs modification）
 export const READ_ONLY_PATTERNS = [
@@ -91,36 +88,46 @@ export const SEMANTIC_RISK_DOMAINS = [
     id: 'units_timing',
     label: 'units/time/animation semantics',
     weight: 3,
-    pattern: /时间|速度|帧|毫秒|秒|定时|计时|循环|动画|游戏|物理|实时|fps|frame|clock|tick|speed|interval|timeout|timer|animation|game|physics|realtime|real-time/i,
-    checklist: 'track units in variable names and API arguments; separate render FPS from simulation/update intervals; verify user-visible timing or movement behavior',
+    pattern:
+      /时间|速度|帧|毫秒|秒|定时|计时|循环|动画|游戏|物理|实时|fps|frame|clock|tick|speed|interval|timeout|timer|animation|game|physics|realtime|real-time/i,
+    checklist:
+      'track units in variable names and API arguments; separate render FPS from simulation/update intervals; verify user-visible timing or movement behavior',
   },
   {
     id: 'api_semantics',
     label: 'third-party API semantics',
     weight: 3,
-    pattern: /api|sdk|库|框架|pygame|three\.js|react|vue|express|fastapi|requestanimationframe|setinterval|settimeout|websocket|http|fetch/i,
-    checklist: 'confirm parameter meanings, return values, lifecycle constraints, and error behavior before treating a call as correct',
+    pattern:
+      /api|sdk|库|框架|pygame|three\.js|react|vue|express|fastapi|requestanimationframe|setinterval|settimeout|websocket|http|fetch/i,
+    checklist:
+      'confirm parameter meanings, return values, lifecycle constraints, and error behavior before treating a call as correct',
   },
   {
     id: 'state_transitions',
     label: 'state transition invariants',
     weight: 3,
-    pattern: /状态|状态机|胜负|分数|移动|碰撞|合并|撤销|重试|缓存|session|state|fsm|transition|score|collision|merge|retry|cache/i,
-    checklist: 'verify state invariants, edge transitions, reset behavior, and repeated-action behavior',
+    pattern:
+      /状态|状态机|胜负|分数|移动|碰撞|合并|撤销|重试|缓存|session|state|fsm|transition|score|collision|merge|retry|cache/i,
+    checklist:
+      'verify state invariants, edge transitions, reset behavior, and repeated-action behavior',
   },
   {
     id: 'concurrency_io',
     label: 'async/concurrency/io semantics',
     weight: 4,
-    pattern: /并发|异步|队列|锁|流|文件|网络|超时|重试|async|await|promise|concurrent|parallel|queue|lock|stream|file|network|timeout|retry/i,
-    checklist: 'check ordering, cancellation, timeout/retry behavior, idempotency, and partial failure handling',
+    pattern:
+      /并发|异步|队列|锁|流|文件|网络|超时|重试|async|await|promise|concurrent|parallel|queue|lock|stream|file|network|timeout|retry/i,
+    checklist:
+      'check ordering, cancellation, timeout/retry behavior, idempotency, and partial failure handling',
   },
   {
     id: 'security_boundary',
     label: 'security/input boundary semantics',
     weight: 5,
-    pattern: /安全|权限|认证|登录|密钥|token|注入|沙箱|secret|password|auth|permission|sanitize|injection|sandbox|xss|csrf/i,
-    checklist: 'validate trust boundaries, secrets handling, escaping/sanitization, and permission checks',
+    pattern:
+      /安全|权限|认证|登录|密钥|token|注入|沙箱|secret|password|auth|permission|sanitize|injection|sandbox|xss|csrf/i,
+    checklist:
+      'validate trust boundaries, secrets handling, escaping/sanitization, and permission checks',
   },
 ];
 
@@ -128,11 +135,30 @@ export const SEMANTIC_RISK_DOMAINS = [
 // 风险因子 - 每个因子有评分权重
 // =============================================================
 const TEXT_RISK_FACTORS = [
-  { id: 'bug_keywords', weight: 3, test: (t) => /\b(bug|error|crash|hang|stuck|broken|fail|报错|错误|崩溃|卡住|修复)\b/.test(t) },
+  {
+    id: 'bug_keywords',
+    weight: 3,
+    test: (t) => /\b(bug|error|crash|hang|stuck|broken|fail|报错|错误|崩溃|卡住|修复)\b/.test(t),
+  },
   { id: 'explicit_refactor', weight: 3, test: (t) => /\b(refactor|重构|重写|rewrite)\b/.test(t) },
-  { id: 'multi_artifact_keywords', weight: 2, test: (t) => /(多个|多文件|拆分|分离|模块化|分层|接口|controller|route|schema|resolver|service|component|module|html.*js|js.*html|css|测试)/i.test(t) },
-  { id: 'test_focus', weight: 2, test: (t) => /(测试|单元测试|集成测试|test.*pass|failing test|write test|add test)/i.test(t) },
-  { id: 'security_keywords', weight: 5, test: (t) => /(安全|权限|认证|密钥|secret|auth|injection|xss|csrf|password)/i.test(t) },
+  {
+    id: 'multi_artifact_keywords',
+    weight: 2,
+    test: (t) =>
+      /(多个|多文件|拆分|分离|模块化|分层|接口|controller|route|schema|resolver|service|component|module|html.*js|js.*html|css|测试)/i.test(
+        t,
+      ),
+  },
+  {
+    id: 'test_focus',
+    weight: 2,
+    test: (t) => /(测试|单元测试|集成测试|test.*pass|failing test|write test|add test)/i.test(t),
+  },
+  {
+    id: 'security_keywords',
+    weight: 5,
+    test: (t) => /(安全|权限|认证|密钥|secret|auth|injection|xss|csrf|password)/i.test(t),
+  },
 ];
 
 // 文件名风险模式（用于 deepAssess 实际涉及的文件时做升级判定）
@@ -161,9 +187,9 @@ const TRIVIAL_TEXT_PATTERNS = [
 // =============================================================
 function inferSemanticRiskDomains(userInput) {
   const text = String(userInput || '');
-  return SEMANTIC_RISK_DOMAINS
-    .filter((domain) => domain.pattern.test(text))
-    .map(({ id, label, weight, checklist }) => ({ id, label, weight, checklist }));
+  return SEMANTIC_RISK_DOMAINS.filter((domain) => domain.pattern.test(text)).map(
+    ({ id, label, weight, checklist }) => ({ id, label, weight, checklist }),
+  );
 }
 
 // =============================================================
@@ -183,7 +209,11 @@ export function quickAssess(userInput) {
   const hasModificationIntent = MODIFICATION_VERB_PATTERNS.some((p) => p.test(text));
   const isModificationTask = isCodingTask && hasModificationIntent;
 
-  const isBugTask = !cliCommand && /\b(bug|error|exception|failed|failing|broken|hang|stuck|报错|错误|失败|崩溃|卡住|没响应|修复)\b/.test(text);
+  const isBugTask =
+    !cliCommand &&
+    /\b(bug|error|exception|failed|failing|broken|hang|stuck|报错|错误|失败|崩溃|卡住|没响应|修复)\b/.test(
+      text,
+    );
 
   const isLikelyTrivial = isCodingTask && TRIVIAL_TEXT_PATTERNS.some((p) => p.test(text));
 
@@ -213,15 +243,26 @@ export function quickAssess(userInput) {
   }
 
   // "看起来像多个产物"的文本信号
-  const mentionsMultipleArtifacts = /(多个|多文件|拆分|分离|接口|controller|route|schema|resolver|service|component|module|html.*js|js.*html|css|测试)/i.test(text)
-    || /\b(multiple|separate|split|html.*js|js.*html|css|tests?|docs?|route|controller|schema|resolver|endpoint|component|service|module)\b/i.test(text);
+  const mentionsMultipleArtifacts =
+    /(多个|多文件|拆分|分离|接口|controller|route|schema|resolver|service|component|module|html.*js|js.*html|css|测试)/i.test(
+      text,
+    ) ||
+    /\b(multiple|separate|split|html.*js|js.*html|css|tests?|docs?|route|controller|schema|resolver|endpoint|component|service|module)\b/i.test(
+      text,
+    );
   if (mentionsMultipleArtifacts && isCodingTask && !isLikelyTrivial) {
     score += 2;
     reasons.push('multi_artifact_text');
   }
 
   // "工程化"、"架构"、"生产级" 等关键词 → 高风险标记
-  if (/工程化|架构|生产级|生产环境|可扩展|可维护|健壮|健壮性|enterprise|production|architecture|scalable|maintainable|robust/i.test(text) && isCodingTask && !isLikelyTrivial) {
+  if (
+    /工程化|架构|生产级|生产环境|可扩展|可维护|健壮|健壮性|enterprise|production|architecture|scalable|maintainable|robust/i.test(
+      text,
+    ) &&
+    isCodingTask &&
+    !isLikelyTrivial
+  ) {
     score += 4;
     reasons.push('engineering_keywords');
   }
@@ -279,7 +320,7 @@ export function deepAssess(quickResult, filePaths = []) {
 
   // 核心文件触碰 → 升级
   const touchedHighRisk = paths.filter((p) =>
-    HIGH_RISK_FILE_PATTERNS.some((pattern) => pattern.test(p))
+    HIGH_RISK_FILE_PATTERNS.some((pattern) => pattern.test(p)),
   );
   if (touchedHighRisk.length > 0) {
     score += touchedHighRisk.length * 3;
@@ -295,9 +336,9 @@ export function deepAssess(quickResult, filePaths = []) {
   }
 
   // 全是低风险文件（纯文档/纯数据）→ 不升级
-  const allLowRisk = paths.length > 0 && paths.every((p) =>
-    LOW_RISK_FILE_PATTERNS.some((pattern) => pattern.test(p))
-  );
+  const allLowRisk =
+    paths.length > 0 &&
+    paths.every((p) => LOW_RISK_FILE_PATTERNS.some((pattern) => pattern.test(p)));
   if (allLowRisk) {
     score = Math.max(0, score - 3);
     reasons.push('data_files_only');
@@ -346,13 +387,17 @@ const MODIFICATION_INTENTS = new Set(['coding_task', 'git_task']);
 
 export function mergeIntentProfile(quickResult, intent, userInput = '') {
   // 没 intent 或置信度低：保留 quickAssess 结果
-  if (!intent || typeof intent !== 'object') {return quickResult;}
+  if (!intent || typeof intent !== 'object') {
+    return quickResult;
+  }
   if (typeof intent.confidence === 'number' && intent.confidence < INTENT_CONFIDENCE_THRESHOLD) {
     return quickResult;
   }
 
   const intentName = intent.intent;
-  if (!intentName || intentName === 'unknown') {return quickResult;}
+  if (!intentName || intentName === 'unknown') {
+    return quickResult;
+  }
 
   const cli = isCliCommand(userInput);
   if (cli) {
@@ -440,10 +485,12 @@ export function mergeIntentProfile(quickResult, intent, userInput = '') {
 // 原则：够用就好，不浪费；也不卡复杂任务
 // 保底：任何任务都至少有 4 次迭代（工具调用 + 至少一次生成最终答案）
 // =============================================================
-export function computeIterationBudget(riskLevelOrProfile, maxIterationsDefault = MAX_ITERATIONS_DEFAULT) {
-  const level = typeof riskLevelOrProfile === 'string'
-    ? riskLevelOrProfile
-    : riskLevelOrProfile?.riskLevel;
+export function computeIterationBudget(
+  riskLevelOrProfile,
+  maxIterationsDefault = MAX_ITERATIONS_DEFAULT,
+) {
+  const level =
+    typeof riskLevelOrProfile === 'string' ? riskLevelOrProfile : riskLevelOrProfile?.riskLevel;
 
   const ratio = ITERATION_RATIO[level] ?? ITERATION_RATIO[RISK_LEVEL.MEDIUM];
   return Math.max(4, Math.round(maxIterationsDefault * ratio));
@@ -495,7 +542,9 @@ export function getMethodologyGuidance(riskLevel, profile = {}) {
 
   if (domains.length > 0) {
     const checklist = domains.map((d) => `- ${d.label}: ${d.checklist}`).join('\n');
-    lines.push('Semantic risk domains detected. Before finishing, verify these specifically:\n' + checklist);
+    lines.push(
+      'Semantic risk domains detected. Before finishing, verify these specifically:\n' + checklist,
+    );
   }
 
   return lines.join('\n');

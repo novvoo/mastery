@@ -20,7 +20,7 @@ export function createReadlineInterface(slashCommandSuggestions) {
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
-    completer: line => completeSlashCommand(slashCommandSuggestions, line),
+    completer: (line) => completeSlashCommand(slashCommandSuggestions, line),
   });
   return rl;
 }
@@ -39,7 +39,9 @@ export function setupSigintHandler(agent) {
       if (sigintCount === 1) {
         enhancedUI.warning('\n⚠️  正在请求中断 Agent...（再按一次 Ctrl+C 强制退出）');
         agent.engine.stop().catch(() => {});
-        sigintTimer = setTimeout(() => { sigintCount = 0; }, 3000);
+        sigintTimer = setTimeout(() => {
+          sigintCount = 0;
+        }, 3000);
       } else if (sigintCount >= 2) {
         enhancedUI.error('\n强制退出');
         process.exit(130);
@@ -50,7 +52,14 @@ export function setupSigintHandler(agent) {
   };
 
   process.on('SIGINT', handler);
-  return { handler, clearTimer: () => { if (sigintTimer) {clearTimeout(sigintTimer);} } };
+  return {
+    handler,
+    clearTimer: () => {
+      if (sigintTimer) {
+        clearTimeout(sigintTimer);
+      }
+    },
+  };
 }
 
 /**
@@ -75,7 +84,12 @@ export function installSlashCommandSuggestions(agent) {
   agent.slashSuggestionsInstalled = true;
   armSlashCommandSuggestions();
   process.stdin.on('keypress', (_str, key = {}) => {
-    if (agent.rlClosed || agent.isProcessingInput || key.name === 'return' || key.name === 'enter') {
+    if (
+      agent.rlClosed ||
+      agent.isProcessingInput ||
+      key.name === 'return' ||
+      key.name === 'enter'
+    ) {
       return;
     }
 
@@ -87,7 +101,11 @@ export function installSlashCommandSuggestions(agent) {
  * Enable raw mode for slash command suggestions
  */
 export function armSlashCommandSuggestions() {
-  if (!process.stdin.isTTY || !process.stdin.setRawMode || process.env.SLASH_SUGGESTIONS === 'false') {
+  if (
+    !process.stdin.isTTY ||
+    !process.stdin.setRawMode ||
+    process.env.SLASH_SUGGESTIONS === 'false'
+  ) {
     return;
   }
 
@@ -128,7 +146,7 @@ export function renderSlashCommandSuggestions(agent) {
 
   const line = agent.rl.line || '';
   const suggestions = filterSlashCommandSuggestions(agent.slashCommandSuggestions, line, 6);
-  const suggestionKey = `${line}::${suggestions.map(command => command.name).join('|')}`;
+  const suggestionKey = `${line}::${suggestions.map((command) => command.name).join('|')}`;
 
   if (!suggestions.length) {
     agent.lastSlashSuggestionKey = '';

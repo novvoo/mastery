@@ -24,32 +24,32 @@ export function createTaskTools(schedulerEngine) {
         properties: {
           type: {
             type: 'string',
-            description: '任务类型'
+            description: '任务类型',
           },
           payload: {
             type: 'object',
-            description: '任务载荷数据'
+            description: '任务载荷数据',
           },
           priority: {
             type: 'string',
             enum: ['CRITICAL', 'HIGH', 'NORMAL', 'LOW', 'BACKGROUND'],
-            description: '任务优先级'
-          }
+            description: '任务优先级',
+          },
         },
-        required: ['type', 'payload']
+        required: ['type', 'payload'],
       },
       handler: async ({ type, payload, priority = 'NORMAL' }) => {
         const priorityValue = TaskPriority[priority] ?? TaskPriority.NORMAL;
         const task = await taskQueue.add({
           type,
           payload,
-          priority: priorityValue
+          priority: priorityValue,
         });
         return {
           success: true,
-          task: task.toJSON()
+          task: task.toJSON(),
         };
-      }
+      },
     },
     {
       name: 'task_list',
@@ -61,13 +61,13 @@ export function createTaskTools(schedulerEngine) {
           status: {
             type: 'string',
             enum: ['pending', 'running', 'completed', 'failed', 'cancelled'],
-            description: '按状态过滤'
+            description: '按状态过滤',
           },
           limit: {
             type: 'number',
-            description: '返回数量限制'
-          }
-        }
+            description: '返回数量限制',
+          },
+        },
       },
       handler: async ({ status, limit }) => {
         const options = {};
@@ -81,9 +81,9 @@ export function createTaskTools(schedulerEngine) {
         return {
           success: true,
           count: tasks.length,
-          tasks: tasks.map(task => task.toJSON())
+          tasks: tasks.map((task) => task.toJSON()),
         };
-      }
+      },
     },
     {
       name: 'task_status',
@@ -94,24 +94,24 @@ export function createTaskTools(schedulerEngine) {
         properties: {
           id: {
             type: 'string',
-            description: '任务ID'
-          }
+            description: '任务ID',
+          },
         },
-        required: ['id']
+        required: ['id'],
       },
       handler: async ({ id }) => {
         const task = taskQueue.get(id);
         if (!task) {
           return {
             success: false,
-            error: `Task ${id} not found`
+            error: `Task ${id} not found`,
           };
         }
         return {
           success: true,
-          task: task.toJSON()
+          task: task.toJSON(),
         };
-      }
+      },
     },
     {
       name: 'task_cancel',
@@ -122,10 +122,10 @@ export function createTaskTools(schedulerEngine) {
         properties: {
           id: {
             type: 'string',
-            description: '任务ID'
-          }
+            description: '任务ID',
+          },
         },
-        required: ['id']
+        required: ['id'],
       },
       handler: async ({ id }) => {
         try {
@@ -133,21 +133,21 @@ export function createTaskTools(schedulerEngine) {
           if (!task) {
             return {
               success: false,
-              error: `Task ${id} not found`
+              error: `Task ${id} not found`,
             };
           }
           return {
             success: true,
-            task: task.toJSON()
+            task: task.toJSON(),
           };
         } catch (error) {
           return {
             success: false,
-            error: error.message
+            error: error.message,
           };
         }
-      }
-    }
+      },
+    },
   ];
 }
 

@@ -22,9 +22,10 @@ export const ui = {
     console.log('');
     console.log(chalk.yellow(`  ${summarizeActivityForCLI(activity)}`));
     for (const [key, value] of Object.entries(args)) {
-      const display = typeof value === 'string' && value.length > 100
-        ? value.substring(0, 100) + '...'
-        : String(value);
+      const display =
+        typeof value === 'string' && value.length > 100
+          ? value.substring(0, 100) + '...'
+          : String(value);
       console.log(chalk.dim(`     ├─ ${key}: ${display}`));
     }
     console.log(chalk.dim('     └─ ...'));
@@ -34,7 +35,9 @@ export const ui = {
     const activity = describeToolActivity(name, args, 'completed', result);
     const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
     const preview = resultStr.length > 200 ? resultStr.substring(0, 200) + '...' : resultStr;
-    console.log(chalk.green(`  ${summarizeActivityForCLI(activity)}: ${preview.replace(/\n/g, '\\n')}`));
+    console.log(
+      chalk.green(`  ${summarizeActivityForCLI(activity)}: ${preview.replace(/\n/g, '\\n')}`),
+    );
   },
 
   toolError(name, error, args = {}) {
@@ -94,9 +97,23 @@ export const ui = {
   welcome(config) {
     console.log('');
     console.log(chalk.cyan('╭──────────────────────────────────────────────────╮'));
-    console.log(chalk.cyan('│') + chalk.cyan.bold('  AI Engineering Mastery Agent v1.0.11') + '             │');
-    console.log(chalk.cyan('│') + chalk.dim(`  Model: ${config.model} (${config.provider})`) + ' '.repeat(Math.max(0, 33 - config.model.length - config.provider.length - 3)) + '│');
-    console.log(chalk.cyan('│') + chalk.dim(`  Working Dir: ${config.workingDir}`) + ' '.repeat(Math.max(0, 31 - config.workingDir.length)) + '│');
+    console.log(
+      chalk.cyan('│') +
+        chalk.cyan.bold('  AI Engineering Mastery Agent v1.0.11') +
+        '             │',
+    );
+    console.log(
+      chalk.cyan('│') +
+        chalk.dim(`  Model: ${config.model} (${config.provider})`) +
+        ' '.repeat(Math.max(0, 33 - config.model.length - config.provider.length - 3)) +
+        '│',
+    );
+    console.log(
+      chalk.cyan('│') +
+        chalk.dim(`  Working Dir: ${config.workingDir}`) +
+        ' '.repeat(Math.max(0, 31 - config.workingDir.length)) +
+        '│',
+    );
     console.log(chalk.cyan('╰──────────────────────────────────────────────────╯'));
     console.log('');
     console.log(chalk.dim('  Type your request or "exit" to quit.'));

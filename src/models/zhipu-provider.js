@@ -13,7 +13,12 @@ export class ZhipuModelProvider {
   #contextSize;
   #capabilities;
 
-  constructor(apiKey, baseURL = 'https://open.bigmodel.cn/api/paas/v4', model = 'glm-4', options = {}) {
+  constructor(
+    apiKey,
+    baseURL = 'https://open.bigmodel.cn/api/paas/v4',
+    model = 'glm-4',
+    options = {},
+  ) {
     this.#apiKey = apiKey;
     this.#baseURL = baseURL;
     this.#model = model;
@@ -26,7 +31,7 @@ export class ZhipuModelProvider {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.#apiKey}`,
+        Authorization: `Bearer ${this.#apiKey}`,
       },
       body: JSON.stringify({
         model: this.#model,

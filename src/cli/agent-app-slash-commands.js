@@ -34,7 +34,9 @@ export {
  * Returns `true` to keep the REPL alive, `false` to exit.
  */
 export async function processCommand(agent, input) {
-  if (!input) { return true; }
+  if (!input) {
+    return true;
+  }
 
   const command = input.toLowerCase();
   const commandName = command.split(/\s+/, 1)[0];
@@ -244,7 +246,11 @@ export async function handleDocumentCommand(agent, argsText = '') {
     const spinner = enhancedUI.spinner('Indexing document...');
     try {
       spinner.start();
-      const result = await toolRegistry.execute('document_add', { source }, documentToolContext(agent));
+      const result = await toolRegistry.execute(
+        'document_add',
+        { source },
+        documentToolContext(agent),
+      );
       spinner.stop();
       if (!result?.success) {
         enhancedUI.error(result?.error || 'Document indexing failed.');
@@ -263,8 +269,8 @@ export async function handleDocumentCommand(agent, argsText = '') {
   }
 
   if (['search', 'find', 'query'].includes(subcommand)) {
-    const flags = new Set(restParts.filter(p => p.startsWith('--')));
-    const query = restParts.filter(p => !p.startsWith('--')).join(' ');
+    const flags = new Set(restParts.filter((p) => p.startsWith('--')));
+    const query = restParts.filter((p) => !p.startsWith('--')).join(' ');
     const showRaw = flags.has('--debug') || flags.has('--raw');
     if (!query) {
       enhancedUI.info('Usage: /doc search <query> [--debug|--raw]');
@@ -274,12 +280,19 @@ export async function handleDocumentCommand(agent, argsText = '') {
     const spinner = enhancedUI.spinner('Searching documents...');
     try {
       spinner.start();
-      const result = await toolRegistry.execute('document_search', { query, limit: 5 }, documentToolContext(agent));
+      const result = await toolRegistry.execute(
+        'document_search',
+        { query, limit: 5 },
+        documentToolContext(agent),
+      );
       spinner.stop();
 
       const firstResultLine = (result || '').split('\n')[0];
       const searchPayload = result ? String(result) : '';
-      const truncatedSearch = searchPayload.length > 8000 ? searchPayload.slice(0, 8000) + '\n...[truncated]' : searchPayload;
+      const truncatedSearch =
+        searchPayload.length > 8000
+          ? searchPayload.slice(0, 8000) + '\n...[truncated]'
+          : searchPayload;
       if (showRaw) {
         console.log(enhancedUI.theme.dim(firstResultLine));
       }
@@ -290,8 +303,15 @@ export async function handleDocumentCommand(agent, argsText = '') {
           const refineSpinner = enhancedUI.spinner('Refining answer...');
           refineSpinner.start();
           const refineMessages = [
-            { role: 'system', content: 'You are a precise document analyst. Based on the user question and search results, extract a concise answer. Use the user\'s language. If insufficient info, say so.' },
-            { role: 'user', content: 'Question: ' + query + '\n\nSearch results:\n' + truncatedSearch }
+            {
+              role: 'system',
+              content:
+                "You are a precise document analyst. Based on the user question and search results, extract a concise answer. Use the user's language. If insufficient info, say so.",
+            },
+            {
+              role: 'user',
+              content: 'Question: ' + query + '\n\nSearch results:\n' + truncatedSearch,
+            },
           ];
           const refineResponse = await agent.modelProvider.chat(refineMessages, { maxTokens: 500 });
           refineSpinner.stop();
@@ -299,7 +319,9 @@ export async function handleDocumentCommand(agent, argsText = '') {
           answerText = refineResponse.text || String(refineResponse);
           try {
             const parsed = JSON.parse(answerText);
-            if (parsed?.action?.done?.text) { answerText = parsed.action.done.text; }
+            if (parsed?.action?.done?.text) {
+              answerText = parsed.action.done.text;
+            }
           } catch {
             // Keep the raw answer text when it is not JSON.
           }
@@ -335,7 +357,9 @@ export async function handleDocumentCommand(agent, argsText = '') {
       const result = await toolRegistry.execute('document_list', {}, documentToolContext(agent));
       console.log(enhancedUI.createHeader('Indexed Documents'));
       if (!result.documents?.length) {
-        enhancedUI.info('No documents are indexed yet. Use /doc add <path-or-url> or reference one with @path.');
+        enhancedUI.info(
+          'No documents are indexed yet. Use /doc add <path-or-url> or reference one with @path.',
+        );
         return;
       }
       for (const doc of result.documents) {
@@ -353,9 +377,13 @@ export async function handleDocumentCommand(agent, argsText = '') {
   if (['clear', 'remove', 'rm'].includes(subcommand)) {
     const documentId = restText ? stripWrappingQuotes(restText) : undefined;
     try {
-      const result = await toolRegistry.execute('document_clear', {
-        document_id: documentId,
-      }, documentToolContext(agent));
+      const result = await toolRegistry.execute(
+        'document_clear',
+        {
+          document_id: documentId,
+        },
+        documentToolContext(agent),
+      );
       const target = documentId ? `document ${documentId}` : 'all documents';
       if (result?.success) {
         enhancedUI.success(`Cleared ${target}. Removed: ${result.removed}`);
@@ -406,7 +434,9 @@ async function handleDocumentInitCommand() {
     try {
       prepared = await embedder.prepareModel({
         onDownloadProbeStart: ({ candidates, timeoutMs }) => {
-          console.log(`  checking ${candidates.length} download candidate${candidates.length === 1 ? '' : 's'}...`);
+          console.log(
+            `  checking ${candidates.length} download candidate${candidates.length === 1 ? '' : 's'}...`,
+          );
           console.log(`  probe timeout: ${timeoutMs}ms`);
         },
         onDownloadProbeResult: ({ url, available, durationMs, totalBytes, error }) => {
@@ -439,7 +469,9 @@ async function handleDocumentInitCommand() {
           lastProgressBytes = downloadedBytes;
           lastProgressAt = now;
           const totalText = totalBytes ? ` / ${formatBytes(totalBytes)}` : '';
-          const percentText = totalBytes ? ` (${Math.min(100, (downloadedBytes / totalBytes) * 100).toFixed(1)}%)` : '';
+          const percentText = totalBytes
+            ? ` (${Math.min(100, (downloadedBytes / totalBytes) * 100).toFixed(1)}%)`
+            : '';
           console.log(`  progress: ${formatBytes(downloadedBytes)}${totalText}${percentText}`);
         },
         onDownloadComplete: ({ bytes }) => {
@@ -489,7 +521,9 @@ async function handleDocumentInitCommand() {
     enhancedUI.success('Document RAG will use ONNX embeddings.');
   } else {
     enhancedUI.warning('Document RAG will use the local fallback embedder.');
-    enhancedUI.info('This is usable, but semantic ranking may be less precise than ONNX embeddings.');
+    enhancedUI.info(
+      'This is usable, but semantic ranking may be less precise than ONNX embeddings.',
+    );
   }
   console.log('');
 }
@@ -569,7 +603,9 @@ async function handleDebugCommand(agent, argsText) {
 // ---------------------------------------------------------------------------
 
 export function showMemoryContext(agent, argsText = '') {
-  const mode = String(argsText || '').trim().toLowerCase();
+  const mode = String(argsText || '')
+    .trim()
+    .toLowerCase();
   const memoryManager = agent.engine?.getMemoryManager();
   if (!memoryManager) {
     enhancedUI.error('Project memory is not initialized');
@@ -633,7 +669,9 @@ export function showMemoryContext(agent, argsText = '') {
 
   console.log('');
   console.log(`Sessions: ${sessions.length}`);
-  console.log(enhancedUI.theme.dim('Use /memory full to print the full CONTEXT.md representation.'));
+  console.log(
+    enhancedUI.theme.dim('Use /memory full to print the full CONTEXT.md representation.'),
+  );
   console.log('');
 }
 
@@ -742,7 +780,9 @@ export async function processAgentInput(agent, input) {
     } else if (result?.answer) {
       enhancedUI.finalAnswer(result.answer);
     } else if (result?.status === 'max_iterations') {
-      enhancedUI.warning('Agent stopped after reaching the maximum iteration limit without a final answer.');
+      enhancedUI.warning(
+        'Agent stopped after reaching the maximum iteration limit without a final answer.',
+      );
     }
   } catch (error) {
     spinner.stop();
@@ -763,11 +803,17 @@ async function prepareDocumentReferences(agent, input) {
 
   const toolRegistry = agent.toolRegistry;
   const indexed = [];
-  const spinner = enhancedUI.spinner(`Indexing ${refs.length} referenced document${refs.length === 1 ? '' : 's'}...`);
+  const spinner = enhancedUI.spinner(
+    `Indexing ${refs.length} referenced document${refs.length === 1 ? '' : 's'}...`,
+  );
   spinner.start();
   for (const source of refs) {
     try {
-      const result = await toolRegistry.execute('document_add', { source }, documentToolContext(agent));
+      const result = await toolRegistry.execute(
+        'document_add',
+        { source },
+        documentToolContext(agent),
+      );
       if (result?.success) {
         indexed.push(result);
       }
@@ -787,9 +833,7 @@ async function prepareDocumentReferences(agent, input) {
     enhancedUI.info(`Indexed @ document: ${doc.title} (${doc.id})`);
   }
 
-  const docSummary = indexed
-    .map(doc => `${doc.title} (${doc.id})`)
-    .join(', ');
+  const docSummary = indexed.map((doc) => `${doc.title} (${doc.id})`).join(', ');
   return `${input}\n\n[Document references indexed for this turn: ${docSummary}. Use document_search for questions that need details from them.]`;
 }
 
@@ -825,8 +869,9 @@ async function processSlashToolCommand(agent, input) {
     return true;
   }
 
-  const missing = getToolRequiredParams(tool)
-    .filter(paramName => parsed.args[paramName] === undefined || parsed.args[paramName] === '');
+  const missing = getToolRequiredParams(tool).filter(
+    (paramName) => parsed.args[paramName] === undefined || parsed.args[paramName] === '',
+  );
   if (missing.length > 0) {
     enhancedUI.warning(`Missing required argument(s): ${missing.join(', ')}`);
     showSlashToolHelp(agent, rawName, tool);
@@ -858,7 +903,9 @@ async function processSlashToolCommand(agent, input) {
 // ---------------------------------------------------------------------------
 
 export function showCommandHelp(agent, commandText = '') {
-  const normalized = String(commandText || '').trim().replace(/^\//, '');
+  const normalized = String(commandText || '')
+    .trim()
+    .replace(/^\//, '');
   if (!normalized) {
     agent.commands.showHelp();
     return;
@@ -917,11 +964,13 @@ export function showBuiltInCommandHelp(commandName) {
 function showSlashSkillList(agent) {
   const tools = agent.toolRegistry?.getAll() || [];
   const skillTools = tools
-    .filter(tool => [
-      ToolCategory.SKILL_ENGINEERING,
-      ToolCategory.SKILL_PRODUCTIVITY,
-      ToolCategory.SKILL_OUTPUT,
-    ].includes(tool.category))
+    .filter((tool) =>
+      [
+        ToolCategory.SKILL_ENGINEERING,
+        ToolCategory.SKILL_PRODUCTIVITY,
+        ToolCategory.SKILL_OUTPUT,
+      ].includes(tool.category),
+    )
     .sort((a, b) => a.name.localeCompare(b.name));
 
   console.log(enhancedUI.createHeader('Slash Skill Commands'));
@@ -932,12 +981,17 @@ function showSlashSkillList(agent) {
 
   for (const tool of skillTools) {
     const slashName = `/${tool.name.replace(/_/g, '-')}`;
-    const description = String(tool.description || '').split(/\s+/).slice(0, 18).join(' ');
+    const description = String(tool.description || '')
+      .split(/\s+/)
+      .slice(0, 18)
+      .join(' ');
     console.log(`${slashName.padEnd(14)} ${description}${description ? '...' : ''}`);
   }
   console.log('');
   console.log('Use /help <command> or /<command> --help for details and examples.');
-  console.log('Natural language also works: the agent can choose these methodology tools automatically when they fit the task.');
+  console.log(
+    'Natural language also works: the agent can choose these methodology tools automatically when they fit the task.',
+  );
   console.log('');
 }
 
@@ -984,11 +1038,12 @@ function formatSlashToolUsage(rawName, tool) {
   const params = tool.params || tool.parameters?.properties || {};
   const required = getToolRequiredParams(tool);
   const parts = [];
-  const orderedEntries = tool.name === 'tdd'
-    ? ['phase', 'component', 'spec', 'test_file', 'source_file']
-      .filter(name => params[name])
-      .map(name => [name, params[name]])
-    : Object.entries(params);
+  const orderedEntries =
+    tool.name === 'tdd'
+      ? ['phase', 'component', 'spec', 'test_file', 'source_file']
+          .filter((name) => params[name])
+          .map((name) => [name, params[name]])
+      : Object.entries(params);
 
   for (const [name, schema] of orderedEntries) {
     const value = schema.enum ? `<${schema.enum.join('|')}>` : '<value>';
@@ -1036,30 +1091,22 @@ function getSlashToolExamples(rawName, tool) {
       '/architect scope="CLI command routing"',
       '/architect scope="agent context management" pain_points="duplicated help,hidden defaults"',
     ],
-    diagnose: [
-      '/diagnose symptom="slash command output hides whether it executed"',
-    ],
+    diagnose: ['/diagnose symptom="slash command output hides whether it executed"'],
     verify: [
       '/verify claim="CLI command help works" criteria="help output shown,no LLM request,test passes" evidence="bun test-integration.mjs passed"',
     ],
-    'zoom-out': [
-      '/zoom-out proposed_change="add another hardcoded command router branch"',
-    ],
+    'zoom-out': ['/zoom-out proposed_change="add another hardcoded command router branch"'],
     caveman: [
       '/caveman mode=simplify content="The system dynamically orchestrates tool affordances"',
     ],
     handoff: [
       '/handoff session_summary="Implemented CLI command help" next_steps="review remaining built-in commands"',
     ],
-    'to-prd': [
-      '/to-prd title="Command Help" context="Users do not know what slash commands do"',
-    ],
+    'to-prd': ['/to-prd title="Command Help" context="Users do not know what slash commands do"'],
     'to-issues': [
       '/to-issues plan="Add command registry, help output, and tests" granularity=medium',
     ],
-    setup: [
-      '/setup project_name="AI Engineering Agent" project_type=cli',
-    ],
+    setup: ['/setup project_name="AI Engineering Agent" project_type=cli'],
   };
 
   if (examplesByTool[rawName]) {
@@ -1070,7 +1117,7 @@ function getSlashToolExamples(rawName, tool) {
   if (required.length === 0) {
     return [`/${rawName} --help`];
   }
-  return [`/${rawName} ${required.map(name => `${name}="value"`).join(' ')}`];
+  return [`/${rawName} ${required.map((name) => `${name}="value"`).join(' ')}`];
 }
 
 // ---------------------------------------------------------------------------
@@ -1148,15 +1195,25 @@ function parseTddShorthand(text) {
 }
 
 function coerceSlashValue(value) {
-  if (value === 'true') { return true; }
-  if (value === 'false') { return false; }
-  if (value === 'null') { return null; }
-  if (/^-?\d+(?:\.\d+)?$/.test(value)) { return Number(value); }
+  if (value === 'true') {
+    return true;
+  }
+  if (value === 'false') {
+    return false;
+  }
+  if (value === 'null') {
+    return null;
+  }
+  if (/^-?\d+(?:\.\d+)?$/.test(value)) {
+    return Number(value);
+  }
   return value;
 }
 
 function getToolRequiredParams(tool) {
-  return tool.required || (tool.parameters && tool.parameters.required ? tool.parameters.required : []);
+  return (
+    tool.required || (tool.parameters && tool.parameters.required ? tool.parameters.required : [])
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1185,15 +1242,17 @@ async function handleWorkspaceCommand(agent, argsText) {
     return;
   }
 
-  console.log(enhancedUI.createHeader(`Workspace: ${result.root}${result.path ? '/' + result.path : ''}`));
+  console.log(
+    enhancedUI.createHeader(`Workspace: ${result.root}${result.path ? '/' + result.path : ''}`),
+  );
 
   if (result.entries.length === 0) {
     enhancedUI.info('目录为空');
     return;
   }
 
-  const directories = result.entries.filter(e => e.type === 'directory');
-  const files = result.entries.filter(e => e.type === 'file');
+  const directories = result.entries.filter((e) => e.type === 'directory');
+  const files = result.entries.filter((e) => e.type === 'file');
 
   if (directories.length > 0) {
     console.log(enhancedUI.theme.primaryBold('  Directories:'));
@@ -1209,7 +1268,8 @@ async function handleWorkspaceCommand(agent, argsText) {
   if (files.length > 0) {
     console.log(enhancedUI.theme.primaryBold('  Files:'));
     for (const file of files.slice(0, 20)) {
-      const sizeStr = file.size > 0 ? enhancedUI.theme.dim(` (${(file.size / 1024).toFixed(1)}KB)`) : '';
+      const sizeStr =
+        file.size > 0 ? enhancedUI.theme.dim(` (${(file.size / 1024).toFixed(1)}KB)`) : '';
       console.log(`    📄 ${file.name}${sizeStr}`);
     }
     if (files.length > 20) {
@@ -1218,7 +1278,9 @@ async function handleWorkspaceCommand(agent, argsText) {
   }
 
   if (result.truncated) {
-    console.log(enhancedUI.theme.dim(`\n  (显示前 ${result.entries.length} 项，共 ${result.total} 项)`));
+    console.log(
+      enhancedUI.theme.dim(`\n  (显示前 ${result.entries.length} 项，共 ${result.total} 项)`),
+    );
   }
   console.log('');
 }
@@ -1230,7 +1292,8 @@ async function handleWorkspaceCommand(agent, argsText) {
 async function handleSessionCommand(agent, argsText) {
   const subcommand = (argsText || '').trim().toLowerCase().split(/\s+/)[0] || 'list';
 
-  const { createFileSystemStorageAdapter, getAgentSessionTitle } = await import('../core/session-store.js');
+  const { createFileSystemStorageAdapter, getAgentSessionTitle } =
+    await import('../core/session-store.js');
   const { getUserConfigDir } = await import('../core/runtime-config.js');
   const fs = await import('fs');
   const path = await import('path');

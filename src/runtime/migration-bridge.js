@@ -1,7 +1,7 @@
 /**
  * Migration Bridge - 迁移桥接层
  * 提供旧 API 到新 API 的映射，支持渐进式迁移
- * 
+ *
  * 功能：
  * - 旧 API 到新 API 的完整映射
  * - 运行时架构切换
@@ -45,12 +45,12 @@ export function detectPlatform() {
   if (process.versions?.electron) {
     return PlatformType.DESKTOP;
   }
-  
+
   // 检测 Web 环境（浏览器）
   if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     return PlatformType.WEB;
   }
-  
+
   // 默认为 CLI 环境
   return PlatformType.CLI;
 }
@@ -85,7 +85,7 @@ export class MigrationBridge {
         workingDirectory: process.env.WORKING_DIRECTORY || process.cwd(),
         debug: process.env.DEBUG === 'true',
         maxIterations: parseInt(process.env.MAX_ITERATIONS) || MAX_ITERATIONS_DEFAULT,
-        autoDownloadModels: process.env.AUTO_DOWNLOAD_MODELS !== 'false'
+        autoDownloadModels: process.env.AUTO_DOWNLOAD_MODELS !== 'false',
       });
       await this.#engine.initialize();
       console.log('✅ 新架构已就绪');
@@ -101,20 +101,20 @@ export class MigrationBridge {
    */
   async #initializeOldArchitecture() {
     const workingDir = process.env.WORKING_DIRECTORY || process.cwd();
-    
+
     // 初始化旧架构组件
     this.#oldComponents.toolRegistry = new ToolRegistry();
     this.#oldComponents.memoryManager = new MemoryManager(workingDir);
     this.#oldComponents.securityPolicy = new SecurityPolicy();
     this.#oldComponents.sessionManager = new SessionManager();
     this.#oldComponents.tokenJuice = new TokenJuice({
-      maxChars: parseInt(process.env.MAX_RESULT_CHARS || '4000')
+      maxChars: parseInt(process.env.MAX_RESULT_CHARS || '4000'),
     });
     this.#oldComponents.experienceMemory = new ExperienceMemory({
       filePath: workingDir + '/.agent-data/experience-memory.json',
-      maxExperiences: 500
+      maxExperiences: 500,
     });
-    
+
     await this.#oldComponents.memoryManager.load();
   }
 
@@ -168,11 +168,11 @@ export class MigrationBridge {
         config: () => this.#engine?.getConfig(),
         state: () => this.#engine?.getState(),
       };
-      
+
       const getter = newArchMap[componentName];
       return getter ? getter() : this.#oldComponents[componentName];
     }
-    
+
     return this.#oldComponents[componentName];
   }
 
@@ -197,20 +197,20 @@ export class MigrationBridge {
     if (this.#useNewArch === useNewArch) {
       return;
     }
-    
+
     console.log(`🔄 切换到 ${useNewArch ? '新' : '旧'}架构...`);
-    
+
     // 清理当前架构
     if (this.#engine) {
       await this.#engine.dispose();
       this.#engine = null;
     }
-    
+
     // 清理旧组件
     this.#oldComponents = {};
-    
+
     this.#useNewArch = useNewArch;
-    
+
     // 重新初始化
     await this.initialize();
   }
@@ -224,24 +224,25 @@ export class MigrationBridge {
       this.#engine.attachModelProvider(modelProvider);
       return this.#engine;
     }
-    
+
     // 旧架构：创建 ReActAgent
     const agent = new ReActAgent(
       modelProvider,
       this.#oldComponents.toolRegistry,
       this.#oldComponents.memoryManager,
       {
-        maxIterations: options.maxIterations || parseInt(process.env.MAX_ITERATIONS) || MAX_ITERATIONS_DEFAULT,
+        maxIterations:
+          options.maxIterations || parseInt(process.env.MAX_ITERATIONS) || MAX_ITERATIONS_DEFAULT,
         workingDirectory: options.workingDirectory || process.cwd(),
         debug: options.debug || process.env.DEBUG === 'true',
         securityPolicy: this.#oldComponents.securityPolicy,
         tokenJuice: this.#oldComponents.tokenJuice,
         model: options.model,
-        intentClassification: options.intentClassification !== false
+        intentClassification: options.intentClassification !== false,
       },
-      options.ui
+      options.ui,
     );
-    
+
     this.#oldComponents.agent = agent;
     return agent;
   }
@@ -253,12 +254,12 @@ export class MigrationBridge {
     if (this.#useNewArch) {
       return await this.#engine.processInput(input, options);
     }
-    
+
     const agent = this.#oldComponents.agent;
     if (!agent) {
       throw new Error('Agent 未创建，请先调用 createAgent()');
     }
-    
+
     return await agent.run(input);
   }
 
@@ -267,38 +268,43 @@ export class MigrationBridge {
    */
   createModelProvider(provider, config = {}) {
     const providerMap = {
-      openai: () => new OpenAIModelProvider(
-        config.apiKey || process.env.OPENAI_API_KEY,
-        config.baseUrl || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-        config.model || process.env.OPENAI_MODEL || 'gpt-4',
-        config.debug || false
-      ),
-      llama: () => new LlamaModelProvider(
-        config.model || 'llama-2-7b',
-        { temperature: config.temperature || 0.7, debug: config.debug }
-      ),
-      zhipu: () => new ZhipuModelProvider(
-        config.apiKey || process.env.ZHIPU_API_KEY,
-        config.baseUrl || process.env.ZHIPU_BASE_URL,
-        config.model || 'glm-4'
-      ),
-      deepseek: () => new DeepSeekModelProvider(
-        config.apiKey || process.env.DEEPSEEK_API_KEY,
-        config.baseUrl || process.env.DEEPSEEK_BASE_URL,
-        config.model || 'deepseek-chat'
-      ),
-      openrouter: () => new OpenRouterModelProvider(
-        config.apiKey || process.env.OPENROUTER_API_KEY,
-        config.baseUrl || process.env.OPENROUTER_BASE_URL,
-        config.model || 'openai/gpt-4'
-      )
+      openai: () =>
+        new OpenAIModelProvider(
+          config.apiKey || process.env.OPENAI_API_KEY,
+          config.baseUrl || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+          config.model || process.env.OPENAI_MODEL || 'gpt-4',
+          config.debug || false,
+        ),
+      llama: () =>
+        new LlamaModelProvider(config.model || 'llama-2-7b', {
+          temperature: config.temperature || 0.7,
+          debug: config.debug,
+        }),
+      zhipu: () =>
+        new ZhipuModelProvider(
+          config.apiKey || process.env.ZHIPU_API_KEY,
+          config.baseUrl || process.env.ZHIPU_BASE_URL,
+          config.model || 'glm-4',
+        ),
+      deepseek: () =>
+        new DeepSeekModelProvider(
+          config.apiKey || process.env.DEEPSEEK_API_KEY,
+          config.baseUrl || process.env.DEEPSEEK_BASE_URL,
+          config.model || 'deepseek-chat',
+        ),
+      openrouter: () =>
+        new OpenRouterModelProvider(
+          config.apiKey || process.env.OPENROUTER_API_KEY,
+          config.baseUrl || process.env.OPENROUTER_BASE_URL,
+          config.model || 'openai/gpt-4',
+        ),
     };
-    
+
     const factory = providerMap[provider.toLowerCase()];
     if (!factory) {
       throw new Error(`未知的模型提供者: ${provider}`);
     }
-    
+
     return factory();
   }
 
@@ -353,7 +359,7 @@ export class MigrationBridge {
       parameters: oldTool.parameters || oldTool.params || {},
       required: oldTool.required || [],
       handler: oldTool.handler || oldTool.execute,
-      metadata: oldTool.metadata || {}
+      metadata: oldTool.metadata || {},
     };
   }
 
@@ -370,7 +376,7 @@ export class MigrationBridge {
       modelProvider: oldConfig.modelProvider,
       model: oldConfig.model,
       intentClassification: oldConfig.intentClassification !== false,
-      requireApproval: oldConfig.requireApproval || false
+      requireApproval: oldConfig.requireApproval || false,
     });
   }
 
@@ -405,7 +411,7 @@ export class MigrationBridge {
       engineAvailable: !!this.#engine,
       oldComponents: Object.keys(this.#oldComponents),
       progress: this.#progress.getProgress(),
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 
@@ -445,7 +451,7 @@ export class MigrationProgress {
       status: 'pending',
       startTime: null,
       endTime: null,
-      error: null
+      error: null,
     });
     this.#total++;
     return this.#tasks.length - 1; // 返回任务索引
@@ -490,17 +496,17 @@ export class MigrationProgress {
     return {
       total: this.#total,
       completed: this.#completed,
-      failed: this.#tasks.filter(t => t.status === 'failed').length,
-      pending: this.#tasks.filter(t => t.status === 'pending').length,
-      inProgress: this.#tasks.filter(t => t.status === 'in_progress').length,
+      failed: this.#tasks.filter((t) => t.status === 'failed').length,
+      pending: this.#tasks.filter((t) => t.status === 'pending').length,
+      inProgress: this.#tasks.filter((t) => t.status === 'in_progress').length,
       percentage: this.#total > 0 ? Math.round((this.#completed / this.#total) * 100) : 0,
-      tasks: this.#tasks.map(t => ({
+      tasks: this.#tasks.map((t) => ({
         name: t.name,
         description: t.description,
         status: t.status,
         duration: t.startTime && t.endTime ? t.endTime - t.startTime : null,
-        error: t.error
-      }))
+        error: t.error,
+      })),
     };
   }
 
@@ -520,128 +526,128 @@ export class MigrationProgress {
  */
 export function createCompatibilityLayer(options = {}) {
   const bridge = new MigrationBridge(options);
-  
+
   return {
     bridge,
-    
+
     /**
      * 初始化
      */
     async initialize() {
       await bridge.initialize();
     },
-    
+
     /**
      * 获取工具注册表
      */
     getToolRegistry() {
       return bridge.getComponent('toolRegistry');
     },
-    
+
     /**
      * 获取内存管理器
      */
     getMemoryManager() {
       return bridge.getComponent('memoryManager');
     },
-    
+
     /**
      * 获取安全策略
      */
     getSecurityPolicy() {
       return bridge.getComponent('securityPolicy');
     },
-    
+
     /**
      * 获取插件管理器（仅新架构）
      */
     getPluginManager() {
       return bridge.getComponent('pluginManager');
     },
-    
+
     /**
      * 获取事件总线（仅新架构）
      */
     getEventBus() {
       return bridge.getComponent('eventBus');
     },
-    
+
     /**
      * 获取调度器引擎（仅新架构）
      */
     getSchedulerEngine() {
       return bridge.getComponent('schedulerEngine');
     },
-    
+
     /**
      * 获取 MCP 客户端（仅新架构）
      */
     getMcpClient() {
       return bridge.getComponent('mcpClient');
     },
-    
+
     /**
      * 注册工具
      */
     registerTool(tool) {
       bridge.registerTool(tool);
     },
-    
+
     /**
      * 注册多个工具
      */
     registerTools(tools) {
       bridge.registerTools(tools);
     },
-    
+
     /**
      * 获取所有工具
      */
     getTools() {
       return bridge.getTools();
     },
-    
+
     /**
      * 创建 Agent
      */
     async createAgent(modelProvider, options = {}) {
       return await bridge.createAgent(modelProvider, options);
     },
-    
+
     /**
      * 运行 Agent
      */
     async runAgent(input, options = {}) {
       return await bridge.runAgent(input, options);
     },
-    
+
     /**
      * 检查是否使用新架构
      */
     isUsingNewArchitecture() {
       return bridge.isUsingNewArchitecture();
     },
-    
+
     /**
      * 切换架构
      */
     async toggleArchitecture(useNewArch) {
       await bridge.toggleArchitecture(useNewArch);
     },
-    
+
     /**
      * 获取状态报告
      */
     getStatusReport() {
       return bridge.getStatusReport();
     },
-    
+
     /**
      * 销毁
      */
     async dispose() {
       await bridge.dispose();
-    }
+    },
   };
 }
 
@@ -656,31 +662,31 @@ export const API_MAPPING = {
   'ReActAgent.setDebugMode': 'AgentEngine.setDebugMode',
   'ReActAgent.getTools': 'AgentEngine.getTools',
   'ReActAgent.memoryManager': 'AgentEngine.getMemoryManager',
-  
+
   // 工具相关
   'ToolRegistry.register': 'AgentEngine.registerTool',
   'ToolRegistry.get': 'AgentEngine.getToolRegistry().get',
   'ToolRegistry.getAll': 'AgentEngine.getTools',
   'ToolRegistry.has': 'AgentEngine.getToolRegistry().has',
   'ToolRegistry.execute': 'AgentEngine.getToolRegistry().execute',
-  
+
   // 内存相关
   'MemoryManager.load': 'AgentEngine.getMemoryManager().load',
   'MemoryManager.save': 'AgentEngine.getMemoryManager().save',
   'MemoryManager.updateTask': 'AgentEngine.getMemoryManager().updateTask',
   'MemoryManager.addDecision': 'AgentEngine.getMemoryManager().addDecision',
-  
+
   // 安全相关
   'SecurityPolicy.registerPolicy': 'AgentEngine.getSecurityPolicy().registerPolicy',
   'SecurityPolicy.requiresApproval': 'AgentEngine.getSecurityPolicy().requiresApproval',
-  
+
   // 新架构独有 API
   'PluginManager.register': 'AgentEngine.registerPlugin',
   'PluginManager.unregister': 'AgentEngine.unregisterPlugin',
   'EventBus.subscribe': 'AgentEngine.getEventBus().subscribe',
   'EventBus.emit': 'AgentEngine.getEventBus().emit',
   'SchedulerEngine.schedule': 'AgentEngine.getSchedulerEngine().schedule',
-  'MCPClient.connect': 'AgentEngine.connectMcpServer'
+  'MCPClient.connect': 'AgentEngine.connectMcpServer',
 };
 
 /**
@@ -707,5 +713,5 @@ export default {
   migrateTool: (oldTool) => new MigrationBridge().migrateTool(oldTool),
   getApiMapping,
   getAllApiMappings,
-  API_MAPPING
+  API_MAPPING,
 };

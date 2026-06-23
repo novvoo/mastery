@@ -83,31 +83,41 @@ export const SEMANTIC_RISK_DOMAINS = [
   {
     id: 'units_timing',
     label: 'units/time/animation semantics',
-    pattern: /时间|速度|帧|毫秒|秒|定时|计时|循环|动画|游戏|物理|实时|fps|frame|clock|tick|speed|interval|timeout|timer|animation|game|physics|realtime|real-time/i,
-    checklist: 'track units in variable names and API arguments; separate render FPS from simulation/update intervals; verify user-visible timing or movement behavior',
+    pattern:
+      /时间|速度|帧|毫秒|秒|定时|计时|循环|动画|游戏|物理|实时|fps|frame|clock|tick|speed|interval|timeout|timer|animation|game|physics|realtime|real-time/i,
+    checklist:
+      'track units in variable names and API arguments; separate render FPS from simulation/update intervals; verify user-visible timing or movement behavior',
   },
   {
     id: 'api_semantics',
     label: 'third-party API semantics',
-    pattern: /api|sdk|库|框架|pygame|three\.js|react|vue|express|fastapi|requestanimationframe|setinterval|settimeout|websocket|http|fetch/i,
-    checklist: 'confirm parameter meanings, return values, lifecycle constraints, and error behavior before treating a call as correct',
+    pattern:
+      /api|sdk|库|框架|pygame|three\.js|react|vue|express|fastapi|requestanimationframe|setinterval|settimeout|websocket|http|fetch/i,
+    checklist:
+      'confirm parameter meanings, return values, lifecycle constraints, and error behavior before treating a call as correct',
   },
   {
     id: 'state_transitions',
     label: 'state transition invariants',
-    pattern: /状态|状态机|胜负|分数|移动|碰撞|合并|撤销|重试|缓存|session|state|fsm|transition|score|collision|merge|retry|cache/i,
-    checklist: 'verify state invariants, edge transitions, reset behavior, and repeated-action behavior',
+    pattern:
+      /状态|状态机|胜负|分数|移动|碰撞|合并|撤销|重试|缓存|session|state|fsm|transition|score|collision|merge|retry|cache/i,
+    checklist:
+      'verify state invariants, edge transitions, reset behavior, and repeated-action behavior',
   },
   {
     id: 'concurrency_io',
     label: 'async/concurrency/io semantics',
-    pattern: /并发|异步|队列|锁|流|文件|网络|超时|重试|async|await|promise|concurrent|parallel|queue|lock|stream|file|network|timeout|retry/i,
-    checklist: 'check ordering, cancellation, timeout/retry behavior, idempotency, and partial failure handling',
+    pattern:
+      /并发|异步|队列|锁|流|文件|网络|超时|重试|async|await|promise|concurrent|parallel|queue|lock|stream|file|network|timeout|retry/i,
+    checklist:
+      'check ordering, cancellation, timeout/retry behavior, idempotency, and partial failure handling',
   },
   {
     id: 'security_boundary',
     label: 'security/input boundary semantics',
-    pattern: /安全|权限|认证|登录|密钥|token|注入|沙箱|secret|password|auth|permission|sanitize|injection|sandbox|xss|csrf/i,
-    checklist: 'validate trust boundaries, secrets handling, escaping/sanitization, and permission checks',
+    pattern:
+      /安全|权限|认证|登录|密钥|token|注入|沙箱|secret|password|auth|permission|sanitize|injection|sandbox|xss|csrf/i,
+    checklist:
+      'validate trust boundaries, secrets handling, escaping/sanitization, and permission checks',
   },
 ];

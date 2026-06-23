@@ -95,8 +95,8 @@ export class MemoryAudit {
     if (detectStale && entries.length > 0) {
       const gitStaleIds = this._detectGitDiffStale(entries);
       for (const id of gitStaleIds) {
-        if (!report.staleEntries.find(s => s.id === id)) {
-          const entry = entries.find(e => e.id === id);
+        if (!report.staleEntries.find((s) => s.id === id)) {
+          const entry = entries.find((e) => e.id === id);
           report.staleEntries.push({
             id,
             title: entry?.title || 'unknown',
@@ -177,9 +177,13 @@ export class MemoryAudit {
     // 8) 统计记忆目录磁盘使用量
     report.diskUsage = this._getDiskUsage();
 
-    this.logger(`\n📊 Audit Summary: ${report.summary.total} total, ${report.summary.valid} valid, ${report.summary.stale} stale, ${report.summary.conflicting} conflicts, ${report.summary.duplicate} duplicates`);
+    this.logger(
+      `\n📊 Audit Summary: ${report.summary.total} total, ${report.summary.valid} valid, ${report.summary.stale} stale, ${report.summary.conflicting} conflicts, ${report.summary.duplicate} duplicates`,
+    );
     if (report.diskUsage) {
-      this.logger(`💾 Disk usage: ${this._formatSize(report.diskUsage.totalBytes)} (${report.diskUsage.fileCount} files)`);
+      this.logger(
+        `💾 Disk usage: ${this._formatSize(report.diskUsage.totalBytes)} (${report.diskUsage.fileCount} files)`,
+      );
     }
 
     this.lastReport = report;
@@ -192,7 +196,9 @@ export class MemoryAudit {
    */
   getHealthScore() {
     const report = this.lastReport;
-    if (!report) {return { score: 100, grade: 'A', issues: [] };}
+    if (!report) {
+      return { score: 100, grade: 'A', issues: [] };
+    }
 
     const { summary } = report;
     const total = summary.total || 1;
@@ -201,14 +207,26 @@ export class MemoryAudit {
     const duplicatePenalty = (summary.duplicate / total) * 15;
     const expiredPenalty = (summary.expired / total) * 10;
 
-    const score = Math.max(0, Math.round(100 - stalePenalty - conflictPenalty - duplicatePenalty - expiredPenalty));
-    const grade = score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : score >= 40 ? 'D' : 'F';
+    const score = Math.max(
+      0,
+      Math.round(100 - stalePenalty - conflictPenalty - duplicatePenalty - expiredPenalty),
+    );
+    const grade =
+      score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : score >= 40 ? 'D' : 'F';
 
     const issues = [];
-    if (summary.stale > 0) {issues.push(`${summary.stale} stale entries`);}
-    if (summary.conflicting > 0) {issues.push(`${summary.conflicting} contradictions`);}
-    if (summary.duplicate > 0) {issues.push(`${summary.duplicate} duplicates`);}
-    if (summary.expired > 0) {issues.push(`${summary.expired} expired entries`);}
+    if (summary.stale > 0) {
+      issues.push(`${summary.stale} stale entries`);
+    }
+    if (summary.conflicting > 0) {
+      issues.push(`${summary.conflicting} contradictions`);
+    }
+    if (summary.duplicate > 0) {
+      issues.push(`${summary.duplicate} duplicates`);
+    }
+    if (summary.expired > 0) {
+      issues.push(`${summary.expired} expired entries`);
+    }
 
     return { score, grade, issues };
   }
@@ -219,13 +237,16 @@ export class MemoryAudit {
    */
   generateMarkdownReport() {
     const report = this.lastReport;
-    if (!report) {return '# Memory Audit Report\n\nNo audit has been run yet.';}
+    if (!report) {
+      return '# Memory Audit Report\n\nNo audit has been run yet.';
+    }
 
     const health = this.getHealthScore();
     const healthBar = this._renderHealthBar(health.score);
-    const validPct = report.summary.total > 0
-      ? ((report.summary.valid || 0) / report.summary.total * 100).toFixed(1)
-      : '100.0';
+    const validPct =
+      report.summary.total > 0
+        ? (((report.summary.valid || 0) / report.summary.total) * 100).toFixed(1)
+        : '100.0';
 
     const lines = [
       '# 📋 Memory Audit Report',
@@ -246,15 +267,17 @@ export class MemoryAudit {
       `|--------|-------|---|--------|`,
       `| Total | ${report.summary.total} | 100% | 📊 |`,
       `| Valid | ${report.summary.valid} | ${validPct}% | ✅ |`,
-      `| Stale | ${report.summary.stale} | ${(report.summary.stale / Math.max(1, report.summary.total) * 100).toFixed(1)}% | ${report.summary.stale > 0 ? '⚠️' : '✅'} |`,
-      `| Expired | ${report.summary.expired} | ${(report.summary.expired / Math.max(1, report.summary.total) * 100).toFixed(1)}% | ${report.summary.expired > 0 ? '⏰' : '✅'} |`,
-      `| Conflicting | ${report.summary.conflicting} | ${(report.summary.conflicting / Math.max(1, report.summary.total) * 100).toFixed(1)}% | ${report.summary.conflicting > 0 ? '🔴' : '✅'} |`,
-      `| Duplicates | ${report.summary.duplicate} | ${(report.summary.duplicate / Math.max(1, report.summary.total) * 100).toFixed(1)}% | ${report.summary.duplicate > 0 ? '🔄' : '✅'} |`,
+      `| Stale | ${report.summary.stale} | ${((report.summary.stale / Math.max(1, report.summary.total)) * 100).toFixed(1)}% | ${report.summary.stale > 0 ? '⚠️' : '✅'} |`,
+      `| Expired | ${report.summary.expired} | ${((report.summary.expired / Math.max(1, report.summary.total)) * 100).toFixed(1)}% | ${report.summary.expired > 0 ? '⏰' : '✅'} |`,
+      `| Conflicting | ${report.summary.conflicting} | ${((report.summary.conflicting / Math.max(1, report.summary.total)) * 100).toFixed(1)}% | ${report.summary.conflicting > 0 ? '🔴' : '✅'} |`,
+      `| Duplicates | ${report.summary.duplicate} | ${((report.summary.duplicate / Math.max(1, report.summary.total)) * 100).toFixed(1)}% | ${report.summary.duplicate > 0 ? '🔄' : '✅'} |`,
       '',
     ];
 
     if (report.diskUsage && report.diskUsage.totalBytes > 0) {
-      lines.push(`💾 **Disk:** ${this._formatSize(report.diskUsage.totalBytes)} (${report.diskUsage.fileCount} files)`);
+      lines.push(
+        `💾 **Disk:** ${this._formatSize(report.diskUsage.totalBytes)} (${report.diskUsage.fileCount} files)`,
+      );
       lines.push('');
     }
 
@@ -341,12 +364,16 @@ export class MemoryAudit {
 
     // Fallback: 从文件系统扫描 .agent-memory/entries/
     const entriesDir = join(this.workingDir, '.agent-memory', 'entries');
-    if (!existsSync(entriesDir)) {return [];}
+    if (!existsSync(entriesDir)) {
+      return [];
+    }
 
     const entries = [];
     try {
       for (const f of readdirSync(entriesDir)) {
-        if (!f.endsWith('.md')) {continue;}
+        if (!f.endsWith('.md')) {
+          continue;
+        }
         try {
           const content = readFileSync(join(entriesDir, f), 'utf-8');
           const frontmatter = this._parseFrontmatter(content);
@@ -355,24 +382,34 @@ export class MemoryAudit {
             ...frontmatter,
             content: content.replace(/^---[\s\S]*?---\s*/, ''),
           });
-        } catch { /* skip unreadable */ }
+        } catch {
+          /* skip unreadable */
+        }
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
     return entries;
   }
 
   _parseFrontmatter(markdown) {
     const match = markdown.match(/^---\s*\n([\s\S]*?)\n---/);
-    if (!match) {return {};}
+    if (!match) {
+      return {};
+    }
     const result = {};
     for (const line of match[1].split('\n')) {
       const colonIdx = line.indexOf(':');
       if (colonIdx >= 0) {
         const key = line.substring(0, colonIdx).trim();
         let val = line.substring(colonIdx + 1).trim();
-        if (val === 'true') {val = true;}
-        else if (val === 'false') {val = false;}
-        else if (/^\d+$/.test(val)) {val = parseInt(val, 10);}
+        if (val === 'true') {
+          val = true;
+        } else if (val === 'false') {
+          val = false;
+        } else if (/^\d+$/.test(val)) {
+          val = parseInt(val, 10);
+        }
         result[key] = val;
       }
     }
@@ -382,7 +419,9 @@ export class MemoryAudit {
   _detectGitDiffStale(entries) {
     try {
       const { changedFiles } = this.staleDetector.getChangedFiles();
-      if (!changedFiles || changedFiles.length === 0) {return [];}
+      if (!changedFiles || changedFiles.length === 0) {
+        return [];
+      }
       return this.staleDetector.findStaleMemories(changedFiles, entries);
     } catch {
       return [];
@@ -396,14 +435,20 @@ export class MemoryAudit {
     for (const d of report.details) {
       if (d.type === 'expired' && this.structuredMemory) {
         const id = d.message.replace('Expired: ', '');
-        try { this.structuredMemory.delete(id); removed.push(id); } catch {}
+        try {
+          this.structuredMemory.delete(id);
+          removed.push(id);
+        } catch {}
       }
     }
 
     // 清理重复条目
     for (const id of report.duplicateEntries) {
       if (this.structuredMemory) {
-        try { this.structuredMemory.delete(id); removed.push(id); } catch {}
+        try {
+          this.structuredMemory.delete(id);
+          removed.push(id);
+        } catch {}
       }
     }
 
@@ -415,7 +460,7 @@ export class MemoryAudit {
     recs.length = 0;
 
     const total = report.summary.total || 1;
-    const healthPct = ((report.summary.valid || 0) / total * 100).toFixed(0);
+    const healthPct = (((report.summary.valid || 0) / total) * 100).toFixed(0);
 
     if (report.summary.stale > 0) {
       recs.push({
@@ -463,7 +508,9 @@ export class MemoryAudit {
 
   _getDiskUsage() {
     const memoryDir = join(this.workingDir, '.agent-memory');
-    if (!existsSync(memoryDir)) {return { totalBytes: 0, fileCount: 0 };}
+    if (!existsSync(memoryDir)) {
+      return { totalBytes: 0, fileCount: 0 };
+    }
 
     let totalBytes = 0;
     let fileCount = 0;
@@ -486,8 +533,12 @@ export class MemoryAudit {
   }
 
   _formatSize(bytes) {
-    if (bytes < 1024) {return `${bytes} B`;}
-    if (bytes < 1024 * 1024) {return `${(bytes / 1024).toFixed(1)} KB`;}
+    if (bytes < 1024) {
+      return `${bytes} B`;
+    }
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`;
+    }
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   }
 }

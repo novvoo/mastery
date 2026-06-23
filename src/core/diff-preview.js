@@ -42,7 +42,10 @@ function _myersDiff(a, b) {
         x = V[MAX + k - 1] + 1; // 向右移动
       }
       let y = x - k;
-      while (x < N && y < M && a[x] === b[y]) { x++; y++; }
+      while (x < N && y < M && a[x] === b[y]) {
+        x++;
+        y++;
+      }
       V[MAX + k] = x;
       if (x >= N && y >= M) {
         // 回溯得到编辑脚本
@@ -62,16 +65,22 @@ function _backtrack(trace, a, b) {
     const V = trace[D];
     const MAX = a.length + b.length;
     const k = x - y;
-    const prevK = (k === -D || (k !== D && V[MAX + k - 1] < V[MAX + k + 1])) ? k + 1 : k - 1;
+    const prevK = k === -D || (k !== D && V[MAX + k - 1] < V[MAX + k + 1]) ? k + 1 : k - 1;
     const prevX = V[MAX + prevK];
     const prevY = prevX - prevK;
     // 先回溯对角线
-    while (x > prevX && y > prevY) { x--; y--; ops.push({ op: 'equal', old: a[x], new: b[y] }); }
+    while (x > prevX && y > prevY) {
+      x--;
+      y--;
+      ops.push({ op: 'equal', old: a[x], new: b[y] });
+    }
     if (D > 0) {
       if (x === prevX) {
-        y--; ops.push({ op: 'ins', old: null, new: b[y] });
+        y--;
+        ops.push({ op: 'ins', old: null, new: b[y] });
       } else {
-        x--; ops.push({ op: 'del', old: a[x], new: null });
+        x--;
+        ops.push({ op: 'del', old: a[x], new: null });
       }
     }
   }
@@ -79,16 +88,22 @@ function _backtrack(trace, a, b) {
 }
 
 function _splitLines(text) {
-  if (text == null) {return [];}
+  if (text == null) {
+    return [];
+  }
   const str = typeof text === 'string' ? text : String(text);
-  if (str.length === 0) {return [];}
+  if (str.length === 0) {
+    return [];
+  }
   // 保留换行符在行尾：按 '\n' 切分，再把 '\r' 去掉
   const parts = str.split('\n');
   const lines = [];
   for (let i = 0; i < parts.length; i++) {
     let p = parts[i];
     // 将末尾的 \r 视为换行一部分
-    if (p.endsWith('\r')) {p = p.slice(0, -1);}
+    if (p.endsWith('\r')) {
+      p = p.slice(0, -1);
+    }
     lines.push(p);
   }
   // 如果原文末有换行，split 结果会多出一个空串。去掉 trailing 空串以避免
@@ -107,23 +122,37 @@ function _buildHunks(ops, context = DEFAULT_CONTEXT) {
   let i = 0;
   while (i < ops.length) {
     // 跳过 leading equal 直到遇到非 equal
-    if (ops[i].op === 'equal') { i++; continue; }
+    if (ops[i].op === 'equal') {
+      i++;
+      continue;
+    }
     // 往前带 context 行（最多 context 行）
     let j = i;
     // 先退 context（只退 equal 段）
-    let startOld = 0, startNew = 0;
+    let startOld = 0,
+      startNew = 0;
     // 先扫描到之前，计算 old/new line 编号
     {
-      let ol = 1, nl = 1;
+      let ol = 1,
+        nl = 1;
       for (let k = 0; k < j; k++) {
-        if (ops[k].op === 'equal' || ops[k].op === 'del') {ol++;}
-        if (ops[k].op === 'equal' || ops[k].op === 'ins') {nl++;}
+        if (ops[k].op === 'equal' || ops[k].op === 'del') {
+          ol++;
+        }
+        if (ops[k].op === 'equal' || ops[k].op === 'ins') {
+          nl++;
+        }
       }
-      startOld = ol; startNew = nl;
+      startOld = ol;
+      startNew = nl;
     }
     // 带前 context
     let contextBefore = 0;
-    while (i - contextBefore - 1 >= 0 && ops[i - contextBefore - 1].op === 'equal' && contextBefore < context) {
+    while (
+      i - contextBefore - 1 >= 0 &&
+      ops[i - contextBefore - 1].op === 'equal' &&
+      contextBefore < context
+    ) {
       contextBefore++;
     }
     const hunkStart = i - contextBefore;
@@ -133,7 +162,9 @@ function _buildHunks(ops, context = DEFAULT_CONTEXT) {
     while (hunkEnd < ops.length) {
       if (ops[hunkEnd].op === 'equal') {
         gapCount++;
-        if (gapCount > 2 * context) { break; }
+        if (gapCount > 2 * context) {
+          break;
+        }
       } else {
         gapCount = 0;
       }
@@ -150,29 +181,42 @@ function _buildHunks(ops, context = DEFAULT_CONTEXT) {
 
     // 计算 hunk 的起始 old/new 编号（基于 hunkStart 前）
     {
-      let ol = 1, nl = 1;
+      let ol = 1,
+        nl = 1;
       for (let k = 0; k < hunkStart; k++) {
-        if (ops[k].op === 'equal' || ops[k].op === 'del') {ol++;}
-        if (ops[k].op === 'equal' || ops[k].op === 'ins') {nl++;}
+        if (ops[k].op === 'equal' || ops[k].op === 'del') {
+          ol++;
+        }
+        if (ops[k].op === 'equal' || ops[k].op === 'ins') {
+          nl++;
+        }
       }
-      startOld = ol; startNew = nl;
+      startOld = ol;
+      startNew = nl;
     }
 
     // 生成行 + 统计
     const lines = [];
-    let added = 0, removed = 0, unchanged = 0;
-    let endOld = startOld, endNew = startNew;
+    let added = 0,
+      removed = 0,
+      unchanged = 0;
+    let endOld = startOld,
+      endNew = startNew;
     for (let k = hunkStart; k < finalEnd; k++) {
       const op = ops[k];
       if (op.op === 'equal') {
         lines.push({ kind: ' ', content: op.old, oldLineNo: endOld, newLineNo: endNew });
-        endOld++; endNew++; unchanged++;
+        endOld++;
+        endNew++;
+        unchanged++;
       } else if (op.op === 'del') {
         lines.push({ kind: '-', content: op.old, oldLineNo: endOld, newLineNo: null });
-        endOld++; removed++;
+        endOld++;
+        removed++;
       } else if (op.op === 'ins') {
         lines.push({ kind: '+', content: op.new, oldLineNo: null, newLineNo: endNew });
-        endNew++; added++;
+        endNew++;
+        added++;
       }
     }
     const oldRangeLen = endOld - startOld;
@@ -194,7 +238,13 @@ function _buildHunks(ops, context = DEFAULT_CONTEXT) {
  * @param {string} [opts.workingDirectory] - oldContent 为空时读取文件的根目录
  * @param {number} [opts.context=3] - 上下文行数
  */
-export function computeDiff({ path: relPath, oldContent, newContent, workingDirectory, context = DEFAULT_CONTEXT }) {
+export function computeDiff({
+  path: relPath,
+  oldContent,
+  newContent,
+  workingDirectory,
+  context = DEFAULT_CONTEXT,
+}) {
   let oldLines;
   if (oldContent == null && workingDirectory && relPath) {
     try {
@@ -221,12 +271,10 @@ export function computeDiff({ path: relPath, oldContent, newContent, workingDire
 
   const headerOld = `--- ${relPath || 'a'}`;
   const headerNew = `+++ ${relPath || 'b'}`;
-  const body = hunks.map(h =>
-    h.header + '\n' + h.lines.map(l => l.kind + l.content).join('\n'),
-  ).join('\n');
-  const unifiedDiff = hunks.length
-    ? `${headerOld}\n${headerNew}\n${body}\n`
-    : '';
+  const body = hunks
+    .map((h) => h.header + '\n' + h.lines.map((l) => l.kind + l.content).join('\n'))
+    .join('\n');
+  const unifiedDiff = hunks.length ? `${headerOld}\n${headerNew}\n${body}\n` : '';
 
   return {
     path: relPath,
@@ -254,32 +302,36 @@ export function isNoop(diff) {
  * @param {string} baseContent - 原文（未改动的基底）
  */
 export function applySelectedHunks(diff, acceptHunks, baseContent) {
-  if (!diff || !Array.isArray(diff.hunks)) {return baseContent;}
+  if (!diff || !Array.isArray(diff.hunks)) {
+    return baseContent;
+  }
   // 先从原文逐行构建，再根据 hunk 位置按顺序替换
   const oldLines = _splitLines(baseContent);
   // 从后向前处理，避免索引错位
-  const sortedHunks = [...diff.hunks].map((h, idx) => ({ h, idx })).sort((A, B) => {
-    // 按起始 old line 号从大到小
-    const aFirst = A.h.lines.find(l => l.oldLineNo != null)?.oldLineNo ?? 0;
-    const bFirst = B.h.lines.find(l => l.oldLineNo != null)?.oldLineNo ?? 0;
-    return bFirst - aFirst;
-  });
+  const sortedHunks = [...diff.hunks]
+    .map((h, idx) => ({ h, idx }))
+    .sort((A, B) => {
+      // 按起始 old line 号从大到小
+      const aFirst = A.h.lines.find((l) => l.oldLineNo != null)?.oldLineNo ?? 0;
+      const bFirst = B.h.lines.find((l) => l.oldLineNo != null)?.oldLineNo ?? 0;
+      return bFirst - aFirst;
+    });
 
   let working = oldLines.slice();
   for (const { h, idx } of sortedHunks) {
     if (acceptHunks[idx]) {
       // 找到这个 hunk 的替换区间
-      const oldStart = h.lines.find(l => l.oldLineNo != null)?.oldLineNo ?? 0;
-      const lastOld = [...h.lines].reverse().find(l => l.oldLineNo != null)?.oldLineNo ?? oldStart;
-      const replaceLines = h.lines
-        .filter(l => l.kind !== '-')
-        .map(l => l.content);
+      const oldStart = h.lines.find((l) => l.oldLineNo != null)?.oldLineNo ?? 0;
+      const lastOld =
+        [...h.lines].reverse().find((l) => l.oldLineNo != null)?.oldLineNo ?? oldStart;
+      const replaceLines = h.lines.filter((l) => l.kind !== '-').map((l) => l.content);
       // old line 号是 1-based；替换 [oldStart-1, lastOld]
       working.splice(oldStart - 1, lastOld - oldStart + 1, ...replaceLines);
     }
   }
   // 保留原文的换行风格
-  const hasTrailingNewline = typeof baseContent === 'string' && (baseContent.endsWith('\n') || baseContent.endsWith('\r\n'));
+  const hasTrailingNewline =
+    typeof baseContent === 'string' && (baseContent.endsWith('\n') || baseContent.endsWith('\r\n'));
   return working.join('\n') + (hasTrailingNewline ? '\n' : '');
 }
 

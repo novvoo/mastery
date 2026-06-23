@@ -57,7 +57,9 @@ export function createAutomationCommands(deps) {
             await this.autoStatus();
           } else {
             enhancedUI.error(`Unknown automation subcommand: ${subcommand}`);
-            enhancedUI.info('Available: status, start, stop, triggers, workflows, background, menu');
+            enhancedUI.info(
+              'Available: status, start, stop, triggers, workflows, background, menu',
+            );
           }
       }
     },
@@ -68,7 +70,9 @@ export function createAutomationCommands(deps) {
         message: `Automation Engine (${status.isRunning ? '🟢 running' : '🔴 stopped'}):`,
         choices: automationMenuChoices(status.isRunning),
       });
-      if (action === 'back') {return;}
+      if (action === 'back') {
+        return;
+      }
       if (action === 'toggle') {
         if (status.isRunning) {
           await automationEngine.stop();
@@ -113,12 +117,7 @@ export function createAutomationCommands(deps) {
         colWidths: [20, 15, 10, 15],
       });
       for (const t of triggers) {
-        table.push([
-          t.id,
-          t.type,
-          formatStatus(t.enabled),
-          t.triggerCount,
-        ]);
+        table.push([t.id, t.type, formatStatus(t.enabled), t.triggerCount]);
       }
       console.log(table.toString());
       console.log('');
@@ -138,13 +137,7 @@ export function createAutomationCommands(deps) {
         colWidths: [15, 20, 12, 8, 8],
       });
       for (const w of workflows) {
-        table.push([
-          w.id,
-          w.name,
-          w.status,
-          w.currentStep + 1,
-          w.steps.length,
-        ]);
+        table.push([w.id, w.name, w.status, w.currentStep + 1, w.steps.length]);
       }
       console.log(table.toString());
       console.log('');
@@ -164,13 +157,7 @@ export function createAutomationCommands(deps) {
         colWidths: [15, 20, 10, 10, 10],
       });
       for (const t of tasks) {
-        table.push([
-          t.id,
-          t.name,
-          formatStatus(t.enabled),
-          t.runCount,
-          t.errorCount,
-        ]);
+        table.push([t.id, t.name, formatStatus(t.enabled), t.runCount, t.errorCount]);
       }
       console.log(table.toString());
       console.log('');

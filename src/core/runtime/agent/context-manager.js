@@ -23,7 +23,14 @@ export class ContextManager {
   #lastHintUpdate = 0;
   #config;
 
-  constructor({ sessionManager, contextPruner, tokenScope, workspaceState, observationSummarizer, config }) {
+  constructor({
+    sessionManager,
+    contextPruner,
+    tokenScope,
+    workspaceState,
+    observationSummarizer,
+    config,
+  }) {
     this.#sessionManager = sessionManager;
     this.#contextPruner = contextPruner || new DynamicContextPruning();
     this.#tokenScope = tokenScope;
@@ -41,16 +48,18 @@ export class ContextManager {
    * @param {number} maxIterations — 预算的最大迭代数
    */
   manage(iteration, maxIterations) {
-    if (!this.#sessionManager) {return null;}
+    if (!this.#sessionManager) {
+      return null;
+    }
 
-    const maxTokens = this.#tokenScope?.getEffectiveLimit?.()
-      ?? this.#config.maxTokens
-      ?? this.#sessionManager.getMaxTokens?.()
-      ?? 8000;
+    const maxTokens =
+      this.#tokenScope?.getEffectiveLimit?.() ??
+      this.#config.maxTokens ??
+      this.#sessionManager.getMaxTokens?.() ??
+      8000;
 
-    const progress = maxIterations > 0
-      ? this.#sessionManager.getHistory?.().length / (maxIterations * 1.5)
-      : 0.5;
+    const progress =
+      maxIterations > 0 ? this.#sessionManager.getHistory?.().length / (maxIterations * 1.5) : 0.5;
 
     // 保留消息数：早期 10 → 后期 4
     const preserveRecentMessages = Math.max(4, Math.floor(10 - 6 * Math.min(progress, 1)));
@@ -62,7 +71,8 @@ export class ContextManager {
     const currentTokens = this.#sessionManager.getTokenCount?.() ?? 0;
     const thresholdBase = 0.7;
     const thresholdMin = 0.4;
-    const threshold = maxTokens * (thresholdBase - (thresholdBase - thresholdMin) * Math.min(progress, 1));
+    const threshold =
+      maxTokens * (thresholdBase - (thresholdBase - thresholdMin) * Math.min(progress, 1));
 
     if (currentTokens <= threshold) {
       return { trimmed: false, currentTokens, threshold };
@@ -74,10 +84,15 @@ export class ContextManager {
     }
     if (typeof this.#sessionManager.trimWithPruner === 'function') {
       stats = this.#sessionManager.trimWithPruner(this.#contextPruner, {
-        maxTokens, targetTokens, preserveRecentMessages, minMessages,
+        maxTokens,
+        targetTokens,
+        preserveRecentMessages,
+        minMessages,
       });
     } else if (typeof this.#sessionManager.trimToContextWindow === 'function') {
-      this.#sessionManager.trimToContextWindow(targetTokens, { minRecentMessages: preserveRecentMessages });
+      this.#sessionManager.trimToContextWindow(targetTokens, {
+        minRecentMessages: preserveRecentMessages,
+      });
     }
 
     // 裁剪后注入工作区状态摘要
@@ -112,7 +127,9 @@ export class ContextManager {
   // ============== 内部实现 ==============
 
   #injectWorkspaceSummary({ force = false } = {}) {
-    if (!this.#workspaceState || !this.#sessionManager) {return;}
+    if (!this.#workspaceState || !this.#sessionManager) {
+      return;
+    }
 
     const now = Date.now();
     // 30 秒内复用缓存
@@ -122,7 +139,9 @@ export class ContextManager {
     }
 
     const hint = this.#generateHint();
-    if (!hint) {return;}
+    if (!hint) {
+      return;
+    }
 
     this.#cachedHint = hint;
     this.#lastHintUpdate = now;
@@ -131,21 +150,27 @@ export class ContextManager {
 
   #generateHint() {
     const state = this.#workspaceState;
-    if (!state) {return '';}
+    if (!state) {
+      return '';
+    }
 
     const summary = typeof state.getSummary === 'function' ? state.getSummary() : null;
-    if (!summary || (summary.trackedFiles === 0 && summary.trackedDirectories === 0)) {return '';}
+    if (!summary || (summary.trackedFiles === 0 && summary.trackedDirectories === 0)) {
+      return '';
+    }
 
-    const criticalFacts = typeof state.getCriticalFacts === 'function'
-      ? state.getCriticalFacts()
-      : [];
+    const criticalFacts =
+      typeof state.getCriticalFacts === 'function' ? state.getCriticalFacts() : [];
     const knownNonExistent = criticalFacts
-      .filter(f => f.type === 'path_not_found')
-      .map(f => f.value?.path)
+      .filter((f) => f.type === 'path_not_found')
+      .map((f) => f.value?.path)
       .filter(Boolean);
 
     let workspaceDescription = '';
-    if (this.#observationSummarizer && typeof this.#observationSummarizer.generateWorkspaceDescription === 'function') {
+    if (
+      this.#observationSummarizer &&
+      typeof this.#observationSummarizer.generateWorkspaceDescription === 'function'
+    ) {
       workspaceDescription = this.#observationSummarizer.generateWorkspaceDescription();
     } else if (typeof state.generateWorkspaceDescription === 'function') {
       workspaceDescription = state.generateWorkspaceDescription();
@@ -161,17 +186,20 @@ export class ContextManager {
     if (knownNonExistent.length > 0) {
       parts.push('');
       parts.push('### 已知不存在的路径 (避免重复尝试)');
-      for (const p of knownNonExistent.slice(0, 10)) {parts.push(`- ${p}`);}
+      for (const p of knownNonExistent.slice(0, 10)) {
+        parts.push(`- ${p}`);
+      }
     }
 
-    const importantFacts = criticalFacts.filter(f => f.type !== 'path_not_found').slice(-5);
+    const importantFacts = criticalFacts.filter((f) => f.type !== 'path_not_found').slice(-5);
     if (importantFacts.length > 0) {
       parts.push('');
       parts.push('### 关键发现');
       for (const fact of importantFacts) {
-        const value = typeof fact.value === 'object'
-          ? JSON.stringify(fact.value).substring(0, 100)
-          : fact.value;
+        const value =
+          typeof fact.value === 'object'
+            ? JSON.stringify(fact.value).substring(0, 100)
+            : fact.value;
         parts.push(`- ${fact.type}: ${value}`);
       }
     }

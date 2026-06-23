@@ -1,4 +1,9 @@
-import { CODING_CONTEXT_KEYWORDS, CODING_VERB_CONTEXT_PATTERNS, MODIFICATION_VERB_PATTERNS, isCliCommand } from './support/risk-budget.js';
+import {
+  CODING_CONTEXT_KEYWORDS,
+  CODING_VERB_CONTEXT_PATTERNS,
+  MODIFICATION_VERB_PATTERNS,
+  isCliCommand,
+} from './support/risk-budget.js';
 
 const CORE_READ_TOOLS = [
   'read_file',
@@ -10,18 +15,9 @@ const CORE_READ_TOOLS = [
   'web_fetch',
 ];
 
-const CORE_WRITE_TOOLS = [
-  'write_file',
-  'edit_file',
-];
+const CORE_WRITE_TOOLS = ['write_file', 'edit_file'];
 
-const TERMINAL_TOOLS = [
-  'shell',
-  'pty_start',
-  'pty_write',
-  'pty_read',
-  'pty_stop',
-];
+const TERMINAL_TOOLS = ['shell', 'pty_start', 'pty_write', 'pty_read', 'pty_stop'];
 
 const WEB_TOOLS = [
   'web_search',
@@ -38,28 +34,13 @@ const WEB_TOOLS = [
 // const EXTENDED_PLANNING_TOOLS = ['brainstorm', 'grill', 'zoom_out', 'architect', 'tdd'];
 // const ADVANCED_METHOD_TOOLS = ['coverage_check', 'handoff'];
 
-const DOC_PRODUCT_TOOLS = [
-  'to_prd',
-  'to_issues',
-  'setup',
-];
+const DOC_PRODUCT_TOOLS = ['to_prd', 'to_issues', 'setup'];
 
 // See PHASE_CANDIDATE_TOOLS above for phase-driven tool selection.
 
-const GENERAL_METHODOLOGY_TOOLS = [
-  'ask_user',
-  'review',
-  'verify',
-  'diagnose',
-  'brainstorm',
-];
+const GENERAL_METHODOLOGY_TOOLS = ['ask_user', 'review', 'verify', 'diagnose', 'brainstorm'];
 
-const GIT_READ_TOOLS = [
-  'git_status',
-  'git_diff',
-  'git_log',
-  'git_branch',
-];
+const GIT_READ_TOOLS = ['git_status', 'git_diff', 'git_log', 'git_branch'];
 
 const GIT_MUTATION_TOOLS = [
   'git_add',
@@ -88,19 +69,9 @@ const HARNESS_STATE_TOOLS = [
   'harness_rollback',
 ];
 
-const TASK_TOOLS = [
-  'task_create',
-  'task_list',
-  'task_status',
-  'task_cancel',
-];
+const TASK_TOOLS = ['task_create', 'task_list', 'task_status', 'task_cancel'];
 
-const SCHEDULE_TOOLS = [
-  'schedule_create',
-  'schedule_list',
-  'schedule_delete',
-  'schedule_toggle',
-];
+const SCHEDULE_TOOLS = ['schedule_create', 'schedule_list', 'schedule_delete', 'schedule_toggle'];
 
 const SUBAGENT_TOOLS = [
   'subagent_spawn',
@@ -121,10 +92,7 @@ const MCP_TOOLS = [
   'mcp_status',
 ];
 
-const COMPRESS_TOOLS = [
-  'caveman',
-  'handoff',
-];
+const COMPRESS_TOOLS = ['caveman', 'handoff'];
 
 // =============================================================
 // Phase-aware methodology tool selection
@@ -165,14 +133,11 @@ const PHASE_CANDIDATE_TOOLS = {
  * This is deliberately local and cheap: it avoids a preflight LLM call on
  * obvious coding tasks, while still exposing broad capabilities when needed.
  */
-export function selectToolsForRequest(allTools, {
-  userInput = '',
-  taskProfile = null,
-  intent = null,
-  currentPhase = null,
-  maxTools = 32,
-} = {}) {
-  const byName = new Map(allTools.map(tool => [tool.name, tool]));
+export function selectToolsForRequest(
+  allTools,
+  { userInput = '', taskProfile = null, intent = null, currentPhase = null, maxTools = 32 } = {},
+) {
+  const byName = new Map(allTools.map((tool) => [tool.name, tool]));
   const selected = new Map();
   const input = String(userInput || '').toLowerCase();
 
@@ -185,31 +150,31 @@ export function selectToolsForRequest(allTools, {
     }
   };
 
-  const asksForFreshData = Boolean(intent?.requiresFreshData) || [
-    /天气|气温|新闻|最新|今天|现在|当前|实时|汇率|价格|股价|比分|赛程|政策|法规/,
-    /\b(weather|news|latest|today|now|current|real[- ]?time|price|stock|exchange rate|schedule|score|law|regulation)\b/,
-  ].some(pattern => pattern.test(input));
+  const asksForFreshData =
+    Boolean(intent?.requiresFreshData) ||
+    [
+      /天气|气温|新闻|最新|今天|现在|当前|实时|汇率|价格|股价|比分|赛程|政策|法规/,
+      /\b(weather|news|latest|today|now|current|real[- ]?time|price|stock|exchange rate|schedule|score|law|regulation)\b/,
+    ].some((pattern) => pattern.test(input));
 
   const asksForBrowser = [
     /打开.*(网页|页面|浏览器|url|链接)|浏览器|截图|localhost|本地页面/,
     /\b(open|browser|screenshot|localhost|127\.0\.0\.1|web page|url)\b/,
-  ].some(pattern => pattern.test(input));
+  ].some((pattern) => pattern.test(input));
 
-  const asksForGit = [
-    /提交|推送|合并|分支|远程|commit|push|merge|branch|git|diff|status/,
-  ].some(pattern => pattern.test(input));
+  const asksForGit = [/提交|推送|合并|分支|远程|commit|push|merge|branch|git|diff|status/].some(
+    (pattern) => pattern.test(input),
+  );
 
-  const asksForMcp = [
-    /\bmcp\b|连接.*服务器|资源.*工具/,
-  ].some(pattern => pattern.test(input));
+  const asksForMcp = [/\bmcp\b|连接.*服务器|资源.*工具/].some((pattern) => pattern.test(input));
 
   const asksForScheduling = [
     /创建任务|任务列表|任务状态|取消任务|定时任务|计划任务|提醒|后台任务|子代理|子agent|subagent|schedule|scheduler|reminder|automation|background task/,
-  ].some(pattern => pattern.test(input));
+  ].some((pattern) => pattern.test(input));
 
   const asksForCompression = [
     /压缩上下文|handoff|交接|暂停|稍后继续|记忆压缩|compress|continue later/,
-  ].some(pattern => pattern.test(input));
+  ].some((pattern) => pattern.test(input));
 
   // Tiered exposure for coding tasks based on execution phase.
   // All coding tasks get the same complete methodology flow;
@@ -236,7 +201,10 @@ export function selectToolsForRequest(allTools, {
     }
 
     // Bug-focused tasks get coverage_check (heuristic: only when bug-like)
-    if (taskProfile?.isBugTask || /bug|报错|错误|失败|崩溃|卡住|test failing|failing test/i.test(input)) {
+    if (
+      taskProfile?.isBugTask ||
+      /bug|报错|错误|失败|崩溃|卡住|test failing|failing test/i.test(input)
+    ) {
       add(['coverage_check']);
     }
 
@@ -244,7 +212,7 @@ export function selectToolsForRequest(allTools, {
     const asksForDocs = [
       /prd|产品|需求文档|issue|工单|写文档|docs|specification|design doc/,
       /\b(prd|issue|requirements|spec|design doc)\b/,
-    ].some(pattern => pattern.test(input));
+    ].some((pattern) => pattern.test(input));
     if (asksForDocs) {
       add(DOC_PRODUCT_TOOLS);
     }
@@ -315,7 +283,7 @@ export function shouldUseIntentClassifier(userInput) {
 
   // 非常明确的写操作任务（如"写一个 python 游戏"、"创建一个 html 文件"）：
   // 可以跳过意图分类器，quickAssess 已能正确识别
-  const explicitlyModifying = MODIFICATION_VERB_PATTERNS.some(p => p.test(input));
+  const explicitlyModifying = MODIFICATION_VERB_PATTERNS.some((p) => p.test(input));
 
   // 但是：如果任务中包含"查看/检查/看下/看一下/检查一下"这类可能是纯检查
   // 或条件式修改的措辞（如"看下 index.html，如果没有 init() 就添加一个"），
@@ -323,7 +291,7 @@ export function shouldUseIntentClassifier(userInput) {
   const possiblyReadOnly = [
     /查看|检查|看下|看一下|分析一下|浏览|阅读|检查一下|检查是否|看下是否|查看是否|先看|先检查/,
     /\b(inspect|check|view|read|list|count|show|search|find|browse|analyze|review|look at|take a look)\b/,
-  ].some(pattern => pattern.test(input));
+  ].some((pattern) => pattern.test(input));
 
   if (explicitlyModifying && !possiblyReadOnly) {
     // 纯写操作，不需要意图分类器
@@ -334,7 +302,7 @@ export function shouldUseIntentClassifier(userInput) {
   const asksForFreshData = [
     /天气|气温|新闻|最新|今天|现在|当前|实时|汇率|价格|股价|比分|赛程|政策|法规/,
     /\b(weather|news|latest|today|now|current|real[- ]?time|price|stock|exchange rate|schedule|score|law|regulation)\b/,
-  ].some(pattern => pattern.test(input));
+  ].some((pattern) => pattern.test(input));
 
   if (asksForFreshData) {
     return true;
@@ -342,10 +310,9 @@ export function shouldUseIntentClassifier(userInput) {
 
   // 模棱两可的编码任务（含"查看/检查"或仅提到代码语言/文件）：
   // 调用意图分类器来判断是否需要修改
-  const hasCodingContext = [
-    ...CODING_CONTEXT_KEYWORDS,
-    ...CODING_VERB_CONTEXT_PATTERNS,
-  ].some(pattern => pattern.test(input));
+  const hasCodingContext = [...CODING_CONTEXT_KEYWORDS, ...CODING_VERB_CONTEXT_PATTERNS].some(
+    (pattern) => pattern.test(input),
+  );
 
   if (hasCodingContext) {
     // 有编码上下文但不是明确写操作 → 调用意图分类器让 LLM 判断

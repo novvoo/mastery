@@ -70,7 +70,7 @@ export function createGitTools() {
       },
       handler: async ({ workingDir = '.', short = false }) => {
         const cwd = resolve(workingDir);
-        
+
         if (!isGitRepo(cwd)) {
           return { success: false, error: 'Not a git repository' };
         }
@@ -78,12 +78,17 @@ export function createGitTools() {
         try {
           const flag = short ? '-s' : '';
           const output = execGit(`status ${flag}`, cwd);
-          
+
           // 解析状态
           const branch = execGit('branch --show-current', cwd, false);
-          const aheadBehind = execGit('rev-list --left-right --count HEAD...@{upstream}', cwd, false);
-          
-          let ahead = 0, behind = 0;
+          const aheadBehind = execGit(
+            'rev-list --left-right --count HEAD...@{upstream}',
+            cwd,
+            false,
+          );
+
+          let ahead = 0,
+            behind = 0;
           if (aheadBehind) {
             const [a, b] = aheadBehind.split('\t').map(Number);
             ahead = a || 0;
@@ -133,19 +138,25 @@ export function createGitTools() {
       },
       handler: async ({ workingDir = '.', file, staged = false, stat = false }) => {
         const cwd = resolve(workingDir);
-        
+
         if (!isGitRepo(cwd)) {
           return { success: false, error: 'Not a git repository' };
         }
 
         try {
           let command = 'diff';
-          if (staged) {command += ' --cached';}
-          if (stat) {command += ' --stat';}
-          if (file) {command += ` -- "${file}"`;}
+          if (staged) {
+            command += ' --cached';
+          }
+          if (stat) {
+            command += ' --stat';
+          }
+          if (file) {
+            command += ` -- "${file}"`;
+          }
 
           const output = execGit(command, cwd, false);
-          
+
           return {
             success: true,
             output: output || 'No changes',
@@ -183,7 +194,7 @@ export function createGitTools() {
       },
       handler: async ({ workingDir = '.', files = [], all = false }) => {
         const cwd = resolve(workingDir);
-        
+
         if (!isGitRepo(cwd)) {
           return { success: false, error: 'Not a git repository' };
         }
@@ -239,14 +250,14 @@ export function createGitTools() {
       },
       handler: async ({ workingDir = '.', message, amend = false, noEdit = false }) => {
         const cwd = resolve(workingDir);
-        
+
         if (!isGitRepo(cwd)) {
           return { success: false, error: 'Not a git repository' };
         }
 
         try {
           let command = 'commit';
-          
+
           if (amend) {
             command += ' --amend';
             if (noEdit) {
@@ -262,10 +273,10 @@ export function createGitTools() {
           }
 
           const output = execGit(command, cwd);
-          
+
           // 解析 commit hash
           const hash = execGit('rev-parse HEAD', cwd);
-          
+
           return {
             success: true,
             message: amend ? 'Amended last commit' : 'Created new commit',
@@ -311,9 +322,15 @@ export function createGitTools() {
           },
         },
       },
-      handler: async ({ workingDir = '.', action = 'list', branchName, fromBranch, force = false }) => {
+      handler: async ({
+        workingDir = '.',
+        action = 'list',
+        branchName,
+        fromBranch,
+        force = false,
+      }) => {
         const cwd = resolve(workingDir);
-        
+
         if (!isGitRepo(cwd)) {
           return { success: false, error: 'Not a git repository' };
         }
@@ -326,10 +343,13 @@ export function createGitTools() {
               return {
                 success: true,
                 current,
-                branches: branches.split('\n').map(b => b.trim()).filter(Boolean),
+                branches: branches
+                  .split('\n')
+                  .map((b) => b.trim())
+                  .filter(Boolean),
               };
             }
-            
+
             case 'create': {
               if (!branchName) {
                 return { success: false, error: 'Branch name is required' };
@@ -342,7 +362,7 @@ export function createGitTools() {
                 branch: branchName,
               };
             }
-            
+
             case 'switch': {
               if (!branchName) {
                 return { success: false, error: 'Branch name is required' };
@@ -354,7 +374,7 @@ export function createGitTools() {
                 branch: branchName,
               };
             }
-            
+
             case 'delete': {
               if (!branchName) {
                 return { success: false, error: 'Branch name is required' };
@@ -366,7 +386,7 @@ export function createGitTools() {
                 message: `Deleted branch: ${branchName}`,
               };
             }
-            
+
             case 'merge': {
               if (!branchName) {
                 return { success: false, error: 'Branch name is required' };
@@ -378,7 +398,7 @@ export function createGitTools() {
                 output,
               };
             }
-            
+
             default:
               return { success: false, error: `Unknown action: ${action}` };
           }
@@ -425,35 +445,46 @@ export function createGitTools() {
       },
       handler: async ({ workingDir = '.', limit = 10, file, oneline = true, author, since }) => {
         const cwd = resolve(workingDir);
-        
+
         if (!isGitRepo(cwd)) {
           return { success: false, error: 'Not a git repository' };
         }
 
         try {
           let command = 'log';
-          
-          if (oneline) {command += ' --oneline';}
+
+          if (oneline) {
+            command += ' --oneline';
+          }
           command += ` -n ${limit}`;
-          if (author) {command += ` --author="${author}"`;}
-          if (since) {command += ` --since="${since}"`;}
-          if (file) {command += ` -- "${file}"`;}
-          
+          if (author) {
+            command += ` --author="${author}"`;
+          }
+          if (since) {
+            command += ` --since="${since}"`;
+          }
+          if (file) {
+            command += ` -- "${file}"`;
+          }
+
           // 添加装饰信息
           command += ' --decorate';
 
           const output = execGit(command, cwd);
-          const commits = output.split('\n').filter(Boolean).map(line => {
-            // 解析单行格式: "abc1234 Commit message (HEAD -> main)"
-            const match = line.match(/^([a-f0-9]+)\s+(.+)$/);
-            if (match) {
-              return {
-                hash: match[1],
-                message: match[2],
-              };
-            }
-            return { raw: line };
-          });
+          const commits = output
+            .split('\n')
+            .filter(Boolean)
+            .map((line) => {
+              // 解析单行格式: "abc1234 Commit message (HEAD -> main)"
+              const match = line.match(/^([a-f0-9]+)\s+(.+)$/);
+              if (match) {
+                return {
+                  hash: match[1],
+                  message: match[2],
+                };
+              }
+              return { raw: line };
+            });
 
           return {
             success: true,
@@ -499,20 +530,32 @@ export function createGitTools() {
           },
         },
       },
-      handler: async ({ workingDir = '.', remote = 'origin', branch, force = false, setUpstream = false }) => {
+      handler: async ({
+        workingDir = '.',
+        remote = 'origin',
+        branch,
+        force = false,
+        setUpstream = false,
+      }) => {
         const cwd = resolve(workingDir);
-        
+
         if (!isGitRepo(cwd)) {
           return { success: false, error: 'Not a git repository' };
         }
 
         try {
           let command = 'push';
-          
-          if (force) {command += ' --force';}
-          if (setUpstream) {command += ' -u';}
+
+          if (force) {
+            command += ' --force';
+          }
+          if (setUpstream) {
+            command += ' -u';
+          }
           command += ` ${remote}`;
-          if (branch) {command += ` "${branch}"`;}
+          if (branch) {
+            command += ` "${branch}"`;
+          }
 
           const output = execGit(command, cwd);
 
@@ -556,17 +599,21 @@ export function createGitTools() {
       },
       handler: async ({ workingDir = '.', remote = 'origin', branch, rebase = false }) => {
         const cwd = resolve(workingDir);
-        
+
         if (!isGitRepo(cwd)) {
           return { success: false, error: 'Not a git repository' };
         }
 
         try {
           let command = 'pull';
-          
-          if (rebase) {command += ' --rebase';}
+
+          if (rebase) {
+            command += ' --rebase';
+          }
           command += ` ${remote}`;
-          if (branch) {command += ` "${branch}"`;}
+          if (branch) {
+            command += ` "${branch}"`;
+          }
 
           const output = execGit(command, cwd);
 
@@ -612,17 +659,17 @@ export function createGitTools() {
       },
       handler: async ({ workingDir = '.', mode = 'mixed', target = 'HEAD', files = [] }) => {
         const cwd = resolve(workingDir);
-        
+
         if (!isGitRepo(cwd)) {
           return { success: false, error: 'Not a git repository' };
         }
 
         try {
           let command = 'reset';
-          
+
           if (files.length > 0) {
             // 文件级重置
-            command += ` HEAD -- ${files.map(f => `"${f}"`).join(' ')}`;
+            command += ` HEAD -- ${files.map((f) => `"${f}"`).join(' ')}`;
           } else {
             // 提交级重置
             command += ` --${mode} ${target}`;
@@ -671,18 +718,20 @@ export function createGitTools() {
       },
       handler: async ({ workingDir = '.', action = 'push', message, index = 0 }) => {
         const cwd = resolve(workingDir);
-        
+
         if (!isGitRepo(cwd)) {
           return { success: false, error: 'Not a git repository' };
         }
 
         try {
           let command = 'stash';
-          
+
           switch (action) {
             case 'push':
               command += ' push';
-              if (message) {command += ` -m "${message}"`;}
+              if (message) {
+                command += ` -m "${message}"`;
+              }
               break;
             case 'pop':
               command += ` pop stash@{${index}}`;

@@ -2,8 +2,10 @@ import { tmpdir, homedir } from 'os';
 import { delimiter, resolve, sep } from 'path';
 import { spawnSync } from 'child_process';
 
-const NETWORK_COMMAND_PATTERN = /\b(curl|wget|ssh|scp|sftp|rsync|nc|netcat|telnet|ftp|git\s+clone|git\s+fetch|git\s+pull|npm\s+install|bun\s+install|pnpm\s+install|yarn\s+install|pip\s+install)\b/i;
-const WRITE_COMMAND_PATTERN = /\b(>|>>|tee|touch|mkdir|rm|rmdir|mv|cp|install|chmod|chown|sed\s+-i|perl\s+-i)\b/i;
+const NETWORK_COMMAND_PATTERN =
+  /\b(curl|wget|ssh|scp|sftp|rsync|nc|netcat|telnet|ftp|git\s+clone|git\s+fetch|git\s+pull|npm\s+install|bun\s+install|pnpm\s+install|yarn\s+install|pip\s+install)\b/i;
+const WRITE_COMMAND_PATTERN =
+  /\b(>|>>|tee|touch|mkdir|rm|rmdir|mv|cp|install|chmod|chown|sed\s+-i|perl\s+-i)\b/i;
 
 export class ShellSandboxConfig {
   constructor(options = {}) {
@@ -15,9 +17,21 @@ export class ShellSandboxConfig {
     this.excludedCommands = listOption(options, 'excludedCommands', []);
     this.filesystem = {
       allowRead: listOption(options.filesystem, 'allowRead', []),
-      denyRead: listOption(options.filesystem, 'denyRead', ['~/.ssh', '~/.aws', '~/.config/gh', '~/.netrc']),
+      denyRead: listOption(options.filesystem, 'denyRead', [
+        '~/.ssh',
+        '~/.aws',
+        '~/.config/gh',
+        '~/.netrc',
+      ]),
       allowWrite: listOption(options.filesystem, 'allowWrite', ['.']),
-      denyWrite: listOption(options.filesystem, 'denyWrite', ['~', '/etc', '/usr', '/bin', '/sbin', '/System']),
+      denyWrite: listOption(options.filesystem, 'denyWrite', [
+        '~',
+        '/etc',
+        '/usr',
+        '/bin',
+        '/sbin',
+        '/System',
+      ]),
     };
     this.network = {
       enabled: options.network?.enabled === true,
@@ -48,7 +62,9 @@ export function shellSandboxConfigFromEnv(env = process.env) {
 }
 
 export function createShellSandbox(config = {}) {
-  return new ShellSandbox(config instanceof ShellSandboxConfig ? config : new ShellSandboxConfig(config));
+  return new ShellSandbox(
+    config instanceof ShellSandboxConfig ? config : new ShellSandboxConfig(config),
+  );
 }
 
 export class ShellSandbox {
@@ -69,7 +85,9 @@ export class ShellSandbox {
 
     if (this.#isExcluded(command)) {
       if (!this.config.allowUnsandboxedCommands) {
-        return this.#blocked('Command is excluded from sandbox but unsandboxed commands are disabled.');
+        return this.#blocked(
+          'Command is excluded from sandbox but unsandboxed commands are disabled.',
+        );
       }
       return {
         sandboxed: false,
@@ -159,12 +177,20 @@ export class ShellSandbox {
 
   #prepareBubblewrap(command, cwd) {
     const args = [
-      '--ro-bind', '/', '/',
-      '--bind', cwd, cwd,
-      '--tmpfs', '/tmp',
-      '--dev', '/dev',
-      '--proc', '/proc',
-      '--chdir', cwd,
+      '--ro-bind',
+      '/',
+      '/',
+      '--bind',
+      cwd,
+      cwd,
+      '--tmpfs',
+      '/tmp',
+      '--dev',
+      '/dev',
+      '--proc',
+      '/proc',
+      '--chdir',
+      cwd,
     ];
     if (!this.config.network.enabled) {
       args.push('--unshare-net');
@@ -181,7 +207,9 @@ export class ShellSandbox {
   }
 
   #buildSeatbeltProfile(cwd) {
-    const writePaths = this.#resolvePaths(this.config.filesystem.allowWrite, cwd, { includeDefaultCwd: true });
+    const writePaths = this.#resolvePaths(this.config.filesystem.allowWrite, cwd, {
+      includeDefaultCwd: true,
+    });
     const denyReadPaths = this.#resolvePaths(this.config.filesystem.denyRead, cwd);
     const denyWritePaths = this.#resolvePaths(this.config.filesystem.denyWrite, cwd);
     const pathRules = [];
@@ -211,7 +239,9 @@ export class ShellSandbox {
 
     const deniedReads = this.#resolvePaths(this.config.filesystem.denyRead, cwd);
     const deniedWrites = this.#resolvePaths(this.config.filesystem.denyWrite, cwd);
-    const allowedWrites = this.#resolvePaths(this.config.filesystem.allowWrite, cwd, { includeDefaultCwd: true });
+    const allowedWrites = this.#resolvePaths(this.config.filesystem.allowWrite, cwd, {
+      includeDefaultCwd: true,
+    });
 
     for (const deniedPath of [...deniedReads, ...deniedWrites]) {
       if (commandIncludesPath(command, deniedPath)) {
@@ -221,8 +251,8 @@ export class ShellSandbox {
 
     if (WRITE_COMMAND_PATTERN.test(command)) {
       const absolutePaths = extractAbsolutePaths(command);
-      const outsideAllowedWrite = absolutePaths.find(path =>
-        !allowedWrites.some(allowedPath => isPathInside(path, allowedPath))
+      const outsideAllowedWrite = absolutePaths.find(
+        (path) => !allowedWrites.some((allowedPath) => isPathInside(path, allowedPath)),
       );
       if (outsideAllowedWrite) {
         return `Write-like command targets path outside sandbox write allowlist: ${outsideAllowedWrite}`;
@@ -233,13 +263,13 @@ export class ShellSandbox {
   }
 
   #isExcluded(command) {
-    return this.config.excludedCommands.some(pattern => matchCommandPattern(command, pattern));
+    return this.config.excludedCommands.some((pattern) => matchCommandPattern(command, pattern));
   }
 
   #resolvePaths(paths, cwd, options = {}) {
     const values = paths.length > 0 ? paths : [];
-    const resolved = values.map(path => resolveSandboxPath(path, cwd)).filter(Boolean);
-    if (options.includeDefaultCwd && !resolved.some(path => path === cwd)) {
+    const resolved = values.map((path) => resolveSandboxPath(path, cwd)).filter(Boolean);
+    if (options.includeDefaultCwd && !resolved.some((path) => path === cwd)) {
       resolved.unshift(cwd);
     }
     return Array.from(new Set(resolved));
@@ -259,7 +289,7 @@ function splitList(value) {
   }
   return String(value)
     .split(delimiter)
-    .map(item => item.trim())
+    .map((item) => item.trim())
     .filter(Boolean);
 }
 
@@ -305,9 +335,9 @@ function resolveSandboxPath(path, cwd) {
 function extractAbsolutePaths(command) {
   const matches = String(command).match(/(?:^|[\s"'=])((?:\/|~\/)[^\s"';&|<>`$)]+)/g) || [];
   return matches
-    .map(match => match.trim().replace(/^["'=]*/, ''))
-    .map(path => path.startsWith('~/') ? resolve(homedir(), path.slice(2)) : resolve(path))
-    .filter(path => path !== resolve('/dev/null') && path !== tmpdir());
+    .map((match) => match.trim().replace(/^["'=]*/, ''))
+    .map((path) => (path.startsWith('~/') ? resolve(homedir(), path.slice(2)) : resolve(path)))
+    .filter((path) => path !== resolve('/dev/null') && path !== tmpdir());
 }
 
 function commandIncludesPath(command, path) {

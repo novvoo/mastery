@@ -12,7 +12,8 @@ export default function handoff() {
     params: {
       session_summary: {
         type: 'string',
-        description: 'Summary of what was accomplished and the current state of work in this session.',
+        description:
+          'Summary of what was accomplished and the current state of work in this session.',
       },
       next_steps: {
         type: 'string',
@@ -33,10 +34,16 @@ export default function handoff() {
 
       // Parse comma-separated lists
       const stepsList = next_steps
-        ? next_steps.split(',').map((s) => s.trim()).filter(Boolean)
+        ? next_steps
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
         : [];
       const questionsList = open_questions
-        ? open_questions.split(',').map((q) => q.trim()).filter(Boolean)
+        ? open_questions
+            .split(',')
+            .map((q) => q.trim())
+            .filter(Boolean)
         : [];
 
       // Build handoff document
@@ -55,9 +62,7 @@ export default function handoff() {
         `## In-Progress Work`,
         ``,
         stepsList.length > 0
-          ? stepsList
-              .map((step, i) => `${i + 1}. ${step}`)
-              .join('\n')
+          ? stepsList.map((step, i) => `${i + 1}. ${step}`).join('\n')
           : '_No in-progress items recorded._',
         ``,
         `## Key Decisions and Reasons`,
@@ -67,17 +72,13 @@ export default function handoff() {
         `## Open Questions`,
         ``,
         questionsList.length > 0
-          ? questionsList
-              .map((q, i) => `${i + 1}. ${q}`)
-              .join('\n')
+          ? questionsList.map((q, i) => `${i + 1}. ${q}`).join('\n')
           : '_No open questions._',
         ``,
         `## Next Steps (by priority)`,
         ``,
         stepsList.length > 0
-          ? stepsList
-              .map((step, i) => `- [ ] **P${i + 1}:** ${step}`)
-              .join('\n')
+          ? stepsList.map((step, i) => `- [ ] **P${i + 1}:** ${step}`).join('\n')
           : '_No next steps defined._',
         ``,
         `## Important Context`,
@@ -86,12 +87,8 @@ export default function handoff() {
         ``,
         `- Session was active at: ${timestamp}`,
         `- Working directory: ${workingDirectory}`,
-        stepsList.length > 0
-          ? `- ${stepsList.length} pending action(s) identified`
-          : '',
-        questionsList.length > 0
-          ? `- ${questionsList.length} open question(s) remaining`
-          : '',
+        stepsList.length > 0 ? `- ${stepsList.length} pending action(s) identified` : '',
+        questionsList.length > 0 ? `- ${questionsList.length} open question(s) remaining` : '',
         ``,
         `## Related Files`,
         ``,
@@ -106,7 +103,10 @@ export default function handoff() {
 
       // Save HANDOFF.md to OS temp directory so session artifacts do not pollute the repo.
       const handoffDir = resolve(tmpdir(), 'mastery', 'handoffs');
-      const handoffPath = join(handoffDir, `HANDOFF-${sessionId}-${timestamp.replace(/[:.]/g, '-')}.md`);
+      const handoffPath = join(
+        handoffDir,
+        `HANDOFF-${sessionId}-${timestamp.replace(/[:.]/g, '-')}.md`,
+      );
       await mkdir(handoffDir, { recursive: true });
       await writeFile(handoffPath, doc, 'utf-8');
 

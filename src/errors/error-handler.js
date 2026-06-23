@@ -16,12 +16,19 @@ export function classifyError(error) {
   const normalizedMessage = message.toLowerCase();
 
   // Model errors
-  if (normalizedMessage.includes('api key') || normalizedMessage.includes('api_key') ||
-      normalizedMessage.includes('authentication') ||
-      normalizedMessage.includes('unauthorized') || normalizedMessage.includes('401') ||
-      normalizedMessage.includes('rate limit') || normalizedMessage.includes('model') ||
-      normalizedMessage.includes('context_length') || normalizedMessage.includes('token')) {
-    const isAuthError = normalizedMessage.includes('api key') ||
+  if (
+    normalizedMessage.includes('api key') ||
+    normalizedMessage.includes('api_key') ||
+    normalizedMessage.includes('authentication') ||
+    normalizedMessage.includes('unauthorized') ||
+    normalizedMessage.includes('401') ||
+    normalizedMessage.includes('rate limit') ||
+    normalizedMessage.includes('model') ||
+    normalizedMessage.includes('context_length') ||
+    normalizedMessage.includes('token')
+  ) {
+    const isAuthError =
+      normalizedMessage.includes('api key') ||
       normalizedMessage.includes('api_key') ||
       normalizedMessage.includes('authentication') ||
       normalizedMessage.includes('unauthorized') ||
@@ -29,7 +36,11 @@ export function classifyError(error) {
 
     return {
       category: ErrorCategory.MODEL_ERROR,
-      severity: isAuthError ? ErrorSeverity.FATAL : (normalizedMessage.includes('rate limit') ? ErrorSeverity.RECOVERABLE : ErrorSeverity.DEGRADED),
+      severity: isAuthError
+        ? ErrorSeverity.FATAL
+        : normalizedMessage.includes('rate limit')
+          ? ErrorSeverity.RECOVERABLE
+          : ErrorSeverity.DEGRADED,
       message,
       originalError: err,
       retryable: !isAuthError,
@@ -37,8 +48,12 @@ export function classifyError(error) {
   }
 
   // Timeout errors
-  if (message.includes('timeout') || message.includes('timed out') ||
-      message.includes('ETIMEDOUT') || message.includes('abort')) {
+  if (
+    message.includes('timeout') ||
+    message.includes('timed out') ||
+    message.includes('ETIMEDOUT') ||
+    message.includes('abort')
+  ) {
     return {
       category: ErrorCategory.TIMEOUT_ERROR,
       severity: ErrorSeverity.RECOVERABLE,
@@ -71,7 +86,11 @@ export function classifyError(error) {
   }
 
   // Validation errors
-  if (message.includes('validation') || message.includes('required') || message.includes('invalid')) {
+  if (
+    message.includes('validation') ||
+    message.includes('required') ||
+    message.includes('invalid')
+  ) {
     return {
       category: ErrorCategory.VALIDATION_ERROR,
       severity: ErrorSeverity.RECOVERABLE,
@@ -146,7 +165,7 @@ export class RetryStrategy {
 
   /** @param {number} ms @returns {Promise<void>} */
   sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 
@@ -169,6 +188,8 @@ export async function withTimeout(fn, ms, label = 'operation') {
       }),
     ]);
   } finally {
-    if (timer) {clearTimeout(timer);}
+    if (timer) {
+      clearTimeout(timer);
+    }
   }
 }

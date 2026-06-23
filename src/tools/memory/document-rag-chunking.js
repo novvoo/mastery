@@ -18,9 +18,8 @@ export function chunkText(text) {
   const sections = detectSections(normalized);
 
   if (totalTokens <= CHUNK_TOKENS_MAX) {
-    const sectionPaths = sections.length > 1
-      ? sections.slice(0, 1).map(s => s.heading)
-      : ['Content'];
+    const sectionPaths =
+      sections.length > 1 ? sections.slice(0, 1).map((s) => s.heading) : ['Content'];
     return [{ text: normalized, sectionPath: sectionPaths, tokens: totalTokens }];
   }
 
@@ -28,7 +27,10 @@ export function chunkText(text) {
     return chunkBySections(normalized, sections);
   }
 
-  const paragraphs = normalized.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  const paragraphs = normalized
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
   if (paragraphs.length === 0) {
     return legacyTokenSplit(normalized);
   }
@@ -44,7 +46,9 @@ function chunkBySections(text, sections) {
     const sec = sections[s];
     const sectionLines = lines.slice(sec.startLine, sec.endLine);
     const sectionText = sectionLines.join('\n').trim();
-    if (!sectionText) { continue; }
+    if (!sectionText) {
+      continue;
+    }
 
     const sectionTokens = tokenCount(sectionText);
 
@@ -57,18 +61,28 @@ function chunkBySections(text, sections) {
       continue;
     }
 
-    const paragraphs = sectionText.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+    const paragraphs = sectionText
+      .split(/\n{2,}/)
+      .map((p) => p.trim())
+      .filter(Boolean);
     if (paragraphs.length <= 1) {
       const subChunks = packByTokens(
-        sectionText.split('\n').map(l => l.trim()).filter(Boolean),
-        [sec.heading]
+        sectionText
+          .split('\n')
+          .map((l) => l.trim())
+          .filter(Boolean),
+        [sec.heading],
       );
-      for (const c of subChunks) { outputChunks.push(c); }
+      for (const c of subChunks) {
+        outputChunks.push(c);
+      }
       continue;
     }
 
     const subChunks = packByTokens(paragraphs, [sec.heading]);
-    for (const c of subChunks) { outputChunks.push(c); }
+    for (const c of subChunks) {
+      outputChunks.push(c);
+    }
   }
 
   return outputChunks;
@@ -80,7 +94,9 @@ function packByTokens(segments, sectionPath) {
   let bufferTokens = 0;
 
   for (const seg of segments) {
-    if (!seg) { continue; }
+    if (!seg) {
+      continue;
+    }
     const segTokens = tokenCount(seg);
 
     if (segTokens > CHUNK_TOKENS_MAX) {
@@ -89,7 +105,10 @@ function packByTokens(segments, sectionPath) {
         buffer = '';
         bufferTokens = 0;
       }
-      const linePieces = seg.split('\n').map(l => l.trim()).filter(Boolean);
+      const linePieces = seg
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean);
       for (const piece of linePieces) {
         const pieceTokens = tokenCount(piece);
         if (pieceTokens > CHUNK_TOKENS_MAX) {
@@ -119,7 +138,9 @@ function packByTokens(segments, sectionPath) {
       bufferTokens += segTokens;
     }
   }
-  if (buffer && buffer.trim()) { result.push(makePackResult(buffer, sectionPath, bufferTokens)); }
+  if (buffer && buffer.trim()) {
+    result.push(makePackResult(buffer, sectionPath, bufferTokens));
+  }
   return result;
 }
 
@@ -128,9 +149,13 @@ function makePackResult(text, sectionPath, tokens) {
 }
 
 function carryOverlap(text) {
-  if (!text) { return ''; }
+  if (!text) {
+    return '';
+  }
   const pieces = text.split(/\s+/).filter(Boolean);
-  if (pieces.length === 0) { return ''; }
+  if (pieces.length === 0) {
+    return '';
+  }
   const targetWords = Math.max(6, Math.round(OVERLAP_TOKENS / 1.3));
   return pieces.slice(-targetWords).join(' ');
 }
@@ -138,7 +163,9 @@ function carryOverlap(text) {
 function legacyTokenSplit(text) {
   const result = [];
   const s = String(text || '');
-  if (!s) { return result; }
+  if (!s) {
+    return result;
+  }
   const words = s.split(/\s+/);
   let buffer = '';
   let bufferTokens = 0;
@@ -162,10 +189,16 @@ function legacyTokenSplit(text) {
 /* ─── token counting ────────────────────────────────────────────────── */
 export function tokenCount(text) {
   try {
-    if (typeof heuristicCountTokens === 'function') { return heuristicCountTokens(text); }
-  } catch { /* noop */ }
+    if (typeof heuristicCountTokens === 'function') {
+      return heuristicCountTokens(text);
+    }
+  } catch {
+    /* noop */
+  }
   const s = String(text || '');
-  if (!s) { return 0; }
+  if (!s) {
+    return 0;
+  }
   const cjk = (s.match(/[\u4e00-\u9fff]/g) || []).length;
   const words = (s.match(/[\p{L}\p{N}_-]+/gu) || []).length;
   return Math.max(1, Math.round(cjk + words * 1.3));

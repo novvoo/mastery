@@ -1,7 +1,7 @@
 /**
  * Internationalization (i18n) Support
  * 国际化支持模块
- * 
+ *
  * 功能：
  * - 多语言消息管理
  * - 自动语言检测
@@ -31,7 +31,7 @@ export const DEFAULT_LANGUAGE = 'zh-CN';
 
 // 内置翻译
 const TRANSLATIONS = {
-  'en': {
+  en: {
     // 通用
     'common.ok': 'OK',
     'common.cancel': 'Cancel',
@@ -61,7 +61,7 @@ const TRANSLATIONS = {
     'common.none': 'None',
     'common.or': 'or',
     'common.and': 'and',
-    
+
     // Agent
     'agent.thinking': 'Thinking...',
     'agent.reasoning': 'Reasoning...',
@@ -74,7 +74,7 @@ const TRANSLATIONS = {
     'agent.final_answer': 'Final Answer',
     'agent.max_iterations': 'Maximum iterations reached',
     'agent.timeout': 'Operation timed out',
-    
+
     // Tools
     'tool.executing': 'Executing {tool}...',
     'tool.completed': '{tool} completed',
@@ -82,7 +82,7 @@ const TRANSLATIONS = {
     'tool.not_found': 'Tool not found: {tool}',
     'tool.invalid_args': 'Invalid arguments for {tool}',
     'tool.timeout': '{tool} timed out',
-    
+
     // Errors
     'error.unknown': 'Unknown error occurred',
     'error.network': 'Network error: {message}',
@@ -93,7 +93,7 @@ const TRANSLATIONS = {
     'error.process_failed': 'Process execution failed',
     'error.port_in_use': 'Port {port} is already in use',
     'error.lock_acquired': 'Resource is locked by another process',
-    
+
     // CLI
     'cli.welcome': 'Welcome to AI Engineering Agent',
     'cli.goodbye': 'Goodbye!',
@@ -102,7 +102,7 @@ const TRANSLATIONS = {
     'cli.system': 'System',
     'cli.help': 'Type /help for available commands',
     'cli.exit_hint': 'Type /exit or press Ctrl+C to exit',
-    
+
     // Commands
     'cmd.help.title': 'Available Commands',
     'cmd.help.description': 'List of all available commands',
@@ -111,7 +111,7 @@ const TRANSLATIONS = {
     'cmd.status.stopped': 'Stopped',
     'cmd.status.error': 'Error',
   },
-  
+
   'zh-CN': {
     // 通用
     'common.ok': '确定',
@@ -142,7 +142,7 @@ const TRANSLATIONS = {
     'common.none': '无',
     'common.or': '或',
     'common.and': '和',
-    
+
     // Agent
     'agent.thinking': '思考中...',
     'agent.reasoning': '推理中...',
@@ -155,7 +155,7 @@ const TRANSLATIONS = {
     'agent.final_answer': '最终答案',
     'agent.max_iterations': '已达到最大迭代次数',
     'agent.timeout': '操作超时',
-    
+
     // Tools
     'tool.executing': '执行 {tool}...',
     'tool.completed': '{tool} 完成',
@@ -163,7 +163,7 @@ const TRANSLATIONS = {
     'tool.not_found': '未找到工具: {tool}',
     'tool.invalid_args': '{tool} 参数无效',
     'tool.timeout': '{tool} 超时',
-    
+
     // Errors
     'error.unknown': '发生未知错误',
     'error.network': '网络错误: {message}',
@@ -174,7 +174,7 @@ const TRANSLATIONS = {
     'error.process_failed': '进程执行失败',
     'error.port_in_use': '端口 {port} 已被占用',
     'error.lock_acquired': '资源被其他进程锁定',
-    
+
     // CLI
     'cli.welcome': '欢迎使用 AI Engineering Agent',
     'cli.goodbye': '再见！',
@@ -183,7 +183,7 @@ const TRANSLATIONS = {
     'cli.system': '系统',
     'cli.help': '输入 /help 查看可用命令',
     'cli.exit_hint': '输入 /exit 或按 Ctrl+C 退出',
-    
+
     // Commands
     'cmd.help.title': '可用命令',
     'cmd.help.description': '所有可用命令列表',
@@ -192,7 +192,7 @@ const TRANSLATIONS = {
     'cmd.status.stopped': '已停止',
     'cmd.status.error': '错误',
   },
-  
+
   'zh-TW': {
     // 繁體中文
     'common.ok': '確定',
@@ -223,7 +223,7 @@ const TRANSLATIONS = {
     'common.none': '無',
     'common.or': '或',
     'common.and': '和',
-    
+
     // Agent
     'agent.thinking': '思考中...',
     'agent.reasoning': '推理中...',
@@ -236,7 +236,7 @@ const TRANSLATIONS = {
     'agent.final_answer': '最終答案',
     'agent.max_iterations': '已達到最大迭代次數',
     'agent.timeout': '操作逾時',
-    
+
     // Tools
     'tool.executing': '執行 {tool}...',
     'tool.completed': '{tool} 完成',
@@ -244,7 +244,7 @@ const TRANSLATIONS = {
     'tool.not_found': '未找到工具: {tool}',
     'tool.invalid_args': '{tool} 參數無效',
     'tool.timeout': '{tool} 逾時',
-    
+
     // Errors
     'error.unknown': '發生未知錯誤',
     'error.network': '網路錯誤: {message}',
@@ -255,7 +255,7 @@ const TRANSLATIONS = {
     'error.process_failed': '程序執行失敗',
     'error.port_in_use': '埠號 {port} 已被佔用',
     'error.lock_acquired': '資源被其他程序鎖定',
-    
+
     // CLI
     'cli.welcome': '歡迎使用 AI Engineering Agent',
     'cli.goodbye': '再見！',
@@ -264,7 +264,7 @@ const TRANSLATIONS = {
     'cli.system': '系統',
     'cli.help': '輸入 /help 查看可用命令',
     'cli.exit_hint': '輸入 /exit 或按 Ctrl+C 退出',
-    
+
     // Commands
     'cmd.help.title': '可用命令',
     'cmd.help.description': '所有可用命令列表',
@@ -284,10 +284,10 @@ export class I18n {
     this.#currentLanguage = options.language || this.#detectLanguage();
     this.#fallbackLanguage = options.fallbackLanguage || DEFAULT_LANGUAGE;
     this.#translations = new Map();
-    
+
     // 加载内置翻译
     this.#loadBuiltInTranslations();
-    
+
     // 加载外部翻译文件
     if (options.translationsDir) {
       this.#loadExternalTranslations(options.translationsDir);
@@ -302,20 +302,20 @@ export class I18n {
     const envLang = process.env.LANG || process.env.LANGUAGE || process.env.LC_ALL;
     if (envLang) {
       const lang = envLang.split('.')[0].split('_')[0].toLowerCase();
-      
+
       // 映射到支持的语言
       const langMap = {
-        'zh': 'zh-CN',
-        'en': 'en',
-        'ja': 'ja',
-        'ko': 'ko',
-        'de': 'de',
-        'fr': 'fr',
-        'es': 'es',
-        'ru': 'ru',
-        'ar': 'ar',
+        zh: 'zh-CN',
+        en: 'en',
+        ja: 'ja',
+        ko: 'ko',
+        de: 'de',
+        fr: 'fr',
+        es: 'es',
+        ru: 'ru',
+        ar: 'ar',
       };
-      
+
       if (langMap[lang]) {
         // 进一步区分简体中文和繁体中文
         if (lang === 'zh') {
@@ -327,7 +327,7 @@ export class I18n {
         return langMap[lang];
       }
     }
-    
+
     return DEFAULT_LANGUAGE;
   }
 
@@ -393,17 +393,17 @@ export class I18n {
   t(key, params = {}) {
     // 尝试当前语言
     let message = this.#getMessage(this.#currentLanguage, key);
-    
+
     // 如果没有找到，尝试回退语言
     if (!message && this.#currentLanguage !== this.#fallbackLanguage) {
       message = this.#getMessage(this.#fallbackLanguage, key);
     }
-    
+
     // 如果仍然没有找到，返回键名
     if (!message) {
       return key;
     }
-    
+
     // 替换参数
     return this.#interpolate(message, params);
   }
@@ -474,8 +474,10 @@ export class I18n {
    * 检查是否有翻译
    */
   hasTranslation(key) {
-    return !!this.#getMessage(this.#currentLanguage, key) ||
-           !!this.#getMessage(this.#fallbackLanguage, key);
+    return (
+      !!this.#getMessage(this.#currentLanguage, key) ||
+      !!this.#getMessage(this.#fallbackLanguage, key)
+    );
   }
 }
 

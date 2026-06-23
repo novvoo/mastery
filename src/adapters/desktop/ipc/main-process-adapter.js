@@ -1,9 +1,21 @@
 import { buildSlashCommandSuggestions } from '../../../cli/slash-command-suggestions.js';
-import { handleDocumentBatchAdd, handleDocumentCommand, parseDocumentCommand } from '../../../runtime/document-command.js';
+import {
+  handleDocumentBatchAdd,
+  handleDocumentCommand,
+  parseDocumentCommand,
+} from '../../../runtime/document-command.js';
 import { IPCMessage, IPCMessageType } from '../protocol/ipc-protocol.js';
 import { IPCAdapterBase } from './base-adapter.js';
-import { handleActivityApprove, handleActivityReview, handleActivityUndo } from './main-process/activity-handlers.js';
-import { handleDebugCommand, handlePreviewCommand, serializeTools } from './main-process/agent-command-handlers.js';
+import {
+  handleActivityApprove,
+  handleActivityReview,
+  handleActivityUndo,
+} from './main-process/activity-handlers.js';
+import {
+  handleDebugCommand,
+  handlePreviewCommand,
+  serializeTools,
+} from './main-process/agent-command-handlers.js';
 import { DIRECT_INVOKE_CHANNELS } from './main-process/channels.js';
 import {
   handleFileDiff,
@@ -42,7 +54,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     this.#setupIPCHandlers();
     this.isConnected = true;
     this.startHeartbeat();
-    
+
     if (this.config.debug) {
       console.log('[MainProcessIPC] 适配器已初始化');
     }
@@ -63,11 +75,11 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
       this.#windows.add(windowId);
       this.#windowSenders.set(windowId, event.sender);
       this.emit('window-connected', { windowId });
-      
+
       if (this.config.debug) {
         console.log(`[MainProcessIPC] 窗口已连接: ${windowId}`);
       }
-      
+
       return { success: true, windowId };
     });
 
@@ -77,7 +89,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
       this.#windows.delete(windowId);
       this.#windowSenders.delete(windowId);
       this.emit('window-disconnected', { windowId });
-      
+
       if (this.config.debug) {
         console.log(`[MainProcessIPC] 窗口已断开: ${windowId}`);
       }
@@ -87,12 +99,13 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     this.#ipcMain.on(IPCMessageType.REQUEST, async (event, messageData) => {
       try {
         const message = IPCMessage.fromJSON(messageData);
-        
+
         // 验证消息
         const validation = this.validateMessage(message);
         if (!validation.valid) {
-          event.sender.send(IPCMessageType.ERROR, 
-            this.createError(message, new Error(validation.error)).toJSON()
+          event.sender.send(
+            IPCMessageType.ERROR,
+            this.createError(message, new Error(validation.error)).toJSON(),
           );
           return;
         }
@@ -104,7 +117,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
         this.emit('error', error);
         event.sender.send(IPCMessageType.ERROR, {
           message: error.message,
-          code: 'HANDLER_ERROR'
+          code: 'HANDLER_ERROR',
         });
       }
     });
@@ -116,7 +129,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
         const message = new IPCMessage(IPCMessageType.REQUEST, payload, {
           metadata: { channel },
           source: 'renderer',
-          target: 'main'
+          target: 'main',
         });
         const response = await this.#handleRequest(message, event.sender);
         return response.payload;
@@ -143,7 +156,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
    */
   async #handleRequest(message, sender) {
     const channel = message.metadata?.channel;
-    
+
     if (this.config.debug) {
       console.log(`[MainProcessIPC] 处理请求: ${channel}`, message.payload);
     }
@@ -166,11 +179,12 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
             return this.createResponse(message, previewCommandResult);
           }
 
-          const result = input === 'init_rag' && Array.isArray(message.payload?.options?.docs)
-            ? await handleDocumentBatchAdd(message.payload.options.docs, { engine: this.#engine })
-            : parseDocumentCommand(input)
-            ? await handleDocumentCommand(input, { engine: this.#engine })
-            : await this.#engine.processInput(input, message.payload?.options || {});
+          const result =
+            input === 'init_rag' && Array.isArray(message.payload?.options?.docs)
+              ? await handleDocumentBatchAdd(message.payload.options.docs, { engine: this.#engine })
+              : parseDocumentCommand(input)
+                ? await handleDocumentCommand(input, { engine: this.#engine })
+                : await this.#engine.processInput(input, message.payload?.options || {});
           return this.createResponse(message, result);
 
         case 'agent:stop':
@@ -207,25 +221,43 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
           return this.createResponse(message, this.getStats());
 
         case 'workspace:getFileDiff':
-          return this.createResponse(message, await handleFileDiff(message.payload, this.#createHandlerContext()));
+          return this.createResponse(
+            message,
+            await handleFileDiff(message.payload, this.#createHandlerContext()),
+          );
 
         case 'workspace:readFile':
-          return this.createResponse(message, await handleReadWorkspaceFile(message.payload, this.#createHandlerContext()));
+          return this.createResponse(
+            message,
+            await handleReadWorkspaceFile(message.payload, this.#createHandlerContext()),
+          );
 
         case 'workspace:writeFile':
-          return this.createResponse(message, await handleWriteWorkspaceFile(message.payload, this.#createHandlerContext()));
+          return this.createResponse(
+            message,
+            await handleWriteWorkspaceFile(message.payload, this.#createHandlerContext()),
+          );
 
         case 'workspace:isGitRepo':
           return this.createResponse(message, await handleIsGitRepo(this.#createHandlerContext()));
 
         case 'activity:undo':
-          return this.createResponse(message, await handleActivityUndo(message.payload, this.#createHandlerContext()));
+          return this.createResponse(
+            message,
+            await handleActivityUndo(message.payload, this.#createHandlerContext()),
+          );
 
         case 'activity:review':
-          return this.createResponse(message, await handleActivityReview(message.payload, this.#createHandlerContext()));
+          return this.createResponse(
+            message,
+            await handleActivityReview(message.payload, this.#createHandlerContext()),
+          );
 
         case 'activity:approve':
-          return this.createResponse(message, await handleActivityApprove(message.payload, this.#createHandlerContext()));
+          return this.createResponse(
+            message,
+            await handleActivityApprove(message.payload, this.#createHandlerContext()),
+          );
 
         default:
           // 自定义处理器
@@ -235,16 +267,16 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
             // 确保结果不为 undefined
             return this.createResponse(message, result !== undefined ? result : { success: true });
           }
-          
+
           throw new Error(`未知的频道: ${channel}`);
       }
     } catch (error) {
       console.error(`[MainProcessIPC] 处理请求时出错 (${channel}):`, error);
       // 返回错误响应而不是抛出异常
-      return this.createResponse(message, { 
-        success: false, 
+      return this.createResponse(message, {
+        success: false,
         error: error.message,
-        channel 
+        channel,
       });
     }
   }
@@ -263,9 +295,9 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     if (!this.eventSubscriptions.has(eventName)) {
       this.eventSubscriptions.set(eventName, new Map());
     }
-    
+
     this.eventSubscriptions.get(eventName).set(sender.id, sender);
-    
+
     if (this.config.debug) {
       console.log(`[MainProcessIPC] 窗口 ${sender.id} 订阅事件: ${eventName}`);
     }
@@ -278,7 +310,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     if (this.eventSubscriptions.has(eventName)) {
       this.eventSubscriptions.get(eventName).delete(windowId);
     }
-    
+
     if (this.config.debug) {
       console.log(`[MainProcessIPC] 窗口 ${windowId} 取消订阅事件: ${eventName}`);
     }
@@ -311,7 +343,10 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
           }
         });
       } catch (registerError) {
-        console.warn(`[MainProcessIPC] registerHandler ${channel} ipcMain.handle 失败，将通过 #handleRequest 降级处理:`, registerError?.message);
+        console.warn(
+          `[MainProcessIPC] registerHandler ${channel} ipcMain.handle 失败，将通过 #handleRequest 降级处理:`,
+          registerError?.message,
+        );
       }
     }
 
@@ -339,7 +374,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
    */
   attachEngine(engine) {
     this.#engine = engine;
-    
+
     if (this.config.debug) {
       console.log('[MainProcessIPC] 引擎已附加');
     }
@@ -374,7 +409,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
   broadcast(eventName, data) {
     const message = this.createEvent(eventName, data);
     const deliveredWindowIds = new Set();
-    
+
     for (const windowId of this.#windows) {
       const window = this.#getWindow(windowId);
       if (window) {
@@ -401,7 +436,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
   #processQueue() {
     while (this.messageQueue.size() > 0) {
       const message = this.messageQueue.dequeue();
-      this.send(message).catch(err => {
+      this.send(message).catch((err) => {
         this.emit('error', err);
       });
     }
@@ -423,7 +458,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
         if (this.config.debug) {
           console.log(`[MainProcessIPC] 发送到窗口 ${windowId}:`, channel, data);
         }
-      }
+      },
     };
   }
 
@@ -446,7 +481,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     this.#windowSenders.clear();
     this.#handlersSetup = false;
     this.removeAllListeners();
-    
+
     if (this.config.debug) {
       console.log('[MainProcessIPC] 适配器已断开');
     }

@@ -118,9 +118,14 @@ export function mapToolCodeName(rawName, resolveToolName) {
 }
 
 export function normalizeToolArgumentAliases(toolName, args) {
-  if ((toolName === 'read_file' || toolName === 'write_file' || toolName === 'edit_file' || toolName === 'list_dir')
-    && !args.path
-    && (args.file_path || args.file || args.filename)) {
+  if (
+    (toolName === 'read_file' ||
+      toolName === 'write_file' ||
+      toolName === 'edit_file' ||
+      toolName === 'list_dir') &&
+    !args.path &&
+    (args.file_path || args.file || args.filename)
+  ) {
     return { ...args, path: args.file_path || args.file || args.filename };
   }
   return args;

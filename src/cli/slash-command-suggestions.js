@@ -19,10 +19,18 @@ const BUILTIN_COMMANDS = [
   { name: '/document', description: 'Manage document RAG context', source: 'builtin' },
   { name: '/documents', description: 'Manage document RAG context', source: 'builtin' },
   { name: '/doc add', description: 'Index a local document or URL', source: 'builtin_subcommand' },
-  { name: '/doc init', description: 'Initialize and diagnose document RAG runtime', source: 'builtin_subcommand' },
+  {
+    name: '/doc init',
+    description: 'Initialize and diagnose document RAG runtime',
+    source: 'builtin_subcommand',
+  },
   { name: '/doc search', description: 'Search indexed documents', source: 'builtin_subcommand' },
   { name: '/doc list', description: 'List indexed documents', source: 'builtin_subcommand' },
-  { name: '/doc clear', description: 'Clear indexed document context', source: 'builtin_subcommand' },
+  {
+    name: '/doc clear',
+    description: 'Clear indexed document context',
+    source: 'builtin_subcommand',
+  },
   { name: '/doc help', description: 'Show document RAG help', source: 'builtin_subcommand' },
   { name: '/preview', description: 'Preview generated HTML or Node projects', source: 'builtin' },
   { name: '/preview list', description: 'List active previews', source: 'builtin_subcommand' },
@@ -53,8 +61,10 @@ export function buildSlashCommandSuggestions(skillTools = []) {
 
   for (const tool of skillTools) {
     // tool 可能是对象 { name, description } 或字符串
-    const toolName = typeof tool === 'string' ? tool : (tool?.name || tool?.fullName || '');
-    if (!toolName) {continue;}
+    const toolName = typeof tool === 'string' ? tool : tool?.name || tool?.fullName || '';
+    if (!toolName) {
+      continue;
+    }
 
     const name = toolNameToSlashCommand(toolName);
     if (seen.has(name)) {
@@ -80,7 +90,7 @@ export function filterSlashCommandSuggestions(commands, input, limit = 8) {
   const hasSpace = /\s/.test(trimmed);
 
   return commands
-    .filter(command => {
+    .filter((command) => {
       if (!command.name.startsWith(trimmed)) {
         return false;
       }
@@ -102,12 +112,14 @@ export function completeSlashCommand(commands, line) {
   }
 
   const suggestions = filterSlashCommandSuggestions(commands, trimmed, 50);
-  const hits = suggestions.map(command => `${command.name} `);
+  const hits = suggestions.map((command) => `${command.name} `);
   return [hits.length > 0 ? hits : [], trimmed];
 }
 
 function compactDescription(description = '') {
-  const text = String(description || '').replace(/\s+/g, ' ').trim();
+  const text = String(description || '')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (!text) {
     return '';
   }
@@ -115,9 +127,9 @@ function compactDescription(description = '') {
 }
 
 export function formatSlashCommandSuggestions(commands, theme = {}) {
-  const primary = theme.primary || (text => text);
-  const dim = theme.dim || (text => text);
-  const lines = commands.map(command => {
+  const primary = theme.primary || ((text) => text);
+  const dim = theme.dim || ((text) => text);
+  const lines = commands.map((command) => {
     const description = compactDescription(command.description);
     return description
       ? `${primary(command.name)} ${dim('-')} ${dim(description)}`

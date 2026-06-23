@@ -35,7 +35,7 @@ export class ASTMetadataExtractor {
       return {
         functions: Array.from(cached.functions.values()),
         classes: Array.from(cached.classes.values()),
-        regions: cached.regions
+        regions: cached.regions,
       };
     }
 
@@ -46,10 +46,10 @@ export class ASTMetadataExtractor {
     const regions = this._extractRegions(lines, content);
 
     const data = {
-      functions: new Map(functions.map(f => [f.name, f])),
-      classes: new Map(classes.map(c => [c.name, c])),
+      functions: new Map(functions.map((f) => [f.name, f])),
+      classes: new Map(classes.map((c) => [c.name, c])),
       regions,
-      hash
+      hash,
     };
 
     this._cache.set(filePath, data);
@@ -57,7 +57,7 @@ export class ASTMetadataExtractor {
     return {
       functions,
       classes,
-      regions
+      regions,
     };
   }
 
@@ -66,7 +66,9 @@ export class ASTMetadataExtractor {
    */
   getFunctionMetadata(filePath, functionName) {
     const cached = this._cache.get(filePath);
-    if (!cached) {return null;}
+    if (!cached) {
+      return null;
+    }
     return cached.functions.get(functionName) || null;
   }
 
@@ -75,7 +77,9 @@ export class ASTMetadataExtractor {
    */
   getClassMetadata(filePath, className) {
     const cached = this._cache.get(filePath);
-    if (!cached) {return null;}
+    if (!cached) {
+      return null;
+    }
     return cached.classes.get(className) || null;
   }
 
@@ -84,7 +88,9 @@ export class ASTMetadataExtractor {
    */
   getCodeRegion(filePath, line) {
     const cached = this._cache.get(filePath);
-    if (!cached) {return null;}
+    if (!cached) {
+      return null;
+    }
 
     const findRegion = (regions) => {
       for (const region of regions) {
@@ -111,7 +117,7 @@ export class ASTMetadataExtractor {
 
       // 函数声明
       const funcMatch = trimmed.match(
-        /^(?:export\s+)?(?:async\s+)?function\s+([a-zA-Z_$][\w$]*)\s*\(/
+        /^(?:export\s+)?(?:async\s+)?function\s+([a-zA-Z_$][\w$]*)\s*\(/,
       );
 
       if (funcMatch) {
@@ -129,13 +135,13 @@ export class ASTMetadataExtractor {
           references: this._extractReferences(lines.slice(i, endLine).join('\n')),
           complexity: this._estimateComplexity(lines.slice(i, endLine).join('\n')),
           startLine: i + 1,
-          endLine
+          endLine,
         });
       }
 
       // 箭头函数赋值
       const arrowMatch = trimmed.match(
-        /^(?:export\s+)?(?:const|let|var)\s+([a-zA-Z_$][\w$]*)\s*=\s*(?:async\s+)?\s*\([^)]*\)\s*=>/
+        /^(?:export\s+)?(?:const|let|var)\s+([a-zA-Z_$][\w$]*)\s*=\s*(?:async\s+)?\s*\([^)]*\)\s*=>/,
       );
       if (arrowMatch) {
         const name = arrowMatch[1];
@@ -151,7 +157,7 @@ export class ASTMetadataExtractor {
           references: this._extractReferences(lines.slice(i, endLine).join('\n')),
           complexity: this._estimateComplexity(lines.slice(i, endLine).join('\n')),
           startLine: i + 1,
-          endLine
+          endLine,
         });
       }
     }
@@ -186,7 +192,7 @@ export class ASTMetadataExtractor {
 
           // 方法
           const methodMatch = methodLine.match(
-            /^(?:(private|protected|public)\s+)?(?:static\s+)?(?:async\s+)?([a-zA-Z_$][\w$]*)\s*\(/
+            /^(?:(private|protected|public)\s+)?(?:static\s+)?(?:async\s+)?([a-zA-Z_$][\w$]*)\s*\(/,
           );
           if (methodMatch) {
             const visibility = methodMatch[1];
@@ -197,7 +203,7 @@ export class ASTMetadataExtractor {
               isStatic: methodLine.includes('static'),
               isAsync: methodLine.includes('async'),
               isGetter: false,
-              isSetter: false
+              isSetter: false,
             });
           }
 
@@ -210,7 +216,7 @@ export class ASTMetadataExtractor {
               name: propMatch[2],
               visibility: this._parseVisibility(propMatch[1]),
               isStatic: methodLine.includes('static'),
-              initializer: methodLine.split(/[=:]/)[1]?.trim()
+              initializer: methodLine.split(/[=:]/)[1]?.trim(),
             });
           }
         }
@@ -222,7 +228,7 @@ export class ASTMetadataExtractor {
           methods,
           decorators: this._extractDecorators(lines.slice(i, endLine).join('\n')),
           startLine: i + 1,
-          endLine
+          endLine,
         });
       }
     }
@@ -247,7 +253,7 @@ export class ASTMetadataExtractor {
           endLine: i + 1,
           content: trimmed,
           children: [],
-          metadata: { isBlock: trimmed.startsWith('/*') }
+          metadata: { isBlock: trimmed.startsWith('/*') },
         });
       }
     }
@@ -260,22 +266,27 @@ export class ASTMetadataExtractor {
    */
   _extractParams(line) {
     const match = line.match(/\(([^)]*)\)/);
-    if (!match) {return [];}
+    if (!match) {
+      return [];
+    }
 
     const params = [];
     const paramStr = match[1];
 
-    const paramList = paramStr.split(',').map(p => p.trim()).filter(Boolean);
+    const paramList = paramStr
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean);
 
     for (const param of paramList) {
-      const [namePart, defaultPart] = param.split('=').map(s => s.trim());
+      const [namePart, defaultPart] = param.split('=').map((s) => s.trim());
       const name = namePart.split(':')[0].trim();
       const type = namePart.split(':')[1]?.trim();
 
       params.push({
         name,
         type,
-        defaultValue: defaultPart
+        defaultValue: defaultPart,
       });
     }
 
@@ -320,7 +331,27 @@ export class ASTMetadataExtractor {
     while ((match = regex.exec(code)) !== null) {
       const name = match[1];
       // 过滤关键字
-      if (!['const', 'let', 'var', 'function', 'class', 'if', 'for', 'while', 'return', 'import', 'export', 'from', 'async', 'await', 'new', 'this', 'super'].includes(name)) {
+      if (
+        ![
+          'const',
+          'let',
+          'var',
+          'function',
+          'class',
+          'if',
+          'for',
+          'while',
+          'return',
+          'import',
+          'export',
+          'from',
+          'async',
+          'await',
+          'new',
+          'this',
+          'super',
+        ].includes(name)
+      ) {
         refs.push(name);
       }
     }
@@ -385,9 +416,12 @@ export class ASTMetadataExtractor {
    */
   _parseVisibility(modifier) {
     switch (modifier) {
-      case 'private': return 'private';
-      case 'protected': return 'protected';
-      default: return 'public';
+      case 'private':
+        return 'private';
+      case 'protected':
+        return 'protected';
+      default:
+        return 'public';
     }
   }
 

@@ -251,7 +251,9 @@ export function buildSystemPrompt(memoryManager, toolRegistry, workingDirectory,
   sections.push('## Quality Gates (check before FINAL_ANSWER)');
   sections.push('1. **Alignment** — Did I understand correctly? Did I expose assumptions?');
   sections.push('2. **Simplicity** — Is this the simplest solution? Did I add unnecessary things?');
-  sections.push('3. **Precision** — Does every change trace back to the request? Did I touch unrelated code?');
+  sections.push(
+    '3. **Precision** — Does every change trace back to the request? Did I touch unrelated code?',
+  );
   sections.push('4. **Verification** — Are success criteria defined and met? Do tests pass?');
 
   return sections.join('\n\n');

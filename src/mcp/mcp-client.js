@@ -1,6 +1,6 @@
 /**
  * MCP Client - Model Context Protocol 客户端
- * 
+ *
  * 支持:
  * - MCP (Model Context Protocol)
  * - JSON-RPC 2.0
@@ -91,7 +91,7 @@ export class MCPClient extends EventEmitter {
    */
   async disconnect(name) {
     if (!name) {
-      await Promise.all([...this.servers.keys()].map(serverName => this.disconnect(serverName)));
+      await Promise.all([...this.servers.keys()].map((serverName) => this.disconnect(serverName)));
       return;
     }
 
@@ -120,21 +120,21 @@ export class MCPClient extends EventEmitter {
 
   getTools() {
     return [...this.servers.entries()].flatMap(([serverName, client]) =>
-      [...client.tools.values()].map(tool => ({
+      [...client.tools.values()].map((tool) => ({
         ...tool,
         serverName,
         fullName: `${serverName}/${tool.name}`,
-      }))
+      })),
     );
   }
 
   getResources() {
     return [...this.servers.entries()].flatMap(([serverName, client]) =>
-      [...client.resources.values()].map(resource => ({
+      [...client.resources.values()].map((resource) => ({
         ...resource,
         serverName,
         fullName: `${serverName}/${resource.name || resource.uri}`,
-      }))
+      })),
     );
   }
 
@@ -173,13 +173,13 @@ export class MCPClient extends EventEmitter {
    */
   async discoverTools() {
     const response = await this.sendRequest('tools/list');
-    
+
     if (response.error) {
       throw new Error(`Failed to discover tools: ${response.error.message}`);
     }
 
     const tools = response.result?.tools || [];
-    
+
     for (const toolData of tools) {
       const tool = new MCPTool(toolData);
       this.tools.set(tool.name, tool);
@@ -224,13 +224,13 @@ export class MCPClient extends EventEmitter {
    */
   async discoverResources() {
     const response = await this.sendRequest('resources/list');
-    
+
     if (response.error) {
       throw new Error(`Failed to discover resources: ${response.error.message}`);
     }
 
     const resources = response.result?.resources || [];
-    
+
     for (const resourceData of resources) {
       const resource = new MCPResource(resourceData);
       this.resources.set(resource.uri, resource);
@@ -368,7 +368,7 @@ export class WebSocketMCPClient extends MCPClient {
       this.ws.onmessage = (event) => {
         const response = JSON.parse(event.data);
         const pending = this.pendingRequests.get(response.id);
-        
+
         if (pending) {
           pending.resolve(response);
           this.pendingRequests.delete(response.id);
@@ -422,7 +422,7 @@ export class STDIOMCPClient extends MCPClient {
 
   async connect() {
     const { spawn } = await import('child_process');
-    
+
     this.process = spawn(this.command, this.args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, ...this.env },
@@ -461,7 +461,7 @@ export class STDIOMCPClient extends MCPClient {
         try {
           const response = JSON.parse(line);
           const pending = this.pendingRequests.get(response.id);
-          
+
           if (pending) {
             pending.resolve(response);
             this.pendingRequests.delete(response.id);
@@ -536,11 +536,11 @@ export class MCPToolAdapter {
   async getAllTools() {
     const tools = await this.client.discoverTools();
     const adapted = [];
-    
+
     for (const mcpTool of tools.values()) {
       adapted.push(this.adaptTool(mcpTool));
     }
-    
+
     return adapted;
   }
 }

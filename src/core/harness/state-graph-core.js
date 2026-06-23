@@ -88,7 +88,7 @@ export class ContentAddressableStore {
   export() {
     return {
       objects: Array.from(this.objects.entries()),
-      refs: Array.from(this.refs.entries())
+      refs: Array.from(this.refs.entries()),
     };
   }
 
@@ -110,7 +110,7 @@ export class ContentAddressableStore {
   getStats() {
     return {
       objects: this.objects.size,
-      refs: this.refs.size
+      refs: this.refs.size,
     };
   }
 }
@@ -130,10 +130,14 @@ export class StateGraph {
    * 创建初始状态
    */
   initialize(initialData = {}) {
-    const initialNode = this.createNode('commit', {
-      message: 'Initial state',
-      data: initialData
-    }, []);
+    const initialNode = this.createNode(
+      'commit',
+      {
+        message: 'Initial state',
+        data: initialData,
+      },
+      [],
+    );
 
     this.initialCommitId = initialNode.id;
     this.store.setRef(this.headRef, initialNode.id);
@@ -151,7 +155,7 @@ export class StateGraph {
       data,
       parentIds,
       timestamp: Date.now(),
-      metadata
+      metadata,
     };
 
     this.nodes.set(node.id, node);
@@ -171,11 +175,15 @@ export class StateGraph {
   commit(changes, message, author = 'agent') {
     const currentHead = this.store.getRef(this.headRef);
 
-    const commitNode = this.createNode('commit', {
-      message,
-      changes,
-      author
-    }, currentHead ? [currentHead] : []);
+    const commitNode = this.createNode(
+      'commit',
+      {
+        message,
+        changes,
+        author,
+      },
+      currentHead ? [currentHead] : [],
+    );
 
     // 应用变更
     for (const change of changes) {
@@ -221,7 +229,9 @@ export class StateGraph {
 
     while (currentId && history.length < limit) {
       const node = this.getNode(currentId);
-      if (!node) {break;}
+      if (!node) {
+        break;
+      }
 
       history.push(node);
 
@@ -276,7 +286,9 @@ export class StateGraph {
 
     while (toVisit.length > 0) {
       const id = toVisit.shift();
-      if (ids.has(id)) {continue;}
+      if (ids.has(id)) {
+        continue;
+      }
 
       ids.add(id);
       const node = this.getNode(id);
@@ -303,7 +315,7 @@ export class StateGraph {
   getStats() {
     return {
       nodes: this.nodes.size,
-      head: this.getHead()
+      head: this.getHead(),
     };
   }
 }
@@ -330,7 +342,7 @@ export class ContextProjectionEngine {
       nodes: nodeIds,
       purpose,
       timestamp: Date.now(),
-      context: context + additionalContext
+      context: context + additionalContext,
     };
 
     this.projections.set(taskId, projection);
@@ -349,7 +361,9 @@ export class ContextProjectionEngine {
 
     for (const nodeId of nodeIds) {
       const node = this.graph.getNode(nodeId);
-      if (!node) {continue;}
+      if (!node) {
+        continue;
+      }
 
       lines.push(`---`);
       lines.push(`Node ID: ${nodeId.substring(0, 16)}...`);
@@ -399,7 +413,9 @@ export class ContextProjectionEngine {
    */
   updateProjection(taskId, updates) {
     const existing = this.getProjection(taskId);
-    if (!existing) {return null;}
+    if (!existing) {
+      return null;
+    }
 
     const updated = { ...existing, ...updates, timestamp: Date.now() };
     this.projections.set(taskId, updated);
@@ -433,5 +449,5 @@ export class ContextProjectionEngine {
 export default {
   ContentAddressableStore,
   StateGraph,
-  ContextProjectionEngine
+  ContextProjectionEngine,
 };

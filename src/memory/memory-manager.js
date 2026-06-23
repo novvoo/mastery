@@ -64,10 +64,14 @@ export class MemoryManager {
           const content = await readFile(legacyPath, 'utf-8');
           // 确保目标目录存在
           const dir = this.#contextPath.substring(0, this.#contextPath.lastIndexOf('/'));
-          if (!existsSync(dir)) { await mkdir(dir, { recursive: true }); }
+          if (!existsSync(dir)) {
+            await mkdir(dir, { recursive: true });
+          }
           await writeFile(this.#contextPath, content, 'utf-8');
           // 不删除旧文件，保持向后兼容
-        } catch { /* 迁移失败静默 */ }
+        } catch {
+          /* 迁移失败静默 */
+        }
       }
     }
 
@@ -76,9 +80,7 @@ export class MemoryManager {
         const content = await readFile(this.#contextPath, 'utf-8');
         this.#context = this.parseContextMd(content);
       } catch {
-        this.#context = this.createDefaultContext(
-          this.#context.projectInfo.path
-        );
+        this.#context = this.createDefaultContext(this.#context.projectInfo.path);
       }
     }
     return this.#context;
@@ -87,17 +89,19 @@ export class MemoryManager {
   async save() {
     // 修剪过长的历史数据
     this.#pruneContext();
-    
+
     const content = this.toMarkdown();
-    
+
     // 检查文件大小
     if (content.length > MAX_CONTEXT_FILE_SIZE) {
-      console.warn(`MemoryManager: CONTEXT.md too large (${content.length} chars), forcing additional pruning`);
+      console.warn(
+        `MemoryManager: CONTEXT.md too large (${content.length} chars), forcing additional pruning`,
+      );
       // 进一步修剪
       this.#context.sessionHistory = this.#context.sessionHistory.slice(-10);
       this.#context.keyDecisions = this.#context.keyDecisions.slice(-20);
     }
-    
+
     const dir = this.#contextPath.substring(0, this.#contextPath.lastIndexOf('/'));
     if (!existsSync(dir)) {
       await mkdir(dir, { recursive: true });
@@ -115,7 +119,7 @@ export class MemoryManager {
       this.#context.sessionHistory = this.#context.sessionHistory.slice(-MAX_SESSION_HISTORY);
       console.warn(`MemoryManager: pruned ${removed} old sessions from history`);
     }
-    
+
     if (this.#context.keyDecisions.length > MAX_KEY_DECISIONS) {
       const removed = this.#context.keyDecisions.length - MAX_KEY_DECISIONS;
       this.#context.keyDecisions = this.#context.keyDecisions.slice(-MAX_KEY_DECISIONS);
@@ -156,7 +160,7 @@ export class MemoryManager {
 
   /** @param {string} file @param {string} purpose */
   async updateFileMap(file, purpose) {
-    const existing = this.#context.fileMap.find(f => f.file === file);
+    const existing = this.#context.fileMap.find((f) => f.file === file);
     if (existing) {
       existing.purpose = purpose;
       existing.lastModified = new Date().toISOString().split('T')[0];
@@ -199,10 +203,18 @@ export class MemoryManager {
   async updateCurrentSession(updates) {
     const current = this.#context.sessionHistory[this.#context.sessionHistory.length - 1];
     if (current) {
-      if (updates.completed) {current.completed = updates.completed;}
-      if (updates.inProgress) {current.inProgress = updates.inProgress;}
-      if (updates.nextSteps) {current.nextSteps = updates.nextSteps;}
-      if (updates.openQuestions) {current.openQuestions = updates.openQuestions;}
+      if (updates.completed) {
+        current.completed = updates.completed;
+      }
+      if (updates.inProgress) {
+        current.inProgress = updates.inProgress;
+      }
+      if (updates.nextSteps) {
+        current.nextSteps = updates.nextSteps;
+      }
+      if (updates.openQuestions) {
+        current.openQuestions = updates.openQuestions;
+      }
     }
     await this.save();
   }
@@ -286,10 +298,18 @@ export class MemoryManager {
       lines.push('## Session History');
       for (const s of ctx.sessionHistory) {
         lines.push(`### Session ${s.session} - ${s.date}`);
-        if (s.completed.length > 0) {lines.push(`- Completed: ${s.completed.join(', ')}`);}
-        if (s.inProgress.length > 0) {lines.push(`- In Progress: ${s.inProgress.join(', ')}`);}
-        if (s.nextSteps.length > 0) {lines.push(`- Next Steps: ${s.nextSteps.join(', ')}`);}
-        if (s.openQuestions.length > 0) {lines.push(`- Open Questions: ${s.openQuestions.join(', ')}`);}
+        if (s.completed.length > 0) {
+          lines.push(`- Completed: ${s.completed.join(', ')}`);
+        }
+        if (s.inProgress.length > 0) {
+          lines.push(`- In Progress: ${s.inProgress.join(', ')}`);
+        }
+        if (s.nextSteps.length > 0) {
+          lines.push(`- Next Steps: ${s.nextSteps.join(', ')}`);
+        }
+        if (s.openQuestions.length > 0) {
+          lines.push(`- Open Questions: ${s.openQuestions.join(', ')}`);
+        }
       }
     }
 
@@ -310,26 +330,36 @@ export class MemoryManager {
     const ctx = this.createDefaultContext(this.#workingDir);
 
     const taskMatch = content.match(/- \*\*Description\*\*: (.+)/);
-    if (taskMatch) {ctx.currentTask.description = taskMatch[1];}
+    if (taskMatch) {
+      ctx.currentTask.description = taskMatch[1];
+    }
 
     const phaseMatch = content.match(/- \*\*Phase\*\*: (\w+)/);
-    if (phaseMatch) {ctx.currentTask.phase = phaseMatch[1];}
+    if (phaseMatch) {
+      ctx.currentTask.phase = phaseMatch[1];
+    }
 
     const statusMatch = content.match(/- \*\*Status\*\*: (\w+)/);
-    if (statusMatch) {ctx.currentTask.status = statusMatch[1];}
+    if (statusMatch) {
+      ctx.currentTask.status = statusMatch[1];
+    }
 
     // Parse constraints
     const constraintSection = content.match(/## Active Constraints\n([\s\S]*?)(?=\n## |$)/);
     if (constraintSection) {
       const items = constraintSection[1].match(/^- (.+)$/gm);
-      if (items) {ctx.constraints = items.map(i => i.replace(/^- /, ''));}
+      if (items) {
+        ctx.constraints = items.map((i) => i.replace(/^- /, ''));
+      }
     }
 
     // Parse notes
     const notesSection = content.match(/## Important Notes\n([\s\S]*?)(?=\n## |$)/);
     if (notesSection) {
       const items = notesSection[1].match(/^- (.+)$/gm);
-      if (items) {ctx.notes = items.map(i => i.replace(/^- /, ''));}
+      if (items) {
+        ctx.notes = items.map((i) => i.replace(/^- /, ''));
+      }
     }
 
     return ctx;

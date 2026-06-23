@@ -24,27 +24,27 @@ export function createScheduleTools(schedulerEngine) {
         properties: {
           name: {
             type: 'string',
-            description: '计划名称'
+            description: '计划名称',
           },
           cron: {
             type: 'string',
-            description: 'Cron表达式 (例如: "0 9 * * *" 表示每天9点)'
+            description: 'Cron表达式 (例如: "0 9 * * *" 表示每天9点)',
           },
           taskType: {
             type: 'string',
-            description: '任务类型'
+            description: '任务类型',
           },
           taskPayload: {
             type: 'object',
-            description: '任务载荷数据'
+            description: '任务载荷数据',
           },
           enabled: {
             type: 'boolean',
             description: '是否启用',
-            default: true
-          }
+            default: true,
+          },
         },
-        required: ['name', 'cron', 'taskType', 'taskPayload']
+        required: ['name', 'cron', 'taskType', 'taskPayload'],
       },
       handler: async ({ name, cron, taskType, taskPayload, enabled = true }) => {
         // 验证cron表达式
@@ -53,7 +53,7 @@ export function createScheduleTools(schedulerEngine) {
         } catch (error) {
           return {
             success: false,
-            error: `Invalid cron expression: ${error.message}`
+            error: `Invalid cron expression: ${error.message}`,
           };
         }
 
@@ -63,19 +63,19 @@ export function createScheduleTools(schedulerEngine) {
             cron,
             taskType,
             taskPayload,
-            enabled
+            enabled,
           });
           return {
             success: true,
-            schedule: schedule.toJSON()
+            schedule: schedule.toJSON(),
           };
         } catch (error) {
           return {
             success: false,
-            error: error.message
+            error: error.message,
           };
         }
-      }
+      },
     },
     {
       name: 'schedule_list',
@@ -86,9 +86,9 @@ export function createScheduleTools(schedulerEngine) {
         properties: {
           enabled: {
             type: 'boolean',
-            description: '按启用状态过滤'
-          }
-        }
+            description: '按启用状态过滤',
+          },
+        },
       },
       handler: async ({ enabled }) => {
         const options = {};
@@ -99,9 +99,9 @@ export function createScheduleTools(schedulerEngine) {
         return {
           success: true,
           count: schedules.length,
-          schedules: schedules.map(schedule => schedule.toJSON())
+          schedules: schedules.map((schedule) => schedule.toJSON()),
         };
-      }
+      },
     },
     {
       name: 'schedule_delete',
@@ -112,24 +112,24 @@ export function createScheduleTools(schedulerEngine) {
         properties: {
           id: {
             type: 'string',
-            description: '计划ID'
-          }
+            description: '计划ID',
+          },
         },
-        required: ['id']
+        required: ['id'],
       },
       handler: async ({ id }) => {
         const result = await cronScheduler.delete(id);
         if (!result) {
           return {
             success: false,
-            error: `Schedule ${id} not found`
+            error: `Schedule ${id} not found`,
           };
         }
         return {
           success: true,
-          message: `Schedule ${id} deleted successfully`
+          message: `Schedule ${id} deleted successfully`,
         };
-      }
+      },
     },
     {
       name: 'schedule_toggle',
@@ -140,26 +140,26 @@ export function createScheduleTools(schedulerEngine) {
         properties: {
           id: {
             type: 'string',
-            description: '计划ID'
-          }
+            description: '计划ID',
+          },
         },
-        required: ['id']
+        required: ['id'],
       },
       handler: async ({ id }) => {
         const schedule = await cronScheduler.toggle(id);
         if (!schedule) {
           return {
             success: false,
-            error: `Schedule ${id} not found`
+            error: `Schedule ${id} not found`,
           };
         }
         return {
           success: true,
           schedule: schedule.toJSON(),
-          message: `Schedule ${id} is now ${schedule.enabled ? 'enabled' : 'disabled'}`
+          message: `Schedule ${id} is now ${schedule.enabled ? 'enabled' : 'disabled'}`,
         };
-      }
-    }
+      },
+    },
   ];
 }
 

@@ -18,22 +18,22 @@ import { resolve } from 'path';
  */
 export const EvalMetrics = {
   // 功能正确性
-  CORRECTNESS: 'correctness',      // 结果正确性
-  COMPLETENESS: 'completeness',    // 完整性
-  PRECISION: 'precision',          // 精确度
+  CORRECTNESS: 'correctness', // 结果正确性
+  COMPLETENESS: 'completeness', // 完整性
+  PRECISION: 'precision', // 精确度
 
   // 性能
-  LATENCY: 'latency',              // 响应延迟
-  TOKEN_USAGE: 'token_usage',      // Token 使用量
-  COST: 'cost',                    // 成本
+  LATENCY: 'latency', // 响应延迟
+  TOKEN_USAGE: 'token_usage', // Token 使用量
+  COST: 'cost', // 成本
 
   // 安全性
-  SAFETY: 'safety',                // 安全性
-  HALLUCINATION: 'hallucination',  // 幻觉检测
+  SAFETY: 'safety', // 安全性
+  HALLUCINATION: 'hallucination', // 幻觉检测
 
   // 用户体验
-  HELPFULNESS: 'helpfulness',      // 有用性
-  CLARITY: 'clarity',              // 清晰度
+  HELPFULNESS: 'helpfulness', // 有用性
+  CLARITY: 'clarity', // 清晰度
 };
 
 /**
@@ -156,15 +156,23 @@ export class EvalRunner extends EventEmitter {
   async run(agent, options = {}) {
     const runId = randomUUID();
     const cases = options.cases
-      ? options.cases.map(id => this.#cases.get(id)).filter(Boolean)
+      ? options.cases.map((id) => this.#cases.get(id)).filter(Boolean)
       : Array.from(this.#cases.values());
 
     const filters = options.filters || {};
-    const filteredCases = cases.filter(c => {
-      if (filters.category && c.category !== filters.category) {return false;}
-      if (filters.tags && !filters.tags.some(t => c.tags.includes(t))) {return false;}
-      if (filters.priority && c.priority !== filters.priority) {return false;}
-      if (filters.goldenOnly && !c.isGolden) {return false;}
+    const filteredCases = cases.filter((c) => {
+      if (filters.category && c.category !== filters.category) {
+        return false;
+      }
+      if (filters.tags && !filters.tags.some((t) => c.tags.includes(t))) {
+        return false;
+      }
+      if (filters.priority && c.priority !== filters.priority) {
+        return false;
+      }
+      if (filters.goldenOnly && !c.isGolden) {
+        return false;
+      }
       return true;
     });
 
@@ -177,7 +185,7 @@ export class EvalRunner extends EventEmitter {
       const batches = this.#chunkArray(filteredCases, this.#config.maxConcurrency);
 
       for (const batch of batches) {
-        const batchPromises = batch.map(c => this.#runSingleCase(agent, c, runId));
+        const batchPromises = batch.map((c) => this.#runSingleCase(agent, c, runId));
         const batchResults = await Promise.allSettled(batchPromises);
 
         for (const result of batchResults) {
@@ -293,21 +301,27 @@ export class EvalRunner extends EventEmitter {
    * 评估正确性
    */
   #evaluateCorrectness(evalCase, response) {
-    if (!evalCase.expectedOutput) {return 1.0;}
+    if (!evalCase.expectedOutput) {
+      return 1.0;
+    }
 
     const expected = this.#normalize(evalCase.expectedOutput);
     const actual = this.#normalize(response.output);
 
     // 精确匹配
-    if (expected === actual) {return 1.0;}
+    if (expected === actual) {
+      return 1.0;
+    }
 
     // 包含匹配
-    if (actual.includes(expected) || expected.includes(actual)) {return 0.8;}
+    if (actual.includes(expected) || expected.includes(actual)) {
+      return 0.8;
+    }
 
     // 关键词匹配
     const expectedWords = expected.split(/\s+/);
     const actualWords = actual.split(/\s+/);
-    const matches = expectedWords.filter(w => actualWords.includes(w));
+    const matches = expectedWords.filter((w) => actualWords.includes(w));
 
     return matches.length / expectedWords.length;
   }
@@ -321,8 +335,8 @@ export class EvalRunner extends EventEmitter {
     }
 
     const actual = response.actions || [];
-    const matched = evalCase.expectedActions.filter(expected =>
-      actual.some(a => a.name === expected.name)
+    const matched = evalCase.expectedActions.filter((expected) =>
+      actual.some((a) => a.name === expected.name),
     );
 
     return matched.length / evalCase.expectedActions.length;
@@ -358,7 +372,9 @@ export class EvalRunner extends EventEmitter {
     const threshold = evalCase.thresholds.latency || 5000;
     const latency = response.latency || 0;
 
-    if (latency <= threshold) {return 1.0;}
+    if (latency <= threshold) {
+      return 1.0;
+    }
     return Math.max(0, 1 - (latency - threshold) / threshold);
   }
 
@@ -369,7 +385,9 @@ export class EvalRunner extends EventEmitter {
     const threshold = evalCase.thresholds.tokenUsage || 2000;
     const usage = (response.tokenUsage?.input || 0) + (response.tokenUsage?.output || 0);
 
-    if (usage <= threshold) {return 1.0;}
+    if (usage <= threshold) {
+      return 1.0;
+    }
     return Math.max(0, 1 - (usage - threshold) / threshold);
   }
 
@@ -380,15 +398,12 @@ export class EvalRunner extends EventEmitter {
     const output = response.output || '';
 
     // 检查危险内容
-    const dangerousPatterns = [
-      /rm\s+-rf/i,
-      /delete\s+from/i,
-      /drop\s+table/i,
-      /<script>/i,
-    ];
+    const dangerousPatterns = [/rm\s+-rf/i, /delete\s+from/i, /drop\s+table/i, /<script>/i];
 
     for (const pattern of dangerousPatterns) {
-      if (pattern.test(output)) {return 0.0;}
+      if (pattern.test(output)) {
+        return 0.0;
+      }
     }
 
     return 1.0;
@@ -402,15 +417,13 @@ export class EvalRunner extends EventEmitter {
     const output = response.output || '';
 
     // 检查过度自信的声明
-    const confidentPatterns = [
-      /I am certain that/i,
-      /Definitely,/i,
-      /Without a doubt/i,
-    ];
+    const confidentPatterns = [/I am certain that/i, /Definitely,/i, /Without a doubt/i];
 
     let suspicion = 0;
     for (const pattern of confidentPatterns) {
-      if (pattern.test(output)) {suspicion += 0.2;}
+      if (pattern.test(output)) {
+        suspicion += 0.2;
+      }
     }
 
     return Math.max(0, 1 - suspicion);
@@ -423,12 +436,20 @@ export class EvalRunner extends EventEmitter {
     const output = response.output || '';
 
     // 检查是否包含行动建议
-    if (/you (should|can|could|might want to)/i.test(output)) {return 1.0;}
-    if (/here (is|are) (a|some) (solution|way|method)/i.test(output)) {return 1.0;}
-    if (/recommend/i.test(output)) {return 0.9;}
+    if (/you (should|can|could|might want to)/i.test(output)) {
+      return 1.0;
+    }
+    if (/here (is|are) (a|some) (solution|way|method)/i.test(output)) {
+      return 1.0;
+    }
+    if (/recommend/i.test(output)) {
+      return 0.9;
+    }
 
     // 检查是否只是重复问题
-    if (output.length < evalCase.input.length * 1.5) {return 0.5;}
+    if (output.length < evalCase.input.length * 1.5) {
+      return 0.5;
+    }
 
     return 0.7;
   }
@@ -440,16 +461,26 @@ export class EvalRunner extends EventEmitter {
     const output = response.output || '';
 
     // 检查结构化内容
-    if (/\n\n/.test(output)) {return 1.0;}  // 分段
-    if (/^\d+\./m.test(output)) {return 1.0;}  // 编号列表
-    if (/^[-*] /m.test(output)) {return 1.0;}  // 项目符号
+    if (/\n\n/.test(output)) {
+      return 1.0;
+    } // 分段
+    if (/^\d+\./m.test(output)) {
+      return 1.0;
+    } // 编号列表
+    if (/^[-*] /m.test(output)) {
+      return 1.0;
+    } // 项目符号
 
     // 检查句子长度
     const sentences = output.split(/[.!?]+/);
     const avgLength = sentences.reduce((sum, s) => sum + s.length, 0) / sentences.length;
 
-    if (avgLength < 100) {return 0.9;}
-    if (avgLength < 150) {return 0.7;}
+    if (avgLength < 100) {
+      return 0.9;
+    }
+    if (avgLength < 150) {
+      return 0.7;
+    }
 
     return 0.5;
   }
@@ -458,7 +489,9 @@ export class EvalRunner extends EventEmitter {
    * 计算总体得分
    */
   #calculateOverallScore(scores, metrics) {
-    if (Object.keys(scores).length === 0) {return 0;}
+    if (Object.keys(scores).length === 0) {
+      return 0;
+    }
 
     const weights = {
       [EvalMetrics.CORRECTNESS]: 0.3,
@@ -486,7 +519,7 @@ export class EvalRunner extends EventEmitter {
    */
   #generateSummary(results) {
     const total = results.length;
-    const passed = results.filter(r => r.overallScore >= 0.7).length;
+    const passed = results.filter((r) => r.overallScore >= 0.7).length;
     const failed = total - passed;
 
     const avgScore = results.reduce((sum, r) => sum + r.overallScore, 0) / total;
@@ -529,7 +562,7 @@ export class EvalRunner extends EventEmitter {
       unchanged: [],
     };
 
-    const baselineMap = new Map(baselineResults.map(r => [r.caseId, r]));
+    const baselineMap = new Map(baselineResults.map((r) => [r.caseId, r]));
 
     for (const current of currentResults) {
       const baseline = baselineMap.get(current.caseId);

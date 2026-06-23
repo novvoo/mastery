@@ -1,5 +1,11 @@
 import { EventEmitter } from 'events';
-import { DEFAULT_CONFIG, IPCMessage, IPCMessageStatus, IPCMessageType, MessageQueue } from '../protocol/ipc-protocol.js';
+import {
+  DEFAULT_CONFIG,
+  IPCMessage,
+  IPCMessageStatus,
+  IPCMessageType,
+  MessageQueue,
+} from '../protocol/ipc-protocol.js';
 
 /**
  * IPC 适配器基类
@@ -18,9 +24,10 @@ export class IPCAdapterBase extends EventEmitter {
     this.lastHeartbeat = Date.now();
 
     // 保存子类可能定义的 send 实现
-    const subclassSend = typeof this.send === 'function' && this.send !== IPCAdapterBase.prototype.send
-      ? this.send.bind(this)
-      : null;
+    const subclassSend =
+      typeof this.send === 'function' && this.send !== IPCAdapterBase.prototype.send
+        ? this.send.bind(this)
+        : null;
 
     // 包装 send：统一检查连接状态 + 队列管理
     const self = this;
@@ -77,7 +84,7 @@ export class IPCAdapterBase extends EventEmitter {
   createRequest(channel, payload, options = {}) {
     const message = new IPCMessage(IPCMessageType.REQUEST, payload, {
       ...options,
-      metadata: { channel, ...options.metadata }
+      metadata: { channel, ...options.metadata },
     });
     return message;
   }
@@ -88,10 +95,10 @@ export class IPCAdapterBase extends EventEmitter {
   createResponse(requestMessage, payload, status = IPCMessageStatus.SUCCESS) {
     const message = new IPCMessage(IPCMessageType.RESPONSE, payload, {
       correlationId: requestMessage.id,
-      metadata: { 
+      metadata: {
         channel: requestMessage.metadata?.channel,
-        status 
-      }
+        status,
+      },
     });
     message.status = status;
     return message;
@@ -101,17 +108,21 @@ export class IPCAdapterBase extends EventEmitter {
    * 创建错误消息
    */
   createError(requestMessage, error) {
-    const message = new IPCMessage(IPCMessageType.ERROR, {
-      message: error.message || 'Unknown error',
-      code: error.code || 'UNKNOWN_ERROR',
-      stack: error.stack
-    }, {
-      correlationId: requestMessage.id,
-      metadata: { 
-        channel: requestMessage.metadata?.channel,
-        status: IPCMessageStatus.ERROR
-      }
-    });
+    const message = new IPCMessage(
+      IPCMessageType.ERROR,
+      {
+        message: error.message || 'Unknown error',
+        code: error.code || 'UNKNOWN_ERROR',
+        stack: error.stack,
+      },
+      {
+        correlationId: requestMessage.id,
+        metadata: {
+          channel: requestMessage.metadata?.channel,
+          status: IPCMessageStatus.ERROR,
+        },
+      },
+    );
     message.status = IPCMessageStatus.ERROR;
     return message;
   }
@@ -121,7 +132,7 @@ export class IPCAdapterBase extends EventEmitter {
    */
   createEvent(eventName, data) {
     return new IPCMessage(IPCMessageType.EVENT, data, {
-      metadata: { eventName }
+      metadata: { eventName },
     });
   }
 
@@ -166,10 +177,10 @@ export class IPCAdapterBase extends EventEmitter {
   sendHeartbeat() {
     const heartbeat = new IPCMessage(IPCMessageType.HEARTBEAT, {
       timestamp: Date.now(),
-      lastHeartbeat: this.lastHeartbeat
+      lastHeartbeat: this.lastHeartbeat,
     });
-    
-    this.send(heartbeat).catch(err => {
+
+    this.send(heartbeat).catch((err) => {
       this.emit('error', err);
     });
   }
@@ -185,11 +196,11 @@ export class IPCAdapterBase extends EventEmitter {
 
     this.reconnectAttempts++;
     const delay = this.config.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-    
+
     this.emit('reconnecting', { attempt: this.reconnectAttempts, delay });
-    
-    await new Promise(resolve => setTimeout(resolve, delay));
-    
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
     try {
       await this.connect();
       this.reconnectAttempts = 0;
@@ -248,7 +259,7 @@ export class IPCAdapterBase extends EventEmitter {
       queueSize: this.messageQueue.size(),
       subscriptions: this.eventSubscriptions.size,
       reconnectAttempts: this.reconnectAttempts,
-      lastHeartbeat: this.lastHeartbeat
+      lastHeartbeat: this.lastHeartbeat,
     };
   }
 }

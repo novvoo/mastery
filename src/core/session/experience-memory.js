@@ -67,9 +67,12 @@ export class ExperienceMemory {
    */
   recordSuccess(task, tool, lesson, context = '', tags = []) {
     return this.record({
-      task, tool,
+      task,
+      tool,
       outcome: ExperienceOutcome.SUCCESS,
-      lesson, context, tags,
+      lesson,
+      context,
+      tags,
     });
   }
 
@@ -78,9 +81,12 @@ export class ExperienceMemory {
    */
   recordFailure(task, tool, lesson, context = '', tags = []) {
     return this.record({
-      task, tool,
+      task,
+      tool,
       outcome: ExperienceOutcome.FAILURE,
-      lesson, context, tags,
+      lesson,
+      context,
+      tags,
     });
   }
 
@@ -91,20 +97,28 @@ export class ExperienceMemory {
    * @returns {Array<object>} 相关经验列表
    */
   recall(task, options = {}) {
-    if (!task) {return [];}
+    if (!task) {
+      return [];
+    }
 
     const maxResults = options.maxResults || DEFAULT_MAX_RELEVANT;
-    const keywords = task.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    const keywords = task
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 2);
 
     // 计算每条经验的相关性分数
-    const scored = this.#experiences.map(exp => {
+    const scored = this.#experiences.map((exp) => {
       let score = 0;
       const taskLower = task.toLowerCase();
-      const expText = `${exp.task} ${exp.lesson} ${exp.context} ${exp.tags.join(' ')}`.toLowerCase();
+      const expText =
+        `${exp.task} ${exp.lesson} ${exp.context} ${exp.tags.join(' ')}`.toLowerCase();
 
       // 关键词匹配
       for (const kw of keywords) {
-        if (expText.includes(kw)) {score += 2;}
+        if (expText.includes(kw)) {
+          score += 2;
+        }
       }
 
       // 工具名匹配
@@ -123,14 +137,14 @@ export class ExperienceMemory {
       }
 
       // 使用频率加权
-      score *= (1 + exp.usageCount * 0.1);
+      score *= 1 + exp.usageCount * 0.1;
 
       return { ...exp, score };
     });
 
     // 排序并返回 top N
     return scored
-      .filter(s => s.score > 0)
+      .filter((s) => s.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, maxResults);
   }
@@ -139,11 +153,14 @@ export class ExperienceMemory {
    * 标记经验被使用
    */
   markUsed(experienceId, success = true) {
-    const exp = this.#experiences.find(e => e.id === experienceId);
+    const exp = this.#experiences.find((e) => e.id === experienceId);
     if (exp) {
       exp.usageCount++;
-      if (success) {exp.successCount++;}
-      else {exp.failureCount++;}
+      if (success) {
+        exp.successCount++;
+      } else {
+        exp.failureCount++;
+      }
       this.#dirty = true;
       this.#save();
     }
@@ -156,7 +173,9 @@ export class ExperienceMemory {
    */
   buildExperiencePrompt(currentTask) {
     const relevant = this.recall(currentTask);
-    if (relevant.length === 0) {return '';}
+    if (relevant.length === 0) {
+      return '';
+    }
 
     const lines = ['[PAST EXPERIENCES - Learn from previous interactions:]'];
 
@@ -168,7 +187,9 @@ export class ExperienceMemory {
       }
     }
 
-    lines.push('[Use these experiences to avoid repeating mistakes and leverage successful approaches.]');
+    lines.push(
+      '[Use these experiences to avoid repeating mistakes and leverage successful approaches.]',
+    );
     return lines.join('\n');
   }
 
@@ -177,9 +198,13 @@ export class ExperienceMemory {
    */
   getStats() {
     const total = this.#experiences.length;
-    const successes = this.#experiences.filter(e => e.outcome === ExperienceOutcome.SUCCESS).length;
-    const failures = this.#experiences.filter(e => e.outcome === ExperienceOutcome.FAILURE).length;
-    const used = this.#experiences.filter(e => e.usageCount > 0).length;
+    const successes = this.#experiences.filter(
+      (e) => e.outcome === ExperienceOutcome.SUCCESS,
+    ).length;
+    const failures = this.#experiences.filter(
+      (e) => e.outcome === ExperienceOutcome.FAILURE,
+    ).length;
+    const used = this.#experiences.filter((e) => e.usageCount > 0).length;
 
     return {
       total,
@@ -219,7 +244,9 @@ export class ExperienceMemory {
    * 保存到文件
    */
   #save() {
-    if (!this.#filePath || !this.#dirty) {return;}
+    if (!this.#filePath || !this.#dirty) {
+      return;
+    }
 
     try {
       const dir = resolve(this.#filePath, '..');

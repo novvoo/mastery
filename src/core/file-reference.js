@@ -45,14 +45,14 @@ const LEADING_QUOTES = /["'`]/;
 // 主要匹配：`@path` / 引号内路径 / 裸路径
 const LOOSE_RE = new RegExp(
   String.raw`(?:` +
-  String.raw`(?<at>@)(?<atPath>${PATH_BODY})` +
-  String.raw`|` +
-  String.raw`"(?<qPath>${PATH_BODY})"` +
-  String.raw`|` +
-  String.raw`'(?<sqPath>${PATH_BODY})'` +
-  String.raw`|` +
-  String.raw`(?<bare>(?:\.{1,2}/|/)?(?:[\w.\-@]+/)*[\w.\-@]+(?:\.\w+)?(?:${ANCHOR})?)` +
-  String.raw`)`,
+    String.raw`(?<at>@)(?<atPath>${PATH_BODY})` +
+    String.raw`|` +
+    String.raw`"(?<qPath>${PATH_BODY})"` +
+    String.raw`|` +
+    String.raw`'(?<sqPath>${PATH_BODY})'` +
+    String.raw`|` +
+    String.raw`(?<bare>(?:\.{1,2}/|/)?(?:[\w.\-@]+/)*[\w.\-@]+(?:\.\w+)?(?:${ANCHOR})?)` +
+    String.raw`)`,
   'g',
 );
 
@@ -61,46 +61,124 @@ const LOOSE_RE = new RegExp(
 // - 不含 http(s)://、mailto:、data:、urn: 等 URI scheme
 const URI_SCHEME_RE = /^[a-zA-Z][a-zA-Z0-9+\-.]*:/;
 const COMMON_CODE_EXT = new Set([
-  'js','jsx','mjs','cjs','ts','tsx','mts','cts','d.ts',
-  'py','pyi','rb','rs','go','java','kt','kts','scala',
-  'c','h','cpp','hpp','cc','cxx','cs','swift','dart',
-  'json','jsonc','json5','yaml','yml','toml','ini','cfg',
-  'md','markdown','txt','rst','org',
-  'html','htm','css','scss','less','styl','vue','svelte',
-  'sh','bash','zsh','fish','bat','cmd','ps1',
-  'sql','db','sqlite','csv','tsv',
-  'pdf','docx','doc','xlsx','xls','pptx','ppt',
-  'env','conf','log',
+  'js',
+  'jsx',
+  'mjs',
+  'cjs',
+  'ts',
+  'tsx',
+  'mts',
+  'cts',
+  'd.ts',
+  'py',
+  'pyi',
+  'rb',
+  'rs',
+  'go',
+  'java',
+  'kt',
+  'kts',
+  'scala',
+  'c',
+  'h',
+  'cpp',
+  'hpp',
+  'cc',
+  'cxx',
+  'cs',
+  'swift',
+  'dart',
+  'json',
+  'jsonc',
+  'json5',
+  'yaml',
+  'yml',
+  'toml',
+  'ini',
+  'cfg',
+  'md',
+  'markdown',
+  'txt',
+  'rst',
+  'org',
+  'html',
+  'htm',
+  'css',
+  'scss',
+  'less',
+  'styl',
+  'vue',
+  'svelte',
+  'sh',
+  'bash',
+  'zsh',
+  'fish',
+  'bat',
+  'cmd',
+  'ps1',
+  'sql',
+  'db',
+  'sqlite',
+  'csv',
+  'tsv',
+  'pdf',
+  'docx',
+  'doc',
+  'xlsx',
+  'xls',
+  'pptx',
+  'ppt',
+  'env',
+  'conf',
+  'log',
 ]);
 
 export function _looksLikeFile(candidate) {
-  if (!candidate || typeof candidate !== 'string') {return false;}
-  if (URI_SCHEME_RE.test(candidate) && !candidate.startsWith('file:')) {return false;}
-  if (candidate.includes('\0')) {return false;}
+  if (!candidate || typeof candidate !== 'string') {
+    return false;
+  }
+  if (URI_SCHEME_RE.test(candidate) && !candidate.startsWith('file:')) {
+    return false;
+  }
+  if (candidate.includes('\0')) {
+    return false;
+  }
 
-  if (candidate.includes('/') || candidate.includes('\\')) {return true;}
+  if (candidate.includes('/') || candidate.includes('\\')) {
+    return true;
+  }
   const ext = candidate.split('.').pop().toLowerCase();
-  if (COMMON_CODE_EXT.has(ext)) {return true;}
+  if (COMMON_CODE_EXT.has(ext)) {
+    return true;
+  }
   return false;
 }
 
 // 解析锚点片段 ":42" / ":10-25" / ":10:5" / "#L10-L20" / "#L10"
 function _parseAnchor(anchor) {
-  if (!anchor) {return { line: null, endLine: null, column: null };}
+  if (!anchor) {
+    return { line: null, endLine: null, column: null };
+  }
   const trimmed = anchor.replace(/^[#:]/, '');
   // L10 / L10-L20
   let m = trimmed.match(/^L(\d+)(?:-L?(\d+))?$/i);
-  if (m) {return {
-    line: Number(m[1]),
-    endLine: m[2] ? Number(m[2]) : null,
-    column: null,
-  };}
+  if (m) {
+    return {
+      line: Number(m[1]),
+      endLine: m[2] ? Number(m[2]) : null,
+      column: null,
+    };
+  }
   // 42 / 10-25 / 10:5 / 10:25:5
   m = trimmed.match(/^(\d+)(?:([-:])(\d+)(?::(\d+))?)?$/);
   if (m) {
     const line = Number(m[1]);
-    if (m[2] === '-') {return { line, endLine: Number(m[3]), column: null };}
-    if (m[2] === ':') {return { line, column: Number(m[3]), endLine: m[4] ? Number(m[4]) : null };}
+    if (m[2] === '-') {
+      return { line, endLine: Number(m[3]), column: null };
+    }
+    if (m[2] === ':') {
+      return { line, column: Number(m[3]), endLine: m[4] ? Number(m[4]) : null };
+    }
     return { line, endLine: null, column: null };
   }
   return { line: null, endLine: null, column: null };
@@ -145,30 +223,46 @@ function _safeResolve(candidatePath, workingDirectory) {
  * @returns {FileReference[]} 按 startIndex 升序排列的引用列表
  */
 export function parseFileReferences(text, workingDirectory, options = {}) {
-  if (!text || typeof text !== 'string') {return [];}
-  if (!workingDirectory) {return [];}
+  if (!text || typeof text !== 'string') {
+    return [];
+  }
+  if (!workingDirectory) {
+    return [];
+  }
 
   const requireExists = options.requireExists === true;
   const results = [];
 
   const scan = (candidate, matchStart, matchEnd) => {
-    if (!_looksLikeFile(candidate)) {return;}
+    if (!_looksLikeFile(candidate)) {
+      return;
+    }
     const [cleanPath, anchor] = _splitPathAndAnchor(candidate);
-    if (!cleanPath) {return;}
+    if (!cleanPath) {
+      return;
+    }
     const resolved = _safeResolve(cleanPath, workingDirectory);
-    if (!resolved) {return;}
+    if (!resolved) {
+      return;
+    }
     if (requireExists) {
       try {
-        if (!fs.existsSync(resolved.absolute)) {return;}
-      } catch { return; }
+        if (!fs.existsSync(resolved.absolute)) {
+          return;
+        }
+      } catch {
+        return;
+      }
     }
     const { line, endLine, column } = _parseAnchor(anchor);
-    const kind = endLine ? 'range' : (line ? 'line' : 'file');
+    const kind = endLine ? 'range' : line ? 'line' : 'file';
     results.push({
       raw: candidate,
       path: resolved.relative || path.basename(resolved.absolute),
       absolute: resolved.absolute,
-      line, endLine, column,
+      line,
+      endLine,
+      column,
       startIndex: matchStart,
       endIndex: matchEnd,
       kind,
@@ -222,7 +316,9 @@ export function parseFileReferences(text, workingDirectory, options = {}) {
   const dedup = [];
   for (const ref of results) {
     const key = `${ref.absolute}|${ref.line}|${ref.endLine}`;
-    if (seen.has(key)) {continue;}
+    if (seen.has(key)) {
+      continue;
+    }
     seen.add(key);
     dedup.push(ref);
   }
@@ -237,7 +333,9 @@ export function parseFileReferences(text, workingDirectory, options = {}) {
  */
 export function replaceFileReferences(text, workingDirectory, renderer) {
   const refs = parseFileReferences(text, workingDirectory);
-  if (refs.length === 0) {return { text, refs };}
+  if (refs.length === 0) {
+    return { text, refs };
+  }
   let out = '';
   let cursor = 0;
   for (const ref of refs) {
@@ -253,9 +351,7 @@ export function replaceFileReferences(text, workingDirectory, renderer) {
  * 将引用格式化为稳定的展示字符串（用于发送到渲染层显示）
  */
 export function formatReferenceLabel(ref) {
-  const loc = ref.line
-    ? (ref.endLine ? `:${ref.line}-${ref.endLine}` : `:${ref.line}`)
-    : '';
+  const loc = ref.line ? (ref.endLine ? `:${ref.line}-${ref.endLine}` : `:${ref.line}`) : '';
   return `${ref.path}${loc}`;
 }
 

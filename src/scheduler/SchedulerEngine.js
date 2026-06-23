@@ -73,7 +73,7 @@ export class SchedulerEngine {
 
     // 创建消息总线
     this.#messageBus = new MessageBus({
-      maxHistory: 1000
+      maxHistory: 1000,
     });
 
     // 创建任务队列
@@ -98,12 +98,12 @@ export class SchedulerEngine {
         autoCleanup: this.#config.autoCleanup,
         autoCleanupIntervalMs: this.#config.autoCleanupIntervalMs,
         enableMemoryShare: this.#config.enableMemoryShare,
-      }
+      },
     );
 
     // 创建并发协调器
     this.#concurrencyCoordinator = new ConcurrencyCoordinator({
-      globalConcurrencyLimit: this.#config.globalConcurrencyLimit || 5
+      globalConcurrencyLimit: this.#config.globalConcurrencyLimit || 5,
     });
 
     // 设置事件监听
@@ -249,7 +249,7 @@ export class SchedulerEngine {
           type: schedule.taskType,
           payload: schedule.taskPayload,
           priority: 1, // 调度任务默认高优先级
-          scheduleId: schedule.id
+          scheduleId: schedule.id,
         });
 
         // 记录调度执行
@@ -260,7 +260,6 @@ export class SchedulerEngine {
 
       // 处理待执行的任务
       await this.#processPendingTasks();
-
     } catch (error) {
       console.error('Error checking schedules:', error);
     }
@@ -288,7 +287,7 @@ export class SchedulerEngine {
 
     // 获取可运行的任务
     const runnableTasks = this.#concurrencyCoordinator.getRunnableTasks(allTasks, {
-      taskResourceLocks: this.#taskResourceLocks
+      taskResourceLocks: this.#taskResourceLocks,
     });
 
     if (runnableTasks.length === 0) {
@@ -299,7 +298,7 @@ export class SchedulerEngine {
     console.log(`Ready to run ${runnableTasks.length} tasks`);
 
     // 并发执行所有可运行的任务
-    const executionPromises = runnableTasks.map(task => this.#executeTask(task));
+    const executionPromises = runnableTasks.map((task) => this.#executeTask(task));
     await Promise.all(executionPromises);
   }
 
@@ -319,19 +318,19 @@ export class SchedulerEngine {
     // 更新任务状态为运行中
     await this.#taskQueue.update(task.id, {
       status: TaskStatus.RUNNING,
-      startedAt: Date.now()
+      startedAt: Date.now(),
     });
 
     // 创建子代理
     const subAgent = this.#subAgentPool.create({
       parentId: 'scheduler',
-      workingDir: this.#config.workingDirectory
+      workingDir: this.#config.workingDirectory,
     });
 
     // 超时控制器
     let timeoutId;
     let taskTimedOut = false;
-    
+
     const timeoutPromise = new Promise((_, reject) => {
       timeoutId = setTimeout(() => {
         taskTimedOut = true;
@@ -341,27 +340,23 @@ export class SchedulerEngine {
 
     try {
       // 带超时运行任务
-      const result = await Promise.race([
-        subAgent.run(task),
-        timeoutPromise
-      ]);
+      const result = await Promise.race([subAgent.run(task), timeoutPromise]);
 
       // 更新任务状态为完成
       await this.#taskQueue.update(task.id, {
         status: TaskStatus.COMPLETED,
         result: result,
-        completedAt: Date.now()
+        completedAt: Date.now(),
       });
 
       console.log(`Task ${task.id} completed successfully`);
-
     } catch (error) {
       // 更新任务状态为失败或超时
       const status = taskTimedOut ? 'TIMED_OUT' : TaskStatus.FAILED;
       await this.#taskQueue.update(task.id, {
         status,
         error: error instanceof Error ? error.message : String(error),
-        failedAt: Date.now()
+        failedAt: Date.now(),
       });
 
       console.error(`Task ${task.id} ${taskTimedOut ? 'timed out' : 'failed'}:`, error);
@@ -374,13 +369,12 @@ export class SchedulerEngine {
           console.warn('Failed to terminate timed out sub-agent:', terminateError);
         }
       }
-
     } finally {
       // 清理超时定时器
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
-      
+
       // 清理资源
       this.#concurrencyCoordinator.markTaskCompleted(task, resourceLocks);
       await this.#subAgentPool.remove(subAgent.id);
@@ -457,12 +451,16 @@ export class SchedulerEngine {
       isRunning: this.#isRunning,
       checkIntervalMs: this.#checkIntervalMs,
       taskQueue: this.#taskQueue ? this.#taskQueue.getStats() : null,
-      cronScheduler: this.#cronScheduler ? {
-        totalSchedules: this.#cronScheduler.list().length
-      } : null,
+      cronScheduler: this.#cronScheduler
+        ? {
+            totalSchedules: this.#cronScheduler.list().length,
+          }
+        : null,
       subAgentPool: this.#subAgentPool ? this.#subAgentPool.getStats() : null,
       messageBus: this.#messageBus ? this.#messageBus.getStats() : null,
-      concurrencyCoordinator: this.#concurrencyCoordinator ? this.#concurrencyCoordinator.getStats() : null
+      concurrencyCoordinator: this.#concurrencyCoordinator
+        ? this.#concurrencyCoordinator.getStats()
+        : null,
     };
   }
 

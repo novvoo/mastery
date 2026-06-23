@@ -45,7 +45,9 @@ export class ModuleResolver {
    * @returns {Promise<void>}
    */
   async init() {
-    if (this._loaded) { return; }
+    if (this._loaded) {
+      return;
+    }
     await Promise.all([
       this._loadTsconfig(),
       this._loadPackageExports(),
@@ -75,17 +77,22 @@ export class ModuleResolver {
   resolveImport(specifier, fromPath) {
     // 1. tsconfig paths alias
     const aliasResult = this._resolveAlias(specifier);
-    if (aliasResult) { return aliasResult; }
+    if (aliasResult) {
+      return aliasResult;
+    }
 
     // 2. package.json exports (including nested)
-    const exportsResult = this._resolveExports(specifier)
-      || this._resolveNestedExports(specifier);
-    if (exportsResult) { return exportsResult; }
+    const exportsResult = this._resolveExports(specifier) || this._resolveNestedExports(specifier);
+    if (exportsResult) {
+      return exportsResult;
+    }
 
     // 3. workspace packages (including inter-dependencies)
-    const workspaceResult = this._resolveWorkspace(specifier)
-      || this._resolveWorkspaceDependency(specifier, fromPath);
-    if (workspaceResult) { return workspaceResult; }
+    const workspaceResult =
+      this._resolveWorkspace(specifier) || this._resolveWorkspaceDependency(specifier, fromPath);
+    if (workspaceResult) {
+      return workspaceResult;
+    }
 
     // 4. 相对路径
     if (specifier.startsWith('.')) {
@@ -166,7 +173,9 @@ export class ModuleResolver {
           this._loadTsconfigRecursive(candidate, seenConfigs);
           break; // 找到第一个就停
         }
-      } catch { /* skip unparseable */ }
+      } catch {
+        /* skip unparseable */
+      }
     }
   }
 
@@ -175,7 +184,9 @@ export class ModuleResolver {
    */
   _loadTsconfigRecursive(configPath, seenConfigs, maxDepth = 10) {
     const absPath = resolve(configPath);
-    if (seenConfigs.has(absPath) || maxDepth <= 0) { return; }
+    if (seenConfigs.has(absPath) || maxDepth <= 0) {
+      return;
+    }
     seenConfigs.add(absPath);
     try {
       const raw = readFileSync(absPath, 'utf-8');
@@ -184,7 +195,10 @@ export class ModuleResolver {
         for (const [alias, targets] of Object.entries(config.compilerOptions.paths)) {
           for (const target of targets) {
             const resolvedTarget = target.replace(/\/\*$/, '').replace(/^\*$/, '');
-            this.tsPaths.set(alias.replace(/\/\*$/, ''), join(this.workingDirectory, resolvedTarget));
+            this.tsPaths.set(
+              alias.replace(/\/\*$/, ''),
+              join(this.workingDirectory, resolvedTarget),
+            );
           }
         }
       }
@@ -209,7 +223,9 @@ export class ModuleResolver {
           this.workingDirectory = savedWd;
         }
       }
-    } catch { /* skip unparseable */ }
+    } catch {
+      /* skip unparseable */
+    }
   }
 
   async _loadPackageExports() {
@@ -218,10 +234,16 @@ export class ModuleResolver {
       if (existsSync(pkgPath)) {
         const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
         if (pkg.exports) {
-          this._flattenExports(pkg.exports, pkg.name || '', join(this.workingDirectory, pkg.main || 'index.js'));
+          this._flattenExports(
+            pkg.exports,
+            pkg.name || '',
+            join(this.workingDirectory, pkg.main || 'index.js'),
+          );
         }
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   async _loadWorkspacePackages() {
@@ -230,12 +252,16 @@ export class ModuleResolver {
     try {
       if (existsSync(pkgPath)) {
         const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-        const workspaces = pkg.workspaces || (Array.isArray(pkg.workspaces?.packages) ? pkg.workspaces.packages : []);
+        const workspaces =
+          pkg.workspaces ||
+          (Array.isArray(pkg.workspaces?.packages) ? pkg.workspaces.packages : []);
         for (const ws of workspaces) {
           this._expandWorkspacePattern(ws);
         }
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
 
     // 也检查 pnpm-workspace.yaml
     const pnpmWsPath = join(this.workingDirectory, 'pnpm-workspace.yaml');
@@ -251,14 +277,19 @@ export class ModuleResolver {
             continue;
           }
           if (inPackages && line.trim().startsWith('-')) {
-            const p = line.trim().replace(/^-\s*['"]?/, '').replace(/['"]$/, '');
+            const p = line
+              .trim()
+              .replace(/^-\s*['"]?/, '')
+              .replace(/['"]$/, '');
             this._expandWorkspacePattern(p);
           } else if (inPackages && !line.trim().startsWith('-') && line.trim() !== '') {
             inPackages = false;
           }
         }
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   /**
@@ -271,8 +302,12 @@ export class ModuleResolver {
       if (existsSync(join(wsPath, 'package.json'))) {
         try {
           const wsPkg = JSON.parse(readFileSync(join(wsPath, 'package.json'), 'utf-8'));
-          if (wsPkg.name) { this.workspacePackages.set(wsPkg.name, wsPath); }
-        } catch { /* skip */ }
+          if (wsPkg.name) {
+            this.workspacePackages.set(wsPkg.name, wsPath);
+          }
+        } catch {
+          /* skip */
+        }
       }
       return;
     }
@@ -292,22 +327,36 @@ export class ModuleResolver {
               if (existsSync(join(checkDir, 'package.json'))) {
                 try {
                   const wsPkg = JSON.parse(readFileSync(join(checkDir, 'package.json'), 'utf-8'));
-                  if (wsPkg.name) {this.workspacePackages.set(wsPkg.name, checkDir);}
-                } catch { /* skip */ }
+                  if (wsPkg.name) {
+                    this.workspacePackages.set(wsPkg.name, checkDir);
+                  }
+                } catch {
+                  /* skip */
+                }
               }
             }
           }
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
   }
 
   async _loadCustomAliases() {
     // 检查 vite.config.ts / webpack.config.js 中的 alias 配置
-    const configs = ['vite.config.ts', 'vite.config.js', 'webpack.config.js', 'next.config.js', 'nuxt.config.ts'];
+    const configs = [
+      'vite.config.ts',
+      'vite.config.js',
+      'webpack.config.js',
+      'next.config.js',
+      'nuxt.config.ts',
+    ];
     for (const cfg of configs) {
       const cfgPath = join(this.workingDirectory, cfg);
-      if (!existsSync(cfgPath)) {continue;}
+      if (!existsSync(cfgPath)) {
+        continue;
+      }
       try {
         const content = readFileSync(cfgPath, 'utf-8');
         // 匹配 alias: { '@': 'src', ... } 或 resolve: { alias: { '@': 'src' } }
@@ -321,9 +370,9 @@ export class ModuleResolver {
           while ((m = pattern.exec(content)) !== null) {
             if (m[1] && !m[1].includes('resolve') && !m[1].includes('path')) {
               // 解析 { '@': 'src', '@/components': 'src/components' } 格式
-              const pairs = m[1].split(',').map(s => s.trim());
+              const pairs = m[1].split(',').map((s) => s.trim());
               for (const pair of pairs) {
-                const [key, val] = pair.split(':').map(s => s.trim().replace(/['"]/g, ''));
+                const [key, val] = pair.split(':').map((s) => s.trim().replace(/['"]/g, ''));
                 if (key && val) {
                   this.customAliases.set(key, join(this.workingDirectory, val));
                 }
@@ -333,7 +382,9 @@ export class ModuleResolver {
             }
           }
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
   }
 
@@ -351,7 +402,9 @@ export class ModuleResolver {
     }
     // custom aliases (vite/webpack)
     for (const [alias, targetDir] of this.customAliases) {
-      if (specifier === alias) {return this._resolveToFile(targetDir);}
+      if (specifier === alias) {
+        return this._resolveToFile(targetDir);
+      }
       if (specifier.startsWith(alias + '/')) {
         return this._resolveToFile(join(targetDir, specifier.slice(alias.length + 1)));
       }
@@ -378,7 +431,9 @@ export class ModuleResolver {
     }
     // 部分匹配：@scope/name
     for (const [name, dir] of this.workspacePackages) {
-      if (name === specifier) {return this._resolveToFile(dir);}
+      if (name === specifier) {
+        return this._resolveToFile(dir);
+      }
     }
     return null;
   }
@@ -397,9 +452,13 @@ export class ModuleResolver {
     while (dir.startsWith(root) && dir.length >= root.length) {
       const candidate = join(dir, 'node_modules', specifier);
       const result = this._resolveToFile(candidate);
-      if (result) {return result;}
+      if (result) {
+        return result;
+      }
       const parent = dirname(dir);
-      if (parent === dir) {break;}
+      if (parent === dir) {
+        break;
+      }
       dir = parent;
     }
     return null;
@@ -413,17 +472,23 @@ export class ModuleResolver {
   _resolveToFile(p) {
     const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts', '.json'];
     // 已有扩展名且存在
-    if (extname(p) && existsSync(p)) {return p;}
+    if (extname(p) && existsSync(p)) {
+      return p;
+    }
 
     // 尝试各种扩展名
     for (const ext of extensions) {
-      if (existsSync(p + ext)) {return p + ext;}
+      if (existsSync(p + ext)) {
+        return p + ext;
+      }
     }
 
     // 尝试目录 index 文件
     for (const ext of extensions) {
       const idx = join(p, 'index' + ext);
-      if (existsSync(idx)) {return idx;}
+      if (existsSync(idx)) {
+        return idx;
+      }
     }
 
     return null;
@@ -432,7 +497,9 @@ export class ModuleResolver {
   // ── 辅助方法 ────────────────────────────────────────────────────────
 
   _flattenExports(exports, packageName, defaultTarget) {
-    if (!exports || typeof exports !== 'object') {return;}
+    if (!exports || typeof exports !== 'object') {
+      return;
+    }
     if (typeof exports === 'string') {
       this.packageExports.set(packageName, join(this.workingDirectory, exports));
       return;
@@ -440,8 +507,11 @@ export class ModuleResolver {
     // 对象形式
     for (const [key, value] of Object.entries(exports)) {
       if (key === '.' || key === './' || key === './index') {
-        const v = typeof value === 'string' ? value : (value.default || value.import || value.require);
-        if (v) {this.packageExports.set(packageName, join(this.workingDirectory, v));}
+        const v =
+          typeof value === 'string' ? value : value.default || value.import || value.require;
+        if (v) {
+          this.packageExports.set(packageName, join(this.workingDirectory, v));
+        }
       } else if (typeof value === 'string') {
         const exportKey = packageName + key.replace(/^\./, '');
         this.packageExports.set(exportKey, join(this.workingDirectory, value));
@@ -459,7 +529,7 @@ export class ModuleResolver {
     // 移除 // 单行注释（不在字符串内的）
     return jsonWithComments
       .split('\n')
-      .map(line => {
+      .map((line) => {
         const idx = this._findCommentStart(line);
         return idx >= 0 ? line.substring(0, idx) : line;
       })
@@ -516,28 +586,35 @@ export class ModuleResolver {
     const searchPath = pkgPath || join(this.workingDirectory, 'node_modules', packageName);
     const pkgJsonPath = join(searchPath, 'package.json');
 
-    if (!existsSync(pkgJsonPath)) {return null;}
+    if (!existsSync(pkgJsonPath)) {
+      return null;
+    }
 
     try {
       const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'));
-      if (!pkg.exports) {return null;}
+      if (!pkg.exports) {
+        return null;
+      }
 
-      const exportEntry = pkg.exports[subpath] || pkg.exports['.' + subpath] || pkg.exports['./' + subpath];
-      if (!exportEntry) {return null;}
+      const exportEntry =
+        pkg.exports[subpath] || pkg.exports['.' + subpath] || pkg.exports['./' + subpath];
+      if (!exportEntry) {
+        return null;
+      }
 
       if (typeof exportEntry === 'string') {
         return this._resolveToFile(join(searchPath, exportEntry));
       }
 
       // Conditional exports: { import: '...', require: '...', types: '...', default: '...' }
-      const resolved = exportEntry[condition]
-        || exportEntry.default
-        || exportEntry.import
-        || exportEntry.require;
+      const resolved =
+        exportEntry[condition] || exportEntry.default || exportEntry.import || exportEntry.require;
       if (resolved) {
         return this._resolveToFile(join(searchPath, resolved));
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
 
     return null;
   }
@@ -557,7 +634,9 @@ export class ModuleResolver {
 
     // 检查子路径导出
     const nested = this._resolveNestedExports(specifier);
-    if (nested) {return nested;}
+    if (nested) {
+      return nested;
+    }
 
     // 从 fromPath 向上查找所在 package 的 package.json，
     // 获取它的 dependencies，再检查依赖是否是 workspace package
@@ -570,7 +649,7 @@ export class ModuleResolver {
           const allDeps = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies };
 
           // 检查 specifier 是否匹配某个 workspace package 的 export field
-          for (const [depName, depVersion] of Object.entries(allDeps)) {
+          for (const [depName] of Object.entries(allDeps)) {
             if (specifier === depName || specifier.startsWith(depName + '/')) {
               // 查找 workspace package
               const wsPath = this.workspacePackages.get(depName);
@@ -583,7 +662,9 @@ export class ModuleResolver {
               }
             }
           }
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
         break;
       }
       current = dirname(current);
@@ -597,9 +678,18 @@ export class ModuleResolver {
     let stringChar = '';
     for (let i = 0; i < line.length - 1; i++) {
       const c = line[i];
-      if (!inString && (c === '"' || c === "'")) { inString = true; stringChar = c; continue; }
-      if (inString && c === stringChar && line[i - 1] !== '\\') { inString = false; continue; }
-      if (!inString && c === '/' && line[i + 1] === '/') {return i;}
+      if (!inString && (c === '"' || c === "'")) {
+        inString = true;
+        stringChar = c;
+        continue;
+      }
+      if (inString && c === stringChar && line[i - 1] !== '\\') {
+        inString = false;
+        continue;
+      }
+      if (!inString && c === '/' && line[i + 1] === '/') {
+        return i;
+      }
     }
     return -1;
   }

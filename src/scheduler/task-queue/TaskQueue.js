@@ -109,7 +109,9 @@ export class TaskQueue {
 
     for (const dependentId of dependents) {
       const dependentTask = this.#tasks.get(dependentId);
-      if (!dependentTask) {continue;}
+      if (!dependentTask) {
+        continue;
+      }
 
       // 标记依赖为已完成
       const allDepsMet = dependentTask.markDependencyCompleted(completedTaskId);
@@ -153,7 +155,7 @@ export class TaskQueue {
     // 如果有依赖，设置状态为WAITING
     if (task.dependsOn && task.dependsOn.length > 0) {
       // 检查依赖是否都已存在且已完成
-      const allDepsCompleted = task.dependsOn.every(depId => {
+      const allDepsCompleted = task.dependsOn.every((depId) => {
         const depTask = this.#tasks.get(depId);
         return depTask && depTask.status === TaskStatus.COMPLETED;
       });
@@ -200,7 +202,7 @@ export class TaskQueue {
    */
   getNextPending() {
     const readyTasks = Array.from(this.#tasks.values())
-      .filter(task => task.isReadyToRun())
+      .filter((task) => task.isReadyToRun())
       .sort((a, b) => {
         // 按优先级排序（数值越小优先级越高）
         if (a.priority !== b.priority) {
@@ -219,7 +221,7 @@ export class TaskQueue {
    */
   getWaitingTasks() {
     return Array.from(this.#tasks.values())
-      .filter(task => task.status === TaskStatus.WAITING)
+      .filter((task) => task.status === TaskStatus.WAITING)
       .sort((a, b) => a.createdAt - b.createdAt);
   }
 
@@ -250,8 +252,12 @@ export class TaskQueue {
     // 应用更新
     if (updates.status) {
       const metadata = {};
-      if (updates.result !== undefined) {metadata.result = updates.result;}
-      if (updates.error !== undefined) {metadata.error = updates.error;}
+      if (updates.result !== undefined) {
+        metadata.result = updates.result;
+      }
+      if (updates.error !== undefined) {
+        metadata.error = updates.error;
+      }
       task.updateStatus(updates.status, metadata);
 
       // 如果任务变为完成状态，处理依赖
@@ -287,7 +293,7 @@ export class TaskQueue {
       this.#buildDependencyGraph(task);
       // 重新检查依赖状态
       if (task.dependsOn.length > 0) {
-        const allDepsCompleted = task.dependsOn.every(depId => {
+        const allDepsCompleted = task.dependsOn.every((depId) => {
           const depTask = this.#tasks.get(depId);
           return depTask && depTask.status === TaskStatus.COMPLETED;
         });
@@ -325,14 +331,16 @@ export class TaskQueue {
     const dependents = this.#dependencyGraph.get(id);
     if (dependents && dependents.size > 0) {
       throw new Error(
-        `Cannot delete task ${id}. It has ${dependents.size} dependent task(s): ${Array.from(dependents).join(', ')}`
+        `Cannot delete task ${id}. It has ${dependents.size} dependent task(s): ${Array.from(dependents).join(', ')}`,
       );
     }
 
     // 只允许删除终态任务
     const deletableStatuses = [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED];
     if (!deletableStatuses.includes(task.status)) {
-      throw new Error(`Cannot delete task with status '${task.status}'. Only completed, failed, or cancelled tasks can be deleted.`);
+      throw new Error(
+        `Cannot delete task with status '${task.status}'. Only completed, failed, or cancelled tasks can be deleted.`,
+      );
     }
 
     // 从依赖图中移除
@@ -364,7 +372,9 @@ export class TaskQueue {
     // 只允许取消待处理、等待中或运行中的任务
     const cancellableStatuses = [TaskStatus.PENDING, TaskStatus.WAITING, TaskStatus.RUNNING];
     if (!cancellableStatuses.includes(task.status)) {
-      throw new Error(`Cannot cancel task with status '${task.status}'. Only pending, waiting, or running tasks can be cancelled.`);
+      throw new Error(
+        `Cannot cancel task with status '${task.status}'. Only pending, waiting, or running tasks can be cancelled.`,
+      );
     }
 
     task.updateStatus(TaskStatus.CANCELLED);
@@ -392,17 +402,17 @@ export class TaskQueue {
 
     // 按状态过滤
     if (options.status) {
-      tasks = tasks.filter(task => task.status === options.status);
+      tasks = tasks.filter((task) => task.status === options.status);
     }
 
     // 按类型过滤
     if (options.type) {
-      tasks = tasks.filter(task => task.type === options.type);
+      tasks = tasks.filter((task) => task.type === options.type);
     }
 
     // 按优先级过滤
     if (options.priority !== undefined) {
-      tasks = tasks.filter(task => task.priority === options.priority);
+      tasks = tasks.filter((task) => task.priority === options.priority);
     }
 
     // 按创建时间降序排序（最新的在前）
@@ -428,7 +438,7 @@ export class TaskQueue {
       running: 0,
       completed: 0,
       failed: 0,
-      cancelled: 0
+      cancelled: 0,
     };
 
     for (const task of this.#tasks.values()) {
@@ -465,7 +475,9 @@ export class TaskQueue {
     }
 
     if (!task.canRetry()) {
-      throw new Error(`Task ${id} cannot be retried. Status: ${task.status}, Retries: ${task.retryCount}/${task.maxRetries}`);
+      throw new Error(
+        `Task ${id} cannot be retried. Status: ${task.status}, Retries: ${task.retryCount}/${task.maxRetries}`,
+      );
     }
 
     // 重置任务状态
@@ -530,7 +542,7 @@ export class TaskQueue {
    * @returns {Promise<void>}
    */
   async #persist() {
-    const tasks = Array.from(this.#tasks.values()).map(task => task.toJSON());
+    const tasks = Array.from(this.#tasks.values()).map((task) => task.toJSON());
     await this.store.save(tasks);
   }
 }

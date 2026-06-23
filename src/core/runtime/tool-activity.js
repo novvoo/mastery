@@ -1,8 +1,22 @@
 const FILE_ARG_KEYS = ['path', 'file', 'file_path', 'filename', 'target', 'targetPath'];
 
-const READ_TOOLS = new Set(['read_file', 'read_files', 'list_dir', 'glob', 'search', 'semantic_search', 'check_file']);
+const READ_TOOLS = new Set([
+  'read_file',
+  'read_files',
+  'list_dir',
+  'glob',
+  'search',
+  'semantic_search',
+  'check_file',
+]);
 const WRITE_TOOLS = new Set(['write_file', 'mkdir']);
-const EDIT_TOOLS = new Set(['edit_file', 'git_apply_patch', 'harness_replace', 'harness_insert', 'harness_delete']);
+const EDIT_TOOLS = new Set([
+  'edit_file',
+  'git_apply_patch',
+  'harness_replace',
+  'harness_insert',
+  'harness_delete',
+]);
 const DELETE_TOOLS = new Set(['delete_file', 'rename_file']);
 const REVIEW_TOOLS = new Set(['review', 'verify', 'coverage_check']);
 
@@ -67,19 +81,24 @@ export function summarizeActivityForCLI(activity) {
   if (!activity) {
     return '';
   }
-  const prefix = activity.phase === 'completed'
-    ? 'done'
-    : activity.phase === 'failed'
-      ? 'failed'
-      : activity.phase === 'waiting'
-        ? 'waiting'
-        : 'doing';
+  const prefix =
+    activity.phase === 'completed'
+      ? 'done'
+      : activity.phase === 'failed'
+        ? 'failed'
+        : activity.phase === 'waiting'
+          ? 'waiting'
+          : 'doing';
   return `${prefix}: ${activity.statusText || activity.title}`;
 }
 
 function normalizePhase(phase) {
-  if (phase === 'success') {return 'completed';}
-  if (phase === 'error') {return 'failed';}
+  if (phase === 'success') {
+    return 'completed';
+  }
+  if (phase === 'error') {
+    return 'failed';
+  }
   if (['queued', 'running', 'completed', 'failed', 'waiting', 'skipped'].includes(phase)) {
     return phase;
   }
@@ -87,28 +106,54 @@ function normalizePhase(phase) {
 }
 
 function inferIntent(toolName, args) {
-  if (READ_TOOLS.has(toolName)) {return 'read';}
-  if (WRITE_TOOLS.has(toolName)) {return 'write';}
-  if (EDIT_TOOLS.has(toolName)) {return 'edit';}
-  if (DELETE_TOOLS.has(toolName)) {return 'delete';}
-  if (REVIEW_TOOLS.has(toolName)) {return 'review';}
-  if (toolName === 'ask_user' || toolName === 'request_user_input') {return 'interaction';}
+  if (READ_TOOLS.has(toolName)) {
+    return 'read';
+  }
+  if (WRITE_TOOLS.has(toolName)) {
+    return 'write';
+  }
+  if (EDIT_TOOLS.has(toolName)) {
+    return 'edit';
+  }
+  if (DELETE_TOOLS.has(toolName)) {
+    return 'delete';
+  }
+  if (REVIEW_TOOLS.has(toolName)) {
+    return 'review';
+  }
+  if (toolName === 'ask_user' || toolName === 'request_user_input') {
+    return 'interaction';
+  }
   if (toolName === 'shell') {
     return inferShellIntent(args?.command);
   }
-  if (toolName?.startsWith('git_')) {return 'version_control';}
-  if (toolName?.includes('web') || toolName?.includes('browser')) {return 'browse';}
+  if (toolName?.startsWith('git_')) {
+    return 'version_control';
+  }
+  if (toolName?.includes('web') || toolName?.includes('browser')) {
+    return 'browse';
+  }
   return 'tool';
 }
 
 function inferShellIntent(command = '') {
   const value = String(command || '').trim();
-  if (!value) {return 'command';}
-  if (/(^|\s)(npm|pnpm|yarn|bun)\s+(test|run\s+test|lint|run\s+lint|build|run\s+build)\b/.test(value)
-    || /(^|\s)(pytest|vitest|jest|eslint|tsc)\b/.test(value)) {
+  if (!value) {
+    return 'command';
+  }
+  if (
+    /(^|\s)(npm|pnpm|yarn|bun)\s+(test|run\s+test|lint|run\s+lint|build|run\s+build)\b/.test(
+      value,
+    ) ||
+    /(^|\s)(pytest|vitest|jest|eslint|tsc)\b/.test(value)
+  ) {
     return 'verify';
   }
-  if (/\b(apply_patch|python|node|perl|sed)\b[\s\S]*(>|writeFile|fs\.writeFile|replace\(|rename\(|unlink\(|rm\s+-|mv\s+)/.test(value)) {
+  if (
+    /\b(apply_patch|python|node|perl|sed)\b[\s\S]*(>|writeFile|fs\.writeFile|replace\(|rename\(|unlink\(|rm\s+-|mv\s+)/.test(
+      value,
+    )
+  ) {
     return 'edit';
   }
   if (/(^|\s)(cat|sed|awk|rg|grep|find|ls|pwd)\b/.test(value)) {
@@ -117,14 +162,20 @@ function inferShellIntent(command = '') {
   if (/(^|\s)(git\s+diff|git\s+status|git\s+show)\b/.test(value)) {
     return 'review';
   }
-  if (/(^|\s)(git\s+add|git\s+commit|git\s+push|git\s+checkout|git\s+merge|git\s+rebase)\b/.test(value)) {
+  if (
+    /(^|\s)(git\s+add|git\s+commit|git\s+push|git\s+checkout|git\s+merge|git\s+rebase)\b/.test(
+      value,
+    )
+  ) {
     return 'version_control';
   }
   return 'command';
 }
 
 function inferTarget(toolName, args = {}) {
-  if (!args || typeof args !== 'object') {return '';}
+  if (!args || typeof args !== 'object') {
+    return '';
+  }
   for (const key of FILE_ARG_KEYS) {
     if (typeof args[key] === 'string' && args[key].trim()) {
       return args[key].trim();
@@ -133,15 +184,23 @@ function inferTarget(toolName, args = {}) {
   if (toolName === 'shell') {
     return inferShellTarget(args.command);
   }
-  if (typeof args.pattern === 'string') {return args.pattern;}
-  if (typeof args.query === 'string') {return args.query;}
-  if (typeof args.url === 'string') {return args.url;}
+  if (typeof args.pattern === 'string') {
+    return args.pattern;
+  }
+  if (typeof args.query === 'string') {
+    return args.query;
+  }
+  if (typeof args.url === 'string') {
+    return args.url;
+  }
   return '';
 }
 
 function inferShellTarget(command = '') {
   const value = String(command || '');
-  const fileMatch = value.match(/(?:^|\s)(?:cat|sed|awk|rg|grep|node|python|eslint|tsc)\b[\s\S]*?(['"]?)([./~\w-][^'"\n\r]*?\.(?:js|jsx|ts|tsx|mjs|cjs|json|md|css|html|py|yml|yaml|txt))\1/);
+  const fileMatch = value.match(
+    /(?:^|\s)(?:cat|sed|awk|rg|grep|node|python|eslint|tsc)\b[\s\S]*?(['"]?)([./~\w-][^'"\n\r]*?\.(?:js|jsx|ts|tsx|mjs|cjs|json|md|css|html|py|yml|yaml|txt))\1/,
+  );
   if (fileMatch?.[2]) {
     return fileMatch[2].trim();
   }
@@ -154,54 +213,64 @@ function inferShellTarget(command = '') {
 
 function actionLabel(intent, phase) {
   if (phase === 'completed') {
-    return {
-      read: '已读取',
-      write: '已写入',
-      edit: '已编辑',
-      delete: '已变更',
-      review: '已审核',
-      verify: '已验证',
-      interaction: '已响应',
-      browse: '已访问',
-      version_control: '已执行 Git',
-      command: '已执行',
-      tool: '已完成',
-    }[intent] || '已完成';
+    return (
+      {
+        read: '已读取',
+        write: '已写入',
+        edit: '已编辑',
+        delete: '已变更',
+        review: '已审核',
+        verify: '已验证',
+        interaction: '已响应',
+        browse: '已访问',
+        version_control: '已执行 Git',
+        command: '已执行',
+        tool: '已完成',
+      }[intent] || '已完成'
+    );
   }
   if (phase === 'failed') {
-    return {
-      read: '读取失败',
-      write: '写入失败',
-      edit: '编辑失败',
-      delete: '变更失败',
-      review: '审核失败',
-      verify: '验证失败',
-      interaction: '交互失败',
-      browse: '访问失败',
-      version_control: 'Git 失败',
-      command: '执行失败',
-      tool: '工具失败',
-    }[intent] || '失败';
+    return (
+      {
+        read: '读取失败',
+        write: '写入失败',
+        edit: '编辑失败',
+        delete: '变更失败',
+        review: '审核失败',
+        verify: '验证失败',
+        interaction: '交互失败',
+        browse: '访问失败',
+        version_control: 'Git 失败',
+        command: '执行失败',
+        tool: '工具失败',
+      }[intent] || '失败'
+    );
   }
-  if (phase === 'waiting') {return '等待';}
-  return {
-    read: '正在读取',
-    write: '正在写入',
-    edit: '正在编辑',
-    delete: '正在变更',
-    review: '正在审核',
-    verify: '正在验证',
-    interaction: '等待交互',
-    browse: '正在访问',
-    version_control: '正在执行 Git',
-    command: '正在执行',
-    tool: '正在调用',
-  }[intent] || '正在处理';
+  if (phase === 'waiting') {
+    return '等待';
+  }
+  return (
+    {
+      read: '正在读取',
+      write: '正在写入',
+      edit: '正在编辑',
+      delete: '正在变更',
+      review: '正在审核',
+      verify: '正在验证',
+      interaction: '等待交互',
+      browse: '正在访问',
+      version_control: '正在执行 Git',
+      command: '正在执行',
+      tool: '正在调用',
+    }[intent] || '正在处理'
+  );
 }
 
 function statusLabel(intent, phase, subject) {
   const action = actionLabel(intent, phase);
-  if (!subject) {return action;}
+  if (!subject) {
+    return action;
+  }
   return `${action} ${subject}`;
 }
 
@@ -230,7 +299,9 @@ function inferCounts(toolName, args = {}, result = null) {
   }
 
   const text = typeof result === 'string' ? result : '';
-  if (!text) {return null;}
+  if (!text) {
+    return null;
+  }
 
   const write = text.match(/File written successfully:\s+.+?\((\d+)\s+lines?/i);
   if (write) {
@@ -238,7 +309,9 @@ function inferCounts(toolName, args = {}, result = null) {
     return { files: 1, lines, additions: lines, deletions: 0 };
   }
 
-  const diff = text.match(/(\d+)\s+files?\s+changed(?:,\s+(\d+)\s+insertions?\(\+\))?(?:,\s+(\d+)\s+deletions?\(-\))?/i);
+  const diff = text.match(
+    /(\d+)\s+files?\s+changed(?:,\s+(\d+)\s+insertions?\(\+\))?(?:,\s+(\d+)\s+deletions?\(-\))?/i,
+  );
   if (diff) {
     return {
       files: Number(diff[1] || 0),
@@ -260,7 +333,9 @@ function inferCounts(toolName, args = {}, result = null) {
 }
 
 function countLines(text) {
-  if (text === '') {return 0;}
+  if (text === '') {
+    return 0;
+  }
   return String(text).split('\n').length;
 }
 
@@ -288,7 +363,9 @@ function canUndo(intent, phase) {
 }
 
 function toolDisplayName(toolName, args) {
-  if (toolName === 'shell') {return truncate(args?.command || 'shell', 80);}
+  if (toolName === 'shell') {
+    return truncate(args?.command || 'shell', 80);
+  }
   return toolName;
 }
 
@@ -297,6 +374,8 @@ function activityId(toolName, args) {
 }
 
 function truncate(value, maxLength) {
-  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  const text = String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
 }

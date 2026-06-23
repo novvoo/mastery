@@ -85,13 +85,25 @@ async function withLSPErrorHandling(promise, context) {
     return { success: true, result };
   } catch (err) {
     if (err.code === 'ENOENT') {
-      return { success: false, error: `File not found: ${context.filePath || ''}`, code: 'FILE_NOT_FOUND' };
+      return {
+        success: false,
+        error: `File not found: ${context.filePath || ''}`,
+        code: 'FILE_NOT_FOUND',
+      };
     }
     if (err.code === 'ETIMEDOUT' || err.message?.includes('timeout')) {
-      return { success: false, error: `LSP request timed out: ${context.method || ''}`, code: 'TIMEOUT' };
+      return {
+        success: false,
+        error: `LSP request timed out: ${context.method || ''}`,
+        code: 'TIMEOUT',
+      };
     }
     if (err.message?.includes('server not found')) {
-      return { success: false, error: 'LSP server not found. Please install the appropriate language server.', code: 'SERVER_NOT_FOUND' };
+      return {
+        success: false,
+        error: 'LSP server not found. Please install the appropriate language server.',
+        code: 'SERVER_NOT_FOUND',
+      };
     }
     if (err.message?.includes('disconnected')) {
       return { success: false, error: 'LSP server disconnected', code: 'SERVER_DISCONNECTED' };
@@ -117,7 +129,9 @@ async function withLSPErrorHandling(promise, context) {
  * @returns {object[]} 工具对象数组
  */
 export function createLSPTools({ lspManager, contentStore = null, hashlinePatcher = null }) {
-  if (!lspManager) { return []; }
+  if (!lspManager) {
+    return [];
+  }
 
   return [
     // ── lsp_rename ───────────────────────────────────────────────────────
@@ -129,10 +143,29 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         'Returns the workspace edit that will be applied and a summary of changes.',
       category: ToolCategory.LSP,
       params: {
-        filePath: { type: 'string', description: 'Path to the file containing the symbol', required: true },
-        line: { type: 'number', description: '1-based line number of the symbol', required: true, min: 1 },
-        character: { type: 'number', description: '1-based character (column) of the symbol', required: true, min: 1 },
-        newName: { type: 'string', description: 'New name for the symbol', required: true, minLength: 1 },
+        filePath: {
+          type: 'string',
+          description: 'Path to the file containing the symbol',
+          required: true,
+        },
+        line: {
+          type: 'number',
+          description: '1-based line number of the symbol',
+          required: true,
+          min: 1,
+        },
+        character: {
+          type: 'number',
+          description: '1-based character (column) of the symbol',
+          required: true,
+          min: 1,
+        },
+        newName: {
+          type: 'string',
+          description: 'New name for the symbol',
+          required: true,
+          minLength: 1,
+        },
       },
       required: ['filePath', 'line', 'character', 'newName'],
       handler: async (args, ctx) => {
@@ -170,11 +203,21 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
           return prepareResult;
         }
         if (!prepareResult.result) {
-          return { success: false, error: 'LSP server returned null — rename not available at this location.' };
+          return {
+            success: false,
+            error: 'LSP server returned null — rename not available at this location.',
+          };
         }
 
         const renameResult = await withLSPErrorHandling(
-          lspManager.request('textDocument/rename', filePath, { newName: args.newName }, position, content, 30000),
+          lspManager.request(
+            'textDocument/rename',
+            filePath,
+            { newName: args.newName },
+            position,
+            content,
+            30000,
+          ),
           { method: 'textDocument/rename', filePath },
         );
         if (!renameResult.success) {
@@ -228,10 +271,27 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         'Returns file paths, line numbers, and surrounding context for each reference.',
       category: ToolCategory.LSP,
       params: {
-        filePath: { type: 'string', description: 'Path to the file containing the symbol', required: true },
-        line: { type: 'number', description: '1-based line number of the symbol', required: true, min: 1 },
-        character: { type: 'number', description: '1-based character position of the symbol', required: true, min: 1 },
-        includeDeclaration: { type: 'boolean', description: 'Include the declaration itself (default: true)' },
+        filePath: {
+          type: 'string',
+          description: 'Path to the file containing the symbol',
+          required: true,
+        },
+        line: {
+          type: 'number',
+          description: '1-based line number of the symbol',
+          required: true,
+          min: 1,
+        },
+        character: {
+          type: 'number',
+          description: '1-based character position of the symbol',
+          required: true,
+          min: 1,
+        },
+        includeDeclaration: {
+          type: 'boolean',
+          description: 'Include the declaration itself (default: true)',
+        },
       },
       required: ['filePath', 'line', 'character'],
       handler: async (args, ctx) => {
@@ -261,9 +321,16 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         const position = { line: args.line - 1, character: args.character - 1 };
 
         const refsResult = await withLSPErrorHandling(
-          lspManager.request('textDocument/references', filePath, {
-            context: { includeDeclaration: args.includeDeclaration !== false },
-          }, position, content, 15000),
+          lspManager.request(
+            'textDocument/references',
+            filePath,
+            {
+              context: { includeDeclaration: args.includeDeclaration !== false },
+            },
+            position,
+            content,
+            15000,
+          ),
           { method: 'textDocument/references', filePath },
         );
         if (!refsResult.success) {
@@ -312,9 +379,18 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         'Go to the definition of a symbol using LSP. Returns file path, line, and context.',
       category: ToolCategory.LSP,
       params: {
-        filePath: { type: 'string', description: 'Path to the file containing the symbol', required: true },
+        filePath: {
+          type: 'string',
+          description: 'Path to the file containing the symbol',
+          required: true,
+        },
         line: { type: 'number', description: '1-based line number', required: true, min: 1 },
-        character: { type: 'number', description: '1-based character position', required: true, min: 1 },
+        character: {
+          type: 'number',
+          description: '1-based character position',
+          required: true,
+          min: 1,
+        },
       },
       required: ['filePath', 'line', 'character'],
       handler: async (args, ctx) => {
@@ -415,7 +491,12 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
             }
           }
           const total = Object.values(result).reduce((s, d) => s + d.length, 0);
-          return { success: true, diagnostics: result, totalFiles: Object.keys(result).length, totalDiagnostics: total };
+          return {
+            success: true,
+            diagnostics: result,
+            totalFiles: Object.keys(result).length,
+            totalDiagnostics: total,
+          };
         }
 
         const filePath = safePath(ctx.workingDirectory, args.filePath);
@@ -458,7 +539,10 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
       category: ToolCategory.LSP,
       params: {
         filePath: { type: 'string', description: 'Path to the file to format' },
-        apply: { type: 'boolean', description: 'Apply formatting to the file (default: false, just preview)' },
+        apply: {
+          type: 'boolean',
+          description: 'Apply formatting to the file (default: false, just preview)',
+        },
       },
       required: ['filePath'],
       handler: async (args, ctx) => {
@@ -466,11 +550,14 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         const content = await readFile(filePath, 'utf-8');
 
         const edits = await lspManager.request(
-          'textDocument/formatting', filePath,
+          'textDocument/formatting',
+          filePath,
           {
             options: { tabSize: 2, insertSpaces: true },
           },
-          null, content, 15000,
+          null,
+          content,
+          15000,
         );
 
         if (!edits || edits.length === 0) {
@@ -491,7 +578,12 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
           }
           // 同步到 LSP
           await lspManager.syncDocument(filePath, formatted);
-          return { success: true, message: 'Formatting applied.', applied: true, editCount: edits.length };
+          return {
+            success: true,
+            message: 'Formatting applied.',
+            applied: true,
+            editCount: edits.length,
+          };
         }
 
         return {
@@ -511,11 +603,17 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
       category: ToolCategory.LSP,
       params: {
         filePath: { type: 'string', description: 'Path to the file' },
-        startLine: { type: 'number', description: '1-based start line for range (omit for whole file)' },
+        startLine: {
+          type: 'number',
+          description: '1-based start line for range (omit for whole file)',
+        },
         startChar: { type: 'number', description: '1-based start character' },
         endLine: { type: 'number', description: '1-based end line' },
         endChar: { type: 'number', description: '1-based end character' },
-        title: { type: 'string', description: 'If specified, execute the code action with this title' },
+        title: {
+          type: 'string',
+          description: 'If specified, execute the code action with this title',
+        },
       },
       required: ['filePath'],
       handler: async (args, ctx) => {
@@ -541,9 +639,12 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         let actions;
         try {
           actions = await lspManager.request(
-            'textDocument/codeAction', filePath,
+            'textDocument/codeAction',
+            filePath,
             extraParams,
-            null, content, 15000,
+            null,
+            content,
+            15000,
           );
         } catch {
           return { success: false, error: 'Failed to get code actions from LSP server.' };
@@ -556,7 +657,8 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         // 如果指定了 title，直接执行
         if (args.title) {
           const matched = actions.find(
-            (a) => a.title === args.title || a.title.toLowerCase().includes(args.title.toLowerCase()),
+            (a) =>
+              a.title === args.title || a.title.toLowerCase().includes(args.title.toLowerCase()),
           );
           if (!matched) {
             return {
@@ -586,8 +688,7 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
     // ── lsp_hover ─────────────────────────────────────────────────────────
     {
       name: 'lsp_hover',
-      description:
-        'Get hover information (type info, documentation) for a symbol at a position.',
+      description: 'Get hover information (type info, documentation) for a symbol at a position.',
       category: ToolCategory.LSP,
       params: {
         filePath: { type: 'string', description: 'Path to the file' },
@@ -601,7 +702,12 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         const position = { line: (args.line || 1) - 1, character: (args.character || 1) - 1 };
 
         const result = await lspManager.request(
-          'textDocument/hover', filePath, {}, position, content, 8000,
+          'textDocument/hover',
+          filePath,
+          {},
+          position,
+          content,
+          8000,
         );
 
         if (!result || !result.contents) {
@@ -630,7 +736,10 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         'List document or workspace symbols using LSP. Use type="document" for current file symbols, type="workspace" for project-wide symbol search.',
       category: ToolCategory.LSP,
       params: {
-        filePath: { type: 'string', description: 'Path to the file (required for document symbols)' },
+        filePath: {
+          type: 'string',
+          description: 'Path to the file (required for document symbols)',
+        },
         type: { type: 'string', description: '"document" (default) or "workspace"' },
         query: { type: 'string', description: 'Search query for workspace symbols' },
       },
@@ -644,7 +753,12 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
             return { success: false, error: 'query parameter is required for workspace symbols.' };
           }
           const symbols = await lspManager.request(
-            'workspace/symbol', filePath, { query: args.query }, null, null, 15000,
+            'workspace/symbol',
+            filePath,
+            { query: args.query },
+            null,
+            null,
+            15000,
           );
           if (!symbols || symbols.length === 0) {
             return { success: true, symbols: [], query: args.query };
@@ -655,7 +769,9 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
               name: s.name,
               kind: symbolKindLabel(s.kind),
               location: {
-                file: s.location.uri.startsWith('file://') ? s.location.uri.slice(7) : s.location.uri,
+                file: s.location.uri.startsWith('file://')
+                  ? s.location.uri.slice(7)
+                  : s.location.uri,
                 line: s.location.range.start.line + 1,
               },
             })),
@@ -666,7 +782,12 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         // document symbols
         const content = await readFile(filePath, 'utf-8');
         const symbols = await lspManager.request(
-          'textDocument/documentSymbol', filePath, {}, null, content, 10000,
+          'textDocument/documentSymbol',
+          filePath,
+          {},
+          null,
+          content,
+          10000,
         );
 
         if (!symbols || symbols.length === 0) {
@@ -698,9 +819,18 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         'Returns file path, line, and context snippet for each type definition.',
       category: ToolCategory.LSP,
       params: {
-        filePath: { type: 'string', description: 'Path to the file containing the symbol', required: true },
+        filePath: {
+          type: 'string',
+          description: 'Path to the file containing the symbol',
+          required: true,
+        },
         line: { type: 'number', description: '1-based line number', required: true, min: 1 },
-        character: { type: 'number', description: '1-based character position', required: true, min: 1 },
+        character: {
+          type: 'number',
+          description: '1-based character position',
+          required: true,
+          min: 1,
+        },
       },
       required: ['filePath', 'line', 'character'],
       handler: async (args, ctx) => {
@@ -782,9 +912,18 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         'Returns file path, line, and context for each implementation.',
       category: ToolCategory.LSP,
       params: {
-        filePath: { type: 'string', description: 'Path to the file containing the symbol', required: true },
+        filePath: {
+          type: 'string',
+          description: 'Path to the file containing the symbol',
+          required: true,
+        },
         line: { type: 'number', description: '1-based line number', required: true, min: 1 },
-        character: { type: 'number', description: '1-based character position', required: true, min: 1 },
+        character: {
+          type: 'number',
+          description: '1-based character position',
+          required: true,
+          min: 1,
+        },
       },
       required: ['filePath', 'line', 'character'],
       handler: async (args, ctx) => {
@@ -823,7 +962,12 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
 
         const result = implResult.result;
         if (!result || (Array.isArray(result) && result.length === 0)) {
-          return { success: true, implementations: [], count: 0, message: 'No implementations found.' };
+          return {
+            success: true,
+            implementations: [],
+            count: 0,
+            message: 'No implementations found.',
+          };
         }
 
         const impls = Array.isArray(result) ? result : [result];
@@ -863,11 +1007,28 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         'Returns structured tree of call relationships.',
       category: ToolCategory.LSP,
       params: {
-        filePath: { type: 'string', description: 'Path to the file containing the function', required: true },
+        filePath: {
+          type: 'string',
+          description: 'Path to the file containing the function',
+          required: true,
+        },
         line: { type: 'number', description: '1-based line number', required: true, min: 1 },
-        character: { type: 'number', description: '1-based character position', required: true, min: 1 },
-        direction: { type: 'string', description: '"incoming" for callers, "outgoing" for callees (default: incoming)' },
-        maxDepth: { type: 'number', description: 'Maximum depth of call hierarchy (default: 2, max: 5)', min: 1, max: 5 },
+        character: {
+          type: 'number',
+          description: '1-based character position',
+          required: true,
+          min: 1,
+        },
+        direction: {
+          type: 'string',
+          description: '"incoming" for callers, "outgoing" for callees (default: incoming)',
+        },
+        maxDepth: {
+          type: 'number',
+          description: 'Maximum depth of call hierarchy (default: 2, max: 5)',
+          min: 1,
+          max: 5,
+        },
       },
       required: ['filePath', 'line', 'character'],
       handler: async (args, ctx) => {
@@ -900,7 +1061,14 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
 
         // Step 1: Prepare call hierarchy
         const prepareResult = await withLSPErrorHandling(
-          lspManager.request('textDocument/prepareCallHierarchy', filePath, {}, position, content, 10000),
+          lspManager.request(
+            'textDocument/prepareCallHierarchy',
+            filePath,
+            {},
+            position,
+            content,
+            10000,
+          ),
           { method: 'textDocument/prepareCallHierarchy', filePath },
         );
         if (!prepareResult.success) {
@@ -909,7 +1077,11 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
 
         const items = prepareResult.result;
         if (!items || (Array.isArray(items) && items.length === 0)) {
-          return { success: true, hierarchy: [], message: 'No call hierarchy available at this position.' };
+          return {
+            success: true,
+            hierarchy: [],
+            message: 'No call hierarchy available at this position.',
+          };
         }
 
         const rootItem = Array.isArray(items) ? items[0] : items;
@@ -917,12 +1089,16 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
 
         // Step 2: Traverse call hierarchy recursively
         const buildCallTree = async (item, depth) => {
-          if (depth > maxDepth) { return null; }
+          if (depth > maxDepth) {
+            return null;
+          }
 
           const node = {
             name: item.name,
             kind: symbolKindLabel(item.kind),
-            file: (item.uri || '').startsWith('file://') ? (item.uri || '').slice(7) : (item.uri || ''),
+            file: (item.uri || '').startsWith('file://')
+              ? (item.uri || '').slice(7)
+              : item.uri || '',
             line: (item.range?.start?.line || 0) + 1,
             children: [],
           };
@@ -930,23 +1106,34 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
           if (depth < maxDepth) {
             try {
               const calls = await lspManager.request(
-                direction === 'incoming' ? 'callHierarchy/incomingCalls' : 'callHierarchy/outgoingCalls',
+                direction === 'incoming'
+                  ? 'callHierarchy/incomingCalls'
+                  : 'callHierarchy/outgoingCalls',
                 filePath,
                 { item },
-                null, null, 10000,
+                null,
+                null,
+                10000,
               );
 
               if (calls && calls.length > 0) {
                 const children = await Promise.all(
                   calls.slice(0, 20).map(async (call) => {
-                    const fromName = call.from?.name || call.fromRanges?.[0] ? 'unknown' : 'unknown';
+                    const fromName =
+                      call.from?.name || call.fromRanges?.[0] ? 'unknown' : 'unknown';
                     const childItem = call.from || call;
                     const child = await buildCallTree(childItem, depth + 1);
                     if (child) {
                       // Add caller/callee range info
-                      child.fromRanges = (call.fromRanges || []).map(r => ({
-                        start: { line: (r.start?.line || 0) + 1, character: (r.start?.character || 0) + 1 },
-                        end: { line: (r.end?.line || 0) + 1, character: (r.end?.character || 0) + 1 },
+                      child.fromRanges = (call.fromRanges || []).map((r) => ({
+                        start: {
+                          line: (r.start?.line || 0) + 1,
+                          character: (r.start?.character || 0) + 1,
+                        },
+                        end: {
+                          line: (r.end?.line || 0) + 1,
+                          character: (r.end?.character || 0) + 1,
+                        },
                       }));
                     }
                     return child;
@@ -981,7 +1168,11 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
       category: ToolCategory.LSP,
       params: {
         filePath: { type: 'string', description: 'Path to the file', required: true },
-        startLine: { type: 'number', description: '1-based start line for range (optional, omit for whole file)', min: 1 },
+        startLine: {
+          type: 'number',
+          description: '1-based start line for range (optional, omit for whole file)',
+          min: 1,
+        },
         endLine: { type: 'number', description: '1-based end line for range', min: 1 },
       },
       required: ['filePath'],
@@ -1010,7 +1201,14 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         }
 
         const hintsResult = await withLSPErrorHandling(
-          lspManager.request('textDocument/inlayHint', filePath, requestParams, null, content, 10000),
+          lspManager.request(
+            'textDocument/inlayHint',
+            filePath,
+            requestParams,
+            null,
+            content,
+            10000,
+          ),
           { method: 'textDocument/inlayHint', filePath },
         );
         if (!hintsResult.success) {
@@ -1024,7 +1222,8 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
 
         const enriched = (Array.isArray(hints) ? hints : [hints]).map((h) => {
           const hintLine = h.position?.line !== undefined ? h.position.line + 1 : '?';
-          const hintLabel = typeof h.label === 'string' ? h.label : (h.label?.[0]?.value || JSON.stringify(h.label));
+          const hintLabel =
+            typeof h.label === 'string' ? h.label : h.label?.[0]?.value || JSON.stringify(h.label);
           return {
             line: hintLine,
             character: (h.position?.character || 0) + 1,
@@ -1032,7 +1231,7 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
             kind: typeof h.kind === 'number' ? inlayHintKindLabel(h.kind) : 'unknown',
             paddingLeft: h.paddingLeft || false,
             paddingRight: h.paddingRight || false,
-            tooltip: typeof h.tooltip === 'string' ? h.tooltip : (h.tooltip?.value || null),
+            tooltip: typeof h.tooltip === 'string' ? h.tooltip : h.tooltip?.value || null,
           };
         });
 
@@ -1067,9 +1266,16 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         }
 
         const foldResult = await withLSPErrorHandling(
-          lspManager.request('textDocument/foldingRange', filePath, {
-            textDocument: { uri: `file://${filePath}` },
-          }, null, content, 10000),
+          lspManager.request(
+            'textDocument/foldingRange',
+            filePath,
+            {
+              textDocument: { uri: `file://${filePath}` },
+            },
+            null,
+            content,
+            10000,
+          ),
           { method: 'textDocument/foldingRange', filePath },
         );
         if (!foldResult.success) {
@@ -1107,7 +1313,12 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
       params: {
         filePath: { type: 'string', description: 'Path to the file', required: true },
         line: { type: 'number', description: '1-based line number', required: true, min: 1 },
-        character: { type: 'number', description: '1-based character position', required: true, min: 1 },
+        character: {
+          type: 'number',
+          description: '1-based character position',
+          required: true,
+          min: 1,
+        },
       },
       required: ['filePath', 'line', 'character'],
       handler: async (args, ctx) => {
@@ -1137,10 +1348,17 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
         const position = { line: args.line - 1, character: args.character - 1 };
 
         const selResult = await withLSPErrorHandling(
-          lspManager.request('textDocument/selectionRange', filePath, {
-            textDocument: { uri: `file://${filePath}` },
-            positions: [position],
-          }, null, content, 10000),
+          lspManager.request(
+            'textDocument/selectionRange',
+            filePath,
+            {
+              textDocument: { uri: `file://${filePath}` },
+              positions: [position],
+            },
+            null,
+            content,
+            10000,
+          ),
           { method: 'textDocument/selectionRange', filePath },
         );
         if (!selResult.success) {
@@ -1168,9 +1386,14 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
                 const line = lines[startLine] || '';
                 snippet = line.substring(startChar, Math.min(endChar, line.length));
               } else {
-                snippet = lines.slice(startLine, endLine + 1).join('\n').substring(0, 100);
+                snippet = lines
+                  .slice(startLine, endLine + 1)
+                  .join('\n')
+                  .substring(0, 100);
               }
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
 
             results.push({
               start: { line: startLine + 1, character: startChar + 1 },
@@ -1214,18 +1437,24 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
 
         if (args.operation === 'rename_file' || args.operation === 'move') {
           if (!args.oldPath || !args.newPath) {
-            return { success: false, error: 'oldPath and newPath are required for move/rename_file.' };
+            return {
+              success: false,
+              error: 'oldPath and newPath are required for move/rename_file.',
+            };
           }
           const oldPath = safePath(ctx.workingDirectory, args.oldPath);
           const newPath = safePath(ctx.workingDirectory, args.newPath);
 
           // 通过 LSP workspace/willRenameFiles 请求获取 import 更新
           const renameResult = await lspManager.request(
-            'workspace/willRenameFiles', filePath,
+            'workspace/willRenameFiles',
+            filePath,
             {
               files: [{ oldUri: `file://${oldPath}`, newUri: `file://${newPath}` }],
             },
-            null, null, 20000,
+            null,
+            null,
+            20000,
           );
 
           const changes = {};
@@ -1236,7 +1465,9 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
             for (const dc of renameResult.documentChanges) {
               if (dc.textDocument && dc.edits) {
                 const uri = dc.textDocument.uri;
-                if (!changes[uri]) { changes[uri] = []; }
+                if (!changes[uri]) {
+                  changes[uri] = [];
+                }
                 changes[uri].push(...dc.edits);
               }
             }
@@ -1250,13 +1481,16 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
             };
           }
 
-          return await applyWorkspaceEdit({ changes }, {
-            workingDirectory: ctx.workingDirectory,
-            contentStore,
-            hashlinePatcher,
-            snapshotStore: ctx.snapshotStore,
-            lspManager,
-          });
+          return await applyWorkspaceEdit(
+            { changes },
+            {
+              workingDirectory: ctx.workingDirectory,
+              contentStore,
+              hashlinePatcher,
+              snapshotStore: ctx.snapshotStore,
+              lspManager,
+            },
+          );
         }
 
         if (args.operation === 'update_imports') {
@@ -1269,7 +1503,10 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
           return { success: true, ...syncResult };
         }
 
-        return { success: false, error: `Unknown operation: ${args.operation}. Use move, rename_file, or update_imports.` };
+        return {
+          success: false,
+          error: `Unknown operation: ${args.operation}. Use move, rename_file, or update_imports.`,
+        };
       },
     },
   ];
@@ -1354,12 +1591,18 @@ function detectWorkspaceEditConflicts(editsByPath) {
 
   for (const [filePath, { edits }] of Object.entries(editsByPath)) {
     const conflicts = [];
-    const sorted = [...edits].map((e, i) => ({ ...e, _idx: i }))
-      .sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.character - b.range.start.character);
+    const sorted = [...edits]
+      .map((e, i) => ({ ...e, _idx: i }))
+      .sort(
+        (a, b) =>
+          a.range.start.line - b.range.start.line ||
+          a.range.start.character - b.range.start.character,
+      );
 
     for (let i = 0; i < sorted.length; i++) {
       for (let j = i + 1; j < sorted.length; j++) {
-        const a = sorted[i], b = sorted[j];
+        const a = sorted[i],
+          b = sorted[j];
 
         // 检查行重叠
         if (b.range.start.line <= a.range.end.line) {
@@ -1367,8 +1610,16 @@ function detectWorkspaceEditConflicts(editsByPath) {
           if (b.range.start.line === a.range.end.line) {
             if (b.range.start.character < a.range.end.character) {
               conflicts.push({
-                editA: { start: a.range.start, end: a.range.end, newText: a.newText?.substring(0, 50) },
-                editB: { start: b.range.start, end: b.range.end, newText: b.newText?.substring(0, 50) },
+                editA: {
+                  start: a.range.start,
+                  end: a.range.end,
+                  newText: a.newText?.substring(0, 50),
+                },
+                editB: {
+                  start: b.range.start,
+                  end: b.range.end,
+                  newText: b.newText?.substring(0, 50),
+                },
                 overlap: {
                   line: a.range.start.line + 1,
                   range: `${a.range.end.character} overlaps with ${b.range.start.character}`,
@@ -1378,8 +1629,16 @@ function detectWorkspaceEditConflicts(editsByPath) {
           } else {
             // 跨行重叠（b 的 start 在 a 的范围内）
             conflicts.push({
-              editA: { start: a.range.start, end: a.range.end, newText: a.newText?.substring(0, 50) },
-              editB: { start: b.range.start, end: b.range.end, newText: b.newText?.substring(0, 50) },
+              editA: {
+                start: a.range.start,
+                end: a.range.end,
+                newText: a.newText?.substring(0, 50),
+              },
+              editB: {
+                start: b.range.start,
+                end: b.range.end,
+                newText: b.newText?.substring(0, 50),
+              },
               overlap: {
                 lineRange: `${a.range.start.line + 1}-${a.range.end.line + 1}`,
                 reason: 'editB starts within editA range',
@@ -1403,13 +1662,10 @@ function detectWorkspaceEditConflicts(editsByPath) {
  * 当 hashlinePatcher 可用时，使用 Hashline 进行原子性应用（带 rollback）。
  * @returns {Promise<{success: boolean, filesChanged: string[], filesFailed: string[], totalEdits: number}>}
  */
-async function applyWorkspaceEdit(workspaceEdit, {
-  workingDirectory,
-  contentStore,
-  hashlinePatcher,
-  snapshotStore,
-  lspManager,
-}) {
+async function applyWorkspaceEdit(
+  workspaceEdit,
+  { workingDirectory, contentStore, hashlinePatcher, snapshotStore, lspManager },
+) {
   const filesChanged = [];
   const filesFailed = [];
   let totalEdits = 0;
@@ -1451,7 +1707,7 @@ async function applyWorkspaceEdit(workspaceEdit, {
 
   // 冲突检测：在应用编辑前检查是否有重叠 TextEdit
   const editConflicts = detectWorkspaceEditConflicts(editsByPath);
-  const hasHardConflicts = editConflicts.some(c => c.conflicts.length > 0);
+  const hasHardConflicts = editConflicts.some((c) => c.conflicts.length > 0);
   if (hasHardConflicts) {
     return {
       success: false,
@@ -1463,7 +1719,10 @@ async function applyWorkspaceEdit(workspaceEdit, {
     };
   }
 
-  if (filesFailed.length === Object.keys(workspaceEdit.changes || {}).length + (workspaceEdit.documentChanges || []).length) {
+  if (
+    filesFailed.length ===
+    Object.keys(workspaceEdit.changes || {}).length + (workspaceEdit.documentChanges || []).length
+  ) {
     return { success: false, filesChanged: [], filesFailed, totalEdits: 0 };
   }
 
@@ -1472,7 +1731,7 @@ async function applyWorkspaceEdit(workspaceEdit, {
       const patchText = lspTextEditsToHashlinePatch(editsByPath);
       const preflight = await hashlinePatcher.preflight(patchText);
 
-      const fatalSection = preflight.preflight.find(p => !p.ok && !p.recoverable);
+      const fatalSection = preflight.preflight.find((p) => !p.ok && !p.recoverable);
       if (fatalSection) {
         filesFailed.push(`${fatalSection.path}: preflight failed - ${fatalSection.error}`);
         return { success: false, filesChanged: [], filesFailed, totalEdits };
@@ -1500,7 +1759,9 @@ async function applyWorkspaceEdit(workspaceEdit, {
           contentStore.setRef(`file:${section.path}`, blob);
         }
         if (lspManager) {
-          lspManager.syncDocument(section.path, await readFile(section.path, 'utf-8')).catch(() => {});
+          lspManager
+            .syncDocument(section.path, await readFile(section.path, 'utf-8'))
+            .catch(() => {});
         }
       }
 
@@ -1646,7 +1907,9 @@ async function syncBarrelAndAliasImports({
             lspManager.syncDocument(barrelPath, updated).catch(() => {});
           }
         }
-      } catch { /* skip unreadable barrels */ }
+      } catch {
+        /* skip unreadable barrels */
+      }
     }
   } catch (err) {
     synced.push(`barrel:error:${err.message}`);
@@ -1686,7 +1949,9 @@ function findBarrelFiles(workspaceRoot, filePath) {
   let current = dir;
   for (let i = 0; i < 3; i++) {
     const parent = dirname(current);
-    if (parent === current || !parent.startsWith(workspaceRoot)) { break; }
+    if (parent === current || !parent.startsWith(workspaceRoot)) {
+      break;
+    }
     for (const name of ['index.ts', 'index.tsx', 'index.js', 'index.jsx']) {
       candidates.push(resolve(parent, name));
     }
@@ -1708,14 +1973,20 @@ function updateBarrelExport(content, fileName, relativePath, oldName, newName) {
   // 匹配: export { XXX } from './file' 或 export { default as XXX } from './file'
   // 更新符号名
   if (oldName && newName) {
-    const exportNamedRe = new RegExp(`(export\\s*\\{[^}]*)\\b${escapeRegex(oldName)}\\b([^}]*\\}\\s*from\\s*['"]\\.\\/?${escapeRegex(nameWithoutExt)}['"])`, 'g');
+    const exportNamedRe = new RegExp(
+      `(export\\s*\\{[^}]*)\\b${escapeRegex(oldName)}\\b([^}]*\\}\\s*from\\s*['"]\\.\\/?${escapeRegex(nameWithoutExt)}['"])`,
+      'g',
+    );
     updated = updated.replace(exportNamedRe, `$1${newName}$2`);
   }
 
   // 匹配: export * from './file' 或 export { default } from './file'
   // 如果文件名变了，更新路径
   if (newNameWithoutExt && nameWithoutExt !== newNameWithoutExt) {
-    const exportFromRe = new RegExp(`(from\\s*['"]\\.\\/?)${escapeRegex(nameWithoutExt)}(['"])`, 'g');
+    const exportFromRe = new RegExp(
+      `(from\\s*['"]\\.\\/?)${escapeRegex(nameWithoutExt)}(['"])`,
+      'g',
+    );
     updated = updated.replace(exportFromRe, `$1${newNameWithoutExt}$2`);
   }
 
@@ -1739,7 +2010,7 @@ async function parseTsconfigPaths(workspaceRoot) {
         const baseUrl = json.compilerOptions.baseUrl || '.';
         const basePath = resolve(workspaceRoot, baseUrl);
         for (const [alias, mappings] of Object.entries(json.compilerOptions.paths)) {
-          const targetPaths = mappings.map(m => resolve(basePath, m.replace(/\*/g, '')));
+          const targetPaths = mappings.map((m) => resolve(basePath, m.replace(/\*/g, '')));
           paths[alias.replace(/\*/g, '')] = targetPaths;
         }
       }
@@ -1807,7 +2078,10 @@ async function syncAliasImports({
     });
 
     const oldFilePath = renamedFile;
-    const newFilePath = renamedFile.replace(basename(renamedFile), newName || basename(renamedFile));
+    const newFilePath = renamedFile.replace(
+      basename(renamedFile),
+      newName || basename(renamedFile),
+    );
 
     for (const file of files) {
       const fullPath = resolve(wd, file);
@@ -1828,7 +2102,9 @@ async function syncAliasImports({
             contentStore.setRef(`file:${fullPath}`, contentStore.storeBlob(updated));
           }
         }
-      } catch { /* skip unreadable files */ }
+      } catch {
+        /* skip unreadable files */
+      }
     }
   } catch (err) {
     synced.push(`alias:error:${err.message}`);
@@ -1855,12 +2131,15 @@ async function executeCodeAction(action, { lspManager, contentStore, hashlinePat
   if (action.command) {
     try {
       const result = await lspManager.request(
-        'workspace/executeCommand', ctx.workingDirectory,
+        'workspace/executeCommand',
+        ctx.workingDirectory,
         {
           command: action.command.command,
           arguments: action.command.arguments || [],
         },
-        null, null, 15000,
+        null,
+        null,
+        15000,
       );
       return {
         success: true,
@@ -1878,7 +2157,12 @@ async function executeCodeAction(action, { lspManager, contentStore, hashlinePat
   // 需要通过 LSP codeAction/resolve 获取实际 edit
   try {
     const resolved = await lspManager.request(
-      'codeAction/resolve', ctx.workingDirectory, action, null, null, 10000,
+      'codeAction/resolve',
+      ctx.workingDirectory,
+      action,
+      null,
+      null,
+      10000,
     );
     if (resolved && resolved.edit) {
       return applyWorkspaceEdit(resolved.edit, {
@@ -1899,10 +2183,14 @@ async function executeCodeAction(action, { lspManager, contentStore, hashlinePat
 // ── 辅助函数 ───────────────────────────────────────────────────────────────
 
 function filterDiagnostics(diags, severity) {
-  if (!severity) { return diags; }
+  if (!severity) {
+    return diags;
+  }
   const labels = { error: 1, warning: 2, info: 3, hint: 4 };
   const target = labels[severity.toLowerCase()];
-  if (!target) { return diags; }
+  if (!target) {
+    return diags;
+  }
   return diags.filter((d) => d.severity === target);
 }
 
@@ -1912,12 +2200,32 @@ function severityLabel(sev) {
 
 function symbolKindLabel(kind) {
   const map = {
-    1: 'file', 2: 'module', 3: 'namespace', 4: 'package', 5: 'class',
-    6: 'method', 7: 'property', 8: 'field', 9: 'constructor', 10: 'enum',
-    11: 'interface', 12: 'function', 13: 'variable', 14: 'constant',
-    15: 'string', 16: 'number', 17: 'boolean', 18: 'array', 19: 'object',
-    20: 'key', 21: 'null', 22: 'enumMember', 23: 'struct', 24: 'event',
-    25: 'operator', 26: 'typeParameter',
+    1: 'file',
+    2: 'module',
+    3: 'namespace',
+    4: 'package',
+    5: 'class',
+    6: 'method',
+    7: 'property',
+    8: 'field',
+    9: 'constructor',
+    10: 'enum',
+    11: 'interface',
+    12: 'function',
+    13: 'variable',
+    14: 'constant',
+    15: 'string',
+    16: 'number',
+    17: 'boolean',
+    18: 'array',
+    19: 'object',
+    20: 'key',
+    21: 'null',
+    22: 'enumMember',
+    23: 'struct',
+    24: 'event',
+    25: 'operator',
+    26: 'typeParameter',
   };
   return map[kind] || `kind_${kind}`;
 }
@@ -1933,7 +2241,9 @@ function flattenSymbols(symbols, result = []) {
 }
 
 function normalizeHoverContent(contents) {
-  if (typeof contents === 'string') { return { value: contents }; }
+  if (typeof contents === 'string') {
+    return { value: contents };
+  }
   if (Array.isArray(contents)) {
     return {
       value: contents.map((c) => (typeof c === 'string' ? c : c.value || '')).join('\n'),
@@ -1951,13 +2261,19 @@ function normalizeHoverContent(contents) {
 async function extractSymbolName(content, position) {
   // 简单提取：取 position 处的英文标识符
   const lines = content.split('\n');
-  if (position.line >= lines.length) { return 'unknown'; }
+  if (position.line >= lines.length) {
+    return 'unknown';
+  }
   const line = lines[position.line];
   let start = position.character;
   let end = position.character;
   const idRe = /[a-zA-Z0-9_$]/;
-  while (start > 0 && idRe.test(line[start - 1])) { start--; }
-  while (end < line.length && idRe.test(line[end])) { end++; }
+  while (start > 0 && idRe.test(line[start - 1])) {
+    start--;
+  }
+  while (end < line.length && idRe.test(line[end])) {
+    end++;
+  }
   return line.substring(start, end);
 }
 

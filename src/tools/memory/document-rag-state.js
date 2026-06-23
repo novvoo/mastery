@@ -39,7 +39,9 @@ export function getPersistDir(workingDir) {
 
 export async function ensureState(workingDir) {
   const dir = getPersistDir(workingDir);
-  if (loadedPersistDir === dir) { return; }
+  if (loadedPersistDir === dir) {
+    return;
+  }
   documents.clear();
   chunks.length = 0;
   bm25Cache = null;
@@ -49,7 +51,9 @@ export async function ensureState(workingDir) {
     const chunkJson = await readFile(join(dir, 'chunks.json'), 'utf-8');
     const loadedDocs = JSON.parse(docJson);
     const loadedChunks = JSON.parse(chunkJson);
-    for (const [key, val] of Object.entries(loadedDocs)) { documents.set(key, val); }
+    for (const [key, val] of Object.entries(loadedDocs)) {
+      documents.set(key, val);
+    }
     chunks.push(...loadedChunks);
     loadedPersistDir = dir;
   } catch {
@@ -60,9 +64,13 @@ export async function ensureState(workingDir) {
 export async function saveState(workingDir) {
   const dir = getPersistDir(workingDir);
   await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, 'documents.json'), JSON.stringify(Object.fromEntries(documents)), 'utf-8');
+  await writeFile(
+    join(dir, 'documents.json'),
+    JSON.stringify(Object.fromEntries(documents)),
+    'utf-8',
+  );
   // Strip ephemeral fields before serializing to keep file small
-  const serializable = chunks.map(c => {
+  const serializable = chunks.map((c) => {
     const { embedding, ...rest } = c;
     return embedding ? { ...rest, embedding } : rest;
   });

@@ -31,7 +31,7 @@ export class ToolMiddleware {
       after: middleware.after || null,
       error: middleware.error || null,
       priority: middleware.priority ?? HookPriority.NORMAL,
-      name: middleware.name ?? 'anonymous'
+      name: middleware.name ?? 'anonymous',
     };
 
     this.#middlewares.push(entry);
@@ -61,7 +61,7 @@ export class ToolMiddleware {
       args: { ...args },
       context,
       startTime: Date.now(),
-      metadata: {}
+      metadata: {},
     };
 
     // 执行 before 中间件
@@ -70,7 +70,7 @@ export class ToolMiddleware {
         try {
           await middleware.before(middlewareContext);
         } catch (error) {
-          const msg = (error && error.message) ? error.message : String(error);
+          const msg = error && error.message ? error.message : String(error);
           console.error(`[ToolMiddleware] before hook error in ${middleware.name}: ${msg}`);
         }
       }
@@ -88,7 +88,7 @@ export class ToolMiddleware {
           try {
             await middleware.after(middlewareContext);
           } catch (error) {
-            const msg = (error && error.message) ? error.message : String(error);
+            const msg = error && error.message ? error.message : String(error);
             console.error(`[ToolMiddleware] after hook error in ${middleware.name}: ${msg}`);
           }
         }
@@ -104,7 +104,8 @@ export class ToolMiddleware {
           try {
             await middleware.error(error, middlewareContext);
           } catch (handlerError) {
-            const msg = (handlerError && handlerError.message) ? handlerError.message : String(handlerError);
+            const msg =
+              handlerError && handlerError.message ? handlerError.message : String(handlerError);
             console.error(`[ToolMiddleware] error hook error in ${middleware.name}: ${msg}`);
           }
         }
@@ -151,7 +152,7 @@ export class ToolGroupManager {
       tools: new Set(),
       metadata: options.metadata || {},
       enabled: options.enabled ?? true,
-      priority: options.priority ?? 50
+      priority: options.priority ?? 50,
     });
 
     return true;
@@ -162,7 +163,9 @@ export class ToolGroupManager {
    */
   deleteGroup(name) {
     const group = this.#groups.get(name);
-    if (!group) {return false;}
+    if (!group) {
+      return false;
+    }
 
     // 清除工具到分组的映射
     for (const toolName of group.tools) {
@@ -199,7 +202,9 @@ export class ToolGroupManager {
    */
   removeFromGroup(toolName) {
     const group = this.#toolToGroup.get(toolName);
-    if (!group) {return false;}
+    if (!group) {
+      return false;
+    }
 
     group.tools.delete(toolName);
     this.#toolToGroup.delete(toolName);
@@ -225,13 +230,13 @@ export class ToolGroupManager {
    * 获取所有分组
    */
   getAllGroups() {
-    return Array.from(this.#groups.values()).map(group => ({
+    return Array.from(this.#groups.values()).map((group) => ({
       name: group.name,
       description: group.description,
       toolCount: group.tools.size,
       enabled: group.enabled,
       priority: group.priority,
-      metadata: { ...group.metadata }
+      metadata: { ...group.metadata },
     }));
   }
 
@@ -240,7 +245,9 @@ export class ToolGroupManager {
    */
   setGroupEnabled(groupName, enabled) {
     const group = this.#groups.get(groupName);
-    if (!group) {return false;}
+    if (!group) {
+      return false;
+    }
     group.enabled = enabled;
     return true;
   }
@@ -303,7 +310,7 @@ export class ToolLoader {
           tool: t,
           module: typeof toolModule === 'string' ? toolModule : 'inline',
           loadedAt: Date.now(),
-          enabled: true
+          enabled: true,
         });
 
         // 触发工具注册钩子
@@ -317,7 +324,7 @@ export class ToolLoader {
 
       return tools;
     } catch (error) {
-      const msg = (error && error.message) ? error.message : String(error);
+      const msg = error && error.message ? error.message : String(error);
       console.error(`加载工具失败: ${msg}`);
       throw error;
     }
@@ -328,7 +335,9 @@ export class ToolLoader {
    */
   async unloadTool(toolName) {
     const info = this.#loadedTools.get(toolName);
-    if (!info) {return false;}
+    if (!info) {
+      return false;
+    }
 
     // 从注册表中移除
     if (this.#toolRegistry.unregister) {
@@ -353,7 +362,9 @@ export class ToolLoader {
    */
   async reloadTool(toolName) {
     const info = this.#loadedTools.get(toolName);
-    if (!info || info.module === 'inline') {return false;}
+    if (!info || info.module === 'inline') {
+      return false;
+    }
 
     await this.unloadTool(toolName);
     return this.loadTool(info.module, { config: info.tool.config });
@@ -374,7 +385,7 @@ export class ToolLoader {
       name,
       module: info.module,
       loadedAt: info.loadedAt,
-      enabled: info.enabled
+      enabled: info.enabled,
     }));
   }
 
@@ -383,7 +394,9 @@ export class ToolLoader {
    */
   setToolEnabled(toolName, enabled) {
     const info = this.#loadedTools.get(toolName);
-    if (!info) {return false;}
+    if (!info) {
+      return false;
+    }
     info.enabled = enabled;
     return true;
   }

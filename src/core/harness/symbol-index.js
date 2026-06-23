@@ -35,7 +35,7 @@ export class SymbolIndex {
       file: filePath,
       symbols,
       hash: this._hashContent(content),
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     this._index.set(filePath, fileSymbols);
@@ -88,9 +88,7 @@ export class SymbolIndex {
       return null;
     }
 
-    const symbol = fileSymbols.symbols.find(
-      s => s.line <= line && s.endLine >= line
-    );
+    const symbol = fileSymbols.symbols.find((s) => s.line <= line && s.endLine >= line);
 
     if (!symbol) {
       return null;
@@ -114,7 +112,9 @@ export class SymbolIndex {
     const visited = new Set();
 
     const collectDependencies = async (sym, depth) => {
-      if (depth > maxDepth || visited.has(sym.hash)) {return;}
+      if (depth > maxDepth || visited.has(sym.hash)) {
+        return;
+      }
       visited.add(sym.hash);
 
       // 查找导入的符号
@@ -149,7 +149,7 @@ export class SymbolIndex {
 
       // 函数声明
       const funcMatch = trimmed.match(
-        /^(?:export\s+)?(?:async\s+)?function\s+([a-zA-Z_$][\w$]*)\s*\(/
+        /^(?:export\s+)?(?:async\s+)?function\s+([a-zA-Z_$][\w$]*)\s*\(/,
       );
       if (funcMatch) {
         symbols.push({
@@ -161,7 +161,7 @@ export class SymbolIndex {
           endLine: this._findBlockEnd(lines, i),
           visibility: trimmed.includes('export') ? 'public' : 'private',
           signature: this._extractSignature(lines[i]),
-          hash: this._hashContent(trimmed)
+          hash: this._hashContent(trimmed),
         });
         continue;
       }
@@ -177,16 +177,21 @@ export class SymbolIndex {
           column: line.indexOf(classMatch[1]),
           endLine: this._findBlockEnd(lines, i),
           visibility: trimmed.includes('export') ? 'public' : 'private',
-          hash: this._hashContent(trimmed)
+          hash: this._hashContent(trimmed),
         });
         continue;
       }
 
       // 方法声明（class 内）
       const methodMatch = trimmed.match(
-        /^(?:async\s+)?([a-zA-Z_$][\w$]*)\s*\([^)]*\)\s*(?::\s*[^=]+)?\s*\{/
+        /^(?:async\s+)?([a-zA-Z_$][\w$]*)\s*\([^)]*\)\s*(?::\s*[^=]+)?\s*\{/,
       );
-      if (methodMatch && methodMatch[1] !== 'if' && methodMatch[1] !== 'for' && methodMatch[1] !== 'while') {
+      if (
+        methodMatch &&
+        methodMatch[1] !== 'if' &&
+        methodMatch[1] !== 'for' &&
+        methodMatch[1] !== 'while'
+      ) {
         symbols.push({
           name: methodMatch[1],
           type: 'method',
@@ -196,13 +201,15 @@ export class SymbolIndex {
           endLine: this._findBlockEnd(lines, i),
           visibility: this._getVisibility(trimmed),
           signature: this._extractSignature(line),
-          hash: this._hashContent(trimmed)
+          hash: this._hashContent(trimmed),
         });
         continue;
       }
 
       // 导入声明
-      const importMatch = trimmed.match(/^import\s+(?:{[^}]+}|\*\s+as\s+\w+|\w+)\s+from\s+['"]([^'"]+)['"]/);
+      const importMatch = trimmed.match(
+        /^import\s+(?:{[^}]+}|\*\s+as\s+\w+|\w+)\s+from\s+['"]([^'"]+)['"]/,
+      );
       if (importMatch) {
         symbols.push({
           name: importMatch[1],
@@ -212,13 +219,15 @@ export class SymbolIndex {
           column: 0,
           endLine: i + 1,
           visibility: 'private',
-          hash: this._hashContent(trimmed)
+          hash: this._hashContent(trimmed),
         });
         continue;
       }
 
       // 导出声明
-      const exportMatch = trimmed.match(/^export\s+(?:const|let|var|function|class|interface|type)\s+([a-zA-Z_$][\w$]*)/);
+      const exportMatch = trimmed.match(
+        /^export\s+(?:const|let|var|function|class|interface|type)\s+([a-zA-Z_$][\w$]*)/,
+      );
       if (exportMatch) {
         symbols.push({
           name: exportMatch[1],
@@ -228,7 +237,7 @@ export class SymbolIndex {
           column: line.indexOf(exportMatch[1]),
           endLine: this._findBlockEnd(lines, i),
           visibility: 'public',
-          hash: this._hashContent(trimmed)
+          hash: this._hashContent(trimmed),
         });
         continue;
       }
@@ -244,7 +253,7 @@ export class SymbolIndex {
           column: line.indexOf(interfaceMatch[1]),
           endLine: this._findBlockEnd(lines, i),
           visibility: 'public',
-          hash: this._hashContent(trimmed)
+          hash: this._hashContent(trimmed),
         });
         continue;
       }
@@ -260,7 +269,7 @@ export class SymbolIndex {
           column: line.indexOf(typeMatch[1]),
           endLine: i + 1,
           visibility: 'public',
-          hash: this._hashContent(trimmed)
+          hash: this._hashContent(trimmed),
         });
       }
     }
@@ -306,8 +315,12 @@ export class SymbolIndex {
    * 获取可见性
    */
   _getVisibility(line) {
-    if (line.includes('private') || line.startsWith('_')) {return 'private';}
-    if (line.includes('protected')) {return 'protected';}
+    if (line.includes('private') || line.startsWith('_')) {
+      return 'private';
+    }
+    if (line.includes('protected')) {
+      return 'protected';
+    }
     return 'public';
   }
 
@@ -331,7 +344,7 @@ export class SymbolIndex {
     return {
       files: this._index.size,
       symbols: Array.from(this._nameIndex.values()).reduce((sum, arr) => sum + arr.length, 0),
-      byType
+      byType,
     };
   }
 }

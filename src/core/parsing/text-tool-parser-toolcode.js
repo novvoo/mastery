@@ -16,7 +16,17 @@ import {
  * Parse tool_code format.
  * Format: <tool_code>print(ls("path"))</tool_code>
  */
-export function parseToolCodeFormat(text, { toolRegistry, resolveToolName, safeJSONParse, normalizeJSONToolCall, parseToolCodeArgs, normalizeToolCodeArgs }) {
+export function parseToolCodeFormat(
+  text,
+  {
+    toolRegistry,
+    resolveToolName,
+    safeJSONParse,
+    normalizeJSONToolCall,
+    parseToolCodeArgs,
+    normalizeToolCodeArgs,
+  },
+) {
   const toolCalls = [];
   const blocks = [];
   const blockRegex = /<tool_code>\s*([\s\S]*?)\s*<\/tool_code>/gi;
@@ -31,7 +41,7 @@ export function parseToolCodeFormat(text, { toolRegistry, resolveToolName, safeJ
 
     for (const call of extractToolCodeCalls(block, { findMatchingParen })) {
       const rawName = call.name;
-      const mapped = mapToolCodeName(rawName, value => resolveToolName(value));
+      const mapped = mapToolCodeName(rawName, (value) => resolveToolName(value));
       if (!mapped || !toolRegistry?.has?.(mapped)) {
         continue;
       }
@@ -65,15 +75,20 @@ export function parsePythonToolCodeBlock(block, startIndex = 0, { toolRegistry }
 
   const walksWorkspace = /\bos\.walk\(\s*(['"])(.*?)\1\s*\)/.exec(text);
   const listsWorkspace = /\bos\.listdir\(\s*(['"])(.*?)\1\s*\)/.exec(text);
-  const printsPaths = /print\s*\(\s*os\.path\.join\s*\(|print\s*\(\s*f\b|print\s*\(\s*path\b|print\s*\(\s*f\s*\)/.test(text);
+  const printsPaths =
+    /print\s*\(\s*os\.path\.join\s*\(|print\s*\(\s*f\b|print\s*\(\s*path\b|print\s*\(\s*f\s*\)/.test(
+      text,
+    );
 
   if ((walksWorkspace || listsWorkspace) && printsPaths) {
-    return [{
-      id: `call_${Date.now()}_${startIndex}`,
-      name: 'list_dir',
-      arguments: { path: walksWorkspace?.[2] || listsWorkspace?.[2] || '.' },
-      source: 'tool_code_python',
-    }];
+    return [
+      {
+        id: `call_${Date.now()}_${startIndex}`,
+        name: 'list_dir',
+        arguments: { path: walksWorkspace?.[2] || listsWorkspace?.[2] || '.' },
+        source: 'tool_code_python',
+      },
+    ];
   }
 
   return [];
@@ -164,20 +179,32 @@ export function findMatchingParen(text, openIndex) {
 /**
  * Parse runtime tool invocations from shell code block text.
  */
-export function parseRuntimeToolInvocations(text, startIndex = 0, { toolRegistry, resolveToolName, safeJSONParse, normalizeJSONToolCall, normalizeToolCodeArgs, parseToolCodeArgs }) {
+export function parseRuntimeToolInvocations(
+  text,
+  startIndex = 0,
+  {
+    toolRegistry,
+    resolveToolName,
+    safeJSONParse,
+    normalizeJSONToolCall,
+    normalizeToolCodeArgs,
+    parseToolCodeArgs,
+  },
+) {
   const toolCalls = [];
   const source = 'shell_code_block_runtime_tool';
 
   for (const call of extractToolCodeCalls(text, { findMatchingParen })) {
-    const mapped = mapRuntimeToolCommandName(call.name, value => resolveToolName(value));
+    const mapped = mapRuntimeToolCommandName(call.name, (value) => resolveToolName(value));
     if (!mapped || mapped === 'shell' || !toolRegistry?.has?.(mapped)) {
       continue;
     }
 
     const jsonArgs = safeJSONParse(call.argsText.trim());
-    const args = jsonArgs && typeof jsonArgs === 'object' && !Array.isArray(jsonArgs)
-      ? normalizeJSONToolCall(mapped, jsonArgs).args
-      : normalizeToolCodeArgs(mapped, parseToolCodeArgs(call.argsText));
+    const args =
+      jsonArgs && typeof jsonArgs === 'object' && !Array.isArray(jsonArgs)
+        ? normalizeJSONToolCall(mapped, jsonArgs).args
+        : normalizeToolCodeArgs(mapped, parseToolCodeArgs(call.argsText));
     if (!args) {
       continue;
     }
@@ -191,7 +218,12 @@ export function parseRuntimeToolInvocations(text, startIndex = 0, { toolRegistry
   }
 
   for (const line of runtimeToolCommandLines(text)) {
-    const call = runtimeToolCallFromBareCommand(line, startIndex + toolCalls.length, { toolRegistry, resolveToolName, safeJSONParse, normalizeJSONToolCall });
+    const call = runtimeToolCallFromBareCommand(line, startIndex + toolCalls.length, {
+      toolRegistry,
+      resolveToolName,
+      safeJSONParse,
+      normalizeJSONToolCall,
+    });
     if (call) {
       toolCalls.push(call);
     }
@@ -206,20 +238,24 @@ export function parseRuntimeToolInvocations(text, startIndex = 0, { toolRegistry
 export function runtimeToolCommandLines(text) {
   return String(text || '')
     .split('\n')
-    .map(line => line.trim().replace(/^\$\s*/, ''))
-    .filter(line => line && !line.startsWith('#'));
+    .map((line) => line.trim().replace(/^\$\s*/, ''))
+    .filter((line) => line && !line.startsWith('#'));
 }
 
 /**
  * Parse a bare command line into a runtime tool call.
  */
-export function runtimeToolCallFromBareCommand(line, index, { toolRegistry, resolveToolName, safeJSONParse, normalizeJSONToolCall }) {
+export function runtimeToolCallFromBareCommand(
+  line,
+  index,
+  { toolRegistry, resolveToolName, safeJSONParse, normalizeJSONToolCall },
+) {
   const match = line.match(/^([A-Za-z_][\w-]*)(?:\s+(.+))?$/);
   if (!match) {
     return null;
   }
 
-  const mapped = mapRuntimeToolCommandName(match[1], value => resolveToolName(value));
+  const mapped = mapRuntimeToolCommandName(match[1], (value) => resolveToolName(value));
   if (!mapped || mapped === 'shell' || !toolRegistry?.has?.(mapped)) {
     return null;
   }
@@ -255,7 +291,10 @@ export function runtimeToolCallFromBareCommand(line, index, { toolRegistry, reso
  * Parse shell code block format.
  * Format: ```bash\ncommand\n```
  */
-export function parseShellCodeBlockFormat(text, { toolRegistry, parseRuntimeToolInvocations: _parseRuntimeToolInvocations }) {
+export function parseShellCodeBlockFormat(
+  text,
+  { toolRegistry, parseRuntimeToolInvocations: _parseRuntimeToolInvocations },
+) {
   if (!toolRegistry?.has?.('shell')) {
     return [];
   }

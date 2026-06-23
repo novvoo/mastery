@@ -1,7 +1,7 @@
 /**
  * Automation Engine
  * 自动化引擎 - 事件驱动的自动化执行系统
- * 
+ *
  * 功能：
  * - 触发器系统（文件变化、时间、事件）
  * - 工作流引擎（多步骤流程）
@@ -57,7 +57,9 @@ export class AutomationEngine extends EventEmitter {
    * 启动自动化引擎
    */
   async start() {
-    if (this.#isRunning) {return;}
+    if (this.#isRunning) {
+      return;
+    }
     this.#isRunning = true;
 
     // 启动定期检查
@@ -74,7 +76,9 @@ export class AutomationEngine extends EventEmitter {
    * 停止自动化引擎
    */
   async stop() {
-    if (!this.#isRunning) {return;}
+    if (!this.#isRunning) {
+      return;
+    }
     this.#isRunning = false;
 
     if (this.#intervalId) {
@@ -125,20 +129,34 @@ export class AutomationEngine extends EventEmitter {
    * 设置文件监视器
    */
   #setupFileWatcher(triggerId, path, options) {
-    if (!existsSync(path)) {return;}
+    if (!existsSync(path)) {
+      return;
+    }
 
-    const watcher = watch(path, { recursive: options.recursive || false }, (eventType, filename) => {
-      if (!this.#isRunning) {return;}
-      
-      const trigger = this.#triggers.get(triggerId);
-      if (!trigger || !trigger.enabled) {return;}
+    const watcher = watch(
+      path,
+      { recursive: options.recursive || false },
+      (eventType, filename) => {
+        if (!this.#isRunning) {
+          return;
+        }
 
-      // 过滤检查
-      if (options.ignore && options.ignore.test(filename)) {return;}
-      if (options.include && !options.include.test(filename)) {return;}
+        const trigger = this.#triggers.get(triggerId);
+        if (!trigger || !trigger.enabled) {
+          return;
+        }
 
-      this.#executeTrigger(triggerId, { eventType, filename, path });
-    });
+        // 过滤检查
+        if (options.ignore && options.ignore.test(filename)) {
+          return;
+        }
+        if (options.include && !options.include.test(filename)) {
+          return;
+        }
+
+        this.#executeTrigger(triggerId, { eventType, filename, path });
+      },
+    );
 
     this.#fileWatchers.set(path, watcher);
   }
@@ -148,7 +166,9 @@ export class AutomationEngine extends EventEmitter {
    */
   async #executeTrigger(triggerId, context) {
     const trigger = this.#triggers.get(triggerId);
-    if (!trigger) {return;}
+    if (!trigger) {
+      return;
+    }
 
     trigger.lastTriggered = Date.now();
     trigger.triggerCount++;
@@ -170,7 +190,9 @@ export class AutomationEngine extends EventEmitter {
    */
   removeTrigger(id) {
     const trigger = this.#triggers.get(id);
-    if (!trigger) {return false;}
+    if (!trigger) {
+      return false;
+    }
 
     if (trigger.type === TriggerType.FILE_CHANGE && trigger.path) {
       const watcher = this.#fileWatchers.get(trigger.path);
@@ -228,7 +250,9 @@ export class AutomationEngine extends EventEmitter {
    */
   async executeWorkflow(id, initialContext = {}) {
     const workflow = this.#workflows.get(id);
-    if (!workflow) {throw new Error(`Workflow not found: ${id}`);}
+    if (!workflow) {
+      throw new Error(`Workflow not found: ${id}`);
+    }
 
     workflow.status = WorkflowStatus.RUNNING;
     workflow.startedAt = Date.now();
@@ -245,7 +269,7 @@ export class AutomationEngine extends EventEmitter {
 
         // 执行步骤
         const result = await this.#executeWorkflowStep(step, workflow.context);
-        
+
         // 更新上下文
         if (result && typeof result === 'object') {
           workflow.context = { ...workflow.context, ...result };
@@ -261,7 +285,6 @@ export class AutomationEngine extends EventEmitter {
       workflow.status = WorkflowStatus.COMPLETED;
       workflow.completedAt = Date.now();
       this.emit('workflow:completed', workflow);
-
     } catch (error) {
       workflow.status = WorkflowStatus.FAILED;
       workflow.error = error.message;
@@ -296,8 +319,10 @@ export class AutomationEngine extends EventEmitter {
    */
   pauseWorkflow(id) {
     const workflow = this.#workflows.get(id);
-    if (!workflow) {return false;}
-    
+    if (!workflow) {
+      return false;
+    }
+
     workflow.status = WorkflowStatus.PAUSED;
     this.emit('workflow:paused', workflow);
     return true;
@@ -308,8 +333,10 @@ export class AutomationEngine extends EventEmitter {
    */
   async resumeWorkflow(id) {
     const workflow = this.#workflows.get(id);
-    if (!workflow || workflow.status !== WorkflowStatus.PAUSED) {return false;}
-    
+    if (!workflow || workflow.status !== WorkflowStatus.PAUSED) {
+      return false;
+    }
+
     return await this.executeWorkflow(id);
   }
 
@@ -364,11 +391,15 @@ export class AutomationEngine extends EventEmitter {
    * 检查所有条件
    */
   #checkTriggers() {
-    if (!this.#isRunning) {return;}
+    if (!this.#isRunning) {
+      return;
+    }
 
     // 检查条件触发器
     for (const [id, cond] of this.#conditions) {
-      if (!cond.enabled) {continue;}
+      if (!cond.enabled) {
+        continue;
+      }
 
       try {
         const result = this.#evaluateCondition(cond.condition, {});
@@ -417,15 +448,21 @@ export class AutomationEngine extends EventEmitter {
    * 运行后台任务
    */
   async #runBackgroundTasks() {
-    if (!this.#isRunning) {return;}
+    if (!this.#isRunning) {
+      return;
+    }
 
     const now = Date.now();
 
     for (const task of this.#backgroundTasks.values()) {
-      if (!task.enabled) {continue;}
+      if (!task.enabled) {
+        continue;
+      }
 
       const timeSinceLastRun = now - (task.lastRun || 0);
-      if (timeSinceLastRun < task.interval) {continue;}
+      if (timeSinceLastRun < task.interval) {
+        continue;
+      }
 
       try {
         task.lastRun = now;
@@ -444,7 +481,9 @@ export class AutomationEngine extends EventEmitter {
    */
   toggleBackgroundTask(id, enabled) {
     const task = this.#backgroundTasks.get(id);
-    if (!task) {return false;}
+    if (!task) {
+      return false;
+    }
     task.enabled = enabled;
     return true;
   }
@@ -478,21 +517,21 @@ export class AutomationEngine extends EventEmitter {
   getStats() {
     return {
       status: this.getStatus(),
-      triggers: this.listTriggers().map(t => ({
+      triggers: this.listTriggers().map((t) => ({
         id: t.id,
         type: t.type,
         enabled: t.enabled,
         triggerCount: t.triggerCount,
         lastTriggered: t.lastTriggered,
       })),
-      workflows: this.listWorkflows().map(w => ({
+      workflows: this.listWorkflows().map((w) => ({
         id: w.id,
         name: w.name,
         status: w.status,
         currentStep: w.currentStep,
         totalSteps: w.steps.length,
       })),
-      backgroundTasks: this.listBackgroundTasks().map(t => ({
+      backgroundTasks: this.listBackgroundTasks().map((t) => ({
         id: t.id,
         name: t.name,
         enabled: t.enabled,

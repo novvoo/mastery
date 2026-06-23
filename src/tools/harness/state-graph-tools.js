@@ -33,7 +33,7 @@ function ensureInitialized(workingDir) {
 
     globalGraph.initialize({
       workingDir,
-      createdAt: Date.now()
+      createdAt: Date.now(),
     });
 
     isInitialized = true;
@@ -55,8 +55,8 @@ export function createStateGraphTools() {
       params: {
         pattern: {
           type: 'string',
-          description: 'File patterns (default: **/*.js,**/*.ts,**/*.jsx,**/*.tsx)'
-        }
+          description: 'File patterns (default: **/*.js,**/*.ts,**/*.jsx,**/*.tsx)',
+        },
       },
       required: [],
       handler: async ({ pattern }, ctx) => {
@@ -74,7 +74,7 @@ Dependencies: ${result.dependenciesFound}
 
 You can now use sg_project, sg_edit, etc.
 `;
-      }
+      },
     },
 
     /**
@@ -88,16 +88,16 @@ You can now use sg_project, sg_edit, etc.
         task: {
           type: 'string',
           enum: ['edit', 'understand', 'debug', 'refactor', 'summary'],
-          description: 'Task type'
+          description: 'Task type',
         },
         focus: {
           type: 'string',
-          description: 'Focus path/symbol (optional)'
+          description: 'Focus path/symbol (optional)',
         },
         query: {
           type: 'string',
-          description: 'Understanding query (for understand task)'
-        }
+          description: 'Understanding query (for understand task)',
+        },
       },
       required: ['task'],
       handler: async ({ task, focus, query }, ctx) => {
@@ -109,18 +109,18 @@ You can now use sg_project, sg_edit, etc.
 
         if (task === 'understand') {
           return globalProjection.projectSmart('understand', {
-            query: query || focus
+            query: query || focus,
           });
         }
 
         if (task === 'edit' && focus) {
           return globalProjection.projectSmart('edit', {
-            filePath: focus.startsWith('/') ? focus : resolve(ctx.workingDirectory, focus)
+            filePath: focus.startsWith('/') ? focus : resolve(ctx.workingDirectory, focus),
           });
         }
 
         return globalProjection.projectMinimal();
-      }
+      },
     },
 
     /**
@@ -133,13 +133,13 @@ You can now use sg_project, sg_edit, etc.
       params: {
         id: {
           type: 'string',
-          description: 'Node ID (hash or path/symbol name)'
+          description: 'Node ID (hash or path/symbol name)',
         },
         type: {
           type: 'string',
           enum: ['file', 'symbol', 'dependency'],
-          description: 'Node type hint'
-        }
+          description: 'Node type hint',
+        },
       },
       required: ['id'],
       handler: async ({ id, type }, ctx) => {
@@ -172,7 +172,7 @@ You can now use sg_project, sg_edit, etc.
             let result = `## File: ${filePath}\n\n`;
             result += `Symbols in file: ${symbols.length}\n`;
             if (symbols.length > 0) {
-              result += '  - ' + symbols.map(s => s.name).join(', ') + '\n';
+              result += '  - ' + symbols.map((s) => s.name).join(', ') + '\n';
             }
             result += '\n---\nContent:\n```\n' + content + '\n```\n';
 
@@ -181,7 +181,7 @@ You can now use sg_project, sg_edit, etc.
         }
 
         return `Node "${id}" not found. Try sg_index first.`;
-      }
+      },
     },
 
     /**
@@ -194,25 +194,25 @@ You can now use sg_project, sg_edit, etc.
       params: {
         path: {
           type: 'string',
-          description: 'File path'
+          description: 'File path',
         },
         operation: {
           type: 'string',
           enum: ['replace', 'insert', 'delete'],
-          description: 'Edit operation type'
+          description: 'Edit operation type',
         },
         anchor: {
           type: 'string',
-          description: 'Anchor symbol or text (for replace/insert)'
+          description: 'Anchor symbol or text (for replace/insert)',
         },
         content: {
           type: 'string',
-          description: 'New content'
+          description: 'New content',
         },
         message: {
           type: 'string',
-          description: 'Commit message (optional)'
-        }
+          description: 'Commit message (optional)',
+        },
       },
       required: ['path', 'operation'],
       handler: async ({ path, operation, anchor, content, message }, ctx) => {
@@ -237,7 +237,8 @@ You can now use sg_project, sg_edit, etc.
             return `Error: Anchor text not found for insertion.`;
           }
           const insertPos = currentContent.indexOf(anchor) + anchor.length;
-          newContent = currentContent.slice(0, insertPos) + content + currentContent.slice(insertPos);
+          newContent =
+            currentContent.slice(0, insertPos) + content + currentContent.slice(insertPos);
         } else if (operation === 'delete' && anchor) {
           if (!currentContent.includes(anchor)) {
             return `Error: Anchor text not found for deletion.`;
@@ -249,15 +250,9 @@ You can now use sg_project, sg_edit, etc.
         await writeFile(filePath, newContent, 'utf-8');
 
         // 创建状态图提交
-        const changes = [
-          { type: 'update', nodeId: 'file:' + filePath }
-        ];
+        const changes = [{ type: 'update', nodeId: 'file:' + filePath }];
 
-        const commitId = globalGraph.commit(
-          changes,
-          message || `${operation}: ${path}`,
-          'agent'
-        );
+        const commitId = globalGraph.commit(changes, message || `${operation}: ${path}`, 'agent');
 
         // 重新索引（简化版）
         await globalIndex.symbols.indexFile(filePath, newContent);
@@ -269,7 +264,7 @@ Message: ${message || `${operation}: ${path}`}
 
 File updated: ${filePath}
 `;
-      }
+      },
     },
 
     /**
@@ -282,12 +277,12 @@ File updated: ${filePath}
       params: {
         message: {
           type: 'string',
-          description: 'Commit message'
+          description: 'Commit message',
         },
         changes: {
           type: 'string',
-          description: 'JSON string of changes (optional)'
-        }
+          description: 'JSON string of changes (optional)',
+        },
       },
       required: ['message'],
       handler: async ({ message, changes }, ctx) => {
@@ -301,7 +296,7 @@ File updated: ${filePath}
 ID: ${commitId.substring(0, 16)}...
 Message: ${message}
 `;
-      }
+      },
     },
 
     /**
@@ -314,8 +309,8 @@ Message: ${message}
       params: {
         limit: {
           type: 'number',
-          description: 'Max history entries (default: 10)'
-        }
+          description: 'Max history entries (default: 10)',
+        },
       },
       required: [],
       handler: async ({ limit }, ctx) => {
@@ -330,7 +325,7 @@ Message: ${message}
         }
 
         return result;
-      }
+      },
     },
 
     /**
@@ -343,8 +338,8 @@ Message: ${message}
       params: {
         commit_id: {
           type: 'string',
-          description: 'Commit ID to rollback to'
-        }
+          description: 'Commit ID to rollback to',
+        },
       },
       required: ['commit_id'],
       handler: async ({ commit_id }, ctx) => {
@@ -362,7 +357,7 @@ To revert files, use sg_restore or git commands.
         } else {
           return `❌ Rollback failed: Commit not found`;
         }
-      }
+      },
     },
 
     /**
@@ -394,11 +389,11 @@ Project:
 
 Working Directory: ${ctx.workingDirectory}
 `;
-      }
-    }
+      },
+    },
   ];
 }
 
 export default {
-  createStateGraphTools
+  createStateGraphTools,
 };

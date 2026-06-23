@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync, appendFileSync } from 'fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  unlinkSync,
+  appendFileSync,
+} from 'fs';
 import { resolve, join } from 'path';
 import { MemoryType, MemoryStatus, MemoryEntry, MemoryTopic, inferTopic } from './memory-types.js';
 
@@ -83,7 +91,9 @@ export class StructuredMemory {
   }
 
   save() {
-    if (!this.#dirty) {return;}
+    if (!this.#dirty) {
+      return;
+    }
 
     if (this.#saveTimer) {
       clearTimeout(this.#saveTimer);
@@ -98,7 +108,9 @@ export class StructuredMemory {
         this.#dirty = false;
       } catch (e) {
         // 目录可能已被清理（测试等场景），静默失败
-        if (e.code !== 'ENOENT') { console.warn(`Failed to save memory: ${e.message}`); }
+        if (e.code !== 'ENOENT') {
+          console.warn(`Failed to save memory: ${e.message}`);
+        }
       }
       this.#saveTimer = null;
     }, 1000);
@@ -167,7 +179,7 @@ export class StructuredMemory {
   getAll(type = null) {
     const entries = Array.from(this.#entries.values());
     if (type) {
-      return entries.filter(e => e.type === type);
+      return entries.filter((e) => e.type === type);
     }
     return entries;
   }
@@ -192,14 +204,21 @@ export class StructuredMemory {
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, MAX_INDEX_SIZE);
 
-    const lines = ['# Memory Index', '', '## Overview', '',
+    const lines = [
+      '# Memory Index',
+      '',
+      '## Overview',
+      '',
       `Total memories: ${this.#entries.size}`,
       `User: ${this.getAll(MemoryType.USER).length}`,
       `Feedback: ${this.getAll(MemoryType.FEEDBACK).length}`,
       `Project: ${this.getAll(MemoryType.PROJECT).length}`,
       `Reference: ${this.getAll(MemoryType.REFERENCE).length}`,
-      '', '## Memory Entries', '', '| ID | Type | Title | Age | Status |',
-      '|----|------|-------|-----|--------|'
+      '',
+      '## Memory Entries',
+      '',
+      '| ID | Type | Title | Age | Status |',
+      '|----|------|-------|-----|--------|',
     ];
 
     for (const entry of entries) {
@@ -228,7 +247,9 @@ export class StructuredMemory {
     for (const entry of entries) {
       const ageDays = Math.floor((Date.now() - entry.timestamp) / (1000 * 60 * 60 * 24));
       const staleMarker = entry.isStale() ? ' ⚠️STALE' : '';
-      lines.push(`- [${entry.type}] ${entry.title} (id: ${entry.id}, age: ${ageDays}d${staleMarker})`);
+      lines.push(
+        `- [${entry.type}] ${entry.title} (id: ${entry.id}, age: ${ageDays}d${staleMarker})`,
+      );
     }
 
     if (entries.length === 0) {
@@ -236,14 +257,18 @@ export class StructuredMemory {
     }
 
     lines.push('');
-    lines.push('[To use a memory, request full content by ID. Stale memories should be verified before use.]');
+    lines.push(
+      '[To use a memory, request full content by ID. Stale memories should be verified before use.]',
+    );
 
     return lines.join('\n');
   }
 
   getFullContent(id) {
     const entry = this.get(id);
-    if (!entry) {return null;}
+    if (!entry) {
+      return null;
+    }
 
     let content = entry.toMarkdown();
 
@@ -261,7 +286,7 @@ export class StructuredMemory {
       feedback: this.getAll(MemoryType.FEEDBACK).length,
       project: this.getAll(MemoryType.PROJECT).length,
       reference: this.getAll(MemoryType.REFERENCE).length,
-      stale: this.getAll().filter(e => e.isStale()).length,
+      stale: this.getAll().filter((e) => e.isStale()).length,
     };
   }
 
@@ -299,7 +324,9 @@ export class StructuredMemory {
    */
   readTopic(topic) {
     const topicPath = join(this.#topicsDir, `${topic}.md`);
-    if (!existsSync(topicPath)) { return null; }
+    if (!existsSync(topicPath)) {
+      return null;
+    }
     return readFileSync(topicPath, 'utf-8');
   }
 
@@ -308,18 +335,22 @@ export class StructuredMemory {
    * @returns {Array<{ topic: string, path: string, size: number, entryCount: number }>}
    */
   listTopics() {
-    if (!existsSync(this.#topicsDir)) { return []; }
-    const files = readdirSync(this.#topicsDir).filter(f => f.endsWith('.md'));
-    return files.map(f => {
-      const topicPath = join(this.#topicsDir, f);
-      const content = readFileSync(topicPath, 'utf-8');
-      return {
-        topic: f.replace('.md', ''),
-        path: topicPath,
-        size: content.length,
-        entryCount: (content.match(/^### /gm) || []).length,
-      };
-    }).sort((a, b) => b.size - a.size);
+    if (!existsSync(this.#topicsDir)) {
+      return [];
+    }
+    const files = readdirSync(this.#topicsDir).filter((f) => f.endsWith('.md'));
+    return files
+      .map((f) => {
+        const topicPath = join(this.#topicsDir, f);
+        const content = readFileSync(topicPath, 'utf-8');
+        return {
+          topic: f.replace('.md', ''),
+          path: topicPath,
+          size: content.length,
+          entryCount: (content.match(/^### /gm) || []).length,
+        };
+      })
+      .sort((a, b) => b.size - a.size);
   }
 
   /**
@@ -327,7 +358,9 @@ export class StructuredMemory {
    */
   getTopicSummary() {
     const topics = this.listTopics();
-    if (topics.length === 0) { return ''; }
+    if (topics.length === 0) {
+      return '';
+    }
 
     const lines = ['[TOPIC FILES - Reference notebooks for common themes:]'];
     for (const t of topics) {
@@ -375,7 +408,9 @@ export class StructuredMemory {
   }
 
   #formatSize(bytes) {
-    if (bytes < 1024) { return `${bytes}B`; }
+    if (bytes < 1024) {
+      return `${bytes}B`;
+    }
     return `${(bytes / 1024).toFixed(1)}KB`;
   }
 

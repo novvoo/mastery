@@ -49,7 +49,7 @@ export class ConcurrencyCoordinator {
         id: 'default',
         name: 'Default Group',
         strategy: ExecutionStrategy.PARALLEL,
-        priority: 2
+        priority: 2,
       });
     }
     return this.taskGroups.get('default');
@@ -88,7 +88,7 @@ export class ConcurrencyCoordinator {
     if (!task.isReadyToRun()) {
       return {
         canStart: false,
-        reason: `Task is not ready (status: ${task.status})`
+        reason: `Task is not ready (status: ${task.status})`,
       };
     }
 
@@ -96,7 +96,7 @@ export class ConcurrencyCoordinator {
     if (this.runningTaskIds.size >= this.globalConcurrencyLimit) {
       return {
         canStart: false,
-        reason: `Global concurrency limit reached (${this.runningTaskIds.size}/${this.globalConcurrencyLimit})`
+        reason: `Global concurrency limit reached (${this.runningTaskIds.size}/${this.globalConcurrencyLimit})`,
       };
     }
 
@@ -108,21 +108,18 @@ export class ConcurrencyCoordinator {
     if (!group.canStartNewTask()) {
       return {
         canStart: false,
-        reason: `Group ${group.name} cannot start new tasks (strategy: ${group.strategy}, running: ${group.getRunningCount()})`
+        reason: `Group ${group.name} cannot start new tasks (strategy: ${group.strategy}, running: ${group.getRunningCount()})`,
       };
     }
 
     // 检查资源锁
-    const taskResourceLocks = [
-      ...(options.resourceLocks || []),
-      ...(group.resourceLocks || [])
-    ];
+    const taskResourceLocks = [...(options.resourceLocks || []), ...(group.resourceLocks || [])];
 
     for (const lock of taskResourceLocks) {
       if (this.activeResourceLocks.has(lock)) {
         return {
           canStart: false,
-          reason: `Resource lock "${lock}" is already acquired`
+          reason: `Resource lock "${lock}" is already acquired`,
         };
       }
     }
@@ -143,10 +140,7 @@ export class ConcurrencyCoordinator {
     this.runningTaskIds.add(task.id);
 
     // 获取所有资源锁
-    const allLocks = [
-      ...resourceLocks,
-      ...(group.resourceLocks || [])
-    ];
+    const allLocks = [...resourceLocks, ...(group.resourceLocks || [])];
 
     // 锁定资源
     for (const lock of allLocks) {
@@ -167,10 +161,7 @@ export class ConcurrencyCoordinator {
     this.runningTaskIds.delete(task.id);
 
     // 获取所有资源锁
-    const allLocks = [
-      ...resourceLocks,
-      ...(group.resourceLocks || [])
-    ];
+    const allLocks = [...resourceLocks, ...(group.resourceLocks || [])];
 
     // 释放资源
     for (const lock of allLocks) {
@@ -242,7 +233,7 @@ export class ConcurrencyCoordinator {
    * @returns {Object}
    */
   getStats() {
-    const groupStats = Array.from(this.taskGroups.values()).map(g => g.getStats());
+    const groupStats = Array.from(this.taskGroups.values()).map((g) => g.getStats());
 
     return {
       globalConcurrencyLimit: this.globalConcurrencyLimit,
@@ -250,7 +241,7 @@ export class ConcurrencyCoordinator {
       activeResourceLocks: Array.from(this.activeResourceLocks),
       groupCount: this.taskGroups.size,
       taskCount: this.taskToGroup.size,
-      groups: groupStats
+      groups: groupStats,
     };
   }
 }

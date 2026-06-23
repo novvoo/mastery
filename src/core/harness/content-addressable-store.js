@@ -44,9 +44,7 @@ export class FileTreeIndex {
     const tree = [];
 
     for (const entry of entries) {
-      if (entry.name.startsWith('.') ||
-          entry.name === 'node_modules' ||
-          entry.name === 'dist') {
+      if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') {
         continue;
       }
 
@@ -58,7 +56,7 @@ export class FileTreeIndex {
         tree.push({
           name: entry.name,
           hash: treeHash,
-          type: 'tree'
+          type: 'tree',
         });
       } else if (entry.isFile()) {
         const filePath = resolve(rootDir, entryPath);
@@ -67,7 +65,7 @@ export class FileTreeIndex {
         tree.push({
           name: entry.name,
           hash: blobHash,
-          type: 'blob'
+          type: 'blob',
         });
       }
     }
@@ -94,15 +92,19 @@ export class FileTreeIndex {
    * 按路径查找
    */
   async findByPath(rootDir, path) {
-    if (!this.rootHash) {return null;}
+    if (!this.rootHash) {
+      return null;
+    }
 
     const parts = path.split('/').filter(Boolean);
     let currentHash = this.rootHash;
 
     for (const part of parts) {
       const tree = this.getTree(currentHash);
-      const entry = tree.find(e => e.name === part);
-      if (!entry) {return null;}
+      const entry = tree.find((e) => e.name === part);
+      if (!entry) {
+        return null;
+      }
 
       if (entry.type === 'tree') {
         currentHash = entry.hash;
@@ -139,7 +141,7 @@ export class SymbolIndexer {
 
       // 函数声明
       const funcMatch = trimmed.match(
-        /^(?:export\s+)?(?:async\s+)?(?:function|const|let|var)\s+([a-zA-Z_$][\w$]*)/
+        /^(?:export\s+)?(?:async\s+)?(?:function|const|let|var)\s+([a-zA-Z_$][\w$]*)/,
       );
       if (funcMatch && !trimmed.startsWith('//') && !trimmed.startsWith('/*')) {
         const endLine = this.findBlockEnd(lines, i);
@@ -150,7 +152,7 @@ export class SymbolIndexer {
           startLine: i + 1,
           endLine,
           visibility: trimmed.includes('export') ? 'public' : 'private',
-          signature: trimmed
+          signature: trimmed,
         });
       }
 
@@ -165,7 +167,7 @@ export class SymbolIndexer {
           startLine: i + 1,
           endLine,
           visibility: trimmed.includes('export') ? 'public' : 'private',
-          signature: trimmed
+          signature: trimmed,
         });
       }
 
@@ -180,7 +182,7 @@ export class SymbolIndexer {
             startLine: i + 1,
             endLine: i + 1,
             visibility: 'private',
-            signature: trimmed
+            signature: trimmed,
           });
         }
       }
@@ -234,7 +236,7 @@ export class SymbolIndexer {
   findByName(name) {
     const hashes = this.symbolMap.get(name) || [];
     return hashes
-      .map(hash => {
+      .map((hash) => {
         const obj = this.store.get(hash);
         return obj && obj.type === 'symbol' ? obj.data : null;
       })
@@ -247,7 +249,7 @@ export class SymbolIndexer {
   findInFile(file) {
     const hashes = this.fileMap.get(file) || [];
     return hashes
-      .map(hash => {
+      .map((hash) => {
         const obj = this.store.get(hash);
         return obj && obj.type === 'symbol' ? obj.data : null;
       })
@@ -260,7 +262,7 @@ export class SymbolIndexer {
   getStats() {
     return {
       symbols: this.symbolMap.size,
-      files: this.fileMap.size
+      files: this.fileMap.size,
     };
   }
 }
@@ -286,9 +288,7 @@ export class DependencyAnalyzer {
       const trimmed = line.trim();
 
       // ES6 import
-      const importMatch = trimmed.match(
-        /^import\s+(?:{([^}]+)}\s+from\s+['"]([^'"]+)['"])/
-      );
+      const importMatch = trimmed.match(/^import\s+(?:{([^}]+)}\s+from\s+['"]([^'"]+)['"])/);
       if (importMatch) {
         const target = importMatch[2];
         deps.push({
@@ -296,13 +296,13 @@ export class DependencyAnalyzer {
           target,
           type: 'import',
           isExternal: !target.startsWith('.'),
-          symbols: importMatch[1] ? importMatch[1].split(',').map(s => s.trim()) : []
+          symbols: importMatch[1] ? importMatch[1].split(',').map((s) => s.trim()) : [],
         });
       }
 
       // CommonJS require
       const requireMatch = trimmed.match(
-        /^const\s+{[^}]+\s*=\s*require\s*\(\s*['"]([^'"]+)['"]\s*\)/
+        /^const\s+{[^}]+\s*=\s*require\s*\(\s*['"]([^'"]+)['"]\s*\)/,
       );
       if (requireMatch) {
         const target = requireMatch[1];
@@ -311,7 +311,7 @@ export class DependencyAnalyzer {
           target,
           type: 'require',
           isExternal: !target.startsWith('.'),
-          symbols: []
+          symbols: [],
         });
       }
     }
@@ -350,7 +350,7 @@ export class DependencyAnalyzer {
    * 影响分析
    */
   analyzeImpact(file) {
-    const directDeps = this.getDependencies(file).map(d => d.target);
+    const directDeps = this.getDependencies(file).map((d) => d.target);
     const dependents = this.getDependents(file);
 
     const transitiveDeps = new Set();
@@ -358,7 +358,7 @@ export class DependencyAnalyzer {
 
     // 递归收集
     const collectDeps = (f) => {
-      for (const dep of this.getDependencies(f).map(d => d.target)) {
+      for (const dep of this.getDependencies(f).map((d) => d.target)) {
         if (!transitiveDeps.has(dep)) {
           transitiveDeps.add(dep);
           collectDeps(dep);
@@ -381,7 +381,7 @@ export class DependencyAnalyzer {
       directDeps,
       transitiveDeps: Array.from(transitiveDeps),
       dependents,
-      transitiveDependents: Array.from(transitiveDependents)
+      transitiveDependents: Array.from(transitiveDependents),
     };
   }
 
@@ -395,7 +395,7 @@ export class DependencyAnalyzer {
     }
     return {
       dependencies: totalDeps,
-      files: this.dependencyMap.size
+      files: this.dependencyMap.size,
     };
   }
 }
@@ -427,15 +427,21 @@ export class CompleteIndex {
       const entries = await readdir(dir, { withFileTypes: true });
 
       for (const entry of entries) {
-        if (entry.name.startsWith('.') || entry.name === 'node_modules') {continue;}
+        if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+          continue;
+        }
 
         const fullPath = join(dir, entry.name);
 
         if (entry.isDirectory()) {
           await indexFiles(fullPath);
-        } else if (entry.isFile() &&
-          (entry.name.endsWith('.js') || entry.name.endsWith('.ts') ||
-           entry.name.endsWith('.jsx') || entry.name.endsWith('.tsx'))) {
+        } else if (
+          entry.isFile() &&
+          (entry.name.endsWith('.js') ||
+            entry.name.endsWith('.ts') ||
+            entry.name.endsWith('.jsx') ||
+            entry.name.endsWith('.tsx'))
+        ) {
           const content = await readFile(fullPath, 'utf-8');
           const syms = await this.symbols.indexFile(fullPath, content);
           const deps = await this.dependencies.analyzeFile(fullPath, content);
@@ -464,7 +470,7 @@ export class CompleteIndex {
       files: symbolStats.files,
       symbols: symbolStats.symbols,
       dependencies: depStats.dependencies,
-      objects: storeStats.objects
+      objects: storeStats.objects,
     };
   }
 }
@@ -473,5 +479,5 @@ export default {
   FileTreeIndex,
   SymbolIndexer,
   DependencyAnalyzer,
-  CompleteIndex
+  CompleteIndex,
 };

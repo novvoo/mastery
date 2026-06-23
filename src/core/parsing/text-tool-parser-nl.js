@@ -23,7 +23,7 @@ export function parseNaturalLanguage(text, { fallbackPatterns }) {
       }
 
       const required = pattern.required || [];
-      if (required.some(paramName => args[paramName] === undefined || args[paramName] === '')) {
+      if (required.some((paramName) => args[paramName] === undefined || args[paramName] === '')) {
         continue;
       }
 
@@ -72,9 +72,14 @@ export function buildFallbackPatterns(toolRegistry, { extractParamsFromContext }
     const keywordPattern = keywords.join('|');
     patterns.push({
       toolName: tool.name,
-      regex: new RegExp(`\\b(${keywordPattern})\\b.*\\b(${name.replace(/_/g, '[_ ]')}|[${name.split('_').join('|')}])\\b`, 'i'),
+      regex: new RegExp(
+        `\\b(${keywordPattern})\\b.*\\b(${name.replace(/_/g, '[_ ]')}|[${name.split('_').join('|')}])\\b`,
+        'i',
+      ),
       paramExtractor: (match, fullText) => extractParamsFromContext(tool, fullText),
-      required: tool.required || (tool.parameters && tool.parameters.required ? tool.parameters.required : []),
+      required:
+        tool.required ||
+        (tool.parameters && tool.parameters.required ? tool.parameters.required : []),
     });
 
     if (name === 'glob') {
@@ -82,7 +87,9 @@ export function buildFallbackPatterns(toolRegistry, { extractParamsFromContext }
         toolName: tool.name,
         regex: /\b(list|find|show|get|count)\b.*\b(javascript|js)\b.*\b(files?|目录|文件)\b/i,
         paramExtractor: (match, fullText) => extractParamsFromContext(tool, fullText),
-        required: tool.required || (tool.parameters && tool.parameters.required ? tool.parameters.required : []),
+        required:
+          tool.required ||
+          (tool.parameters && tool.parameters.required ? tool.parameters.required : []),
       });
     }
   }
@@ -95,13 +102,19 @@ export function buildFallbackPatterns(toolRegistry, { extractParamsFromContext }
  */
 export function extractParamsFromContext(tool, text, { castParam }) {
   const args = {};
-  const params = tool.params || (tool.parameters && tool.parameters.properties ? tool.parameters.properties : tool.parameters) || {};
+  const params =
+    tool.params ||
+    (tool.parameters && tool.parameters.properties
+      ? tool.parameters.properties
+      : tool.parameters) ||
+    {};
 
   for (const [paramName, paramSchema] of Object.entries(params)) {
     const lowerText = text.toLowerCase();
     if (tool.name === 'glob' && paramName === 'pattern') {
-      const explicitGlob = text.match(/["'`]((?:\*\*\/)?[^"'`\s]*\.(?:js|mjs|cjs|ts|tsx|jsx))["'`]/i)
-        || text.match(/(?:^|\s)((?:\*\*\/)?\*\.js)\b/i);
+      const explicitGlob =
+        text.match(/["'`]((?:\*\*\/)?[^"'`\s]*\.(?:js|mjs|cjs|ts|tsx|jsx))["'`]/i) ||
+        text.match(/(?:^|\s)((?:\*\*\/)?\*\.js)\b/i);
       if (explicitGlob) {
         args[paramName] = explicitGlob[1];
         continue;
@@ -133,7 +146,12 @@ export function extractParamsFromContext(tool, text, { castParam }) {
 /**
  * Convert a browser-action JSON object into a tool call.
  */
-export function browserActionCallFromJSON(json, source, startIndex, { toolRegistry, queryFromSearchURL, inferSearchQuery, isSearchNavigation }) {
+export function browserActionCallFromJSON(
+  json,
+  source,
+  startIndex,
+  { toolRegistry, queryFromSearchURL, inferSearchQuery, isSearchNavigation },
+) {
   const browserActions = new Set([
     'navigate',
     'go_to',
@@ -154,29 +172,42 @@ export function browserActionCallFromJSON(json, source, startIndex, { toolRegist
     'select',
     'press',
   ]);
-  const action = json.action && typeof json.action === 'object' && !Array.isArray(json.action)
-    ? json.action
-    : json;
+  const action =
+    json.action && typeof json.action === 'object' && !Array.isArray(json.action)
+      ? json.action
+      : json;
   const entries = Object.entries(action);
   if (entries.length < 1) {
     return null;
   }
 
-  const normalizeActionName = value => String(value || '')
-    .replace(/^\//, '')
-    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
-    .replace(/-/g, '_')
-    .toLowerCase();
-  const selectedEntry = entries.find(([name, value]) => {
-    const normalized = normalizeActionName(name);
-    if (!browserActions.has(normalized)) {
-      return false;
-    }
-    return value && typeof value === 'object' && !Array.isArray(value) && (
-      value.query || value.q || value.search || value.text || value.keywords ||
-      value.url || value.href || value.link || value.value
-    );
-  }) || entries.find(([name]) => browserActions.has(normalizeActionName(name)));
+  const normalizeActionName = (value) =>
+    String(value || '')
+      .replace(/^\//, '')
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .replace(/-/g, '_')
+      .toLowerCase();
+  const selectedEntry =
+    entries.find(([name, value]) => {
+      const normalized = normalizeActionName(name);
+      if (!browserActions.has(normalized)) {
+        return false;
+      }
+      return (
+        value &&
+        typeof value === 'object' &&
+        !Array.isArray(value) &&
+        (value.query ||
+          value.q ||
+          value.search ||
+          value.text ||
+          value.keywords ||
+          value.url ||
+          value.href ||
+          value.link ||
+          value.value)
+      );
+    }) || entries.find(([name]) => browserActions.has(normalizeActionName(name)));
 
   if (!selectedEntry) {
     return null;
@@ -233,11 +264,13 @@ export function isSearchNavigation(url) {
   try {
     const parsed = new globalThis.URL(String(url));
     const host = parsed.hostname.toLowerCase();
-    return host.includes('google.')
-      || host.includes('bing.')
-      || host.includes('duckduckgo.')
-      || host.includes('baidu.')
-      || host.includes('search.yahoo.');
+    return (
+      host.includes('google.') ||
+      host.includes('bing.') ||
+      host.includes('duckduckgo.') ||
+      host.includes('baidu.') ||
+      host.includes('search.yahoo.')
+    );
   } catch {
     return false;
   }
@@ -252,11 +285,13 @@ export function queryFromSearchURL(url) {
   }
   try {
     const parsed = new globalThis.URL(String(url));
-    return parsed.searchParams.get('q')
-      || parsed.searchParams.get('query')
-      || parsed.searchParams.get('wd')
-      || parsed.searchParams.get('p')
-      || '';
+    return (
+      parsed.searchParams.get('q') ||
+      parsed.searchParams.get('query') ||
+      parsed.searchParams.get('wd') ||
+      parsed.searchParams.get('p') ||
+      ''
+    );
   } catch {
     return '';
   }
@@ -277,21 +312,27 @@ export function inferSearchQuery(json) {
     json.memory,
     json.evaluation_previous_goal,
   ];
-  const text = fields.find(value => typeof value === 'string' && value.trim());
+  const text = fields.find((value) => typeof value === 'string' && value.trim());
   if (!text) {
     return '';
   }
-  const quotedInput = text.match(/(?:输入|搜索|查询|查找|search(?:\s+for)?)[\u201c"'']([^\u201d"'']+)[\u201d"'']/i);
+  const quotedInput = text.match(
+    /(?:输入|搜索|查询|查找|search(?:\s+for)?)[\u201c"'']([^\u201d"'']+)[\u201d"'']/i,
+  );
   if (quotedInput?.[1]) {
     return quotedInput[1].trim();
   }
 
-  const chineseWeatherRequest = text.match(/(?:用户要求|需要|想要|请|帮.*?)(?:查询|搜索|查找|了解)([^。；;,.，]+天气[^。；;,.，]*)/);
+  const chineseWeatherRequest = text.match(
+    /(?:用户要求|需要|想要|请|帮.*?)(?:查询|搜索|查找|了解)([^。；;,.，]+天气[^。；;,.，]*)/,
+  );
   if (chineseWeatherRequest?.[1]) {
     return chineseWeatherRequest[1].trim();
   }
 
-  const chineseWeatherClick = text.match(/点击([^。；;,.，]*?)(?:城市)?链接[\s\S]*?(?:天气|weather)/i);
+  const chineseWeatherClick = text.match(
+    /点击([^。；;,.，]*?)(?:城市)?链接[\s\S]*?(?:天气|weather)/i,
+  );
   if (chineseWeatherClick?.[1]) {
     const city = chineseWeatherClick[1].replace(/并$/, '').trim();
     if (city) {
@@ -311,8 +352,13 @@ export function inferSearchQuery(json) {
  * Parse DSML format tool calls.
  * Format: <｜｜DSML｜｜invoke name="tool"> ... </｜｜DSML｜｜invoke>
  */
-export function parseDSMLFormat(text, { toolRegistry, resolveToolName, decodeStringLiteral, safeJSONParse }) {
-  if (!text || typeof text !== 'string') {return [];}
+export function parseDSMLFormat(
+  text,
+  { toolRegistry, resolveToolName, decodeStringLiteral, safeJSONParse },
+) {
+  if (!text || typeof text !== 'string') {
+    return [];
+  }
 
   // DSML: <｜｜DSML｜｜invoke name="tool"> / <||DSML||invoke name="tool">
   // Unicode fullwidth vertical bar (U+FF5C) or plain ASCII pipes.
@@ -323,15 +369,15 @@ export function parseDSMLFormat(text, { toolRegistry, resolveToolName, decodeStr
 
   const invokeRegex = new RegExp(
     `${dsmlTag}invoke\\s+name="([^"]+)"\\s*>` +
-    '([\\s\\S]*?)' +
-    `<\\/?${pipe}DSML${pipe}invoke\\s*>`,
+      '([\\s\\S]*?)' +
+      `<\\/?${pipe}DSML${pipe}invoke\\s*>`,
     'gi',
   );
 
   const paramRegex = new RegExp(
     `${dsmlTag}parameter\\s+name="([^"]+)"(?:\\s+[^>]*)?>` +
-    '([\\s\\S]*?)' +
-    `<\\/?${pipe}DSML${pipe}parameter\\s*>`,
+      '([\\s\\S]*?)' +
+      `<\\/?${pipe}DSML${pipe}parameter\\s*>`,
     'gi',
   );
 
@@ -373,10 +419,7 @@ export function parseDSMLFormat(text, { toolRegistry, resolveToolName, decodeStr
 
   // Also handle standalone DSML invoke blocks without wrapping tool_calls tag
   if (toolCalls.length === 0 && new RegExp(`${dsmlTag}`, 'i').test(text)) {
-    const namedTagRegex = new RegExp(
-      `${dsmlTag}([A-Za-z_][\\w-]*)\\s*([^>]*)>`,
-      'gi',
-    );
+    const namedTagRegex = new RegExp(`${dsmlTag}([A-Za-z_][\\w-]*)\\s*([^>]*)>`, 'gi');
 
     let namedMatch;
     while ((namedMatch = namedTagRegex.exec(text)) !== null) {
@@ -394,7 +437,9 @@ export function parseDSMLFormat(text, { toolRegistry, resolveToolName, decodeStr
       const attrRegex = /(\w+)\s*=\s*"([^"]*)"/g;
       let attrMatch;
       while ((attrMatch = attrRegex.exec(attrsText)) !== null) {
-        if (attrMatch[1] === 'name') {continue;}
+        if (attrMatch[1] === 'name') {
+          continue;
+        }
         args[attrMatch[1]] = decodeStringLiteral(attrMatch[2]);
       }
 
@@ -411,12 +456,15 @@ export function parseDSMLFormat(text, { toolRegistry, resolveToolName, decodeStr
   // e.g. <invoke name="glob"><parameter name="path">/foo</parameter></invoke>
   if (toolCalls.length === 0 && /<invoke\b/i.test(text)) {
     const plainInvokeRegex = /<invoke\s+name="([^"]+)"\s*>\s*([\s\S]*?)<\/invoke\s*>/gi;
-    const plainParamRegex = /<parameter\s+name="([^"]+)"(?:\s+[^>]*)?>\s*([\s\S]*?)\s*<\/parameter\s*>/gi;
+    const plainParamRegex =
+      /<parameter\s+name="([^"]+)"(?:\s+[^>]*)?>\s*([\s\S]*?)\s*<\/parameter\s*>/gi;
 
     let invokeMatch;
     while ((invokeMatch = plainInvokeRegex.exec(text)) !== null) {
       const name = resolveToolName(invokeMatch[1]);
-      if (!toolRegistry?.has?.(name)) {continue;}
+      if (!toolRegistry?.has?.(name)) {
+        continue;
+      }
 
       const innerText = invokeMatch[2];
       const args = {};

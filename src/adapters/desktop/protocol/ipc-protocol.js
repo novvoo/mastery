@@ -10,15 +10,15 @@ export const IPCMessageType = {
   REQUEST: 'ipc:request',
   RESPONSE: 'ipc:response',
   ERROR: 'ipc:error',
-  
+
   // 事件类型（单向通知）
   EVENT: 'ipc:event',
-  
+
   // 系统类型
   HEARTBEAT: 'ipc:heartbeat',
   CONNECT: 'ipc:connect',
   DISCONNECT: 'ipc:disconnect',
-  RECONNECT: 'ipc:reconnect'
+  RECONNECT: 'ipc:reconnect',
 };
 
 /**
@@ -28,7 +28,7 @@ export const IPCMessageStatus = {
   PENDING: 'pending',
   SUCCESS: 'success',
   ERROR: 'error',
-  TIMEOUT: 'timeout'
+  TIMEOUT: 'timeout',
 };
 
 /**
@@ -36,21 +36,21 @@ export const IPCMessageStatus = {
  */
 export const DEFAULT_CONFIG = {
   // 超时设置
-  requestTimeout: 30000,      // 请求超时时间（毫秒）
-  heartbeatInterval: 30000,   // 心跳间隔（毫秒）
-  reconnectDelay: 1000,        // 重连延迟（毫秒）
-  maxReconnectAttempts: 5,     // 最大重连次数
-  
+  requestTimeout: 30000, // 请求超时时间（毫秒）
+  heartbeatInterval: 30000, // 心跳间隔（毫秒）
+  reconnectDelay: 1000, // 重连延迟（毫秒）
+  maxReconnectAttempts: 5, // 最大重连次数
+
   // 消息队列设置
-  maxQueueSize: 100,           // 最大队列大小
-  enableQueue: true,           // 是否启用消息队列
-  
+  maxQueueSize: 100, // 最大队列大小
+  enableQueue: true, // 是否启用消息队列
+
   // 安全设置
-  validateMessages: true,      // 是否验证消息
-  allowedChannels: null,       // 允许的频道列表（null 表示允许所有）
-  
+  validateMessages: true, // 是否验证消息
+  allowedChannels: null, // 允许的频道列表（null 表示允许所有）
+
   // 调试设置
-  debug: false
+  debug: false,
 };
 
 export function parsePreviewArgs(text = '') {
@@ -99,7 +99,7 @@ export class IPCMessage {
       correlationId: this.correlationId,
       metadata: this.metadata,
       source: this.source,
-      target: this.target
+      target: this.target,
     };
   }
 
@@ -113,7 +113,7 @@ export class IPCMessage {
       correlationId: data.correlationId,
       metadata: data.metadata,
       source: data.source,
-      target: data.target
+      target: data.target,
     });
     msg.timestamp = data.timestamp;
     msg.status = data.status;
