@@ -19,7 +19,7 @@ const DEFAULT_IGNORED_WATCH_DIRECTORIES = new Set([
   '.vite',
   '.turbo',
   '.cache',
-  '.agent-data'
+  '.agent-data',
 ]);
 
 /**
@@ -73,15 +73,19 @@ export function listWorkspaceDirectory(workingDirectory, options = {}) {
       return {
         name: entry.name,
         path: relativeEntryPath,
-        type: isDirectory ? 'directory' : (isSymlink ? 'symlink' : 'file'),
+        type: isDirectory ? 'directory' : isSymlink ? 'symlink' : 'file',
         hidden: entry.name.startsWith('.'),
         size: entryStats?.size || 0,
         mtimeMs: entryStats?.mtimeMs || 0,
       };
     })
     .sort((a, b) => {
-      if (a.type === 'directory' && b.type !== 'directory') {return -1;}
-      if (a.type !== 'directory' && b.type === 'directory') {return 1;}
+      if (a.type === 'directory' && b.type !== 'directory') {
+        return -1;
+      }
+      if (a.type !== 'directory' && b.type === 'directory') {
+        return 1;
+      }
       return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     });
 
@@ -112,7 +116,7 @@ export function createWorkspaceWatcher(workingDirectory, onChange, options = {})
     : 2000;
   const ignoredDirectories = new Set([
     ...DEFAULT_IGNORED_WATCH_DIRECTORIES,
-    ...(Array.isArray(options.ignoredDirectories) ? options.ignoredDirectories : [])
+    ...(Array.isArray(options.ignoredDirectories) ? options.ignoredDirectories : []),
   ]);
   let debounceTimer = null;
   let pollTimer = null;
@@ -143,7 +147,9 @@ export function createWorkspaceWatcher(workingDirectory, onChange, options = {})
 
     const relativeDirectory = path.relative(root, directory).split(path.sep).join('/');
     result.directories.push(directory);
-    result.signatureParts.push(`${relativeDirectory || '.'}:dir:${directoryStats.mtimeMs}:${directoryStats.size}`);
+    result.signatureParts.push(
+      `${relativeDirectory || '.'}:dir:${directoryStats.mtimeMs}:${directoryStats.size}`,
+    );
 
     let entries = [];
     try {
@@ -168,7 +174,9 @@ export function createWorkspaceWatcher(workingDirectory, onChange, options = {})
         continue;
       }
 
-      result.signatureParts.push(`${relativeEntryPath}:dir:${entryStats.mtimeMs}:${entryStats.size}`);
+      result.signatureParts.push(
+        `${relativeEntryPath}:dir:${entryStats.mtimeMs}:${entryStats.size}`,
+      );
       scanWorkspace(entryPath, result);
       if (result.directories.length >= maxWatchedDirectories) {
         break;
@@ -182,7 +190,7 @@ export function createWorkspaceWatcher(workingDirectory, onChange, options = {})
     const result = scanWorkspace();
     return {
       directories: result.directories,
-      signature: result.signatureParts.join('\n')
+      signature: result.signatureParts.join('\n'),
     };
   };
 

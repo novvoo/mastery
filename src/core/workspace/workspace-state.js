@@ -1,6 +1,6 @@
 /**
  * WorkspaceState - 工作区状态追踪器
- * 
+ *
  * 核心功能：
  * - 追踪文件/目录的存在性和内容
  * - 存储从工具调用中学到的关键事实
@@ -11,24 +11,24 @@
 const MAX_DIRECTORY_ENTRIES = 500;
 const MAX_FACTS = 200;
 const MAX_FAILED_PATHS = 100;
-const MAX_SNAPSHOT_FILES = 30;           // 最多缓存多少个文件的内容
+const MAX_SNAPSHOT_FILES = 30; // 最多缓存多少个文件的内容
 const MAX_SNAPSHOT_BYTES_PER_FILE = 64 * 1024; // 每个文件的缓存上限
-const MAX_AGGREGATE_CHARS = 4000;        // 聚合摘要时的字符上限
+const MAX_AGGREGATE_CHARS = 4000; // 聚合摘要时的字符上限
 
 export class WorkspaceState {
   constructor() {
     // 目录结构追踪: path -> { exists, entries: Set, timestamp }
     this._directories = new Map();
-    
+
     // 文件存在性追踪: path -> { exists, size?, timestamp }
     this._files = new Map();
-    
+
     // 关键事实: { type, value, source, timestamp }
     this._facts = [];
-    
+
     // 失败的路径尝试: path -> error message
     this._failedPaths = new Map();
-    
+
     // Shell 命令结果: 用于推断环境状态
     this._shellKnowledge = [];
 
@@ -48,19 +48,20 @@ export class WorkspaceState {
    */
   recordDirectoryListing(dirPath, entries, source = 'list_dir') {
     const normalized = this._normalizePath(dirPath);
-    
+
     this._directories.set(normalized, {
       exists: true,
-      entries: new Set(entries.map(e => this._normalizePath(e))),
+      entries: new Set(entries.map((e) => this._normalizePath(e))),
       timestamp: Date.now(),
       source,
     });
 
     // 从条目中推断文件存在性
     for (const entry of entries) {
-      const entryPath = entry.startsWith('/') || entry.startsWith('.') 
-        ? entry 
-        : `${normalized}/${entry}`.replace(/\/+/g, '/');
+      const entryPath =
+        entry.startsWith('/') || entry.startsWith('.')
+          ? entry
+          : `${normalized}/${entry}`.replace(/\/+/g, '/');
       this._markPathExists(entryPath);
     }
 
@@ -98,7 +99,7 @@ export class WorkspaceState {
    */
   _markPathExists(path) {
     const normalized = this._normalizePath(path);
-    
+
     if (normalized.endsWith('/')) {
       if (!this._directories.has(normalized)) {
         this._directories.set(normalized, {
@@ -158,14 +159,21 @@ export class WorkspaceState {
     const text = truncated ? content.slice(0, MAX_SNAPSHOT_BYTES_PER_FILE) : content;
 
     // LRU 淘汰：超过上限时删除时间戳最旧的项
-    if (!this._fileSnapshots.has(normalizedPath) &&
-        this._fileSnapshots.size >= MAX_SNAPSHOT_FILES) {
+    if (
+      !this._fileSnapshots.has(normalizedPath) &&
+      this._fileSnapshots.size >= MAX_SNAPSHOT_FILES
+    ) {
       let oldestKey = null;
       let oldestTs = Infinity;
       for (const [k, v] of this._fileSnapshots) {
-        if (v.updatedAt < oldestTs) { oldestTs = v.updatedAt; oldestKey = k; }
+        if (v.updatedAt < oldestTs) {
+          oldestTs = v.updatedAt;
+          oldestKey = k;
+        }
       }
-      if (oldestKey != null) {this._fileSnapshots.delete(oldestKey);}
+      if (oldestKey != null) {
+        this._fileSnapshots.delete(oldestKey);
+      }
     }
 
     this._fileSnapshots.set(normalizedPath, {
@@ -180,7 +188,9 @@ export class WorkspaceState {
 
   /** 外部写入文件后同步更新快照（避免重复读磁盘） */
   setFileSnapshot(filePath, content, source = 'write_file') {
-    if (typeof content !== 'string') {return;}
+    if (typeof content !== 'string') {
+      return;
+    }
     const normalized = this._normalizePath(filePath);
     this._files.set(normalized, { exists: true, timestamp: Date.now(), source });
     this._cacheFileContent(normalized, content, source);
@@ -205,14 +215,18 @@ export class WorkspaceState {
 
   /** 记录一次"引用"：用户或 Agent 提到某个路径（用于最近文件排序） */
   recordReference(filePath, context = 'mention') {
-    if (!filePath) {return;}
+    if (!filePath) {
+      return;
+    }
     const normalized = this._normalizePath(filePath);
     const existing = this._recentReferences.get(normalized) || { count: 0, refs: [], _order: 0 };
     existing.count++;
     existing.refs.push({ timestamp: Date.now(), context });
-    if (existing.refs.length > 20) {existing.refs = existing.refs.slice(-20);}
+    if (existing.refs.length > 20) {
+      existing.refs = existing.refs.slice(-20);
+    }
     existing.timestamp = Date.now();
-    existing._order = (this._referenceOrderCounter = (this._referenceOrderCounter || 0) + 1);
+    existing._order = this._referenceOrderCounter = (this._referenceOrderCounter || 0) + 1;
     this._recentReferences.set(normalized, existing);
   }
 
@@ -221,7 +235,9 @@ export class WorkspaceState {
     return Array.from(this._recentReferences.entries())
       .sort((a, b) => {
         const ts = (b[1].timestamp || 0) - (a[1].timestamp || 0);
-        if (ts !== 0) {return ts;}
+        if (ts !== 0) {
+          return ts;
+        }
         return (b[1]._order || 0) - (a[1]._order || 0);
       })
       .slice(0, limit)
@@ -235,11 +251,11 @@ export class WorkspaceState {
    */
   recordPathNotFound(path, reason) {
     const normalized = this._normalizePath(path);
-    
+
     // 移除可能存在的存在记录
     this._files.delete(normalized);
     this._directories.delete(normalized);
-    
+
     this._failedPaths.set(normalized, {
       reason: reason || 'Not found',
       timestamp: Date.now(),
@@ -259,7 +275,7 @@ export class WorkspaceState {
    */
   recordFileWrite(filePath) {
     const normalized = this._normalizePath(filePath);
-    
+
     this._files.set(normalized, {
       exists: true,
       timestamp: Date.now(),
@@ -284,17 +300,16 @@ export class WorkspaceState {
    */
   _addFact(fact) {
     // 去重：检查是否有相同类型和值的事实
-    const isDuplicate = this._facts.some(f => 
-      f.type === fact.type && 
-      JSON.stringify(f.value) === JSON.stringify(fact.value)
+    const isDuplicate = this._facts.some(
+      (f) => f.type === fact.type && JSON.stringify(f.value) === JSON.stringify(fact.value),
     );
-    
+
     if (!isDuplicate) {
       this._facts.push({
         ...fact,
         timestamp: Date.now(),
       });
-      
+
       // 限制大小
       if (this._facts.length > MAX_FACTS) {
         // 保留高优先级的事实
@@ -326,15 +341,15 @@ export class WorkspaceState {
    */
   checkPathExists(path) {
     const normalized = this._normalizePath(path);
-    
+
     if (this._files.has(normalized) || this._directories.has(normalized)) {
       return 'exists';
     }
-    
+
     if (this._failedPaths.has(normalized)) {
       return 'not_found';
     }
-    
+
     return 'unknown';
   }
 
@@ -347,20 +362,22 @@ export class WorkspaceState {
   directoryHasEntry(dirPath, entryName) {
     const normalized = this._normalizePath(dirPath);
     const dir = this._directories.get(normalized);
-    
-    if (!dir) {return null;}
-    
+
+    if (!dir) {
+      return null;
+    }
+
     // 检查直接匹配
     const entryPath = this._normalizePath(`${dirPath}/${entryName}`);
     if (dir.entries.has(entryPath) || dir.entries.has(entryName)) {
       return true;
     }
-    
+
     // 检查是否在 failedPaths 中
     if (this._failedPaths.has(entryPath)) {
       return false;
     }
-    
+
     return null;
   }
 
@@ -380,14 +397,14 @@ export class WorkspaceState {
    */
   queryFacts(query, limit = 10) {
     const lowerQuery = query.toLowerCase();
-    
+
     const results = this._facts
-      .filter(fact => {
+      .filter((fact) => {
         const valueStr = JSON.stringify(fact.value).toLowerCase();
         return valueStr.includes(lowerQuery) || fact.type.includes(lowerQuery);
       })
       .slice(-limit);
-    
+
     return results;
   }
 
@@ -395,9 +412,7 @@ export class WorkspaceState {
    * 获取高优先级的关键事实
    */
   getCriticalFacts() {
-    return this._facts
-      .filter(f => f.priority === 'high')
-      .slice(-20);
+    return this._facts.filter((f) => f.priority === 'high').slice(-20);
   }
 
   // ============ 推理接口 ============
@@ -413,8 +428,10 @@ export class WorkspaceState {
       case 'read_file':
       case 'file_read': {
         const path = args?.path || args?.file_path || args?.file;
-        if (!path) {break;}
-        
+        if (!path) {
+          break;
+        }
+
         const exists = this.checkPathExists(path);
         if (exists === 'not_found') {
           return {
@@ -437,8 +454,10 @@ export class WorkspaceState {
 
       case 'list_dir': {
         const path = args?.path || args?.dir || args?.directory;
-        if (!path) {break;}
-        
+        if (!path) {
+          break;
+        }
+
         const exists = this.checkPathExists(path);
         if (exists === 'not_found') {
           return {
@@ -461,7 +480,7 @@ export class WorkspaceState {
 
       case 'shell': {
         const command = args?.command || args?.input || '';
-        
+
         // 检查是否在失败路径中尝试访问文件
         const pathMatch = command.match(/(?:cat|read|head|tail|ls)\s+([^\s;>&]+)/);
         if (pathMatch) {
@@ -503,32 +522,48 @@ export class WorkspaceState {
     const maxFiles = opts.maxFiles || 8;
     const maxCharsPerFile = opts.maxCharsPerFile || 600;
     const maxTotalChars = opts.maxTotalChars || MAX_AGGREGATE_CHARS;
-    const hintPaths = (opts.hintPaths || []).filter(Boolean).map(p => this._normalizePath(p));
+    const hintPaths = (opts.hintPaths || []).filter(Boolean).map((p) => this._normalizePath(p));
 
     const seen = new Set();
     const pickPath = (p) => {
-      if (!p || seen.has(p)) {return false;}
+      if (!p || seen.has(p)) {
+        return false;
+      }
       seen.add(p);
       return true;
     };
 
     const ordered = [];
     // 1. 提示路径（如果已缓存）
-    for (const p of hintPaths) {if (this._fileSnapshots.has(p) && pickPath(p)) {ordered.push(p);}}
+    for (const p of hintPaths) {
+      if (this._fileSnapshots.has(p) && pickPath(p)) {
+        ordered.push(p);
+      }
+    }
     // 2. 按快照时间倒序（最近写入/读取优先）
     const bySnapshot = Array.from(this._fileSnapshots.keys()).sort((a, b) => {
       const ta = this._fileSnapshots.get(a)?.updatedAt || 0;
       const tb = this._fileSnapshots.get(b)?.updatedAt || 0;
       return tb - ta;
     });
-    for (const p of bySnapshot) {if (pickPath(p)) {ordered.push(p);}}
+    for (const p of bySnapshot) {
+      if (pickPath(p)) {
+        ordered.push(p);
+      }
+    }
     // 3. 最近引用的路径
-    for (const item of this.getRecentlyReferenced(maxFiles)) {if (pickPath(item.path)) {ordered.push(item.path);}}
+    for (const item of this.getRecentlyReferenced(maxFiles)) {
+      if (pickPath(item.path)) {
+        ordered.push(item.path);
+      }
+    }
 
     const blocks = [];
     let totalChars = 0;
     for (const p of ordered) {
-      if (blocks.length >= maxFiles) {break;}
+      if (blocks.length >= maxFiles) {
+        break;
+      }
       const snap = this._fileSnapshots.get(p);
       if (!snap) {
         // 没有快照：只记录路径与是否已知存在
@@ -582,7 +617,7 @@ export class WorkspaceState {
       facts: this._facts.length,
       snapshots: this._fileSnapshots.size,
       recentReferences: this._recentReferences.size,
-      recentFacts: this._facts.slice(-5).map(f => ({
+      recentFacts: this._facts.slice(-5).map((f) => ({
         type: f.type,
         value: typeof f.value === 'object' ? JSON.stringify(f.value).slice(0, 100) : f.value,
       })),
@@ -620,17 +655,17 @@ export class WorkspaceState {
         });
       }
     }
-    
+
     if (state.files) {
       for (const [path, data] of state.files) {
         this._files.set(path, data);
       }
     }
-    
+
     if (state.facts) {
       this._facts = state.facts;
     }
-    
+
     if (state.failedPaths) {
       for (const fp of state.failedPaths) {
         this._failedPaths.set(fp.path, fp);
@@ -642,11 +677,10 @@ export class WorkspaceState {
    * 路径规范化
    */
   _normalizePath(path) {
-    if (!path) {return '';}
-    return path
-      .replace(/\/+/g, '/')
-      .replace(/\/$/, '')
-      || '/';
+    if (!path) {
+      return '';
+    }
+    return path.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
   }
 }
 

@@ -1,6 +1,6 @@
 /**
  * Enhanced Workspace Integration for ReAct Agent
- * 
+ *
  * 这个模块将 WorkspaceState 和 ObservationSummarizer 集成到 ReAct Agent 中
  * 解决 Agent "健忘" 的问题
  */
@@ -15,10 +15,7 @@ import { createWorkspaceKnowledgeTools } from '../../tools/system/workspace-know
  * @returns {object}
  */
 export function createEnhancedWorkspace(options = {}) {
-  const {
-    toolRegistry,
-    includeToolsInRegistry = true,
-  } = options;
+  const { toolRegistry, includeToolsInRegistry = true } = options;
 
   // 创建核心组件
   const workspaceState = new WorkspaceState();
@@ -71,10 +68,13 @@ export function createEnhancedWorkspace(options = {}) {
 ${hint.workspaceDescription}
 
 ### 已知不存在的路径（避免重复尝试读取）
-${hint.knownNonExistent.map(p => `- ${p}`).join('\n')}
+${hint.knownNonExistent.map((p) => `- ${p}`).join('\n')}
 
 ### 关键发现
-${hint.preserveFacts.slice(-5).map(f => `- ${f.type}: ${JSON.stringify(f.value)}`).join('\n')}
+${hint.preserveFacts
+  .slice(-5)
+  .map((f) => `- ${f.type}: ${JSON.stringify(f.value)}`)
+  .join('\n')}
 `;
   }
 
@@ -84,7 +84,7 @@ ${hint.preserveFacts.slice(-5).map(f => `- ${f.type}: ${JSON.stringify(f.value)}
     const workspaceDescription = observationSummarizer.generateWorkspaceDescription();
 
     return {
-      preserveFacts: criticalFacts.map(f => ({
+      preserveFacts: criticalFacts.map((f) => ({
         type: f.type,
         value: f.value,
       })),
@@ -93,10 +93,10 @@ ${hint.preserveFacts.slice(-5).map(f => `- ${f.type}: ${JSON.stringify(f.value)}
       knownNonExistent: Array.from(
         new Set(
           criticalFacts
-            .filter(f => f.type === 'path_not_found')
-            .map(f => f.value?.path)
-            .filter(Boolean)
-        )
+            .filter((f) => f.type === 'path_not_found')
+            .map((f) => f.value?.path)
+            .filter(Boolean),
+        ),
       ),
       systemPromptAddition: generateSystemPromptAddition(),
     };
@@ -143,14 +143,14 @@ ${hint.preserveFacts.slice(-5).map(f => `- ${f.type}: ${JSON.stringify(f.value)}
       return {
         prediction,
         recentObservations: observationHistory
-          .filter(o => o.toolName === toolName)
+          .filter((o) => o.toolName === toolName)
           .slice(-3)
-          .map(o => o.summary),
+          .map((o) => o.summary),
         suggestion: prediction.canSkip
           ? `⚠️  基于之前的观察，此操作很可能会失败: ${prediction.reason}`
           : prediction.type === 'will_succeed'
-          ? `✅  此路径已确认存在，可以继续`
-          : `ℹ️  建议使用 workspace_knowledge 工具查询后再决定`,
+            ? `✅  此路径已确认存在，可以继续`
+            : `ℹ️  建议使用 workspace_knowledge 工具查询后再决定`,
       };
     },
   };

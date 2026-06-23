@@ -41,22 +41,35 @@ const INDEX_IGNORE = [
   '**/*.min.*',
 ];
 
-const MAX_HEAD_LINES = 15;        // 每个文件保留前 N 行
-const MAX_HEAD_CHARS = 500;       // 头部截断
-const MAX_SYMBOLS = 25;           // 最多提取 N 个符号
-const MAX_FILES = 1000;           // 最大索引文件数
-const CONCURRENCY = 20;           // 并发数
-const SYNC_INTERVAL_MS = 25000;   // 增量同步间隔
+const MAX_HEAD_LINES = 15; // 每个文件保留前 N 行
+const MAX_HEAD_CHARS = 500; // 头部截断
+const MAX_SYMBOLS = 25; // 最多提取 N 个符号
+const MAX_FILES = 1000; // 最大索引文件数
+const CONCURRENCY = 20; // 并发数
+const SYNC_INTERVAL_MS = 25000; // 增量同步间隔
 
 // 文件类型 → 种类
 const FILE_KINDS = {
-  js: 'source', jsx: 'source', ts: 'source', tsx: 'source',
-  mjs: 'source', cjs: 'source',
-  css: 'style', scss: 'style', less: 'style',
-  html: 'html', htm: 'html',
-  md: 'doc', mdx: 'doc', txt: 'doc',
-  json: 'config', yml: 'config', yaml: 'config', toml: 'config',
-  test: 'test', spec: 'test',
+  js: 'source',
+  jsx: 'source',
+  ts: 'source',
+  tsx: 'source',
+  mjs: 'source',
+  cjs: 'source',
+  css: 'style',
+  scss: 'style',
+  less: 'style',
+  html: 'html',
+  htm: 'html',
+  md: 'doc',
+  mdx: 'doc',
+  txt: 'doc',
+  json: 'config',
+  yml: 'config',
+  yaml: 'config',
+  toml: 'config',
+  test: 'test',
+  spec: 'test',
 };
 
 function extractSymbols(text) {
@@ -70,7 +83,7 @@ function extractSymbols(text) {
     /async\s+function\s+(\w+)/g,
     /export\s+default\s+(\w+)/g,
   ];
-for (const re of patterns) {
+  for (const re of patterns) {
     let match;
     while ((match = re.exec(text)) !== null) {
       const name = match[1];
@@ -85,9 +98,15 @@ for (const re of patterns) {
 // 推断文件种类
 function inferKind(relPath, ext) {
   const base = basename(relPath).toLowerCase();
-  if (/.(test|spec).(js|ts|jsx|tsx)$/.test(relPath)) {return 'test';}
-  if (/^./.test(basename(relPath))) {return 'config';}
-  if (base === 'makefile' || base === 'dockerfile') {return 'config';}
+  if (/.(test|spec).(js|ts|jsx|tsx)$/.test(relPath)) {
+    return 'test';
+  }
+  if (/^./.test(basename(relPath))) {
+    return 'config';
+  }
+  if (base === 'makefile' || base === 'dockerfile') {
+    return 'config';
+  }
   return FILE_KINDS[ext] || 'other';
 }
 
@@ -116,8 +135,12 @@ export class WorkspaceIndex {
 
   /** 动态更新工作目录。切换目录时会清空现有索引。 */
   setWorkingDirectory(workingDir) {
-    if (!workingDir || typeof workingDir !== 'string') {return;}
-    if (this.#workingDir === workingDir) {return;}
+    if (!workingDir || typeof workingDir !== 'string') {
+      return;
+    }
+    if (this.#workingDir === workingDir) {
+      return;
+    }
     this.#workingDir = workingDir;
     this.#index.clear();
     this.#lastSyncAt = 0;
@@ -198,10 +221,12 @@ export class WorkspaceIndex {
           } catch {
             return null;
           }
-        })
+        }),
       );
       for (const entry of batch) {
-        if (entry) {this.#index.set(entry.path, entry);}
+        if (entry) {
+          this.#index.set(entry.path, entry);
+        }
       }
     }
 
@@ -241,7 +266,7 @@ export class WorkspaceIndex {
             } catch {
               return null;
             }
-          })
+          }),
         );
         for (const entry of batch) {
           if (entry) {
@@ -261,7 +286,7 @@ export class WorkspaceIndex {
         ignore: INDEX_IGNORE,
       });
 
-      const newFiles = allFiles.filter(f => !this.#index.has(f)).slice(0, 100);
+      const newFiles = allFiles.filter((f) => !this.#index.has(f)).slice(0, 100);
 
       for (let i = 0; i < newFiles.length; i += CONCURRENCY) {
         const batch = await Promise.all(
@@ -271,7 +296,7 @@ export class WorkspaceIndex {
             } catch {
               return null;
             }
-          })
+          }),
         );
         for (const entry of batch) {
           if (entry) {
@@ -295,12 +320,16 @@ export class WorkspaceIndex {
     const stats = await stat(fullPath);
 
     // 跳过过大文件
-    if (stats.size > 256 * 1024) {return null;}
+    if (stats.size > 256 * 1024) {
+      return null;
+    }
 
     const text = await readFile(fullPath, 'utf-8');
 
     // 跳过二进制文件
-    if (text.includes('\0')) {return null;}
+    if (text.includes('\0')) {
+      return null;
+    }
 
     const lines = text.split('\n');
     const headLines = lines.slice(0, MAX_HEAD_LINES);
@@ -325,13 +354,17 @@ export class WorkspaceIndex {
 
   getSummary() {
     const entries = Array.from(this.#index.values());
-    if (entries.length === 0) {return '';}
+    if (entries.length === 0) {
+      return '';
+    }
 
     // 按顶级目录统计
     const topDirs = new Map();
     for (const entry of entries) {
       const top = entry.dir ? entry.dir.split('/')[0] : '.';
-      if (!topDirs.has(top)) {topDirs.set(top, []);}
+      if (!topDirs.has(top)) {
+        topDirs.set(top, []);
+      }
       topDirs.get(top).push(entry);
     }
 
@@ -344,19 +377,30 @@ export class WorkspaceIndex {
         byKind[f.kind] = (byKind[f.kind] || 0) + 1;
       }
       const kinds = Object.entries(byKind)
-        .map(function (kv) { return kv[1] + ' ' + kv[0]; })
+        .map(function (kv) {
+          return kv[1] + ' ' + kv[0];
+        })
         .join(', ');
       lines.push('  ' + dir + '/ (' + kinds + ')');
 
       // 只显示有符号的关键源文件
       const keyFiles = files
-        .filter(function (f) { return f.symbols.length > 0; })
+        .filter(function (f) {
+          return f.symbols.length > 0;
+        })
         .slice(0, 10);
 
       for (const f of keyFiles) {
         const syms = f.symbols.slice(0, 4).join(', ');
         lines.push(
-          '    ' + f.path + ': ' + f.lines + 'L [' + syms + (f.symbols.length > 4 ? ', ...' : '') + ']'
+          '    ' +
+            f.path +
+            ': ' +
+            f.lines +
+            'L [' +
+            syms +
+            (f.symbols.length > 4 ? ', ...' : '') +
+            ']',
         );
       }
     }
