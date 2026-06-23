@@ -34,7 +34,12 @@ describe('public entrypoints', () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe('function function');
+    // 过滤掉可能的 Electron 下载消息，只保留实际的测试输出
+    const stdoutLines = result.stdout.trim().split('\n').filter(line => 
+      !line.includes('Downloading Electron binary')
+    );
+    const actualOutput = stdoutLines.join(' ').trim();
+    expect(actualOutput).toBe('function function');
     // 注意：electron 包在首次 import 时可能输出下载提示到 stderr，
     // 我们只检查非致命错误（不包含 Error / StackTrace）
     const lowerStderr = (result.stderr || '').toLowerCase();
