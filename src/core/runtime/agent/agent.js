@@ -17,6 +17,7 @@ import { ui } from '../../../cli/ui.js';
 import { TextToolParser } from '../../text-tool-parser.js';
 import { IntentClassifier } from '../../intent-classifier.js';
 import { DynamicContextPruning } from '../../dynamic-context-pruning.js';
+import { ConversationSummarizer } from '../../conversation-summarizer.js';
 import { WorkspaceIndex } from '../../workspace-index.js';
 import { selectToolsForRequest, shouldUseIntentClassifier } from './tool-router.js';
 import { WorkspaceState } from '../../workspace-state.js';
@@ -65,6 +66,11 @@ export class ReActAgent {
   #activeTaskProfile = null;
   #activeRoutedToolNames = null;
   #runToolEvents = [];
+  // ask_user suspend/resume: Promise-based 挂起机制,替代硬中断
+  #userInputResolve = null;
+  #pendingUserInputRequest = null;
+  // plan 进度回调：由外部（session-state）注入，用于推送 plan 更新到 UI 事件总线
+  #onPlanAdvance = null;
 
   // 子系统
   #textToolParser;
@@ -76,6 +82,7 @@ export class ReActAgent {
   #fileAnalyzer;
   #contextPruner;
   #tokenJuice;
+  #conversationSummarizer;
 
   // 新拆分的子模块
   #planner;
@@ -136,13 +143,35 @@ export class ReActAgent {
     this.#fileAnalyzer = new FileAnalyzer(this.#contentStore);
     this.#workspaceState = new WorkspaceState();
 
+    // 初始化 ConversationSummarizer 并注入到 contextPruner
+    // 这使得 token 超限时不丢弃消息，而是将其压缩为语义摘要
+    this.#conversationSummarizer = config.conversationSummarizer || new ConversationSummarizer(this.#workspaceState);
+    if (typeof this.#contextPruner.setSummarizer === 'function') {
+      this.#contextPruner.setSummarizer(this.#conversationSummarizer);
+    }
+
     // ---- 初始化子模块 ----
     const sharedDeps = {
       debugEvent: (label, details) => this.#debugEvent(label, details),
       sessionManager: this.#sessionManager,
     };
 
-    this.#planner = new AgentPlanner(sharedDeps);
+    // plan 进度回调（由 UI facade 注入，推送 plan 更新到事件总线）
+    this.#onPlanAdvance = typeof config.onPlanAdvance === 'function' ? config.onPlanAdvance : null;
+
+    this.#planner = new AgentPlanner({
+      ...sharedDeps,
+      onPlanAdvance: (progress) => {
+        // 1. 内部回调：推送到外部事件总线
+        if (this.#onPlanAdvance) {
+          this.#onPlanAdvance(progress);
+        }
+        // 2. UI delegate：实时更新 plan 卡片
+        if (typeof this.#ui.planProgress === 'function') {
+          this.#ui.planProgress(progress);
+        }
+      },
+    });
 
     this.#verifier = new AgentVerifier({
       ...sharedDeps,
@@ -249,6 +278,18 @@ export class ReActAgent {
 
     // Step 3: 准备运行上下文
     this.#sessionManager.addUserMessage(userInput);
+
+    // 任务锚点：将原始用户任务保存为 memory layer，确保不被上下文裁剪丢弃
+    // 这是防止 context window overflow 导致 agent 忘记原始任务的关键机制
+    const taskAnchor =
+      `[TASK ANCHOR — original user request, never forget this]\n` +
+      `The user's original task is: ${typeof userInput === 'string' ? userInput.substring(0, 800) : String(userInput).substring(0, 800)}\n` +
+      `This is the primary objective. All actions must directly serve this goal. ` +
+      `Periodically re-evaluate whether current actions are progressing toward this objective.`;
+    this.#sessionManager.addLayer('layer_task_anchor', taskAnchor, {
+      priority: SessionManager.LAYER.MEMORY + 1, // 比 memory 更高的优先级，最后注入
+    });
+
     const routingPrompt = this.#intentClassifier?.buildRoutingPrompt(intent);
     if (routingPrompt) {
       this.#sessionManager.addUserMessage(routingPrompt);
@@ -343,6 +384,7 @@ export class ReActAgent {
     // ============================================================
     let iteration = 0;
 
+    iterationLoop:
     while (iteration < maxIterations) {
       iteration++;
       if (this.#stopRequested) {
@@ -388,6 +430,49 @@ export class ReActAgent {
           this.#textToolParser.generateToolPrompt(routedTools),
           currentPhase,
         );
+
+        // 硬 Token 上限检查：在 LLM 调用前确保不会超出模型上下文窗口
+        // 这是防止 context overflow 导致 agent 遗忘任务的最后防线
+        // 改进：使用摘要压缩（ConversationSummarizer）替代裁剪丢弃
+        const modelMaxContext = this.#modelProvider.getMaxContextTokens?.() || 128000;
+        const hardCapRatio = 0.85; // 85% 硬上限
+        const estimatedTotalTokens = this.#estimateMessageTokens(messages);
+        if (estimatedTotalTokens > modelMaxContext * hardCapRatio) {
+          this.#debugEvent('Pre-LLM hard token cap triggered', {
+            estimatedTotalTokens,
+            modelMaxContext,
+            hardCapTokens: Math.floor(modelMaxContext * hardCapRatio),
+            messagesBefore: this.#sessionManager.getHistory().length,
+          });
+          // 使用摘要压缩：将旧消息压缩为语义摘要，保留最近消息完整内容
+          const targetTokens = Math.floor(modelMaxContext * 0.6);
+          if (this.#contextPruner && typeof this.#contextPruner.compress === 'function') {
+            this.#contextPruner.updateConfig?.({
+              maxTokens: modelMaxContext,
+              targetTokens,
+              preserveRecentMessages: 6, // 保留更多最近消息（因为有摘要兜底）
+            });
+            const stats = this.#sessionManager.compressWithSummarizer(this.#contextPruner, {
+              maxTokens: modelMaxContext,
+              targetTokens,
+              preserveRecentMessages: 6,
+            });
+            this.#debugEvent('Pre-LLM summary-compress completed', {
+              messagesAfter: this.#sessionManager.getHistory().length,
+              estimatedTokensAfter: this.#sessionManager.getTokenCount(),
+              stats,
+            });
+          } else {
+            // 回退：没有 compress 能力时用旧版裁剪
+            this.#sessionManager.trimToContextWindow(targetTokens, {
+              minRecentMessages: 4,
+            });
+            this.#debugEvent('Pre-LLM force-prune (fallback) completed', {
+              messagesAfter: this.#sessionManager.getHistory().length,
+              estimatedTokensAfter: this.#sessionManager.getTokenCount(),
+            });
+          }
+        }
 
         // LLM 调用
         const llmStartedAt = Date.now();
@@ -685,8 +770,36 @@ export class ReActAgent {
 
         // 无工具调用也无终止 → 提示继续
         if (allToolCalls.length === 0) {
+          this.#agentContext.recordZeroToolCallIteration();
+
+          // 连续零工具调用 ≥ 5 轮 → 强打断，防止无限分析循环撑爆上下文
+          if (this.#agentContext.shouldHardStopForZeroToolCalls()) {
+            this.#sessionManager.addAssistantMessage(response.text);
+            this.#sessionManager.addUserMessage(
+              `[HARD STOP] You have produced ${this.#agentContext.zeroToolCallStreak}+ consecutive responses with ZERO tool calls.\n` +
+              `You are stuck in an analysis loop that is consuming context without making progress.\n` +
+              `IMMEDIATELY call write_file or edit_file to make the code change, OR provide FINAL_ANSWER with what you have. ` +
+              `Do NOT output any more analysis or planning — ACT NOW.`,
+            );
+            continue;
+          }
+
+          // 探索预算超出 → 强制行动 nudge（比上面更温和，留给一次机会）
+          let nudgeMsg = '';
+          if (this.#agentContext.isExplorationBudgetExceeded() && !this.#agentContext.forceActionTriggered) {
+            nudgeMsg = this.#agentContext.triggerForceAction() || '';
+          } else if (
+            this.#agentContext.forceActionTriggered &&
+            this.#agentContext.shouldHardStopForExploration()
+          ) {
+            nudgeMsg =
+              `[TERMINAL] Exploration budget exceeded with ${this.#agentContext.forceActionIgnored} warnings ignored. ` +
+              `Provide FINAL_ANSWER or make code changes NOW. This is your last chance.`;
+          }
+
           this.#sessionManager.addAssistantMessage(response.text);
           this.#sessionManager.addUserMessage(
+            (nudgeMsg ? nudgeMsg + '\n\n' : '') +
             `No tool call detected in your response. To use a tool, output in one of these formats:\n` +
               `1. CALL tool_name({"param": "value"})\n` +
               `2. \`\`\`tool\n{"name": "tool_name", "arguments": {"param": "value"}}\n\`\`\`\n` +
@@ -715,11 +828,23 @@ export class ReActAgent {
               toolResult.result?.args || {},
               toolResult.result,
             );
+            // ask_user 智能自答：先尝试 LLM 自行回答，只有无法回答时才挂起等待用户
             if (this.#isUserInputRequest(toolResult?.result)) {
-              return this.#completeUserInputRequest(toolResult.result, {
-                iteration,
-                startedAt: runStartedAt,
-              });
+              const autoResult = await this.#tryAutoAnswerAskUser(toolResult.result);
+              if (autoResult.autoAnswered) {
+                this.#injectAutoAnswerAsObservation(toolResult.result, autoResult.answers);
+                continue iterationLoop;
+              }
+              const suspendResult = await this.#suspendForUserInput(toolResult.result);
+              // 如果返回了 __needsUserInput 标志，说明是测试模式，需要立即返回 needs_user_input
+              if (suspendResult?.__needsUserInput) {
+                return this.#completeUserInputRequest(suspendResult.askResult, {
+                  iteration,
+                  startedAt: runStartedAt,
+                });
+              }
+              this.#injectUserInputAsObservation(toolResult.result, suspendResult.userInput || suspendResult);
+              continue iterationLoop;
             }
           }
         } else {
@@ -738,7 +863,7 @@ export class ReActAgent {
             isMutationTool(name, r?.args || {}),
           );
 
-          // 添加 Observation 到会话
+          // 添加 Observation 到会话（硬上限截断保护上下文窗口）
           if (!toolResult.skipped) {
             const content =
               typeof toolResult.result === 'string'
@@ -749,17 +874,44 @@ export class ReActAgent {
                   input: { toolName: toolResult.name },
                 }).inlineText || content
               : content;
+
+            // 硬性截断：防止超大工具结果撑爆上下文窗口
+            const OBSERVATION_HARD_LINES = 80;  // 最多 80 行
+            const OBSERVATION_HARD_CHARS = 2500; // 最多 2500 字符
+            let cappedContent = processedContent;
+            const lines = processedContent.split('\n');
+            if (lines.length > OBSERVATION_HARD_LINES) {
+              cappedContent = lines.slice(0, OBSERVATION_HARD_LINES).join('\n') +
+                `\n... [${lines.length - OBSERVATION_HARD_LINES} more lines truncated to save context]`;
+            }
+            if (cappedContent.length > OBSERVATION_HARD_CHARS) {
+              cappedContent = cappedContent.slice(0, OBSERVATION_HARD_CHARS) +
+                `\n... [content truncated at ${OBSERVATION_HARD_CHARS} chars to save context]`;
+            }
+
             this.#sessionManager.addUserMessage(
-              `Observation from ${toolResult.name}:\n${processedContent}`,
+              `Observation from ${toolResult.name}:\n${cappedContent}`,
             );
           }
 
           this.#planner.advance(toolResult.name, toolCall.arguments || {}, toolResult.result);
+          // ask_user 智能自答：先尝试 LLM 自行回答，只有无法回答时才挂起等待用户
           if (this.#isUserInputRequest(toolResult?.result)) {
-            return this.#completeUserInputRequest(toolResult.result, {
-              iteration,
-              startedAt: runStartedAt,
-            });
+            const autoResult = await this.#tryAutoAnswerAskUser(toolResult.result);
+            if (autoResult.autoAnswered) {
+              this.#injectAutoAnswerAsObservation(toolResult.result, autoResult.answers);
+              continue iterationLoop;
+            }
+            const suspendResult = await this.#suspendForUserInput(toolResult.result);
+            // 如果返回了 __needsUserInput 标志，说明是测试模式，需要立即返回 needs_user_input
+            if (suspendResult?.__needsUserInput) {
+              return this.#completeUserInputRequest(suspendResult.askResult, {
+                iteration,
+                startedAt: runStartedAt,
+              });
+            }
+            this.#injectUserInputAsObservation(toolResult.result, suspendResult.userInput || suspendResult);
+            continue iterationLoop;
           }
         }
       } catch (error) {
@@ -968,6 +1120,27 @@ export class ReActAgent {
     return result;
   }
 
+  /** 快速估算消息列表的 token 数。CJK 字符 ×2，其他字符 /3.5 */
+  #estimateMessageTokens(messages) {
+    if (!Array.isArray(messages)) return 0;
+    let total = 0;
+    for (const msg of messages) {
+      const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
+      const cjkCount = (content.match(/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/g) || []).length;
+      const otherCount = content.length - cjkCount;
+      total += Math.ceil(cjkCount * 2.0 + otherCount / 3.5);
+      if (msg.toolCalls || msg.tool_calls) {
+        const calls = msg.toolCalls || msg.tool_calls || [];
+        for (const call of calls) {
+          total += 10; // function name overhead
+          const args = typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments || '');
+          total += Math.ceil(args.length / 4);
+        }
+      }
+    }
+    return total;
+  }
+
   #recordTokenUsage(messages, response) {
     try {
       const modelName =
@@ -1058,19 +1231,170 @@ export class ReActAgent {
     return result.requiresUserInput === true || result.type === 'user_input_required';
   }
 
-  #completeUserInputRequest(result, { iteration, startedAt, reason }) {
-    const answer = result.answer || this.#formatUserInputRequestAnswer(result);
-    this.#debugEvent('User input requested', { reason, questions: result.questions || [] });
+  /**
+   * 智能自问自答：在被 ask_user 中断之前，先让 LLM 尝试自行回答。
+   * 只有 LLM 明确表示"无法回答"（需要用户偏好/凭据/业务规则等），
+   * 才返回 autoAnswered: false 触发真正的用户中断。
+   */
+  async #tryAutoAnswerAskUser(askResult) {
+    const questions = Array.isArray(askResult.questions) ? askResult.questions : [];
+    if (questions.length === 0) return { autoAnswered: false };
+
+    const reason = askResult.reason || '';
+    const questionList = questions.map((q, i) => `${i + 1}. ${q}`).join('\n');
+
+    // 取最近一条用户消息作为最小任务上下文
+    const history = this.#sessionManager.getHistory?.() || [];
+    const lastUserMsg =
+      [...history].reverse().find((m) => m.role === 'user')?.content?.slice(0, 600) || '';
+
+    const prompt = [
+      {
+        role: 'user',
+        content:
+          `Task context: ${lastUserMsg || '(no prior context)'}\n\n` +
+          `You want to ask the user these questions because: ${reason}\n\n` +
+          `Questions:\n${questionList}\n\n` +
+          `Before actually interrupting the user, try answering these yourself. ` +
+          `Use your knowledge, reasoning, and the task context above to provide the best answers.\n\n` +
+          `For each question, respond with exactly one of:\n` +
+          `- "ANSWER: <your answer>" if you can provide a reasonable answer\n` +
+          `- "NEEDS_USER: <reason>" if you genuinely cannot answer ` +
+          `(only for user preferences, credentials, org-specific business rules, or truly ambiguous requirements)\n\n` +
+          `End your response with a single line containing either "ALL_ANSWERED" or "NEEDS_USER_INPUT".`,
+      },
+    ];
+
+    try {
+      const response = await withTimeout(
+        () => this.#modelProvider.chat(prompt, { maxTokens: 1000 }),
+        30000,
+        'Auto-answer attempt',
+      );
+
+      const text = response.text || '';
+
+      // 有 NEEDS_USER_INPUT 标记 → 无法自答，回退到真实用户中断
+      if (/\bNEEDS_USER_INPUT\b/i.test(text)) {
+        this.#debugEvent('Auto-answer: LLM cannot answer, will ask user', {
+          questions,
+        });
+        return { autoAnswered: false };
+      }
+
+      // 提取 ANSWER: 行
+      const answerLines = text
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => /^ANSWER:\s*/.test(l))
+        .map((l) => l.replace(/^ANSWER:\s*/, '').trim());
+
+      if (answerLines.length > 0) {
+        this.#debugEvent('Auto-answer: LLM self-answered', {
+          questionCount: questions.length,
+          answerCount: answerLines.length,
+        });
+        return { autoAnswered: true, answers: answerLines };
+      }
+
+      // 有内容但没匹配到 ANSWER: 格式 → 整段当答案
+      const cleaned = text.trim();
+      if (cleaned && !/NEEDS_USER/i.test(cleaned)) {
+        return { autoAnswered: true, answers: [cleaned] };
+      }
+
+      return { autoAnswered: false };
+    } catch (error) {
+      this.#debugEvent('Auto-answer attempt failed, falling back to user', {
+        error: error.message,
+      });
+      return { autoAnswered: false };
+    }
+  }
+
+  /**
+   * 将 LLM 自答结果注入为 Observation，避免中断用户。
+   */
+  #injectAutoAnswerAsObservation(askResult, answers) {
+    const questions = Array.isArray(askResult.questions) ? askResult.questions : [];
+    const questionText = questions.map((q, i) => `${i + 1}. ${q}`).join('; ');
+    const answerText = Array.isArray(answers) ? answers.join('\n') : String(answers);
+    this.#sessionManager.addUserMessage(
+      `[Self-answered ask_user — no user interruption needed]\n` +
+        `Questions: ${questionText}\n\n` +
+        `Intelligent answers (reasoned by LLM):\n${answerText}\n\n` +
+        `Continue with the task incorporating these answers. Do not ask the same questions again.`,
+    );
+  }
+
+  /**
+   * 挂起 agent 循环，等待用户输入（替代原来的硬中断 return）
+   * 通过 Promise 机制，不退出循环，不丢失任何内部状态
+   */
+  async #suspendForUserInput(askResult) {
+    const reason = askResult.reason || '需要用户补充信息';
+    const questions = Array.isArray(askResult.questions) ? askResult.questions : [];
+    const answer = askResult.answer || this.#formatAskUserPrompt({ reason, questions });
+
+    // 存储待处理的用户输入请求，供外部（如 session-state）获取
+    this.#pendingUserInputRequest = {
+      requiresUserInput: true,
+      reason,
+      questions,
+      blockingFacts: askResult.blockingFacts || [],
+      suggestions: askResult.suggestions || [],
+      answer,
+    };
+
+    this.#debugEvent('User input requested (suspended)', {
+      reason,
+      questions,
+    });
+
+    // 通过 UI delegate 通知外层：agent 已挂起，等待用户输入
+    if (typeof this.#ui.waitingForUserInput === 'function') {
+      this.#ui.waitingForUserInput({
+        reason,
+        questions: askResult.questions || [],
+        blockingFacts: askResult.blockingFacts || [],
+        suggestions: askResult.suggestions || [],
+        answer,
+      });
+    }
+
+    // Promise 挂起：resolve 时返回用户输入
+    // 返回一个特殊的 Promise，resolve 时返回一个标志让调用者知道需要用户输入
+    const userInput = await new Promise((resolve) => {
+      this.#userInputResolve = resolve;
+    });
+
+    this.#debugEvent('User input received (resumed)', {
+      userInput: this.#preview(userInput, 200),
+    });
+
+    // 清除挂起状态
+    this.#pendingUserInputRequest = null;
+
+    // 返回一个特殊的标志，让 agent.run() 知道返回 needs_user_input 状态
+    return { __needsUserInput: true, userInput, askResult };
+  }
+
+  /**
+   * 完成用户输入请求，返回 needs_user_input 状态供外部处理
+   */
+  #completeUserInputRequest(askResult, { iteration, startedAt }) {
+    const answer = askResult.answer || this.#formatUserInputRequestAnswer(askResult);
+    this.#debugEvent('User input requested', { reason: askResult.reason, questions: askResult.questions || [] });
     this.#ui.finalAnswer(answer);
     this.#sessionManager.addAssistantMessage(`FINAL_ANSWER: ${answer}`);
     return this.#completeRun({
       success: true,
       status: 'needs_user_input',
       answer,
-      reason,
+      reason: askResult.reason,
       iterations: iteration,
       startedAt,
-      userInputRequest: result,
+      userInputRequest: askResult,
     });
   }
 
@@ -1085,6 +1409,50 @@ export class ReActAgent {
     ]
       .filter(Boolean)
       .join('\n\n');
+  }
+
+  /** 将用户回答作为 Observation 注入到会话中，LLM 在下一轮迭代自然继续 */
+  #injectUserInputAsObservation(askResult, userInput) {
+    const questions = Array.isArray(askResult.questions) ? askResult.questions : [];
+    const questionText = questions.length > 0
+      ? questions.map((q, i) => `${i + 1}. ${q}`).join('; ')
+      : '请补充信息';
+    this.#sessionManager.addUserMessage(
+      `[User response to ask_user] Questions: ${questionText}\nAnswer: ${userInput}\n\n` +
+        `Continue with the task incorporating the user's answer. Do not ask the same question again.`,
+    );
+  }
+
+  /**
+   * 外部调用：用户提供了 ask_user 的回答后，恢复 agent 循环
+   * 由 session-state.js 的 continueUserInput 调用
+   */
+  resumeWithUserInput(userInput) {
+    if (!this.#userInputResolve) {
+      throw new Error('Agent is not waiting for user input');
+    }
+    this.#userInputResolve(userInput);
+    this.#userInputResolve = null;
+    this.#pendingUserInputRequest = null;
+  }
+
+  /** 检查 agent 是否正在等待用户输入 */
+  get isWaitingForUserInput() {
+    return this.#userInputResolve !== null;
+  }
+
+  /** 获取当前待处理的用户输入请求 */
+  get pendingUserInputRequest() {
+    return this.#pendingUserInputRequest;
+  }
+
+  #formatAskUserPrompt({ reason, questions }) {
+    const lines = ['需要你补充一点信息后我才能继续。', '', `原因：${reason}`];
+    if (questions.length > 0) {
+      lines.push('', '请回答：');
+      questions.forEach((q, i) => lines.push(`${i + 1}. ${q}`));
+    }
+    return lines.join('\n');
   }
 
   #debug(message) {

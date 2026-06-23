@@ -27,6 +27,12 @@ export async function processInput(ctx, input, options = {}) {
     throw new Error('模型提供者未附加。请先使用 attachModelProvider() 方法。');
   }
 
+  // 检测是否为 ask_user 延续：agent 正在挂起等待用户输入
+  // 跳过所有初始化流程（计划/事件/钩子），直接恢复执行
+  if (ctx.agent && typeof ctx.agent.isWaitingForUserInput === 'boolean' && ctx.agent.isWaitingForUserInput) {
+    return await continueUserInput(ctx, input);
+  }
+
   if (typeof options.debug === 'boolean') {
     ctx.config.debug = options.debug;
   }
@@ -194,7 +200,8 @@ export async function processInput(ctx, input, options = {}) {
     } catch {}
   }
 
-  // 创建 Agent 实例
+  // 创建 Agent 实例（注入 onPlanAdvance 用于实时推送 plan 进度）
+  const uIFacade = ctx.uiAdapter || createDefaultUIFacade(ctx);
   const agent = new ReActAgent(
     ctx.modelProvider,
     ctx.toolRegistry,
@@ -210,14 +217,29 @@ export async function processInput(ctx, input, options = {}) {
       intentClassification: ctx.config.intentClassification !== false,
       toolResultCacheEnabled: ctx.config.toolResultCacheEnabled,
       session: ctx.sessionManager,
+      // plan 进度回调：AgentPlanner.advance() 时实时推送 plan 更新到事件总线
+      onPlanAdvance: (progress) => {
+        ctx.eventBus.emit(RuntimeEvent.EXECUTION_PLAN_UPDATED, {
+          plan: {
+            tasks: progress.tasks.map((t) => ({
+              id: t.id,
+              name: t.name,
+              status: t.status,
+              description: t.description,
+            })),
+            status: progress.planStatus,
+          },
+          summary: `进度: ${progress.completed}/${progress.total}`,
+        });
+      },
     },
-    ctx.uiAdapter || createDefaultUIFacade(ctx),
+    uIFacade,
   );
   ctx.agent = agent;
 
-  let result;
-  try {
-    result = await agent.run(input);
+  // 启动 agent.run() 但不 await —— suspend/resume 模式下 ask_user 会挂起 Promise
+  // 启动 agent.run() 作为后台任务
+  const runPromise = agent.run(input).then(async (result) => {
     ctx.state.status = result?.status === 'needs_user_input' ? 'needs_user_input' : 'completed';
     ctx.eventBus.emit(RuntimeEvent.AGENT_COMPLETE, { result });
 
@@ -245,12 +267,12 @@ export async function processInput(ctx, input, options = {}) {
     await ctx.pluginManager.triggerHook(HOOKS.AFTER_AGENT_COMPLETE, result);
 
     return result;
-  } catch (error) {
+  }).catch(async (error) => {
     ctx.state.setError(error);
     ctx.eventBus.emit(RuntimeEvent.AGENT_ERROR, { error: error.message });
     await ctx.pluginManager.triggerHook(HOOKS.ON_TOOL_ERROR, null, error);
     throw error;
-  } finally {
+  }).finally(async () => {
     try {
       await ctx.memoryManager.save();
     } catch (err) {
@@ -259,6 +281,79 @@ export async function processInput(ctx, input, options = {}) {
       } catch {}
     }
     ctx.state.lastActivity = Date.now();
+  });
+
+  // 存储 run promise 供 continueUserInput 等待
+  ctx._currentRunPromise = runPromise;
+
+  // 等待 agent 到达 ask_user 挂起点，然后返回 needs_user_input 状态
+  // 否则如果 agent 完成，直接返回结果
+  const waitForUserInputOrComplete = new Promise((resolve) => {
+    const checkInterval = setInterval(() => {
+      if (!ctx.agent) {
+        clearInterval(checkInterval);
+        resolve({ status: 'running', mode: 'async' });
+        return;
+      }
+      // 检测 ask_user 挂起状态
+      if (ctx.agent.isWaitingForUserInput) {
+        clearInterval(checkInterval);
+        ctx.state.status = 'needs_user_input';
+        const pendingRequest = ctx.agent.pendingUserInputRequest;
+        resolve({
+          success: true,
+          status: 'needs_user_input',
+          answer: pendingRequest?.answer || '',
+          userInputRequest: pendingRequest || null,
+        });
+        return;
+      }
+    }, 50);
+
+    // 同时监听 agent 完成事件
+    runPromise.then((result) => {
+      clearInterval(checkInterval);
+      // 只有在尚未返回 needs_user_input 时才解析最终结果
+      resolve(result);
+    }).catch((error) => {
+      clearInterval(checkInterval);
+      resolve({ status: 'error', error: error.message });
+    });
+  });
+
+  return waitForUserInputOrComplete;
+}
+
+/**
+ * ask_user 延续：用户提供了回答后，恢复 agent 循环并等待最终完成。
+ * 不创建新 agent，保留所有内部状态（plan、workspace、session）。
+ */
+export async function continueUserInput(ctx, input) {
+  if (!ctx.agent || typeof ctx.agent.resumeWithUserInput !== 'function') {
+    throw new Error('Agent is not in a resumable state');
+  }
+  if (!ctx.agent.isWaitingForUserInput) {
+    throw new Error('Agent is not waiting for user input');
+  }
+
+  ctx.state.status = 'running';
+  ctx.eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
+    message: '已收到补充信息，继续执行...',
+    level: 'info',
+    status: 'running',
+  });
+
+  // 注入用户回答，agent 循环恢复执行
+  ctx.agent.resumeWithUserInput(input);
+
+  // 等待 agent 最终完成
+  try {
+    const result = await ctx._currentRunPromise;
+    ctx.state.status = 'completed';
+    return result;
+  } catch (error) {
+    ctx.state.setError(error);
+    throw error;
   }
 }
 
@@ -306,6 +401,30 @@ export function createDefaultUIFacade(ctx) {
         message: `迭代 ${current}/${max}`,
         level: 'info',
       }),
+    // agent 挂起等待用户输入（suspend 机制替代硬中断）
+    waitingForUserInput: (info) => {
+      eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
+        message: '需要你补充一点信息后继续',
+        level: 'info',
+        status: 'needs_user_input',
+        data: info,
+      });
+    },
+    // AgentPlanner 实时推送 plan 进度
+    planProgress: (progress) => {
+      eventBus.emit(RuntimeEvent.EXECUTION_PLAN_UPDATED, {
+        plan: {
+          tasks: (progress.tasks || []).map((t) => ({
+            id: t.id,
+            name: t.name,
+            status: t.status,
+            description: t.description,
+          })),
+          status: progress.planStatus,
+        },
+        summary: `进度: ${progress.completed}/${progress.total}`,
+      });
+    },
     theme: {
       dim: (t) => t,
       success: (t) => t,
