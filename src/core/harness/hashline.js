@@ -176,7 +176,7 @@ export class DiskFilesystem extends Filesystem {
       }
       // 目标文件尚不存在：逐级检查父目录是否通过 symlink 逃逸
       const _resolveParent = (p) => {
-        if (p === rootReal || p === '/' || p === '.') return;
+        if (p === rootReal || p === '/' || p === '.') {return;}
         const parent = resolve(p, '..');
         if (existsSync(parent)) {
           const parentReal = this._getRealpath(parent);
@@ -190,7 +190,7 @@ export class DiskFilesystem extends Filesystem {
       };
       _resolveParent(resolved);
     } catch (err) {
-      if (err.message.includes('symlink escape')) throw err;
+      if (err.message.includes('symlink escape')) {throw err;}
       // realpath 失败可能是文件尚不存在，fallback 到字符串路径检测
     }
     // ── /symlink 逃逸防护 ──
@@ -204,7 +204,7 @@ export class DiskFilesystem extends Filesystem {
    */
   _getRealpath(p) {
     if (!this._realpathCache) { this._realpathCache = new Map(); }
-    if (this._realpathCache.has(p)) return this._realpathCache.get(p);
+    if (this._realpathCache.has(p)) {return this._realpathCache.get(p);}
     // 同步检查：如果路径本身是 symlink，读它指向的目标
     try {
       if (existsSync(p)) {

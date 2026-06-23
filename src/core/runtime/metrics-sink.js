@@ -75,12 +75,12 @@ export class MetricsSink {
     const event = { type, ts: new Date().toISOString(), ...payload };
     this._latestSnapshot[type + 's'] = [event, ...(this._latestSnapshot[type + 's'] || [])].slice(0, 100);
     this._lineCount++;
-    if (!this.enabled) return;
+    if (!this.enabled) {return;}
     try {
       const file = this._pickFile();
-      if (!file) return;
+      if (!file) {return;}
       fs.appendFileSync(file, JSON.stringify(event) + '\n', 'utf8');
-      if (this._lineCount % 1000 === 0) this._maybeRoll(file);
+      if (this._lineCount % 1000 === 0) {this._maybeRoll(file);}
     } catch (_) { /* 磁盘不可写时静默失败 */ }
   }
 
@@ -95,10 +95,10 @@ export class MetricsSink {
   }
 
   _ensureDir() {
-    if (this._ensureDirCalled) return;
+    if (this._ensureDirCalled) {return;}
     const dir = this._resolveLogDir();
     if (!dir) { this.enabled = false; return; }
-    try { if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); } catch (_) { this.enabled = false; }
+    try { if (!fs.existsSync(dir)) {fs.mkdirSync(dir, { recursive: true });} } catch (_) { this.enabled = false; }
     this._ensureDirCalled = true;
     this._currentFile = path.join(dir, `metrics-${this._dateKey()}.ndjson`);
   }

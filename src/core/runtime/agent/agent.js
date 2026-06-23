@@ -683,7 +683,7 @@ export class ReActAgent {
   get intentClassifier() { return this.#intentClassifier; }
 
   getWorkspaceSummary() {
-    if (!this.#workspaceState) return null;
+    if (!this.#workspaceState) {return null;}
     const observationSummarizer = new ObservationSummarizer(this.#workspaceState);
     return {
       state: this.#workspaceState.getSummary(),
@@ -745,7 +745,7 @@ export class ReActAgent {
   }
 
   #recordToolEvent(toolResult, { durationMs = null } = {}) {
-    if (!toolResult?.name) return;
+    if (!toolResult?.name) {return;}
     const payload = {
       name: toolResult.name,
       args: toolResult.args || {},
@@ -755,8 +755,8 @@ export class ReActAgent {
         300
       ),
     };
-    if (typeof durationMs === 'number') payload.durationMs = durationMs;
-    if (toolResult.error) payload.error = String(toolResult.error).substring(0, 300);
+    if (typeof durationMs === 'number') {payload.durationMs = durationMs;}
+    if (toolResult.error) {payload.error = String(toolResult.error).substring(0, 300);}
     this.#runToolEvents.push(payload);
 
     // —— 同步到 metrics sink ——
@@ -788,7 +788,7 @@ export class ReActAgent {
   }
 
   #isUserInputRequest(result) {
-    if (!result || typeof result !== 'object') return false;
+    if (!result || typeof result !== 'object') {return false;}
     return result.requiresUserInput === true || result.type === 'user_input_required';
   }
 

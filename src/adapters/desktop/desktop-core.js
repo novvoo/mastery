@@ -189,7 +189,7 @@ export class DesktopCore {
           arguments: args,
           timestamp: Date.now(),
         };
-        if (isDebug) console.log('[UiAdapter] tool:call', name);
+        if (isDebug) {console.log('[UiAdapter] tool:call', name);}
         eventBus.emit(RuntimeEvent.TOOL_CALL, eventData);
       },
       toolResult(name, result, args = {}) {
@@ -200,7 +200,7 @@ export class DesktopCore {
           result: typeof result === 'string' ? result : (result?.result ?? result),
           timestamp: Date.now(),
         };
-        if (isDebug) console.log('[UiAdapter] tool:result', name);
+        if (isDebug) {console.log('[UiAdapter] tool:result', name);}
         eventBus.emit(RuntimeEvent.TOOL_RESULT, eventData);
       },
       toolError(name, error) {
@@ -209,7 +209,7 @@ export class DesktopCore {
           error: typeof error === 'string' ? error : (error?.message ?? String(error)),
           timestamp: Date.now(),
         };
-        if (isDebug) console.log('[UiAdapter] tool:error', name, eventData.error);
+        if (isDebug) {console.log('[UiAdapter] tool:error', name, eventData.error);}
         eventBus.emit(RuntimeEvent.TOOL_ERROR, eventData);
       },
       iteration(iteration, maxIterations) {
@@ -221,7 +221,7 @@ export class DesktopCore {
         eventBus.emit(RuntimeEvent.STATUS_UPDATE, eventData);
       },
       finalAnswer(answer) {
-        if (isDebug) console.log('[UiAdapter] agent:complete');
+        if (isDebug) {console.log('[UiAdapter] agent:complete');}
         eventBus.emit(RuntimeEvent.AGENT_COMPLETE, { answer, timestamp: Date.now() });
         eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
           status: 'completed',
@@ -248,7 +248,7 @@ export class DesktopCore {
             ...(data || {}),
             timestamp: Date.now(),
           });
-          if (isDebug) console.log('[UiAdapter] agent:start');
+          if (isDebug) {console.log('[UiAdapter] agent:start');}
         } else if (name === 'Execution plan created') {
           eventBus.emit(RuntimeEvent.EXECUTION_PLAN_CREATED, {
             ...(data || {}),
@@ -696,7 +696,7 @@ export class DesktopCore {
    * 动态更新工作目录。下一次 processInput 将使用新路径。
    */
   setWorkingDirectory(directory) {
-    if (!directory || typeof directory !== 'string') return;
+    if (!directory || typeof directory !== 'string') {return;}
     this.#config.workingDirectory = directory;
     if (this.#engine && typeof this.#engine.setWorkingDirectory === 'function') {
       this.#engine.setWorkingDirectory(directory);

@@ -54,7 +54,7 @@ export function buildSlashCommandSuggestions(skillTools = []) {
   for (const tool of skillTools) {
     // tool 可能是对象 { name, description } 或字符串
     const toolName = typeof tool === 'string' ? tool : (tool?.name || tool?.fullName || '');
-    if (!toolName) continue;
+    if (!toolName) {continue;}
 
     const name = toolNameToSlashCommand(toolName);
     if (seen.has(name)) {

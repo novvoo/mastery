@@ -29,7 +29,7 @@ async function setupEnv() {
 }
 
 async function cleanupEnv() {
-  try { if (testDir) await rm(testDir, { recursive: true, force: true }); } catch {}
+  try { if (testDir) {await rm(testDir, { recursive: true, force: true });} } catch {}
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -204,9 +204,9 @@ describe('Memory: StructuredMemory', () => {
 describe('Memory: Confirmation Policy', () => {
   test('classify memory confidence', () => {
     const classify = (m) => {
-      if (m.type === 'project_fact' && m.confidence > 0.9) return { autoWrite: true, needConfirm: false };
-      if (m.type === 'user_preference') return { autoWrite: false, needConfirm: true };
-      if (m.type === 'speculation') return { neverWrite: true };
+      if (m.type === 'project_fact' && m.confidence > 0.9) {return { autoWrite: true, needConfirm: false };}
+      if (m.type === 'user_preference') {return { autoWrite: false, needConfirm: true };}
+      if (m.type === 'speculation') {return { neverWrite: true };}
       return { autoWrite: false, needConfirm: true };
     };
     expect(classify({ type: 'project_fact', confidence: 0.95 }).autoWrite).toBe(true);

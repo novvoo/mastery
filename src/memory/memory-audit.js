@@ -192,7 +192,7 @@ export class MemoryAudit {
    */
   getHealthScore() {
     const report = this.lastReport;
-    if (!report) return { score: 100, grade: 'A', issues: [] };
+    if (!report) {return { score: 100, grade: 'A', issues: [] };}
 
     const { summary } = report;
     const total = summary.total || 1;
@@ -205,10 +205,10 @@ export class MemoryAudit {
     const grade = score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : score >= 40 ? 'D' : 'F';
 
     const issues = [];
-    if (summary.stale > 0) issues.push(`${summary.stale} stale entries`);
-    if (summary.conflicting > 0) issues.push(`${summary.conflicting} contradictions`);
-    if (summary.duplicate > 0) issues.push(`${summary.duplicate} duplicates`);
-    if (summary.expired > 0) issues.push(`${summary.expired} expired entries`);
+    if (summary.stale > 0) {issues.push(`${summary.stale} stale entries`);}
+    if (summary.conflicting > 0) {issues.push(`${summary.conflicting} contradictions`);}
+    if (summary.duplicate > 0) {issues.push(`${summary.duplicate} duplicates`);}
+    if (summary.expired > 0) {issues.push(`${summary.expired} expired entries`);}
 
     return { score, grade, issues };
   }
@@ -219,7 +219,7 @@ export class MemoryAudit {
    */
   generateMarkdownReport() {
     const report = this.lastReport;
-    if (!report) return '# Memory Audit Report\n\nNo audit has been run yet.';
+    if (!report) {return '# Memory Audit Report\n\nNo audit has been run yet.';}
 
     const health = this.getHealthScore();
     const healthBar = this._renderHealthBar(health.score);
@@ -341,12 +341,12 @@ export class MemoryAudit {
 
     // Fallback: 从文件系统扫描 .agent-memory/entries/
     const entriesDir = join(this.workingDir, '.agent-memory', 'entries');
-    if (!existsSync(entriesDir)) return [];
+    if (!existsSync(entriesDir)) {return [];}
 
     const entries = [];
     try {
       for (const f of readdirSync(entriesDir)) {
-        if (!f.endsWith('.md')) continue;
+        if (!f.endsWith('.md')) {continue;}
         try {
           const content = readFileSync(join(entriesDir, f), 'utf-8');
           const frontmatter = this._parseFrontmatter(content);
@@ -363,16 +363,16 @@ export class MemoryAudit {
 
   _parseFrontmatter(markdown) {
     const match = markdown.match(/^---\s*\n([\s\S]*?)\n---/);
-    if (!match) return {};
+    if (!match) {return {};}
     const result = {};
     for (const line of match[1].split('\n')) {
       const colonIdx = line.indexOf(':');
       if (colonIdx >= 0) {
         const key = line.substring(0, colonIdx).trim();
         let val = line.substring(colonIdx + 1).trim();
-        if (val === 'true') val = true;
-        else if (val === 'false') val = false;
-        else if (/^\d+$/.test(val)) val = parseInt(val, 10);
+        if (val === 'true') {val = true;}
+        else if (val === 'false') {val = false;}
+        else if (/^\d+$/.test(val)) {val = parseInt(val, 10);}
         result[key] = val;
       }
     }
@@ -382,7 +382,7 @@ export class MemoryAudit {
   _detectGitDiffStale(entries) {
     try {
       const { changedFiles } = this.staleDetector.getChangedFiles();
-      if (!changedFiles || changedFiles.length === 0) return [];
+      if (!changedFiles || changedFiles.length === 0) {return [];}
       return this.staleDetector.findStaleMemories(changedFiles, entries);
     } catch {
       return [];
@@ -463,7 +463,7 @@ export class MemoryAudit {
 
   _getDiskUsage() {
     const memoryDir = join(this.workingDir, '.agent-memory');
-    if (!existsSync(memoryDir)) return { totalBytes: 0, fileCount: 0 };
+    if (!existsSync(memoryDir)) {return { totalBytes: 0, fileCount: 0 };}
 
     let totalBytes = 0;
     let fileCount = 0;
@@ -486,8 +486,8 @@ export class MemoryAudit {
   }
 
   _formatSize(bytes) {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024) {return `${bytes} B`;}
+    if (bytes < 1024 * 1024) {return `${(bytes / 1024).toFixed(1)} KB`;}
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   }
 }

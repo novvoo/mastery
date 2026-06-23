@@ -41,7 +41,7 @@ export class ContextManager {
    * @param {number} maxIterations — 预算的最大迭代数
    */
   manage(iteration, maxIterations) {
-    if (!this.#sessionManager) return null;
+    if (!this.#sessionManager) {return null;}
 
     const maxTokens = this.#tokenScope?.getEffectiveLimit?.()
       ?? this.#config.maxTokens
@@ -112,7 +112,7 @@ export class ContextManager {
   // ============== 内部实现 ==============
 
   #injectWorkspaceSummary({ force = false } = {}) {
-    if (!this.#workspaceState || !this.#sessionManager) return;
+    if (!this.#workspaceState || !this.#sessionManager) {return;}
 
     const now = Date.now();
     // 30 秒内复用缓存
@@ -122,7 +122,7 @@ export class ContextManager {
     }
 
     const hint = this.#generateHint();
-    if (!hint) return;
+    if (!hint) {return;}
 
     this.#cachedHint = hint;
     this.#lastHintUpdate = now;
@@ -131,10 +131,10 @@ export class ContextManager {
 
   #generateHint() {
     const state = this.#workspaceState;
-    if (!state) return '';
+    if (!state) {return '';}
 
     const summary = typeof state.getSummary === 'function' ? state.getSummary() : null;
-    if (!summary || (summary.trackedFiles === 0 && summary.trackedDirectories === 0)) return '';
+    if (!summary || (summary.trackedFiles === 0 && summary.trackedDirectories === 0)) {return '';}
 
     const criticalFacts = typeof state.getCriticalFacts === 'function'
       ? state.getCriticalFacts()
@@ -161,7 +161,7 @@ export class ContextManager {
     if (knownNonExistent.length > 0) {
       parts.push('');
       parts.push('### 已知不存在的路径 (避免重复尝试)');
-      for (const p of knownNonExistent.slice(0, 10)) parts.push(`- ${p}`);
+      for (const p of knownNonExistent.slice(0, 10)) {parts.push(`- ${p}`);}
     }
 
     const importantFacts = criticalFacts.filter(f => f.type !== 'path_not_found').slice(-5);

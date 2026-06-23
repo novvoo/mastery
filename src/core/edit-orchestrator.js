@@ -200,7 +200,7 @@ export class EditOrchestrator {
       for (const fp of result.filesChanged) {
         try {
           const snap = this.snapshotStore.head(fp);
-          if (snap?.text) snapshotData.files[fp] = snap.text;
+          if (snap?.text) {snapshotData.files[fp] = snap.text;}
         } catch { /* skip */ }
       }
 
@@ -448,13 +448,13 @@ export class EditOrchestrator {
     if (totalLines === 0 && lines.length === 1) {
       // 空文件 → 追加内容
       patchLines.push(`INS.POST 0=`);
-      for (const l of lines) patchLines.push(`+${l}`);
+      for (const l of lines) {patchLines.push(`+${l}`);}
     } else if (totalLines === 0) {
       patchLines.push(`INS.POST 0=`);
-      for (const l of lines) patchLines.push(`+${l}`);
+      for (const l of lines) {patchLines.push(`+${l}`);}
     } else {
       patchLines.push(`SWAP 1.=${Math.max(1, totalLines)}:`);
-      for (const l of lines) patchLines.push(`+${l}`);
+      for (const l of lines) {patchLines.push(`+${l}`);}
     }
     const patchText = patchLines.join('\n');
 
@@ -560,7 +560,7 @@ export class EditOrchestrator {
 
     const changes = workspaceEdit.changes || {};
     for (const [uri, edits] of Object.entries(changes)) {
-      if (edits.length > 0) collectEdits(uri, edits);
+      if (edits.length > 0) {collectEdits(uri, edits);}
     }
 
     if (workspaceEdit.documentChanges) {
@@ -692,7 +692,7 @@ export class EditOrchestrator {
    * 多个 edit 可能修改同一行或重叠范围，合并它们避免二次应用时的冲突。
    */
   _mergeOverlappingEdits(edits) {
-    if (edits.length <= 1) return edits;
+    if (edits.length <= 1) {return edits;}
 
     // 按位置降序排序
     const sorted = [...edits].sort((a, b) => {
@@ -789,7 +789,7 @@ export class EditOrchestrator {
           } else {
             lines.push(`SWAP ${startLine}.=${startLine}:`);
             const replacement = before + after;
-            if (replacement !== '') lines.push(`+${replacement}`);
+            if (replacement !== '') {lines.push(`+${replacement}`);}
           }
         }
         // 情况3：替换（oldText和newText都非空）
@@ -813,7 +813,7 @@ export class EditOrchestrator {
       // 多行编辑
       else {
         lines.push(`SWAP ${startLine}.=${endLine}:`);
-        for (const nl of newText.split('\n')) lines.push(`+${nl}`);
+        for (const nl of newText.split('\n')) {lines.push(`+${nl}`);}
       }
 
       currentContent = this._applyTextEdits(currentContent, [edit]);
@@ -824,17 +824,17 @@ export class EditOrchestrator {
 
   _applyTextEdits(text, edits) {
     const sorted = [...edits].sort((a, b) => {
-      if (b.range.start.line !== a.range.start.line) return b.range.start.line - a.range.start.line;
+      if (b.range.start.line !== a.range.start.line) {return b.range.start.line - a.range.start.line;}
       return b.range.start.character - a.range.start.character;
     });
     let result = text;
     for (const edit of sorted) {
       const lines = result.split('\n');
       let startOffset = 0;
-      for (let i = 0; i < edit.range.start.line; i++) startOffset += lines[i].length + 1;
+      for (let i = 0; i < edit.range.start.line; i++) {startOffset += lines[i].length + 1;}
       startOffset += edit.range.start.character;
       let endOffset = 0;
-      for (let i = 0; i < edit.range.end.line; i++) endOffset += lines[i].length + 1;
+      for (let i = 0; i < edit.range.end.line; i++) {endOffset += lines[i].length + 1;}
       endOffset += edit.range.end.character;
       result = result.substring(0, startOffset) + (edit.newText || '') + result.substring(endOffset);
     }

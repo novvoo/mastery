@@ -82,7 +82,7 @@ export function createCoreTools({
 }
 
 export function createSchedulerTools(schedulerEngine) {
-  if (!schedulerEngine) return [];
+  if (!schedulerEngine) {return [];}
   return [
     ...createTaskTools(schedulerEngine),
     ...createScheduleTools(schedulerEngine),

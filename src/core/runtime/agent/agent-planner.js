@@ -206,7 +206,7 @@ export class AgentPlanner {
    */
   buildPrompt(userInput, semanticRiskGuidance = '') {
     const plan = this.#activePlan;
-    if (!plan) return '';
+    if (!plan) {return '';}
 
     const tasks = plan.toJSON().tasks
       .map(task => `- ${task.id}: ${task.name} [${task.status}] - ${task.description}`)

@@ -171,7 +171,7 @@ describe('AutomationEngine', () => {
     let attempt = 0;
     engine.createWorkflow('wf1', {
       steps: [
-        { execute: () => { attempt++; if (attempt < 2) throw new Error('retry me'); } },
+        { execute: () => { attempt++; if (attempt < 2) {throw new Error('retry me');} } },
       ],
       onError: 'retry',
       maxRetries: 3,

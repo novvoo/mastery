@@ -84,12 +84,12 @@ mock.module('../../../src/core/workspace-state.js', () => ({
       }
     }
     _getPathFromArgs(args, toolName) {
-      if (!args) return null;
-      if (args.path) return args.path;
-      if (args.file_path) return args.file_path;
-      if (args.file) return args.file;
-      if (args.dir_path) return args.dir_path;
-      if (args.directory) return args.directory;
+      if (!args) {return null;}
+      if (args.path) {return args.path;}
+      if (args.file_path) {return args.file_path;}
+      if (args.file) {return args.file;}
+      if (args.dir_path) {return args.dir_path;}
+      if (args.directory) {return args.directory;}
       return null;
     }
     predictToolResult(toolName, args) {
@@ -98,7 +98,7 @@ mock.module('../../../src/core/workspace-state.js', () => ({
         return { canSkip: false, reason: 'Unknown tool - no prediction logic', predicted: null, type: 'unknown' };
       }
       const path = this._getPathFromArgs(args, toolName);
-      if (!path) return { canSkip: false, type: 'ok', predicted: null };
+      if (!path) {return { canSkip: false, type: 'ok', predicted: null };}
       const exists = this.checkPathExists(path);
       if (exists === 'not_found') {
         if (['read_file', 'file_read', 'list_dir', 'read_directory'].includes(toolName)) {
@@ -108,8 +108,8 @@ mock.module('../../../src/core/workspace-state.js', () => ({
       return { canSkip: false, reason: `Path "${path}" exists or unknown, need actual tool call`, predicted: null, type: exists === 'exists' ? 'will_succeed' : 'ok' };
     }
     checkPathExists(path) {
-      if (this._files.has(path)) return 'exists';
-      if (this._failedPaths.has(path)) return 'not_found';
+      if (this._files.has(path)) {return 'exists';}
+      if (this._failedPaths.has(path)) {return 'not_found';}
       return 'unknown';
     }
     getPathNotFoundReason(path) {
@@ -204,13 +204,13 @@ mock.module('../../../src/planner/graph-planner.js', () => {
           status: TaskStatus.PENDING,
           updateStatus(status, data) {
             this.status = status;
-            if (data?.result) this.result = data.result;
+            if (data?.result) {this.result = data.result;}
           },
           checkDependencies(taskMap) {
-            if (this.dependencies.size === 0) return true;
+            if (this.dependencies.size === 0) {return true;}
             for (const depId of this.dependencies) {
               const dep = taskMap.get(depId);
-              if (!dep || dep.status !== TaskStatus.COMPLETED) return false;
+              if (!dep || dep.status !== TaskStatus.COMPLETED) {return false;}
             }
             return true;
           },

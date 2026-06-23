@@ -50,7 +50,7 @@ export function setupSigintHandler(agent) {
   };
 
   process.on('SIGINT', handler);
-  return { handler, clearTimer: () => { if (sigintTimer) clearTimeout(sigintTimer); } };
+  return { handler, clearTimer: () => { if (sigintTimer) {clearTimeout(sigintTimer);} } };
 }
 
 /**

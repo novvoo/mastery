@@ -197,7 +197,7 @@ function findStaticOutputRoot(projectRoot) {
 
 function findStaticRootFromPackage(projectRoot) {
   const pkgPath = join(projectRoot, 'package.json');
-  if (!existsSync(pkgPath)) return null;
+  if (!existsSync(pkgPath)) {return null;}
 
   let pkg;
   try {
@@ -223,7 +223,7 @@ function findStaticRootFromPackage(projectRoot) {
   }
 
   for (const h of hints) {
-    if (existsSync(join(h, 'index.html'))) return h;
+    if (existsSync(join(h, 'index.html'))) {return h;}
   }
   return null;
 }
@@ -232,7 +232,7 @@ function findStaticRootInSourceDirs(projectRoot) {
   const sourceDirs = ['src', 'app', 'website', 'web', 'client', 'frontend', 'public'];
   for (const dir of sourceDirs) {
     const full = join(projectRoot, dir);
-    if (existsSync(join(full, 'index.html'))) return full;
+    if (existsSync(join(full, 'index.html'))) {return full;}
   }
   return null;
 }
@@ -244,13 +244,13 @@ function findStaticRootInSourceDirs(projectRoot) {
  */
 function findAnyStaticRoot(projectRoot) {
   const output = findStaticOutputRoot(projectRoot);
-  if (output) return output;
+  if (output) {return output;}
 
   const fromPkg = findStaticRootFromPackage(projectRoot);
-  if (fromPkg) return fromPkg;
+  if (fromPkg) {return fromPkg;}
 
   const fromSource = findStaticRootInSourceDirs(projectRoot);
-  if (fromSource) return fromSource;
+  if (fromSource) {return fromSource;}
 
   const visited = new Set();
   const queue = [projectRoot];
@@ -265,13 +265,13 @@ function findAnyStaticRoot(projectRoot) {
       entries.sort((a, b) => {
         const aIsSource = ['src', 'app', 'website', 'web'].includes(a.name);
         const bIsSource = ['src', 'app', 'website', 'web'].includes(b.name);
-        if (aIsSource !== bIsSource) return aIsSource ? -1 : 1;
+        if (aIsSource !== bIsSource) {return aIsSource ? -1 : 1;}
         return a.name.localeCompare(b.name);
       });
       for (const entry of entries) {
-        if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+        if (entry.name === 'node_modules' || entry.name.startsWith('.')) {continue;}
         const fullPath = join(current, entry.name);
-        if (visited.has(fullPath)) continue;
+        if (visited.has(fullPath)) {continue;}
         visited.add(fullPath);
         if (entry.isDirectory()) {
           queue.push(fullPath);
@@ -309,10 +309,10 @@ function isCommandAvailable(command) {
 
 function nodeEcosystemAvailable(projectRoot) {
   const manager = choosePackageManager(projectRoot);
-  if (!isCommandAvailable('node')) return { node: false, manager: false, managerName: manager };
-  if (manager === 'bun') return { node: true, manager: isCommandAvailable('bun'), managerName: 'bun' };
-  if (manager === 'pnpm') return { node: true, manager: isCommandAvailable('pnpm'), managerName: 'pnpm' };
-  if (manager === 'yarn') return { node: true, manager: isCommandAvailable('yarn'), managerName: 'yarn' };
+  if (!isCommandAvailable('node')) {return { node: false, manager: false, managerName: manager };}
+  if (manager === 'bun') {return { node: true, manager: isCommandAvailable('bun'), managerName: 'bun' };}
+  if (manager === 'pnpm') {return { node: true, manager: isCommandAvailable('pnpm'), managerName: 'pnpm' };}
+  if (manager === 'yarn') {return { node: true, manager: isCommandAvailable('yarn'), managerName: 'yarn' };}
   return { node: true, manager: isCommandAvailable('npm'), managerName: 'npm' };
 }
 
@@ -743,7 +743,7 @@ async function startNodePreview({ workingDirectory, target, command, port }) {
         let output = '';
         const append = data => {
           output += data.toString();
-          if (output.length > 20000) output = output.slice(-20000);
+          if (output.length > 20000) {output = output.slice(-20000);}
         };
         child.stdout.on('data', append);
         child.stderr.on('data', append);
@@ -831,9 +831,9 @@ async function startNodePreview({ workingDirectory, target, command, port }) {
   }
 
   const reasons = [];
-  if (!eco.node) reasons.push('node not found on PATH');
-  if (!eco.manager) reasons.push(`${eco.managerName} not found on PATH`);
-  if (!findWebPreviewScriptName(scripts)) reasons.push('no dev/preview/serve script in package.json');
+  if (!eco.node) {reasons.push('node not found on PATH');}
+  if (!eco.manager) {reasons.push(`${eco.managerName} not found on PATH`);}
+  if (!findWebPreviewScriptName(scripts)) {reasons.push('no dev/preview/serve script in package.json');}
   reasons.push('no index.html found anywhere in the project');
 
   const reasonText = `Reasons: ${reasons.join('; ')}. `;

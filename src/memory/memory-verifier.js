@@ -174,7 +174,7 @@ export class GitDiffStaleDetector {
    * @returns {string[]}
    */
   getChangedFilesSince(sinceCommit) {
-    if (!sinceCommit) return [];
+    if (!sinceCommit) {return [];}
     try {
       const diff = execSync(
         `git diff --name-only ${sinceCommit} HEAD`,
@@ -197,7 +197,7 @@ export class GitDiffStaleDetector {
 
     for (const [id, memory] of memories) {
       const provenance = memory.provenance || memory._provenance;
-      if (!provenance || !provenance.sourceFiles) continue;
+      if (!provenance || !provenance.sourceFiles) {continue;}
 
       for (const sf of provenance.sourceFiles) {
         // 检查变更文件是否匹配 sourceFiles 中的某个
@@ -472,7 +472,7 @@ export class MemoryVerifier {
     const byTopic = {};
     for (const entry of entries) {
       const topic = entry.topic || entry.type || 'general';
-      if (!byTopic[topic]) byTopic[topic] = [];
+      if (!byTopic[topic]) {byTopic[topic] = [];}
       byTopic[topic].push(entry);
     }
 
@@ -551,7 +551,7 @@ export class MemoryVerifier {
         // 从 merged 中移除旧条目
         for (const r of toRemove) {
           const idx = merged.findIndex(m => m.id === r.id);
-          if (idx >= 0) merged.splice(idx, 1);
+          if (idx >= 0) {merged.splice(idx, 1);}
         }
         // 确保最新的条目在 merged 中
         const best = group[0];

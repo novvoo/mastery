@@ -241,11 +241,11 @@ export class AgentRouter {
   // ---- 缓存 ----
 
   async #loadToolResultCache() {
-    if (this.#toolResultCacheLoaded) return;
+    if (this.#toolResultCacheLoaded) {return;}
     this.#toolResultCacheLoaded = true;
-    if (!this.#toolResultCachePath) return;
+    if (!this.#toolResultCachePath) {return;}
     try {
-      if (!existsSync(this.#toolResultCachePath)) return;
+      if (!existsSync(this.#toolResultCachePath)) {return;}
       const content = await readFile(this.#toolResultCachePath, 'utf-8');
       const lines = content.split('\n').filter(Boolean);
       for (const line of lines.slice(-this.#toolResultCacheMaxSize)) {
@@ -262,7 +262,7 @@ export class AgentRouter {
   }
 
   async #flushToolResultCacheEntry(signature, result) {
-    if (!this.#toolResultCachePath) return;
+    if (!this.#toolResultCachePath) {return;}
     try {
       const dir = this.#toolResultCachePath.substring(0, this.#toolResultCachePath.lastIndexOf('/'));
       if (!existsSync(dir)) { await mkdir(dir, { recursive: true }); }
@@ -276,7 +276,7 @@ export class AgentRouter {
   // ---- 工具调用规范化 ----
 
   #normalizeToolCall(toolCall) {
-    if (!toolCall || typeof toolCall !== 'object') return toolCall;
+    if (!toolCall || typeof toolCall !== 'object') {return toolCall;}
     if (toolCall.name) {
       return { ...toolCall, arguments: this.#parseToolArguments(toolCall.arguments) };
     }
@@ -293,9 +293,9 @@ export class AgentRouter {
   }
 
   #parseToolArguments(args) {
-    if (!args) return {};
-    if (typeof args === 'object') return args;
-    if (typeof args !== 'string') return {};
+    if (!args) {return {};}
+    if (typeof args === 'object') {return args;}
+    if (typeof args !== 'string') {return {};}
     try {
       const parsed = JSON.parse(args);
       return parsed && typeof parsed === 'object' ? parsed : {};
@@ -303,13 +303,13 @@ export class AgentRouter {
   }
 
   #rewriteShellRuntimeToolCall(toolCall) {
-    if (toolCall?.name !== 'shell') return null;
+    if (toolCall?.name !== 'shell') {return null;}
     const command = String(toolCall.arguments?.command || '').trim();
-    if (!command) return null;
+    if (!command) {return null;}
     const parsed = this.#textToolParser
       .parse(`\`\`\`bash\n${command}\n\`\`\``)
       .filter(call => call.name !== 'shell');
-    if (parsed.length === 0) return null;
+    if (parsed.length === 0) {return null;}
     const replacement = parsed[0];
     this.#debugEvent('Shell tool call rewritten to runtime tool', {
       originalCommand: command, replacementTool: replacement.name, replacementArguments: replacement.arguments,
@@ -321,14 +321,14 @@ export class AgentRouter {
 
   #enforceToolSecurity(name, args) {
     const policy = this.#config.securityPolicy;
-    if (!policy) return null;
+    if (!policy) {return null;}
     if (typeof policy.requiresApproval === 'function' && policy.requiresApproval(name)) {
       return 'approval_required';
     }
     if (typeof policy.validateToolCall === 'function') {
       const result = policy.validateToolCall(name, args);
-      if (result === false) return 'denied';
-      if (result && result.allowed === false) return result.reason || 'denied';
+      if (result === false) {return 'denied';}
+      if (result && result.allowed === false) {return result.reason || 'denied';}
     }
     return null;
   }
@@ -384,7 +384,7 @@ export class AgentRouter {
 
   // ---- WorkspaceState hook：读/写/列举文件后自动同步 ----
   #updateWorkspaceState(toolName, args, result, ws) {
-    if (!ws || !args) return;
+    if (!ws || !args) {return;}
     const filePath = args.path || args.file_path || args.file || args.target || null;
 
     // 1) 任何"带 path 的文件操作"都把该路径标记为"最近引用"
@@ -421,7 +421,7 @@ export class AgentRouter {
         const entries = Array.isArray(result?.entries) ? result.entries
           : Array.isArray(result?.files) ? result.files
           : Array.isArray(result) ? result : [];
-        if (filePath) ws.recordDirectoryListing(filePath, entries.map(String), toolName);
+        if (filePath) {ws.recordDirectoryListing(filePath, entries.map(String), toolName);}
       } catch (_) {}
     }
   }

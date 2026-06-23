@@ -252,7 +252,7 @@ describe('DynamicContextPruning', () => {
     let scorerCalled = false;
     const customScorer = (message) => {
       scorerCalled = true;
-      if (message.role === 'system') return 100;
+      if (message.role === 'system') {return 100;}
       return 10;
     };
     const pruning = new DynamicContextPruning({

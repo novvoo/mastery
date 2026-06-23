@@ -102,7 +102,7 @@ function normalizeModelResponse(response = {}) {
   // 统一归一化：将 OpenAI 原生格式 { id, type, function: { name, arguments } }
   // 转换为简化格式 { name, arguments }，便于下游 ToolExecutor 统一处理
   const toolCalls = rawToolCalls.map(call => {
-    if (!call || typeof call !== 'object') return call;
+    if (!call || typeof call !== 'object') {return call;}
 
     // 简化格式：已有 name 字段
     if (call.name) {
@@ -404,7 +404,7 @@ export class AgentEngine {
     // ========== Step 3：准备运行上下文 ==========
     this.#sessionManager.addUserMessage(userInput);
     const routingPrompt = this.#intentClassifier?.buildRoutingPrompt?.(intent);
-    if (routingPrompt) this.#sessionManager.addUserMessage(routingPrompt);
+    if (routingPrompt) {this.#sessionManager.addUserMessage(routingPrompt);}
 
     this.#stagnationDetector.reset();
     this.#toolExecutor.reset();
@@ -570,7 +570,7 @@ export class AgentEngine {
               async () => {
                 // 迭代增量事件，转发到 UI
                 for await (const evt of streamResult.stream()) {
-                  if (!evt) continue;
+                  if (!evt) {continue;}
                   if (evt.type === 'text_delta' && evt.text) {
                     this.#ui.onTextDelta?.(evt.text);
                   } else if (evt.type === 'reasoning_delta' && evt.text) {
@@ -906,7 +906,7 @@ export class AgentEngine {
 
   /** 动态更新工作目录。下次 run/processInput 将使用新路径 */
   setWorkingDirectory(directory) {
-    if (!this.#config || typeof directory !== 'string' || !directory.trim()) return;
+    if (!this.#config || typeof directory !== 'string' || !directory.trim()) {return;}
     this.#config.workingDirectory = directory;
 
     // 同步更新依赖组件，确保目录切换后所有子系统都在新目录下工作
@@ -995,8 +995,8 @@ export class AgentEngine {
 
   /** 批量注册工具 */
   registerTools(tools) {
-    if (!Array.isArray(tools)) return this;
-    for (const t of tools) this.registerTool(t);
+    if (!Array.isArray(tools)) {return this;}
+    for (const t of tools) {this.registerTool(t);}
     return this;
   }
 
@@ -1017,7 +1017,7 @@ export class AgentEngine {
       for (const t of tools) {
         const name = typeof t === 'string' ? t : (t.name || 'tool');
         const prefix = name.includes('_') ? name.split('_')[0] : 'misc';
-        if (!groups.has(prefix)) groups.set(prefix, { group: prefix, tools: [] });
+        if (!groups.has(prefix)) {groups.set(prefix, { group: prefix, tools: [] });}
         groups.get(prefix).tools.push(name);
       }
       return Array.from(groups.values());
@@ -1046,8 +1046,8 @@ export class AgentEngine {
       durationMs,
       toolEvents,
     };
-    if (error) result.error = error;
-    if (userInputRequest) result.userInputRequest = userInputRequest;
+    if (error) {result.error = error;}
+    if (userInputRequest) {result.userInputRequest = userInputRequest;}
     this.#lastRunResult = result;
 
     // —— Metrics: 会话结束标记 ——
@@ -1102,12 +1102,12 @@ export class AgentEngine {
   }
 
   #phaseFromIteration(iteration, maxIterations) {
-    if (!this.#executionPlanManager.plan) return null;
+    if (!this.#executionPlanManager.plan) {return null;}
     const ratio = maxIterations > 0 ? iteration / maxIterations : 0;
-    if (ratio < 0.15) return 'exploration';
-    if (ratio < 0.35) return 'planning';
-    if (ratio < 0.65) return 'implementation';
-    if (ratio < 0.85) return 'inspection';
+    if (ratio < 0.15) {return 'exploration';}
+    if (ratio < 0.35) {return 'planning';}
+    if (ratio < 0.65) {return 'implementation';}
+    if (ratio < 0.85) {return 'inspection';}
     return 'verification';
   }
 

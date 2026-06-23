@@ -79,16 +79,16 @@ function _backtrack(trace, a, b) {
 }
 
 function _splitLines(text) {
-  if (text == null) return [];
+  if (text == null) {return [];}
   const str = typeof text === 'string' ? text : String(text);
-  if (str.length === 0) return [];
+  if (str.length === 0) {return [];}
   // 保留换行符在行尾：按 '\n' 切分，再把 '\r' 去掉
   const parts = str.split('\n');
   const lines = [];
   for (let i = 0; i < parts.length; i++) {
     let p = parts[i];
     // 将末尾的 \r 视为换行一部分
-    if (p.endsWith('\r')) p = p.slice(0, -1);
+    if (p.endsWith('\r')) {p = p.slice(0, -1);}
     lines.push(p);
   }
   // 如果原文末有换行，split 结果会多出一个空串。去掉 trailing 空串以避免
@@ -116,8 +116,8 @@ function _buildHunks(ops, context = DEFAULT_CONTEXT) {
     {
       let ol = 1, nl = 1;
       for (let k = 0; k < j; k++) {
-        if (ops[k].op === 'equal' || ops[k].op === 'del') ol++;
-        if (ops[k].op === 'equal' || ops[k].op === 'ins') nl++;
+        if (ops[k].op === 'equal' || ops[k].op === 'del') {ol++;}
+        if (ops[k].op === 'equal' || ops[k].op === 'ins') {nl++;}
       }
       startOld = ol; startNew = nl;
     }
@@ -152,8 +152,8 @@ function _buildHunks(ops, context = DEFAULT_CONTEXT) {
     {
       let ol = 1, nl = 1;
       for (let k = 0; k < hunkStart; k++) {
-        if (ops[k].op === 'equal' || ops[k].op === 'del') ol++;
-        if (ops[k].op === 'equal' || ops[k].op === 'ins') nl++;
+        if (ops[k].op === 'equal' || ops[k].op === 'del') {ol++;}
+        if (ops[k].op === 'equal' || ops[k].op === 'ins') {nl++;}
       }
       startOld = ol; startNew = nl;
     }
@@ -254,7 +254,7 @@ export function isNoop(diff) {
  * @param {string} baseContent - 原文（未改动的基底）
  */
 export function applySelectedHunks(diff, acceptHunks, baseContent) {
-  if (!diff || !Array.isArray(diff.hunks)) return baseContent;
+  if (!diff || !Array.isArray(diff.hunks)) {return baseContent;}
   // 先从原文逐行构建，再根据 hunk 位置按顺序替换
   const oldLines = _splitLines(baseContent);
   // 从后向前处理，避免索引错位

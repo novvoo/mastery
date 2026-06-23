@@ -416,7 +416,7 @@ export function parseDSMLFormat(text, { toolRegistry, resolveToolName, decodeStr
     let invokeMatch;
     while ((invokeMatch = plainInvokeRegex.exec(text)) !== null) {
       const name = resolveToolName(invokeMatch[1]);
-      if (!toolRegistry?.has?.(name)) continue;
+      if (!toolRegistry?.has?.(name)) {continue;}
 
       const innerText = invokeMatch[2];
       const args = {};

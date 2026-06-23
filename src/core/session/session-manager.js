@@ -167,7 +167,7 @@ export class SessionManager {
     // Step 2: 从尾部倒序，把低 priority 消息塞进剩余 budget
     for (let i = this.#messages.length - 1; i >= 0; i--) {
       const msg = this.#messages[i];
-      if (keptSet.has(msg)) continue;
+      if (keptSet.has(msg)) {continue;}
       const msgTokens = this.#countTokens(msg.content);
       if (usedTokens + msgTokens > availableTokens) {
         break;

@@ -10,7 +10,8 @@
 
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
-import { resolve, join, dirname, extname } from 'path';
+import { extname } from 'path';
+import { ModuleResolver } from './module-resolver.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ImportGraph — 为给定文件集合构建导入依赖图
@@ -35,7 +36,6 @@ export class ImportGraph {
   /** 懒加载 ModuleResolver */
   get resolver() {
     if (!this._resolver) {
-      const { ModuleResolver } = require('./module-resolver.js');
       this._resolver = new ModuleResolver({ workingDirectory: this.workingDirectory });
     }
     return this._resolver;
@@ -56,13 +56,13 @@ export class ImportGraph {
       const batch = queue.splice(0, batchSize);
       const results = await Promise.all(batch.map(fp => this._analyzeFile(fp)));
       for (const r of results) {
-        if (!r) continue;
+        if (!r) { continue; }
         this.graph.set(r.path, { imports: r.imports, exports: r.exports, resolved: true });
         // 将新发现的依赖加入队列
         for (const imp of r.imports) {
           if (!seen.has(imp)) {
             seen.add(imp);
-            if (existsSync(imp)) queue.push(imp);
+            if (existsSync(imp)) { queue.push(imp); }
           }
         }
       }
@@ -98,11 +98,11 @@ export class ImportGraph {
 
     while (queue.length > 0 && result.length < maxDepth * 100) {
       const current = queue.shift();
-      if (visited.has(current)) continue;
+      if (visited.has(current)) { continue; }
       visited.add(current);
 
       const node = this.graph.get(current);
-      if (!node) continue;
+      if (!node) { continue; }
 
       for (const imp of node.imports) {
         if (!visited.has(imp)) {

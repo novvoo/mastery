@@ -85,7 +85,7 @@ export function buildSemanticRiskGuidance(semanticRiskDomains) {
     return buildSemanticRiskGuidanceText(semanticRiskDomains);
   }
   const domains = semanticRiskDomains || [];
-  if (domains.length === 0) return '';
+  if (domains.length === 0) {return '';}
   return (
     `Semantic risk domains for this change:\n` +
     domains.map(d => `  - ${d.label}: ${(d.checklist || [])[0] || 'review API surface and invariants'}`).join('\n')
@@ -100,7 +100,7 @@ export async function suggestVerificationStrategy(userInput, { workingDirectory 
   const extensions = new Set();
   for (const p of changedFiles) {
     const m = p.match(/\.[a-zA-Z0-9]+$/);
-    if (m) extensions.add(m[0].toLowerCase());
+    if (m) {extensions.add(m[0].toLowerCase());}
   }
 
   const lines = [];
@@ -121,11 +121,11 @@ export async function suggestVerificationStrategy(userInput, { workingDirectory 
       const matched = [];
       for (const [label, regex] of priority) {
         const name = Object.keys(scripts).find(s => regex.test(s));
-        if (name) matched.push(`bun run ${name}  # ${label} (npm run ${name} 作为备选)`);
+        if (name) {matched.push(`bun run ${name}  # ${label} (npm run ${name} 作为备选)`);}
       }
       if (matched.length > 0) {
         lines.push('Detected package.json. Recommended verification commands:');
-        for (const c of matched.slice(0, 4)) lines.push(`  - ${c}`);
+        for (const c of matched.slice(0, 4)) {lines.push(`  - ${c}`);}
       } else if (Object.keys(scripts).length > 0) {
         lines.push(`package.json scripts exist. Consider: bun run ${Object.keys(scripts)[0]}`);
       }
@@ -153,7 +153,7 @@ export async function suggestVerificationStrategy(userInput, { workingDirectory 
   }
   if (extBased.length > 0) {
     lines.push('File-extension-based verification commands:');
-    for (const c of extBased.slice(0, 6)) lines.push(`  - ${c}`);
+    for (const c of extBased.slice(0, 6)) {lines.push(`  - ${c}`);}
   }
 
   if (lines.length === 0) {
@@ -166,12 +166,12 @@ function extractRequestedFilePaths(text) {
   const paths = new Set();
   const regex = /\b((?:[\w.-]+\/)*[\w.-]+\.(?:html|js|css|ts|tsx|jsx|json|md|py|java|go|rs|c|cpp|h|hpp))\b/g;
   let match;
-  while ((match = regex.exec(text)) !== null) paths.add(match[1]);
+  while ((match = regex.exec(text)) !== null) {paths.add(match[1]);}
   const basenamesWithDirectory = new Set(
     Array.from(paths).filter(p => p.includes('/')).map(p => p.split('/').pop())
   );
   for (const path of Array.from(paths)) {
-    if (!path.includes('/') && basenamesWithDirectory.has(path)) paths.delete(path);
+    if (!path.includes('/') && basenamesWithDirectory.has(path)) {paths.delete(path);}
   }
   return paths;
 }
@@ -179,34 +179,34 @@ function extractRequestedFilePaths(text) {
 // ============== 终止检测与最终答案提取 ==============
 
 export function isTermination(response) {
-  if (!response) return false;
-  if (TERMINATION_KEYWORDS.some(kw => response.includes(kw))) return true;
-  if (response.trim().length === 0) return true;
+  if (!response) {return false;}
+  if (TERMINATION_KEYWORDS.some(kw => response.includes(kw))) {return true;}
+  if (response.trim().length === 0) {return true;}
   return false;
 }
 
 export function extractFinalAnswer(response) {
-  if (!response) return '';
+  if (!response) {return '';}
   for (const keyword of TERMINATION_KEYWORDS) {
     const idx = response.indexOf(keyword);
-    if (idx !== -1) return response.substring(idx + keyword.length).trim();
+    if (idx !== -1) {return response.substring(idx + keyword.length).trim();}
   }
   return response.trim();
 }
 
 export function normalizeFinalAnswer(response) {
   const text = String(response || '').trim();
-  if (!text) return text;
+  if (!text) {return text;}
   const isToolCallFormat = /<action\b|<tool_call\b|<function_call\b|<tool_code\b|<invoke\b/i.test(text);
   if (isToolCallFormat) {
     const trimmedNoTags = text.replace(/<\/?(?:action|tool_call|function_call|tool_code|invoke)\b[^>]*>/gi, '').trim();
-    if (trimmedNoTags.length < text.length * 0.5) return '';
+    if (trimmedNoTags.length < text.length * 0.5) {return '';}
   }
   const parsed = safeParseJSON(text);
   const doneText = parsed?.action?.done?.text || parsed?.done?.text;
-  if (typeof doneText === 'string' && doneText.trim()) return doneText.trim();
+  if (typeof doneText === 'string' && doneText.trim()) {return doneText.trim();}
   const directText = parsed?.text || parsed?.answer || parsed?.final_answer;
-  if (typeof directText === 'string' && directText.trim()) return directText.trim();
+  if (typeof directText === 'string' && directText.trim()) {return directText.trim();}
   return text;
 }
 
@@ -214,7 +214,7 @@ function safeParseJSON(text) {
   try { return JSON.parse(text); } catch {
     const firstBrace = text.indexOf('{');
     const lastBrace = text.lastIndexOf('}');
-    if (firstBrace === -1 || lastBrace <= firstBrace) return null;
+    if (firstBrace === -1 || lastBrace <= firstBrace) {return null;}
     try { return JSON.parse(text.slice(firstBrace, lastBrace + 1)); } catch { return null; }
   }
 }
@@ -225,7 +225,7 @@ export function containsUnparsedToolSyntax(toolParser, responseText) {
   const response = String(responseText || '');
   if (typeof toolParser?.detectMalformedToolCall === 'function') {
     const diag = toolParser.detectMalformedToolCall(response);
-    if (diag) return true;
+    if (diag) {return true;}
   }
   const patterns = [
     /<tool_code>[\s\S]*?<\/tool_code>/i,
@@ -245,13 +245,13 @@ export function containsUnparsedToolSyntax(toolParser, responseText) {
 // ============== Agent 工具使用纠正 ==============
 
 export function shouldCorrectToolRefusal(toolRegistry, userInput, responseText) {
-  if (!toolRegistry || toolRegistry.size === 0) return false;
+  if (!toolRegistry || toolRegistry.size === 0) {return false;}
   const input = String(userInput || '').toLowerCase();
   const asksForLocalOperation = [
     /当前目录|本地|文件|目录|路径|文件夹|几个|多少|数量|统计|列出|查看|运行|执行|终端|命令/,
     /\b(current directory|working directory|local|filesystem|file system|files?|folders?|directories?|path|count|how many|list|show|run|execute|shell|terminal|pwd|ls|find|grep|rg)\b/,
   ].some(p => p.test(input));
-  if (!asksForLocalOperation) return false;
+  if (!asksForLocalOperation) {return false;}
 
   const response = String(responseText || '').toLowerCase();
   return [
@@ -265,7 +265,7 @@ export function shouldCorrectToolRefusal(toolRegistry, userInput, responseText) 
 // ============== 编码任务 completion gate ==============
 
 export function shouldBlockCodingFinal(userInput, responseText, { taskProfile, toolEvents } = {}) {
-  if (!taskProfile?.isModificationTask) return { block: false };
+  if (!taskProfile?.isModificationTask) {return { block: false };}
 
   const events = Array.isArray(toolEvents) ? toolEvents : [];
   const successfulEvents = events.filter(e => e.success);
@@ -281,7 +281,7 @@ export function shouldBlockCodingFinal(userInput, responseText, { taskProfile, t
 
   // 2) 有工具调用但只有读操作（没有代码修改）→ 不阻塞（Agent 可能只是在探索阶段）
   const hasMutation = successfulEvents.some(e => isMutationEvent(e));
-  if (!hasMutation) return { block: false };
+  if (!hasMutation) {return { block: false };}
 
   // 3) 有代码修改 → 允许通过
   //    更严格的验证（runtime verification / methodology tool）由 agent-verifier.js 负责

@@ -178,7 +178,7 @@ export class DiagnosticsGate {
       }
 
       // 如果本批次没有新错误或已达最大重试，跳出
-      if (attempt >= this.maxRetries - 1 || newErrors.length === 0) break;
+      if (attempt >= this.maxRetries - 1 || newErrors.length === 0) {break;}
 
       // 可能 diagnostics 还没完全到达，等待并重试
       await new Promise(r => setTimeout(r, 500));
@@ -254,7 +254,7 @@ export class DiagnosticsGate {
   }
 
   async _rollback(snapshotData, filePaths) {
-    if (!snapshotData) return false;
+    if (!snapshotData) {return false;}
 
     try {
       // 如果有 hashline patcher，使用它的 rollback
@@ -281,7 +281,7 @@ export class DiagnosticsGate {
   }
 
   _wasInBaseline(filePath, diagnostic, baselineDiags) {
-    if (!baselineDiags || !baselineDiags[filePath]) return false;
+    if (!baselineDiags || !baselineDiags[filePath]) {return false;}
     const baseline = baselineDiags[filePath];
     return baseline.some(b =>
       b.message === diagnostic.message &&

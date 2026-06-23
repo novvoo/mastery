@@ -54,7 +54,7 @@ export function inferTopic(type, tags = [], content = '') {
     }
   }
 
-  if (bestScore >= 7) return bestTopic;
+  if (bestScore >= 7) {return bestTopic;}
 
   // Fallback: check for weak ARCHITECTURE signals if nothing else matched
   if (/\b(?:module|component|layer|pipeline|service)\b/i.test(text)) {
@@ -64,8 +64,8 @@ export function inferTopic(type, tags = [], content = '') {
   }
 
   // 根据类型回退
-  if (type === MemoryType.PROJECT) return MemoryTopic.ARCHITECTURE;
-  if (type === MemoryType.REFERENCE) return MemoryTopic.GENERAL;
+  if (type === MemoryType.PROJECT) {return MemoryTopic.ARCHITECTURE;}
+  if (type === MemoryType.REFERENCE) {return MemoryTopic.GENERAL;}
 
   return MemoryTopic.GENERAL;
 }
@@ -174,7 +174,7 @@ export class MemoryEntry {
 
     for (const line of frontmatterStr.split('\n')) {
       const trimmed = line.trim();
-      if (!trimmed) continue;
+      if (!trimmed) {continue;}
 
       if (trimmed.startsWith('- ')) {
         if (currentKey) {

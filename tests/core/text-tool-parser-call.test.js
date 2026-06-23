@@ -237,10 +237,10 @@ describe('extractRecoveredValue', () => {
 
 describe('recoverCallArguments', () => {
   const mockExtractor = (raw) => {
-    if (!raw || typeof raw !== 'string') return null;
+    if (!raw || typeof raw !== 'string') {return null;}
     let val = raw.trim();
-    if (val.startsWith('"') && val.endsWith('"')) return val.slice(1, -1);
-    if (val.startsWith("'") && val.endsWith("'")) return val.slice(1, -1);
+    if (val.startsWith('"') && val.endsWith('"')) {return val.slice(1, -1);}
+    if (val.startsWith("'") && val.endsWith("'")) {return val.slice(1, -1);}
     return val;
   };
 

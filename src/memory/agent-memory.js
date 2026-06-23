@@ -730,7 +730,7 @@ Answer ONLY "YES" or "NO":`;
         for (const mem of relevant) {
           const staleMarker = mem.isStale ? mem.isStale() : false;
           const line = `- [${mem.type}] ${mem.title}${staleMarker ? ' ⚠️STALE' : ''}: ${mem.content.substring(0, 120)}\n`;
-          if (estimateTokens(taskCtx + line) + used > budget * 0.95) break;
+          if (estimateTokens(taskCtx + line) + used > budget * 0.95) {break;}
           taskCtx += line;
           counted++;
         }
@@ -751,7 +751,7 @@ Answer ONLY "YES" or "NO":`;
       let counted = 0;
       for (const mem of allMemories) {
         const line = `- [${mem.type}] ${mem.title || 'untitled'}\n`;
-        if (estimateTokens(recentCtx + line) + used > budget * 0.9) break;
+        if (estimateTokens(recentCtx + line) + used > budget * 0.9) {break;}
         recentCtx += line;
         counted++;
       }

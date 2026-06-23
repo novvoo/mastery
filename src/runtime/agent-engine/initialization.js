@@ -97,7 +97,7 @@ export function initializeToolGroups(ctx) {
  *     automationEngine, embedder, mcpClient, schedulerEngine, isInitialized
  */
 export async function runInitialization(ctx, registerAllToolsFn, wrapToolCallsFn) {
-  if (ctx.isInitialized) return;
+  if (ctx.isInitialized) {return;}
 
   await ctx.pluginManager.triggerHook(HOOKS.BEFORE_INIT, ctx.config);
 

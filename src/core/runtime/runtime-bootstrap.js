@@ -103,7 +103,7 @@ export function createDefaultToolRegistry({
   for (const creator of SKILL_TOOL_CREATORS) {
     try {
       const tool = typeof creator === 'function' ? creator() : creator;
-      if (tool && tool.name) registry.register(tool);
+      if (tool && tool.name) {registry.register(tool);}
     } catch (_) { /* 忽略 */ }
   }
   return registry;
@@ -257,13 +257,13 @@ export async function initializeMCPServersFromEnv(mcpClient, toolRegistry, onLog
  * 幂等：已注册同名工具会被跳过。
  */
 export function registerMCPTools(mcpClient, toolRegistry, serverName) {
-  if (!mcpClient || !toolRegistry) return 0;
+  if (!mcpClient || !toolRegistry) {return 0;}
   const tools = Array.isArray(mcpClient.getTools)
     ? mcpClient.getTools().filter((t) => t.serverName === serverName)
     : [];
   let registered = 0;
   for (const mcpTool of tools) {
-    if (toolRegistry.has?.(mcpTool.fullName)) continue;
+    if (toolRegistry.has?.(mcpTool.fullName)) {continue;}
     const tool = {
       name: mcpTool.fullName,
       description: mcpTool.description,
@@ -293,7 +293,7 @@ export function registerMCPTools(mcpClient, toolRegistry, serverName) {
  * 在已有 engine 上挂载一个 modelProvider（用于延迟初始化 provider 的场景）。
  */
 export function attachModelProvider(engine, provider) {
-  if (!engine) return null;
+  if (!engine) {return null;}
   if (typeof engine.attachModelProvider === 'function') {
     engine.attachModelProvider(provider);
   }

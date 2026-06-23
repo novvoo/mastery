@@ -144,7 +144,7 @@ export class TextToolParser {
 
     for (const { open, expectedClose } of tagPatterns) {
       const m = text.match(open);
-      if (!m || m.length === 0) continue;
+      if (!m || m.length === 0) {continue;}
       const openStart = text.search(open);
       const afterOpen = text.substring(openStart + m[0].length);
       const firstCloseMatch = afterOpen.match(/<\/[A-Za-z_][\w-]*>/);

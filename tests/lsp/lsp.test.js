@@ -741,7 +741,7 @@ async function _lspSetupEnv({ name = 'lsp-test', tsconfig } = {}) {
 }
 
 async function _lspCleanupEnv() {
-  try { if (_lspTestDir) await rm(_lspTestDir, { recursive: true, force: true }); } catch {}
+  try { if (_lspTestDir) {await rm(_lspTestDir, { recursive: true, force: true });} } catch {}
 }
 
 describe('LSP: ModuleResolver', () => {

@@ -168,23 +168,23 @@ export class AgentEngine {
         target[prop] = value;
         const privateKey = `#${prop}`;
         // 只在匹配的字段名上同步
-        if (prop === 'isInitialized') this.#isInitialized = value;
-        else if (prop === 'toolRegistry') this.#toolRegistry = value;
-        else if (prop === 'memoryManager') this.#memoryManager = value;
-        else if (prop === 'securityPolicy') this.#securityPolicy = value;
-        else if (prop === 'sessionManager') this.#sessionManager = value;
-        else if (prop === 'experienceMemory') this.#experienceMemory = value;
-        else if (prop === 'tokenJuice') this.#tokenJuice = value;
-        else if (prop === 'tokenScope') this.#tokenScope = value;
-        else if (prop === 'intelligentReasoning') this.#intelligentReasoning = value;
-        else if (prop === 'automationEngine') this.#automationEngine = value;
-        else if (prop === 'embedder') this.#embedder = value;
-        else if (prop === 'mcpClient') this.#mcpClient = value;
-        else if (prop === 'schedulerEngine') this.#schedulerEngine = value;
-        else if (prop === 'toolCallsWrapped') this.#toolCallsWrapped = value;
-        else if (prop === 'modelProvider') this.#modelProvider = value;
-        else if (prop === 'uiAdapter') this.#uiAdapter = value;
-        else if (prop === 'agent') this.#agent = value;
+        if (prop === 'isInitialized') {this.#isInitialized = value;}
+        else if (prop === 'toolRegistry') {this.#toolRegistry = value;}
+        else if (prop === 'memoryManager') {this.#memoryManager = value;}
+        else if (prop === 'securityPolicy') {this.#securityPolicy = value;}
+        else if (prop === 'sessionManager') {this.#sessionManager = value;}
+        else if (prop === 'experienceMemory') {this.#experienceMemory = value;}
+        else if (prop === 'tokenJuice') {this.#tokenJuice = value;}
+        else if (prop === 'tokenScope') {this.#tokenScope = value;}
+        else if (prop === 'intelligentReasoning') {this.#intelligentReasoning = value;}
+        else if (prop === 'automationEngine') {this.#automationEngine = value;}
+        else if (prop === 'embedder') {this.#embedder = value;}
+        else if (prop === 'mcpClient') {this.#mcpClient = value;}
+        else if (prop === 'schedulerEngine') {this.#schedulerEngine = value;}
+        else if (prop === 'toolCallsWrapped') {this.#toolCallsWrapped = value;}
+        else if (prop === 'modelProvider') {this.#modelProvider = value;}
+        else if (prop === 'uiAdapter') {this.#uiAdapter = value;}
+        else if (prop === 'agent') {this.#agent = value;}
         return true;
       },
     });

@@ -62,7 +62,7 @@ export class ToolExecutor {
 
   /** 动态计算缓存路径 — 确保工作目录切换后使用新目录 */
   get #toolResultCachePath() {
-    if (this.#config.toolResultCacheEnabled === false) return null;
+    if (this.#config.toolResultCacheEnabled === false) {return null;}
     const workingDir = this.#config.workingDirectory || process.cwd();
     return `${workingDir}/.agent-data/tool-cache.jsonl`;
   }
@@ -74,7 +74,7 @@ export class ToolExecutor {
     this.#observerHooks.push(fn);
     return () => {
       const idx = this.#observerHooks.indexOf(fn);
-      if (idx >= 0) this.#observerHooks.splice(idx, 1);
+      if (idx >= 0) {this.#observerHooks.splice(idx, 1);}
     };
   }
 
@@ -144,7 +144,7 @@ export class ToolExecutor {
     let effectiveArgs = args || {};
     if (typeof this.#toolRegistry.validateAndCoerceArgs === 'function') {
       const v = this.#toolRegistry.validateAndCoerceArgs(name, args);
-      if (!v.valid) this.#ui.warn?.(`[Tool args] ${name}: ${(v.errors || []).join('; ')}`);
+      if (!v.valid) {this.#ui.warn?.(`[Tool args] ${name}: ${(v.errors || []).join('; ')}`);}
       effectiveArgs = v.coercedArgs;
     }
 
@@ -244,20 +244,20 @@ export class ToolExecutor {
 
   #enforceSecurity(name, args) {
     const policy = this.#securityPolicy;
-    if (!policy) return null;
+    if (!policy) {return null;}
     if (typeof policy.evaluate === 'function') {
       const decision = policy.evaluate(name, args, {});
-      if (decision.decision === Decision.DENY) return decision.suggestedMessage || decision.detail || 'denied';
-      if (decision.decision === Decision.REQUIRE_APPROVAL) return decision.suggestedMessage || 'approval required';
-      if (decision.decision === Decision.RATE_LIMITED) return decision.suggestedMessage || 'rate limited';
+      if (decision.decision === Decision.DENY) {return decision.suggestedMessage || decision.detail || 'denied';}
+      if (decision.decision === Decision.REQUIRE_APPROVAL) {return decision.suggestedMessage || 'approval required';}
+      if (decision.decision === Decision.RATE_LIMITED) {return decision.suggestedMessage || 'rate limited';}
       return null;
     }
     // 向后兼容：旧 API
-    if (typeof policy.requiresApproval === 'function' && policy.requiresApproval(name)) return 'approval_required';
+    if (typeof policy.requiresApproval === 'function' && policy.requiresApproval(name)) {return 'approval_required';}
     if (typeof policy.validateToolCall === 'function') {
       const r = policy.validateToolCall(name, args);
-      if (r === false) return 'denied';
-      if (r && r.allowed === false) return r.reason || 'denied';
+      if (r === false) {return 'denied';}
+      if (r && r.allowed === false) {return r.reason || 'denied';}
     }
     return null;
   }
@@ -273,11 +273,11 @@ export class ToolExecutor {
   // ============== 内部：缓存与历史 ==============
 
   async #loadResultCache() {
-    if (this.#cacheLoaded) return;
+    if (this.#cacheLoaded) {return;}
     this.#cacheLoaded = true;
-    if (!this.#toolResultCachePath) return;
+    if (!this.#toolResultCachePath) {return;}
     try {
-      if (!existsSync(this.#toolResultCachePath)) return;
+      if (!existsSync(this.#toolResultCachePath)) {return;}
       const content = await readFile(this.#toolResultCachePath, 'utf8');
       const lines = content.split('\n').filter(Boolean);
       const now = Date.now();
@@ -296,10 +296,10 @@ export class ToolExecutor {
   }
 
   async #flushCacheEntry(signature, result) {
-    if (!this.#toolResultCachePath) return;
+    if (!this.#toolResultCachePath) {return;}
     try {
       const dir = this.#toolResultCachePath.substring(0, this.#toolResultCachePath.lastIndexOf('/'));
-      if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+      if (!existsSync(dir)) {await mkdir(dir, { recursive: true });}
       await appendFile(
         this.#toolResultCachePath,
         JSON.stringify({ signature, result, createdAt: Date.now() }) + '\n',
@@ -322,7 +322,7 @@ export class ToolExecutor {
   // ============== 内部：规范化与重写 ==============
 
   #normalizeToolCall(toolCall) {
-    if (!toolCall || typeof toolCall !== 'object') return toolCall;
+    if (!toolCall || typeof toolCall !== 'object') {return toolCall;}
     if (toolCall.name) {
       return { ...toolCall, arguments: this.#parseArgs(toolCall.arguments) };
     }
@@ -339,9 +339,9 @@ export class ToolExecutor {
   }
 
   #parseArgs(args) {
-    if (!args) return {};
-    if (typeof args === 'object') return args;
-    if (typeof args !== 'string') return {};
+    if (!args) {return {};}
+    if (typeof args === 'object') {return args;}
+    if (typeof args !== 'string') {return {};}
     try {
       const parsed = JSON.parse(args);
       return parsed && typeof parsed === 'object' ? parsed : {};
@@ -351,11 +351,11 @@ export class ToolExecutor {
   }
 
   #rewriteShellRuntimeToolCall(toolCall) {
-    if (toolCall?.name !== 'shell') return null;
+    if (toolCall?.name !== 'shell') {return null;}
     const command = String(toolCall.arguments?.command || '').trim();
-    if (!command) return null;
+    if (!command) {return null;}
     const parsed = this.#textToolParser.parse(`\`\`\`bash\n${command}\n\`\`\``).filter(c => c.name !== 'shell');
-    if (parsed.length === 0) return null;
+    if (parsed.length === 0) {return null;}
     const replacement = parsed[0];
     return { ...replacement, id: toolCall.id, source: 'shell_runtime_tool_redirect' };
   }

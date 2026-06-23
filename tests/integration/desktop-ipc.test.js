@@ -11,7 +11,7 @@ function makeFakeIpcMain() {
   return {
     handle(name, fn) { handles.set(name, fn); },
     on(name, fn) {
-      if (!listeners.has(name)) listeners.set(name, []);
+      if (!listeners.has(name)) {listeners.set(name, []);}
       listeners.get(name).push(fn);
     },
     handles,

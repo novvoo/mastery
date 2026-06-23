@@ -9,7 +9,7 @@ import { bootstrapRuntime } from '../../src/core/runtime-bootstrap.js';
 import { createAgentEngine } from '../../src/core/agent-engine.js';
 
 const tmpDir = join(tmpdir(), 'agent-debug-tool-calls');
-if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true, force: true });
+if (existsSync(tmpDir)) {rmSync(tmpDir, { recursive: true, force: true });}
 mkdirSync(tmpDir, { recursive: true });
 
 console.log('工作目录:', tmpDir);

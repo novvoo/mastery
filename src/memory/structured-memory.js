@@ -83,7 +83,7 @@ export class StructuredMemory {
   }
 
   save() {
-    if (!this.#dirty) return;
+    if (!this.#dirty) {return;}
 
     if (this.#saveTimer) {
       clearTimeout(this.#saveTimer);
@@ -243,7 +243,7 @@ export class StructuredMemory {
 
   getFullContent(id) {
     const entry = this.get(id);
-    if (!entry) return null;
+    if (!entry) {return null;}
 
     let content = entry.toMarkdown();
 

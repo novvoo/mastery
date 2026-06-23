@@ -827,7 +827,7 @@ export const enhancedUI = {
   // ============================================================
 
   startStreaming(mode = 'text') {
-    if (streamingState.active) return;
+    if (streamingState.active) {return;}
     streamingState.active = true;
     streamingState.text = '';
     streamingState.reasoning = '';
@@ -849,8 +849,8 @@ export const enhancedUI = {
   },
 
   onTextDelta(text) {
-    if (!text) return;
-    if (!streamingState.active) this.startStreaming('text');
+    if (!text) {return;}
+    if (!streamingState.active) {this.startStreaming('text');}
 
     streamingState.text += text;
     streamingState.tokenCount += text.length;
@@ -866,8 +866,8 @@ export const enhancedUI = {
   },
 
   onReasoningDelta(text) {
-    if (!text) return;
-    if (!streamingState.active) this.startStreaming('reasoning');
+    if (!text) {return;}
+    if (!streamingState.active) {this.startStreaming('reasoning');}
 
     streamingState.reasoning += text;
     process.stdout.write(theme.dim(text));
@@ -875,7 +875,7 @@ export const enhancedUI = {
   },
 
   onToolCallDelta(delta) {
-    if (!delta || (!delta.name && !delta.arguments)) return;
+    if (!delta || (!delta.name && !delta.arguments)) {return;}
 
     if (streamingState.firstDelta || !streamingState.active) {
       this.startStreaming('tool_call');
@@ -892,14 +892,14 @@ export const enhancedUI = {
     }
     if (delta.arguments) {
       const last = streamingState.toolCalls?.[streamingState.toolCalls.length - 1];
-      if (last) last.arguments += delta.arguments;
+      if (last) {last.arguments += delta.arguments;}
       process.stdout.write(theme.dim(delta.arguments));
     }
     streamingState.firstDelta = false;
   },
 
   stopStreaming(reason = 'done') {
-    if (!streamingState.active) return;
+    if (!streamingState.active) {return;}
     streamingState.active = false;
     if (this.isDebugEnabled()) {
       console.log('');
@@ -921,7 +921,7 @@ export const enhancedUI = {
 
   // 最终答案显示
   finalAnswer(text) {
-    if (streamingState.active) this.stopStreaming('final');
+    if (streamingState.active) {this.stopStreaming('final');}
     console.log('');
     console.log(createBox(text, { 
       title: 'Final Answer',

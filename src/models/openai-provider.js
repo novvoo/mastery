@@ -232,8 +232,8 @@ export class OpenAIModelProvider {
                     if (!state.toolCalls[idx]) {
                       state.toolCalls[idx] = { index: idx, name: '', arguments: '' };
                     }
-                    if (evt.name) state.toolCalls[idx].name += evt.name;
-                    if (evt.arguments) state.toolCalls[idx].arguments += evt.arguments;
+                    if (evt.name) {state.toolCalls[idx].name += evt.name;}
+                    if (evt.arguments) {state.toolCalls[idx].arguments += evt.arguments;}
                   } else if (evt.type === 'usage') {
                     state.usage = evt.usage;
                   } else if (evt.type === 'finish') {
@@ -242,7 +242,7 @@ export class OpenAIModelProvider {
                   yield evt;
                 }
               } finally {
-                if (heartbeat) clearInterval(heartbeat);
+                if (heartbeat) {clearInterval(heartbeat);}
                 clearTimeout(timeoutId);
               }
             },
@@ -252,7 +252,7 @@ export class OpenAIModelProvider {
                 .map(tc => {
                   let parsedArgs = {};
                   try {
-                    if (tc.arguments) parsedArgs = JSON.parse(tc.arguments);
+                    if (tc.arguments) {parsedArgs = JSON.parse(tc.arguments);}
                   } catch {
                     parsedArgs = {};
                   }
@@ -281,7 +281,7 @@ export class OpenAIModelProvider {
           };
         } catch (fetchErr) {
           clearTimeout(timeoutId);
-          if (heartbeat) clearInterval(heartbeat);
+          if (heartbeat) {clearInterval(heartbeat);}
           throw fetchErr;
         }
       } catch (error) {
@@ -293,7 +293,7 @@ export class OpenAIModelProvider {
         console.warn(`🔍 [model:${requestId}] stream failed, retrying in ${RETRY_DELAY_MS}ms... (attempt ${attempt}/${MAX_RETRIES})`);
         await this.#sleep(RETRY_DELAY_MS * attempt);
       } finally {
-        if (heartbeat) clearInterval(heartbeat);
+        if (heartbeat) {clearInterval(heartbeat);}
       }
     }
 

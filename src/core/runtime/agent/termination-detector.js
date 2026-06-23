@@ -22,14 +22,14 @@ import {
 // ============== 终止检测 ==============
 
 export function isTermination(response) {
-  if (!response) return false;
-  if (TERMINATION_KEYWORDS.some(keyword => response.includes(keyword))) return true;
-  if (response.trim().length === 0) return true;
+  if (!response) {return false;}
+  if (TERMINATION_KEYWORDS.some(keyword => response.includes(keyword))) {return true;}
+  if (response.trim().length === 0) {return true;}
   return false;
 }
 
 export function extractFinalAnswer(response) {
-  if (!response) return '';
+  if (!response) {return '';}
   for (const keyword of TERMINATION_KEYWORDS) {
     const idx = response.indexOf(keyword);
     if (idx !== -1) {
@@ -41,20 +41,20 @@ export function extractFinalAnswer(response) {
 
 export function normalizeFinalAnswer(response) {
   const text = String(response || '').trim();
-  if (!text) return text;
+  if (!text) {return text;}
 
   const isToolCallFormat = /<action\b|<tool_call\b|<function_call\b|<tool_code\b|<invoke\b/i.test(text);
   if (isToolCallFormat) {
     const trimmedNoTags = text.replace(/<\/?(?:action|tool_call|function_call|tool_code|invoke)\b[^>]*>/gi, '').trim();
-    if (trimmedNoTags.length < text.length * 0.5) return '';
+    if (trimmedNoTags.length < text.length * 0.5) {return '';}
   }
 
   const parsed = safeParseJSON(text);
   const doneText = parsed?.action?.done?.text || parsed?.done?.text;
-  if (typeof doneText === 'string' && doneText.trim()) return doneText.trim();
+  if (typeof doneText === 'string' && doneText.trim()) {return doneText.trim();}
 
   const directText = parsed?.text || parsed?.answer || parsed?.final_answer;
-  if (typeof directText === 'string' && directText.trim()) return directText.trim();
+  if (typeof directText === 'string' && directText.trim()) {return directText.trim();}
 
   return text;
 }
@@ -63,7 +63,7 @@ function safeParseJSON(text) {
   try { return JSON.parse(text); } catch {
     const firstBrace = text.indexOf('{');
     const lastBrace = text.lastIndexOf('}');
-    if (firstBrace === -1 || lastBrace <= firstBrace) return null;
+    if (firstBrace === -1 || lastBrace <= firstBrace) {return null;}
     try { return JSON.parse(text.slice(firstBrace, lastBrace + 1)); } catch { return null; }
   }
 }
@@ -90,13 +90,13 @@ export class StagnationDetector {
       ? isMutationPredicate(toolName, args)
       : false;
     this.#window.push({ toolName, iteration, isMutation });
-    if (this.#window.length > STAGNATION_LOOKBACK) this.#window.shift();
-    if (isMutation) this.#lastMutationIteration = iteration;
+    if (this.#window.length > STAGNATION_LOOKBACK) {this.#window.shift();}
+    if (isMutation) {this.#lastMutationIteration = iteration;}
   }
 
   /** 检查并返回需要注入的 nudge 消息；返回 null 表示无需 nudge */
   nudge(iteration, maxIterations, { planSummary } = {}) {
-    if (iteration < 3) return null;
+    if (iteration < 3) {return null;}
 
     // 1. 进度检查点
     if (iteration % PROGRESS_CHECKPOINT_INTERVAL === 0) {

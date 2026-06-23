@@ -43,7 +43,7 @@ export const StreamEventType = {
  * @returns {AsyncGenerator<Object>}
  */
 export async function* parseSSE(body) {
-  if (!body) return;
+  if (!body) {return;}
 
   let chunkSource;
   if (typeof body.getReader === 'function') {
@@ -53,11 +53,11 @@ export async function* parseSSE(body) {
     chunkSource = async function* () {
       while (true) {
         const { value, done } = await reader.read();
-        if (done) break;
+        if (done) {break;}
         yield decoder.decode(value, { stream: true });
       }
       const tail = decoder.decode();
-      if (tail) yield tail;
+      if (tail) {yield tail;}
     };
   } else if (typeof body[Symbol.asyncIterator] === 'function' || typeof body.next === 'function') {
     // —— AsyncGenerator / AsyncIterable 路径 ——
@@ -73,8 +73,8 @@ export async function* parseSSE(body) {
     // 连续切分以 \n\n 或 \r\n\r\n 结尾的 SSE 消息
     while (true) {
       let boundary = buffer.indexOf('\r\n\r\n');
-      if (boundary === -1) boundary = buffer.indexOf('\n\n');
-      if (boundary === -1) break;
+      if (boundary === -1) {boundary = buffer.indexOf('\n\n');}
+      if (boundary === -1) {break;}
 
       const raw = buffer.slice(0, boundary);
       // 根据实际出现的分隔符决定 slice 步长
@@ -87,7 +87,7 @@ export async function* parseSSE(body) {
       let lastDataPayload = null;
 
       for (const line of lines) {
-        if (!line) continue;
+        if (!line) {continue;}
         const trimmed = line.trim();
         if (trimmed.startsWith('data:')) {
           const payload = trimmed.slice(5).trim();
@@ -161,7 +161,7 @@ export async function* normalizeStreamEvents(eventStream) {
     }
 
     // 3) { type: 'event' } 暂不处理，跳过
-    if (event?.type === 'event') continue;
+    if (event?.type === 'event') {continue;}
 
     // —— 错误透传 ——
     if (event?.error) {
@@ -171,7 +171,7 @@ export async function* normalizeStreamEvents(eventStream) {
     }
 
     const choice = event?.choices?.[0];
-    if (!choice) continue;
+    if (!choice) {continue;}
 
     // OpenAI style: choice.delta.{content, tool_calls, reasoning_content}
     const delta = choice.delta || {};
@@ -209,11 +209,11 @@ export async function* normalizeStreamEvents(eventStream) {
             argsPiece = tc.function.arguments;
           }
         } else {
-          if (typeof tc.name === 'string') namePiece = tc.name;
-          if (typeof tc.arguments === 'string') argsPiece = tc.arguments;
+          if (typeof tc.name === 'string') {namePiece = tc.name;}
+          if (typeof tc.arguments === 'string') {argsPiece = tc.arguments;}
         }
-        if (namePiece) accumulator.toolCalls[idx].name += namePiece;
-        if (argsPiece) accumulator.toolCalls[idx].arguments += argsPiece;
+        if (namePiece) {accumulator.toolCalls[idx].name += namePiece;}
+        if (argsPiece) {accumulator.toolCalls[idx].arguments += argsPiece;}
         yield {
           type: StreamEventType.TOOL_CALL_DELTA,
           index: idx,
@@ -249,7 +249,7 @@ export async function* normalizeStreamEvents(eventStream) {
       .map(tc => {
         let parsedArgs = {};
         try {
-          if (tc.arguments) parsedArgs = JSON.parse(tc.arguments);
+          if (tc.arguments) {parsedArgs = JSON.parse(tc.arguments);}
         } catch {
           parsedArgs = {};
         }

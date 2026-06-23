@@ -10,7 +10,7 @@
  *   re-export chain 追踪
  */
 
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, readdirSync } from 'fs';
 import { resolve, join, dirname, extname } from 'path';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ export class ModuleResolver {
    * @returns {Promise<void>}
    */
   async init() {
-    if (this._loaded) return;
+    if (this._loaded) { return; }
     await Promise.all([
       this._loadTsconfig(),
       this._loadPackageExports(),
@@ -75,17 +75,17 @@ export class ModuleResolver {
   resolveImport(specifier, fromPath) {
     // 1. tsconfig paths alias
     const aliasResult = this._resolveAlias(specifier);
-    if (aliasResult) return aliasResult;
+    if (aliasResult) { return aliasResult; }
 
     // 2. package.json exports (including nested)
     const exportsResult = this._resolveExports(specifier)
       || this._resolveNestedExports(specifier);
-    if (exportsResult) return exportsResult;
+    if (exportsResult) { return exportsResult; }
 
     // 3. workspace packages (including inter-dependencies)
     const workspaceResult = this._resolveWorkspace(specifier)
       || this._resolveWorkspaceDependency(specifier, fromPath);
-    if (workspaceResult) return workspaceResult;
+    if (workspaceResult) { return workspaceResult; }
 
     // 4. 相对路径
     if (specifier.startsWith('.')) {
@@ -175,7 +175,7 @@ export class ModuleResolver {
    */
   _loadTsconfigRecursive(configPath, seenConfigs, maxDepth = 10) {
     const absPath = resolve(configPath);
-    if (seenConfigs.has(absPath) || maxDepth <= 0) return;
+    if (seenConfigs.has(absPath) || maxDepth <= 0) { return; }
     seenConfigs.add(absPath);
     try {
       const raw = readFileSync(absPath, 'utf-8');
@@ -271,7 +271,7 @@ export class ModuleResolver {
       if (existsSync(join(wsPath, 'package.json'))) {
         try {
           const wsPkg = JSON.parse(readFileSync(join(wsPath, 'package.json'), 'utf-8'));
-          if (wsPkg.name) this.workspacePackages.set(wsPkg.name, wsPath);
+          if (wsPkg.name) { this.workspacePackages.set(wsPkg.name, wsPath); }
         } catch { /* skip */ }
       }
       return;
@@ -283,18 +283,16 @@ export class ModuleResolver {
       const suffix = parts[1]; // e.g. "" or "/package.json"
       const baseDir = join(this.workingDirectory, prefix);
       try {
-        const { readdirSync } = require('fs');
         if (existsSync(baseDir)) {
           const entries = readdirSync(baseDir, { withFileTypes: true });
           for (const entry of entries) {
             if (entry.isDirectory()) {
               const wsPath = join(baseDir, entry.name, suffix.replace(/^\//, ''));
-              const pkgFile = suffix ? join(wsPath) : join(wsPath, 'package.json');
               const checkDir = suffix ? dirname(join(wsPath)) : wsPath;
               if (existsSync(join(checkDir, 'package.json'))) {
                 try {
                   const wsPkg = JSON.parse(readFileSync(join(checkDir, 'package.json'), 'utf-8'));
-                  if (wsPkg.name) this.workspacePackages.set(wsPkg.name, checkDir);
+                  if (wsPkg.name) {this.workspacePackages.set(wsPkg.name, checkDir);}
                 } catch { /* skip */ }
               }
             }
@@ -309,7 +307,7 @@ export class ModuleResolver {
     const configs = ['vite.config.ts', 'vite.config.js', 'webpack.config.js', 'next.config.js', 'nuxt.config.ts'];
     for (const cfg of configs) {
       const cfgPath = join(this.workingDirectory, cfg);
-      if (!existsSync(cfgPath)) continue;
+      if (!existsSync(cfgPath)) {continue;}
       try {
         const content = readFileSync(cfgPath, 'utf-8');
         // 匹配 alias: { '@': 'src', ... } 或 resolve: { alias: { '@': 'src' } }
@@ -353,7 +351,7 @@ export class ModuleResolver {
     }
     // custom aliases (vite/webpack)
     for (const [alias, targetDir] of this.customAliases) {
-      if (specifier === alias) return this._resolveToFile(targetDir);
+      if (specifier === alias) {return this._resolveToFile(targetDir);}
       if (specifier.startsWith(alias + '/')) {
         return this._resolveToFile(join(targetDir, specifier.slice(alias.length + 1)));
       }
@@ -380,7 +378,7 @@ export class ModuleResolver {
     }
     // 部分匹配：@scope/name
     for (const [name, dir] of this.workspacePackages) {
-      if (name === specifier) return this._resolveToFile(dir);
+      if (name === specifier) {return this._resolveToFile(dir);}
     }
     return null;
   }
@@ -399,9 +397,9 @@ export class ModuleResolver {
     while (dir.startsWith(root) && dir.length >= root.length) {
       const candidate = join(dir, 'node_modules', specifier);
       const result = this._resolveToFile(candidate);
-      if (result) return result;
+      if (result) {return result;}
       const parent = dirname(dir);
-      if (parent === dir) break;
+      if (parent === dir) {break;}
       dir = parent;
     }
     return null;
@@ -415,17 +413,17 @@ export class ModuleResolver {
   _resolveToFile(p) {
     const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts', '.json'];
     // 已有扩展名且存在
-    if (extname(p) && existsSync(p)) return p;
+    if (extname(p) && existsSync(p)) {return p;}
 
     // 尝试各种扩展名
     for (const ext of extensions) {
-      if (existsSync(p + ext)) return p + ext;
+      if (existsSync(p + ext)) {return p + ext;}
     }
 
     // 尝试目录 index 文件
     for (const ext of extensions) {
       const idx = join(p, 'index' + ext);
-      if (existsSync(idx)) return idx;
+      if (existsSync(idx)) {return idx;}
     }
 
     return null;
@@ -434,7 +432,7 @@ export class ModuleResolver {
   // ── 辅助方法 ────────────────────────────────────────────────────────
 
   _flattenExports(exports, packageName, defaultTarget) {
-    if (!exports || typeof exports !== 'object') return;
+    if (!exports || typeof exports !== 'object') {return;}
     if (typeof exports === 'string') {
       this.packageExports.set(packageName, join(this.workingDirectory, exports));
       return;
@@ -443,7 +441,7 @@ export class ModuleResolver {
     for (const [key, value] of Object.entries(exports)) {
       if (key === '.' || key === './' || key === './index') {
         const v = typeof value === 'string' ? value : (value.default || value.import || value.require);
-        if (v) this.packageExports.set(packageName, join(this.workingDirectory, v));
+        if (v) {this.packageExports.set(packageName, join(this.workingDirectory, v));}
       } else if (typeof value === 'string') {
         const exportKey = packageName + key.replace(/^\./, '');
         this.packageExports.set(exportKey, join(this.workingDirectory, value));
@@ -518,14 +516,14 @@ export class ModuleResolver {
     const searchPath = pkgPath || join(this.workingDirectory, 'node_modules', packageName);
     const pkgJsonPath = join(searchPath, 'package.json');
 
-    if (!existsSync(pkgJsonPath)) return null;
+    if (!existsSync(pkgJsonPath)) {return null;}
 
     try {
       const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'));
-      if (!pkg.exports) return null;
+      if (!pkg.exports) {return null;}
 
       const exportEntry = pkg.exports[subpath] || pkg.exports['.' + subpath] || pkg.exports['./' + subpath];
-      if (!exportEntry) return null;
+      if (!exportEntry) {return null;}
 
       if (typeof exportEntry === 'string') {
         return this._resolveToFile(join(searchPath, exportEntry));
@@ -559,7 +557,7 @@ export class ModuleResolver {
 
     // 检查子路径导出
     const nested = this._resolveNestedExports(specifier);
-    if (nested) return nested;
+    if (nested) {return nested;}
 
     // 从 fromPath 向上查找所在 package 的 package.json，
     // 获取它的 dependencies，再检查依赖是否是 workspace package
@@ -601,7 +599,7 @@ export class ModuleResolver {
       const c = line[i];
       if (!inString && (c === '"' || c === "'")) { inString = true; stringChar = c; continue; }
       if (inString && c === stringChar && line[i - 1] !== '\\') { inString = false; continue; }
-      if (!inString && c === '/' && line[i + 1] === '/') return i;
+      if (!inString && c === '/' && line[i + 1] === '/') {return i;}
     }
     return -1;
   }

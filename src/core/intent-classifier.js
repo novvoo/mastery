@@ -372,9 +372,9 @@ export class IntentClassifier {
 
   /** 基于任务 profile 计算自适应迭代预算 */
   budgetFor(profile) {
-    if (!profile || profile.isLikelyTrivial) return Math.min(8, this.#config.maxIterations || MAX_ITERATIONS_DEFAULT);
-    if (profile.isBugTask) return Math.min(40, this.#config.maxIterations || MAX_ITERATIONS_DEFAULT);
-    if (profile.isModificationTask) return Math.min(25, this.#config.maxIterations || MAX_ITERATIONS_DEFAULT);
+    if (!profile || profile.isLikelyTrivial) {return Math.min(8, this.#config.maxIterations || MAX_ITERATIONS_DEFAULT);}
+    if (profile.isBugTask) {return Math.min(40, this.#config.maxIterations || MAX_ITERATIONS_DEFAULT);}
+    if (profile.isModificationTask) {return Math.min(25, this.#config.maxIterations || MAX_ITERATIONS_DEFAULT);}
     return this.#config.maxIterations || MAX_ITERATIONS_DEFAULT;
   }
 
@@ -393,7 +393,7 @@ export class IntentClassifier {
 
   /** completion gates — 对编码完成的后门策略 */
   completionGates(profile) {
-    if (!profile?.isModificationTask) return [];
+    if (!profile?.isModificationTask) {return [];}
     return getCompletionGates?.() ?? [];
   }
 

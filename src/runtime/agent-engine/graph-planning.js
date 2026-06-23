@@ -75,7 +75,7 @@ export function setModelProvider(ctx, modelProvider, options = {}) {
 }
 
 export async function connectMcpServer(ctx, name, config) {
-  if (!ctx.mcpClient) throw new Error('MCP 客户端未初始化');
+  if (!ctx.mcpClient) {throw new Error('MCP 客户端未初始化');}
 
   const success = await ctx.mcpClient.connect(name, config);
   if (success) {

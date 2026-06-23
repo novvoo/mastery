@@ -12,7 +12,7 @@ import { ToolRegistry } from '../../src/core/tool-registry.js';
 async function testDirectHandler() {
   console.log('\n=== 测试 1：直接测试 write_file handler ===');
   const tmpDir = join(tmpdir(), 'agent-test-write-1');
-  if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true, force: true });
+  if (existsSync(tmpDir)) {rmSync(tmpDir, { recursive: true, force: true });}
   mkdirSync(tmpDir, { recursive: true });
 
   const tools = createFileSystemTools();
@@ -39,12 +39,12 @@ async function testDirectHandler() {
 async function testToolRegistry() {
   console.log('\n=== 测试 2：通过 ToolRegistry 调用 ===');
   const tmpDir = join(tmpdir(), 'agent-test-write-2');
-  if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true, force: true });
+  if (existsSync(tmpDir)) {rmSync(tmpDir, { recursive: true, force: true });}
   mkdirSync(tmpDir, { recursive: true });
 
   const registry = new ToolRegistry();
   const tools = createFileSystemTools();
-  for (const tool of tools) registry.register(tool);
+  for (const tool of tools) {registry.register(tool);}
   console.log('已注册工具数:', registry.size);
   console.log('write_file 在注册表中:', registry.has('write_file'));
 
@@ -73,12 +73,12 @@ async function testToolRegistry() {
 async function testToolExecutor() {
   console.log('\n=== 测试 3：通过 ToolExecutor 调用 ===');
   const tmpDir = join(tmpdir(), 'agent-test-write-3');
-  if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true, force: true });
+  if (existsSync(tmpDir)) {rmSync(tmpDir, { recursive: true, force: true });}
   mkdirSync(tmpDir, { recursive: true });
 
   const registry = new ToolRegistry();
   const tools = createFileSystemTools();
-  for (const tool of tools) registry.register(tool);
+  for (const tool of tools) {registry.register(tool);}
 
   const executor = new ToolExecutor({
     toolRegistry: registry,
@@ -111,7 +111,7 @@ async function testToolExecutor() {
 async function testAgentEngineFlow() {
   console.log('\n=== 测试 4：AgentEngine 工具调用流程 ===');
   const tmpDir = join(tmpdir(), 'agent-test-write-4');
-  if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true, force: true });
+  if (existsSync(tmpDir)) {rmSync(tmpDir, { recursive: true, force: true });}
   mkdirSync(tmpDir, { recursive: true });
 
   // 模拟一个 model provider 直接返回 tool call

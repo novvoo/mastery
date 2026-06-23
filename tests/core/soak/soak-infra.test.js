@@ -58,7 +58,7 @@ class TestSoakValidator {
     const errorRate = totalOps > 0 ? totalErrors / totalOps : 0;
     const issues = errorRate > 0.1 ? [`High error rate: ${(errorRate * 100).toFixed(1)}%`] : [];
     const sessionErrors = sessions.map(s => s.errors.length);
-    if (Math.max(...sessionErrors, 0) > 20) issues.push(`Max errors exceeds 20`);
+    if (Math.max(...sessionErrors, 0) > 20) {issues.push(`Max errors exceeds 20`);}
     this.metrics.lspStability = { totalErrors, totalOps, errorRate, perSession: sessionErrors };
     return issues.length === 0;
   }

@@ -168,7 +168,7 @@ describe('WriteFileGuard', () => {
     const filePath = 'a.txt';
     // 构造"大改动"以触发 risky
     let oldContent = '';
-    for (let i = 0; i < 60; i++) oldContent += `line${i}\n`;
+    for (let i = 0; i < 60; i++) {oldContent += `line${i}\n`;}
     await fs.promises.writeFile(path.join(dir, filePath), oldContent, 'utf8');
 
     const guard = new WriteFileGuard({

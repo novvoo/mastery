@@ -85,7 +85,7 @@ function simulateRenameEdits(files, oldName, newName, options = {}) {
 
   for (const [filePath, content] of Object.entries(files)) {
     const ext = filePath.substring(filePath.lastIndexOf('.'));
-    if (!fileTypes.some(t => ext === t || ext === t.replace('.', ''))) continue;
+    if (!fileTypes.some(t => ext === t || ext === t.replace('.', ''))) {continue;}
 
     const lines = content.split('\n');
     const edits = [];
@@ -96,7 +96,7 @@ function simulateRenameEdits(files, oldName, newName, options = {}) {
 
       while (true) {
         const idx = line.indexOf(oldName, searchPos);
-        if (idx === -1) break;
+        if (idx === -1) {break;}
 
         // 检查是否为完整标识符
         const before = line[idx - 1] || ' ';
@@ -133,7 +133,7 @@ function lspTextEditsToHashlinePatch(editsByPath) {
     lines.push(`[${filePath}#${tag}]`);
 
     const sorted = [...edits].sort((a, b) => {
-      if (b.range.start.line !== a.range.start.line) return b.range.start.line - a.range.start.line;
+      if (b.range.start.line !== a.range.start.line) {return b.range.start.line - a.range.start.line;}
       return b.range.start.character - a.range.start.character;
     });
 
@@ -151,7 +151,7 @@ function lspTextEditsToHashlinePatch(editsByPath) {
         const before = lineContent.substring(0, startChar);
         const after = lineContent.substring(endChar);
         const replacement = before + (edit.newText || '') + after;
-        if (replacement) lines.push(`+${replacement}`);
+        if (replacement) {lines.push(`+${replacement}`);}
       } else {
         // 跨行编辑
         lines.push(`SWAP ${startLine}.=${endLine}:`);
@@ -168,16 +168,16 @@ function lspTextEditsToHashlinePatch(editsByPath) {
 function applyTextEdits(text, edits) {
   let result = text;
   const sorted = [...edits].sort((a, b) => {
-    if (b.range.start.line !== a.range.start.line) return b.range.start.line - a.range.start.line;
+    if (b.range.start.line !== a.range.start.line) {return b.range.start.line - a.range.start.line;}
     return b.range.start.character - a.range.start.character;
   });
   for (const edit of sorted) {
     const lines = result.split('\n');
     let startOffset = 0;
     let endOffset = 0;
-    for (let i = 0; i < edit.range.start.line; i++) startOffset += lines[i].length + 1;
+    for (let i = 0; i < edit.range.start.line; i++) {startOffset += lines[i].length + 1;}
     startOffset += edit.range.start.character;
-    for (let i = 0; i < edit.range.end.line; i++) endOffset += lines[i].length + 1;
+    for (let i = 0; i < edit.range.end.line; i++) {endOffset += lines[i].length + 1;}
     endOffset += edit.range.end.character;
     result = result.substring(0, startOffset) + (edit.newText || '') + result.substring(endOffset);
   }
@@ -918,7 +918,7 @@ export { oldVar };`,
 
       // 排序后从后往前应用
       const sorted = [...edits].sort((a, b) => {
-        if (b.range.start.line !== a.range.start.line) return b.range.start.line - a.range.start.line;
+        if (b.range.start.line !== a.range.start.line) {return b.range.start.line - a.range.start.line;}
         return b.range.start.character - a.range.start.character;
       });
 
@@ -1010,9 +1010,9 @@ svc.disconnect();`,
       const defLines = definitionContent.split('\n');
       let classLine = -1, connectLine = -1, disconnectLine = -1;
       for (let i = 0; i < defLines.length; i++) {
-        if (defLines[i].includes(`class ${oldName}`)) classLine = i;
-        if (defLines[i].includes('connect()')) connectLine = i;
-        if (defLines[i].includes('disconnect()')) disconnectLine = i;
+        if (defLines[i].includes(`class ${oldName}`)) {classLine = i;}
+        if (defLines[i].includes('connect()')) {connectLine = i;}
+        if (defLines[i].includes('disconnect()')) {disconnectLine = i;}
       }
 
       expect(classLine).toBeGreaterThanOrEqual(0);

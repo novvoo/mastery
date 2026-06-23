@@ -58,8 +58,8 @@ export async function processInput(ctx, input, options = {}) {
 
     const lowerInput = input.toLowerCase();
     let template = 'default';
-    if (lowerInput.includes('review') || lowerInput.includes('审查')) template = 'code_review';
-    else if (lowerInput.includes('refactor') || lowerInput.includes('重构')) template = 'refactor';
+    if (lowerInput.includes('review') || lowerInput.includes('审查')) {template = 'code_review';}
+    else if (lowerInput.includes('refactor') || lowerInput.includes('重构')) {template = 'refactor';}
 
     const subtasks = ctx.graphPlanner.decomposeTask(
       null, input, { template }
@@ -149,7 +149,7 @@ export function createDefaultUIFacade(ctx) {
     error: (message) => eventBus.emit(RuntimeEvent.STATUS_UPDATE, { message, level: 'error' }),
     warn: (message) => eventBus.emit(RuntimeEvent.STATUS_UPDATE, { message, level: 'warn' }),
     debug: (message) => {
-      if (ctx.config.debug) eventBus.emit(RuntimeEvent.STATUS_UPDATE, { message, level: 'debug' });
+      if (ctx.config.debug) {eventBus.emit(RuntimeEvent.STATUS_UPDATE, { message, level: 'debug' });}
     },
     debugEvent: (eventName, data) => eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
       message: `[${eventName}]`, level: 'debug', data

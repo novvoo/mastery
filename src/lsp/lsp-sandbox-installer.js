@@ -20,8 +20,8 @@
 
 import { execSync, spawn } from 'child_process';
 import { createHash } from 'crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync, readdirSync, statSync } from 'fs';
-import { join, resolve } from 'path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync, readdirSync } from 'fs';
+import { join } from 'path';
 
 // ── 类型定义 ────────────────────────────────────────────────────────────
 
@@ -107,9 +107,10 @@ export class LSPSandboxInstaller {
 
     this._reportProgress('prepare', `Preparing sandbox install for ${serverKey}@${config.pinnedVersion}`, 0);
 
+    let existingCheck = null;
     try {
       // 1) 检查是否已安装且版本匹配
-      const existingCheck = this._checkExisting(serverKey, config);
+      existingCheck = this._checkExisting(serverKey, config);
       if (existingCheck.matches) {
         this._reportProgress('verify', `Already installed: ${serverKey}@${config.pinnedVersion} at ${existingCheck.path}`, 100);
         return {
@@ -284,7 +285,7 @@ export class LSPSandboxInstaller {
    */
   _checkExisting(serverKey, config) {
     const entry = this._lockData[serverKey];
-    if (!entry) return { matches: false };
+    if (!entry) { return { matches: false }; }
 
     const versionMatch = entry.version === config.pinnedVersion;
     const pathExists = existsSync(entry.installPath || '');

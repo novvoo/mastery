@@ -38,13 +38,13 @@ mock.module('../../src/planner/graph-planner.js', () => {
           status: TaskStatus.PENDING,
           updateStatus(status, data) {
             this.status = status;
-            if (data?.result) this.result = data.result;
+            if (data?.result) {this.result = data.result;}
           },
           checkDependencies(taskMap) {
-            if (this.dependencies.size === 0) return true;
+            if (this.dependencies.size === 0) {return true;}
             for (const depId of this.dependencies) {
               const dep = taskMap.get(depId);
-              if (!dep || dep.status !== TaskStatus.COMPLETED) return false;
+              if (!dep || dep.status !== TaskStatus.COMPLETED) {return false;}
             }
             return true;
           },

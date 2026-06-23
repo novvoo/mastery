@@ -106,7 +106,7 @@ export class AgentContext {
    * 注入工作区状态摘要（上下文裁剪后保留关键信息）
    */
   #injectWorkspaceStateSummary() {
-    if (!this.#workspaceState) return;
+    if (!this.#workspaceState) {return;}
 
     const now = Date.now();
     const cacheAge = now - this.#lastWorkspaceHintUpdate;
@@ -127,10 +127,10 @@ export class AgentContext {
   }
 
   #generateWorkspaceHint() {
-    if (!this.#workspaceState || !this.#observationSummarizer) return '';
+    if (!this.#workspaceState || !this.#observationSummarizer) {return '';}
 
     const summary = this.#workspaceState.getSummary();
-    if (summary.trackedFiles === 0 && summary.trackedDirectories === 0) return '';
+    if (summary.trackedFiles === 0 && summary.trackedDirectories === 0) {return '';}
 
     const criticalFacts = this.#workspaceState.getCriticalFacts();
     const knownNonExistent = criticalFacts
@@ -178,7 +178,7 @@ export class AgentContext {
    * 停滞检测与 nudge 注入
    */
   injectStagnationNudge(iteration, maxIterations, planSummary = null) {
-    if (iteration < 3) return;
+    if (iteration < 3) {return;}
 
     // 进度检查点
     if (iteration % PROGRESS_CHECKPOINT_INTERVAL === 0) {
@@ -232,7 +232,7 @@ export class AgentContext {
    * 记录工具调用到停滞检测窗口
    */
   recordToolCallForStagnation(toolResult, iteration, isMutationFn) {
-    if (!toolResult || !toolResult.name) return;
+    if (!toolResult || !toolResult.name) {return;}
     const isMutation = isMutationFn ? isMutationFn(toolResult.name, toolResult) : false;
     this.#stagnationWindow.push({
       toolName: toolResult.name,

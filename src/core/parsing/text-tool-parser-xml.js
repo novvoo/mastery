@@ -17,7 +17,7 @@ export function parseXMLFormat(text, { resolveToolName, toolRegistry }) {
   while ((match = toolRegex.exec(text)) !== null) {
     const name = resolveToolName(match[1]);
     // Skip unregistered tool names — these will be caught by malformed detection
-    if (toolRegistry && !toolRegistry.has?.(name)) continue;
+    if (toolRegistry && !toolRegistry.has?.(name)) {continue;}
 
     const args = {};
 

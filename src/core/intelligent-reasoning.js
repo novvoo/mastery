@@ -269,9 +269,9 @@ export class IntelligentReasoning {
     for (const tool of allTools) {
       const name = tool.name.toLowerCase();
       let score = 0;
-      if (input.includes('git') && name.startsWith('git_')) score += 5;
-      if ((input.includes('file') || input.includes('文件')) && (name.includes('file') || name.includes('dir'))) score += 4;
-      if ((input.includes('search') || input.includes('搜索')) && (name.includes('search') || name.includes('find'))) score += 4;
+      if (input.includes('git') && name.startsWith('git_')) {score += 5;}
+      if ((input.includes('file') || input.includes('文件')) && (name.includes('file') || name.includes('dir'))) {score += 4;}
+      if ((input.includes('search') || input.includes('搜索')) && (name.includes('search') || name.includes('find'))) {score += 4;}
       if (score > 0) {
         scored.push({ name: tool.name, description: tool.description, score, confidence: score / 10 });
       }

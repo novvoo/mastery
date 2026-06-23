@@ -6,7 +6,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 const tmpDir = process.cwd() + '/tmp-debug-tool-calls';
-if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+if (!fs.existsSync(tmpDir)) {fs.mkdirSync(tmpDir, { recursive: true });}
 
 // === 第 1 层：验证 normalizeModelResponse ===
 console.log('=== 第 1 层：normalizeModelResponse ===\n');
@@ -177,7 +177,7 @@ const engine1 = createAgentEngine({
     warn: (m) => console.log(`[engine.ui warn]`, m),
     debug: () => {},
     debugEvent: (name, data) => {
-      if (name === 'Tool calls detected') console.log(`[engine.ui debugEvent] ${name}:`, JSON.stringify(data).substring(0, 300));
+      if (name === 'Tool calls detected') {console.log(`[engine.ui debugEvent] ${name}:`, JSON.stringify(data).substring(0, 300));}
     },
     onTextDelta: () => {},
     onReasoningDelta: () => {},
@@ -232,7 +232,7 @@ const engine2 = createAgentEngine({
     warn: (m) => console.log(`[engine2.ui warn]`, m),
     debug: () => {},
     debugEvent: (name, data) => {
-      if (name === 'Tool calls detected') console.log(`[engine2.ui debugEvent] ${name}:`, JSON.stringify(data).substring(0, 300));
+      if (name === 'Tool calls detected') {console.log(`[engine2.ui debugEvent] ${name}:`, JSON.stringify(data).substring(0, 300));}
     },
     onTextDelta: () => {},
     onReasoningDelta: () => {},
@@ -287,7 +287,7 @@ const engine3 = createAgentEngine({
     warn: (m) => console.log(`[engine3.ui warn]`, m),
     debug: () => {},
     debugEvent: (name, data) => {
-      if (name === 'Tool calls detected') console.log(`[engine3.ui debugEvent] ${name}:`, JSON.stringify(data).substring(0, 300));
+      if (name === 'Tool calls detected') {console.log(`[engine3.ui debugEvent] ${name}:`, JSON.stringify(data).substring(0, 300));}
     },
     onTextDelta: () => {},
     onReasoningDelta: () => {},

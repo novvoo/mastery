@@ -69,7 +69,7 @@ export async function registerAllTools(ctx) {
  */
 export async function registerSchedulerTools(ctx) {
   const { schedulerEngine, toolRegistry, pluginManager } = ctx;
-  if (!schedulerEngine) return;
+  if (!schedulerEngine) {return;}
   try {
     for (const tool of createSchedulerTools(schedulerEngine)) {
       toolRegistry.register(tool);
@@ -85,7 +85,7 @@ export async function registerSchedulerTools(ctx) {
  * 幂等：多次调用安全。
  */
 export function wrapToolCalls(ctx) {
-  if (ctx.toolCallsWrapped) return;
+  if (ctx.toolCallsWrapped) {return;}
 
   const originalExecute = ctx.toolRegistry.execute.bind(ctx.toolRegistry);
   const eventBus = ctx.eventBus;
@@ -136,13 +136,13 @@ export function wrapToolCalls(ctx) {
  */
 export async function loadTool(ctx, toolModule, options = {}) {
   const loader = ctx.pluginManager.getToolLoader();
-  if (!loader) throw new Error('工具加载器未初始化');
+  if (!loader) {throw new Error('工具加载器未初始化');}
   return loader.loadTool(toolModule, options);
 }
 
 export async function unloadTool(ctx, toolName) {
   const loader = ctx.pluginManager.getToolLoader();
-  if (!loader) return false;
+  if (!loader) {return false;}
   return loader.unloadTool(toolName);
 }
 
@@ -182,7 +182,7 @@ export function getToolsWithGroups(ctx) {
 export function registerMcpTools(ctx, serverName) {
   const tools = ctx.mcpClient.getTools().filter(t => t.serverName === serverName);
   for (const mcpTool of tools) {
-    if (ctx.toolRegistry.has(mcpTool.fullName)) continue;
+    if (ctx.toolRegistry.has(mcpTool.fullName)) {continue;}
 
     const tool = {
       name: mcpTool.fullName,

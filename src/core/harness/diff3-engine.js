@@ -33,7 +33,7 @@ export function myersDiff(a, b) {
 
   // 快速路径：相同前缀
   let prefix = 0;
-  while (prefix < n && prefix < m && a[prefix] === b[prefix]) prefix++;
+  while (prefix < n && prefix < m && a[prefix] === b[prefix]) {prefix++;}
 
   // 后缀
   let suffixA = n, suffixB = m;
@@ -200,14 +200,14 @@ function extractEditHunks(diff) {
       }
       if (d.type === 'delete') {
         current.baseLines.push(d.line);
-        if (d.aIdx !== null) current.baseEnd = d.aIdx;
+        if (d.aIdx !== null) {current.baseEnd = d.aIdx;}
       } else if (d.type === 'insert') {
         current.curLines.push(d.line);
-        if (d.bIdx !== null) current.curEnd = d.bIdx;
+        if (d.bIdx !== null) {current.curEnd = d.bIdx;}
       }
     }
   }
-  if (current) hunks.push(current);
+  if (current) {hunks.push(current);}
 
   return hunks;
 }
@@ -257,7 +257,7 @@ export class IndustrialDiff3Engine {
     // ── Step 2: 为每个 hunk 在 base 中找到位置 ──
     const intendedEntries = [];
     for (const h of (intendedHunks || [])) {
-      if (h.op === 'NOP') continue;
+      if (h.op === 'NOP') {continue;}
       intendedEntries.push(_normalizeHunk(h, baseLines));
     }
 
@@ -402,10 +402,10 @@ function _applyResolvedRegions(curLines, regions, diff) {
   // 合并 diff inserts/deletes 信息
   const diffMap = new Map();
   for (const d of diff) {
-    if (d.type === 'delete') diffMap.set(d.aIdx, { type: 'delete' });
+    if (d.type === 'delete') {diffMap.set(d.aIdx, { type: 'delete' });}
     if (d.type === 'insert') {
       const key = d.aIdx;
-      if (!diffMap.has(key)) diffMap.set(key, { type: 'insert', lines: [] });
+      if (!diffMap.has(key)) {diffMap.set(key, { type: 'insert', lines: [] });}
       diffMap.get(key).lines = (diffMap.get(key).lines || []).concat(d.line);
     }
   }

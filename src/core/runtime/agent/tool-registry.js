@@ -93,9 +93,9 @@ export class ToolRegistry {
 
     // 2) 类型检查 + coerce
     for (const [key, param] of Object.entries(props)) {
-      if (param === null || typeof param !== 'object') continue;
+      if (param === null || typeof param !== 'object') {continue;}
       const value = coerced[key];
-      if (value === undefined || value === null) continue;
+      if (value === undefined || value === null) {continue;}
 
       const expectedType = param.type;
       const isArray = Array.isArray(value);

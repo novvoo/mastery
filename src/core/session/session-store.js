@@ -19,7 +19,7 @@ export function createAgentSessionId() {
  */
 export function getAgentSessionTitle(input, messages = []) {
   const fromInput = String(input || '').trim();
-  if (fromInput) return fromInput.slice(0, 80);
+  if (fromInput) {return fromInput.slice(0, 80);}
 
   const firstMessage = messages.find(message => typeof message?.content === 'string' && message.content.trim());
   return firstMessage?.content?.replace(/^用户输入:\s*/, '').slice(0, 80) || '未命名会话';
@@ -29,7 +29,7 @@ export function getAgentSessionTitle(input, messages = []) {
  * 查找会话
  */
 export function findAgentSession(sessions, sessionId) {
-  if (!sessionId || !Array.isArray(sessions)) return null;
+  if (!sessionId || !Array.isArray(sessions)) {return null;}
   return sessions.find(session => session?.id === sessionId) || null;
 }
 
@@ -37,7 +37,7 @@ export function findAgentSession(sessions, sessionId) {
  * 插入或更新会话
  */
 export function upsertAgentSession(sessions, session) {
-  if (!session?.id) return sessions;
+  if (!session?.id) {return sessions;}
   const now = Date.now();
   const nextSession = {
     ...session,
@@ -56,7 +56,7 @@ export function upsertAgentSession(sessions, session) {
  */
 export function saveAgentInputHistory(history, input, sessionId) {
   const normalizedInput = String(input || '').trim();
-  if (!normalizedInput) return history;
+  if (!normalizedInput) {return history;}
 
   return [
     {
@@ -90,11 +90,11 @@ export function mergeRagDocuments(currentDocs = [], nextDocs = []) {
   const merged = new Map();
   for (const doc of currentDocs) {
     const key = doc.id || doc.path || doc.name;
-    if (key) merged.set(key, doc);
+    if (key) {merged.set(key, doc);}
   }
   for (const doc of nextDocs) {
     const key = doc.id || doc.path || doc.name;
-    if (key) merged.set(key, doc);
+    if (key) {merged.set(key, doc);}
   }
   return Array.from(merged.values());
 }
@@ -104,7 +104,7 @@ export function mergeRagDocuments(currentDocs = [], nextDocs = []) {
  */
 export function getDocumentDisplayName(pathOrTitle = '') {
   const text = String(pathOrTitle || '').trim();
-  if (!text) return '未命名文档';
+  if (!text) {return '未命名文档';}
   return text.split(/[\\/]/).filter(Boolean).pop() || text;
 }
 
@@ -134,7 +134,7 @@ export function createLocalStorageAdapter(storageKey, sessionsKey, historyKey) {
     readSessions() {
       try {
         const raw = storage?.getItem(SESSIONS_KEY);
-        if (!raw) return [];
+        if (!raw) {return [];}
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : [];
       } catch {
@@ -147,7 +147,7 @@ export function createLocalStorageAdapter(storageKey, sessionsKey, historyKey) {
     readHistory() {
       try {
         const raw = storage?.getItem(HISTORY_KEY);
-        if (!raw) return [];
+        if (!raw) {return [];}
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : [];
       } catch {
@@ -169,7 +169,7 @@ export function createFileSystemStorageAdapter(configDir, fs, path) {
 
   const readJsonFile = (filePath) => {
     try {
-      if (!fs.existsSync(filePath)) return [];
+      if (!fs.existsSync(filePath)) {return [];}
       const raw = fs.readFileSync(filePath, 'utf-8');
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed : [];

@@ -287,8 +287,8 @@ export class SecurityPolicy {
 
   getAuditLog({ limit = 100, tool = null, decision = null } = {}) {
     let log = this.#auditLog.slice(-limit);
-    if (tool) log = log.filter(entry => entry.tool === tool);
-    if (decision) log = log.filter(entry => entry.decision === decision);
+    if (tool) {log = log.filter(entry => entry.tool === tool);}
+    if (decision) {log = log.filter(entry => entry.decision === decision);}
     return log;
   }
 
@@ -310,10 +310,10 @@ export class SecurityPolicy {
       byPermission[level] = byPermission[level] || [];
       byPermission[level].push(name);
 
-      if (policy.requiresApproval) approvalRequired.push(name);
-      if (!policy.isConcurrencySafe) notConcurrencySafe.push(name);
-      if (policy.hasExternalEffect) withExternalEffects.push(name);
-      if (level === PermissionLevel.DANGEROUS) dangerousTools.push(name);
+      if (policy.requiresApproval) {approvalRequired.push(name);}
+      if (!policy.isConcurrencySafe) {notConcurrencySafe.push(name);}
+      if (policy.hasExternalEffect) {withExternalEffects.push(name);}
+      if (level === PermissionLevel.DANGEROUS) {dangerousTools.push(name);}
     }
 
     for (const entry of this.#auditLog) {

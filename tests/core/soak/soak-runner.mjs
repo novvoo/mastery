@@ -112,7 +112,7 @@ class SoakSession {
     const files = Object.keys(FILE_TEMPLATES);
     const file = pick(files);
     const fullPath = join(this.projectDir, file);
-    if (!existsSync(fullPath)) return;
+    if (!existsSync(fullPath)) {return;}
 
     let content = readFileSync(fullPath, 'utf-8');
     const lines = content.split('\n');
@@ -165,7 +165,7 @@ class SoakSession {
   async #renameRandomSymbol() {
     // 模拟 rename 操作：编辑文件内容进行重命名
     const files = Object.keys(FILE_TEMPLATES).filter(f => existsSync(join(this.projectDir, f)));
-    if (files.length === 0) return;
+    if (files.length === 0) {return;}
     const file = pick(files);
     const fullPath = join(this.projectDir, file);
     let content = readFileSync(fullPath, 'utf-8');

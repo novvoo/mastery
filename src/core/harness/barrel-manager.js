@@ -9,8 +9,8 @@
  */
 
 import { readFile, writeFile } from 'fs/promises';
-import { existsSync } from 'fs';
-import { join, dirname, relative, basename } from 'path';
+import { existsSync, readdirSync } from 'fs';
+import { join, dirname, relative, extname } from 'path';
 import { ImportGraph } from './import-graph.js';
 import { ModuleResolver } from './module-resolver.js';
 
@@ -117,7 +117,7 @@ export class BarrelManager {
     for (const barrelPath of barrels) {
       try {
         const barrelInfo = this.barrels.get(barrelPath);
-        if (!barrelInfo) continue;
+        if (!barrelInfo) { continue; }
 
         const barrelDir = barrelInfo.directory;
         const relativePath = relative(barrelDir, sourceFilePath);
@@ -202,18 +202,19 @@ export class BarrelManager {
     let currentPath = sourceFilePath;
     const visited = new Set();
 
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       // 找到导入了当前文件的 barrel
       const importers = await this.importGraph.getImporters(currentPath);
       const barrelImporters = importers.filter(imp => this.barrels.has(imp));
 
-      if (barrelImporters.length === 0) break;
+      if (barrelImporters.length === 0) { break; }
       if (visited.has(currentPath)) { chain.circular = true; break; }
       visited.add(currentPath);
 
       for (const barr of barrelImporters) {
         const barrelInfo = this.barrels.get(barr);
-        if (!barrelInfo) continue;
+        if (!barrelInfo) { continue; }
 
         const reExport = barrelInfo.reExports.find(
           re => re.name === exportName || re.name === '*' || re.localName === exportName
@@ -310,13 +311,13 @@ export class BarrelManager {
     const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts'];
     for (const ext of extensions) {
       const candidate = basePath + ext;
-      if (existsSync(candidate)) return candidate;
+      if (existsSync(candidate)) { return candidate; }
     }
 
     // 尝试 index 文件
     for (const ext of extensions) {
       const candidate = join(basePath, 'index' + ext);
-      if (existsSync(candidate)) return candidate;
+      if (existsSync(candidate)) { return candidate; }
     }
 
     return null;
@@ -365,6 +366,7 @@ export class BarrelManager {
     const visited = new Set();
 
     let current = barrelPath;
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       if (visited.has(current)) {
         return { sourcePath: null, chain, circular: true };
@@ -372,12 +374,12 @@ export class BarrelManager {
       visited.add(current);
 
       const barrelInfo = this.barrels.get(current);
-      if (!barrelInfo) break;
+      if (!barrelInfo) { break; }
 
       const re = barrelInfo.reExports.find(
         r => r.name === exportName || r.name === '*' || r.localName === exportName
       );
-      if (!re) break;
+      if (!re) { break; }
 
       // 如果源文件不是 barrel（没有 re-export），则找到终点
       const sourceInfo = this.barrels.get(re.sourcePath);
@@ -401,7 +403,6 @@ export class BarrelManager {
     const sourceFiles = [];
     // 从同一目录下找到所有 .ts/.tsx/.js/.jsx 文件
     try {
-      const { readdirSync } = require('fs');
       const entries = readdirSync(barrelDir, { withFileTypes: true });
       for (const entry of entries) {
         if (entry.isFile() &&

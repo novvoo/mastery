@@ -50,7 +50,7 @@ export class CommandCatalog {
   filter(query) {
     const q = (query || '').trim().toLowerCase();
     const all = this.list();
-    if (!q) return all;
+    if (!q) {return all;}
     const needles = q.split(/\s+/).filter(Boolean);
     return all.filter(cmd => {
       const haystack = [
@@ -63,11 +63,11 @@ export class CommandCatalog {
   /** 执行一个命令，返回 handler 的返回值（会吞掉异常并转换成 success:false） */
   async run(id, payload = null) {
     const cmd = this._commands.get(id);
-    if (!cmd) return { success: false, message: `未知命令: ${id}` };
-    if (!cmd.enabled()) return { success: false, message: `命令 ${cmd.id} 当前不可用` };
+    if (!cmd) {return { success: false, message: `未知命令: ${id}` };}
+    if (!cmd.enabled()) {return { success: false, message: `命令 ${cmd.id} 当前不可用` };}
     try {
       const result = await cmd.handler(payload);
-      if (result && typeof result === 'object' && 'success' in result) return result;
+      if (result && typeof result === 'object' && 'success' in result) {return result;}
       return { success: true, message: result?.message || '' };
     } catch (err) {
       return { success: false, message: err instanceof Error ? err.message : String(err) };
@@ -76,7 +76,7 @@ export class CommandCatalog {
 
   /** 从一个 {id -> handler-like object} 字典批量注册（方便跨文件组织） */
   bulk(patch) {
-    for (const [id, cmd] of Object.entries(patch || {})) this.register({ id, ...cmd });
+    for (const [id, cmd] of Object.entries(patch || {})) {this.register({ id, ...cmd });}
     return this;
   }
 }
