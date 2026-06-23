@@ -14,6 +14,8 @@ import {
   STAGNATION_LOOKBACK,
   STAGNATION_NO_MUTATION_LIMIT,
   STAGNATION_SAME_TOOL_LIMIT,
+  EXPLORATION_BUDGET,
+  FORCE_ACTION_GRACE_TURNS,
 } from '../../agent-constants.js';
 
 export class AgentContext {
@@ -29,6 +31,11 @@ export class AgentContext {
   #lastStagnationNudge = 0;
   #consecutiveSameTool = 0;
   #lastMutationIteration = 0;
+  // 探索预算与零调用追踪
+  #explorationIterations = 0;
+  #zeroToolCallStreak = 0;
+  #forceActionTriggered = false;
+  #forceActionIgnored = 0;
 
   // 工作区状态缓存
   #lastWorkspaceHintUpdate = 0;
@@ -56,6 +63,10 @@ export class AgentContext {
     this.#lastStagnationNudge = 0;
     this.#consecutiveSameTool = 0;
     this.#lastMutationIteration = 0;
+    this.#explorationIterations = 0;
+    this.#zeroToolCallStreak = 0;
+    this.#forceActionTriggered = false;
+    this.#forceActionIgnored = 0;
     this.#cachedWorkspaceHint = '';
   }
 
@@ -207,8 +218,11 @@ export class AgentContext {
     // 进度检查点
     if (iteration % PROGRESS_CHECKPOINT_INTERVAL === 0) {
       const planStatus = planSummary || 'not available';
+      const hasWritten =
+        this.#stagnationWindow.some((t) => t.isMutation);
       this.#sessionManager.addUserMessage(
-        `[Progress checkpoint @iter ${iteration}/${maxIterations}]\nPlan status:\n${planStatus}\nIf you have enough information to answer, provide FINAL_ANSWER now.\nIf you are stuck, try a fundamentally different approach instead of repeating the same pattern.`,
+        `[Progress checkpoint @iter ${iteration}/${maxIterations}]\nPlan status:\n${planStatus}\n` +
+        `${hasWritten ? 'You have made code changes — verify and complete.' : 'WARNING: No code modifications yet. If you have identified the issue, use write_file/edit_file NOW to fix it. Do NOT keep exploring.'}`,
       );
       return;
     }
@@ -234,7 +248,7 @@ export class AgentContext {
         this.#lastStagnationNudge++;
         const toolList = [...uniqueTools].join(', ');
         this.#sessionManager.addUserMessage(
-          `[Efficiency note] You have called ${toolList} repeatedly for ${STAGNATION_SAME_TOOL_LIMIT} consecutive iterations with no modifications.\nConsider: (1) call a different tool to make progress, (2) provide FINAL_ANSWER if you already have enough information, or (3) ask the user for clarification.`,
+          `[CRITICAL] You have called ${toolList} repeatedly for ${STAGNATION_SAME_TOOL_LIMIT} consecutive iterations with ZERO code modifications.\nYou MUST now do ONE of: (1) use write_file or edit_file to make the change, (2) provide FINAL_ANSWER. Do NOT read any more files — you have enough information.`,
         );
         this.#consecutiveSameTool = 0;
         return;
@@ -250,14 +264,14 @@ export class AgentContext {
       this.#lastStagnationNudge++;
       const planStatus = planSummary || 'not available';
       this.#sessionManager.addUserMessage(
-        `[Efficiency note] No modifications were made in the last ${STAGNATION_NO_MUTATION_LIMIT} iterations.\nPlan status:\n${planStatus}\nIf you are still investigating, try narrowing your search. Otherwise, provide FINAL_ANSWER with what you have found so far.`,
+        `[CRITICAL] No file modifications in ${STAGNATION_NO_MUTATION_LIMIT}+ iterations. You are stuck in exploration.\nPlan status:\n${planStatus}\nYou MUST now use write_file or edit_file to implement the change, OR provide FINAL_ANSWER. Stop reading and start acting.`,
       );
       this.#lastMutationIteration = iteration;
     }
   }
 
   /**
-   * 记录工具调用到停滞检测窗口
+   * 记录工具调用到停滞检测窗口，同时追踪探索预算
    */
   recordToolCallForStagnation(toolResult, iteration, isMutationFn) {
     if (!toolResult || !toolResult.name) {
@@ -274,7 +288,71 @@ export class AgentContext {
     }
     if (isMutation) {
       this.#lastMutationIteration = iteration;
+      this.#explorationIterations = 0;
+      this.#forceActionTriggered = false;
+      this.#forceActionIgnored = 0;
+    } else {
+      this.#explorationIterations++;
     }
+    this.#zeroToolCallStreak = 0;
+  }
+
+  /**
+   * 记录一次零工具调用迭代（用于探索预算追踪）
+   */
+  recordZeroToolCallIteration() {
+    this.#zeroToolCallStreak++;
+    this.#explorationIterations++;
+  }
+
+  /** 探索预算是否已超出 */
+  isExplorationBudgetExceeded() {
+    return this.#explorationIterations >= EXPLORATION_BUDGET;
+  }
+
+  /** 探索预算 + grace turns 后应强制终止 */
+  shouldHardStopForExploration() {
+    return (
+      this.#forceActionTriggered &&
+      this.#forceActionIgnored >= FORCE_ACTION_GRACE_TURNS
+    );
+  }
+
+  /** 连续零工具调用超过 5 回合 */
+  shouldHardStopForZeroToolCalls() {
+    return this.#zeroToolCallStreak >= 8;
+  }
+
+  /** 触发强制行动命令（返回 nudge 消息，由外部注入） */
+  triggerForceAction() {
+    if (this.#forceActionTriggered) {
+      this.#forceActionIgnored++;
+    } else {
+      this.#forceActionTriggered = true;
+    }
+    if (this.#forceActionIgnored === 0) {
+      return (
+        `[HARD STOP - Exploration Budget Exhausted] You have spent ${this.#explorationIterations} iterations reading and exploring without making ANY code changes.\n` +
+        'This is a coding task — the user expects code to be written or edited.\n' +
+        'You MUST now use write_file or edit_file to implement the change. ' +
+        'If you cannot identify what to change, provide FINAL_ANSWER explaining why. ' +
+        'Do NOT read or explore any further.'
+      );
+    }
+    return (
+      `[FINAL WARNING] You have ignored the force-action directive for ${this.#forceActionIgnored} iteration(s). ` +
+      `You will be terminated in ${FORCE_ACTION_GRACE_TURNS - this.#forceActionIgnored} more iteration(s) ` +
+      `if you do not use write_file or edit_file NOW. This is a coding task — ACT.`
+    );
+  }
+
+  /** 连续零工具调用打断消息 */
+  getZeroToolCallNudge() {
+    return (
+      '[HARD STOP] You have produced 5+ consecutive responses with ZERO tool calls. ' +
+      'You are stuck in an analysis loop. IMMEDIATELY call write_file or edit_file to make ' +
+      'the code change, OR provide FINAL_ANSWER with what you have.'
+    );
   }
 
   /**

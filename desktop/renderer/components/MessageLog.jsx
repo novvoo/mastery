@@ -1101,23 +1101,27 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     );
   };
   
-  const renderRuntimeDetailsPanel = (group, isActiveGroup = false) => (
-    <RuntimeDetailsPanel
-      group={group}
-      status={status}
-      isActiveGroup={isActiveGroup}
-      isExpanded={expandedRuntimePanels.has(group.id)}
-      isLarge={largeRuntimePanels.has(group.id)}
-      expandedRuntimeDetails={expandedRuntimeDetails}
-      getTypeDisplay={getTypeDisplay}
+  const renderRuntimeDetailsPanel = (group, isActiveGroup = false) => {
+    const isRunningGroup = status === 'running' && isActiveGroup;
+    const isExpanded = isRunningGroup || expandedRuntimePanels.has(group.id);
+    return (
+      <RuntimeDetailsPanel
+        group={group}
+        status={status}
+        isActiveGroup={isActiveGroup}
+        isExpanded={isExpanded}
+        isLarge={largeRuntimePanels.has(group.id)}
+        expandedRuntimeDetails={expandedRuntimeDetails}
+        getTypeDisplay={getTypeDisplay}
                 onExport={handleExportRuntimeDetails}
                 onPanelSizeToggle={handleRuntimePanelSizeToggle}
                 onActivityAction={handleActivityAction}
                 onRefChange={handleRuntimeDetailsRefChange}
       onRuntimeDetailToggle={handleRuntimeDetailToggle}
       onRuntimeDetailsToggle={handleRuntimeDetailsToggle}
-    />
-  );
+      />
+    );
+  };
 
   const renderThinkingPanel = (group, isActiveGroup = false) => {
     const thinkingSummary = buildThinkingSummary(group.runtimeDetails);

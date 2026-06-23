@@ -534,8 +534,6 @@ export function useRuntime() {
       if (normalized.message) {
         if (eventName === 'agent:start') {
           setStatus('running');
-        } else if (eventName === 'agent:complete') {
-          setStatus(payload?.result?.status === 'needs_user_input' ? 'needs_user_input' : 'completed');
         } else if (eventName === 'agent:error') {
           setStatus('error');
         } else if (eventName === 'agent:stop') {
@@ -732,6 +730,7 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
         },
       };
     case 'plan:created':
+    case 'plan:decomposed':
     case 'plan:updated': {
       const plan = payload?.plan || payload;
       const tasks = normalizePlanTasks(plan?.tasks);
@@ -744,7 +743,11 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
         message: {
           ...base,
           type: 'plan',
-          content: eventName === 'plan:created' ? '执行计划已创建' : '执行计划已更新',
+          content: eventName === 'plan:created'
+          ? '执行计划已创建'
+          : eventName === 'plan:decomposed'
+            ? '计划已分解为子任务'
+            : '执行计划已更新',
           plan,
           planTasks: tasks,
           planSummary: payload?.summary || payload?.update?.after || '',

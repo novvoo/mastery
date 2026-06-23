@@ -217,6 +217,20 @@ export function quickAssess(userInput) {
 
   const isLikelyTrivial = isCodingTask && TRIVIAL_TEXT_PATTERNS.some((p) => p.test(text));
 
+  const isDocumentationTask =
+    !cliCommand &&
+    /\b(文档|readme|说明|指南|教程|docs?|document|guide|tutorial|manual)\b/i.test(text);
+
+  const isAnalysisTask =
+    !cliCommand &&
+    /\b(分析|审计|审查|评估|review|audit|analyze|evaluate|inspect)\b/i.test(text);
+
+  const isResearchTask =
+    !cliCommand &&
+    /\b(研究|调研|探索|搜索|查找|research|explore|search|investigate)\b/i.test(text);
+
+  const requiresPlanning = !cliCommand;
+
   // 计算风险评分
   let score = 0;
   const reasons = [];
@@ -291,7 +305,11 @@ export function quickAssess(userInput) {
     isCodingTask,
     isModificationTask,
     isBugTask,
+    isDocumentationTask,
+    isAnalysisTask,
+    isResearchTask,
     isLikelyTrivial,
+    requiresPlanning,
   };
 }
 

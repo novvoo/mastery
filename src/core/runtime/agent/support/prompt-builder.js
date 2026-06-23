@@ -61,16 +61,22 @@ export function buildToolUseCorrectionPrompt(toolRegistry, userInput) {
 
 // ============== 编码任务提示 ==============
 
-export function buildCodingTaskOperatingPrompt(userInput, extra = {}) {
+export function buildCodingTaskOperatingPrompt(params, extra = {}) {
+  // 兼容旧调用：如果传入字符串，转为对象
+  const opts = typeof params === 'string'
+    ? { userInput: params, ...extra }
+    : { ...params, ...extra };
   if (typeof buildCodingTaskOperatingPromptText === 'function') {
-    return buildCodingTaskOperatingPromptText(userInput, extra);
+    return buildCodingTaskOperatingPromptText(opts);
   }
   return (
-    `You are working on a coding task. Use tools iteratively to:\n` +
-    `  1) inspect the workspace (list_dir, read_file),\n` +
-    `  2) write or edit code (write_file, edit_file),\n` +
+    `You are working on a coding task. The engine has pre-computed workspace structure and diagnostics.\n` +
+    `Use this context directly:\n` +
+    `  1) read specific code sections you need to edit (read_file with offset+limit),\n` +
+    `  2) write or edit code (write_file, edit_file, apply_hashline_patch),\n` +
     `  3) verify behavior (shell, review, verify).\n` +
-    `User request: ${userInput}`
+    `Do not explore the workspace broadly — act on the pre-computed context.\n` +
+    `User request: ${opts.userInput || 'coding task'}`
   );
 }
 

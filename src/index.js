@@ -125,6 +125,43 @@ export { BarrelManager } from './core/harness/barrel-manager.js';
 export { EnhancedImportGraph } from './core/harness/enhanced-import-graph.js';
 export { LSPSandboxInstaller } from './lsp/lsp-sandbox-installer.js';
 export { MemoryAudit } from './memory/memory-audit.js';
+
+// ── Harness 核心: hashline / patch / diff3 ────────────────────────────
+export {
+  Patcher,
+  HashlineBridge,
+  Diff3MergeEngine,
+  createPatcher,
+  computeTag,
+  hashContent,
+  normalizeText,
+} from './core/harness/hashline.js';
+export { HashAnchoredPatcher, PatchIntentBuilder } from './core/harness/hash-anchored-patch.js';
+export { ExportGraph } from './core/harness/import-graph.js';
+
+// ── Workspace Edit 编排器 ────────────────────────────────────────────
+export { EditOrchestrator, createEditOrchestrator } from './core/edit-orchestrator.js';
+
+// ── Diagnostics Gate ──────────────────────────────────────────────────
+export { DiagnosticsGate } from './core/diagnostics-gate.js';
+
+// ── LSP 子系统完整导出 ────────────────────────────────────────────────
+export {
+  LSPClient,
+  LSPClientError,
+  LSPServerError,
+  ServerManager,
+  detectLanguage,
+  createLSPTools,
+} from './lsp/index.js';
+
+// ── Memory 子系统增强: verifier / agent / structured / selector ───────
+export { MemoryVerifier, MemoryProvenance, GitDiffStaleDetector } from './memory/memory-verifier.js';
+export { AgentMemory } from './memory/agent-memory.js';
+export { StructuredMemory } from './memory/structured-memory.js';
+export { MemorySelector, RuleBasedSelector } from './memory/memory-selector.js';
+export { ConversationJournal } from './memory/conversation-journal.js';
+
 export {
   RUNTIME_STATUS_META,
   getRuntimeStatusMeta,

@@ -12,11 +12,17 @@ export const ITERATION_BUDGET = {
 };
 
 // 停滞检测
-export const STAGNATION_LOOKBACK = 10;
-export const STAGNATION_SAME_TOOL_LIMIT = 6;
-export const STAGNATION_NO_MUTATION_LIMIT = 8;
-export const PROGRESS_CHECKPOINT_INTERVAL = 12;
-export const MAX_STAGNATION_NUDGES = 2;
+export const STAGNATION_LOOKBACK = 8;
+export const STAGNATION_SAME_TOOL_LIMIT = 3;
+export const STAGNATION_NO_MUTATION_LIMIT = 5;
+export const PROGRESS_CHECKPOINT_INTERVAL = 8;
+export const MAX_STAGNATION_NUDGES = 3;
+
+// 探索预算：编码任务在无修改的情况下最多允许的探索性迭代次数
+// 超过此值后将强制要求使用 write_file/edit_file 进行操作或 terminate
+export const EXPLORATION_BUDGET = 10;
+// 收到强制行动命令后，agent 再忽略则 force-terminate
+export const FORCE_ACTION_GRACE_TURNS = 3;
 export const METHODOLOGY_TOOLS = new Set([
   'coverage_check',
   'ask_user',

@@ -6,7 +6,7 @@
  */
 
 import { readFile, writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
+import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 
 const MAX_CONTEXT_FILE_SIZE = 500 * 1024; // 500KB max CONTEXT.md size
@@ -20,6 +20,10 @@ export class MemoryManager {
   #workingDir;
   /** @type {object} */
   #context;
+  /** @type {boolean} 标记 CONTEXT.md 是否已加载 */
+  #loaded = false;
+  /** @type {number} CONTEXT.md 文件的上次 mtime（用于跳过重复解析） */
+  #contextMtime = 0;
 
   /**
    * @param {string} workingDir
@@ -56,6 +60,18 @@ export class MemoryManager {
   }
 
   async load() {
+    // 如果已加载且文件未变化，跳过重新读取解析
+    if (this.#loaded && existsSync(this.#contextPath)) {
+      try {
+        const currentMtime = statSync(this.#contextPath).mtimeMs;
+        if (currentMtime <= this.#contextMtime) {
+          return this.#context;
+        }
+      } catch {
+        /* mtime 检查失败则走正常加载路径 */
+      }
+    }
+
     // 兼容迁移：如果新路径不存在但旧根路径存在 CONTEXT.md，自动迁移
     if (!existsSync(this.#contextPath)) {
       const legacyPath = join(this.#workingDir, 'CONTEXT.md');
@@ -77,11 +93,16 @@ export class MemoryManager {
 
     if (existsSync(this.#contextPath)) {
       try {
+        const currentMtime = statSync(this.#contextPath).mtimeMs;
         const content = await readFile(this.#contextPath, 'utf-8');
         this.#context = this.parseContextMd(content);
+        this.#contextMtime = currentMtime;
+        this.#loaded = true;
       } catch {
         this.#context = this.createDefaultContext(this.#context.projectInfo.path);
       }
+    } else {
+      this.#loaded = true; // 文件不存在也算"已加载"，避免重复创建默认上下文
     }
     return this.#context;
   }
@@ -108,6 +129,16 @@ export class MemoryManager {
     }
     await writeFile(this.#contextPath, this.toMarkdown(), 'utf-8');
     this.#context.projectInfo.lastUpdated = new Date().toISOString().split('T')[0];
+
+    // 更新 mtime 缓存，避免下次 load() 时重复读取
+    if (existsSync(this.#contextPath)) {
+      try {
+        this.#contextMtime = statSync(this.#contextPath).mtimeMs;
+      } catch {
+        /* 静默 */
+      }
+    }
+    this.#loaded = true;
   }
 
   /**

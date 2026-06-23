@@ -26,9 +26,29 @@ export function buildCodingTaskOperatingPrompt({
     ? getMethodologyGuidance(riskLevel, profile)
     : 'Use the same methodology directly in your reasoning because methodology tools are not registered in this runtime.';
 
+  const bugFixGuidance =
+    profile.isBugTask
+      ? `BUG FIX TASK: Your job is to FIX the bug, not to write a diagnostic report. Read the code where the bug resides, identify the root cause, apply the fix, then verify. Do NOT spend iterations generating analysis reports — the user wants the bug fixed, not documented. A fixed bug with verification evidence is the only acceptable outcome.\n`
+      : '';
+
   return (
     `Coding task mode is active for the previous user request:\n${userInput}\n\n` +
-    `Risk level: ${riskLevel}. Act like a responsible coding agent. First understand the repo with tools, then make the smallest necessary change, then verify with fresh evidence.\n` +
+    `Risk level: ${riskLevel}. Act like a responsible coding agent.\n` +
+    `\n` +
+    `The engine has already pre-computed and injected workspace structure, LSP diagnostics, ` +
+    `project memory, and import graph context. An execution plan with per-subtask file scope ` +
+    `may also be active — the engine enforces file scope at the tool execution level.\n` +
+    `\n` +
+    `\n` +
+    `- For refactoring/renames: use lsp_rename (auto-syncs all references+imports+barrels).\n` +
+    `- For quick fixes: use lsp_code_action (organize imports, fix lint, etc.).\n` +
+    `\n` +
+    `CODE EDITING STRATEGY (make changes, don't just analyze):\n` +
+    `- For single-file changes: use write_file or edit_file.\n` +
+    `- For multi-file atomic patches: use apply_hashline_patch (includes preflight+diagnostics-gate).\n` +
+    `- Goal is to make the code change and verify it — not to write a diagnostic report.\n` +
+    `\n` +
+    bugFixGuidance +
     `${methodologyLine}\n` +
     `${profile.requiresSemanticRiskReview ? `${semanticRiskGuidance}\n` : ''}` +
     `For file creation or file edits, prefer write_file/edit_file directly when available; shell is for inspection, commands, and verification, not a substitute for editing files.\n` +

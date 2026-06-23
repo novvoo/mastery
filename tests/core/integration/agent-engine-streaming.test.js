@@ -2,6 +2,8 @@ import { describe, expect, test, beforeEach, mock } from 'bun:test';
 
 mock.module('../../../src/core/session-manager.js', () => ({
   SessionManager: class SessionManager {
+    static PRIORITY = Object.freeze({ ORDINARY: 1, EVIDENCE: 2, DECISION: 3 });
+    static LAYER = Object.freeze({ STRUCTURE: 0, PROJECTION: 10, DIAGNOSTICS: 20, DEPENDENCIES: 30, MEMORY: 40 });
     constructor(opts = {}) {}
     setSystemPrompt() {}
     addSystemMessage() {}

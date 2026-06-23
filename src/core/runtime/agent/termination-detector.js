@@ -135,13 +135,15 @@ export class StagnationDetector {
     if (iteration % PROGRESS_CHECKPOINT_INTERVAL === 0) {
       this.#activeProgressCheckpoints++;
       const planStatus = planSummary || 'not available';
+      const hasWritten = this.#window.some((t) => t.isMutation);
       return {
         type: 'progress_checkpoint',
         message:
           `[Progress checkpoint @iter ${iteration}/${maxIterations}]\n` +
           `Plan status:\n${planStatus}\n` +
-          `If you have enough information to answer, provide FINAL_ANSWER now.\n` +
-          `If you are stuck, try a fundamentally different approach instead of repeating the same pattern.`,
+          `${hasWritten
+            ? 'You have made code changes — verify them and complete.'
+            : 'WARNING: No code modifications yet. If you have identified the issue, use write_file/edit_file NOW. Do NOT keep exploring.'}`,
       };
     }
 
@@ -164,8 +166,8 @@ export class StagnationDetector {
         return {
           type: 'same_tool_repetition',
           message:
-            `[Efficiency note] You have called ${toolList} repeatedly for ${STAGNATION_SAME_TOOL_LIMIT} consecutive iterations with no modifications.\n` +
-            `Consider: (1) call a different tool to make progress, (2) provide FINAL_ANSWER if you already have enough information, or (3) ask the user for clarification.`,
+            `[CRITICAL] You have called ${toolList} repeatedly for ${STAGNATION_SAME_TOOL_LIMIT} consecutive iterations with ZERO code modifications.\n` +
+            `You MUST now do ONE of: (1) use write_file or edit_file to make the change, (2) provide FINAL_ANSWER. Do NOT read any more files — you have enough information.`,
           shouldDegradeBudget,
         };
       }
@@ -181,12 +183,12 @@ export class StagnationDetector {
       this.#lastMutationIteration = iteration;
       const planStatus = planSummary || 'not available';
       return {
-        type: 'no_mutation_stagnation',
-        message:
-          `[Efficiency note] No modifications were made in the last ${STAGNATION_NO_MUTATION_LIMIT} iterations.\n` +
-          `Plan status:\n${planStatus}\n` +
-          `If you are still investigating, try narrowing your search. Otherwise, provide FINAL_ANSWER with what you have found so far.`,
-        shouldDegradeBudget,
+          type: 'no_mutation_stagnation',
+          message:
+            `[CRITICAL] No file modifications in ${STAGNATION_NO_MUTATION_LIMIT}+ iterations. You are stuck in exploration.\n` +
+            `Plan status:\n${planStatus}\n` +
+            `You MUST now use write_file or edit_file to implement the change, OR provide FINAL_ANSWER. Stop reading and start acting.`,
+          shouldDegradeBudget,
       };
     }
 

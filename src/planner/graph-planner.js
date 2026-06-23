@@ -53,6 +53,8 @@ export class Subtask {
 
     // 元数据
     this.metadata = data.metadata || {};
+    // 文件作用域（渐进式探索：该子任务允许关注的文件/目录）
+    this.scopeFiles = Array.isArray(data.scopeFiles) ? data.scopeFiles : [];
     this.priority = data.priority || 0; // 优先级，数字越大优先级越高
   }
 
@@ -321,6 +323,7 @@ export class ExecutionPlan {
         status: t.status,
         dependencies: Array.from(t.dependencies),
         priority: t.priority,
+        scopeFiles: t.scopeFiles || [],
         result: t.result,
         error: t.error,
         startedAt: t.startedAt,
@@ -415,12 +418,27 @@ export class GraphPlanner extends EventEmitter {
     return subtasks;
   }
 
+  // ——— 方法论工具映射（与 agent/constants.js METHODOLOGY_TOOLS 对齐）———
+  static #METHODOLOGY_TOOL_HINTS = {
+    setup: { phase: 'exploration', hint: '设置项目上下文、初始化环境' },
+    coverage_check: { phase: 'exploration', hint: '检查代码覆盖、确认变更范围' },
+    ask_user: { phase: 'exploration', hint: '向用户确认缺失的决策信息' },
+    brainstorm: { phase: 'planning', hint: '头脑风暴设计方案' },
+    grill: { phase: 'planning', hint: '深度质疑需求、澄清不明确的规范' },
+    zoom_out: { phase: 'planning', hint: '从全局视角审视跨模块变更影响' },
+    architect: { phase: 'planning', hint: '设计架构方案、组件拆分' },
+    to_prd: { phase: 'planning', hint: '将需求转为结构化 PRD 文档' },
+    to_issues: { phase: 'planning', hint: '将 PRD 分解为具体 issue 列表' },
+    tdd: { phase: 'implementation', hint: '先写测试再写实现代码' },
+    diagnose: { phase: 'implementation', hint: '诊断遇到的 bug 或问题' },
+    review: { phase: 'inspection', hint: '审查变更的代码文件' },
+    verify: { phase: 'verification', hint: '运行时验证：执行测试/lint/build 确认正确性' },
+  };
+
   /**
-   * 生成子任务（简化版本）
+   * 生成子任务（简化版本 — 模板规则）
    */
   #generateSubtasks(description, options) {
-    // 实际实现中应该调用 LLM 进行智能分解
-    // 这里提供一个基于模板的简化实现
     const templates = {
       code_review: [
         { name: 'analyze_code', description: '分析代码结构', dependencies: [] },
@@ -453,6 +471,163 @@ export class GraphPlanner extends EventEmitter {
       priority: options.priority || 0,
       action: options.actions?.[t.name] || null,
     }));
+  }
+
+  /**
+   * LLM 驱动的智能任务分解
+   *
+   * 使用 modelProvider 调用 LLM，根据任务描述 + 可用工具/方法论
+   * 生成结构化的 DAG 子任务列表。
+   *
+   * @param {string} taskDescription - 原始任务描述
+   * @param {object} modelProvider - 模型提供者 { chat(messages, opts): string|{text} }
+   * @param {object} options - { availableTools?, workingDirectory? }
+   * @returns {Array} 子任务列表 [{ name, description, dependencies, methodologyHint? }]
+   */
+  async decomposeTaskLLM(taskDescription, modelProvider, options = {}) {
+    if (!modelProvider || typeof modelProvider.chat !== 'function') {
+      // 无 LLM 可用，回退到模板
+      return this.#generateSubtasks(taskDescription, options);
+    }
+
+    const toolList = options.availableTools || [];
+    const toolHint =
+      toolList.length > 0
+        ? `\n可用工具: ${toolList.join(', ')}`
+        : '\n可用工具: read_file, write_file, edit_file, apply_hashline_patch, list_dir, shell, web_search, web_fetch';
+
+    const methodologyHints = Object.entries(GraphPlanner.#METHODOLOGY_TOOL_HINTS)
+      .map(([name, { phase, hint }]) => `- ${name} (${phase}): ${hint}`)
+      .join('\n');
+
+    const systemPrompt = `你是一个任务规划专家。你的职责是将用户的任务描述分解为结构化的有向无环图(DAG)子任务列表。
+
+## 方法论工具（LLM 可在对应阶段调用）
+${methodologyHints}
+
+## Hashline 编辑路径
+- apply_hashline_patch: 原子化多文件编辑（含 preflight + LSP-sync + diagnostics-gate），用于跨文件事务性修改
+- write_file / edit_file: 单文件直接编辑
+- shell: 执行命令、构建、测试
+
+## 输出格式
+严格输出 JSON 数组，每个元素:
+{
+  "name": "唯一任务ID(snake_case)",
+  "description": "中文任务描述（含建议使用的方法论工具）",
+  "dependencies": ["依赖的任务ID", ...],
+  "scope_files": ["该子任务涉及的 2-5 个关键文件路径或目录"]
+}
+
+## scope_files 规则
+- 每个子任务必须指定 scope_files，来限制 Agent 只关注这些文件
+- 只写该子任务直接涉及的文件 —— 不要跨子任务预加载文件
+- 纯分析子任务（brainstorm/architect/grill），scope_files 可为空数组
+- 目录路径用 /dirname/ 表示（如 /src/runtime/），该子任务中只能 list_dir 该目录
+
+## 规划原则
+1. 遵循 inspect → plan → implement → verify 的生命周期
+2. 编码任务必须包含验证步骤（test/lint/build）
+3. 有代码变更的任务，在实现后必须审查+验证
+4. 依赖关系必须形成 DAG，不能有环
+5. 不确定的需求，规划 ask_user / grill 步骤
+6. 跨模块变更，规划 zoom_out / architect 步骤
+7. 每个任务描述中明确建议使用哪个方法论工具`;
+
+    const userPrompt = `请将以下任务分解为执行子任务：
+
+任务描述: ${taskDescription}
+${options.workingDirectory ? `工作目录: ${options.workingDirectory}` : ''}
+${toolHint}
+
+输出 JSON 数组（仅 JSON，无其他文字）:`;
+
+    try {
+      const response = await modelProvider.chat(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        { maxTokens: 1500, temperature: 0.2 },
+      );
+
+      const text = typeof response === 'string' ? response : response?.text || response?.content || '';
+      return this.#parseLLMSubtasks(text, taskDescription, options);
+    } catch (err) {
+      // LLM 调用失败，回退到模板
+      if (this.#config?.debug) {
+        console.warn('[GraphPlanner] LLM 分解失败，回退到模板:', err.message);
+      }
+      return this.#generateSubtasks(taskDescription, options);
+    }
+  }
+
+  /**
+   * 解析 LLM 返回的子任务 JSON
+   */
+  #parseLLMSubtasks(text, fallbackDescription, options) {
+    try {
+      // 尝试提取 JSON 数组
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) {
+        throw new Error('未找到 JSON 数组');
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        throw new Error('解析结果不是有效数组');
+      }
+
+      // 验证并规范化每个子任务
+      const validTaskIds = new Set();
+      const subtasks = parsed.map((item, index) => {
+        const id = item.name || item.id || `task_${index + 1}`;
+        validTaskIds.add(id);
+
+        return {
+          name: id,
+          description: item.description || `子任务 ${index + 1}`,
+          dependencies: (item.dependencies || []).filter((dep) => {
+            // 过滤不存在的依赖（稍后会验证）
+            return true;
+          }),
+          priority: options.priority || 0,
+          scopeFiles: Array.isArray(item.scope_files) ? item.scope_files : [],
+        };
+      });
+
+      // 验证依赖引用的任务 ID 存在
+      for (const task of subtasks) {
+        task.dependencies = task.dependencies.filter((dep) => validTaskIds.has(dep));
+      }
+
+      // 如果没有验证步骤，自动附加一个
+      const hasVerification = subtasks.some(
+        (t) =>
+          t.name.toLowerCase().includes('verify') ||
+          t.name.toLowerCase().includes('test') ||
+          t.description.toLowerCase().includes('验证') ||
+          t.description.toLowerCase().includes('测试'),
+      );
+      if (!hasVerification) {
+        const lastId = subtasks[subtasks.length - 1]?.name;
+        subtasks.push({
+          name: 'verify_result',
+          description: '验证最终结果：运行测试 / lint / build 确认所有变更正确',
+          dependencies: lastId ? [lastId] : [],
+          priority: options.priority || 0,
+        });
+      }
+
+      return subtasks;
+    } catch (parseErr) {
+      // 解析失败，回退到模板
+      if (this.#config?.debug) {
+        console.warn('[GraphPlanner] LLM 响应解析失败，回退到模板:', parseErr.message);
+      }
+      return this.#generateSubtasks(fallbackDescription, options);
+    }
   }
 
   /**

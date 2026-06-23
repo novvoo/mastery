@@ -150,37 +150,119 @@ export class ExecutionPlanManager {
       return null;
     }
 
+    const planName = 'Automatic task execution plan';
+
     const plan = new ExecutionPlan({
-      name: 'Automatic coding task plan',
+      name: planName,
       description: this.#userInput,
       context: { source: 'react-agent', generatedAt: new Date().toISOString() },
     });
 
-    plan.addTask({
-      id: 'inspect_workspace',
-      name: 'Inspect workspace',
-      description:
-        'Discover the relevant project structure and existing files before reading or writing.',
-      dependencies: [],
-    });
-    plan.addTask({
-      id: 'plan_solution',
-      name: 'Plan solution',
-      description: 'Choose the implementation approach and file split for the requested change.',
-      dependencies: ['inspect_workspace'],
-    });
-    plan.addTask({
-      id: 'implement_changes',
-      name: 'Implement changes',
-      description: 'Create or edit the required files using the smallest necessary changes.',
-      dependencies: ['plan_solution'],
-    });
-    plan.addTask({
-      id: 'inspect_changes',
-      name: 'Inspect changes',
-      description: 'Read back or otherwise inspect the files that were created or edited.',
-      dependencies: ['implement_changes'],
-    });
+    const taskType = profile?.isBugTask
+      ? 'bug_fix'
+      : profile?.isDocumentationTask
+      ? 'documentation'
+      : profile?.isAnalysisTask
+      ? 'analysis'
+      : profile?.isResearchTask
+      ? 'research'
+      : profile?.isModificationTask
+      ? 'modification'
+      : profile?.isCodingTask
+      ? 'coding'
+      : 'general';
+
+    let inspectDescription = 'Explore the context and gather necessary information before proceeding.';
+    let planDescription = 'Plan the approach and define the steps needed to accomplish the task.';
+    let implementDescription = 'Execute the planned approach to accomplish the task.';
+    let inspectChangesDescription = 'Review the work that was done to ensure it meets requirements.';
+    let verifyDescription = 'Verify the final result to confirm the task is complete.';
+
+    switch (taskType) {
+      case 'coding':
+        inspectDescription = 'Discover the relevant project structure and existing files before reading or writing.';
+        planDescription = 'Choose the implementation approach and file split for the requested change.';
+        implementDescription = 'Create or edit the required files using the smallest necessary changes.';
+        inspectChangesDescription = 'Read back or otherwise inspect the files that were created or edited.';
+        verifyDescription = 'Run an appropriate command/tool to verify the requested behavior.';
+        break;
+      case 'modification':
+        inspectDescription = 'Read the existing code to understand the current implementation.';
+        planDescription = 'Plan the modification approach and identify the smallest necessary changes.';
+        implementDescription = 'Make the planned changes to the existing code.';
+        inspectChangesDescription = 'Read back the modified files to verify the changes.';
+        verifyDescription = 'Run tests or verification commands to ensure the modification works correctly.';
+        break;
+      case 'bug_fix':
+        inspectDescription = 'Read the relevant code to understand the bug and its root cause.';
+        planDescription = 'Plan the minimal fix approach to resolve the bug.';
+        implementDescription = 'Implement the bug fix directly. Focus on fixing, not analyzing.';
+        inspectChangesDescription = 'Read back the fixed code to verify the changes.';
+        verifyDescription = 'Run tests to verify the bug is resolved and no regressions were introduced.';
+        break;
+      case 'documentation':
+        inspectDescription = 'Discover the project structure and identify existing documentation files.';
+        planDescription = 'Plan the documentation structure, sections, and key topics to cover.';
+        implementDescription = 'Create or update documentation files with clear, structured content.';
+        inspectChangesDescription = 'Read back and review the documentation for clarity and completeness.';
+        verifyDescription = 'Verify the documentation is complete, accurate, and well-structured.';
+        break;
+      case 'analysis':
+        inspectDescription = 'Read relevant files, search codebase, and gather all necessary information for analysis.';
+        planDescription = 'Plan the analysis approach and define the key questions to answer.';
+        implementDescription = 'Analyze the gathered information and generate insights, findings, and recommendations.';
+        inspectChangesDescription = 'Review the analysis results for accuracy and completeness.';
+        verifyDescription = 'Verify the analysis conclusions against the actual codebase or evidence.';
+        break;
+      case 'research':
+        inspectDescription = 'Clarify the research question and define the scope of the investigation.';
+        planDescription = 'Plan the research approach and identify relevant sources to consult.';
+        implementDescription = 'Search, read, and gather information from various sources to answer the research question.';
+        inspectChangesDescription = 'Synthesize the research findings into a coherent summary.';
+        verifyDescription = 'Verify the research findings are accurate, comprehensive, and well-sourced.';
+        break;
+    }
+
+    if (taskType === 'bug_fix') {
+      plan.addTask({
+        id: 'implement_changes',
+        name: 'Implement bug fix',
+        description: implementDescription,
+        dependencies: [],
+      });
+      plan.addTask({
+        id: 'inspect_changes',
+        name: 'Inspect changes',
+        description: inspectChangesDescription,
+        dependencies: ['implement_changes'],
+      });
+    } else {
+      plan.addTask({
+        id: 'inspect_workspace',
+        name: 'Explore context',
+        description: inspectDescription,
+        dependencies: [],
+      });
+      plan.addTask({
+        id: 'plan_solution',
+        name: 'Plan approach',
+        description: planDescription,
+        dependencies: ['inspect_workspace'],
+      });
+      plan.addTask({
+        id: 'implement_changes',
+        name: 'Execute',
+        description: implementDescription,
+        dependencies: ['plan_solution'],
+      });
+      plan.addTask({
+        id: 'inspect_changes',
+        name: 'Review work',
+        description: inspectChangesDescription,
+        dependencies: ['implement_changes'],
+      });
+    }
+
     if (profile.requiresSemanticRiskReview) {
       plan.addTask({
         id: 'semantic_risk_review',
@@ -189,10 +271,11 @@ export class ExecutionPlanManager {
         dependencies: ['inspect_changes'],
       });
     }
+
     plan.addTask({
       id: 'verify_result',
       name: 'Verify result',
-      description: 'Run an appropriate command/tool to verify the requested behavior.',
+      description: verifyDescription,
       dependencies: profile.requiresSemanticRiskReview
         ? ['semantic_risk_review']
         : ['inspect_changes'],
@@ -200,7 +283,9 @@ export class ExecutionPlanManager {
 
     plan.status = TaskStatus.RUNNING;
     plan.startedAt = Date.now();
-    plan.getTask('inspect_workspace')?.updateStatus(TaskStatus.RUNNING);
+
+    const firstTaskId = plan.tasks.keys().next().value;
+    plan.getTask(firstTaskId)?.updateStatus(TaskStatus.RUNNING);
 
     this.#plan = plan;
     return plan;
@@ -214,6 +299,9 @@ export class ExecutionPlanManager {
   }
   get isCompleted() {
     return !!this.#plan && this.#plan.status === TaskStatus.COMPLETED;
+  }
+  get isBugTask() {
+    return !!this.#profile?.isBugTask;
   }
 
   /** 记录工具调用后推进计划；返回 plan 的新摘要（若有变化） */
@@ -281,14 +369,33 @@ export class ExecutionPlanManager {
     const plan = this.#plan;
     const tasks = plan
       .toJSON()
-      .tasks.map((t) => `- ${t.id}: ${t.name} [${t.status}] - ${t.description}`)
+      .tasks.map((t) => {
+        const scopeStr =
+          t.scopeFiles && t.scopeFiles.length > 0
+            ? ` [📁: ${t.scopeFiles.join(', ')}]`
+            : '';
+        return `- ${t.id}: ${t.name} [${t.status}]${scopeStr} - ${t.description}`;
+      })
       .join('\n');
+    const firstTask = plan.getTask('implement_changes') || plan.getTask('inspect_workspace');
+    const firstTaskId = firstTask ? firstTask.id : 'inspect_workspace';
+    const firstTaskScope =
+      firstTask && firstTask.scopeFiles?.length
+        ? ` 📁 当前子任务文件作用域: ${firstTask.scopeFiles.join(', ')}`
+        : '';
+    const firstTaskPrompt =
+      firstTaskId === 'implement_changes'
+        ? `Current task: implement_changes. Read the relevant code with read_file, identify the bug, then fix it with write_file or edit_file. Do NOT produce a diagnostic report — fix the bug.`
+        : `Current task: inspect_workspace. Call list_dir or another filesystem discovery tool first, then continue through the plan.`;
+
     return (
       `Automatic task orchestration is active for this request:\n${this.#userInput}\n\n` +
-      `Execute this DAG in dependency order. Do not skip ahead, and do not provide FINAL_ANSWER until every task is completed.\n${tasks}\n\n` +
+      `Execute this DAG in dependency order. Do not skip ahead, and do not provide FINAL_ANSWER until every task is completed.\n` +
+      `${tasks}\n\n` +
       `The DAG task ids are status labels, not tool names. Use real available tools such as list_dir, read_file, write_file, shell, and methodology tools.\n` +
       `${this.#profile?.requiresSemanticRiskReview ? this.#buildSemanticRiskGuidance() + '\n' : ''}` +
-      `Current task: inspect_workspace. Call list_dir or another filesystem discovery tool first, then continue through the plan.`
+      firstTaskPrompt +
+      firstTaskScope
     );
   }
 

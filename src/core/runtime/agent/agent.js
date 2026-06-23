@@ -313,6 +313,10 @@ export class ReActAgent {
 
     // 异步预热工作目录索引
     if (this.#workspaceIndex && taskProfile.isCodingTask) {
+      // 同步注入：利用已缓存的数据（WorkspaceIndex 磁盘缓存、Memory）
+      this.#injectPreExploredContextSync(userInput, taskProfile);
+
+      // 异步增强管道
       this.#agentContext
         .warmWorkspaceCache()
         .then((summary) => {
@@ -672,7 +676,9 @@ export class ReActAgent {
         ) {
           this.#sessionManager.addAssistantMessage(response.text);
           this.#sessionManager.addUserMessage(
-            `This is a coding task and no tool has been executed yet. To complete this task, use the available tools to: (a) inspect the workspace with list_dir/read_file, (b) write code with write_file/edit_file, (c) verify with shell/verify. Do not finish until you have produced and verified real code changes.`,
+            `This is a coding task and no tool has been executed yet. The engine has pre-computed workspace structure and project memory — use this context directly. ` +
+            `To complete this task: (a) read the specific code sections you need to edit, (b) write code with write_file/edit_file, (c) verify with shell/verify. ` +
+            `Do not finish until you have produced and verified real code changes.`,
           );
           continue;
         }
@@ -869,6 +875,53 @@ export class ReActAgent {
   // ============================================================
   // 私有方法
   // ============================================================
+
+  /**
+   * 同步注入预探索上下文：利用 WorkspaceIndex + AgentMemory 数据，
+   * 在首轮迭代前注入项目结构和记忆上下文，消除 agent 的探索阶段。
+   * 使用 SessionManager 分层 API，支持运行时刷新。
+   */
+  #injectPreExploredContextSync(userInput, _taskProfile) {
+    try {
+      // 1. 工作区结构 → layer1_structure
+      const wsSummary = this.#workspaceIndex?.getSummary?.();
+      if (wsSummary && wsSummary.length > 0) {
+        this.#sessionManager.addLayer('layer1_structure',
+          `[WORKSPACE STRUCTURE — pre-indexed]\n${wsSummary}`,
+          { priority: SessionManager.LAYER.STRUCTURE },
+        );
+      }
+    } catch {
+      /* 索引未就绪，跳过 */
+    }
+
+    try {
+      // 2. 项目记忆 → layer4_memory
+      if (this.#memoryManager) {
+        const memCtx =
+          typeof this.#memoryManager.getBudgetedMemoryContext === 'function'
+            ? this.#memoryManager.getBudgetedMemoryContext({
+                currentTask: typeof userInput === 'string' ? userInput.substring(0, 300) : '',
+                maxTokens: 800,
+                tokensPerChar: 0.25,
+              })
+            : '';
+        if (memCtx && memCtx.trim()) {
+          this.#sessionManager.addLayer('layer4_memory',
+            `[PROJECT MEMORY — git-aware]\n${memCtx}`,
+            { priority: SessionManager.LAYER.MEMORY },
+          );
+        }
+      }
+    } catch {
+      /* 记忆不可用 */
+    }
+
+    this.#debugEvent('Pre-explored context injected (sync, layered)', {
+      hasWorkspace: Boolean(this.#workspaceIndex),
+      hasMemory: Boolean(this.#memoryManager),
+    });
+  }
 
   #completeRun({
     success,

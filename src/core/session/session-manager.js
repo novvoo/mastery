@@ -1,5 +1,13 @@
 /**
  * Session Manager - manages conversation history and context window
+ *
+ * 分层上下文架构：
+ *   #systemPrompt   — 不可变行为规则 (ROLE + PRINCIPLES + REACT + AUTO_TRIGGER + FORBIDDEN)
+ *   #layers         — 引擎注入的结构化上下文层，按 identity 管理，支持独立刷新
+ *   #messages       — 对话历史 (user / assistant / tool)
+ *
+ * Layer identity 使得引擎可以在运行时选择性刷新某一层（例如编辑后刷新 memory layer），
+ * 而不需要重新注入所有上下文。同时也支持 transient layer（一次性注入，用完即弃）。
  */
 
 import { Tokenizer } from '../tokenizer.js';
@@ -10,12 +18,28 @@ export class SessionManager {
   /** @type {string} */
   #systemPrompt = '';
 
+  /**
+   * 分层上下文存储。
+   * Map<layerId, { content: string, priority: number, tokenBudget: number|null, transient: boolean }>
+   * priority 越低越靠前注入（0=结构层, 10=投影层, 20=诊断层, 30=依赖层, 40=记忆层）
+   */
+  #layers = new Map();
+
   #tokenCounter;
   #usesCustomTokenCounter;
   #tokenizerModel;
 
   // priority 分级: 1 = ordinary, 2 = evidence, 3 = decision
   static PRIORITY = Object.freeze({ ORDINARY: 1, EVIDENCE: 2, DECISION: 3 });
+
+  // Layer priority 常量：数值越大越靠后（越接近对话），LLM 注意力权重自然更高
+  static LAYER = Object.freeze({
+    STRUCTURE: 0,    // 项目结构
+    PROJECTION: 10,  // 状态图投影
+    DIAGNOSTICS: 20, // LSP 诊断
+    DEPENDENCIES: 30, // 依赖关系
+    MEMORY: 40,      // 项目记忆（最高优先级，最后注入）
+  });
 
   constructor(options = {}) {
     this.#usesCustomTokenCounter = typeof options.tokenCounter === 'function';
@@ -30,9 +54,67 @@ export class SessionManager {
     this.#systemPrompt = prompt;
   }
 
+  /**
+   * 注入结构化上下文层。与 addSystemMessage() 不同，layer 有 identity，
+   * 可以被后续的 refreshLayer() 更新，或 removeLayer() 移除。
+   *
+   * @param {string} layerId   — 全局唯一标识，如 'layer1_structure', 'layer4_memory'
+   * @param {string} content   — 上下文内容
+   * @param {object} [options]
+   * @param {number} [options.priority]  — 注入顺序（越低越靠前），默认 0
+   * @param {number} [options.tokenBudget] — 该层 token 上限，null 为不限制
+   * @param {boolean} [options.transient]  — 一次性层，下次 getMessages() 后自动清除
+   */
+  addLayer(layerId, content, options = {}) {
+    this.#layers.set(layerId, {
+      content,
+      priority: options.priority ?? 0,
+      tokenBudget: options.tokenBudget ?? null,
+      transient: options.transient ?? false,
+    });
+  }
+
+  /**
+   * 刷新已有 layer 的内容。layerId 不存在时自动创建（等同于 addLayer）。
+   * 用于闭环记忆：编辑后更新 layer4_memory，不重写其他层。
+   */
+  refreshLayer(layerId, content, options = {}) {
+    if (this.#layers.has(layerId)) {
+      const existing = this.#layers.get(layerId);
+      existing.content = content;
+      if (options.priority !== undefined) existing.priority = options.priority;
+      if (options.transient !== undefined) existing.transient = options.transient;
+    } else {
+      this.addLayer(layerId, content, options);
+    }
+  }
+
+  /**
+   * 移除指定 layer，用于清理过期的上下文层。
+   */
+  removeLayer(layerId) {
+    return this.#layers.delete(layerId);
+  }
+
+  /**
+   * 清除所有 transient layers（一次性注入层）。
+   */
+  clearTransientLayers() {
+    for (const [id, layer] of this.#layers) {
+      if (layer.transient) this.#layers.delete(id);
+    }
+  }
+
+  /**
+   * 检查某个 layer 是否存在。
+   */
+  hasLayer(layerId) {
+    return this.#layers.has(layerId);
+  }
+
   /** @param {string} content */
   addSystemMessage(content) {
-    // Append to existing system prompt
+    // Append to existing system prompt (backward compat)
     this.#systemPrompt = this.#systemPrompt ? `${this.#systemPrompt}\n\n${content}` : content;
   }
 
@@ -123,14 +205,39 @@ export class SessionManager {
     }
   }
 
-  /** Get all messages including system prompt for LLM API */
+  /** Get all messages including system prompt and layered context for LLM API */
   getMessages() {
     /** @type {Array} */
     const all = [];
+
+    // 1. 核心 system prompt（不可变行为规则）
     if (this.#systemPrompt) {
       all.push({ role: 'system', content: this.#systemPrompt });
     }
+
+    // 2. 分层上下文：按 priority 升序注入（低 priority 在前，LLM 越靠后的注意力越高）
+    const sortedLayers = [...this.#layers.entries()]
+      .sort(([, a], [, b]) => a.priority - b.priority);
+
+    for (const [layerId, layer] of sortedLayers) {
+      let content = layer.content;
+      // Token budget：如果设置了上限，截断内容
+      if (layer.tokenBudget != null && content.length > 0) {
+        const estimatedTokens = Math.ceil(content.length * 0.25);
+        if (estimatedTokens > layer.tokenBudget) {
+          const maxChars = Math.floor(layer.tokenBudget * 4);
+          content = content.substring(0, maxChars) + '\n... (layer truncated, see engine for full context)';
+        }
+      }
+      all.push({ role: 'system', content });
+    }
+
+    // 3. 对话历史
     all.push(...this.#messages);
+
+    // 4. 清除一次性 layer
+    this.clearTransientLayers();
+
     return all;
   }
 

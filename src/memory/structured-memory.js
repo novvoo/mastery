@@ -6,6 +6,7 @@ import {
   readdirSync,
   unlinkSync,
   appendFileSync,
+  statSync,
 } from 'fs';
 import { resolve, join } from 'path';
 import { MemoryType, MemoryStatus, MemoryEntry, MemoryTopic, inferTopic } from './memory-types.js';
@@ -25,6 +26,10 @@ export class StructuredMemory {
   #entries;
   #dirty;
   #saveTimer;
+  /** @type {boolean} 标记 entries 是否已从磁盘加载 */
+  #loaded = false;
+  /** @type {number} entries 目录的 mtime（用于增量重载） */
+  #entriesDirMtime = 0;
 
   constructor(workingDir) {
     this.#workingDir = workingDir;
@@ -48,10 +53,34 @@ export class StructuredMemory {
     if (!existsSync(this.#topicsDir)) {
       mkdirSync(this.#topicsDir, { recursive: true });
     }
-    this.#load();
+    // 延迟加载：不在构造时同步读磁盘，仅在首次访问 entries 时触发
   }
 
-  #load() {
+  /**
+   * 确保 entries 已从磁盘加载。仅首次调用时执行磁盘 I/O。
+   * 后续调用检查 entries 目录的 mtime，仅在目录有变化时才重新加载。
+   */
+  #ensureLoaded() {
+    if (!this.#loaded) {
+      this.#loadFromDisk();
+      this.#loaded = true;
+      return;
+    }
+    // 增量检查：entries 目录 mtime 是否有变化
+    if (existsSync(this.#entriesDir)) {
+      try {
+        const currentMtime = statSync(this.#entriesDir).mtimeMs;
+        if (currentMtime > this.#entriesDirMtime) {
+          this.#loadFromDisk();
+          this.#entriesDirMtime = currentMtime;
+        }
+      } catch {
+        /* 静默 */
+      }
+    }
+  }
+
+  #loadFromDisk() {
     this.#entries.clear();
 
     if (existsSync(this.#entriesDir)) {
@@ -69,10 +98,17 @@ export class StructuredMemory {
             }
           }
         }
+        this.#entriesDirMtime = statSync(this.#entriesDir).mtimeMs;
       } catch (e) {
         console.warn(`Failed to load memory entries: ${e.message}`);
       }
     }
+  }
+
+  /** 强制从磁盘重新加载（外部新增了文件时调用） */
+  reload() {
+    this.#loadFromDisk();
+    this.#loaded = true;
   }
 
   #saveEntry(entry) {
@@ -101,6 +137,7 @@ export class StructuredMemory {
 
     this.#saveTimer = setTimeout(() => {
       try {
+        this.#ensureLoaded();
         for (const entry of this.#entries.values()) {
           this.#saveEntry(entry);
         }
@@ -117,6 +154,7 @@ export class StructuredMemory {
   }
 
   flush() {
+    this.#ensureLoaded();
     if (this.#saveTimer) {
       clearTimeout(this.#saveTimer);
       this.#saveTimer = null;
@@ -129,6 +167,7 @@ export class StructuredMemory {
   }
 
   add(type, title, content, options = {}) {
+    this.#ensureLoaded();
     const entry = new MemoryEntry({
       type,
       title,
@@ -167,6 +206,7 @@ export class StructuredMemory {
   }
 
   get(id) {
+    this.#ensureLoaded();
     const entry = this.#entries.get(id);
     if (entry) {
       entry.access();
@@ -177,6 +217,7 @@ export class StructuredMemory {
   }
 
   getAll(type = null) {
+    this.#ensureLoaded();
     const entries = Array.from(this.#entries.values());
     if (type) {
       return entries.filter((e) => e.type === type);
@@ -185,6 +226,7 @@ export class StructuredMemory {
   }
 
   delete(id) {
+    this.#ensureLoaded();
     const entry = this.#entries.get(id);
     if (entry) {
       this.#deleteEntry(id);
@@ -197,6 +239,7 @@ export class StructuredMemory {
   }
 
   #writeIndex() {
+    this.#ensureLoaded();
     if (!existsSync(this.#memoryDir)) {
       mkdirSync(this.#memoryDir, { recursive: true });
     }
@@ -238,6 +281,7 @@ export class StructuredMemory {
   }
 
   getIndexSummary() {
+    this.#ensureLoaded();
     const entries = Array.from(this.#entries.values())
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, 20);
@@ -280,6 +324,7 @@ export class StructuredMemory {
   }
 
   getStats() {
+    this.#ensureLoaded();
     return {
       total: this.#entries.size,
       user: this.getAll(MemoryType.USER).length,
@@ -373,6 +418,7 @@ export class StructuredMemory {
    * 将 entries/ 下已有记忆迁移到 topic 文件（首次启用时调用）。
    */
   migrateToTopics() {
+    this.#ensureLoaded();
     const migrated = [];
     for (const entry of this.#entries.values()) {
       const topic = this.appendToTopic(entry);
@@ -415,6 +461,7 @@ export class StructuredMemory {
   }
 
   clear() {
+    this.#ensureLoaded();
     for (const id of this.#entries.keys()) {
       this.#deleteEntry(id);
     }

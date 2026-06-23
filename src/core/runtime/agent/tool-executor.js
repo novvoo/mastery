@@ -16,6 +16,7 @@
 
 import { existsSync, mkdir } from 'fs';
 import { readFile, appendFile } from 'fs/promises';
+import path from 'path';
 import { withTimeout } from '../../../errors/error-handler.js';
 import { TextToolParser } from '../../text-tool-parser.js';
 import { Decision } from './support/security-policy.js';
@@ -34,6 +35,88 @@ const READ_ONLY_TOOLS = new Set([
   'workspace_knowledge',
 ]);
 
+// ==== 文件作用域强制：工程级约束，不依赖 prompt ====
+// 当执行计划提供了当前子任务的 scopeFiles 时，
+// 以下工具的目标路径必须在 scopeFiles 范围内，否则直接拦截。
+
+const SCOPE_READ_TOOLS = new Set([
+  'read_file',
+  'list_dir',
+  'tree',
+]);
+
+/**
+ * 从工具参数中提取目标文件路径（用于作用域匹配）。
+ * @param {string} name 工具名
+ * @param {object} args 工具参数
+ * @returns {string|null}
+ */
+function getScopeTargetPath(name, args) {
+  if (!args) return null;
+  switch (name) {
+    case 'read_file':
+      return args.path || args.filePath || null;
+    case 'list_dir':
+      return args.path || null;
+    case 'tree':
+      return args.path || null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * 检查目标路径是否在给定的 scopeFiles 范围内。
+ * scopeFiles 约定（来自 graph-planner）：
+ *   - 目录以 / 结尾，如 "src/runtime/" → 匹配该目录下所有文件
+ *   - 文件直接写完整路径，如 "src/foo.js" → 精确匹配
+ *
+ * @param {string} targetPath 目标文件/目录路径
+ * @param {string[]} scopeFiles 当前子任务的作用域文件列表
+ * @param {string} workingDir 工作区根目录
+ * @returns {boolean}
+ */
+function isPathInScope(targetPath, scopeFiles, workingDir) {
+  if (!targetPath || !scopeFiles || scopeFiles.length === 0) {
+    return true; // 无约束时放行
+  }
+
+  // 规范化路径：去掉前导 /，解析 ..，确保使用正斜杠
+  const resolve = (p) => {
+    // 相对于工作区根目录解析
+    const abs = path.resolve(workingDir, p);
+    // 转为相对于工作区根目录的相对路径，使用正斜杠
+    let rel = path.relative(workingDir, abs);
+    if (!rel) return '';
+    // 统一斜杠方向
+    rel = rel.replace(/\\/g, '/');
+    return rel;
+  };
+
+  const resolved = resolve(targetPath);
+
+  for (const scope of scopeFiles) {
+    let normalized = scope.trim().replace(/^\/+/, '');
+
+    if (normalized.endsWith('/')) {
+      // 目录作用域：目标必须在该目录下
+      normalized = normalized.replace(/\/+$/, '');
+      const scopeDir = resolve(normalized);
+      if (resolved === scopeDir || resolved.startsWith(scopeDir + '/')) {
+        return true;
+      }
+    } else {
+      // 文件作用域：精确匹配
+      const scopeFile = resolve(normalized);
+      if (resolved === scopeFile) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 export class ToolExecutor {
   #toolRegistry;
   #securityPolicy;
@@ -51,6 +134,7 @@ export class ToolExecutor {
   #snapshotStore;
   #hashlinePatcher;
   #lspManager;
+  #editOrchestrator;
 
   constructor({
     toolRegistry,
@@ -63,6 +147,7 @@ export class ToolExecutor {
     snapshotStore,
     hashlinePatcher,
     lspManager,
+    editOrchestrator,
   }) {
     this.#toolRegistry = toolRegistry;
     this.#securityPolicy = securityPolicy || null;
@@ -80,6 +165,7 @@ export class ToolExecutor {
     this.#snapshotStore = snapshotStore || null;
     this.#hashlinePatcher = hashlinePatcher || null;
     this.#lspManager = lspManager || null;
+    this.#editOrchestrator = editOrchestrator || null;
   }
 
   // ============== 公共 API ==============
@@ -238,6 +324,25 @@ export class ToolExecutor {
       }
     }
 
+    // ============ 文件作用域强制（工程级：硬拦截越界读取） ============
+    if (
+      SCOPE_READ_TOOLS.has(name) &&
+      context.scopeFiles &&
+      context.scopeFiles.length > 0
+    ) {
+      const targetPath = getScopeTargetPath(name, effectiveArgs);
+      if (targetPath && !isPathInScope(targetPath, context.scopeFiles, this.#config.workingDirectory || process.cwd())) {
+        const scopeList = context.scopeFiles.join(', ');
+        const blockedMsg =
+          `SCOPE_BLOCKED: "${targetPath}" 不在当前子任务的作用域内 [${scopeList}]。\n` +
+          `当前执行计划已限定文件范围，如需访问此文件，请完成当前子任务后推进到下一阶段。`;
+        options.emitObservation?.(id, name, blockedMsg, resultMode);
+        this.#recordEvent(name, effectiveArgs, false, blockedMsg);
+        this.#ui.warn?.(`Scope blocked: ${name} → ${targetPath}`);
+        return { name, result: blockedMsg, skipped: true, scopeBlocked: true };
+      }
+    }
+
     // ============ 执行工具 ============
     const executionContext = {
       workingDirectory: this.#config.workingDirectory || process.cwd(),
@@ -253,6 +358,7 @@ export class ToolExecutor {
       snapshotStore: this.#snapshotStore,
       hashlinePatcher: this.#hashlinePatcher,
       lspManager: this.#lspManager,
+      editOrchestrator: this.#editOrchestrator,
       toolEventsSnapshot: this.#events.map((e) => ({ ...e })),
     };
 

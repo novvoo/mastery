@@ -598,61 +598,108 @@ INS.POST 6=
           return 'Error: patch must be a non-empty string in Hashline DSL format.';
         }
 
+        // 优先走 EditOrchestrator 完整事务管道
+        // （preflight → apply → LSP sync → diagnostics gate → memory update）
+        const orchestrator = ctx.editOrchestrator;
+        if (orchestrator && typeof orchestrator.editViaHashline === 'function') {
+          try {
+            const result = await orchestrator.editViaHashline(patch);
+
+            if (!result.success) {
+              const diagInfo =
+                result.diagnostics && !result.diagnostics.ok
+                  ? `\nDiagnostics gate: ${result.diagnostics.newErrors?.length || 0} new errors` +
+                    (result.rolledBack ? ' (rolled back)' : '')
+                  : '';
+              return (
+                `Hashline patch FAILED: ${result.error || 'unknown error'}` +
+                `\nFiles changed: ${result.filesChanged.join(', ') || '(none)'}` +
+                `\nFiles failed: ${result.filesFailed.join(', ') || '(none)'}` +
+                diagInfo
+              );
+            }
+
+            const parts = [
+              'Hashline patch applied successfully through EditOrchestrator.',
+              `Files changed: ${result.filesChanged.join(', ') || '(none)'}`,
+              `Total edits: ${result.totalEdits}`,
+            ];
+
+            if (result.diagnostics?.ok !== undefined) {
+              parts.push(
+                result.diagnostics.ok
+                  ? 'Diagnostics gate: PASSED (no new errors introduced)'
+                  : `Diagnostics gate: ${result.diagnostics.newErrors?.length || 0} new errors`,
+              );
+            }
+
+            if (result.repaired?.length > 0) {
+              parts.push(`Auto-repaired: ${result.repaired.length} error(s) via codeAction`);
+            }
+
+            if (result.rolledBack) {
+              parts.push('WARNING: Edits were rolled back due to diagnostics gate failure.');
+            }
+
+            if (result.memoryUpdated) {
+              parts.push('Memory: updated with edit record.');
+            }
+
+            return parts.join('\n');
+          } catch (error) {
+            return `Error applying Hashline patch through EditOrchestrator: ${error instanceof Error ? error.message : error}`;
+          }
+        }
+
+        // Fallback: 直接走 patcher（无 diagnostics gate / memory update）
         const patcher = ctx.hashlinePatcher;
         if (!patcher) {
-          return 'Error: Hashline Patcher is not available in this runtime. Use edit_file or write_file instead.';
+          return 'Error: Neither EditOrchestrator nor Hashline Patcher is available. Use edit_file or write_file instead.';
         }
 
         try {
-          // 执行 preflight 先做校验
           const { patch: parsedPatch, preflight } = await patcher.preflight(patch);
 
-          // 汇总 preflight 结果
           const preflightSummary = preflight
             .map((p) => {
-              if (p.ok) {
-                return `  ✓ ${p.path}: tag matches (${p.tag.substring(0, 12)}...)`;
-              }
-              if (p.recoverable) {
-                return `  ⚠ ${p.path}: stale tag, will attempt recovery`;
-              }
+              if (p.ok) return `  ✓ ${p.path}: tag matches (${p.tag?.substring(0, 12)}...)`;
+              if (p.recoverable) return `  ⚠ ${p.path}: stale tag, will attempt recovery`;
               return `  ✗ ${p.path}: ${p.error}`;
             })
             .join('\n');
 
-          // 如果有不可恢复的 section，提前返回 preflight 结果
           const fatalSection = preflight.find((p) => !p.ok && !p.recoverable);
           if (fatalSection) {
             return `Hashline patch preflight FAILED:\n${preflightSummary}\n\nPatch NOT applied. Fix the following and retry:\n  - ${fatalSection.path}: ${fatalSection.error}`;
           }
 
-          // 应用 patch
           const result = await patcher.apply(parsedPatch);
 
           if (!result.ok) {
             return `Hashline patch apply FAILED: ${result.error}`;
           }
 
-          // 汇总 apply 结果
           const applySummary = result.sections
             .map((s) => {
               const status = s.recovered ? 'RECOVERED' : 'applied';
               const warnStr =
-                s.warnings && s.warnings.length > 0
-                  ? `\n    warnings: ${s.warnings.join('; ')}`
-                  : '';
-              return `  ✓ ${s.path}: ${status} (${s.hunksApplied} hunks)${warnStr}\n    tag: ${s.tag.substring(0, 12)}... → ${s.newTag.substring(0, 12)}...`;
+                s.warnings?.length > 0 ? `\n    warnings: ${s.warnings.join('; ')}` : '';
+              return `  ✓ ${s.path}: ${status} (${s.hunksApplied} hunks)${warnStr}\n    tag: ${s.tag?.substring(0, 12)}... → ${s.newTag?.substring(0, 12)}...`;
             })
             .join('\n');
 
-          // 更新 memoryManager 文件映射
           for (const s of result.sections) {
             if (ctx.memoryManager && typeof ctx.memoryManager.updateFileMap === 'function') {
               ctx.memoryManager.updateFileMap(s.path, 'edited').catch(() => {});
             }
           }
 
-          return `Hashline patch applied successfully:\n${applySummary}\n\nPreflight:\n${preflightSummary}`;
+          return (
+            `Hashline patch applied (patcher fallback, no diagnostics gate):\n${applySummary}\n\n` +
+            `Preflight:\n${preflightSummary}\n\n` +
+            `Note: applied without LSP diagnostics gate or memory update.` +
+            (ctx.editOrchestrator ? '' : ' Upgrade available — install EditOrchestrator for full transaction pipeline.')
+          );
         } catch (error) {
           return `Error applying Hashline patch: ${error instanceof Error ? error.message : error}`;
         }
@@ -661,65 +708,177 @@ INS.POST 6=
 
     {
       name: 'search',
-      description:
-        'Search for a pattern in files within the working directory. Returns matching lines with file paths and line numbers.',
-      category: ToolCategory.FILESYSTEM,
-      params: {
-        pattern: {
-          type: 'string',
-          description: 'Search pattern (plain text; regex metachars are matched literally)',
+        description:
+          'Search for a pattern in files within the working directory. Returns matching lines with file paths and line numbers.',
+        category: ToolCategory.FILESYSTEM,
+        params: {
+          pattern: {
+            type: 'string',
+            description: 'Search pattern (plain text; regex metachars are matched literally)',
+          },
+          file_pattern: {
+            type: 'string',
+            description: 'File glob pattern to filter files (e.g., "*.ts")',
+          },
+          max_results: {
+            type: 'number',
+            description: 'Maximum number of results to return (default 20, max 100)',
+          },
         },
-        file_pattern: {
-          type: 'string',
-          description: 'File glob pattern to filter files (e.g., "*.ts")',
-        },
-        max_results: {
-          type: 'number',
-          description: 'Maximum number of results to return (default 20, max 100)',
-        },
-      },
-      required: ['pattern'],
-      handler: async ({ pattern, file_pattern, max_results }, ctx) => {
-        if (typeof pattern !== 'string' || pattern.length === 0) {
-          return 'Error: search pattern must be a non-empty string.';
-        }
-        if (pattern.length > 512) {
-          return 'Error: search pattern too long (max 512 chars).';
-        }
-        if (
-          file_pattern !== undefined &&
-          (typeof file_pattern !== 'string' || file_pattern.length > 128)
-        ) {
-          return 'Error: file_pattern must be a string under 128 chars.';
-        }
-
-        try {
-          const HARD_MAX_RESULTS = 100;
-          const SEARCH_TIMEOUT_MS = 30000;
-          const max = Math.max(1, Math.min(max_results || 20, HARD_MAX_RESULTS));
-
-          // Build the grep argument list as an array -- execFile never spawns a
-          // shell, so there is no risk of command injection regardless of what
-          // the user-supplied pattern contains.
-          const grepArgs = [
-            '-rn',
-            '-F', // treat pattern as plain text, not regex
-            '--color=never',
-            '-m',
-            String(max),
-          ];
-
-          if (file_pattern) {
-            // Validate the file_filter contains only safe glob chars.  We still
-            // pass it as a single argv element so grep's own glob handling
-            // applies without any shell parsing.
-            if (!/^[A-Za-z0-9*?.\-_/\[\]]+$/.test(file_pattern)) {
-              return `Error: file_pattern contains disallowed characters: ${file_pattern}`;
-            }
-            grepArgs.push(`--include=${file_pattern}`);
+        required: ['pattern'],
+        handler: async ({ pattern, file_pattern, max_results }, ctx) => {
+          if (typeof pattern !== 'string' || pattern.length === 0) {
+            return 'Error: search pattern must be a non-empty string.';
+          }
+          if (pattern.length > 512) {
+            return 'Error: search pattern too long (max 512 chars).';
+          }
+          if (
+            file_pattern !== undefined &&
+            (typeof file_pattern !== 'string' || file_pattern.length > 128)
+          ) {
+            return 'Error: file_pattern must be a string under 128 chars.';
           }
 
-          const excludeDirs = [
+          try {
+            const HARD_MAX_RESULTS = 100;
+            const SEARCH_TIMEOUT_MS = 30000;
+            const max = Math.max(1, Math.min(max_results || 20, HARD_MAX_RESULTS));
+
+            // Build the grep argument list as an array -- execFile never spawns a
+            // shell, so there is no risk of command injection regardless of what
+            // the user-supplied pattern contains.
+            const grepArgs = [
+              '-rn',
+              '-F', // treat pattern as plain text, not regex
+              '--color=never',
+              '-m',
+              String(max),
+            ];
+
+            if (file_pattern) {
+              // Validate the file_filter contains only safe glob chars.  We still
+              // pass it as a single argv element so grep's own glob handling
+              // applies without any shell parsing.
+              if (!/^[A-Za-z0-9*?.\-_/\[\]]+$/.test(file_pattern)) {
+                return `Error: file_pattern contains disallowed characters: ${file_pattern}`;
+              }
+              grepArgs.push(`--include=${file_pattern}`);
+            }
+
+            const excludeDirs = [
+              '.git',
+              'node_modules',
+              '.agent-data',
+              '.automation',
+              '.test-temp',
+              'dist',
+              'build',
+              'coverage',
+              '.next',
+              '.cache',
+            ];
+            for (const dir of excludeDirs) {
+              grepArgs.push(`--exclude-dir=${dir}`);
+            }
+
+            grepArgs.push('--');
+            grepArgs.push(pattern);
+            grepArgs.push(ctx.workingDirectory);
+
+            const result = await new Promise((resolve, reject) => {
+              execFile(
+                'grep',
+                grepArgs,
+                {
+                  encoding: 'utf-8',
+                  maxBuffer: 5 * 1024 * 1024,
+                  timeout: SEARCH_TIMEOUT_MS,
+                },
+                (err, stdout) => {
+                  // grep exits with code 1 when there are no matches -- that is not
+                  // an error for us.
+                  if (err && err.code !== 1) {
+                    reject(err);
+                  } else {
+                    resolve(stdout);
+                  }
+                },
+              );
+            });
+
+            if (!result.trim()) {
+              return `No matches found for pattern: ${pattern}`;
+            }
+
+            const lines = result.trim().split('\n');
+            const limitedLines = lines.slice(0, HARD_MAX_RESULTS);
+
+            return limitedLines.join('\n');
+          } catch (error) {
+            if (error.killed && error.signal === 'SIGTERM') {
+              return `Search timed out after 30 seconds. Try a more specific pattern or smaller scope.`;
+            }
+            return `Error searching: ${error instanceof Error ? error.message : error}`;
+          }
+        },
+      },
+
+      {
+        name: 'glob',
+        description: 'Find files matching a glob pattern in the working directory.',
+        category: ToolCategory.FILESYSTEM,
+        params: {
+          pattern: { type: 'string', description: 'Glob pattern (e.g., "**/*.ts", "src/**/*.js")' },
+        },
+        required: ['pattern'],
+        handler: async ({ pattern }, ctx) => {
+          if (!pattern || typeof pattern !== 'string') {
+            return 'Error: Missing required glob pattern.';
+          }
+
+          try {
+            const { glob } = await import('glob');
+            const files = await glob(pattern, {
+              cwd: ctx.workingDirectory,
+              absolute: false,
+              ignore: ['**/node_modules/**', '**/.git/**'],
+            });
+            if (files.length === 0) {
+              return `No files matched pattern: ${pattern}`;
+            }
+            return files.join('\n');
+          } catch (error) {
+            return `Error globbing: ${error instanceof Error ? error.message : error}`;
+          }
+        },
+      },
+
+      {
+        name: 'tree',
+        description:
+          'Recursively list directory structure as a tree for efficient workspace inspection.',
+        category: ToolCategory.FILESYSTEM,
+        params: {
+          path: {
+            type: 'string',
+            description: 'Directory path relative to working directory (default: root)',
+          },
+          max_depth: {
+            type: 'number',
+            description: 'Maximum depth to traverse (default: 3, max: 8)',
+          },
+        },
+        required: [],
+        handler: async ({ path, max_depth }, ctx) => {
+          const safe = safeResolvePath(ctx.workingDirectory, path || '.');
+          if (!safe.ok) {
+            return safe.error;
+          }
+          const rootPath = safe.fullPath;
+          const maxDepth = Math.min(max_depth || 3, 8);
+
+          const excludeDirs = new Set([
             '.git',
             'node_modules',
             '.agent-data',
@@ -730,208 +889,96 @@ INS.POST 6=
             'coverage',
             '.next',
             '.cache',
-          ];
-          for (const dir of excludeDirs) {
-            grepArgs.push(`--exclude-dir=${dir}`);
-          }
+            '__pycache__',
+          ]);
 
-          grepArgs.push('--');
-          grepArgs.push(pattern);
-          grepArgs.push(ctx.workingDirectory);
-
-          const result = await new Promise((resolve, reject) => {
-            execFile(
-              'grep',
-              grepArgs,
-              {
-                encoding: 'utf-8',
-                maxBuffer: 5 * 1024 * 1024,
-                timeout: SEARCH_TIMEOUT_MS,
-              },
-              (err, stdout) => {
-                // grep exits with code 1 when there are no matches -- that is not
-                // an error for us.
-                if (err && err.code !== 1) {
-                  reject(err);
-                } else {
-                  resolve(stdout);
-                }
-              },
-            );
-          });
-
-          if (!result.trim()) {
-            return `No matches found for pattern: ${pattern}`;
-          }
-
-          const lines = result.trim().split('\n');
-          const limitedLines = lines.slice(0, HARD_MAX_RESULTS);
-
-          return limitedLines.join('\n');
-        } catch (error) {
-          if (error.killed && error.signal === 'SIGTERM') {
-            return `Search timed out after 30 seconds. Try a more specific pattern or smaller scope.`;
-          }
-          return `Error searching: ${error instanceof Error ? error.message : error}`;
-        }
-      },
-    },
-
-    {
-      name: 'glob',
-      description: 'Find files matching a glob pattern in the working directory.',
-      category: ToolCategory.FILESYSTEM,
-      params: {
-        pattern: { type: 'string', description: 'Glob pattern (e.g., "**/*.ts", "src/**/*.js")' },
-      },
-      required: ['pattern'],
-      handler: async ({ pattern }, ctx) => {
-        if (!pattern || typeof pattern !== 'string') {
-          return 'Error: Missing required glob pattern.';
-        }
-
-        try {
-          const { glob } = await import('glob');
-          const files = await glob(pattern, {
-            cwd: ctx.workingDirectory,
-            absolute: false,
-            ignore: ['**/node_modules/**', '**/.git/**'],
-          });
-          if (files.length === 0) {
-            return `No files matched pattern: ${pattern}`;
-          }
-          return files.join('\n');
-        } catch (error) {
-          return `Error globbing: ${error instanceof Error ? error.message : error}`;
-        }
-      },
-    },
-
-    {
-      name: 'tree',
-      description:
-        'Recursively list directory structure as a tree for efficient workspace inspection.',
-      category: ToolCategory.FILESYSTEM,
-      params: {
-        path: {
-          type: 'string',
-          description: 'Directory path relative to working directory (default: root)',
-        },
-        max_depth: {
-          type: 'number',
-          description: 'Maximum depth to traverse (default: 3, max: 8)',
-        },
-      },
-      required: [],
-      handler: async ({ path, max_depth }, ctx) => {
-        const safe = safeResolvePath(ctx.workingDirectory, path || '.');
-        if (!safe.ok) {
-          return safe.error;
-        }
-        const rootPath = safe.fullPath;
-        const maxDepth = Math.min(max_depth || 3, 8);
-
-        const excludeDirs = new Set([
-          '.git',
-          'node_modules',
-          '.agent-data',
-          '.automation',
-          '.test-temp',
-          'dist',
-          'build',
-          'coverage',
-          '.next',
-          '.cache',
-          '__pycache__',
-        ]);
-
-        try {
-          if (!existsSync(rootPath)) {
-            return `Error: Directory not found: ${path || '.'}`;
-          }
-
-          const results = [];
-
-          async function traverse(currentPath, depth, prefix) {
-            if (depth > maxDepth) {
-              return;
+          try {
+            if (!existsSync(rootPath)) {
+              return `Error: Directory not found: ${path || '.'}`;
             }
 
-            const entries = await readdir(currentPath);
-            const sortedEntries = entries
-              .filter((e) => !excludeDirs.has(e))
-              .sort((a, b) => {
-                const aIsDir = stat(join(currentPath, a)).then((s) => s.isDirectory());
-                return 0;
-              });
+            const results = [];
 
-            for (let i = 0; i < sortedEntries.length; i++) {
-              const entry = sortedEntries[i];
-              const fullPath = join(currentPath, entry);
-              const s = await stat(fullPath);
-              const isLast = i === sortedEntries.length - 1;
-              const connector = isLast ? '└── ' : '├── ';
-              const relPath = fullPath.replace(rootPath + '/', '').replace(rootPath, '');
+            async function traverse(currentPath, depth, prefix) {
+              if (depth > maxDepth) {
+                return;
+              }
 
-              results.push(`${prefix}${connector}${entry}${s.isDirectory() ? '/' : ''}`);
+              const entries = await readdir(currentPath);
+              const sortedEntries = entries
+                .filter((e) => !excludeDirs.has(e))
+                .sort((a, b) => {
+                  const aIsDir = stat(join(currentPath, a)).then((s) => s.isDirectory());
+                  return 0;
+                });
 
-              if (s.isDirectory()) {
-                const newPrefix = prefix + (isLast ? '    ' : '│   ');
-                await traverse(fullPath, depth + 1, newPrefix);
+              for (let i = 0; i < sortedEntries.length; i++) {
+                const entry = sortedEntries[i];
+                const fullPath = join(currentPath, entry);
+                const s = await stat(fullPath);
+                const isLast = i === sortedEntries.length - 1;
+                const connector = isLast ? '└── ' : '├── ';
+                const relPath = fullPath.replace(rootPath + '/', '').replace(rootPath, '');
+
+                results.push(`${prefix}${connector}${entry}${s.isDirectory() ? '/' : ''}`);
+
+                if (s.isDirectory()) {
+                  const newPrefix = prefix + (isLast ? '    ' : '│   ');
+                  await traverse(fullPath, depth + 1, newPrefix);
+                }
               }
             }
+
+            results.push(
+              `${rootPath.replace(ctx.workingDirectory + '/', '').replace(ctx.workingDirectory, '.')}/`,
+            );
+            await traverse(rootPath, 1, '');
+
+            return results.join('\n');
+          } catch (error) {
+            return `Error building tree: ${error instanceof Error ? error.message : error}`;
           }
-
-          results.push(
-            `${rootPath.replace(ctx.workingDirectory + '/', '').replace(ctx.workingDirectory, '.')}/`,
-          );
-          await traverse(rootPath, 1, '');
-
-          return results.join('\n');
-        } catch (error) {
-          return `Error building tree: ${error instanceof Error ? error.message : error}`;
-        }
-      },
-    },
-
-    {
-      name: 'list_dir',
-      description: 'List files and directories at a given path. For full tree, use tree tool.',
-      category: ToolCategory.FILESYSTEM,
-      params: {
-        path: {
-          type: 'string',
-          description: 'Directory path relative to working directory (default: root)',
         },
       },
-      required: [],
-      handler: async ({ path }, ctx) => {
-        const safe = safeResolvePath(ctx.workingDirectory, path || '.');
-        if (!safe.ok) {
-          return safe.error;
-        }
-        const dirPath = safe.fullPath;
 
-        try {
-          if (!existsSync(dirPath)) {
-            return `Error: Directory not found: ${path || '.'}`;
+      {
+        name: 'list_dir',
+        description: 'List files and directories at a given path. For full tree, use tree tool.',
+        category: ToolCategory.FILESYSTEM,
+        params: {
+          path: {
+            type: 'string',
+            description: 'Directory path relative to working directory (default: root)',
+          },
+        },
+        required: [],
+        handler: async ({ path }, ctx) => {
+          const safe = safeResolvePath(ctx.workingDirectory, path || '.');
+          if (!safe.ok) {
+            return safe.error;
           }
-          const entries = await readdir(dirPath);
-          /** @type {string[]} */
-          const results = [];
+          const dirPath = safe.fullPath;
 
-          for (const entry of entries) {
-            const fullPath = join(dirPath, entry);
-            const s = await stat(fullPath);
-            const prefix = s.isDirectory() ? 'D ' : 'F ';
-            results.push(`${prefix}${entry}`);
+          try {
+            if (!existsSync(dirPath)) {
+              return `Error: Directory not found: ${path || '.'}`;
+            }
+            const entries = await readdir(dirPath);
+            /** @type {string[]} */
+            const results = [];
+
+            for (const entry of entries) {
+              const fullPath = join(dirPath, entry);
+              const s = await stat(fullPath);
+              const prefix = s.isDirectory() ? 'D ' : 'F ';
+              results.push(`${prefix}${entry}`);
+            }
+
+            return results.length > 0 ? results.join('\n') : '(empty directory)';
+          } catch (error) {
+            return `Error listing directory: ${error instanceof Error ? error.message : error}`;
           }
-
-          return results.length > 0 ? results.join('\n') : '(empty directory)';
-        } catch (error) {
-          return `Error listing directory: ${error instanceof Error ? error.message : error}`;
-        }
+        },
       },
-    },
   ];
 }

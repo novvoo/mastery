@@ -227,12 +227,9 @@ export class DesktopCore {
         if (isDebug) {
           console.log('[UiAdapter] agent:complete');
         }
+        // 只发 AGENT_COMPLETE 用于流式消息收口，不设 status='completed'
+        // status 由 processInput 返回后才变为 completed，避免运行时详情面板提前折叠
         eventBus.emit(RuntimeEvent.AGENT_COMPLETE, { answer, timestamp: Date.now() });
-        eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
-          status: 'completed',
-          answer,
-          timestamp: Date.now(),
-        });
       },
       warn(message) {
         eventBus.emit(RuntimeEvent.AGENT_ERROR, {
@@ -306,6 +303,7 @@ export class DesktopCore {
       RuntimeEvent.AGENT_TOOL_CALL_DELTA,
       RuntimeEvent.EXECUTION_PLAN_CREATED,
       RuntimeEvent.EXECUTION_PLAN_UPDATED,
+      RuntimeEvent.PLAN_DECOMPOSED,
       RuntimeEvent.TOOL_CALL,
       RuntimeEvent.TOOL_RESULT,
       RuntimeEvent.TOOL_ERROR,

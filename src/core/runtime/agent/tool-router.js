@@ -17,6 +17,31 @@ const CORE_READ_TOOLS = [
 
 const CORE_WRITE_TOOLS = ['write_file', 'edit_file'];
 
+// Hashline-based atomic patching — the recommended edit path when available.
+// Applies multi-file, content-hash-anchored patches with preflight + LSP sync + diagnostics gate.
+const HASHLINE_TOOLS = ['apply_hashline_patch'];
+
+// LSP code navigation tools — the recommended exploration path when available.
+// These replace read_file/list_dir for locating code, finding references,
+// tracing call chains, and understanding types/symbols.
+const LSP_NAV_TOOLS = [
+  'lsp_diagnostics',    // instant error/warning location
+  'lsp_definition',     // jump to definition (replaces grep + read_file)
+  'lsp_references',     // find all usages (replaces multi-file search)
+  'lsp_call_hierarchy', // trace incoming/outgoing call chains
+  'lsp_symbols',        // workspace-wide symbol search
+  'lsp_hover',          // type info and documentation at cursor
+  'lsp_type_definition',// type definition (replaces reading type files)
+  'lsp_implementation', // find interface/abstract implementations
+];
+
+// LSP editing tools — code modifications with full Hashline transaction pipeline.
+const LSP_EDIT_TOOLS = [
+  'lsp_rename',         // rename + sync references + barrel/alias
+  'lsp_code_action',    // quick fixes, organize imports, etc.
+  'lsp_workspace_edit', // cross-file workspace edits (move/rename/update-imports)
+];
+
 const TERMINAL_TOOLS = ['shell', 'pty_start', 'pty_write', 'pty_read', 'pty_stop'];
 
 const WEB_TOOLS = [
@@ -52,14 +77,6 @@ const GIT_MUTATION_TOOLS = [
 ];
 
 // State-Centric / Hash-Anchored tools.
-// - harness_analyze: create content-addressable anchors for a file
-// - harness_replace: content-addressed edit (replace via anchor hash)
-// - harness_insert: insert after a given anchor hash
-// - harness_delete: delete by anchor hash
-// - harness_query: inspect store/anchors
-// - harness_rollback: roll back to a prior state
-// These are *exposed* but the default edit_file also uses the same
-// hash-anchored patcher internally so the baseline path is deterministic.
 const HARNESS_STATE_TOOLS = [
   'harness_analyze',
   'harness_replace',
@@ -67,6 +84,20 @@ const HARNESS_STATE_TOOLS = [
   'harness_delete',
   'harness_query',
   'harness_rollback',
+];
+
+// On-Demand Context Expansion tools — 按需上下文扩展
+// - context_index: 索引项目文件，构建符号索引和依赖图
+// - context_assess: 评估当前上下文置信度
+// - context_expand: 按需扩展上下文（加载定义、依赖、类型信息）
+// - context_range: 批量扩展多个目标的上下文
+// 这些工具让 agent 在置信度不足时主动请求更多上下文，
+// 而非逐文件探索。由 OnDemandContextExpansion 引擎驱动。
+const CONTEXT_EXPANSION_TOOLS = [
+  'context_index',
+  'context_assess',
+  'context_expand',
+  'context_range',
 ];
 
 const TASK_TOOLS = ['task_create', 'task_list', 'task_status', 'task_cancel'];
@@ -182,11 +213,22 @@ export function selectToolsForRequest(
   if (taskProfile?.isCodingTask) {
     add(CORE_READ_TOOLS);
     add(CORE_WRITE_TOOLS);
+    // LSP + Hashline — dramatically reduces exploration rounds.
+    // lsp_diagnostics pinpoints errors instantly; lsp_definition/lsp_references
+    // replace grep+read_file chains; apply_hashline_patch provides atomic,
+    // transactional edits with preflight+LSP-sync+diagnostics-gate.
+    add(LSP_NAV_TOOLS);
+    add(LSP_EDIT_TOOLS);
+    add(HASHLINE_TOOLS);
     add(TERMINAL_TOOLS);
     add(GIT_READ_TOOLS);
 
     // State-centric / hash-anchored tools — always available for coding tasks
     add(HARNESS_STATE_TOOLS);
+
+    // Context expansion tools — always available for coding tasks
+    // so agent can request more context on-demand instead of exploring file-by-file
+    add(CONTEXT_EXPANSION_TOOLS);
 
     // Phase-aware methodology tool selection:
     // 工具可见性完全由执行阶段决定。
@@ -229,8 +271,15 @@ export function selectToolsForRequest(
   } else if (asksForFreshData) {
     add(WEB_TOOLS);
     add(['review', 'verify']);
+    add(CORE_READ_TOOLS);
+    add(CORE_WRITE_TOOLS);
+    add(GENERAL_METHODOLOGY_TOOLS);
+    if (asksForBrowser) {
+      add(['browser_open']);
+    }
   } else {
     add(CORE_READ_TOOLS);
+    add(CORE_WRITE_TOOLS);
     add(GENERAL_METHODOLOGY_TOOLS);
     if (asksForBrowser) {
       add(['browser_open']);

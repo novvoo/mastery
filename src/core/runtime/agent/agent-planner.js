@@ -136,15 +136,27 @@ export class AgentPlanner {
     if (runningTask) {
       switch (runningTask.id) {
         case 'inspect_workspace':
+        case 'gather_information':
+        case 'define_research_scope':
           return 'exploration';
         case 'plan_solution':
+        case 'plan_documentation':
           return 'planning';
         case 'implement_changes':
+        case 'write_documentation':
+        case 'perform_analysis':
+        case 'conduct_research':
           return 'implementation';
         case 'inspect_changes':
+        case 'review_documentation':
+        case 'review_analysis':
+        case 'synthesize_findings':
           return 'inspection';
         case 'semantic_risk_review':
         case 'verify_result':
+        case 'verify_documentation':
+        case 'verify_analysis':
+        case 'verify_findings':
           return 'verification';
       }
     }

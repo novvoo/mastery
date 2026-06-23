@@ -53,35 +53,145 @@ export async function processInput(ctx, input, options = {}) {
     timestamp: ctx.state.startTime,
   });
 
-  // 高级图规划（可选）
+  // 高级图规划（LLM 驱动 + 模板回退）
+  let planContext = null;
   try {
     const taskName = input.substring(0, 48).trim();
-    ctx.graphPlanner.createPlan(taskName, input, { workingDirectory: ctx.config.workingDirectory });
+    const plan = ctx.graphPlanner.createPlan(taskName, input, {
+      workingDirectory: ctx.config.workingDirectory,
+    });
+    ctx.state.currentPlanId = plan.id;
 
-    const lowerInput = input.toLowerCase();
-    let template = 'default';
-    if (lowerInput.includes('review') || lowerInput.includes('审查')) {
-      template = 'code_review';
-    } else if (lowerInput.includes('refactor') || lowerInput.includes('重构')) {
-      template = 'refactor';
+    // 优先 LLM 分解，回退模板
+    let subtaskDefs;
+    let decompositionMethod = 'template';
+
+    if (ctx.modelProvider && typeof ctx.modelProvider.chat === 'function') {
+      try {
+        const availableTools = ctx.toolRegistry
+          ? ctx.toolRegistry.getAll().map((t) => t.name)
+          : [];
+
+        ctx.eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
+          message: 'AI 正在分析任务并生成执行计划...',
+          level: 'info',
+        });
+
+        subtaskDefs = await ctx.graphPlanner.decomposeTaskLLM(input, ctx.modelProvider, {
+          availableTools,
+          workingDirectory: ctx.config.workingDirectory,
+        });
+        decompositionMethod = 'llm';
+      } catch (llmErr) {
+        // LLM 失败 → 回退模板
+        subtaskDefs = ctx.graphPlanner.decomposeTask(null, input, { template: 'default' });
+      }
+    } else {
+      const lowerInput = input.toLowerCase();
+      let template = 'default';
+      if (lowerInput.includes('review') || lowerInput.includes('审查')) {
+        template = 'code_review';
+      } else if (lowerInput.includes('refactor') || lowerInput.includes('重构')) {
+        template = 'refactor';
+      }
+      subtaskDefs = ctx.graphPlanner.decomposeTask(null, input, { template });
     }
 
-    const subtasks = ctx.graphPlanner.decomposeTask(null, input, { template });
-    ctx.state.currentPlanId = ctx.graphPlanner._latestPlanId || null;
+    // 将 LLM 分解结果注册到 plan
+    if (decompositionMethod === 'llm') {
+      for (const def of subtaskDefs) {
+        plan.addTask(def);
+      }
+    }
+
+    const tasksList = Array.from(plan.tasks.values()).map((t) => ({
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      status: t.status,
+      dependencies: [...t.dependencies],
+      scopeFiles: t.scopeFiles || [],
+    }));
 
     ctx.eventBus.emit(RuntimeEvent.EXECUTION_PLAN_CREATED, {
-      planId: ctx.state.currentPlanId,
-      taskCount: subtasks.length,
+      planId: plan.id,
+      taskCount: tasksList.length,
+      plan: {
+        id: plan.id,
+        name: plan.name,
+        description: plan.description,
+        tasks: tasksList,
+        status: plan.status,
+        createdAt: plan.createdAt,
+        decompositionMethod,
+      },
+      summary:
+        decompositionMethod === 'llm'
+          ? `AI 已分析并分解为 ${tasksList.length} 个子任务`
+          : `计划已分解为 ${tasksList.length} 个子任务`,
     });
 
+    ctx.eventBus.emit(RuntimeEvent.EXECUTION_PLAN_UPDATED, {
+      plan: {
+        id: plan.id,
+        name: plan.name,
+        description: plan.description,
+        tasks: tasksList,
+        status: plan.status,
+        createdAt: plan.createdAt,
+        decompositionMethod,
+      },
+      summary: `计划: ${plan.name}`,
+      update: { after: `${tasksList.length} 个子任务，方法=${decompositionMethod}` },
+    });
+
+    // 构建计划上下文文本（注入到 Agent 执行流程中，含文件作用域）
+    const taskLines = tasksList
+      .map(
+        (t) => {
+          const scopeStr = t.scopeFiles && t.scopeFiles.length > 0
+            ? ` 📁 [${t.scopeFiles.join(', ')}]`
+            : '';
+          return `- ${t.id}: ${t.name} [${t.status}]${scopeStr} - ${t.description}${t.dependencies.length > 0 ? ` (依赖: ${t.dependencies.join(', ')})` : ''}`;
+        },
+      )
+      .join('\n');
+
+    // 收集所有子任务的文件作用域作为整体任务边界
+    const allScopeFiles = [...new Set(tasksList.flatMap(t => t.scopeFiles || []))];
+
+    planContext = {
+      planId: plan.id,
+      taskCount: tasksList.length,
+      method: decompositionMethod,
+      text:
+        `## 执行计划 (${decompositionMethod === 'llm' ? 'AI 生成' : '模板生成'})\n` +
+        `任务: ${input.substring(0, 200)}\n\n` +
+        `子任务 DAG (${tasksList.length} 个):\n${taskLines}\n\n` +
+        `📋 整体任务文件范围: ${allScopeFiles.length > 0 ? allScopeFiles.join(', ') : '待确定'}\n` +
+        `文件作用域由引擎强制执行。编码变更必须在完成前做运行时验证（test/lint/build）。`,
+    };
+
     if (ctx.config.debug) {
-      console.log(`[GraphPlanner] 创建执行计划, ${subtasks.length} 个子任务`);
+      console.log(
+        `[GraphPlanner] 创建执行计划 (${decompositionMethod}), ${tasksList.length} 个子任务`,
+      );
     }
   } catch (planError) {
     try {
       console.warn('[GraphPlanner] 任务规划失败，降级为线性执行:', planError.message);
     } catch {}
     ctx.state.currentPlanId = null;
+    planContext = null;
+  }
+
+  // 将计划上下文注入 session，使 Agent 可感知计划阶段
+  if (planContext && ctx.sessionManager) {
+    try {
+      ctx.sessionManager.addSystemMessage(
+        `[PlanContext] planId=${planContext.planId} method=${planContext.method}\n${planContext.text}`,
+      );
+    } catch {}
   }
 
   // 创建 Agent 实例

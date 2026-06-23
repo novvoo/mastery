@@ -130,6 +130,37 @@ export const StaleThreshold = Object.freeze({
   REFERENCE: 14,
 });
 
+/**
+ * 初始重要性：不同类型记忆的初始权重（0-1）。
+ */
+export const InitialImportance = Object.freeze({
+  USER: 0.9,
+  FEEDBACK: 0.85,
+  PROJECT: 0.7,
+  REFERENCE: 0.75,
+});
+
+/**
+ * 半衰期（天）：重要性衰减到初始值 50% 所需的天数。
+ * 半衰期越短，淡忘越快。
+ */
+export const ImportanceHalfLife = Object.freeze({
+  USER: 90,       // 用户偏好最持久
+  FEEDBACK: 30,   // 反馈可能过时
+  PROJECT: 14,    // 项目知识变化快
+  REFERENCE: 60,  // 参考资料较稳定
+});
+
+/**
+ * 软排除阈值：relevanceScore 低于此值的记忆在检索/上下文中被排除。
+ */
+export const SOFT_EVICTION_THRESHOLD = 0.30;
+
+/**
+ * 硬驱逐阈值：relevanceScore 低于此值的记忆在 compaction 时被删除。
+ */
+export const HARD_EVICTION_THRESHOLD = 0.12;
+
 export class MemoryEntry {
   constructor(data) {
     this.id = data.id || `mem_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
@@ -137,15 +168,54 @@ export class MemoryEntry {
     this.title = data.title;
     this.content = data.content;
     this.timestamp = data.timestamp || Date.now();
-    this.lastUsed = this.timestamp;
+    this.lastUsed = data.lastUsed || this.timestamp;
     this.status = MemoryStatus.ACTIVE;
-    this.usageCount = 0;
+    this.usageCount = data.usageCount || 0;
     this.metadata = data.metadata || {};
     this.source = data.source || null;
     this.tags = data.tags || [];
     this.relatedIds = data.relatedIds || [];
+    // 重要性评分：0-1，初始值按类型设定，随时间衰减，随访问提升
+    this.importanceScore = data.importanceScore ?? this._initImportance();
 
     this._validate();
+  }
+
+  /** 根据类型计算初始重要性 */
+  _initImportance() {
+    return InitialImportance[this.type?.toUpperCase()] ?? 0.7;
+  }
+
+  /**
+   * 获取综合相关度评分 = 基础重要性 × 时间衰减 + 访问加成。
+   *
+   * 时间衰减使用指数衰减模型：score = importanceScore * 0.5^(age/halfLife)
+   * 访问加成：每次访问 +0.03，由 usageCount 贡献。
+   *
+   * @param {number} [now] - 当前时间戳（用于测试）
+   * @returns {number} 0-1 的综合评分
+   */
+  getRelevanceScore(now) {
+    const current = now || Date.now();
+    const halfLifeDays = ImportanceHalfLife[this.type?.toUpperCase()] ?? 30;
+    const halfLifeMs = halfLifeDays * 24 * 60 * 60 * 1000;
+    const ageMs = Math.max(0, current - this.timestamp);
+    const decay = Math.pow(0.5, ageMs / halfLifeMs);
+
+    // 基础重要性 × 衰减
+    let score = this.importanceScore * decay;
+
+    // 访问加成：每次访问提升少量分数（上限 0.15）
+    const accessBoost = Math.min(0.15, this.usageCount * 0.03);
+    score = Math.min(1.0, score + accessBoost);
+
+    // 最近访问额外加成：30 天内访问过 +0.05
+    const daysSinceAccess = (current - this.lastUsed) / (1000 * 60 * 60 * 24);
+    if (daysSinceAccess < 30) {
+      score = Math.min(1.0, score + 0.05);
+    }
+
+    return score;
   }
 
   _validate() {
@@ -165,6 +235,8 @@ export class MemoryEntry {
   access() {
     this.usageCount++;
     this.lastUsed = Date.now();
+    // 每次访问微幅提升基础重要性（上限 1.0）
+    this.importanceScore = Math.min(1.0, this.importanceScore + 0.01);
     return this;
   }
 
@@ -189,6 +261,7 @@ export class MemoryEntry {
       tags: this.tags,
       source: this.source,
       usageCount: this.usageCount,
+      importanceScore: Math.round(this.importanceScore * 1000) / 1000,
     };
   }
 
@@ -198,7 +271,7 @@ export class MemoryEntry {
       .filter(([, v]) => v !== null && v !== undefined)
       .map(([k, v]) => {
         if (Array.isArray(v)) {
-          return `  - ${v.join('\n  - ')}`;
+          return `${k}:\n  - ${v.join('\n  - ')}`;
         }
         return `${k}: ${JSON.stringify(v)}`;
       })

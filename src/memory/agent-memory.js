@@ -1,7 +1,7 @@
 import { StructuredMemory } from './structured-memory.js';
 import { MemorySelector, RuleBasedSelector } from './memory-selector.js';
 import { MemoryVerifier } from './memory-verifier.js';
-import { MemoryType, inferTopic } from './memory-types.js';
+import { MemoryType, inferTopic, SOFT_EVICTION_THRESHOLD, HARD_EVICTION_THRESHOLD } from './memory-types.js';
 import { MemoryManager } from './memory-manager.js';
 import { ProjectRules } from './project-rules.js';
 import { AdvancedMemoryManager } from './advanced-memory.js';
@@ -47,6 +47,12 @@ export class AgentMemory extends MemoryManager {
 
   async initialize() {
     await this.load();
+    // 从磁盘恢复会话内情景/语义/摘要记忆（AdvancedMemoryManager）
+    try {
+      this.loadSessionState();
+    } catch {
+      // 文件不存在或损坏时静默，从空态开始
+    }
     // 懒加载分层规则（初次访问时才扫描文件系统）
     this.#projectRules.load();
     this.#rulesLoaded = true;
@@ -90,7 +96,7 @@ export class AgentMemory extends MemoryManager {
       return [];
     }
 
-    const candidates = allMemories.filter((m) => !m.isExpired());
+    const candidates = allMemories.filter((m) => this.#isMemorable(m));
 
     const selected = await this.#selector.select(query, candidates, { limit });
 
@@ -220,7 +226,7 @@ export class AgentMemory extends MemoryManager {
       return [];
     }
 
-    const candidates = allMemories.filter((m) => !m.isExpired());
+    const candidates = allMemories.filter((m) => this.#isMemorable(m));
     return this.#fallbackSelector.select(query, candidates, { limit });
   }
 
@@ -637,11 +643,17 @@ export class AgentMemory extends MemoryManager {
       return;
     }
 
+    // 1) 语义压缩：合并重复条目
     const { removedIds, merged } = MemoryVerifier.compact(allMemories, { semanticMerge: true });
-    for (const id of removedIds) {
+
+    // 2) 硬驱逐：删除衰减至阈值的低分记忆
+    const evictIds = this.#getEvictableIds();
+    const totalRemoved = new Set([...removedIds, ...evictIds]);
+
+    for (const id of totalRemoved) {
       try {
-        if (this.#structuredMemory?.remove) {
-          this.#structuredMemory.remove(id);
+        if (this.#structuredMemory?.delete) {
+          this.#structuredMemory.delete(id);
         }
       } catch {
         /* best-effort removal */
@@ -651,10 +663,13 @@ export class AgentMemory extends MemoryManager {
     this._lastCompactionTime = now;
     this._writeCountSinceLastCompaction = 0;
 
-    if (removedIds.length > 0) {
+    if (totalRemoved.size > 0) {
+      const dupMsg = removedIds.length > 0 ? `${removedIds.length} duplicates` : '';
+      const evictMsg = evictIds.length > 0 ? `${evictIds.length} decayed` : '';
+      const msg = [dupMsg, evictMsg].filter(Boolean).join(', ');
       if (typeof process !== 'undefined' && process.env?.AGENT_DEBUG) {
         console.warn(
-          `[Memory] Auto-compacted ${removedIds.length} entries (${merged.length} remain)`,
+          `[Memory] Auto-compacted ${msg} (${merged.length} remain)`,
         );
       }
     }
@@ -847,10 +862,10 @@ Answer ONLY "YES" or "NO":`;
       }
     }
 
-    // Priority 4: 最近 N 条记忆（按时间排序，去重）
+    // Priority 4: 最近 N 条记忆（按相关性排序，排除过期 + 衰减过低条目）
     if (used < budget * 0.5) {
       const allMemories = this.getAll()
-        .filter((m) => !m.isExpired || !m.isExpired())
+        .filter((m) => this.#isMemorable(m))
         .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
         .slice(0, 10);
       let recentCtx = '[RECENT MEMORIES]\n';
@@ -1091,6 +1106,43 @@ Answer ONLY "YES" or "NO":`;
       }
     }
     return intersection / Math.max(wordsA.size, wordsB.size);
+  }
+
+  /**
+   * 判断一条记忆是否值得保留在检索/上下文中。
+   *
+   * 两条规则：
+   * 1. 必须未过期（isExpired 返回 false）
+   * 2. 综合相关度评分必须 >= 软排除阈值（避免衰减过低的记忆污染上下文）
+   *
+   * @param {MemoryEntry} m
+   * @returns {boolean}
+   */
+  #isMemorable(m) {
+    // 过期直接排除
+    if (typeof m.isExpired === 'function' && m.isExpired()) {
+      return false;
+    }
+    // 衰减过低：软排除
+    if (typeof m.getRelevanceScore === 'function' && m.getRelevanceScore() < SOFT_EVICTION_THRESHOLD) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * 获取可被硬驱逐的记忆 ID 列表（综合评分 < 硬驱逐阈值）。
+   * 用于 compaction 时自动清理。
+   *
+   * @returns {string[]}
+   */
+  #getEvictableIds() {
+    return this.getAll()
+      .filter((m) => {
+        const score = typeof m.getRelevanceScore === 'function' ? m.getRelevanceScore() : 0.5;
+        return score < HARD_EVICTION_THRESHOLD;
+      })
+      .map((m) => m.id);
   }
 }
 

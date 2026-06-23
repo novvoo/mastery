@@ -36,8 +36,17 @@ import {
   DiskFilesystem,
 } from '../../harness/hashline.js';
 import { ServerManager } from '../../../lsp/lsp-manager.js';
-import { createLSPTools } from '../../../lsp/lsp-tools.js';
 import { registerCodeTools } from './tools/index.js';
+import { EditOrchestrator } from '../../edit-orchestrator.js';
+import { ModuleResolver } from '../../harness/module-resolver.js';
+import { ImportGraph } from '../../harness/import-graph.js';
+import { BarrelManager } from '../../harness/barrel-manager.js';
+import { ConversationJournal } from '../../../memory/conversation-journal.js';
+import { ContextProjectionGenerator } from '../../harness/context-projection.js';
+import { StateGraph } from '../../harness/state-graph-core.js';
+import { OnDemandContextExpansion } from '../../harness/on-demand-context.js';
+import { SymbolIndex } from '../../harness/symbol-index.js';
+import { DependencyGraph } from '../../harness/dependency-graph.js';
 import { withRoutedToolContext } from '../../routed-tool-context.js';
 import { TokenScope } from './support/token-scope.js';
 import { quickAssess, computeIterationBudget } from './support/risk-budget.js';
@@ -52,6 +61,7 @@ import {
   buildToolUseCorrectionPrompt,
   buildCodingTaskOperatingPrompt,
   buildCodingCompletionGatePrompt,
+  buildSemanticRiskGuidance,
   suggestVerificationStrategy,
   isTermination as isTerminationResponse,
   extractFinalAnswer,
@@ -62,7 +72,7 @@ import {
 } from './support/prompt-builder.js';
 import { StagnationDetector } from './termination-detector.js';
 import { TaskStatus } from '../../../planner/graph-planner.js';
-import { MAX_ITERATIONS_DEFAULT } from '../../agent-constants.js';
+import { MAX_ITERATIONS_DEFAULT, EXPLORATION_BUDGET, FORCE_ACTION_GRACE_TURNS } from '../../agent-constants.js';
 
 /**
  * AgentEngine 工厂函数。供 CLI/Desktop 调用。
@@ -175,6 +185,120 @@ function normalizeModelResponse(response = {}) {
   };
 }
 
+// 检测模型是否只输出了计划/描述而没有执行任何工具调用
+// 场景: 模型列出"Files to create: 1. xxx 2. yyy"然后 finishReason=stop
+function looksLikePlanWithoutExecution(text) {
+  if (!text?.trim()) return false;
+  const t = text.trim();
+  // 文件创建清单模式
+  if (/\*\*Files to create\*\*|Files to create:/i.test(t)) return true;
+  // 步骤清单模式: "1. xxx\n2. yyy\n3. zzz"
+  const stepLines = t.match(/^\d+\.\s+.+/gm);
+  if (stepLines && stepLines.length >= 3) return true;
+  // "I will / I'll / I am going to" 但没有对应的 tool call
+  if (/\b(I will|I'll|I am going to)\s+(create|write|build|make|implement)\b/i.test(t)) return true;
+  // "Let me first" 但没有任何 CALL 或 action
+  if (/\bLet me first\b/i.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) return true;
+  // "Step by step / step-by-step" 计划
+  if (/\bstep[-\s]by[-\s]step\b/i.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) return true;
+  // "Let me understand/read/examine/review/analyze/inspect the codebase/files/project" 表达阅读意图但未实际执行工具
+  if (/\b(?:Let me|I(?:'ll| will| need to)?)\s+(?:understand|read|examine|review|analyze|inspect|look (?:at|into)|check|explore|scan|study)\s+(?:the\s+)?(?:full\s+)?(?:codebase|project|files?|code|repository|source|directory|structure)/i.test(t) &&
+      !/CALL\s+\w+|action["<]/i.test(t)) return true;
+  // 表达"在 X 之前先 Y"的意图声明（如 "before creating, let me read"）但未执行工具
+  if (/\b(?:before|first|prior to)\s+(?:creating|writing|modifying|changing|editing|deleting|implementing|building)/i.test(t) &&
+      /\b(?:let me|I(?:'ll| will)?|need to|should|must|going to)\s+(?:understand|read|examine|review|analyze|check|look|explore|scan)/i.test(t) &&
+      !/CALL\s+\w+|action["<]/i.test(t)) return true;
+  return false;
+}
+
+// 通用 XML 标签剥离正则：匹配任何 <tagname...>content</tagname> 配对标签
+// 以及 DSML 管道格式 <||DSML||invoke...>...</||DSML||invoke>
+const ANY_XML_TAG = /<(\w+)\b[^>]*>[\s\S]*?<\/\1>/gi;
+const DSML_PIPE_TAG = /<[|｜]+\s*DSML\s*[|｜]+[^>]*>[\s\S]*?<\/[|｜]+\s*DSML\s*[|｜]+[^>]*>/gi;
+
+// 检测模型输出了内部思考标签但未执行任何工具
+// 注意：调用此函数时 allToolCalls.length === 0，parser 已确认无工具调用，
+// 因此 text 中任何 XML 标签都不是合法工具调用格式，全部视为泄漏
+// 场景: <dsml>, <info>, <thinking>, <plan>, <analysis>, <reasoning>, <reflection>, <note> 等
+function looksLikeLeakedThinking(text) {
+  if (!text?.trim()) return false;
+  const t = text.trim();
+  // 检测任何非工具 XML 标签（合法工具标签如 <action> 等已被 parser 消耗）
+  if (!ANY_XML_TAG.test(t) && !DSML_PIPE_TAG.test(t)) return false;
+  // 去掉所有 XML / DSML 标签后的剩余文本
+  const withoutTags = t.replace(ANY_XML_TAG, '').replace(DSML_PIPE_TAG, '').trim();
+  // 标签之外没有任何实质内容（没有 CALL、没有 tool call、没有 FINAL_ANSWER）
+  if (!withoutTags || withoutTags.length < 20) return true;
+  // 剩余内容只是 "Let me..." / "Thinking..." 之类无动作的声明
+  if (/^(Let me|Thinking|I should|I need to|I'll)\b/i.test(withoutTags) &&
+      !/CALL\s+\w+|action["<]/i.test(withoutTags)) return true;
+  return false;
+}
+
+// 检测模型是否在虚构工具执行结果（未调用任何工具，却声称"文件已创建""构建通过"等）
+// 这是比 plan-only 更严重的问题：模型编造了完整的执行过程和虚构输出。
+// 仅在 session 内实实在在未执行过任何工具时才判定为虚构。
+function looksLikeFakeExecution(text, toolEventsInRun) {
+  if (!text?.trim()) return false;
+  // 如果 session 内已经执行过工具，可能是正常的总结描述，不拦截
+  if (toolEventsInRun > 0) return false;
+  const t = text.trim();
+  let indicators = 0;
+
+  // 标记 1：虚构的 "Files Created/Created files" 章节（过去时，非将来时）
+  if (/\b(Files (C|c)reated|Created files|新增文件|已创建文件)/.test(t)) indicators++;
+
+  // 标记 2：虚构的构建/验证输出（npm run build / yarn build 等 + 统计数字）
+  if (/```\s*\n.*(?:build|vite|webpack|tsc|esbuild|rollup).*(?:\n|$)/.test(t) ||
+      /(?:modules? transformed|bundle generated|built in \d|构建完成|编译成功|Production bundle)/i.test(t))
+    indicators++;
+
+  // 标记 3：虚构的验证章节（Verification / 验证 / npm run build 带 ✅✓）
+  if (/\b(Verification|验证|Test results?)\b/i.test(t) &&
+      /(?:✅|✓|pass|success|成功|通过|No errors|zero errors)/i.test(t))
+    indicators++;
+
+  // 标记 4：虚构的错误诊断修正报告（"Root Cause" + "Fix" + 无工具执行）
+  if (/\bRoot Cause\b/i.test(t) &&
+      (/\bFiles? (C|c)reated\b/.test(t) || /\bFix\b/i.test(t) || /\bResolution\b/i.test(t)) &&
+      !/CALL\s+\w+|action["<]/i.test(t))
+    indicators++;
+
+  // 标记 5：虚构的"错误已解决"开篇（The error is resolved / The issue is fixed）
+  if (/^(?:The |这个)(?:error|issue|bug|problem|错误|问题)\b.{0,30}\b(?:resolved|fixed|solved|解决|修复)/im.test(t))
+    indicators++;
+
+  // 标记 6：虚构的文件导出声明（"Exports XXX class" / "Exports XXX function"）
+  if (/^###\s+\d+\.\s+`[^`]+`\s*\n(?:Exports|导出)/m.test(t) &&
+      !/CALL\s+\w+|action["<]/i.test(t))
+    indicators++;
+
+  // 标记 7：详细虚构文件内容描述（列出了具体方法名如 humanAct/processNight 等）
+  if (/\b(?:humanAct|processNight|processDay|processDayVote|checkVictory|performAction)\b/.test(t) &&
+      /\b(class|method|function|array|stub)\b/i.test(t) &&
+      !/CALL\s+\w+|action["<]/i.test(t))
+    indicators++;
+
+  // 至少 2 个信号同时命中才判定为虚构
+  return indicators >= 2;
+}
+
+// 检测模型表达了"需要阅读代码/文件"的意图，但未实际发起任何读操作工具调用
+// 这是比 plan-only 更具体的一类空轮次：模型声明要理解代码却不用 read_file / search_file 等工具
+function looksLikeIntentToReadWithoutTools(text) {
+  if (!text?.trim()) return false;
+  const t = text.trim();
+  // 表达了阅读/探索意图
+  const readIntent = /\b(?:let me|I(?:'ll| will| need to| should| must)?|need to|going to)\s+(?:understand|read|examine|review|analyze|inspect|look\s+(?:at|into)|check\s+(?:out)?|explore|scan|study|get\s+(?:to\s+)?know|familiarize)\b/i;
+  const readTarget = /\b(?:the\s+)?(?:full\s+)?(?:codebase|project|files?|code|repository|source|directory|structure|key\s+files?|relevant\s+(?:files?|code)|implementation|module|package)/i;
+  if (readIntent.test(t) && readTarget.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) return true;
+  // "before X, let me Y" 模式 (Y 是阅读操作)
+  if (/\b(?:before|first|prior to)\s+(?:creating|writing|modifying|changing|editing|deleting|implementing|building|fixing|adding|removing)/i.test(t) &&
+      readIntent.test(t) &&
+      !/CALL\s+\w+|action["<]/i.test(t)) return true;
+  return false;
+}
+
 export class AgentEngine {
   // ============ 子系统 ============
   #modelProvider;
@@ -199,12 +323,20 @@ export class AgentEngine {
   #hashlinePatcher;
   #hashlineBridge;
   #lspManager;
+  #moduleResolver;
+  #importGraph;
+  #barrelManager;
+  #editOrchestrator;
   #contextPruner;
   #tokenScope;
+  #contextProjection;
+  #onDemandContext;
 
   // ============ 运行态 ============
   #stopRequested = false;
   #lastRunResult = null;
+  #lastUserInput = null;
+  #conversationJournal;
   #systemPromptInitialized = false;
 
   constructor({ modelProvider, toolRegistry, memoryManager, config, ui }) {
@@ -226,6 +358,7 @@ export class AgentEngine {
           }
         }
       })();
+    this.#conversationJournal = new ConversationJournal(cwd);
     this.#config = {
       maxIterations: config.maxIterations || MAX_ITERATIONS_DEFAULT,
       workingDirectory: config.workingDirectory || process.cwd(),
@@ -303,12 +436,54 @@ export class AgentEngine {
       workspaceRoot: this.#config.workingDirectory,
     });
 
+    // ============ 模块解析 / 导入图 / Barrel 初始化 ============
+    // ModuleResolver: 解析 tsconfig paths + package exports 别名
+    this.#moduleResolver = new ModuleResolver({
+      workingDirectory: this.#config.workingDirectory,
+    });
+    // ImportGraph: 项目级导入依赖图
+    this.#importGraph = new ImportGraph({
+      workingDirectory: this.#config.workingDirectory,
+      resolver: this.#moduleResolver,
+    });
+    // BarrelManager: 发现多级 barrel (index.ts) re-export 链
+    this.#barrelManager = new BarrelManager({
+      workingDirectory: this.#config.workingDirectory,
+      importGraph: this.#importGraph,
+      moduleResolver: this.#moduleResolver,
+    });
+
+    // ============ EditOrchestrator: LSP → Hashline → Diagnostics 闭环 ============
+    this.#editOrchestrator = new EditOrchestrator({
+      hashlinePatcher: this.#hashlinePatcher,
+      lspManager: this.#lspManager,
+      memoryManager: this.#memoryManager,
+      snapshotStore: this.#snapshotStore,
+      contentStore: this.#contentStore,
+      workingDirectory: this.#config.workingDirectory,
+    });
+
+    // ============ ContextProjection: 状态图局部投影 ============
+    // 使用 ContextProjectionGenerator 真实执行投影，而非手写 WorkspaceIndex stats
+    this.#contextProjection = this.#createProjectionGenerator();
+
+    // ============ OnDemandContextExpansion: 按需上下文扩展 ============
+    // 每轮迭代动态评估置信度，按需扩展上下文，避免幻觉
+    this.#onDemandContext = new OnDemandContextExpansion({
+      symbolIndex: new SymbolIndex(),
+      dependencyGraph: new DependencyGraph(),
+    });
+
     // ============ 统一工具注册 ============
     // 通过 registerCodeTools 注册文件系统、Hashline 和 LSP 工具
+    // 传入增强的 barrel/alias 管线，使 LSP rename 可精确同步 barrel chain
     registerCodeTools(this.#toolRegistry, {
       lspManager: this.#lspManager,
       contentStore: this.#contentStore,
       hashlinePatcher: this.#hashlinePatcher,
+      moduleResolver: this.#moduleResolver,
+      importGraph: this.#importGraph,
+      barrelManager: this.#barrelManager,
     });
 
     this.#toolExecutor = new ToolExecutor({
@@ -322,12 +497,14 @@ export class AgentEngine {
       snapshotStore: this.#snapshotStore,
       hashlinePatcher: this.#hashlinePatcher,
       lspManager: this.#lspManager,
+      editOrchestrator: this.#editOrchestrator,
     });
     this.#contextManager = null; // 在 run() 中懒创建（需要 sessionManager 就绪）
     this.#stagnationDetector = new StagnationDetector();
 
     // ============ 公共 getter ============
     this.getLSPManager = () => this.#lspManager;
+    this.getEditOrchestrator = () => this.#editOrchestrator;
   }
 
   // ============================================================
@@ -344,6 +521,13 @@ export class AgentEngine {
     const runStartedAt = Date.now();
     // —— Metrics: 会话级标记（每次 run 都有独立的 runId）——
     const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    this.#lastUserInput = userInput;
+    // 用户输入后立刻写入 conversation journal
+    if (this.#conversationJournal) {
+      try {
+        this.#conversationJournal.recordInput(userInput, runId);
+      } catch { /* 不阻塞 */ }
+    }
     this.#lastRunResult = {
       runId,
       success: false,
@@ -390,12 +574,16 @@ export class AgentEngine {
         }
       }
 
-      // 生成记忆上下文：AgentMemory → getMemoryContext(userInput)，MemoryManager → toPromptFragment()
+      // 生成记忆上下文：使用 token-budget 感知的上下文构建器，避免无限制注入
       let memoryContext = '';
-      if (this.#memoryManager && typeof this.#memoryManager.getMemoryContext === 'function') {
+      if (this.#memoryManager && typeof this.#memoryManager.getBudgetedMemoryContext === 'function') {
         try {
           const inputPreview = typeof userInput === 'string' ? userInput.substring(0, 200) : '';
-          memoryContext = this.#memoryManager.getMemoryContext(inputPreview);
+          memoryContext = this.#memoryManager.getBudgetedMemoryContext({
+            currentTask: inputPreview,
+            maxTokens: 1500,
+            tokensPerChar: 0.25,
+          });
         } catch {
           /* 静默失败 */
         }
@@ -469,7 +657,17 @@ export class AgentEngine {
       this.#intentClassifier?.classifyTask?.(userInput, intent) ?? quickAssess(userInput);
 
     // ========== Step 3：准备运行上下文 ==========
-    this.#sessionManager.addUserMessage(userInput);
+    // 原始任务以 DECISION 优先级写入，确保上下文裁剪时不被丢弃
+    this.#sessionManager.addMessage(
+      'user',
+      userInput,
+      undefined,
+      SessionManager.PRIORITY.DECISION,
+    );
+    // 同时注入 system prompt：system prompt 永不裁剪，防止模型读完大量文件后"遗忘"任务
+    this.#sessionManager.addSystemMessage(
+      `[CURRENT TASK] You MUST complete this user request: ${userInput}`,
+    );
     const routingPrompt = this.#intentClassifier?.buildRoutingPrompt?.(intent);
     if (routingPrompt) {
       this.#sessionManager.addUserMessage(routingPrompt);
@@ -497,9 +695,47 @@ export class AgentEngine {
     let codingGateCorrections = 0;
     let lastResponseText = '';
 
+    // 探索预算计数器（仅编码任务）
+    let explorationIterations = 0; // 仅有探索性工具调用的连续回合数
+    let forceActionTriggered = false; // 是否已触发强制行动命令
+    let forceActionIgnored = 0; // 强制命令被忽略的次数
+    let zeroToolCallStreak = 0; // 连续零工具调用回合数
+
+    // 动态探索预算：引擎已通过 WorkspaceIndex + ImportGraph + AgentMemory +
+    // LSP diagnostics + plan context 预计算并注入了上下文。agent 仅需少量余量。
+    // 注意：过于激进（如 3）会在复杂项目中误杀正常探索。现在：
+    //   - Hashline 模式: 5 轮 (预注入上下文 + 原子编辑足够快，但允许读少量目标文件)
+    //   - 编码任务模式: 8 轮 (无 Hashline 时 agent 可能需要更多文件阅读)
+    //   - 非编码任务: EXPLORATION_BUDGET (10)
+    const hasHashline = Boolean(this.#hashlinePatcher && this.#lspManager);
+    const hasPreExploredContext = taskProfile.isCodingTask;
+    let effectiveExplorationBudget;
+    if (hasPreExploredContext && hasHashline) {
+      // 引擎已预注入上下文 + Hashline 原子编辑 → 少量余量
+      effectiveExplorationBudget = 5;
+    } else if (hasPreExploredContext) {
+      // 引擎已预注入上下文 → 允许适度的文件阅读
+      effectiveExplorationBudget = 8;
+    } else {
+      effectiveExplorationBudget = EXPLORATION_BUDGET;
+    }
+
+    if (hasPreExploredContext) {
+      this.#ui.debugEvent?.(
+        `Pre-explored context active: exploration budget ${effectiveExplorationBudget} ` +
+          `(engine pre-computed workspace structure, diagnostics, memory, and import graph).`,
+      );
+    }
+
     if (taskProfile.isCodingTask) {
       this.#ui.debugEvent?.('Coding task mode enabled', taskProfile);
-      const basePrompt = buildCodingTaskOperatingPrompt(userInput);
+      const basePrompt = buildCodingTaskOperatingPrompt({
+        userInput,
+        profile: taskProfile,
+        semanticRiskGuidance: taskProfile.requiresSemanticRiskReview
+          ? buildSemanticRiskGuidance(taskProfile.semanticRiskDomains)
+          : '',
+      });
       const strategy = await suggestVerificationStrategy(userInput, {
         workingDirectory: this.#config.workingDirectory,
       });
@@ -517,18 +753,19 @@ export class AgentEngine {
       this.#sessionManager.addUserMessage(this.#executionPlanManager.buildPrompt());
     }
 
-    // 异步预热工作目录索引（不阻塞首轮迭代）
+    // ============================================================
+    // 预探索上下文注入：引擎利用 WorkspaceIndex + ImportGraph +
+    // AgentMemory + LSP 预计算任务相关上下文，消除 agent 的
+    // "探索"阶段 —— agent 看到的第一个上下文就已经包含了
+    // 项目结构、关键符号、依赖关系、历史记忆和 diagnostics。
+    // ============================================================
     if (taskProfile.isCodingTask) {
-      this.#workspaceIndex
-        .warm()
-        .then((summary) => {
-          if (summary && this.#sessionManager) {
-            this.#sessionManager.addUserMessage(summary);
-          }
-        })
-        .catch((err) => {
-          this.#ui.debugEvent?.('Workspace index warm failed', { error: err.message });
-        });
+      // 同步注入：利用已缓存的数据（WorkspaceIndex 磁盘缓存、
+      // ImportGraph、AgentMemory），不阻塞首轮迭代
+      this.#injectPreExploredContextSync(userInput, taskProfile);
+
+      // 异步增强管道：warm 索引 → 触发 LSP diagnostics → 注入综合上下文
+      this.#warmAndInjectFullContext(userInput);
       this.#workspaceIndex.startPeriodicSync();
     }
 
@@ -569,6 +806,9 @@ export class AgentEngine {
       // ========== 上下文窗口管理 ==========
       this.#contextManager.manage(iteration, maxIterations);
 
+      // ========== OnDemandContextExpansion: 每轮评估置信度，按需扩展 ==========
+      this.#expandContextOnDemand(iteration, maxIterations, executionPlan);
+
       // ========== Step 5：2 层路由 (intent → tool-router) ==========
       const currentPhase =
         this.#executionPlanManager.plan?.status === TaskStatus.RUNNING
@@ -576,12 +816,62 @@ export class AgentEngine {
           : null;
 
       // 扁平化：统一使用 tool-router 做最终工具选择
-      const routedTools = selectToolsForRequest(this.#toolRegistry.getAll(), {
+      let routedTools = selectToolsForRequest(this.#toolRegistry.getAll(), {
         userInput,
         taskProfile,
         intent,
         currentPhase,
       });
+
+      // ======== force-action 模式：禁止只读工具，强制 Agent 写代码 ========
+      const FORCE_ACTION_MUTATION_TOOLS = new Set([
+        'write_file',
+        'edit_file',
+        'delete_file',
+        'rename_file',
+        'mkdir',
+        'apply_hashline_patch',
+        'lsp_rename',
+        'lsp_code_action',
+        'lsp_workspace_edit',
+        'harness_replace',
+        'harness_insert',
+        'harness_delete',
+        'harness_rollback',
+        'git_apply_patch',
+        'git_commit',
+        'git_add',
+        'git_push',
+        'git_pull',
+        'git_stash',
+        'git_reset',
+        'shell', // shell 中的写操作会在 hasMutation 中检测
+        'verify', // 允许验证已完成变更
+        'review', // 允许审查已完成变更
+      ]);
+      let forceActionSystemNote = null;
+      if (forceActionTriggered) {
+        const beforeCount = routedTools.length;
+        routedTools = routedTools.filter((t) => FORCE_ACTION_MUTATION_TOOLS.has(t.name));
+        if (routedTools.length === 0) {
+          // 保底：如果全被过滤了，至少保留核心写工具
+          routedTools = ['write_file', 'edit_file', 'apply_hashline_patch']
+            .map((name) => this.#toolRegistry.get(name))
+            .filter(Boolean);
+        }
+        if (this.#config?.debug && beforeCount !== routedTools.length) {
+          this.#ui.debugEvent?.(
+            `Force-action mode: tools restricted ${beforeCount} → ${routedTools.length} (read-only blocked)`,
+          );
+        }
+        // 构建 system note，在 messages 构造后注入
+        const usableNames = routedTools.map((t) => t.name).join(', ');
+        forceActionSystemNote =
+          `<!-- FORCE-ACTION MODE: Only mutation tools are available. ` +
+          `Usable tools: ${usableNames}. ` +
+          `All read/explore tools (read_file, list_dir, lsp_*, etc.) are BLOCKED. ` +
+          `You MUST write code NOW. -->`;
+      }
       const activeRoutedToolNames = new Set(routedTools.map((tool) => tool.name));
       const functions = this.#toolRegistry.toFunctionDefinitions(routedTools);
       const messages = withRoutedToolContext(
@@ -589,6 +879,11 @@ export class AgentEngine {
         this.#textToolParser.generateToolPrompt(routedTools),
         currentPhase,
       );
+
+      // 注入 force-action system note（在 messages 构造之后）
+      if (forceActionSystemNote) {
+        messages.push({ role: 'system', content: forceActionSystemNote });
+      }
 
       // —— 注入本轮工作区上下文（多文件聚合快照）——
       if (this.#workspaceState && typeof this.#workspaceState.aggregateContext === 'function') {
@@ -901,6 +1196,57 @@ export class AgentEngine {
         continue;
       }
 
+      // -------- 内部标签泄漏：模型输出 <dsml>/<info>/<thinking>/<plan> 等内部标签后停止，无工具调用 --------
+      // 与 <action> 不同：<action> 是合法工具调用格式被 parser 解析消耗；
+      // <dsml> / <info> / <thinking> / <plan> / <analysis> 等不是工具格式，parser 完全不理，
+      // 原样留在 text 里。若直接 addAssistantMessage 进入 session 上下文，
+      // 模型会被自己泄漏的标签污染，下一轮继续输出死循环。
+      if (
+        allToolCalls.length === 0 &&
+        response.text?.trim() &&
+        looksLikeLeakedThinking(response.text)
+      ) {
+        // 剥离所有非工具 XML 标签再写入 session，防止污染上下文
+        const cleanText = response.text
+          .replace(ANY_XML_TAG, '')
+          .replace(DSML_PIPE_TAG, '')
+          .trim();
+        const assistantMsg = cleanText || '(thinking)';
+        this.#sessionManager.addAssistantMessage(assistantMsg);
+        this.#sessionManager.addUserMessage(
+          'You output internal thinking tags but did not execute any tools. ' +
+            'Stop thinking out loud and ACT. Immediately call tools (write_file, shell, etc.) ' +
+            'to perform the task. DO NOT emit any XML tags — just execute.',
+        );
+        this.#ui.debugEvent?.('Internal tag leak detected - nudge to execute', {
+          iteration,
+          preview: this.#preview(response.text, 200),
+        });
+        continue;
+      }
+
+      // -------- 短路 4.5：虚构工具执行（模型编造了完整执行过程，但实际零工具调用） --------
+      if (
+        allToolCalls.length === 0 &&
+        response.text?.trim() &&
+        looksLikeFakeExecution(response.text, this.#toolExecutor.events.length)
+      ) {
+        this.#sessionManager.addAssistantMessage(response.text);
+        this.#sessionManager.addUserMessage(
+          'CRITICAL: You described completed work (files created, build passed, etc.) but you have ' +
+            'NOT actually called any tools. This is hallucination. You MUST call the actual tools ' +
+            '(write_file, shell, etc.) to do the real work. Do NOT fabricate builds, file contents, ' +
+            'or verification results. Execute tools NOW — create the files and run the build yourself.',
+        );
+        this.#ui.debugEvent?.('Fake execution detected - nudge to execute', {
+          iteration,
+          preview: this.#preview(response.text, 200),
+          toolEventsInSession: this.#toolExecutor.events.length,
+        });
+        this.#ui.warn?.('检测到模型虚构工具执行结果，已注入修正提示。');
+        continue;
+      }
+
       // -------- 短路 5：FINAL_ANSWER 标记终止 --------
       if (isTerminationResponse(response.text)) {
         const answer = normalizeFinalAnswer(extractFinalAnswer(response.text));
@@ -919,6 +1265,49 @@ export class AgentEngine {
           iterations: iteration,
           startedAt: runStartedAt,
         });
+      }
+
+      // -------- intent-to-read detection: 模型说要阅读代码，但未实际发起工具调用 --------
+      // 优先级高于 plan-only：当模型表达了阅读意图，应该提示 read 工具而非 write/shell
+      if (
+        allToolCalls.length === 0 &&
+        response.finishReason === 'stop' &&
+        response.text?.trim() &&
+        looksLikeIntentToReadWithoutTools(response.text)
+      ) {
+        this.#sessionManager.addAssistantMessage(response.text);
+        this.#sessionManager.addUserMessage(
+          'You expressed intent to read / understand the codebase but did not execute any tool calls. ' +
+            'Use the available read tools — read_file, search_file, search_content, list_dir — ' +
+            'to actually load the files you need. ' +
+            'Do NOT describe what you will read — immediately call the read tools NOW.',
+        );
+        this.#ui.debugEvent?.('Nudge: intent to read without tools', {
+          iteration,
+          preview: this.#preview(response.text, 200),
+        });
+        continue;
+      }
+
+      // -------- plan-only detection: 模型只列计划不执行 → nudge 继续 --------
+      if (
+        allToolCalls.length === 0 &&
+        response.finishReason === 'stop' &&
+        response.text?.trim() &&
+        looksLikePlanWithoutExecution(response.text)
+      ) {
+        this.#sessionManager.addAssistantMessage(response.text);
+        this.#sessionManager.addUserMessage(
+          'You described what you will do but did not execute any tool calls. ' +
+            'Immediately use the available tools (write_file, shell, etc.) to actually ' +
+            'create the files or run the commands you listed. ' +
+            'Do NOT repeat the plan — EXECUTE it now with tool calls.',
+        );
+        this.#ui.debugEvent?.('Nudge: plan without execution', {
+          iteration,
+          preview: this.#preview(response.text, 200),
+        });
+        continue;
       }
 
       // -------- 短路 6：无工具调用但 provider 说 stop → 视作最终回答 --------
@@ -940,6 +1329,148 @@ export class AgentEngine {
           iterations: iteration,
           startedAt: runStartedAt,
         });
+      }
+
+      // ================================================================
+      // 探索预算 + 零调用硬约束（仅编码任务）：防止 agent 无限探索不动手
+      // ================================================================
+      if (taskProfile.isCodingTask) {
+        // 更新探索计数器
+        if (allToolCalls.length === 0) {
+          zeroToolCallStreak++;
+          explorationIterations++;
+        } else {
+          zeroToolCallStreak = 0;
+          const hasMutation = allToolCalls.some((tc) => {
+            const name = tc?.name || tc?.function?.name || '';
+            const args = tc?.arguments || tc?.args || {};
+            // 显式 mutation 工具（对齐 execution-plan-manager.js isMutationTool）
+            if (
+              /^(write_file|edit_file|delete_file|rename_file|mkdir|apply_hashline_patch|lsp_rename|lsp_workspace_edit|lsp_code_action|git_apply_patch|git_commit)$/.test(
+                name,
+              )
+            ) {
+              return true;
+            }
+            // harness state-centric 编辑工具
+            if (/^harness_(replace|insert|delete)$/.test(name)) {
+              return true;
+            }
+            // shell 写操作：命令中含有文件写入、包安装、构建等操作
+            if (name === 'shell') {
+              const cmd = String(args?.command || args?.input || args?.text || '').toLowerCase();
+              return /(^|\s)(bun|npm|pnpm|yarn|npx|node|python|pytest|vitest|jest|eslint|tsc|git|touch|cp|mv|rm|sed|perl|tee)\b|>|>>|apply_patch/.test(
+                cmd,
+              );
+            }
+            return false;
+          });
+          if (hasMutation) {
+            explorationIterations = 0;
+            forceActionTriggered = false;
+            forceActionIgnored = 0;
+          } else {
+            explorationIterations++;
+          }
+        }
+
+        // 连续 5+ 零工具调用回合：强打断
+        if (zeroToolCallStreak >= 5 && allToolCalls.length === 0) {
+          this.#sessionManager.addAssistantMessage(response.text);
+          this.#sessionManager.addUserMessage(
+            `[HARD STOP] ${zeroToolCallStreak} consecutive responses with ZERO tool calls. ` +
+              'You are stuck in an analysis loop. ' +
+              `${zeroToolCallStreak >= 7 ? 'THIS IS YOUR LAST CHANCE. ' : `You will be TERMINATED in ${8 - zeroToolCallStreak} more zero-call response(s). `}` +
+              'IMMEDIATELY call write_file or edit_file to make the code change, OR provide FINAL_ANSWER. ' +
+              'No more analysis — ACT NOW.',
+          );
+          if (zeroToolCallStreak >= 8) {
+            return this.#completeRun({
+              success: false,
+              status: 'error',
+              answer: response.text?.trim() || '',
+              reason: 'zero_tool_call_timeout',
+              iterations: iteration,
+              startedAt: runStartedAt,
+            });
+          }
+          continue;
+        }
+
+        // 探索预算超出：先警告 + 禁止只读工具，再硬终止
+        // 引擎已在任务开始时预注入 WorkspaceIndex + ImportGraph +
+        // AgentMemory + LSP diagnostics + plan context，agent 不应需要探索阶段
+
+        // 中期作用域提醒：预算过半 + 有执行计划 → 提醒只读当前子任务的文件
+        if (
+          executionPlan &&
+          explorationIterations >= Math.ceil(effectiveExplorationBudget * 0.5) &&
+          !forceActionTriggered
+        ) {
+          const planTasks = Array.from(executionPlan.tasks?.values() || []);
+          const runningTask = planTasks.find((t) => t.status === TaskStatus.RUNNING);
+          const scopeHint =
+            runningTask && runningTask.scopeFiles?.length
+              ? `Current subtask scope: ${runningTask.scopeFiles.join(', ')}. Only read files within this scope.`
+              : 'Focus on the CURRENT subtask only — do not pre-read files for future subtasks. The plan DAG shows which files belong to each subtask.';
+          this.#sessionManager.addSystemMessage(
+            `[SCOPE REMINDER] You have read for ${explorationIterations} round(s) without making changes. ` +
+              `${scopeHint} The engine has pre-indexed the workspace — trust the pre-computed context. ` +
+              `Use lsp_symbols / lsp_diagnostics instead of read_file for broad exploration. ` +
+              `When ready to edit, read ONLY the specific section with offset+limit.`,
+          );
+          this.#ui.debugEvent?.('Scope reminder injected', {
+            iteration,
+            explorationIterations,
+            budget: effectiveExplorationBudget,
+            runningTask: runningTask?.name,
+            scopeFiles: runningTask?.scopeFiles,
+          });
+        }
+
+        if (explorationIterations >= effectiveExplorationBudget && !forceActionTriggered) {
+          forceActionTriggered = true;
+          this.#sessionManager.addAssistantMessage(response.text);
+          this.#sessionManager.addUserMessage(
+            `[HARD STOP - FORCE ACTION ACTIVATED] ` +
+              `You have spent ${explorationIterations} iterations reading/exploring without making ANY code changes.\n` +
+              `(Budget: ${effectiveExplorationBudget} iterations — the engine already pre-injected workspace structure, diagnostics, project memory, and execution plan for you)\n\n` +
+              `CONSEQUENCE: All read-only tools (read_file, list_dir, lsp_*, web_search, etc.) are now BLOCKED. ` +
+              `Only write/edit/delete/shell/harness_* tools remain available.\n\n` +
+              `You have ${FORCE_ACTION_GRACE_TURNS} chances left. If you produce ${FORCE_ACTION_GRACE_TURNS} more non-mutation rounds, ` +
+              `you will be TERMINATED with reason "exploration_budget_exhausted".\n\n` +
+              'ACTION REQUIRED: Use write_file, edit_file, or apply_hashline_patch to implement the change. ' +
+              'Or provide FINAL_ANSWER explaining why you cannot proceed. ' +
+              'Do NOT attempt to read or explore — those tools are BLOCKED.',
+          );
+          continue;
+        }
+
+        if (forceActionTriggered && explorationIterations > effectiveExplorationBudget) {
+          forceActionIgnored++;
+          const remaining = FORCE_ACTION_GRACE_TURNS - forceActionIgnored;
+          if (forceActionIgnored >= FORCE_ACTION_GRACE_TURNS) {
+            return this.#completeRun({
+              success: false,
+              status: 'error',
+              answer:
+                `Agent spent ${explorationIterations} iterations exploring without making code changes, ` +
+                `and ignored the force-action directive (${FORCE_ACTION_GRACE_TURNS} warnings given).`,
+              reason: 'exploration_budget_exhausted',
+              iterations: iteration,
+              startedAt: runStartedAt,
+            });
+          }
+          this.#sessionManager.addAssistantMessage(response.text);
+          this.#sessionManager.addUserMessage(
+            `[FINAL WARNING ${forceActionIgnored}/${FORCE_ACTION_GRACE_TURNS}] ` +
+              `You have ignored the force-action directive for ${forceActionIgnored} iteration(s). ` +
+              `You will be TERMINATED in ${remaining} more non-mutation iteration(s). ` +
+              `Read-only tools are BLOCKED — your only options are: ` +
+              `write_file, edit_file, apply_hashline_patch, shell, or FINAL_ANSWER. ACT NOW.`,
+          );
+          continue;
+        }
       }
 
       // -------- 常规路径：执行工具调用 --------
@@ -1053,6 +1584,11 @@ export class AgentEngine {
           }
         }
       }
+
+      // ========== Closed-Loop Memory Refresh ==========
+      // edit → addEpisodic() → refresh layer4_memory → 下一轮 LLM 看到更新后的记忆
+      // 这修复了之前记忆闭环的断裂点：memory 在 run 内可见，而非仅跨 run 可见。
+      this.#refreshMemoryAfterTools(allToolCalls);
     }
 
     // 达到迭代上限仍未完成
@@ -1239,10 +1775,468 @@ export class AgentEngine {
   }
 
   // ============================================================
+  // 预探索上下文注入（工程化方案 — 引擎预计算上下文，消除 agent 探索阶段）
+  // ============================================================
+
+  /**
+   * 分层注入预探索上下文：利用 WorkspaceIndex / ImportGraph /
+   * AgentMemory / ContextProjection 数据，按层级注入结构化上下文。
+   *
+   * 上下文层次（从底层到上层）：
+   *   Layer 0: 系统指令 (system prompt, 不变)
+   *   Layer 1: 项目结构 (WorkspaceIndex summary)
+   *   Layer 2: 诊断信息 (LSP diagnostics — 异步注入)
+   *   Layer 3: 依赖关系 (ImportGraph + ContextProjection)
+   *   Layer 4: 任务记忆 (AgentMemory, git-aware, token-budget 感知)
+   *
+   * 核心原则：不在 prompt 里教 agent 怎么探索，而是用引擎能力把
+   * "探索"这一步直接吃掉。agent 看到的第一个上下文就是预计算好的。
+   */
+  #injectPreExploredContextSync(userInput, taskProfile) {
+    // --- Layer 1: 项目结构 (WorkspaceIndex) ---
+    try {
+      const wsSummary = this.#workspaceIndex?.getSummary?.();
+      if (wsSummary && wsSummary.length > 0) {
+        this.#sessionManager.addLayer('layer1_structure',
+          `[WORKSPACE STRUCTURE — pre-indexed]\n${wsSummary}`,
+          { priority: SessionManager.LAYER.STRUCTURE },
+        );
+      }
+    } catch {
+      /* 索引未就绪，跳过 */
+    }
+
+    // --- Layer 2: ContextProjection (状态图局部投影，按任务类型) ---
+    try {
+      const projection = this.#tryCreateProjection(taskProfile);
+      if (projection) {
+        this.#sessionManager.addLayer('layer2_projection',
+          `[CONTEXT PROJECTION for task]\n${projection}`,
+          { priority: SessionManager.LAYER.PROJECTION },
+        );
+      }
+    } catch {
+      /* projection 失败不阻塞 */
+    }
+
+    // --- Layer 3: 依赖关系 (ImportGraph + 文件引用) ---
+    try {
+      if (this.#importGraph && typeof this.#importGraph.getDirectDependencies === 'function') {
+        const hints = this.#extractFileReferences(userInput);
+        if (hints.length > 0) {
+          const graphLines = [];
+          for (const hint of hints.slice(0, 5)) {
+            try {
+              const deps = this.#importGraph.getDirectDependencies(hint) || [];
+              const dependents = this.#importGraph.getDependents?.(hint) || [];
+              graphLines.push(
+                `  - \`${hint}\`: imports ${deps.length} module(s), depended on by ${dependents.length} file(s)`,
+              );
+            } catch {
+              /* 单个文件查图失败不阻塞 */
+            }
+          }
+          if (graphLines.length > 0) {
+            this.#sessionManager.addLayer('layer3_dependencies',
+              `[IMPORT GRAPH — file references in task]\n${graphLines.join('\n')}`,
+              { priority: SessionManager.LAYER.DEPENDENCIES },
+            );
+          }
+        }
+      }
+    } catch {
+      /* 依赖图不可用 */
+    }
+
+    // --- Layer 4: 项目记忆 (AgentMemory, git-aware, token-budget 感知) ---
+    this.#refreshMemoryLayer(userInput);
+
+    this.#ui.debugEvent?.('Layered pre-explored context injected (4 layers)', {
+      hasWorkspace: Boolean(this.#workspaceIndex?.getSummary?.()),
+      hasProjection: Boolean(this.#contextProjection),
+      hasImportGraph: Boolean(this.#importGraph),
+      hasMemory: Boolean(this.#memoryManager),
+    });
+  }
+
+  /**
+   * 刷新 Layer 4（项目记忆）。被 injectPreExploredContextSync 和
+   * 主循环中的 memory refresh hook 共用。
+   */
+  #refreshMemoryLayer(userInput) {
+    try {
+      if (this.#memoryManager) {
+        const memCtx =
+          typeof this.#memoryManager.getBudgetedMemoryContext === 'function'
+            ? this.#memoryManager.getBudgetedMemoryContext({
+                currentTask: typeof userInput === 'string' ? userInput.substring(0, 300) : '',
+                maxTokens: 800,
+                tokensPerChar: 0.25,
+              })
+            : '';
+        if (memCtx && memCtx.trim()) {
+          this.#sessionManager.refreshLayer('layer4_memory',
+            `[PROJECT MEMORY — git-aware, refreshed]\n${memCtx}`,
+            { priority: SessionManager.LAYER.MEMORY },
+          );
+        }
+      }
+    } catch {
+      /* 记忆不可用 */
+    }
+  }
+
+  /**
+   * 闭环记忆刷新：每轮工具执行后，检测是否有突变操作，
+   * 若有则刷新 layer4_memory，让下一轮 LLM 看到编辑产生的最新记忆。
+   *
+   * 这修复了记忆闭环的核心断裂点：
+   *   编辑 → addEpisodic() ✅
+   *   记忆 → refresh layer4_memory ✅ (NEW)
+   *   下一轮 LLM → 读取更新后的 memory ✅
+   */
+  #refreshMemoryAfterTools(allToolCalls) {
+    if (!allToolCalls || allToolCalls.length === 0) return;
+
+    const mutationNames = new Set([
+      'write_file', 'edit_file', 'delete_file', 'rename_file',
+      'apply_hashline_patch', 'git_apply_patch', 'git_commit',
+      'harness_replace', 'harness_insert', 'harness_delete',
+      'lsp_rename', 'lsp_workspace_edit',
+    ]);
+
+    const hasMutation = allToolCalls.some((tc) => {
+      const name = tc?.name || tc?.function?.name || '';
+      return mutationNames.has(name);
+    });
+
+    if (hasMutation) {
+      try {
+        this.#refreshMemoryLayer(this.#lastUserInput);
+        this.#ui.debugEvent?.('Memory layer refreshed after mutation', {
+          layerId: 'layer4_memory',
+        });
+      } catch {
+        /* best-effort */
+      }
+    }
+  }
+
+  /**
+   * 创建 ContextProjectionGenerator，桥接 WorkspaceIndex 到 CompleteIndex 接口。
+   * ContextProjectionGenerator 需要 StateGraph + CompleteIndex，这里用 WorkspaceIndex
+   * 构建轻量 adaptor，通过 projectMinimal() 生成真正的上下文投影。
+   */
+  #createProjectionGenerator() {
+    try {
+      const wsIndex = this.#workspaceIndex;
+
+      // 轻量 CompleteIndex adaptor：把 WorkspaceIndex 包装成 projection 需要的接口
+      const projectionIndex = {
+        getStats() {
+          const stats = wsIndex?.getStats?.() || {};
+          return {
+            files: stats.files ?? stats.size ?? 0,
+            symbols: stats.symbols ?? 0,
+            dependencies: stats.dependencies ?? 0,
+          };
+        },
+        symbols: {
+          findInFile: () => [],
+          findByName: () => [],
+        },
+        dependencies: {
+          analyzeImpact: () => ({ directDeps: [], dependents: [], transitiveDependents: [] }),
+        },
+        store: {},
+      };
+
+      // 使用 StateGraph 创建投影引擎
+      const graph = new StateGraph();
+
+      return new ContextProjectionGenerator(graph, projectionIndex);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 创建状态图局部投影。使用 ContextProjectionGenerator.projectMinimal()
+   * 代替之前手写的 WorkspaceIndex stats 格式化。
+   *
+   * ContextProjectionGenerator 提供：
+   *   - projectMinimal()     → 项目状态摘要
+   *   - projectSmart()        → 根据任务类型自动选择投影策略
+   *   - projectForEditing()   → 编辑任务的精确符号+依赖投影
+   *   - projectForUnderstanding() → 理解任务的上下文投影
+   *
+   * 这里使用 projectMinimal() 作为初始注入，后续 OnDemandContextExpansion
+   * 可在运行时请求更精确的 projectSmart() 投影。
+   */
+  #tryCreateProjection(taskProfile) {
+    try {
+      if (!taskProfile?.isCodingTask) return null;
+      if (!this.#contextProjection) return null;
+
+      const projection = this.#contextProjection.projectMinimal();
+
+      // 补充任务类型提示
+      const taskHint =
+        `\nTask type: ${taskProfile.isBugTask ? 'bug fix' : 'coding'}, ` +
+        `risk level: ${taskProfile.riskLevel || 'medium'}.\n` +
+        `Strategy: use pre-computed context directly; read only specific code sections to edit.\n`;
+
+      return projection + taskHint;
+    } catch {
+      // fallback: 投影引擎失败时降级为手写摘要
+      try {
+        const wsSummary = this.#workspaceIndex?.getSummary?.() || '';
+        const stats = this.#workspaceIndex?.getStats?.() || {};
+        const f = stats.files ?? stats.size ?? '?';
+        const s = stats.symbols ?? '?';
+        return (
+          `Project overview: ~${f} files, ~${s} symbols indexed (projection engine fallback).\n` +
+          (wsSummary ? `\nStructure:\n${wsSummary}` : '')
+        );
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  /**
+   * OnDemandContextExpansion: 每轮迭代动态评估置信度，按需扩展上下文。
+   *
+   * 当 agent 探索过多、上下文置信度不足时，引擎自动注入相关上下文，
+   * 避免 agent 继续逐文件阅读。
+   */
+  #expandContextOnDemand(iteration, maxIterations, _executionPlan) {
+    try {
+      // 仅在编码任务 + 迭代进入中后段时触发（前期让 agent 先尝试）
+      if (iteration < 2) return;
+
+      // 使用当前 userInput 评估：文件是否存在、符号是否可索引、依赖图是否覆盖
+      const confidence = this.#onDemandContext?.assessConfidence?.({
+        file: this.#lastUserInput ? this.#extractFileReferences(this.#lastUserInput)[0] : undefined,
+        symbolName: undefined,
+      });
+
+      if (!confidence) return;
+
+      // 置信度不足时注入提示，引导 agent 信任预计算上下文
+      if (confidence.level === 'low' || confidence.level === 'unknown') {
+        if (iteration > Math.floor(maxIterations * 0.5)) {
+          // 迭代过半且置信度低：强制注入指导
+          this.#sessionManager.addSystemMessage(
+            '[ON-DEMAND CONTEXT EXPANSION] Context confidence is low. The engine has pre-indexed ' +
+              'the workspace structure and import graph. Trust the pre-computed context rather ' +
+              'than exploring file-by-file. If you need specific file content, read it directly ' +
+              'with offset+limit — do not explore broadly.',
+          );
+          this.#ui.debugEvent?.('On-demand context expansion triggered', {
+            iteration,
+            confidenceLevel: confidence.level,
+            reason: confidence.reason,
+          });
+        }
+      }
+    } catch {
+      /* on-demand expansion best-effort */
+    }
+  }
+
+  /**
+   * 异步增强管道：warm WorkspaceIndex → 触发 LSP diagnostics →
+   * 综合注入完整的预探索上下文。
+   *
+   * 当 warm + diagnostics 完成后，agent 拥有：
+   * - 完整的项目文件/符号索引
+   * - LSP 诊断结果（错误位置、类型错误等）
+   * - 不再需要逐文件探索
+   */
+  async #warmAndInjectFullContext(userInput) {
+    try {
+      // Step 1: warm 工作区索引 → 刷新 layer1_structure
+      const wsSummary = await this.#workspaceIndex?.warm?.();
+      if (wsSummary && this.#sessionManager) {
+        this.#sessionManager.refreshLayer('layer1_structure',
+          `[WORKSPACE STRUCTURE — fully warmed]\n${wsSummary}`,
+          { priority: SessionManager.LAYER.STRUCTURE },
+        );
+      }
+    } catch (err) {
+      this.#ui.debugEvent?.('Workspace index warm failed', { error: err?.message || err });
+    }
+
+    // Step 2: 触发 LSP diagnostics → 新 layer（诊断层，priority 高于 structure）
+    try {
+      if (this.#lspManager) {
+        const diagContext = await this.#collectLspDiagnostics();
+        if (diagContext && this.#sessionManager) {
+          this.#sessionManager.addLayer('layer_diagnostics', diagContext,
+            { priority: SessionManager.LAYER.DIAGNOSTICS },
+          );
+        }
+      }
+    } catch (err) {
+      this.#ui.debugEvent?.('LSP diagnostics pre-fetch failed', {
+        error: err?.message || err,
+      });
+    }
+
+    // Step 3: 通过 import graph 增强诊断上下文 → 刷新 layer3_dependencies
+    try {
+      if (this.#lspManager && this.#importGraph) {
+        const enhancedDiags = await this.#enhanceDiagnosticsWithImportGraph();
+        if (enhancedDiags && this.#sessionManager) {
+          this.#sessionManager.refreshLayer('layer3_dependencies', enhancedDiags,
+            { priority: SessionManager.LAYER.DEPENDENCIES },
+          );
+        }
+      }
+    } catch (err) {
+      this.#ui.debugEvent?.('Diagnostics enhancement failed', {
+        error: err?.message || err,
+      });
+    }
+  }
+
+  /**
+   * 从 LSP 收集所有诊断信息，构建结构化上下文。
+   * 在关键源文件上触发 didOpen 以获取实时 diagnostics。
+   */
+  async #collectLspDiagnostics() {
+    const allDiags = this.#lspManager.getAllDiagnostics?.() || {};
+    const errors = [];
+    const warnings = [];
+
+    for (const [uri, diags] of Object.entries(allDiags)) {
+      if (!Array.isArray(diags) || diags.length === 0) continue;
+      const filePath = uri.replace(/^file:\/\//, '');
+      for (const d of diags) {
+        const entry = {
+          file: filePath,
+          line: (d.range?.start?.line ?? 0) + 1,
+          column: (d.range?.start?.character ?? 0) + 1,
+          message: d.message || '',
+          source: d.source || '',
+          code: d.code || '',
+        };
+        if (d.severity === 1) {
+          errors.push(entry);
+        } else if (d.severity === 2) {
+          warnings.push(entry);
+        }
+      }
+    }
+
+    if (errors.length === 0 && warnings.length === 0) {
+      return null;
+    }
+
+    const lines = [];
+    lines.push(
+      '[LSP DIAGNOSTICS — pre-fetched by engine. You do NOT need to run lsp_diagnostics yourself.]',
+    );
+
+    if (errors.length > 0) {
+      lines.push(`\n## Errors (${errors.length} total, showing first 12)`);
+      for (const e of errors.slice(0, 12)) {
+        const src = e.source ? ` [${e.source}${e.code ? `:${e.code}` : ''}]` : '';
+        lines.push(`  - **\`${e.file}:${e.line}:${e.column}\`** — ${e.message}${src}`);
+      }
+    }
+
+    if (warnings.length > 0) {
+      lines.push(`\n## Warnings (${warnings.length} total, showing first 5)`);
+      for (const w of warnings.slice(0, 5)) {
+        lines.push(`  - \`${w.file}:${w.line}:${w.column}\` — ${w.message}`);
+      }
+    }
+
+    this.#ui.debugEvent?.('LSP diagnostics pre-fetched', {
+      errors: errors.length,
+      warnings: warnings.length,
+    });
+
+    return lines.join('\n');
+  }
+
+  /**
+   * 通过 ImportGraph 增强诊断上下文：对于每个有诊断错误的文件，
+   * 追溯其直接导入者和被导入者，让 agent 了解修改的影响范围。
+   */
+  async #enhanceDiagnosticsWithImportGraph() {
+    const allDiags = this.#lspManager.getAllDiagnostics?.() || {};
+    const errorFiles = new Set();
+
+    for (const [uri, diags] of Object.entries(allDiags)) {
+      if (!Array.isArray(diags)) continue;
+      if (diags.some((d) => d.severity === 1)) {
+        errorFiles.add(uri.replace(/^file:\/\//, ''));
+      }
+    }
+
+    if (errorFiles.size === 0) return null;
+
+    const lines = [];
+    lines.push(
+      '[IMPORT GRAPH — files affected by diagnostics. Understanding these relationships helps scope your changes.]',
+    );
+
+    for (const file of errorFiles) {
+      try {
+        const deps = this.#importGraph.getDirectDependencies?.(file) || [];
+        const dependents = this.#importGraph.getDependents?.(file) || [];
+        if (deps.length > 0 || dependents.length > 0) {
+          const parts = [];
+          if (deps.length > 0) {
+            parts.push(
+              `imports: ${deps.slice(0, 5).map((d) => `\`${typeof d === 'string' ? d : d.path || d}\``).join(', ')}${deps.length > 5 ? ` +${deps.length - 5} more` : ''}`,
+            );
+          }
+          if (dependents.length > 0) {
+            parts.push(
+              `depended on by: ${dependents.slice(0, 5).map((d) => `\`${typeof d === 'string' ? d : d.path || d}\``).join(', ')}${dependents.length > 5 ? ` +${dependents.length - 5} more` : ''}`,
+            );
+          }
+          lines.push(`  - \`${file}\`: ${parts.join('; ')}`);
+        }
+      } catch {
+        /* 单个文件查图失败不阻塞 */
+      }
+    }
+
+    return lines.length > 1 ? lines.join('\n') : null;
+  }
+
+  /**
+   * 从用户输入中提取可能的文件路径引用。
+   * 用于在 import graph 中查找相关依赖。
+   */
+  #extractFileReferences(userInput) {
+    if (typeof userInput !== 'string' || !userInput) return [];
+    const refs = new Set();
+    // 匹配反引号包裹的文件路径: `src/foo/bar.ts`
+    const backtickPattern = /`([^`]+\.(?:js|ts|jsx|tsx|mjs|cjs|py|rs|go|java|vue|svelte|css|html))`/gi;
+    let match;
+    while ((match = backtickPattern.exec(userInput)) !== null) {
+      refs.add(match[1]);
+    }
+    // 匹配常见的相对/绝对路径引用
+    const pathPattern =
+      /\b((?:\.{0,2}\/)?(?:src|lib|app|components|utils|services|hooks|pages|modules|core)\/[^\s,"'`()]+\.(?:js|ts|jsx|tsx))\b/gi;
+    while ((match = pathPattern.exec(userInput)) !== null) {
+      refs.add(match[1]);
+    }
+    return Array.from(refs);
+  }
+
+  // ============================================================
   // 内部辅助
   // ============================================================
 
-  #completeRun({
+  async #completeRun({
     success,
     status,
     answer,
@@ -1252,6 +2246,11 @@ export class AgentEngine {
     error,
     userInputRequest,
   }) {
+    // 让出当前 macrotask，给 UI 框架（React 等）一个渲染 tick
+    // 把前面几轮迭代中累积的 toolCall/toolResult/toolError 事件
+    // 在 "执行完成" 状态之前先渲染出来，避免 tool 结果比完成标记更晚显示
+    await new Promise((r) => setTimeout(r, 0));
+
     try {
       this.#workspaceIndex?.stopPeriodicSync?.();
     } catch {}
@@ -1335,6 +2334,22 @@ export class AgentEngine {
       }
     }
 
+    // —— ConversationJournal: 记录本轮完整结果（#completeRun 已有 UI flush，时序已对齐）——
+    if (this.#conversationJournal && result?.runId) {
+      try {
+        this.#conversationJournal.recordResult({
+          answer,
+          success,
+          reason,
+          durationMs,
+          toolCount: (toolEvents || []).length,
+          runId: result.runId,
+        });
+      } catch {
+        /* 日志写入失败不阻塞主流程 */
+      }
+    }
+
     return result;
   }
 
@@ -1348,6 +2363,25 @@ export class AgentEngine {
       return null;
     }
     const ratio = maxIterations > 0 ? iteration / maxIterations : 0;
+
+    // Bug 修复任务：压缩探索/规划阶段，给实现更多时间
+    // 避免 agent 在"审查模式"中耗费太多迭代
+    if (this.#executionPlanManager.isBugTask) {
+      if (ratio < 0.05) {
+        return 'exploration';
+      }
+      if (ratio < 0.10) {
+        return 'planning';
+      }
+      if (ratio < 0.70) {
+        return 'implementation';
+      }
+      if (ratio < 0.85) {
+        return 'inspection';
+      }
+      return 'verification';
+    }
+
     if (ratio < 0.15) {
       return 'exploration';
     }

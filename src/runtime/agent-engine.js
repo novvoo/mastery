@@ -327,6 +327,141 @@ export class AgentEngine {
     }
   }
 
+  // ——— 执行计划 (Plan) ———
+  /**
+   * 创建并智能分解执行计划（async）
+   *
+   * 为给定的任务描述生成结构化执行计划。
+   * - 有 modelProvider → LLM 驱动任务分解 + 方法论工具建议
+   * - 无 modelProvider → 回退到模板规则分解
+   *
+   * 通过 EventBus 发射 plan:created / plan:decomposed / plan:updated 事件
+   *
+   * @param {string} taskDescription - 任务描述
+   * @param {Object} options - { template?, priority?, context?, modelProvider? }
+   * @returns {Promise<Object>} { plan, tasks, method: 'llm'|'template' }
+   */
+  async plan(taskDescription, options = {}) {
+    const ctx = this.#ctx();
+
+    if (!ctx.graphPlanner) {
+      throw new Error('GraphPlanner 未初始化，请先调用 initialize()');
+    }
+
+    const modelProvider = options.modelProvider || ctx.modelProvider;
+
+    // 1. 创建执行计划
+    const plan = ctx.graphPlanner.createPlan(
+      taskDescription,
+      `执行计划: ${taskDescription}`,
+      { taskDescription, ...(options.context || {}) },
+    );
+
+    // 2. 发射 plan:created 事件
+    ctx.eventBus.emit(RuntimeEvent.EXECUTION_PLAN_CREATED, {
+      plan: {
+        id: plan.id,
+        name: plan.name,
+        description: plan.description,
+        tasks: [],
+        status: plan.status,
+        createdAt: plan.createdAt,
+      },
+      summary: `执行计划已创建: ${plan.name}`,
+    });
+
+    // 3. 智能分解任务（LLM 驱动 或 模板回退）
+    let subtaskDefs;
+    let decompositionMethod;
+
+    if (modelProvider && typeof modelProvider.chat === 'function') {
+      // LLM 驱动分解：带方法论工具建议 + Hashline 工具感知
+      const availableTools = ctx.toolRegistry
+        ? ctx.toolRegistry.getAll().map((t) => t.name)
+        : [];
+
+      ctx.eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
+        message: 'AI 正在分析任务并生成执行计划...',
+        level: 'info',
+      });
+
+      subtaskDefs = await ctx.graphPlanner.decomposeTaskLLM(
+        taskDescription,
+        modelProvider,
+        {
+          availableTools,
+          workingDirectory: ctx.config?.workingDirectory,
+          priority: options.priority,
+          template: options.template,
+        },
+      );
+      decompositionMethod = 'llm';
+    } else {
+      // 模板回退
+      subtaskDefs = ctx.graphPlanner.decomposeTask(
+        plan.id,
+        taskDescription,
+        { template: options.template, priority: options.priority },
+      );
+      decompositionMethod = 'template';
+    }
+
+    // 4. 将子任务注册到 plan（仅 LLM 路径需手动注册；模板路径 decomposeTask 已注册）
+    if (decompositionMethod === 'llm') {
+      for (const def of subtaskDefs) {
+        plan.addTask(def);
+      }
+    }
+
+    // 5. 将图规划器内部 task 转为普通对象
+    const tasksList = Array.from(plan.tasks.values()).map((t) => ({
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      status: t.status,
+      dependencies: [...t.dependencies],
+    }));
+
+    // 6. 发射 plan:decomposed 事件
+    ctx.eventBus.emit(RuntimeEvent.PLAN_DECOMPOSED, {
+      plan: {
+        id: plan.id,
+        name: plan.name,
+        description: plan.description,
+        tasks: tasksList,
+        status: plan.status,
+        createdAt: plan.createdAt,
+        decompositionMethod,
+      },
+      summary:
+        decompositionMethod === 'llm'
+          ? `AI 已分析并分解为 ${tasksList.length} 个子任务`
+          : `计划已分解为 ${tasksList.length} 个子任务`,
+      subtasks: tasksList,
+    });
+
+    // 7. 发射 plan:updated 事件（GUI 用此更新进度卡片）
+    ctx.eventBus.emit(RuntimeEvent.EXECUTION_PLAN_UPDATED, {
+      plan: {
+        id: plan.id,
+        name: plan.name,
+        description: plan.description,
+        tasks: tasksList,
+        status: plan.status,
+        createdAt: plan.createdAt,
+        decompositionMethod,
+      },
+      summary: `计划: ${plan.name} (${decompositionMethod === 'llm' ? 'AI分析' : '模板'}，${tasksList.length} 个子任务)`,
+      update: { after: `${tasksList.length} 个子任务，方法=${decompositionMethod}` },
+    });
+
+    return {
+      plan,
+      tasks: tasksList,
+      method: decompositionMethod,
+    };
+  }
+
   // ——— 内存与配置 ———
   async updateMemory(operation, data) {
     return updateMemory(this.#ctx(), operation, data);
