@@ -27,6 +27,10 @@ describe('public entrypoints', () => {
       cwd: process.cwd(),
       encoding: 'utf8',
       timeout: 10000,
+      env: {
+        ...process.env,
+        ELECTRON_SKIP_BINARY_DOWNLOAD: '1',
+      },
     });
 
     expect(result.status).toBe(0);
