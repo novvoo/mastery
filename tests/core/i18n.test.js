@@ -93,8 +93,8 @@ describe('i18n - 默认语言与翻译', () => {
   test('环境变量 LANG=zh_CN.UTF-8 检测为 zh-CN', () => {
     const originalLang = process.env.LANG;
     process.env.LANG = 'zh_CN.UTF-8';
-    // 新建实例使用环境变量
-    const inst = new I18n();
+    // 新建实例使用环境变量（需显式开启 autoDetect）
+    const inst = new I18n({ autoDetect: true });
     expect(inst.getCurrentLanguage()).toBe('zh-CN');
     if (originalLang !== undefined) {
       process.env.LANG = originalLang;

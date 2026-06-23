@@ -12,6 +12,7 @@
 import { LSPClient, LSPClientError } from './lsp-client.js';
 import { accessSync, constants as fsConstants } from 'fs';
 import { spawnSync } from 'child_process';
+import { join } from 'path';
 
 // ── 语言检测 ──────────────────────────────────────────────────────────────
 
@@ -246,6 +247,8 @@ export class ServerManager {
    * @param {number} [options.maxServersPerLang=3] 每种语言最大 server 实例数 (server pool)
    * @param {number} [options.idleTimeoutMs=300_000]  空闲 5 分钟后自动关闭
    * @param {boolean} [options.autoInstall=true]  自动安装缺失的 LSP server
+   * @param {boolean} [options.useSandboxInstall=true]  使用 LSPSandboxInstaller 进行版本锁定安装
+   * @param {string} [options.sandboxRoot]       沙箱安装根目录，默认 `.lsp-sandbox`
    */
   constructor(options = {}) {
     this.workspaceRoot = options.workspaceRoot || process.cwd();
@@ -253,6 +256,8 @@ export class ServerManager {
     this.maxServersPerLang = options.maxServersPerLang || 3;
     this.idleTimeoutMs = options.idleTimeoutMs || 300_000;
     this.autoInstall = options.autoInstall !== false;
+    this.useSandboxInstall = options.useSandboxInstall !== false;
+    this.sandboxRoot = options.sandboxRoot || join(this.workspaceRoot, '.lsp-sandbox');
 
     // 多根工作区支持
     /** @type {string[]} */
@@ -387,9 +392,14 @@ export class ServerManager {
       this.#installing.set(serverKey, true);
       try {
         console.warn(`[LSP] Server '${config.command}' not found, attempting auto-install...`);
-        const installResult = await this.#tryInstallServer(config.installCommand);
+        const installResult = await this.#tryInstallServer(serverKey, config);
         if (installResult.success) {
-          command = findExecutable(config.command);
+          // Sandbox 模式下使用安装路径
+          if (installResult.binaryPath) {
+            command = installResult.binaryPath;
+          } else {
+            command = findExecutable(config.command);
+          }
         }
       } catch (err) {
         console.warn(`[LSP] Auto-install failed: ${err.message}`);
@@ -518,9 +528,85 @@ export class ServerManager {
 
   /**
    * 尝试自动安装语言服务器。
+   * 当 useSandboxInstall=true 时使用 LSPSandboxInstaller 进行版本锁定 + 沙箱安装。
    * @private
+   * @param {string} serverKey
+   * @param {object} config
    */
-  async #tryInstallServer(installCommand) {
+  async #tryInstallServer(serverKey, config) {
+    // ── 沙箱安装路径 ────────────────────────────────────────
+    if (this.useSandboxInstall) {
+      try {
+        const { LSPSandboxInstaller } = await import('./lsp-sandbox-installer.js');
+        const installer = new LSPSandboxInstaller({
+          installRoot: this.sandboxRoot,
+          keepPrevious: true,
+          onProgress: (phase, msg, pct) => {
+            if (phase === 'verify' || phase === 'install') {
+              console.warn(`[LSP Sandbox] ${serverKey}: ${msg}`);
+            }
+          },
+        });
+
+        // 推断包管理器
+        const cmd = config.command;
+        const installCmd = config.installCommand;
+        let manager = 'npm',
+          pkg = cmd;
+        if (installCmd) {
+          if (installCmd.startsWith('npm ')) {
+            manager = 'npm';
+            pkg = cmd;
+          } else if (installCmd.startsWith('go ')) {
+            manager = 'go';
+            pkg = cmd;
+          } else if (installCmd.startsWith('cargo ')) {
+            manager = 'cargo';
+            pkg = cmd;
+          } else if (installCmd.startsWith('pip') || installCmd.includes('pip install')) {
+            manager = 'pip';
+            pkg = cmd;
+          } else if (installCmd.startsWith('brew ')) {
+            manager = 'system';
+            pkg = cmd;
+          }
+        }
+
+        const result = await installer.install(
+          serverKey,
+          {
+            command: config.command,
+            pinnedVersion: config.pinnedVersion || config.minVersion || 'latest',
+            minVersion: config.minVersion,
+          },
+          {
+            manager,
+            package: pkg,
+          },
+        );
+
+        if (result.success && result.binaryPath) {
+          console.warn(
+            `[LSP Sandbox] ${serverKey}@${result.version} installed → ${result.binaryPath}`,
+          );
+          return { success: true, binaryPath: result.binaryPath };
+        }
+        if (result.rolledBack) {
+          console.warn(
+            `[LSP Sandbox] ${serverKey} install failed and rolled back to ${result.previousVersion || 'none'}`,
+          );
+        }
+        return { success: false, error: result.error || 'Sandbox install failed' };
+      } catch (err) {
+        console.warn(
+          `[LSP Sandbox] ${serverKey} install error: ${err.message}, falling back to direct install`,
+        );
+        // 沙箱安装失败 → 回退到直接安装
+      }
+    }
+
+    // ── 直接安装（无沙箱） ──────────────────────────────────
+    const installCommand = config.installCommand;
     const { spawn } = await import('child_process');
     const [cmd, ...args] = installCommand.split(' ');
 
@@ -530,10 +616,9 @@ export class ServerManager {
         timeout: 120_000,
       });
 
-      let stdout = '';
       let stderr = '';
-      proc.stdout.on('data', (data) => {
-        stdout += data.toString();
+      proc.stdout.on('data', () => {
+        // stdout consumed but not stored (only used for pipe draining)
       });
       proc.stderr.on('data', (data) => {
         stderr += data.toString();

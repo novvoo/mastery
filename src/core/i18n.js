@@ -281,7 +281,9 @@ export class I18n {
   #fallbackLanguage;
 
   constructor(options = {}) {
-    this.#currentLanguage = options.language || this.#detectLanguage();
+    const language =
+      options.language ?? (options.autoDetect ? this.#detectLanguage() : DEFAULT_LANGUAGE);
+    this.#currentLanguage = language;
     this.#fallbackLanguage = options.fallbackLanguage || DEFAULT_LANGUAGE;
     this.#translations = new Map();
 

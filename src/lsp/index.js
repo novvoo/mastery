@@ -11,3 +11,4 @@
 export { LSPClient, LSPClientError, LSPServerError } from './lsp-client.js';
 export { ServerManager, detectLanguage } from './lsp-manager.js';
 export { createLSPTools } from './lsp-tools.js';
+export { LSPSandboxInstaller } from './lsp-sandbox-installer.js';

@@ -41,6 +41,21 @@ export class ModuleResolver {
   }
 
   /**
+   * 返回合并后的 tsconfig paths + 自定义别名，格式为 { alias: [targetPath] }。
+   * @returns {{ [alias: string]: string[] }}
+   */
+  get aliases() {
+    const result = {};
+    for (const [alias, targetPath] of this.tsPaths) {
+      result[alias] = Array.isArray(targetPath) ? targetPath : [targetPath];
+    }
+    for (const [alias, targetPath] of this.customAliases) {
+      result[alias] = Array.isArray(targetPath) ? targetPath : [targetPath];
+    }
+    return result;
+  }
+
+  /**
    * 初始化：加载项目配置。
    * @returns {Promise<void>}
    */

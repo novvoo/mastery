@@ -9,7 +9,7 @@
 
 import { existsSync, readFileSync, statSync } from 'fs';
 import { createHash } from 'crypto';
-import { join, relative } from 'path';
+import { join } from 'path';
 import { execSync } from 'child_process';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -285,7 +285,7 @@ export class MemoryVerifier {
     }
 
     if (memory.source.contentHash) {
-      const content = readFileSync(filePath, 'utf-8');
+      readFileSync(filePath, 'utf-8'); // 检查文件可读性
       const hash = ProvenanceUtils.fileContentHash(filePath);
       if (hash !== memory.source.contentHash) {
         return {
@@ -560,10 +560,19 @@ export class MemoryVerifier {
   /**
    * Compaction：合并重复/相似的 memories。
    * 找出重复的 topic 条目并归并。
+   *
+   * 支持两种模式：
+   *   1) 精确匹配（默认）：相同 topic + title 合并
+   *   2) 语义合并（semanticMerge=true）：检测高相似度但不同 topic/title 的条目并合并
+   *
    * @param {object[]} entries
+   * @param {object} [opts]
+   * @param {boolean} [opts.semanticMerge=false]  启用语义相似度合并
+   * @param {number} [opts.similarityThreshold=0.85]  语义相似度阈值（Jaccard）
    * @returns {{merged: object[], removedIds: string[]}}
    */
-  static compact(entries) {
+  static compact(entries, opts = {}) {
+    const { semanticMerge = false, similarityThreshold = 0.85 } = opts;
     const seen = new Map(); // topic → [{entry, index}]
     const removedIds = [];
     const merged = [];
@@ -582,7 +591,6 @@ export class MemoryVerifier {
       // 如果有重复 topic+title，保留最新的，移除旧的
       const group = seen.get(key);
       if (group.length > 1) {
-        // 保留最新 timestamp 的那个
         group.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
         const toRemove = group.slice(1);
         for (const r of toRemove) {
@@ -590,14 +598,12 @@ export class MemoryVerifier {
             removedIds.push(r.id);
           }
         }
-        // 从 merged 中移除旧条目
         for (const r of toRemove) {
           const idx = merged.findIndex((m) => m.id === r.id);
           if (idx >= 0) {
             merged.splice(idx, 1);
           }
         }
-        // 确保最新的条目在 merged 中
         const best = group[0];
         if (!merged.find((m) => m.id === best.id)) {
           merged.push(best);
@@ -605,7 +611,84 @@ export class MemoryVerifier {
       }
     }
 
+    // 语义合并：检测相似但不完全重复的条目
+    if (semanticMerge && merged.length > 1) {
+      const semanticRemoved = [];
+      for (let i = 0; i < merged.length; i++) {
+        if (semanticRemoved.includes(merged[i].id)) {
+          continue;
+        }
+        for (let j = i + 1; j < merged.length; j++) {
+          if (semanticRemoved.includes(merged[j].id)) {
+            continue;
+          }
+          const sim = this._computeMemorySimilarity(merged[i], merged[j]);
+          if (sim >= similarityThreshold) {
+            // 相似度高：保留更新时间较新的，合并 content
+            const newer =
+              (merged[i].timestamp || 0) >= (merged[j].timestamp || 0) ? merged[i] : merged[j];
+            const older = newer === merged[i] ? merged[j] : merged[i];
+            // 合并 content（旧条目的 key 信息补充到新条目）
+            if (older.content && newer.content) {
+              const olderLines = older.content
+                .split('\n')
+                .filter((l) => !newer.content.includes(l));
+              if (olderLines.length > 0) {
+                newer.content = newer.content + '\n' + olderLines.slice(0, 3).join('\n');
+              }
+            }
+            semanticRemoved.push(older.id);
+            removedIds.push(older.id);
+            if (typeof process !== 'undefined' && process.env?.AGENT_DEBUG) {
+              console.warn(
+                `[MemoryVerifier] Semantic merge: "${older.title}" → "${newer.title}" (sim=${sim.toFixed(2)})`,
+              );
+            }
+          }
+        }
+      }
+      // 移除已合并的条目
+      for (const id of semanticRemoved) {
+        const idx = merged.findIndex((m) => m.id === id);
+        if (idx >= 0) {
+          merged.splice(idx, 1);
+        }
+      }
+    }
+
     return { merged, removedIds };
+  }
+
+  /**
+   * 计算两条记忆的文本相似度（基于内容的 Jaccard 相似度）。
+   * @private
+   * @param {object} a
+   * @param {object} b
+   * @returns {number} 0-1
+   */
+  static _computeMemorySimilarity(a, b) {
+    const getTokens = (m) => {
+      const text = [m.title || '', m.content || '', m.topic || '', ...(m.tags || [])]
+        .join(' ')
+        .toLowerCase();
+      // 简单 token 化：按非字母数字分割
+      return new Set(text.split(/[^a-z0-9\u4e00-\u9fff]+/).filter((t) => t.length > 1));
+    };
+
+    const tokensA = getTokens(a);
+    const tokensB = getTokens(b);
+    if (tokensA.size === 0 || tokensB.size === 0) {
+      return 0;
+    }
+
+    let intersection = 0;
+    for (const t of tokensA) {
+      if (tokensB.has(t)) {
+        intersection++;
+      }
+    }
+    const union = tokensA.size + tokensB.size - intersection;
+    return union === 0 ? 0 : intersection / union;
   }
 }
 

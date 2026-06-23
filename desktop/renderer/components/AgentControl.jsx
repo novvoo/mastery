@@ -14,6 +14,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { getRuntimeStatusMeta } from '../runtime/runtime-status.js';
 import { useIPC } from '../hooks/useIPC.js';
+import { ProjectTree } from './workbench/ProjectTree.jsx';
 
 // removed
 const ACTIVE_AGENT_SESSION_STORAGE_KEY = 'activeAgentConversationSessionId';
@@ -135,96 +136,9 @@ const styles = {
     borderRadius: '0',
     border: 'none',
     backgroundColor: 'transparent',
-    overflow: 'hidden'
-  },
-  projectExplorerHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '8px',
-    padding: '0 0 7px',
-    borderBottom: '1px solid var(--border-subtle)'
-  },
-  projectExplorerTitle: {
-    minWidth: 0,
     overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: '12px',
-    fontWeight: '700',
-    color: 'var(--text-muted)'
-  },
-  projectExplorerButton: {
-    width: '24px',
-    height: '24px',
-    borderRadius: '4px',
-    border: '1px solid transparent',
-    backgroundColor: 'transparent',
-    color: 'var(--text-muted)',
-    cursor: 'pointer',
-    fontSize: '12px',
-    flexShrink: 0
-  },
-  projectTree: {
-    maxHeight: '240px',
-    overflow: 'auto',
-    padding: '5px 0'
-  },
-  projectTreeRow: {
-    width: '100%',
-    minHeight: '26px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '7px',
-    border: 'none',
-    borderRadius: '5px',
-    backgroundColor: 'transparent',
-    color: 'var(--text-muted)',
-    cursor: 'default',
-    fontSize: '12px',
-    textAlign: 'left',
-    padding: '3px 4px'
-  },
-  projectTreeRowInteractive: {
-    cursor: 'pointer'
-  },
-  projectTreeToggle: {
-    width: '12px',
-    flexShrink: 0,
-    color: 'var(--text-dark)',
-    fontSize: '10px',
-    textAlign: 'center'
-  },
-  projectTreeType: {
-    width: '26px',
-    flexShrink: 0,
-    color: 'var(--text-dark)',
-    fontSize: '10px',
-    fontWeight: '800',
-    letterSpacing: '0',
-    textTransform: 'uppercase'
-  },
-  projectTreeName: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    color: 'var(--text-color)'
-  },
-  projectTreeRowActive: {
-    backgroundColor: 'var(--primary-faint)',
-    color: 'var(--primary-color)'
-  },
-  projectTreeMeta: {
-    marginLeft: 'auto',
-    flexShrink: 0,
-    color: 'var(--text-dark)',
-    fontSize: '10px'
-  },
-  projectTreeEmpty: {
-    padding: '9px 10px',
-    color: 'var(--text-dark)',
-    fontSize: '12px'
+    flex: 1,
+    minHeight: 0,
   },
 
   
@@ -687,72 +601,6 @@ function AgentControl({
     return getRuntimeStatusMeta(runtime.status).text;
   };
 
-  const renderProjectTreeRows = (parentPath = '', depth = 0) => {
-    const entries = projectTree?.directoryChildren?.[parentPath] || [];
-    const loadingDirectories = projectTree?.loadingDirectories || new Set();
-    const expandedDirectories = projectTree?.expandedDirectories || new Set();
-
-    if (loadingDirectories.has(parentPath) && entries.length === 0) {
-      return (
-        <div style={{ ...styles.projectTreeRow, paddingLeft: `${depth * 14 + 6}px` }}>
-          <span style={styles.projectTreeToggle}></span>
-          <span style={styles.projectTreeType}></span>
-          <span style={styles.projectTreeName}>读取中</span>
-        </div>
-      );
-    }
-
-    if (entries.length === 0) {
-      return (
-        <div style={{ ...styles.projectTreeRow, paddingLeft: `${depth * 14 + 6}px` }}>
-          <span style={styles.projectTreeToggle}></span>
-          <span style={styles.projectTreeType}></span>
-          <span style={{ ...styles.projectTreeName, color: 'var(--text-dark)' }}>空目录</span>
-        </div>
-      );
-    }
-
-    return entries.map((entry) => {
-      const isDirectory = entry.type === 'directory';
-      const isExpanded = expandedDirectories.has(entry.path);
-      const isLoading = loadingDirectories.has(entry.path);
-      const isActiveFile = !isDirectory && activeOpenFile?.path === entry.path;
-      const typeLabel = isDirectory
-        ? ''
-        : (entry.name?.includes('.') ? entry.name.split('.').pop().slice(0, 4) : 'file');
-
-      return (
-        <React.Fragment key={entry.path}>
-          <button
-            type="button"
-            style={{
-              ...styles.projectTreeRow,
-              ...styles.projectTreeRowInteractive,
-              ...(isActiveFile ? styles.projectTreeRowActive : {}),
-              paddingLeft: `${depth * 14 + 4}px`
-            }}
-            onClick={() => {
-              if (isDirectory) {
-                projectTree?.onToggleDirectory?.(entry.path);
-              } else {
-                onOpenFile?.(entry);
-              }
-            }}
-            title={entry.path}
-          >
-            <span style={styles.projectTreeToggle}>
-              {isDirectory ? (isExpanded ? 'v' : '>') : ''}
-            </span>
-            <span style={styles.projectTreeType}>{typeLabel}</span>
-            <span style={styles.projectTreeName}>{entry.name}</span>
-            {isLoading && <span style={styles.projectTreeMeta}>读取中</span>}
-          </button>
-          {isDirectory && isExpanded ? renderProjectTreeRows(entry.path, depth + 1) : null}
-        </React.Fragment>
-      );
-    });
-  };
-
   const rootName = workingDirectory
     ? workingDirectory.split(/[\\/]/).filter(Boolean).pop() || workingDirectory
     : '未设置';
@@ -793,30 +641,13 @@ function AgentControl({
             更改
           </button>
         </div>
-        <div style={styles.projectExplorer}>
-          <div style={styles.projectExplorerHeader}>
-            <span style={styles.projectExplorerTitle} title={workingDirectory || ''}>
-              {rootName}
-            </span>
-            <button
-              type="button"
-              style={styles.projectExplorerButton}
-              onClick={projectTree?.onRefresh}
-              disabled={!workingDirectory || projectTree?.status === 'loading'}
-              title="刷新文件列表"
-            >
-              ↻
-            </button>
-          </div>
-          {projectTree?.error ? (
-            <div style={styles.projectTreeEmpty}>{projectTree.error}</div>
-          ) : projectTree?.status === 'loading' && !(projectTree?.directoryChildren?.[''] || []).length ? (
-            <div style={styles.projectTreeEmpty}>正在读取项目文件...</div>
-          ) : (
-            <div style={styles.projectTree}>
-              {renderProjectTreeRows('', 0)}
-            </div>
-          )}
+        <div style={{ ...styles.projectExplorer, marginTop: '12px' }}>
+          <ProjectTree
+            projectTree={projectTree}
+            workingDirectory={workingDirectory}
+            onOpenFile={onOpenFile}
+            activeOpenFile={activeOpenFile}
+          />
         </div>
       </div>
       

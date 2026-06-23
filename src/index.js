@@ -116,6 +116,15 @@ export {
   buildRuntimeDetailsExportData,
 } from './core/runtime/runtime-details.js';
 export { normalizePreviewUrlInput, formatPreviewUrlInput } from './core/runtime/preview-url.js';
+export { TextEditMapper } from './core/harness/textedit-mapper.js';
+export { SandboxedFilesystem } from './core/harness/sandbox-filesystem.js';
+export { ProjectSnapshotStore } from './core/harness/persistent-snapshot-store.js';
+export { ModuleResolver } from './core/harness/module-resolver.js';
+export { ImportGraph } from './core/harness/import-graph.js';
+export { BarrelManager } from './core/harness/barrel-manager.js';
+export { EnhancedImportGraph } from './core/harness/enhanced-import-graph.js';
+export { LSPSandboxInstaller } from './lsp/lsp-sandbox-installer.js';
+export { MemoryAudit } from './memory/memory-audit.js';
 export {
   RUNTIME_STATUS_META,
   getRuntimeStatusMeta,

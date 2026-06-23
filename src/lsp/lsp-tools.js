@@ -126,9 +126,19 @@ async function withLSPErrorHandling(promise, context) {
  * @param {import('./lsp-manager.js').ServerManager} opts.lspManager
  * @param {import('../core/harness/content-addressing.js').ContentAddressableStore} [opts.contentStore]
  * @param {import('../core/harness/hashline.js').Patcher} [opts.hashlinePatcher]
+ * @param {import('../core/harness/module-resolver.js').ModuleResolver} [opts.moduleResolver]  精确模块解析器（barrel/alias 同步）
+ * @param {import('../core/harness/import-graph.js').ImportGraph} [opts.importGraph]          导入依赖图
+ * @param {import('../core/harness/barrel-manager.js').BarrelManager} [opts.barrelManager]     Barrel 文件管理器
  * @returns {object[]} 工具对象数组
  */
-export function createLSPTools({ lspManager, contentStore = null, hashlinePatcher = null }) {
+export function createLSPTools({
+  lspManager,
+  contentStore = null,
+  hashlinePatcher = null,
+  moduleResolver = null,
+  importGraph = null,
+  barrelManager = null,
+}) {
   if (!lspManager) {
     return [];
   }
@@ -250,6 +260,9 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
           newName: args.newName,
           workingDirectory: ctx.workingDirectory,
           lspManager,
+          moduleResolver,
+          importGraph,
+          barrelManager,
         });
 
         return {
@@ -1119,8 +1132,6 @@ export function createLSPTools({ lspManager, contentStore = null, hashlinePatche
               if (calls && calls.length > 0) {
                 const children = await Promise.all(
                   calls.slice(0, 20).map(async (call) => {
-                    const fromName =
-                      call.from?.name || call.fromRanges?.[0] ? 'unknown' : 'unknown';
                     const childItem = call.from || call;
                     const child = await buildCallTree(childItem, depth + 1);
                     if (child) {
@@ -1537,7 +1548,6 @@ function lspTextEditsToHashlinePatch(editsByPath) {
 
       const contentLines = content.split('\n');
       const startLineContent = contentLines[startLine - 1] || '';
-      const endLineContent = contentLines[endLine - 1] || '';
 
       if (startLine === endLine) {
         const lineContent = contentLines[startLine - 1] || '';
@@ -1885,37 +1895,70 @@ async function syncBarrelAndAliasImports({
   workingDirectory,
   lspManager,
   contentStore,
+  moduleResolver,
+  importGraph,
+  barrelManager,
 } = {}) {
   const synced = [];
   const wd = workingDirectory || process.cwd();
 
   try {
-    // 1) Barrel 导出同步：检查 renamedFile 所在目录及祖先目录的 index 文件
-    const relativePath = relative(wd, renamedFile);
-    const fileName = basename(renamedFile);
-
-    // 查找可能的 barrel 文件
-    const barrelCandidates = findBarrelFiles(wd, renamedFile);
-    for (const barrelPath of barrelCandidates) {
-      try {
-        const barrelContent = await readFile(barrelPath, 'utf-8');
-        const updated = updateBarrelExport(barrelContent, fileName, relativePath, oldName, newName);
-        if (updated !== barrelContent) {
-          await writeFile(barrelPath, updated, 'utf-8');
+    // 1) Barrel 导出同步：优先使用 BarrelManager 精确管理，fallback 到简单扫描
+    if (barrelManager && moduleResolver) {
+      await barrelManager.initialize();
+      // 使用 BarrelManager 发现并更新 re-export chain
+      const relayBarrels = await barrelManager.discoverBarrels({
+        rootDir: wd,
+        touchFile: renamedFile,
+      });
+      for (const barrelPath of relayBarrels) {
+        try {
+          await barrelManager.updateReExports(barrelPath, {
+            renamedFile,
+            oldName,
+            newName,
+          });
           synced.push(`barrel:${barrelPath}`);
           if (lspManager) {
+            const updated = await readFile(barrelPath, 'utf-8');
             lspManager.syncDocument(barrelPath, updated).catch(() => {});
           }
+        } catch (err) {
+          synced.push(`barrel:${barrelPath}:error:${err.message}`);
         }
-      } catch {
-        /* skip unreadable barrels */
+      }
+    } else {
+      // Fallback: 简单 regex 扫描 barrel 文件
+      const relativePath = relative(wd, renamedFile);
+      const fileName = basename(renamedFile);
+      const barrelCandidates = findBarrelFiles(wd, renamedFile);
+      for (const barrelPath of barrelCandidates) {
+        try {
+          const barrelContent = await readFile(barrelPath, 'utf-8');
+          const updated = updateBarrelExport(
+            barrelContent,
+            fileName,
+            relativePath,
+            oldName,
+            newName,
+          );
+          if (updated !== barrelContent) {
+            await writeFile(barrelPath, updated, 'utf-8');
+            synced.push(`barrel:${barrelPath}`);
+            if (lspManager) {
+              lspManager.syncDocument(barrelPath, updated).catch(() => {});
+            }
+          }
+        } catch {
+          /* skip unreadable barrels */
+        }
       }
     }
   } catch (err) {
     synced.push(`barrel:error:${err.message}`);
   }
 
-  // 2) Alias import 同步：解析 tsconfig paths 并更新相关 import 语句
+  // 2) Alias import 同步：优先使用 ModuleResolver 精确解析，fallback 到 tsconfig JSON 解析
   try {
     const aliasResult = await syncAliasImports({
       renamedFile,
@@ -1924,6 +1967,7 @@ async function syncBarrelAndAliasImports({
       workingDirectory: wd,
       lspManager,
       contentStore,
+      moduleResolver,
     });
     synced.push(...aliasResult.synced);
   } catch (err) {
@@ -2061,12 +2105,13 @@ async function syncAliasImports({
   workingDirectory,
   lspManager,
   contentStore,
+  moduleResolver,
 } = {}) {
   const synced = [];
   const wd = workingDirectory || process.cwd();
 
   try {
-    const paths = await parseTsconfigPaths(wd);
+    const paths = moduleResolver ? moduleResolver.aliases || {} : await parseTsconfigPaths(wd);
     if (Object.keys(paths).length === 0) {
       return { synced };
     }

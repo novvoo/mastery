@@ -7,6 +7,11 @@ import { ProjectRules } from './project-rules.js';
 import { AdvancedMemoryManager } from './advanced-memory.js';
 import { join } from 'path';
 
+// Compaction / 审计 配置常量
+const COMPACTION_INTERVAL_MS = 300_000; // 5 分钟最小间隔
+const COMPACTION_THRESHOLD = 10; // 内存 ≥ 10 条才触发
+const AUDIT_INTERVAL_MS = 600_000; // 10 分钟自动审计间隔
+
 export class AgentMemory extends MemoryManager {
   #structuredMemory;
   #selector;
@@ -30,6 +35,14 @@ export class AgentMemory extends MemoryManager {
       maxSummaries: 100,
       compression: { maxTokens: 4000, compressionRatio: 0.5 },
     });
+
+    // Compaction / 审计 定时器状态
+    /** @type {number} 上次 compation 时间戳 */
+    this._lastCompactionTime = 0;
+    /** @type {number} 上次审计时间戳 */
+    this._lastAuditTime = 0;
+    /** @type {number} 写入计数（用于阈值触发） */
+    this._writeCountSinceLastCompaction = 0;
   }
 
   async initialize() {
@@ -593,25 +606,38 @@ export class AgentMemory extends MemoryManager {
       }
     }
 
-    // 写入后自动检查是否需要 compaction
-    if (written.length >= 5) {
-      this._scheduleCompaction();
+    // 写入后自动检查是否需要 compaction（时间 + 阈值双重触发）
+    if (written.length > 0) {
+      this._writeCountSinceLastCompaction += written.length;
+      this._triggerCompaction();
+      this._triggerAudit();
     }
 
     return { written, deferred, contradictions };
   }
 
   /**
-   * 压缩调度：当写入超过阈值时触发自动压缩。
+   * 基于时间 + 阈值的自动压缩触发。
+   * 条件：写入≥阈值 且 距上次压缩 ≥ 最小间隔。
    * @private
    */
-  _scheduleCompaction() {
+  _triggerCompaction() {
+    const now = Date.now();
     const allMemories = this.getAll();
-    if (allMemories.length < 10) {
-      return;
-    } // 少于 10 条不触发
 
-    const { removedIds } = MemoryVerifier.compact(allMemories);
+    // 阈值检查
+    if (allMemories.length < COMPACTION_THRESHOLD) {
+      return;
+    }
+    if (this._writeCountSinceLastCompaction < 5) {
+      return;
+    }
+    // 时间间隔检查
+    if (now - this._lastCompactionTime < COMPACTION_INTERVAL_MS) {
+      return;
+    }
+
+    const { removedIds, merged } = MemoryVerifier.compact(allMemories, { semanticMerge: true });
     for (const id of removedIds) {
       try {
         if (this.#structuredMemory?.remove) {
@@ -621,11 +647,57 @@ export class AgentMemory extends MemoryManager {
         /* best-effort removal */
       }
     }
+
+    this._lastCompactionTime = now;
+    this._writeCountSinceLastCompaction = 0;
+
     if (removedIds.length > 0) {
-      // 静默日志
       if (typeof process !== 'undefined' && process.env?.AGENT_DEBUG) {
-        console.warn(`[Memory] Auto-compacted ${removedIds.length} duplicate entries`);
+        console.warn(
+          `[Memory] Auto-compacted ${removedIds.length} entries (${merged.length} remain)`,
+        );
       }
+    }
+  }
+
+  /**
+   * 基于时间间隔的自动审计触发。
+   * 每 AUDIT_INTERVAL_MS（默认 10 分钟）自动运行一次轻量审计。
+   * @private
+   */
+  async _triggerAudit() {
+    const now = Date.now();
+    if (now - this._lastAuditTime < AUDIT_INTERVAL_MS) {
+      return;
+    }
+    if (this.getAll().length < 5) {
+      return;
+    }
+
+    this._lastAuditTime = now;
+    try {
+      const { MemoryAudit } = await import('./memory-audit.js');
+      const auditor = new MemoryAudit({
+        workingDirectory: this._baseDir || this.getContext().projectInfo?.path || process.cwd(),
+        structuredMemory: this.#structuredMemory,
+        logger: (msg) => {
+          if (typeof process !== 'undefined' && process.env?.AGENT_DEBUG) {
+            console.warn(`[MemoryAudit] ${msg}`);
+          }
+        },
+      });
+      const report = await auditor.runAudit({ autoClean: false });
+      if (
+        report.summary.stale > 3 ||
+        report.summary.conflicting > 1 ||
+        report.summary.duplicate > 5
+      ) {
+        console.warn(
+          `[Memory] Health: ${auditor.getHealthScore().score}/100 - ${report.summary.stale} stale, ${report.summary.conflicting} conflicts, ${report.summary.duplicate} duplicates`,
+        );
+      }
+    } catch {
+      /* audit is best-effort */
     }
   }
 
