@@ -2,23 +2,31 @@ import { ToolCategory } from '../../core/types.js';
 
 /**
  * ask_user - Structured clarification/request-for-input gate.
- * Use when progress depends on user-owned context that cannot be safely
- * retrieved from code, RAG, web search, or command output.
+ *
+ * IMPORTANT (self-answer first): Before calling this tool, try to reason through
+ * and answer the questions yourself using your knowledge and context. The engine
+ * will also attempt auto-answering before interrupting the user.
+ *
+ * Only call this tool when you TRULY cannot determine the answer and need:
+ * - User's personal preferences or subjective choices
+ * - Credentials, API keys, or secrets
+ * - Organization-specific business rules not deducible from context
+ * - Ambiguous requirements with multiple valid interpretations
  */
 export default function askUser() {
   return {
     name: 'ask_user',
     description:
-      'Ask the user for missing information before continuing. Use when business constraints, acceptance criteria, credentials, confirmations, or high-risk assumptions are required and cannot be safely inferred or retrieved.',
+      'Ask the user for missing information. ONLY use as last resort when you cannot reason through the answer yourself. First try to answer using your knowledge and context. The engine will also attempt to auto-answer before interrupting the user. Use only for user preferences, credentials, org-specific business rules, or truly ambiguous requirements.',
     category: ToolCategory.skill_engineering,
     params: {
       reason: {
         type: 'string',
-        description: 'Why the agent cannot safely continue without user input.',
+        description: 'Why the agent cannot determine the answer on its own (must be a genuine gap, not something deducible through reasoning).',
       },
       questions: {
         type: 'array',
-        description: 'One to three concise questions for the user.',
+        description: 'One to three concise questions. Only ask what you genuinely cannot figure out—answerable questions will be auto-resolved by the engine.',
         items: { type: 'string', description: 'Question to ask the user.' },
       },
       blocking_facts: {

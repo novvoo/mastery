@@ -23,6 +23,7 @@ import {
 export class AgentPlanner {
   #debugEvent;
   #sessionManager;
+  #onPlanAdvance;
 
   /** @type {ExecutionPlan|null} */
   #activePlan = null;
@@ -31,17 +32,19 @@ export class AgentPlanner {
   /** @type {Set<string>} */
   #completedMutationPaths = new Set();
 
-  constructor({ debugEvent, sessionManager }) {
+  constructor({ debugEvent, sessionManager, onPlanAdvance }) {
     this.#debugEvent = debugEvent;
     this.#sessionManager = sessionManager;
+    this.#onPlanAdvance = typeof onPlanAdvance === 'function' ? onPlanAdvance : null;
   }
 
   /**
-   * 根据用户输入和任务 profile 创建执行计划（仅修改类编码任务）
+   * 根据用户输入和任务 profile 创建执行计划（编码任务强制走 plan）
    * @returns {ExecutionPlan|null}
    */
   createIfNeeded(userInput, taskProfile) {
-    if (!taskProfile?.requiresAutomaticPlanning) {
+    const isCoding = taskProfile?.isCodingTask || taskProfile?.isModificationTask || taskProfile?.isBugTask;
+    if (!isCoding && !taskProfile?.requiresAutomaticPlanning) {
       return null;
     }
 
@@ -227,6 +230,23 @@ export class AgentPlanner {
               : `Continue with the current ready task: ${this.#currentTaskLabel(plan)}.`
           }`,
       );
+      // 推送计划进度到 UI（实时更新 plan 卡片）
+      if (this.#onPlanAdvance) {
+        const tasks = plan.toJSON().tasks.map((t) => ({
+          id: t.id,
+          name: t.name,
+          status: t.status,
+          description: t.description,
+        }));
+        this.#onPlanAdvance({
+          tasks,
+          total: tasks.length,
+          completed: tasks.filter((t) => t.status === 'completed').length,
+          running: tasks.filter((t) => t.status === 'running').length,
+          failed: tasks.filter((t) => t.status === 'failed').length,
+          planStatus: plan.status,
+        });
+      }
     }
   }
 

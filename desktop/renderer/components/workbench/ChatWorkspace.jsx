@@ -27,6 +27,7 @@ export function ChatWorkspace({
 }) {
   const [continuationInput, setContinuationInput] = useState('');
   const needsUserInput = runtime.status === 'needs_user_input';
+  const askInfo = runtime.askUserInfo;
 
   const handleContinue = async () => {
     const value = continuationInput.trim();
@@ -61,11 +62,62 @@ export function ChatWorkspace({
 
       <div style={styles.inputArea}>
         {needsUserInput && (
-          <div style={styles.userInputRequestPanel}>
+          <div style={{
+            ...styles.userInputRequestPanel,
+            borderColor: 'var(--warning-color)',
+            borderWidth: '2px',
+            boxShadow: '0 2px 12px rgba(255, 152, 0, 0.15)',
+          }}>
             <div style={styles.userInputRequestHeader}>
-              <span>{t('chat.waiting_input')}</span>
-              <span style={styles.userInputRequestMeta}>{t('chat.continue_round')}</span>
+              <span style={{ fontWeight: 600, fontSize: '14px', color: 'var(--warning-color)' }}>
+                {t('chat.waiting_input')}
+              </span>
+              <span style={styles.userInputRequestMeta}>
+                {askInfo?.questions?.length
+                  ? `${askInfo.questions.length} 个问题待回答`
+                  : t('chat.continue_round')}
+              </span>
             </div>
+            {askInfo?.reason && (
+              <div style={{
+                fontSize: '12px',
+                color: 'var(--text-secondary)',
+                padding: '6px 0',
+                borderBottom: '1px solid var(--border-color)',
+                marginBottom: '8px',
+              }}>
+                原因：{askInfo.reason}
+              </div>
+            )}
+            {askInfo?.questions && askInfo.questions.length > 0 && (
+              <div style={{
+                fontSize: '13px',
+                color: 'var(--text-primary)',
+                marginBottom: '10px',
+                padding: '8px 12px',
+                background: 'var(--bg-secondary)',
+                borderRadius: '6px',
+              }}>
+                {askInfo.questions.map((q, i) => (
+                  <div key={i} style={{ padding: '2px 0' }}>
+                    <span style={{ color: 'var(--warning-color)', fontWeight: 600 }}>{i + 1}. </span>
+                    {q}
+                  </div>
+                ))}
+              </div>
+            )}
+            {askInfo?.suggestions && askInfo.suggestions.length > 0 && (
+              <div style={{
+                fontSize: '12px',
+                color: 'var(--text-tertiary)',
+                marginBottom: '10px',
+                padding: '6px 10px',
+                background: 'var(--bg-tertiary)',
+                borderRadius: '4px',
+              }}>
+                可选参考：{askInfo.suggestions.join(' / ')}
+              </div>
+            )}
             <div style={styles.userInputRequestBody}>
               <textarea
                 style={styles.userInputRequestTextarea}
@@ -77,7 +129,9 @@ export function ChatWorkspace({
                     handleContinue();
                   }
                 }}
-                placeholder={t('chat.supplementary')}
+                placeholder={askInfo?.questions?.length
+                  ? '请逐一回答以上问题...'
+                  : t('chat.supplementary')}
               />
               <button
                 type="button"

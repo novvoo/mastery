@@ -44,8 +44,16 @@ export class IntentClassifier {
       return null;
     }
 
+    // ==== 反馈闭环：根据历史分类准确度动态调整置信度阈值 ====
+    const feedbackContext = context.feedbackContext || null;
+    const adjustedThreshold = feedbackContext?.automationConfidenceAdjustment != null
+      ? this.#config.confidenceThreshold + feedbackContext.automationConfidenceAdjustment
+      : this.#config.confidenceThreshold;
+
+    const systemPrompt = this.#buildSystemPrompt(feedbackContext);
+
     const messages = [
-      { role: 'system', content: this.#buildSystemPrompt() },
+      { role: 'system', content: systemPrompt },
       { role: 'user', content: this.#buildUserPrompt(userInput, context) },
     ];
 
@@ -56,13 +64,16 @@ export class IntentClassifier {
       });
       const parsed = this.#parseJSON(response?.text || '');
       const intent = this.#normalizeIntent(parsed);
-      return this.#shouldUseFallback(intent) ? this.#fallbackIntent(userInput) : intent;
+      // 使用调整后的阈值判断是否走回退
+      return this.#shouldUseFallback(intent, adjustedThreshold)
+        ? this.#fallbackIntent(userInput)
+        : intent;
     } catch {
       return this.#fallbackIntent(userInput);
     }
   }
 
-  buildRoutingPrompt(intent) {
+  buildRoutingPrompt(intent, feedbackContext) {
     if (!intent || intent.confidence < this.#config.confidenceThreshold) {
       return '';
     }
@@ -87,6 +98,16 @@ export class IntentClassifier {
       lines.push(
         `- recommended first action: CALL ${intent.firstActionHint.tool}(${JSON.stringify(intent.firstActionHint.arguments || {})})`,
       );
+    }
+
+    // ==== 反馈闭环：附加工具有效性提示 ====
+    if (feedbackContext?.toolEffectiveness?.length > 0) {
+      const effectiveTools = feedbackContext.toolEffectiveness
+        .filter((te) => te.hitRate > 0.5 && te.used >= 2)
+        .map((te) => te.tool);
+      if (effectiveTools.length > 0) {
+        lines.push(`- historically effective tools for similar tasks: ${effectiveTools.join(', ')}`);
+      }
     }
 
     lines.push(
@@ -117,8 +138,8 @@ export class IntentClassifier {
     return true;
   }
 
-  #buildSystemPrompt() {
-    return [
+  #buildSystemPrompt(feedbackContext) {
+    const basePrompt = [
       'You are an intent classifier for an agent runtime.',
       'Classify the latest user message into structured JSON only.',
       'Do not answer the user. Do not call tools. Do not include markdown.',
@@ -149,7 +170,35 @@ export class IntentClassifier {
       '- "创建一个 index.html 页面" → coding_task, isCodingRelated=true, requiresCodeModification=true',
       '- "检查一下项目的 js 文件是否正确" → local_file_task or coding_task, isCodingRelated=true, requiresCodeModification=false (reading only)',
       '- File, terminal, coding, git, and schedule requests should be routed to the matching tool family when available.',
-    ].join('\n');
+    ];
+
+    // ==== 反馈闭环：注入历史分类准确度信息 ====
+    if (feedbackContext?.intentHitRates?.length > 0) {
+      const poorIntents = feedbackContext.intentHitRates
+        .filter((ih) => ih.accuracy < 0.5 && ih.total >= 3)
+        .map((ih) => ih.intent);
+      const strongIntents = feedbackContext.intentHitRates
+        .filter((ih) => ih.accuracy > 0.85 && ih.total >= 3)
+        .map((ih) => ih.intent);
+
+      const feedbackLines = [];
+      if (poorIntents.length > 0) {
+        feedbackLines.push(
+          `Historical note: intent types [${poorIntents.join(', ')}] have had lower classification accuracy recently. Double-check before classifying as one of these.`,
+        );
+      }
+      if (strongIntents.length > 0) {
+        feedbackLines.push(
+          `Historical note: intent types [${strongIntents.join(', ')}] have been classified accurately. Confidence can be slightly higher for these.`,
+        );
+      }
+      if (feedbackLines.length > 0) {
+        basePrompt.push('');
+        basePrompt.push(feedbackLines.join('\n'));
+      }
+    }
+
+    return basePrompt.join('\n');
   }
 
   #buildUserPrompt(userInput, context) {
@@ -243,11 +292,12 @@ export class IntentClassifier {
     };
   }
 
-  #shouldUseFallback(intent) {
+  #shouldUseFallback(intent, threshold) {
     if (!intent) {
       return true;
     }
-    return intent.intent === 'unknown' || intent.confidence < this.#config.confidenceThreshold;
+    const effectiveThreshold = threshold ?? this.#config.confidenceThreshold;
+    return intent.intent === 'unknown' || intent.confidence < effectiveThreshold;
   }
 
   #fallbackIntent(userInput) {
@@ -361,10 +411,21 @@ export class IntentClassifier {
    * 任务分类 → taskProfile
    * 接受可选的 LLM 意图识别结果，用于覆盖或增强硬编码判断。
    */
-  classifyTask(userInput, intent = null) {
+  classifyTask(userInput, intent = null, feedbackContext = null) {
     const risk = intent
       ? mergeIntentProfile(quickAssess(userInput), intent, userInput)
       : quickAssess(userInput);
+
+    // ==== 反馈闭环：根据历史成功率调整自动化规划置信度 ====
+    let requiresPlanning = risk.requiresPlanning;
+    if (feedbackContext?.automationConfidenceAdjustment != null) {
+      const adjustment = feedbackContext.automationConfidenceAdjustment;
+      // 如果历史反馈显示自动化规划不可靠，降低要求
+      if (adjustment < -0.2 && risk.isCodingTask) {
+        // 仍然需要 plan，但降低语义审查的门槛
+        requiresPlanning = risk.isModificationTask; // 只有确实在修改时才强制 plan
+      }
+    }
 
     return {
       isCodingTask: risk.isCodingTask,
@@ -374,7 +435,8 @@ export class IntentClassifier {
       isAnalysisTask: risk.isAnalysisTask,
       isResearchTask: risk.isResearchTask,
       isLikelyTrivial: risk.isLikelyTrivial,
-      requiresAutomaticPlanning: risk.requiresPlanning,
+      isInformationalQuery: risk.isInformationalQuery ?? !risk.isCodingTask,
+      requiresAutomaticPlanning: requiresPlanning,
       requiresSemanticRiskReview: risk.semanticDomains.length > 0 && risk.isModificationTask,
       semanticRiskDomains: risk.semanticDomains,
       riskLevel: risk.riskLevel,

@@ -229,7 +229,8 @@ export function quickAssess(userInput) {
     !cliCommand &&
     /\b(研究|调研|探索|搜索|查找|research|explore|search|investigate)\b/i.test(text);
 
-  const requiresPlanning = !cliCommand;
+  // Plan 是编码任务的标配：任何代码任务一律走 plan（template 或 LLM 分解）
+  const requiresPlanning = isCodingTask || !cliCommand;
 
   // 计算风险评分
   let score = 0;
@@ -310,6 +311,8 @@ export function quickAssess(userInput) {
     isResearchTask,
     isLikelyTrivial,
     requiresPlanning,
+    // 非编码任务 = 纯信息型问题，文本回答即完整交付，无需工具执行 nudge
+    isInformationalQuery: !isCodingTask,
   };
 }
 
@@ -495,6 +498,12 @@ export function mergeIntentProfile(quickResult, intent, userInput = '') {
     semanticDomains,
     intentMerged: true,
     intentSource: intentName,
+    // LLM 意图分类直接判定是否为纯信息型问题（语言无关）
+    // explanation/general_chat = 回答完即止，无需工具执行 nudge
+    isInformationalQuery:
+      intentName === 'explanation' || intentName === 'general_chat'
+        ? true
+        : quickResult.isInformationalQuery ?? !finalIsCoding,
   };
 }
 

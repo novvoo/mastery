@@ -83,13 +83,13 @@ export class AgentContext {
         ? this.#sessionManager.getHistory().length / (iterationBudget * 1.5)
         : 0.5;
 
-    const thresholdBase = 0.7;
-    const thresholdMin = 0.4;
+    const thresholdBase = 0.55; // 从 0.7 降低到 0.55，更早触发裁剪防止上下文溢出
+    const thresholdMin = 0.35;  // 从 0.4 降低到 0.35，后期更激进
     const progressFactor = Math.min(progress, 1.0);
     const threshold = maxTokens * (thresholdBase - (thresholdBase - thresholdMin) * progressFactor);
 
-    const preserveMessages = Math.max(4, Math.floor(10 - 6 * progressFactor));
-    const targetRatio = 0.6 - 0.25 * progressFactor;
+    const preserveMessages = Math.max(3, Math.floor(8 - 5 * progressFactor));
+    const targetRatio = 0.5 - 0.2 * progressFactor; // 从 0.6-0.25*progress 调整为更激进
     const targetTokens = Math.floor(maxTokens * targetRatio);
     const minMessages = Math.max(2, Math.floor(5 - 2 * progressFactor));
 
@@ -109,12 +109,21 @@ export class AgentContext {
           targetTokens,
           preserveRecentMessages: preserveMessages,
         });
-        this.#sessionManager.trimWithPruner(this.#contextPruner, {
-          maxTokens,
-          targetTokens,
-          preserveRecentMessages: preserveMessages,
-          minMessages,
-        });
+        // 优先使用摘要压缩（保留语义），回退到裁剪丢弃
+        if (typeof this.#contextPruner.compress === 'function' && typeof this.#sessionManager.compressWithSummarizer === 'function') {
+          this.#sessionManager.compressWithSummarizer(this.#contextPruner, {
+            maxTokens,
+            targetTokens,
+            preserveRecentMessages: preserveMessages,
+          });
+        } else {
+          this.#sessionManager.trimWithPruner(this.#contextPruner, {
+            maxTokens,
+            targetTokens,
+            preserveRecentMessages: preserveMessages,
+            minMessages,
+          });
+        }
       } else {
         this.#sessionManager.trimToContextWindow(targetTokens, {
           minRecentMessages: preserveMessages,
@@ -360,6 +369,21 @@ export class AgentContext {
    */
   isStagnationNudgesExceeded() {
     return this.#lastStagnationNudge >= MAX_STAGNATION_NUDGES;
+  }
+
+  /** 零工具调用连续计数 */
+  get zeroToolCallStreak() {
+    return this.#zeroToolCallStreak;
+  }
+
+  /** force-action 是否已触发 */
+  get forceActionTriggered() {
+    return this.#forceActionTriggered;
+  }
+
+  /** force-action 被忽略的次数 */
+  get forceActionIgnored() {
+    return this.#forceActionIgnored;
   }
 
   /**

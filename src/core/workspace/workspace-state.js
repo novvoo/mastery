@@ -441,6 +441,27 @@ export class WorkspaceState {
             type: 'will_fail',
           };
         }
+        // 检查是否有缓存的内容快照：如果有，直接返回精简版避免重复读大文件
+        const snap = this.getFileSnapshot(path);
+        if (snap && snap.content && snap.content.length > 0) {
+          const maxReturnChars = 3000; // 最多返回 3000 字符，防止超大文件撑爆上下文
+          const truncated =
+            snap.content.length > maxReturnChars
+              ? snap.content.slice(0, maxReturnChars) +
+                `\n... [content truncated: ${snap.content.length} total chars, previously read — use offset/limit to read more if needed]`
+              : snap.content;
+          return {
+            canSkip: true,
+            reason: `File "${path}" was previously read (${snap.content.length} chars, cached ${Math.floor((Date.now() - snap.updatedAt) / 1000)}s ago). Returning cached content to avoid redundant read.`,
+            predicted: {
+              text: truncated,
+              source: 'workspace_cache',
+              cachedSize: snap.content.length,
+              truncated: snap.content.length > maxReturnChars,
+            },
+            type: 'cached',
+          };
+        }
         if (exists === 'exists') {
           return {
             canSkip: false,

@@ -47,7 +47,7 @@ export async function handleReadWorkspaceFile(payload = {}, { engine }) {
       return { success: false, error: 'Selected path is not a file.', path: relativePath };
     }
 
-    const maxBytes = Number(payload?.maxBytes || 512 * 1024);
+    const maxBytes = Number(payload?.maxBytes || 2 * 1024 * 1024);
     if (stat.size > maxBytes) {
       return {
         success: false,

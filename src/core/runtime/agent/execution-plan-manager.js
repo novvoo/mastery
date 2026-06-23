@@ -10,7 +10,7 @@
  * #buildExecutionPlanPrompt / #isWorkspaceInspectionTool 等一大组方法。
  */
 
-import { ExecutionPlan, TaskStatus } from '../../../planner/graph-planner.js';
+import { ExecutionPlan, TaskStatus, GraphPlanner } from '../../../planner/graph-planner.js';
 
 // ============== 工具谓词：根据工具名/args 推断它归属哪一阶段 ==============
 
@@ -135,29 +135,137 @@ export class ExecutionPlanManager {
   #userInput = '';
   #requiredMutationPaths = new Set();
   #completedMutationPaths = new Set();
+  #useLLMDecomposition = false; // 是否使用 LLM 智能分解（替代固定模板）
+  #graphPlanner = null;
 
   constructor() {}
 
-  /** 根据 profile 决定是否创建计划；返回 plan（非修改任务返回 null） */
-  createIfNeeded(userInput, profile) {
+  // ============== 生命周期阶段常量 ==============
+  static PHASE = Object.freeze({
+    EXPLORATION: 'exploration',
+    PLANNING: 'planning',
+    IMPLEMENTATION: 'implementation',
+    INSPECTION: 'inspection',
+    VERIFICATION: 'verification',
+  });
+
+  /** 根据 profile 决定是否创建计划；返回 plan（非编码 / 非 automatic-planning 任务返回 null） */
+  async createIfNeeded(userInput, profile, options = {}) {
     this.#userInput = String(userInput || '');
     this.#profile = profile || null;
     this.#requiredMutationPaths = this.#extractRequestedFilePaths(this.#userInput);
     this.#completedMutationPaths = new Set();
 
-    if (!profile?.requiresAutomaticPlanning) {
+    // 编码任务是 Plan 的标配：不管 requiresAutomaticPlanning 如何，编码任务一律创建 plan
+    const isCodingTask = profile?.isCodingTask || profile?.isModificationTask || profile?.isBugTask;
+    if (!isCodingTask && !profile?.requiresAutomaticPlanning) {
       this.#plan = null;
+      this.#useLLMDecomposition = false;
       return null;
     }
 
-    const planName = 'Automatic task execution plan';
+    const { modelProvider, intent, availableTools, feedbackContext } = options;
 
+    // ==== LLM 智能分解：用意图分析结果驱动 GraphPlanner.decomposeTaskLLM ====
+    let llmSubtasks = null;
+    if (modelProvider && isCodingTask) {
+      try {
+        const intentContext = intent
+          ? {
+              intent: intent.intent,
+              normalizedTask: intent.normalizedTask || userInput,
+              isCodingRelated: intent.isCodingRelated,
+              requiresCodeModification: intent.requiresCodeModification,
+              recommendedTools: intent.recommendedTools || [],
+              slots: intent.slots || {},
+            }
+          : { normalizedTask: userInput };
+        this.#graphPlanner = new GraphPlanner({ debug: false });
+        llmSubtasks = await this.#graphPlanner.decomposeTaskLLM(
+          intentContext.normalizedTask || userInput,
+          modelProvider,
+          {
+            availableTools: availableTools || [],
+            intent: intentContext,
+            feedbackContext: feedbackContext || null,
+          },
+        );
+      } catch {
+        // LLM 分解失败，回退到模板
+        llmSubtasks = null;
+      }
+    }
+
+    // ==== 构建 ExecutionPlan ====
     const plan = new ExecutionPlan({
-      name: planName,
+      name: 'Automatic task execution plan',
       description: this.#userInput,
-      context: { source: 'react-agent', generatedAt: new Date().toISOString() },
+      context: {
+        source: 'react-agent',
+        generatedAt: new Date().toISOString(),
+        decomposition: llmSubtasks ? 'llm' : 'template',
+        ...(llmSubtasks ? { intentAnalysis: true } : {}),
+      },
     });
 
+    if (llmSubtasks && llmSubtasks.length > 0) {
+      // LLM 智能分解模式：使用 GraphPlanner 返回的子任务填充 DAG
+      this.#useLLMDecomposition = true;
+
+      for (const st of llmSubtasks) {
+        plan.addTask({
+          id: st.name,
+          name: st.description?.substring(0, 80) || st.name,
+          description: st.description || '',
+          dependencies: st.dependencies || [],
+          scopeFiles: st.scopeFiles || [],
+          phase: st.phase || null,
+          metadata: { source: 'llm-decomposition' },
+        });
+      }
+    } else {
+      // 模板模式：标准 inspect → plan → implement → verify
+      this.#useLLMDecomposition = false;
+      this.#buildTemplatePlan(plan, profile);
+    }
+
+    // 语义风险审查（两种模式通用）
+    if (profile.requiresSemanticRiskReview && !this.#useLLMDecomposition) {
+      plan.addTask({
+        id: 'semantic_risk_review',
+        name: 'Semantic/API risk review',
+        description: `Review the changed code against semantic risk domains: ${(profile.semanticRiskDomains || []).map((d) => d.label).join('; ')}.`,
+        dependencies: ['inspect_changes'],
+      });
+    }
+
+    // 确保有验证步骤
+    const hasVerification = Array.from(plan.tasks.values()).some(
+      (t) => t.name === 'verify_result' || t.description?.toLowerCase().includes('验证'),
+    );
+    if (!hasVerification) {
+      const lastId = Array.from(plan.tasks.keys()).at(-1);
+      plan.addTask({
+        id: 'verify_result',
+        name: 'Verify result',
+        description: 'Verify the final result: run tests / lint / build to confirm correctness.',
+        dependencies: lastId ? [lastId] : [],
+      });
+    }
+
+    plan.status = TaskStatus.RUNNING;
+    plan.startedAt = Date.now();
+
+    // 启动第一批任务（依赖已满足的）
+    const firstTaskId = plan.tasks.keys().next().value;
+    plan.getTask(firstTaskId)?.updateStatus(TaskStatus.RUNNING);
+
+    this.#plan = plan;
+    return plan;
+  }
+
+  /** 模板模式：标准 inspect → plan → implement → verify DAG */
+  #buildTemplatePlan(plan, profile) {
     const taskType = profile?.isBugTask
       ? 'bug_fix'
       : profile?.isDocumentationTask
@@ -172,54 +280,54 @@ export class ExecutionPlanManager {
       ? 'coding'
       : 'general';
 
-    let inspectDescription = 'Explore the context and gather necessary information before proceeding.';
-    let planDescription = 'Plan the approach and define the steps needed to accomplish the task.';
-    let implementDescription = 'Execute the planned approach to accomplish the task.';
-    let inspectChangesDescription = 'Review the work that was done to ensure it meets requirements.';
-    let verifyDescription = 'Verify the final result to confirm the task is complete.';
+    let inspectDesc = 'Explore the context and gather necessary information before proceeding.';
+    let planDesc = 'Plan the approach and define the steps needed to accomplish the task.';
+    let implementDesc = 'Execute the planned approach to accomplish the task.';
+    let inspectChangesDesc = 'Review the work that was done to ensure it meets requirements.';
+    let verifyDesc = 'Verify the final result to confirm the task is complete.';
 
     switch (taskType) {
       case 'coding':
-        inspectDescription = 'Discover the relevant project structure and existing files before reading or writing.';
-        planDescription = 'Choose the implementation approach and file split for the requested change.';
-        implementDescription = 'Create or edit the required files using the smallest necessary changes.';
-        inspectChangesDescription = 'Read back or otherwise inspect the files that were created or edited.';
-        verifyDescription = 'Run an appropriate command/tool to verify the requested behavior.';
+        inspectDesc = 'Discover the relevant project structure and existing files before reading or writing.';
+        planDesc = 'Choose the implementation approach and file split for the requested change.';
+        implementDesc = 'Create or edit the required files using the smallest necessary changes.';
+        inspectChangesDesc = 'Read back or otherwise inspect the files that were created or edited.';
+        verifyDesc = 'Run an appropriate command/tool to verify the requested behavior.';
         break;
       case 'modification':
-        inspectDescription = 'Read the existing code to understand the current implementation.';
-        planDescription = 'Plan the modification approach and identify the smallest necessary changes.';
-        implementDescription = 'Make the planned changes to the existing code.';
-        inspectChangesDescription = 'Read back the modified files to verify the changes.';
-        verifyDescription = 'Run tests or verification commands to ensure the modification works correctly.';
+        inspectDesc = 'Read the existing code to understand the current implementation.';
+        planDesc = 'Plan the modification approach and identify the smallest necessary changes.';
+        implementDesc = 'Make the planned changes to the existing code.';
+        inspectChangesDesc = 'Read back the modified files to verify the changes.';
+        verifyDesc = 'Run tests or verification commands to ensure the modification works correctly.';
         break;
       case 'bug_fix':
-        inspectDescription = 'Read the relevant code to understand the bug and its root cause.';
-        planDescription = 'Plan the minimal fix approach to resolve the bug.';
-        implementDescription = 'Implement the bug fix directly. Focus on fixing, not analyzing.';
-        inspectChangesDescription = 'Read back the fixed code to verify the changes.';
-        verifyDescription = 'Run tests to verify the bug is resolved and no regressions were introduced.';
+        inspectDesc = 'Read the relevant code to understand the bug and its root cause.';
+        planDesc = 'Plan the minimal fix approach to resolve the bug.';
+        implementDesc = 'Implement the bug fix directly. Focus on fixing, not analyzing.';
+        inspectChangesDesc = 'Read back the fixed code to verify the changes.';
+        verifyDesc = 'Run tests to verify the bug is resolved and no regressions were introduced.';
         break;
       case 'documentation':
-        inspectDescription = 'Discover the project structure and identify existing documentation files.';
-        planDescription = 'Plan the documentation structure, sections, and key topics to cover.';
-        implementDescription = 'Create or update documentation files with clear, structured content.';
-        inspectChangesDescription = 'Read back and review the documentation for clarity and completeness.';
-        verifyDescription = 'Verify the documentation is complete, accurate, and well-structured.';
+        inspectDesc = 'Discover the project structure and identify existing documentation files.';
+        planDesc = 'Plan the documentation structure, sections, and key topics to cover.';
+        implementDesc = 'Create or update documentation files with clear, structured content.';
+        inspectChangesDesc = 'Read back and review the documentation for clarity and completeness.';
+        verifyDesc = 'Verify the documentation is complete, accurate, and well-structured.';
         break;
       case 'analysis':
-        inspectDescription = 'Read relevant files, search codebase, and gather all necessary information for analysis.';
-        planDescription = 'Plan the analysis approach and define the key questions to answer.';
-        implementDescription = 'Analyze the gathered information and generate insights, findings, and recommendations.';
-        inspectChangesDescription = 'Review the analysis results for accuracy and completeness.';
-        verifyDescription = 'Verify the analysis conclusions against the actual codebase or evidence.';
+        inspectDesc = 'Read relevant files, search codebase, and gather all necessary information for analysis.';
+        planDesc = 'Plan the analysis approach and define the key questions to answer.';
+        implementDesc = 'Analyze the gathered information and generate insights, findings, and recommendations.';
+        inspectChangesDesc = 'Review the analysis results for accuracy and completeness.';
+        verifyDesc = 'Verify the analysis conclusions against the actual codebase or evidence.';
         break;
       case 'research':
-        inspectDescription = 'Clarify the research question and define the scope of the investigation.';
-        planDescription = 'Plan the research approach and identify relevant sources to consult.';
-        implementDescription = 'Search, read, and gather information from various sources to answer the research question.';
-        inspectChangesDescription = 'Synthesize the research findings into a coherent summary.';
-        verifyDescription = 'Verify the research findings are accurate, comprehensive, and well-sourced.';
+        inspectDesc = 'Clarify the research question and define the scope of the investigation.';
+        planDesc = 'Plan the research approach and identify relevant sources to consult.';
+        implementDesc = 'Search, read, and gather information from various sources to answer the research question.';
+        inspectChangesDesc = 'Synthesize the research findings into a coherent summary.';
+        verifyDesc = 'Verify the research findings are accurate, comprehensive, and well-sourced.';
         break;
     }
 
@@ -227,68 +335,47 @@ export class ExecutionPlanManager {
       plan.addTask({
         id: 'implement_changes',
         name: 'Implement bug fix',
-        description: implementDescription,
+        description: implementDesc,
         dependencies: [],
+        phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
       });
       plan.addTask({
         id: 'inspect_changes',
         name: 'Inspect changes',
-        description: inspectChangesDescription,
+        description: inspectChangesDesc,
         dependencies: ['implement_changes'],
+        phase: ExecutionPlanManager.PHASE.INSPECTION,
       });
     } else {
       plan.addTask({
         id: 'inspect_workspace',
         name: 'Explore context',
-        description: inspectDescription,
+        description: inspectDesc,
         dependencies: [],
+        phase: ExecutionPlanManager.PHASE.EXPLORATION,
       });
       plan.addTask({
         id: 'plan_solution',
         name: 'Plan approach',
-        description: planDescription,
+        description: planDesc,
         dependencies: ['inspect_workspace'],
+        phase: ExecutionPlanManager.PHASE.PLANNING,
       });
       plan.addTask({
         id: 'implement_changes',
         name: 'Execute',
-        description: implementDescription,
+        description: implementDesc,
         dependencies: ['plan_solution'],
+        phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
       });
       plan.addTask({
         id: 'inspect_changes',
         name: 'Review work',
-        description: inspectChangesDescription,
+        description: inspectChangesDesc,
         dependencies: ['implement_changes'],
+        phase: ExecutionPlanManager.PHASE.INSPECTION,
       });
     }
-
-    if (profile.requiresSemanticRiskReview) {
-      plan.addTask({
-        id: 'semantic_risk_review',
-        name: 'Semantic/API risk review',
-        description: `Review the changed code against semantic risk domains: ${(profile.semanticRiskDomains || []).map((d) => d.label).join('; ')}.`,
-        dependencies: ['inspect_changes'],
-      });
-    }
-
-    plan.addTask({
-      id: 'verify_result',
-      name: 'Verify result',
-      description: verifyDescription,
-      dependencies: profile.requiresSemanticRiskReview
-        ? ['semantic_risk_review']
-        : ['inspect_changes'],
-    });
-
-    plan.status = TaskStatus.RUNNING;
-    plan.startedAt = Date.now();
-
-    const firstTaskId = plan.tasks.keys().next().value;
-    plan.getTask(firstTaskId)?.updateStatus(TaskStatus.RUNNING);
-
-    this.#plan = plan;
-    return plan;
   }
 
   get plan() {
@@ -316,11 +403,67 @@ export class ExecutionPlanManager {
     const plan = this.#plan;
     const before = this.#summarizeProgress(plan);
 
+    if (this.#useLLMDecomposition) {
+      // LLM 分解模式：按阶段推进动态子任务
+      this.#advanceLLMPlan(plan, toolName, args);
+    } else {
+      // 模板模式：按固定 taskId 推进
+      this.#advanceTemplatePlan(plan, toolName, args);
+    }
+
+    const allDone = Array.from(plan.tasks.values()).every((t) => t.status === TaskStatus.COMPLETED);
+    if (allDone) {
+      plan.status = TaskStatus.COMPLETED;
+      plan.completedAt = Date.now();
+    }
+
+    const after = this.#summarizeProgress(plan);
+    return after !== before
+      ? { before, after, isCompleted: plan.status === TaskStatus.COMPLETED }
+      : null;
+  }
+
+  /** LLM 分解模式：按阶段匹配完成当前 RUNNING 子任务 */
+  #advanceLLMPlan(plan, toolName, args) {
+    // 阶段 1: Exploration — 工作区探索工具完成后，完成当前 exploration 阶段的任务
+    if (isWorkspaceInspectionTool(toolName, args)) {
+      this.#completeRunningPhaseTask(plan, ExecutionPlanManager.PHASE.EXPLORATION);
+      this.#startReadyTasks(plan);
+    }
+
+    // 阶段 2: Planning — 计划/方法论工具 或 直接开始写代码
+    if (isPlanningTool(toolName) || isMutationTool(toolName, args)) {
+      this.#completeRunningPhaseTask(plan, ExecutionPlanManager.PHASE.PLANNING);
+      this.#startReadyTasks(plan);
+    }
+
+    // 阶段 3: Implementation — 记录变更路径，完成后推进
+    this.#recordMutationPath(toolName, args);
+    if (isMutationTool(toolName, args) && this.#hasCompletedRequiredMutationPaths()) {
+      this.#completeRunningPhaseTask(plan, ExecutionPlanManager.PHASE.IMPLEMENTATION);
+      this.#startReadyTasks(plan);
+    }
+
+    // 阶段 4: Inspection — 变更审查工具
+    if (isChangeInspectionTool(toolName, args)) {
+      this.#completeRunningPhaseTask(plan, ExecutionPlanManager.PHASE.INSPECTION);
+      this.#startReadyTasks(plan);
+    }
+
+    // 阶段 5: Verification — 验证工具
+    if (isVerificationTool(toolName, args)) {
+      this.#completeRunningPhaseTask(plan, ExecutionPlanManager.PHASE.VERIFICATION);
+      this.#startReadyTasks(plan);
+    }
+  }
+
+  /** 模板模式：按固定 taskId 推进 */
+  #advanceTemplatePlan(plan, toolName, args) {
     // 1) inspect_workspace
     this.#completeIf('inspect_workspace', () => isWorkspaceInspectionTool(toolName, args));
     this.#startReadyTasks(plan);
 
-    // 2) plan_solution — 显式的计划工具 OR 直接开始修改（即跳过计划阶段也可以）
+    // 2) plan_solution — 显式的计划工具 OR 直接开始修改
     this.#completeIf(
       'plan_solution',
       () => isPlanningTool(toolName) || isMutationTool(toolName, args),
@@ -348,17 +491,6 @@ export class ExecutionPlanManager {
     // 6) verify_result
     this.#completeIf('verify_result', () => isVerificationTool(toolName, args));
     this.#startReadyTasks(plan);
-
-    const allDone = Array.from(plan.tasks.values()).every((t) => t.status === TaskStatus.COMPLETED);
-    if (allDone) {
-      plan.status = TaskStatus.COMPLETED;
-      plan.completedAt = Date.now();
-    }
-
-    const after = this.#summarizeProgress(plan);
-    return after !== before
-      ? { before, after, isCompleted: plan.status === TaskStatus.COMPLETED }
-      : null;
   }
 
   /** 生成面向 LLM 的 plan 提示文本 */
@@ -377,20 +509,40 @@ export class ExecutionPlanManager {
         return `- ${t.id}: ${t.name} [${t.status}]${scopeStr} - ${t.description}`;
       })
       .join('\n');
-    const firstTask = plan.getTask('implement_changes') || plan.getTask('inspect_workspace');
-    const firstTaskId = firstTask ? firstTask.id : 'inspect_workspace';
-    const firstTaskScope =
-      firstTask && firstTask.scopeFiles?.length
-        ? ` 📁 当前子任务文件作用域: ${firstTask.scopeFiles.join(', ')}`
-        : '';
-    const firstTaskPrompt =
-      firstTaskId === 'implement_changes'
-        ? `Current task: implement_changes. Read the relevant code with read_file, identify the bug, then fix it with write_file or edit_file. Do NOT produce a diagnostic report — fix the bug.`
-        : `Current task: inspect_workspace. Call list_dir or another filesystem discovery tool first, then continue through the plan.`;
+
+    const decompositionNote = this.#useLLMDecomposition
+      ? 'LLM 智能分解模式：每个子任务有明确文件范围和依赖关系。按 DAG 顺序执行，完成后自动推进。\n'
+      : 'Execute this DAG in dependency order. Do not skip ahead, and do not provide FINAL_ANSWER until every task is completed.\n';
+
+    // LLM 分解模式：动态获取第一个 RUNNING/PENDING 任务
+    let firstTaskPrompt = '';
+    let firstTaskScope = '';
+    if (this.#useLLMDecomposition) {
+      const firstTask = Array.from(plan.tasks.values()).find(
+        (t) => t.status === TaskStatus.RUNNING || t.status === TaskStatus.PENDING,
+      );
+      if (firstTask) {
+        firstTaskPrompt = `▶ 当前子任务: ${firstTask.id} — ${firstTask.description}`;
+        if (firstTask.scopeFiles?.length) {
+          firstTaskScope = `\n📁 文件作用域: ${firstTask.scopeFiles.join(', ')}`;
+        }
+      }
+    } else {
+      const firstTask = plan.getTask('implement_changes') || plan.getTask('inspect_workspace');
+      const firstTaskId = firstTask ? firstTask.id : 'inspect_workspace';
+      firstTaskScope =
+        firstTask && firstTask.scopeFiles?.length
+          ? ` 📁 当前子任务文件作用域: ${firstTask.scopeFiles.join(', ')}`
+          : '';
+      firstTaskPrompt =
+        firstTaskId === 'implement_changes'
+          ? `Current task: implement_changes. Read the relevant code with read_file, identify the bug, then fix it with write_file or edit_file. Do NOT produce a diagnostic report — fix the bug.`
+          : `Current task: inspect_workspace. Call list_dir or another filesystem discovery tool first, then continue through the plan.`;
+    }
 
     return (
       `Automatic task orchestration is active for this request:\n${this.#userInput}\n\n` +
-      `Execute this DAG in dependency order. Do not skip ahead, and do not provide FINAL_ANSWER until every task is completed.\n` +
+      decompositionNote +
       `${tasks}\n\n` +
       `The DAG task ids are status labels, not tool names. Use real available tools such as list_dir, read_file, write_file, shell, and methodology tools.\n` +
       `${this.#profile?.requiresSemanticRiskReview ? this.#buildSemanticRiskGuidance() + '\n' : ''}` +
@@ -406,6 +558,166 @@ export class ExecutionPlanManager {
     }
   }
 
+  /**
+   * 生成执行摘要 — 供 ExecutionFeedbackLoop 收集反馈数据。
+   * 返回结构化的 plan 执行结果，包括各阶段耗时、冲突信息等。
+   */
+  generateExecutionSummary() {
+    if (!this.#plan) return null;
+
+    const tasks = Array.from(this.#plan.tasks.values());
+    const completedTasks = tasks.filter((t) => t.status === TaskStatus.COMPLETED);
+    const failedTasks = tasks.filter((t) => t.status === TaskStatus.FAILED);
+
+    // 按阶段统计完成情况
+    const phasesCompleted = [];
+    const phaseTimings = {};
+    for (const phase of Object.values(ExecutionPlanManager.PHASE)) {
+      const phaseTasks = tasks.filter((t) => t.phase === phase);
+      if (phaseTasks.length > 0 && phaseTasks.every((t) => t.status === TaskStatus.COMPLETED)) {
+        phasesCompleted.push(phase);
+      }
+      // 计算阶段耗时
+      const phaseCompletedTasks = phaseTasks.filter((t) => t.completedAt);
+      if (phaseCompletedTasks.length > 0) {
+        const earliest = Math.min(...phaseCompletedTasks.map((t) => t.startedAt || Infinity));
+        const latest = Math.max(...phaseCompletedTasks.map((t) => t.completedAt || 0));
+        if (earliest < Infinity && latest > 0) {
+          phaseTimings[phase] = latest - earliest;
+        }
+      }
+    }
+
+    return {
+      planId: this.#plan.id,
+      planName: this.#plan.name,
+      decompositionMode: this.#plan.context?.decomposition || 'template',
+      totalSubtasks: tasks.length,
+      completedSubtasks: completedTasks.length,
+      failedSubtasks: failedTasks.length,
+      phasesCompleted,
+      phaseTimings,
+      // 子任务名称序列（用于分解模式签名）
+      subtaskNames: tasks.map((t) => t.name || t.id),
+      // Hashline 冲突计数（从 task metadata 提取）
+      hashlineConflicts: tasks.reduce(
+        (sum, t) => sum + (t.metadata?.hashlineConflicts || 0),
+        0,
+      ),
+      hashlineRollbacks: tasks.reduce(
+        (sum, t) => sum + (t.metadata?.hashlineRollbacks || 0),
+        0,
+      ),
+      hashlineAutoRepairs: tasks.reduce(
+        (sum, t) => sum + (t.metadata?.hashlineAutoRepairs || 0),
+        0,
+      ),
+      completedAt: this.#plan.completedAt,
+      startedAt: this.#plan.startedAt,
+    };
+  }
+
+  /**
+   * 动态重规划 — 当 Hashline 报告冲突时插入修复/重试子任务。
+   * @param {object} conflictHints - 来自 ExecutionFeedbackLoop.generateReplanHints() 的输出
+   * @returns {object|null} 新插入的子任务信息，或 null（无需 replan）
+   */
+  replan(conflictHints) {
+    if (!this.isActive || !this.#plan) return null;
+
+    const { conflictType, affectedFiles, suggestedStrategies } = conflictHints || {};
+    if (!conflictType) return null;
+
+    // 找到当前所有 IMPLEMENTATION 阶段未完成的任务
+    const blockedTasks = Array.from(this.#plan.tasks.values()).filter(
+      (t) =>
+        t.phase === ExecutionPlanManager.PHASE.IMPLEMENTATION &&
+        (t.status === TaskStatus.RUNNING || t.status === TaskStatus.PENDING),
+    );
+
+    if (blockedTasks.length === 0) return null;
+
+    // 为每个阻塞任务创建诊断+重试子任务
+    const insertedTasks = [];
+    const replanId = `replan_${conflictType}_${Date.now()}`;
+
+    // 1) 诊断任务
+    const diagnoseId = `${replanId}_diagnose`;
+    this.#plan.addTask({
+      id: diagnoseId,
+      name: `Diagnose: ${conflictType}`,
+      description: `Hashline 冲突检测: ${conflictType}。涉及文件: ${(affectedFiles || []).join(', ') || 'unknown'}。建议策略: ${(suggestedStrategies || ['re-read + retry']).join('; ')}`,
+      dependencies: blockedTasks.map((t) => t.id),
+      phase: ExecutionPlanManager.PHASE.INSPECTION,
+      scopeFiles: affectedFiles || [],
+      metadata: { source: 'replan-diagnose', conflictType },
+    });
+    insertedTasks.push(diagnoseId);
+
+    // 2) 重试任务（依赖诊断任务）
+    const retryId = `${replanId}_retry`;
+    this.#plan.addTask({
+      id: retryId,
+      name: `Retry after ${conflictType}`,
+      description: `在诊断 hash 冲突后，用正确的上下文重新执行编辑。涉及文件: ${(affectedFiles || []).join(', ') || 'unknown'}`,
+      dependencies: [diagnoseId],
+      phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
+      scopeFiles: affectedFiles || [],
+      metadata: { source: 'replan-retry', conflictType },
+    });
+    insertedTasks.push(retryId);
+
+    // 3) 重跑验证（如果原本有验证步骤）
+    const verifyTasks = Array.from(this.#plan.tasks.values()).filter(
+      (t) => t.phase === ExecutionPlanManager.PHASE.VERIFICATION,
+    );
+    if (verifyTasks.length > 0) {
+      const reVerifyId = `${replanId}_reverify`;
+      this.#plan.addTask({
+        id: reVerifyId,
+        name: `Re-verify after conflict recovery`,
+        description: `重新验证修复后的变更：运行 test/lint/build 确认正确性`,
+        dependencies: [retryId, ...verifyTasks.map((t) => t.id)],
+        phase: ExecutionPlanManager.PHASE.VERIFICATION,
+        metadata: { source: 'replan-reverify', conflictType },
+      });
+      insertedTasks.push(reVerifyId);
+    }
+
+    // 将新插入的第一个任务标记为 RUNNING
+    const firstInserted = this.#plan.getTask(diagnoseId);
+    if (firstInserted) {
+      firstInserted.updateStatus(TaskStatus.RUNNING);
+    }
+
+    return {
+      replanId,
+      conflictType,
+      insertedTasks,
+      affectedFiles,
+      suggestedStrategies,
+    };
+  }
+
+  /**
+   * 记录 Hashline 冲突信号到当前 RUNNING 任务。
+   * 由 AgentEngine 在检测到冲突后调用，用于后续 generateExecutionSummary 统计。
+   */
+  recordConflictSignal(toolName, conflictType, recovered) {
+    if (!this.#plan) return;
+    const runningTasks = Array.from(this.#plan.tasks.values()).filter(
+      (t) => t.status === TaskStatus.RUNNING,
+    );
+    for (const task of runningTasks) {
+      task.metadata.hashlineConflicts = (task.metadata.hashlineConflicts || 0) + 1;
+      if (!recovered) {
+        task.metadata.hashlineRollbacks = (task.metadata.hashlineRollbacks || 0) + 1;
+      } else {
+        task.metadata.hashlineAutoRepairs = (task.metadata.hashlineAutoRepairs || 0) + 1;
+      }
+    }
+  }
+
   // ============== 内部实现 ==============
 
   #completeIf(taskId, predicate) {
@@ -415,6 +727,36 @@ export class ExecutionPlanManager {
     }
     if (predicate()) {
       task.updateStatus(TaskStatus.COMPLETED, { result: { completedBy: 'tool-observation' } });
+    }
+  }
+
+  /**
+   * LLM 分解模式：找到当前 RUNNING 且属于指定 phase 的子任务，标记完成。
+   * 如果没有显式 phase 标记，回退到按任务 name/id 前缀推断。
+   */
+  #completeRunningPhaseTask(plan, targetPhase) {
+    const runningTasks = Array.from(plan.tasks.values()).filter(
+      (t) => t.status === TaskStatus.RUNNING,
+    );
+    // 优先匹配有显式 phase 的任务
+    let target = runningTasks.find((t) => t.phase === targetPhase);
+    // 回退：按 phase 前缀匹配（LLM 分解可能在 name/id 中包含阶段信息）
+    if (!target) {
+      const prefixMap = {
+        [ExecutionPlanManager.PHASE.EXPLORATION]: ['inspect', 'explore', 'discover', 'read', 'gather', 'analyze'],
+        [ExecutionPlanManager.PHASE.PLANNING]: ['plan', 'design', 'architect', 'brainstorm', 'grill', 'zoom_out', 'approach'],
+        [ExecutionPlanManager.PHASE.IMPLEMENTATION]: ['implement', 'create', 'edit', 'write', 'fix', 'add', 'update', 'refactor', 'build', 'code'],
+        [ExecutionPlanManager.PHASE.INSPECTION]: ['inspect', 'review', 'check', 'audit', 'read_back'],
+        [ExecutionPlanManager.PHASE.VERIFICATION]: ['verify', 'test', 'validate', 'confirm', 'lint', 'build_check'],
+      };
+      const prefixes = prefixMap[targetPhase] || [];
+      target = runningTasks.find((t) => {
+        const lower = (t.name || t.id || '').toLowerCase();
+        return prefixes.some((p) => lower.includes(p));
+      });
+    }
+    if (target) {
+      target.updateStatus(TaskStatus.COMPLETED, { result: { completedBy: 'tool-observation', phase: targetPhase } });
     }
   }
 

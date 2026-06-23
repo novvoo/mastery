@@ -18,6 +18,7 @@ export function useRuntime() {
   const [messages, setMessages] = useState([]);
   const [tools, setTools] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [askUserInfo, setAskUserInfo] = useState(null);
   const [stats, setStats] = useState({
     messageCount: 0,
     toolCalls: 0,
@@ -272,12 +273,20 @@ export function useRuntime() {
       // 通过 IPC 发送输入
       if (typeof window !== 'undefined' && window != null && window.electronAPI) {
         const result = await window.electronAPI.processInput(input, options);
+
+        // suspend/resume 模式：processInput 立即返回 { status: 'running', mode: 'async' }
+        // agent 在后台执行，通过 event bus (IPC 事件) 驱动 UI 更新
+        // agent:complete 事件由 useEffect 中的 IPC 订阅者处理
+        if (result && result.mode === 'async') {
+          return result;
+        }
+
+        // 兼容旧模式：同步返回完整结果（非编码任务、无 ask_user 等快速场景）
         const answer = extractAgentAnswer(result);
         const needsUserInput = result?.status === 'needs_user_input';
         const shouldAddFinalAnswer = answer && answer !== lastAnswerRef.current;
         
-        // 收口流式消息：优先复用同一个气泡，避免“生成中 + 最终结果”重复出现
-        // 注意：agent:complete 事件订阅者也可能已经提前收口并设置了 lastAnswerRef
+        // 收口流式消息：优先复用同一个气泡，避免"生成中 + 最终结果"重复出现
         const streamMsgId = streamingMessageIdRef.current;
         const eventAlreadyHandled = completedByEventRef.current;
         const answerUnchanged = answer && answer === lastAnswerRef.current;
@@ -311,7 +320,6 @@ export function useRuntime() {
           lastAnswerRef.current = answer;
         }
 
-        // 只有当流消息没有被事件订阅者处理过、且答案不是重复值时，才添加新的结果消息
         if (!streamMsgId && !eventAlreadyHandled && shouldAddFinalAnswer) {
           addMessage({
             type: needsUserInput ? 'warning' : 'result',
@@ -319,7 +327,6 @@ export function useRuntime() {
             ...result
           });
         } else if (!answer && !streamMsgId && !eventAlreadyHandled) {
-          // 需要用户输入时，添加“需要你补充信息后继续”的消息
           addMessage({
             type: needsUserInput ? 'warning' : 'success',
             content: needsUserInput ? '需要你补充信息后继续' : '执行完成',
@@ -540,6 +547,13 @@ export function useRuntime() {
           setStatus('idle');
         } else if (eventName === 'status:update' && typeof payload?.status === 'string') {
           setStatus(payload.status);
+          // 捕获 ask_user 信息供独立交互面板使用
+          if (payload.status === 'needs_user_input' && payload.data) {
+            setAskUserInfo(payload.data);
+          }
+          if (payload.status === 'running') {
+            setAskUserInfo(null);
+          }
         }
 
         if (eventName === 'agent:complete') {
@@ -599,6 +613,7 @@ export function useRuntime() {
     tools,
     loading,
     stats,
+    askUserInfo,
     
     // 方法
     addMessage,

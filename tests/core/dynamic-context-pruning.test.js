@@ -6,12 +6,12 @@ describe('DynamicContextPruning', () => {
     const pruning = new DynamicContextPruning();
     const config = pruning.getConfig();
     expect(config.maxTokens).toBe(128000);
-    expect(config.targetTokens).toBe(80000);
+    expect(config.targetTokens).toBe(64000);
     expect(config.minMessages).toBe(5);
     expect(config.preserveSystemPrompt).toBe(true);
-    expect(config.preserveRecentMessages).toBe(6);
-    expect(config.importanceThreshold).toBe(0.4);
-    expect(config.compressionRatio).toBe(0.7);
+    expect(config.preserveRecentMessages).toBe(4);
+    expect(config.importanceThreshold).toBe(0.5);
+    expect(config.compressionRatio).toBe(0.6);
   });
 
   test('constructor accepts custom options', () => {

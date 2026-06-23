@@ -55,6 +55,8 @@ export class Subtask {
     this.metadata = data.metadata || {};
     // 文件作用域（渐进式探索：该子任务允许关注的文件/目录）
     this.scopeFiles = Array.isArray(data.scopeFiles) ? data.scopeFiles : [];
+    // 生命周期阶段：exploration | planning | implementation | inspection | verification
+    this.phase = data.phase || null;
     this.priority = data.priority || 0; // 优先级，数字越大优先级越高
   }
 
@@ -435,6 +437,18 @@ export class GraphPlanner extends EventEmitter {
     verify: { phase: 'verification', hint: '运行时验证：执行测试/lint/build 确认正确性' },
   };
 
+  /** 根据任务名和描述自动推断生命周期阶段 */
+  static #inferPhase(taskName, description) {
+    const lower = (taskName + ' ' + description).toLowerCase();
+    if (/\b(verify|test|validate|confirm|lint|build_check)\b/.test(lower)) return 'verification';
+    if (/\b(inspect|review|check|audit|read_back|审[核查]|复查)\b/.test(lower)) return 'inspection';
+    if (/\b(implement|create|edit|write|fix|add|update|refactor|build|code|修改|实现|创建|編写|修复|重构)\b/.test(lower)) return 'implementation';
+    if (/\b(plan|design|architect|brainstorm|grill|zoom_out|approach|方案|设计|规划)\b/.test(lower)) return 'planning';
+    if (/\b(inspect|explore|discover|read|gather|analyze|了解|探索|检查|分析|读取|发现)\b/.test(lower)) return 'exploration';
+    // 默认按任务顺序：第一个 → exploration，中间 → implementation，最后一个 → verification
+    return null;
+  }
+
   /**
    * 生成子任务（简化版本 — 模板规则）
    */
@@ -500,6 +514,12 @@ export class GraphPlanner extends EventEmitter {
       .map(([name, { phase, hint }]) => `- ${name} (${phase}): ${hint}`)
       .join('\n');
 
+    // ==== 反馈闭环：消费 ExecutionFeedbackLoop 提供的历史经验 ====
+    const feedbackContext = options.feedbackContext || null;
+    const feedbackSection = feedbackContext
+      ? this.#buildFeedbackPrompt(feedbackContext)
+      : '';
+
     const systemPrompt = `你是一个任务规划专家。你的职责是将用户的任务描述分解为结构化的有向无环图(DAG)子任务列表。
 
 ## 方法论工具（LLM 可在对应阶段调用）
@@ -509,7 +529,7 @@ ${methodologyHints}
 - apply_hashline_patch: 原子化多文件编辑（含 preflight + LSP-sync + diagnostics-gate），用于跨文件事务性修改
 - write_file / edit_file: 单文件直接编辑
 - shell: 执行命令、构建、测试
-
+${feedbackSection}
 ## 输出格式
 严格输出 JSON 数组，每个元素:
 {
@@ -585,6 +605,9 @@ ${toolHint}
         const id = item.name || item.id || `task_${index + 1}`;
         validTaskIds.add(id);
 
+        // 自动推断生命周期阶段
+        const phase = item.phase || GraphPlanner.#inferPhase(id, item.description || '');
+
         return {
           name: id,
           description: item.description || `子任务 ${index + 1}`,
@@ -594,6 +617,7 @@ ${toolHint}
           }),
           priority: options.priority || 0,
           scopeFiles: Array.isArray(item.scope_files) ? item.scope_files : [],
+          phase,
         };
       });
 
@@ -628,6 +652,51 @@ ${toolHint}
       }
       return this.#generateSubtasks(fallbackDescription, options);
     }
+  }
+
+  /**
+   * 从 ExecutionFeedbackLoop 提供的反馈上下文构建经验提示文本。
+   * 注入到 decomposeTaskLLM 的 system prompt 中，让 LLM 借鉴历史成功/失败模式。
+   */
+  #buildFeedbackPrompt(feedbackContext) {
+    const lines = ['\n## 历史执行反馈（借鉴以往经验）'];
+
+    // 最近成功的执行模式
+    const recentResults = feedbackContext.recentResults || [];
+    if (recentResults.length > 0) {
+      lines.push('\n### 最近成功的执行模式');
+      for (const r of recentResults.slice(-3)) {
+        lines.push(
+          `- ${r.decompositionMode === 'llm' ? 'LLM分解' : '模板分解'} | 历时 ${(r.durationMs / 1000).toFixed(1)}s | 迭代 ${r.iterations} 次 | 完成阶段: ${(r.phasesCompleted || []).join(' → ')}`,
+        );
+      }
+    }
+
+    // LLM 分解 vs 模板效率对比
+    const advice = feedbackContext.llmDecompositionAdvice;
+    if (advice) {
+      lines.push('\n### 分解模式效果对比');
+      lines.push(
+        `- LLM智能分解成功率: ${(advice.llmSuccessRate * 100).toFixed(0)}% | 平均迭代: ${advice.llmAvgIterations.toFixed(1)}`,
+      );
+      lines.push(
+        `- 模板分解成功率: ${(advice.templateSuccessRate * 100).toFixed(0)}% | 平均迭代: ${advice.templateAvgIterations.toFixed(1)}`,
+      );
+      lines.push(`- 建议: ${advice.recommendation}`);
+    }
+
+    // 如果 LLM 分解表现不佳，提示简化
+    if (advice && advice.llmSuccessRate < 0.4 && advice.templateSuccessRate > 0.6) {
+      lines.push(
+        '\n⚠️ 注意: LLM智能分解在该任务类型上成功率偏低，建议采用更简洁的 4-5 步子任务分解，避免过度复杂化。',
+      );
+    }
+
+    lines.push(
+      '\n请结合以上历史反馈优化本次分解策略，但不要生搬硬套 —— 每个任务都有其特殊性。',
+    );
+
+    return lines.join('\n');
   }
 
   /**

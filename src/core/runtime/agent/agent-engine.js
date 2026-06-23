@@ -51,6 +51,7 @@ import { withRoutedToolContext } from '../../routed-tool-context.js';
 import { TokenScope } from './support/token-scope.js';
 import { quickAssess, computeIterationBudget } from './support/risk-budget.js';
 import { ExecutionPlanManager } from './execution-plan-manager.js';
+import { ExecutionFeedbackLoop } from './execution-feedback.js';
 import { ToolExecutor } from './tool-executor.js';
 import { ContextManager } from './context-manager.js';
 import { metricsSink } from '../metrics-sink.js';
@@ -185,29 +186,119 @@ function normalizeModelResponse(response = {}) {
   };
 }
 
+// =========================================================================
+// 编号条目语义评分：区分「可执行任务列表」与「知识描述列表」
+// =========================================================================
+// 设计原则:
+//   不是简单数编号行，而是逐条评估语言学特征——
+//   - 这条是在"发指令"（LLM 自己能执行的动作）？
+//   - 还是在"做描述"（陈述一个事实/定义/概念）？
+//   只有指令型条目占压倒性多数，才判为"有执行计划但未调用工具"。
+//
+// 单条评分:
+//   +2  含强可执行动作词（create/write/build/run/创建/编写/构建...）
+//   -2  含定义/描述标记（是/指/is/means/refers to...）
+//   +1  含工程产物引用（file/function/class/component/module...）
+//   +1  含未来意图词（will/need to/should/将/需要/要...）
+//   -1  条目文本过长（>120 字符，解释型更啰嗦）
+//   +1  前导句是计划声明（"Here's my plan" / "I will do the following"）
+//
+// 聚合阈值: 总分 >= items.length（平均每条 >= 1 分），且总分 >= 3
+// =========================================================================
+
+// ---------- 单条语义评分 ----------
+function scoreNumberedItem(item) {
+  let s = 0;
+
+  // +2: 强可执行动作 —— LLM 通过工具调用实际能做的事
+  if (/\b(?:create|write|build|run|execute|install|deploy|modify|edit|delete|remove|add|update|generate|compile|test|refactor|move|rename|copy|commit|push|configure|set\s*up|implement|replace|fix|patch|创建|编写|构建|运行|执行|安装|部署|修改|编辑|删除|移除|添加|更新|生成|编译|测试|重构|移动|重命名|复制|提交|推送|配置|实现|替换|修复|修补)\b/i.test(item)) {
+    s += 2;
+  }
+
+  // -2: 定义/描述标记 —— 陈述事实而非发指令
+  if (/(?:是指|指的是|即|意为|定义为|是[一种个项类]|属于|指代|称作|所谓|is\s+(?:a|an|the)\b|refers?\s+to|means?\b|is\s+defined\s+as|consists?\s+of|comprises?\b|stands?\s+for)/i.test(item)) {
+    s -= 2;
+  }
+
+  // +1: 工程产物 —— 计划的直接产出
+  if (/\b(?:file|function|class|component|module|route|endpoint|config|directory|repo|package|dependency|import|export|interface|type|hook|middleware|service|controller|model|schema|migration|seed|文档|文件|函数|类|组件|模块|路由|接口|配置|目录|包|依赖)\b/i.test(item)) {
+    s += 1;
+  }
+
+  // +1: 未来/意图词 —— 表明之后要做
+  if (/\b(?:will|shall|going\s+to|need\s+to|should|must|have\s+to|plan\s+to|intend\s+to|将|要|需要|应该|必须|打算|计划)\b/i.test(item)) {
+    s += 1;
+  }
+
+  // -1: 条目过长 —— 解释型通常展开写，指令型通常简洁
+  if (item.length > 120) {
+    s -= 1;
+  }
+
+  return s;
+}
+
+// ---------- 聚合判断: 整体是否为可执行任务列表 ----------
+function isActionableTaskList(text) {
+  const items = text.match(/^\d+\.\s+.+/gm);
+  if (!items || items.length < 3) return false;
+
+  let totalScore = 0;
+  for (const item of items) {
+    totalScore += scoreNumberedItem(item);
+  }
+
+  // 要求: 总分 >= items 数（平均每条 >= 1）且绝对分 >= 3，确保多条目达成强共识
+  return totalScore >= items.length && totalScore >= 3;
+}
+
+// ---------- 检测前导句是否为计划声明 ----------
+function hasPlanLeadIn(text) {
+  return /\b(?:Here(?:'s| is) (?:my|the) plan|I(?:'ll| will) do the following|Steps?(?:\s+to\s+\w+)?:|My approach:|Plan:|执行计划|实施方案|操作步骤|按以下步骤)\b/i.test(text);
+}
+
+// =========================================================================
 // 检测模型是否只输出了计划/描述而没有执行任何工具调用
-// 场景: 模型列出"Files to create: 1. xxx 2. yyy"然后 finishReason=stop
+// =========================================================================
 function looksLikePlanWithoutExecution(text) {
   if (!text?.trim()) return false;
   const t = text.trim();
-  // 文件创建清单模式
-  if (/\*\*Files to create\*\*|Files to create:/i.test(t)) return true;
-  // 步骤清单模式: "1. xxx\n2. yyy\n3. zzz"
-  const stepLines = t.match(/^\d+\.\s+.+/gm);
-  if (stepLines && stepLines.length >= 3) return true;
-  // "I will / I'll / I am going to" 但没有对应的 tool call
-  if (/\b(I will|I'll|I am going to)\s+(create|write|build|make|implement)\b/i.test(t)) return true;
-  // "Let me first" 但没有任何 CALL 或 action
+
+  // -------- 强信号: 明确声明了文件创建清单 --------
+  if (/\*\*Files to create\*\*|Files to create:|待创建文件/i.test(t)) return true;
+
+  // -------- 核心判断: 编号条目是否为可执行任务列表 --------
+  // 同时要求有"计划前导句"（Here's my plan...），提高置信度
+  const items = t.match(/^\d+\.\s+.+/gm);
+  if (items && items.length >= 3) {
+    // 如果有明确的计划前导句 → 强信号，降低阈值
+    if (hasPlanLeadIn(t)) {
+      let score = 0;
+      for (const item of items) score += scoreNumberedItem(item);
+      if (score >= 1) return true;  // 有计划声明时，微弱正评分即通过
+    }
+    // 否则用标准阈值
+    if (isActionableTaskList(t)) return true;
+  }
+
+  // -------- "I will / I'll / I am going to" 创建/写/构建——明确执行意图 --------
+  if (/\b(I will|I'll|I am going to)\s+(create|write|build|make|implement|创建|编写|构建|实现)\b/i.test(t)) return true;
+
+  // -------- "Let me first" —— 顺序执行意图 --------
   if (/\bLet me first\b/i.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) return true;
-  // "Step by step / step-by-step" 计划
+
+  // -------- "Step by step / step-by-step" —— 步骤化解法声明 --------
   if (/\bstep[-\s]by[-\s]step\b/i.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) return true;
-  // "Let me understand/read/examine/review/analyze/inspect the codebase/files/project" 表达阅读意图但未实际执行工具
+
+  // -------- "Let me read/understand the codebase" —— 阅读意图未执行 --------
   if (/\b(?:Let me|I(?:'ll| will| need to)?)\s+(?:understand|read|examine|review|analyze|inspect|look (?:at|into)|check|explore|scan|study)\s+(?:the\s+)?(?:full\s+)?(?:codebase|project|files?|code|repository|source|directory|structure)/i.test(t) &&
       !/CALL\s+\w+|action["<]/i.test(t)) return true;
-  // 表达"在 X 之前先 Y"的意图声明（如 "before creating, let me read"）但未执行工具
+
+  // -------- "在 X 之前先 Y" —— 顺序依赖声明 --------
   if (/\b(?:before|first|prior to)\s+(?:creating|writing|modifying|changing|editing|deleting|implementing|building)/i.test(t) &&
       /\b(?:let me|I(?:'ll| will)?|need to|should|must|going to)\s+(?:understand|read|examine|review|analyze|check|look|explore|scan)/i.test(t) &&
       !/CALL\s+\w+|action["<]/i.test(t)) return true;
+
   return false;
 }
 
@@ -311,6 +402,8 @@ export class AgentEngine {
   #textToolParser;
   #intentClassifier;
   #executionPlanManager;
+  #feedbackLoop;
+  #lastIntent = null;
   #toolExecutor;
   #contextManager;
   #stagnationDetector;
@@ -392,6 +485,7 @@ export class AgentEngine {
       ? new IntentClassifier(modelProvider, this.#toolRegistry, this.#config.intentClassifier || {})
       : null;
     this.#executionPlanManager = new ExecutionPlanManager();
+    this.#feedbackLoop = new ExecutionFeedbackLoop({ learnFromHistory: true });
     this.#contextPruner = new DynamicContextPruning();
     this.#tokenScope =
       this.#config.tokenScope ||
@@ -635,14 +729,18 @@ export class AgentEngine {
     }
 
     // ========== Step 1：意图识别（仅当显式开启时才调用 LLM 预分类） ==========
+    // ==== 反馈闭环：注入历史分类经验到 IntentClassifier ====
+    const classificationFeedback = this.#feedbackLoop?.enrichClassificationContext?.() || null;
     const intent =
       this.#intentClassifier && shouldUseIntentClassifier(userInput)
         ? await this.#intentClassifier.classify(userInput, {
             recentMessages: this.#sessionManager.getRecentExchanges(3),
+            feedbackContext: classificationFeedback,
           })
         : null;
 
     if (intent) {
+      this.#lastIntent = intent; // 存储供 feedback loop 使用
       this.#ui.debugEvent?.('Intent classified', {
         intent: intent.intent,
         confidence: intent.confidence,
@@ -654,7 +752,7 @@ export class AgentEngine {
 
     // ========== Step 2：任务分类（合并进 IntentClassifier，消除一层路由） ==========
     const taskProfile =
-      this.#intentClassifier?.classifyTask?.(userInput, intent) ?? quickAssess(userInput);
+      this.#intentClassifier?.classifyTask?.(userInput, intent, classificationFeedback) ?? quickAssess(userInput);
 
     // ========== Step 3：准备运行上下文 ==========
     // 原始任务以 DECISION 优先级写入，确保上下文裁剪时不被丢弃
@@ -668,16 +766,25 @@ export class AgentEngine {
     this.#sessionManager.addSystemMessage(
       `[CURRENT TASK] You MUST complete this user request: ${userInput}`,
     );
-    const routingPrompt = this.#intentClassifier?.buildRoutingPrompt?.(intent);
+    const routingPrompt = this.#intentClassifier?.buildRoutingPrompt?.(intent, classificationFeedback);
     if (routingPrompt) {
       this.#sessionManager.addUserMessage(routingPrompt);
     }
 
     this.#stagnationDetector.reset();
     this.#toolExecutor.reset();
-    this.#executionPlanManager.plan; // 触发 plan 初始化（下面会实际创建）
 
-    const executionPlan = this.#executionPlanManager.createIfNeeded(userInput, taskProfile);
+    // ==== 意图分析 → Plan 智能分解：编码任务强制走 plan，LLM 驱动子任务拆分 ====
+    // ==== 反馈闭环：注入历史分解经验到 GraphPlanner.decomposeTaskLLM ====
+    const decompositionFeedback = this.#feedbackLoop?.enrichDecompositionContext?.(
+      taskProfile.isBugTask ? 'bug_fix' : taskProfile.isModificationTask ? 'modification' : 'coding',
+    ) || null;
+    const executionPlan = await this.#executionPlanManager.createIfNeeded(userInput, taskProfile, {
+      modelProvider: this.#modelProvider,
+      intent,
+      availableTools: this.#toolRegistry?.getAll?.().map((t) => t.name) || [],
+      feedbackContext: decompositionFeedback,
+    });
     const maxIterations =
       this.#intentClassifier?.budgetFor?.(taskProfile) ??
       computeIterationBudget(taskProfile.riskLevel, this.#config.maxIterations);
@@ -1290,10 +1397,13 @@ export class AgentEngine {
       }
 
       // -------- plan-only detection: 模型只列计划不执行 → nudge 继续 --------
+      // 纯信息型问题（解释/聊天/知识查询）不拦截——文本回答本身就是完整交付物
+      // isInformationalQuery 由 LLM 意图分类判定（语言无关），非响应文本关键词匹配
       if (
         allToolCalls.length === 0 &&
         response.finishReason === 'stop' &&
         response.text?.trim() &&
+        !taskProfile.isInformationalQuery &&
         looksLikePlanWithoutExecution(response.text)
       ) {
         this.#sessionManager.addAssistantMessage(response.text);
@@ -1583,6 +1693,9 @@ export class AgentEngine {
             });
           }
         }
+
+        // ========== 反馈闭环 L2: Hashline 冲突检测 → 动态重规划 ==========
+        this.#detectAndHandleHashlineConflict(execResult);
       }
 
       // ========== Closed-Loop Memory Refresh ==========
@@ -2233,6 +2346,99 @@ export class AgentEngine {
   }
 
   // ============================================================
+  // 反馈闭环 L2: Hashline 冲突检测 → 动态重规划
+  // ============================================================
+
+  /**
+   * 检测工具执行结果中的 Hashline 冲突信号，触发动态重规划。
+   * 当 EditOrchestrator 报告冲突/回滚时，在 plan 中插入诊断→重试→重验证子任务。
+   */
+  #detectAndHandleHashlineConflict(execResult) {
+    if (!this.#executionPlanManager.isActive) return;
+
+    const result = execResult?.result;
+    const error = execResult?.error;
+    const toolName = execResult?.name || '';
+
+    // 仅关注 Hashline 编辑相关工具
+    const hashRelatedTools = ['apply_hashline_patch', 'write_file', 'edit_file', 'harness_replace', 'harness_insert', 'harness_delete'];
+    if (!hashRelatedTools.includes(toolName)) return;
+
+    // 解析冲突信号
+    let conflictType = null;
+    let recovered = false;
+    let repairTimeMs = 0;
+    let affectedFile = '';
+
+    // 尝试从 result 文本中提取冲突信息
+    const resultText = typeof result === 'string' ? result : JSON.stringify(result || '');
+    const errorText = error ? (typeof error === 'string' ? error : error.message || JSON.stringify(error)) : '';
+
+    if (
+      resultText.includes('rollback') ||
+      resultText.includes('ROLLBACK') ||
+      resultText.includes('recovery failed') ||
+      errorText.includes('rollback') ||
+      errorText.includes('recovery failed')
+    ) {
+      conflictType = 'recovery_failed';
+    } else if (
+      resultText.includes('tag mismatch') ||
+      resultText.includes('TAG_MISMATCH') ||
+      errorText.includes('tag mismatch')
+    ) {
+      conflictType = 'tag_mismatch';
+      recovered = resultText.includes('recovered') || resultText.includes('retry succeeded');
+    } else if (
+      resultText.includes('patch rejected') ||
+      resultText.includes('PATCH_REJECTED') ||
+      errorText.includes('patch rejected')
+    ) {
+      conflictType = 'patch_rejected';
+      recovered = resultText.includes('recovered') || resultText.includes('retry succeeded');
+    } else if (
+      resultText.includes('diagnostics') &&
+      (resultText.includes('new error') || resultText.includes('新错误') || resultText.includes('introduced'))
+    ) {
+      conflictType = 'diag_new_errors';
+      recovered = resultText.includes('auto-repaired') || resultText.includes('自动修复');
+    }
+
+    if (!conflictType) return; // 无冲突信号
+
+    // 提取受影响的文件
+    const fileMatch = resultText.match(/["'`]?([\w.\-/]+\.(?:js|ts|tsx|jsx|json|css|html|py|md))["'`]?/);
+    affectedFile = fileMatch ? fileMatch[1] : '';
+
+    // 记录到反馈循环
+    this.#feedbackLoop?.recordConflict?.(conflictType, recovered, repairTimeMs, affectedFile);
+
+    // 记录到当前计划任务
+    this.#executionPlanManager.recordConflictSignal?.(toolName, conflictType, recovered);
+
+    // 如果冲突未恢复，触发动态重规划
+    if (!recovered) {
+      const replanHints = this.#feedbackLoop?.generateReplanHints?.(conflictType);
+      if (replanHints) {
+        const replanResult = this.#executionPlanManager.replan?.(replanHints);
+        if (replanResult) {
+          this.#ui.debugEvent?.('Hashline conflict → dynamic replan', {
+            conflictType,
+            affectedFile,
+            insertedTasks: replanResult.insertedTasks,
+          });
+          // 注入 replan 上下文到下一轮 LLM 对话
+          this.#sessionManager.addSystemMessage(
+            `[HASHLINE CONFLICT] ${conflictType} detected on file: ${affectedFile || 'unknown'}. ` +
+            `Dynamic replan activated: diagnose → retry → re-verify. ` +
+            `Strategies: ${(replanHints.suggestedStrategies || []).join('; ')}`,
+          );
+        }
+      }
+    }
+  }
+
+  // ============================================================
   // 内部辅助
   // ============================================================
 
@@ -2348,6 +2554,48 @@ export class AgentEngine {
       } catch {
         /* 日志写入失败不阻塞主流程 */
       }
+    }
+
+    // ========== 反馈闭环 L1 & L3: Plan 执行结果 → Methodology 调优 + 跨 run 模式学习 ==========
+    try {
+      const planSummary = this.#executionPlanManager?.generateExecutionSummary?.();
+      if (planSummary && this.#feedbackLoop) {
+        const toolEventsData = toolEvents || [];
+        // 收集工具有效性
+        const recommendedTools = this.#lastIntent?.recommendedTools || [];
+        const actuallyUsedTools = toolEventsData.map((e) => e.name || '').filter(Boolean);
+        this.#feedbackLoop.collectToolEffectiveness?.(recommendedTools, [...new Set(actuallyUsedTools)]);
+
+        // 构建执行记录并收集到反馈循环
+        this.#feedbackLoop.collect?.({
+          runId: result.runId,
+          taskType: planSummary.decompositionMode === 'llm'
+            ? 'coding' // LLM 分解模式下的任务类型从 plan 推断
+            : (this.#executionPlanManager?.isBugTask ? 'bug_fix' : 'coding'),
+          decompositionMode: planSummary.decompositionMode,
+          intent: this.#lastIntent?.intent || '',
+          intentConfidence: this.#lastIntent?.confidence ?? 0,
+          success,
+          reason,
+          durationMs,
+          iterations,
+          toolCount: toolEventsData.length,
+          phasesCompleted: planSummary.phasesCompleted,
+          phaseTimings: planSummary.phaseTimings,
+          hashlineConflicts: planSummary.hashlineConflicts,
+          hashlineRollbacks: planSummary.hashlineRollbacks,
+          hashlineAutoRepairs: planSummary.hashlineAutoRepairs,
+          totalSubtasks: planSummary.totalSubtasks,
+          completedSubtasks: planSummary.completedSubtasks,
+          failedSubtasks: planSummary.failedSubtasks,
+          toolSuccessRate:
+            toolEventsData.length > 0
+              ? toolEventsData.filter((e) => !e.error && !e.result?.error).length / toolEventsData.length
+              : 0,
+        });
+      }
+    } catch {
+      /* 反馈收集失败不阻塞主流程 */
     }
 
     return result;

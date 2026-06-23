@@ -338,14 +338,14 @@ describe('ExecutionPlanManager', () => {
     expect(manager.isCompleted).toBe(false);
   });
 
-  test('createIfNeeded returns null when profile does not require planning', () => {
-    const result = manager.createIfNeeded('Fix the bug', { requiresAutomaticPlanning: false });
+  test('createIfNeeded returns null when profile does not require planning', async () => {
+    const result = await manager.createIfNeeded('Fix the bug', { requiresAutomaticPlanning: false });
     expect(result).toBeNull();
     expect(manager.plan).toBeNull();
   });
 
-  test('createIfNeeded returns null when profile is null', () => {
-    const result = manager.createIfNeeded('Fix the bug', null);
+  test('createIfNeeded returns null when profile is null', async () => {
+    const result = await manager.createIfNeeded('Fix the bug', null);
     expect(result).toBeNull();
   });
 

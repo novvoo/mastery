@@ -61,16 +61,16 @@ export class ContextManager {
     const progress =
       maxIterations > 0 ? this.#sessionManager.getHistory?.().length / (maxIterations * 1.5) : 0.5;
 
-    // 保留消息数：早期 10 → 后期 4
-    const preserveRecentMessages = Math.max(4, Math.floor(10 - 6 * Math.min(progress, 1)));
-    // 目标 token 占用比：早期 60% → 后期 35%
-    const targetRatio = 0.6 - 0.25 * Math.min(progress, 1);
+    // 保留消息数：早期 8 → 后期 3
+    const preserveRecentMessages = Math.max(3, Math.floor(8 - 5 * Math.min(progress, 1)));
+    // 目标 token 占用比：早期 50% → 后期 30%
+    const targetRatio = 0.5 - 0.2 * Math.min(progress, 1);
     const targetTokens = Math.floor(maxTokens * targetRatio);
-    const minMessages = Math.max(2, Math.floor(5 - 2 * Math.min(progress, 1)));
+    const minMessages = Math.max(2, Math.floor(4 - 2 * Math.min(progress, 1)));
 
     const currentTokens = this.#sessionManager.getTokenCount?.() ?? 0;
-    const thresholdBase = 0.7;
-    const thresholdMin = 0.4;
+    const thresholdBase = 0.55; // 从 0.7 降低到 0.55
+    const thresholdMin = 0.35;   // 从 0.4 降低到 0.35
     const threshold =
       maxTokens * (thresholdBase - (thresholdBase - thresholdMin) * Math.min(progress, 1));
 
@@ -82,7 +82,17 @@ export class ContextManager {
     if (typeof this.#contextPruner.updateConfig === 'function') {
       this.#contextPruner.updateConfig({ maxTokens, targetTokens, preserveRecentMessages });
     }
-    if (typeof this.#sessionManager.trimWithPruner === 'function') {
+    // 优先使用摘要压缩（保留语义），回退到裁剪丢弃
+    if (
+      typeof this.#contextPruner.compress === 'function' &&
+      typeof this.#sessionManager.compressWithSummarizer === 'function'
+    ) {
+      stats = this.#sessionManager.compressWithSummarizer(this.#contextPruner, {
+        maxTokens,
+        targetTokens,
+        preserveRecentMessages,
+      });
+    } else if (typeof this.#sessionManager.trimWithPruner === 'function') {
       stats = this.#sessionManager.trimWithPruner(this.#contextPruner, {
         maxTokens,
         targetTokens,

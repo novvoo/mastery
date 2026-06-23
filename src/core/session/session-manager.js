@@ -345,6 +345,58 @@ export class SessionManager {
     return pruned.stats;
   }
 
+  /**
+   * 用摘要压缩替代丢弃。将中间消息通过 ConversationSummarizer 压缩为富语义摘要，
+   * 保留最近消息的完整内容。与 trimToContextWindow / trimWithPruner 的区别是：
+   *  - 旧版方法丢弃消息 → 信息丢失
+   *  - 本方法压缩消息 → 语义保留，生成结构化摘要
+   *
+   * @param {import('../dynamic-context-pruning.js').DynamicContextPruning} pruner
+   * @param {object} [options]
+   * @returns {object} stats — 压缩统计
+   */
+  compressWithSummarizer(pruner, options = {}) {
+    const allMessages = this.getMessages();
+    const compressed = pruner.compress(allMessages, options);
+    const messages = compressed.messages || [];
+
+    // 分离 system prompt 和 对话消息
+    const newSystemMessages = [];
+    const keptMessages = [];
+    for (const msg of messages) {
+      if (msg.role === 'system') {
+        newSystemMessages.push(msg.content || '');
+      } else {
+        keptMessages.push(msg);
+      }
+    }
+
+    // 合并 system prompt（摘要注入 + 原有 system prompt）
+    if (newSystemMessages.length > 0) {
+      // 最后一个 system message 是最新的摘要，放在 system prompt 前面
+      const existingPrompt = this.#systemPrompt || '';
+      this.#systemPrompt = newSystemMessages.join('\n\n');
+      if (existingPrompt && !this.#systemPrompt.includes(existingPrompt)) {
+        this.#systemPrompt = existingPrompt + '\n\n' + this.#systemPrompt;
+      }
+    }
+
+    // 保留最近消息
+    const preserveRecent = options.preserveRecentMessages || 4;
+    const originalMessages = [...this.#messages];
+    const recentOriginal = originalMessages.slice(-preserveRecent);
+
+    // 确保最近消息没有被丢掉
+    for (const msg of recentOriginal) {
+      if (!keptMessages.includes(msg)) {
+        keptMessages.push(msg);
+      }
+    }
+
+    this.#messages = keptMessages;
+    return compressed.stats;
+  }
+
   /** Get the last N user-assistant exchange pairs */
   getRecentExchanges(count) {
     /** @type {Array} */
