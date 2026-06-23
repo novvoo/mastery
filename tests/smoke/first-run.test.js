@@ -14,14 +14,30 @@
  *   - 测试结果失败应当提示具体的运行环境版本问题（而不是模型问题）
  */
 
-import { describe, it, expect, beforeAll } from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, '..', '..');
-const pkg = JSON.parse(readFileSync(join(rootDir, 'package.json'), 'utf-8'));
+const pkg = JSON.parse(readFileSync(join(rootDir, 'package.json'), 'utf8'));
+
+// 为 smoke 测试提供假的 API key，避免 doctor 检查失败
+const originalOpenAIKey = process.env.OPENAI_API_KEY;
+beforeAll(() => {
+  // 生成一个随机的假 API key 用于测试
+  process.env.OPENAI_API_KEY = 'sk-test-' + Math.random().toString(36).substring(2, 15);
+});
+
+afterAll(() => {
+  // 恢复原始环境变量
+  if (originalOpenAIKey !== undefined) {
+    process.env.OPENAI_API_KEY = originalOpenAIKey;
+  } else {
+    delete process.env.OPENAI_API_KEY;
+  }
+});
 
 describe('smoke: 零配置 / 首次运行验证', () => {
 
