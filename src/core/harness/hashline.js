@@ -637,7 +637,7 @@ export function parsePatch(text) {
       );
     }
 
-    // 操作头：SWAP / DEL / INS.PRE / INS.POST
+    // 操作头：SWAP / DEL / INS.PRE / INS.POST / INS.HEAD / INS.TAIL / INS.BLK.POST / SWAP.BLK / DEL.BLK / ABORT
     // SWAP start.=end:   /  SWAP start=end:  /  SWAP start: (single line)
     const swapMatch = line.match(/^SWAP\s+(\d+)\s*\.?=\s*(\d+)\s*:\s*$/);
     const swapSingleMatch = line.match(/^SWAP\s+(\d+)\s*:\s*$/);
@@ -1052,7 +1052,23 @@ export class Patcher {
       return result;
     }
     if (!exists) {
+      const hasOnlyInsertOps = section.hunks.every((h) =>
+        [OP_INS_PRE, OP_INS_POST, OP_INS_HEAD, OP_INS_TAIL, OP_INS_BLK_POST].includes(h.op),
+      );
+
+      if (!hasOnlyInsertOps) {
+        result.error = `file not found: ${section.path}`;
+        return result;
+      }
+
+      result.currentText = '';
+      result.currentTag = computeTag('');
+      if (result.currentTag === section.tag) {
+        result.ok = true;
+        return result;
+      }
       result.error = `file not found: ${section.path}`;
+      result.recoverable = true;
       return result;
     }
     let text;

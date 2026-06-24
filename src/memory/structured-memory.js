@@ -184,7 +184,11 @@ export class StructuredMemory {
     const topic = options.topic || null;
     this.appendToTopic(entry, topic);
 
-    this.save();
+    if (options.syncSave) {
+      this.flush();
+    } else {
+      this.save();
+    }
 
     return entry;
   }

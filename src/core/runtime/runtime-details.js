@@ -3,24 +3,87 @@
  * 纯数据转换模块，不依赖 React/Electron，可被 Desktop 和 CLI 共享。
  */
 
+const RUNTIME_DETAIL_ROLES = new Set(['system', 'developer']);
+const RUNTIME_DETAIL_TYPES = new Set(['tool', 'tool_result', 'debug', 'event', 'thinking']);
+const RUNTIME_DETAIL_SOURCES = new Set(['tool_instruction', 'system_instruction', 'internal']);
+const RUNTIME_DETAIL_LEVELS = new Set(['debug', 'trace', 'info']);
+const EVENT_PREFIXES = ['agent:', 'tool:', 'status:', 'plan:', 'workspace:'];
+const TOOL_RELATED_FIELDS = [
+  'toolName',
+  'toolCallId',
+  'toolCalls',
+  'args',
+  'arguments',
+  'result',
+  'activity',
+];
+
+const INTERNAL_CONTENT_PATTERNS = [
+  /^You are a tool/i,
+  /^You are a skill/i,
+  /^\[SYSTEM\]/i,
+  /^\[INTERNAL\]/i,
+  /^\[DEVELOPER\]/i,
+  /^<!--.*-->/,
+  /^\/\*.*\*\//,
+];
+
 export function isRuntimeDetailMessage(msg) {
-  if (!msg) {
+  if (!msg || typeof msg !== 'object') {
     return false;
   }
-  return (
-    msg.runtimeDetail === true ||
-    msg.event === 'agent:start' ||
-    msg.event === 'agent:complete' ||
-    msg.event === 'agent:error' ||
-    msg.event === 'agent:stop' ||
-    msg.event === 'agent:thinking' ||
-    msg.event === 'status:update' ||
-    msg.event === 'tool:call' ||
-    msg.event === 'tool:result' ||
-    msg.event === 'tool:error' ||
-    msg.event === 'tool:activity' ||
-    ['tool', 'tool_result', 'debug', 'event'].includes(msg.type)
-  );
+
+  if (msg.runtimeDetail === true || msg.internal === true || msg.hidden === true) {
+    return true;
+  }
+
+  if (RUNTIME_DETAIL_ROLES.has(msg.role)) {
+    return true;
+  }
+
+  if (RUNTIME_DETAIL_TYPES.has(msg.type)) {
+    return true;
+  }
+
+  if (RUNTIME_DETAIL_SOURCES.has(msg.source)) {
+    return true;
+  }
+
+  if (RUNTIME_DETAIL_LEVELS.has(msg.level)) {
+    return true;
+  }
+
+  if (typeof msg.event === 'string') {
+    if (EVENT_PREFIXES.some((prefix) => msg.event.startsWith(prefix))) {
+      return true;
+    }
+  }
+
+  if (typeof msg.content === 'string') {
+    if (INTERNAL_CONTENT_PATTERNS.some((pattern) => pattern.test(msg.content))) {
+      return true;
+    }
+  }
+
+  if (typeof msg.text === 'string') {
+    if (INTERNAL_CONTENT_PATTERNS.some((pattern) => pattern.test(msg.text))) {
+      return true;
+    }
+  }
+
+  for (const field of TOOL_RELATED_FIELDS) {
+    if (msg[field] !== undefined && msg[field] !== null) {
+      return true;
+    }
+  }
+
+  if (typeof msg.activity === 'object' && msg.activity !== null) {
+    if (msg.activity.kind === 'tool_activity' || msg.activity.intent === 'tool') {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export function isThinkingMessage(msg) {

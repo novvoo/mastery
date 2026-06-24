@@ -13,6 +13,7 @@ import { LSPClient, LSPClientError } from './lsp-client.js';
 import { accessSync, constants as fsConstants } from 'fs';
 import { spawnSync } from 'child_process';
 import { join } from 'path';
+import { pathToFileURL } from 'url';
 
 // ── 语言检测 ──────────────────────────────────────────────────────────────
 
@@ -224,6 +225,60 @@ function findExecutable(command) {
   }
 }
 
+/**
+ * 简单的 shell 命令解析器，支持引号和转义。
+ * @param {string} command
+ * @returns {string[]} [cmd, arg1, arg2, ...]
+ */
+function parseShellCommand(command) {
+  const args = [];
+  let current = '';
+  let inQuote = null;
+  let escaped = false;
+
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i];
+
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      if (inQuote === char) {
+        inQuote = null;
+      } else if (inQuote === null) {
+        inQuote = char;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if ((char === ' ' || char === '\t') && inQuote === null) {
+      if (current) {
+        args.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current) {
+    args.push(current);
+  }
+
+  return args;
+}
+
 // ── ServerManager ──────────────────────────────────────────────────────────
 
 /**
@@ -389,7 +444,7 @@ export class ServerManager {
 
     // 自动安装 fallback
     if (!command && config.installCommand && !this.#installing.has(serverKey) && this.autoInstall) {
-      this.#installing.set(serverKey, true);
+      this.#installing.add(serverKey);
       try {
         console.warn(`[LSP] Server '${config.command}' not found, attempting auto-install...`);
         const installResult = await this.#tryInstallServer(serverKey, config);
@@ -446,10 +501,10 @@ export class ServerManager {
 
     // 初始化 — 传递 workspaceFolders 信息
     await client.initialize({
-      rootUri: `file://${wsRoot}`,
+      rootUri: pathToFileURL(wsRoot).href,
       rootPath: wsRoot,
       workspaceFolders: this.workspaceFolders.map((f) => ({
-        uri: `file://${f}`,
+        uri: pathToFileURL(f).href,
         name: f.split('/').pop() || f,
       })),
       capabilities: config.capabilities,
@@ -608,7 +663,7 @@ export class ServerManager {
     // ── 直接安装（无沙箱） ──────────────────────────────────
     const installCommand = config.installCommand;
     const { spawn } = await import('child_process');
-    const [cmd, ...args] = installCommand.split(' ');
+    const [cmd, ...args] = parseShellCommand(installCommand);
 
     return new Promise((resolve) => {
       const proc = spawn(cmd, args, {
@@ -677,7 +732,7 @@ export class ServerManager {
     if (!languageId) {
       return;
     }
-    const uri = `file://${filePath}`;
+    const uri = pathToFileURL(filePath).href;
     const existing = this.#openDocs.get(uri);
 
     if (content !== undefined && existing) {
@@ -703,15 +758,31 @@ export class ServerManager {
         });
       });
       this.#openDocs.set(uri, { uri, languageId, version: 1, text: content });
+    } else if (content === undefined && !existing) {
+      // 文档未打开且未传 content：读取文件并 didOpen
+      const { readFile } = await import('fs/promises');
+      let fileContent;
+      try {
+        fileContent = await readFile(filePath, 'utf-8');
+      } catch {
+        return;
+      }
+      const client = await this.#getClient(languageId, filePath);
+      const serverKey = this.#languageMap.get(languageId);
+      await this.#withLock(serverKey, async () => {
+        client.notify('textDocument/didOpen', {
+          textDocument: { uri, languageId, version: 1, text: fileContent },
+        });
+      });
+      this.#openDocs.set(uri, { uri, languageId, version: 1, text: fileContent });
     }
-    // 如果没传 content 且已有 open doc：不做任何事（用现有版本）
   }
 
   /**
    * 关闭文档，通知 LSP server。
    */
   async closeDocument(filePath) {
-    const uri = `file://${filePath}`;
+    const uri = pathToFileURL(filePath).href;
     const doc = this.#openDocs.get(uri);
     if (!doc) {
       return;
@@ -765,7 +836,7 @@ export class ServerManager {
 
     const client = await this.#getClient(languageId, filePath);
     const serverKey = this.#languageMap.get(languageId);
-    const uri = `file://${filePath}`;
+    const uri = pathToFileURL(filePath).href;
 
     return this.#withLock(serverKey, async () => {
       const params = {
@@ -783,7 +854,7 @@ export class ServerManager {
    * 获取缓存的 diagnostics。
    */
   getDiagnostics(filePath) {
-    const uri = `file://${filePath}`;
+    const uri = pathToFileURL(filePath).href;
     return this.#diagnostics.get(uri) || [];
   }
 

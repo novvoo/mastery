@@ -356,8 +356,8 @@ describe('hashline coverage: Patcher._checkFilePolicy', () => {
     // _checkFilePolicy 中 stat 失败 → null（允许编辑/创建）
     const fs = new MemoryFilesystem();
     // 但是 Patcher 的 apply 会在 preflight 阶段遇到 file not found
-    // 这里我们只测 policy 不阻塞的情况
-    const p = new Patcher({ fs, snapshots: new InMemorySnapshotStore() });
+    // 这里我们只测 policy 不阻塞的情况，关闭 recovery 确保 preflight 失败直接返回
+    const p = new Patcher({ fs, snapshots: new InMemorySnapshotStore(), allowRecovery: false });
     const r = await p.apply(
       '[newfile.js#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nINS.PRE 1=\n+hello',
     );

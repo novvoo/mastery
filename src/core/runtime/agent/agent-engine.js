@@ -78,6 +78,8 @@ import {
   EXPLORATION_BUDGET,
   FORCE_ACTION_GRACE_TURNS,
 } from '../../agent-constants.js';
+import { loadRuntimeEnv } from '../../runtime-config.js';
+import { createConfiguredModelProvider } from '../../../cli/model-provider-factory.js';
 
 /**
  * AgentEngine 工厂函数。供 CLI/Desktop 调用。
@@ -1080,6 +1082,40 @@ export class AgentEngine {
 
       // ========== Step 6：LLM 调用（带重试 + 超时） ==========
       if (!this.#modelProvider || typeof this.#modelProvider.chat !== 'function') {
+        if (this.#modelProvider !== null) {
+          this.#ui.debugEvent?.('ModelProvider missing', { attemptingAutoLoad: true });
+          try {
+            loadRuntimeEnv();
+            const provider = this.#config.provider || process.env.MODEL_PROVIDER || 'openai';
+            const model = this.#config.model || process.env.MODEL || undefined;
+            const apiUrl = this.#config.apiUrl || undefined;
+            const apiKey = this.#config.apiKey || undefined;
+            const temperature = this.#config.temperature || undefined;
+
+            const providerConfig = {
+              provider,
+              model,
+              apiUrl,
+              apiKey,
+              temperature,
+            };
+
+            const loadedProvider = await createConfiguredModelProvider(providerConfig, {
+              debug: this.#config.debug || false,
+              env: process.env,
+            });
+
+            if (loadedProvider && typeof loadedProvider.chat === 'function') {
+              this.#modelProvider = loadedProvider;
+              this.#ui.debugEvent?.('ModelProvider loaded from env', { provider });
+            }
+          } catch (loadError) {
+            this.#ui.debugEvent?.('ModelProvider auto-load failed', { error: loadError.message });
+          }
+        }
+      }
+
+      if (!this.#modelProvider || typeof this.#modelProvider.chat !== 'function') {
         this.#ui.warn?.(
           '缺少 modelProvider，请在初始化时传入。engine.attachModelProvider() 可在运行时绑定',
         );
@@ -1715,6 +1751,22 @@ export class AgentEngine {
           });
         } catch (_) {
           /* 忽略 */
+        }
+
+        // 将工具结果添加到对话历史，供 LLM 下一轮使用
+        if (typeof execResult === 'object' && execResult !== null) {
+          const toolResultContent =
+            typeof execResult.result === 'string'
+              ? execResult.result
+              : JSON.stringify(execResult.result || '');
+          this.#sessionManager.addToolResult(
+            toolCall.id || `tool_${Date.now()}`,
+            execResult.name,
+            toolResultContent,
+            execResult.error || execResult.skipped
+              ? SessionManager.PRIORITY.EVIDENCE
+              : SessionManager.PRIORITY.DECISION,
+          );
         }
 
         // 记录到停滞检测

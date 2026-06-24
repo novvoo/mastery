@@ -15,6 +15,7 @@
 
 import { readFile, writeFile } from 'fs/promises';
 import { resolve, dirname, relative, basename } from 'path';
+import { pathToFileURL } from 'url';
 import { ToolCategory } from '../core/types/index.js';
 import { computeTag } from '../core/harness/hashline.js';
 
@@ -1202,7 +1203,7 @@ export function createLSPTools({
           return { success: false, error: `Failed to read file: ${err.message}` };
         }
 
-        const requestParams = { textDocument: { uri: `file://${filePath}` } };
+        const requestParams = { textDocument: { uri: pathToFileURL(filePath).href } };
 
         if (args.startLine !== undefined && args.endLine !== undefined) {
           requestParams.range = {
@@ -1281,7 +1282,7 @@ export function createLSPTools({
             'textDocument/foldingRange',
             filePath,
             {
-              textDocument: { uri: `file://${filePath}` },
+              textDocument: { uri: pathToFileURL(filePath).href },
             },
             null,
             content,
@@ -1363,7 +1364,7 @@ export function createLSPTools({
             'textDocument/selectionRange',
             filePath,
             {
-              textDocument: { uri: `file://${filePath}` },
+              textDocument: { uri: pathToFileURL(filePath).href },
               positions: [position],
             },
             null,
@@ -1461,7 +1462,7 @@ export function createLSPTools({
             'workspace/willRenameFiles',
             filePath,
             {
-              files: [{ oldUri: `file://${oldPath}`, newUri: `file://${newPath}` }],
+              files: [{ oldUri: pathToFileURL(oldPath).href, newUri: pathToFileURL(newPath).href }],
             },
             null,
             null,
