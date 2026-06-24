@@ -871,7 +871,7 @@ export class ReActAgent {
               toolResult.result,
             );
             // ask_user 智能自答：先尝试 LLM 自行回答，只有无法回答时才挂起等待用户
-            if (this.#isUserInputRequest(toolResult?.result)) {
+            if (toolResult.name === 'ask_user' || this.#isUserInputRequest(toolResult?.result)) {
               const autoResult = await this.#tryAutoAnswerAskUser(toolResult.result);
               if (autoResult.autoAnswered) {
                 this.#injectAutoAnswerAsObservation(toolResult.result, autoResult.answers);
@@ -916,7 +916,7 @@ export class ReActAgent {
 
           this.#planner.advance(toolResult.name, toolCall.arguments || {}, toolResult.result);
           // ask_user 智能自答：先尝试 LLM 自行回答，只有无法回答时才挂起等待用户
-          if (this.#isUserInputRequest(toolResult?.result)) {
+          if (toolResult.name === 'ask_user' || this.#isUserInputRequest(toolResult?.result)) {
             const autoResult = await this.#tryAutoAnswerAskUser(toolResult.result);
             if (autoResult.autoAnswered) {
               this.#injectAutoAnswerAsObservation(toolResult.result, autoResult.answers);
@@ -1284,10 +1284,17 @@ export class ReActAgent {
   }
 
   #isUserInputRequest(result) {
-    if (!result || typeof result !== 'object') {
+    if (!result) {
       return false;
     }
-    return result.requiresUserInput === true || result.type === 'user_input_required';
+    if (typeof result === 'object') {
+      return (
+        result.requiresUserInput === true ||
+        result.type === 'user_input_required' ||
+        result.result === 'needs_user_input'
+      );
+    }
+    return result === 'needs_user_input';
   }
 
   /**

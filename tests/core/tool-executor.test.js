@@ -68,15 +68,30 @@ describe('ToolExecutor', () => {
     expect(result.result).toContain('not registered');
   });
 
-  test('skips duplicate tool calls (dedup)', async () => {
+  test('read-only tools are not skipped on duplicate calls', async () => {
     const tool = makeTool('read_file', { handler: async () => 'content' });
     const { executor } = makeMockExecutor({ tools: [tool] });
 
     const callArgs = { path: '/a.txt' };
-    await executor.execute({ id: '1', name: 'read_file', arguments: callArgs });
-    const result = await executor.execute({ id: '2', name: 'read_file', arguments: callArgs });
+    const result1 = await executor.execute({ id: '1', name: 'read_file', arguments: callArgs });
+    const result2 = await executor.execute({ id: '2', name: 'read_file', arguments: callArgs });
 
-    expect(result.skipped).toBe(true);
+    expect(result1.skipped).toBeUndefined();
+    expect(result2.skipped).toBeUndefined();
+    expect(result2.result).toBe('content');
+  });
+
+  test('mutation tools are blocked on duplicate calls', async () => {
+    const tool = makeTool('write_file', { handler: async () => 'written' });
+    const { executor } = makeMockExecutor({ tools: [tool] });
+
+    const callArgs = { path: '/a.txt', content: 'hello' };
+    const result1 = await executor.execute({ id: '1', name: 'write_file', arguments: callArgs });
+    const result2 = await executor.execute({ id: '2', name: 'write_file', arguments: callArgs });
+
+    expect(result1.skipped).toBeUndefined();
+    expect(result2.skipped).toBe(true);
+    expect(result2.duplicateMutation).toBe(true);
   });
 
   test('blocks tool call when security policy denies', async () => {

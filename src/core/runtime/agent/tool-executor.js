@@ -36,6 +36,21 @@ const READ_ONLY_TOOLS = new Set([
   'workspace_knowledge',
 ]);
 
+const MUTATION_TOOLS = new Set([
+  'write_file',
+  'write_file_with_hashline',
+  'edit_file',
+  'update_file',
+  'delete_file',
+  'move_file',
+  'rename_file',
+  'shell',
+  'lsp_rename',
+  'lsp_workspace_edit',
+  'lsp_code_action',
+  'hashline_apply',
+]);
+
 // ==== 文件作用域强制：工程级约束，不依赖 prompt ====
 // 当执行计划提供了当前子任务的 scopeFiles 时，
 // 以下工具的目标路径必须在 scopeFiles 范围内，否则直接拦截。
@@ -218,93 +233,55 @@ export class ToolExecutor {
     // ============ 去重：内存 + 持久化缓存（读工具使用文件 hash 智能跳过） ============
     await this.#loadResultCache();
     const isReadOnly = READ_ONLY_TOOLS.has(name);
+    const isMutation = !isReadOnly;
 
-    // 非读工具：同一会话内 callHistory 阻止重复，跨会话 resultCache 启用缓存
-    let cacheHit =
-      !isReadOnly && (this.#callHistory.has(callSignature) || this.#resultCache.has(callSignature));
+    const persistentCacheHit = isMutation && this.#resultCache.has(callSignature);
+    let inRunDuplicate = this.#callHistory.has(callSignature);
 
-    // 读工具：基于文件 hash 智能跳过（文件未变则可跳过，文件已变则重新读取）
-    if (isReadOnly && !cacheHit) {
-      // 首先检查 callHistory，但必须同时验证缓存中是否有有效结果
-      if (this.#callHistory.has(callSignature)) {
-        const cachedEntry = this.#resultCache.get(callSignature);
-        const dirCached = this.#dirToolCache.get(callSignature);
-        // 只有当缓存中确实有有效结果时才跳过
-        if (cachedEntry || dirCached) {
-          cacheHit = true;
-        }
-      } else {
-        const targetPath = getScopeTargetPath(name, args);
-        if (targetPath && this.#snapshotStore) {
-          const currentTag = this.#snapshotStore.head(targetPath);
-          const cached = this.#resultCache.get(callSignature);
+    let cacheHit = false;
 
-          if (cached && currentTag) {
-            const cachedData = typeof cached === 'string' ? JSON.parse(cached) : cached;
-            // 只有当文件tag匹配时才跳过
-            if (cachedData.fileTag === currentTag) {
-              cacheHit = true;
-            }
-          } else if (currentTag && name === 'read_file' && (args.offset || args.limit)) {
-            // 尝试从 snapshotStore 获取完整文件内容，然后提取部分
-            if (this.#snapshotStore && typeof this.#snapshotStore.byHash === 'function') {
-              const snapshot = this.#snapshotStore.byHash(targetPath, currentTag);
-              if (snapshot && (snapshot.content || snapshot.data?.text)) {
-                cacheHit = true;
-              }
-            }
-          }
-        }
+    if (persistentCacheHit) {
+      cacheHit = true;
+    } else if (inRunDuplicate && isMutation) {
+      cacheHit = true;
+    } else if (isReadOnly) {
+      const targetPath = getScopeTargetPath(name, args);
+      if (targetPath && this.#snapshotStore) {
+        const currentTag = this.#snapshotStore.head(targetPath);
+        const cached = this.#resultCache.get(callSignature);
 
-        // 目录类工具：TTL 缓存（30秒内重复调用直接返回缓存）
-        const dirTools = ['list_dir', 'glob', 'tree'];
-        if (dirTools.includes(name) && !cacheHit) {
-          const dirCached = this.#dirToolCache.get(callSignature);
-          if (dirCached && Date.now() - dirCached.timestamp < DIR_TOOL_CACHE_TTL_MS) {
+        if (cached && currentTag) {
+          const cachedData = typeof cached === 'string' ? JSON.parse(cached) : cached;
+          if (cachedData.fileTag === currentTag) {
             cacheHit = true;
           }
-        }
-      }
-    }
-
-    // 如果是重复调用，但缓存中没有结果，则重新执行而不是跳过
-    if (cacheHit) {
-      const cachedEntry = this.#resultCache.get(callSignature);
-      const dirCached = this.#dirToolCache.get(callSignature);
-
-      // 检查是否有有效的缓存结果
-      let hasValidCache = false;
-      if (cachedEntry) {
-        hasValidCache = true;
-      } else if (name === 'read_file' && (args.offset || args.limit)) {
-        // 对于分页读取，检查是否有snapshot
-        const targetPath = getScopeTargetPath(name, args);
-        const currentTag = this.#snapshotStore?.head(targetPath);
-        if (currentTag && this.#snapshotStore?.byHash) {
-          const snapshot = this.#snapshotStore.byHash(targetPath, currentTag);
-          if (snapshot && (snapshot.content || snapshot.data?.text)) {
-            hasValidCache = true;
+        } else if (currentTag && name === 'read_file' && (args.offset || args.limit)) {
+          if (this.#snapshotStore && typeof this.#snapshotStore.byHash === 'function') {
+            const snapshot = this.#snapshotStore.byHash(targetPath, currentTag);
+            if (snapshot && (snapshot.content || snapshot.data?.text)) {
+              cacheHit = true;
+            }
           }
         }
-      } else if (['list_dir', 'glob', 'tree'].includes(name) && dirCached) {
-        hasValidCache = true;
       }
 
-      // 如果没有有效缓存，则重新执行
-      if (!hasValidCache) {
-        cacheHit = false;
+      const dirTools = ['list_dir', 'glob', 'tree'];
+      if (dirTools.includes(name) && !cacheHit) {
+        const dirCached = this.#dirToolCache.get(callSignature);
+        if (dirCached && Date.now() - dirCached.timestamp < DIR_TOOL_CACHE_TTL_MS) {
+          cacheHit = true;
+        }
       }
     }
 
     if (cacheHit) {
-      this.#ui.warn?.(`Duplicate tool call detected: ${name}. Skipping.`);
       let cachedResult = null;
       const cachedEntry = this.#resultCache.get(callSignature);
+      const dirCached = this.#dirToolCache.get(callSignature);
 
       if (cachedEntry) {
         cachedResult = typeof cachedEntry === 'string' ? cachedEntry : cachedEntry.result;
       } else if (name === 'read_file' && (args.offset || args.limit)) {
-        // 从 snapshotStore 获取完整文件内容，然后提取部分
         const targetPath = getScopeTargetPath(name, args);
         const currentTag = this.#snapshotStore?.head(targetPath);
         if (currentTag && this.#snapshotStore?.byHash) {
@@ -318,20 +295,46 @@ export class ToolExecutor {
             cachedResult = sliced.map((line, i) => `${start + i + 1}: ${line}`).join('\n');
           }
         }
-      } else if (['list_dir', 'glob', 'tree'].includes(name)) {
-        // 从目录工具 TTL 缓存中获取结果
-        const dirCached = this.#dirToolCache.get(callSignature);
-        if (dirCached) {
-          cachedResult = dirCached.result;
-        }
+      } else if (['list_dir', 'glob', 'tree'].includes(name) && dirCached) {
+        cachedResult = dirCached.result;
       }
 
-      const observation = cachedResult
-        ? `Duplicate call to ${name} skipped (file unchanged). Previous result:\n${cachedResult}\n\nUse this observation to provide the final answer.`
-        : `Warning: Duplicate call to ${name} skipped. Use the existing observations to provide the final answer.`;
-      options.emitObservation?.(id, name, observation, resultMode);
-      this.#recordEvent(name, args, !!cachedResult, cachedResult || observation);
-      return { name, result: cachedResult || null, skipped: true, cached: !!cachedResult };
+      if (isReadOnly && cachedResult) {
+        this.#ui.debug?.(`Read-only tool cache hit: ${name}`);
+        const observation = `Cached result for ${name}:\n${cachedResult}\n\nUse this result; do not repeat the same call unless inputs changed.`;
+        options.emitObservation?.(id, name, observation, resultMode);
+        this.#recordEvent(name, args, true, cachedResult);
+        return {
+          name,
+          result: cachedResult,
+          cached: true,
+          skipped: false,
+        };
+      }
+
+      if (isMutation) {
+        const cachedMutationResult = this.#resultCache.get(callSignature);
+        const observation = cachedMutationResult
+          ? `Duplicate mutation ${name} blocked. Previous result:\n${cachedMutationResult}`
+          : `Duplicate mutation ${name} blocked. Use previous observation or change arguments.`;
+
+        options.emitObservation?.(id, name, observation, resultMode);
+        this.#recordEvent(name, args, !!cachedMutationResult, cachedMutationResult || observation);
+
+        return {
+          name,
+          result: {
+            duplicate: true,
+            skipped: true,
+            message: observation,
+            previousResult: cachedMutationResult || null,
+            suggestedNextAction: 'Use prior result or change arguments before retrying.',
+          },
+          skipped: true,
+          duplicateMutation: true,
+          cached: !!cachedMutationResult,
+        };
+      }
     }
 
     // ============ 基于工作区状态的智能预测（若提供） ============
@@ -475,6 +478,11 @@ export class ToolExecutor {
       );
       finalResult = this.#applySecurityResultPolicy(name, rawResult);
       this.#recordEvent(name, effectiveArgs, true, finalResult);
+
+      if (MUTATION_TOOLS.has(name)) {
+        this.#invalidateReadOnlyHistory();
+      }
+
       // 仅成功执行的调用才加入历史，避免失败后无法重试
       this.#callHistory.add(callSignature);
       if (this.#callHistory.size > 50) {
@@ -656,6 +664,22 @@ export class ToolExecutor {
     } catch {
       /* ignore */
     }
+  }
+
+  #invalidateReadOnlyHistory() {
+    for (const sig of [...this.#callHistory]) {
+      const toolName = sig.split(':', 1)[0];
+      if (READ_ONLY_TOOLS.has(toolName)) {
+        this.#callHistory.delete(sig);
+      }
+    }
+    for (const sig of [...this.#resultCache.keys()]) {
+      const toolName = sig.split(':', 1)[0];
+      if (READ_ONLY_TOOLS.has(toolName)) {
+        this.#resultCache.delete(sig);
+      }
+    }
+    this.#dirToolCache.clear();
   }
 
   #recordEvent(name, args, success, result) {

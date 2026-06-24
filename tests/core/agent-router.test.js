@@ -70,20 +70,23 @@ describe('AgentRouter', () => {
   test('executeToolCall returns cached result for duplicate calls', async () => {
     const callCount = { value: 0 };
     const deps = makeMockDeps();
+    deps.config.workingDirectory = `/tmp/test-agent-${Date.now()}`;
+    deps.config.toolResultCacheEnabled = true;
     const handler = async () => {
       callCount.value++;
       return 'result';
     };
     deps.toolRegistry.get = (name) => ({ handler, category: 'test' });
     deps.toolRegistry.has = (name) => true;
-    deps.config.toolResultCacheEnabled = true;
     const router = new AgentRouter(deps);
 
     const call = { name: 'test', arguments: {} };
     const result1 = await router.executeToolCall(call);
-    const result2 = await router.executeToolCall(call);
     expect(result1).toBeDefined();
     expect(result1.result).toBe('result');
+    expect(callCount.value).toBe(1);
+
+    const result2 = await router.executeToolCall(call);
     expect(result2.cached).toBe(true);
     expect(result2.result).toBe('result');
     expect(callCount.value).toBe(1);

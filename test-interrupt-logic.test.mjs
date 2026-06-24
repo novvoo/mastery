@@ -25,28 +25,28 @@ describe('中断逻辑修复测试', () => {
       name: 'list_dir',
       description: 'List directory contents',
       parameters: { type: 'object', properties: { path: { type: 'string' } } },
-      call: async ({ path }) => `Contents of ${path}: file1.js, file2.js`
+      handler: async ({ path }) => `Contents of ${path}: file1.js, file2.js`
     });
 
     toolRegistry.register({
       name: 'read_file',
       description: 'Read file contents',
       parameters: { type: 'object', properties: { file_path: { type: 'string' } } },
-      call: async ({ file_path }) => `Content of ${file_path}: console.log('hello');`
+      handler: async ({ file_path }) => `Content of ${file_path}: console.log('hello');`
     });
 
     toolRegistry.register({
       name: 'write_file',
       description: 'Write file contents',
       parameters: { type: 'object', properties: { file_path: { type: 'string' }, content: { type: 'string' } } },
-      call: async ({ file_path, content }) => `Wrote to ${file_path}`
+      handler: async ({ file_path, content }) => `Wrote to ${file_path}`
     });
 
     toolRegistry.register({
       name: 'shell',
       description: 'Execute shell command',
       parameters: { type: 'object', properties: { command: { type: 'string' } } },
-      call: async ({ command }) => `Executed: ${command}`
+      handler: async ({ command }) => `Executed: ${command}`
     });
   });
 
@@ -80,7 +80,8 @@ describe('中断逻辑修复测试', () => {
           toolCalls: []
         };
       },
-      getModelName: () => 'mock-model'
+      getModelName: () => 'mock-model',
+      getMaxContextTokens: () => 4096
     };
 
     agent = new ReActAgent(
@@ -122,7 +123,8 @@ describe('中断逻辑修复测试', () => {
           toolCalls: []
         };
       },
-      getModelName: () => 'mock-model'
+      getModelName: () => 'mock-model',
+      getMaxContextTokens: () => 4096
     };
 
     agent = new ReActAgent(
@@ -170,7 +172,8 @@ describe('中断逻辑修复测试', () => {
           ]
         };
       },
-      getModelName: () => 'mock-model'
+      getModelName: () => 'mock-model',
+      getMaxContextTokens: () => 4096
     };
 
     // 注册ask_user工具
@@ -183,7 +186,7 @@ describe('中断逻辑修复测试', () => {
           question: { type: 'string' }
         }
       },
-      call: async ({ question }) => {
+      handler: async ({ question }) => {
         return {
           result: 'needs_user_input',
           question: question,
@@ -219,6 +222,5 @@ describe('中断逻辑修复测试', () => {
     await new Promise(resolve => setTimeout(resolve, 100));
 
     // 等待用户输入时应该允许中断
-    // 注意：实际的中断行为可能需要根据实现进行调整
   });
 });

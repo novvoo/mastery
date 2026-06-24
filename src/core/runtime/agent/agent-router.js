@@ -101,7 +101,7 @@ export class AgentRouter {
     if (this.#toolCallHistory.includes(callSignature) || this.#toolResultCache.has(callSignature)) {
       const cachedResult = this.#toolResultCache.get(callSignature);
       if (cachedResult) {
-        this.#ui.info(`Duplicate tool call: ${name}. Reusing cached result.`);
+        this.#ui.info?.(`Duplicate tool call: ${name}. Reusing cached result.`);
         this.#debugEvent('Tool call cached', {
           reason: 'duplicate',
           tool: name,
