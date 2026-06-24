@@ -10,8 +10,8 @@
  * 原为 agent.js 内联的 #isTermination/#normalizeFinalAnswer/#injectStagnationNudge 等方法。
  */
 
+import { TERMINATION_KEYWORDS } from '../../../utils/patterns.js';
 import {
-  TERMINATION_KEYWORDS,
   STAGNATION_LOOKBACK,
   STAGNATION_SAME_TOOL_LIMIT,
   STAGNATION_NO_MUTATION_LIMIT,

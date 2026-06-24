@@ -385,6 +385,10 @@ export function useIPC() {
     return invoke('llm:saveConfig', config);
   }, [invoke]);
 
+  const toggleModel = useCallback(async (id, enabled) => {
+    return invoke('llm:toggle-model', { id, enabled });
+  }, [invoke]);
+
   const onAgentStart = useCallback((callback) => {
     return subscribe('agent:start', callback);
   }, [subscribe]);
@@ -527,6 +531,7 @@ export function useIPC() {
 
     getLLMConfigStatus,
     saveLLMConfig,
+    toggleModel,
 
     onAgentStart,
     onAgentComplete,

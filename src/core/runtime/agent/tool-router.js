@@ -3,7 +3,7 @@ import {
   CODING_VERB_CONTEXT_PATTERNS,
   MODIFICATION_VERB_PATTERNS,
   isCliCommand,
-} from './support/risk-budget.js';
+} from '../../../utils/patterns.js';
 
 const CORE_READ_TOOLS = [
   'read_file',

@@ -332,6 +332,104 @@ export class WorkspaceState {
     this._addFact({ type, value: content, source: 'manual', priority });
   }
 
+  /**
+   * 记录工具调用结果（通用方法）
+   * 工具结果不应直接作为消息发出，而是存储到 WorkspaceState，
+   * 通过 aggregateContext 方法聚合后在每次迭代时注入到会话中。
+   * @param {string} toolName - 工具名称
+   * @param {object} args - 工具参数
+   * @param {any} result - 工具结果
+   * @param {boolean} success - 是否成功
+   */
+  recordToolResult(toolName, args, result, success = true) {
+    if (!toolName) {
+      return;
+    }
+
+    const filePath = args?.path || args?.file_path || args?.file || args?.target || null;
+
+    if (filePath && typeof filePath === 'string') {
+      try {
+        this.recordReference(filePath, toolName);
+      } catch (_) {}
+    }
+
+    if (toolName === 'read_file' || toolName === 'file_read' || toolName === 'cat_file') {
+      if (filePath) {
+        try {
+          if (result && typeof result === 'object') {
+            const text = result.text ?? result.content ?? result.data ?? null;
+            if (typeof text === 'string' && text.length > 0) {
+              this.setFileSnapshot(filePath, text, toolName);
+            }
+          } else if (typeof result === 'string') {
+            this.setFileSnapshot(filePath, result, toolName);
+          }
+        } catch (_) {}
+      }
+    } else if (toolName === 'write_file' || toolName === 'file_write') {
+      if (filePath) {
+        const content = args?.content ?? args?.text ?? null;
+        if (typeof content === 'string' && content.length > 0) {
+          try {
+            this.setFileSnapshot(filePath, content, toolName);
+          } catch (_) {}
+        }
+      }
+    } else if (toolName === 'list_dir' || toolName === 'glob_search' || toolName === 'glob') {
+      try {
+        const entries = Array.isArray(result?.entries)
+          ? result.entries
+          : Array.isArray(result?.files)
+            ? result.files
+            : Array.isArray(result)
+              ? result
+              : [];
+        if (filePath) {
+          this.recordDirectoryListing(filePath, entries.map(String), toolName);
+        }
+      } catch (_) {}
+    }
+
+    this._addFact({
+      type: 'tool_result',
+      value: {
+        toolName,
+        args: this._normalizeToolArgs(args),
+        result: this._truncateResult(result),
+        success,
+      },
+      source: toolName,
+      priority: success ? 'medium' : 'high',
+    });
+  }
+
+  _normalizeToolArgs(args) {
+    if (!args || typeof args !== 'object') {
+      return {};
+    }
+    const normalized = {};
+    for (const [key, value] of Object.entries(args)) {
+      if (key === 'content' || key === 'text') {
+        normalized[key] = `[content truncated to ${String(value).length} chars]`;
+      } else {
+        normalized[key] = value;
+      }
+    }
+    return normalized;
+  }
+
+  _truncateResult(result) {
+    if (typeof result === 'string') {
+      return result.length > 200 ? result.slice(0, 200) + '...' : result;
+    }
+    if (typeof result === 'object') {
+      const str = JSON.stringify(result);
+      return str.length > 500 ? str.slice(0, 500) + '...' : str;
+    }
+    return String(result);
+  }
+
   // ============ 查询接口 ============
 
   /**

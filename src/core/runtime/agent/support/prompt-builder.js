@@ -16,7 +16,7 @@ import {
   buildCodingTaskOperatingPrompt as buildCodingTaskOperatingPromptText,
   buildSemanticRiskGuidance as buildSemanticRiskGuidanceText,
 } from '../../../coding-prompts.js';
-import { TERMINATION_KEYWORDS } from '../../../agent-constants.js';
+import { TERMINATION_KEYWORDS } from '../../../../utils/patterns.js';
 import { isMutationEvent } from './evidence-verifier.js';
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';

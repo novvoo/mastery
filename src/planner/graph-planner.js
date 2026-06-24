@@ -495,7 +495,7 @@ export class GraphPlanner extends EventEmitter {
    *
    * @param {string} taskDescription - 原始任务描述
    * @param {object} modelProvider - 模型提供者 { chat(messages, opts): string|{text} }
-   * @param {object} options - { availableTools?, workingDirectory? }
+   * @param {object} options - { availableTools?, workingDirectory?, taskProfile? }
    * @returns {Array} 子任务列表 [{ name, description, dependencies, methodologyHint? }]
    */
   async decomposeTaskLLM(taskDescription, modelProvider, options = {}) {
@@ -520,6 +520,12 @@ export class GraphPlanner extends EventEmitter {
       ? this.#buildFeedbackPrompt(feedbackContext)
       : '';
 
+    // ==== 任务分类结果 ====
+    const taskProfile = options.taskProfile || null;
+    const taskProfileSection = taskProfile
+      ? this.#buildTaskProfilePrompt(taskProfile)
+      : '';
+
     const systemPrompt = `你是一个任务规划专家。你的职责是将用户的任务描述分解为结构化的有向无环图(DAG)子任务列表。
 
 ## 方法论工具（LLM 可在对应阶段调用）
@@ -530,6 +536,7 @@ ${methodologyHints}
 - write_file / edit_file: 单文件直接编辑
 - shell: 执行命令、构建、测试
 ${feedbackSection}
+${taskProfileSection}
 ## 输出格式
 严格输出 JSON 数组，每个元素:
 {
@@ -694,6 +701,59 @@ ${toolHint}
 
     lines.push(
       '\n请结合以上历史反馈优化本次分解策略，但不要生搬硬套 —— 每个任务都有其特殊性。',
+    );
+
+    return lines.join('\n');
+  }
+
+  /**
+   * 从任务分类结果构建提示文本。
+   * 注入到 decomposeTaskLLM 的 system prompt 中，让 LLM 根据任务类型调整分解策略。
+   */
+  #buildTaskProfilePrompt(taskProfile) {
+    const lines = ['\n## 任务分类结果（用于调整分解策略）'];
+
+    if (taskProfile.isCodingTask) {
+      lines.push('- 任务类型: 编码任务');
+    }
+    if (taskProfile.isModificationTask) {
+      lines.push('- 任务类型: 修改任务（需要代码变更）');
+    }
+    if (taskProfile.isBugTask) {
+      lines.push('- 任务类型: Bug修复任务');
+      lines.push(
+        '  → 建议分解步骤: 复现问题 → 定位根因 → 编写修复 → 验证修复 → 编写测试',
+      );
+    }
+    if (taskProfile.isDocumentationTask) {
+      lines.push('- 任务类型: 文档任务');
+      lines.push('  → 建议分解步骤: 收集信息 → 组织内容 → 编写文档 → 审查文档');
+    }
+
+    if (taskProfile.riskLevel) {
+      lines.push(`- 风险等级: ${taskProfile.riskLevel}`);
+      if (taskProfile.riskLevel === 'high') {
+        lines.push(
+          '  → 高风险任务: 建议增加验证步骤，每个关键变更后都进行测试',
+        );
+      }
+    }
+
+    if (taskProfile.requiresSemanticRiskReview) {
+      lines.push('- 需要语义风险审查');
+      lines.push(
+        '  → 建议在实现后添加 API/语义风险审查步骤',
+      );
+    }
+
+    if (taskProfile.semanticRiskDomains && taskProfile.semanticRiskDomains.length > 0) {
+      lines.push(
+        `- 语义风险领域: ${taskProfile.semanticRiskDomains.map((d) => d.label).join(', ')}`,
+      );
+    }
+
+    lines.push(
+      '\n请根据以上任务分类结果调整分解策略，确保子任务覆盖所有必要阶段。',
     );
 
     return lines.join('\n');

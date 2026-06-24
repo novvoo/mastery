@@ -62,6 +62,7 @@ mock.module('../../../src/core/dynamic-context-pruning.js', () => ({
 mock.module('../../../src/core/workspace-index.js', () => ({
   WorkspaceIndex: class WorkspaceIndex {
     constructor() {}
+    startPeriodicSync() {}
     stopPeriodicSync() {}
   },
 }));

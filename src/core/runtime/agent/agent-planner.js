@@ -31,6 +31,8 @@ export class AgentPlanner {
   #requiredMutationPaths = new Set();
   /** @type {Set<string>} */
   #completedMutationPaths = new Set();
+  /** @type {boolean} */
+  #useExternalPlan = false;
 
   constructor({ debugEvent, sessionManager, onPlanAdvance }) {
     this.#debugEvent = debugEvent;
@@ -39,10 +41,75 @@ export class AgentPlanner {
   }
 
   /**
+   * 设置外部创建的 plan（由 GraphPlanner 创建）
+   * @param {ExecutionPlan} plan - 外部创建的执行计划
+   */
+  setPlan(plan) {
+    if (!(plan instanceof ExecutionPlan)) {
+      throw new Error('Invalid plan - must be an instance of ExecutionPlan');
+    }
+
+    this.#activePlan = plan;
+    this.#useExternalPlan = true;
+
+    if (plan.status === TaskStatus.RUNNING) {
+      const runningTask = Array.from(plan.tasks.values()).find(
+        (t) => t.status === TaskStatus.RUNNING
+      );
+      if (!runningTask) {
+        const firstReadyTask = Array.from(plan.tasks.values()).find(
+          (t) => t.status === TaskStatus.PENDING && t.dependencies.size === 0
+        );
+        if (firstReadyTask) {
+          firstReadyTask.updateStatus(TaskStatus.RUNNING);
+        }
+      }
+    }
+
+    // 推送计划创建事件到 UI
+    if (this.#onPlanAdvance) {
+      const tasks = plan.toJSON().tasks.map((t) => ({
+        id: t.id,
+        name: t.name,
+        status: t.status,
+        description: t.description,
+        dependencies: [...t.dependencies],
+        scopeFiles: t.scopeFiles || [],
+      }));
+      this.#onPlanAdvance({
+        planId: plan.id,
+        planCreated: true,
+        tasks,
+        total: tasks.length,
+        completed: tasks.filter((t) => t.status === 'completed').length,
+        running: tasks.filter((t) => t.status === 'running').length,
+        failed: tasks.filter((t) => t.status === 'failed').length,
+        planStatus: plan.status,
+        plan: {
+          id: plan.id,
+          name: plan.name,
+          description: plan.description,
+          tasks,
+          status: plan.status,
+          createdAt: plan.createdAt,
+          decompositionMethod: 'external',
+        },
+      });
+    }
+  }
+
+  /**
    * 根据用户输入和任务 profile 创建执行计划（编码任务强制走 plan）
+   * 如果已经设置了外部 plan，则直接使用外部 plan
    * @returns {ExecutionPlan|null}
    */
   createIfNeeded(userInput, taskProfile) {
+    if (this.#useExternalPlan && this.#activePlan) {
+      // 即使使用外部 plan，也需要根据 taskProfile 进行调整
+      this.#adjustPlanByTaskProfile(this.#activePlan, taskProfile);
+      return this.#activePlan;
+    }
+
     const isCoding = taskProfile?.isCodingTask || taskProfile?.isModificationTask || taskProfile?.isBugTask;
     if (!isCoding && !taskProfile?.requiresAutomaticPlanning) {
       return null;
@@ -106,6 +173,36 @@ export class AgentPlanner {
     this.#activePlan = plan;
     this.#requiredMutationPaths = this.#extractRequestedFilePaths(userInput);
     this.#completedMutationPaths = new Set();
+
+    // 推送计划创建事件到 UI
+    if (this.#onPlanAdvance) {
+      const tasks = plan.toJSON().tasks.map((t) => ({
+        id: t.id,
+        name: t.name,
+        status: t.status,
+        description: t.description,
+        dependencies: [...t.dependencies],
+      }));
+      this.#onPlanAdvance({
+        planId: plan.id,
+        planCreated: true,
+        tasks,
+        total: tasks.length,
+        completed: 0,
+        running: 1,
+        failed: 0,
+        planStatus: plan.status,
+        plan: {
+          id: plan.id,
+          name: plan.name,
+          description: plan.description,
+          tasks,
+          status: plan.status,
+          createdAt: plan.createdAt,
+          decompositionMethod: 'auto',
+        },
+      });
+    }
 
     return plan;
   }
@@ -191,9 +288,8 @@ export class AgentPlanner {
 
     this.#completeTaskIf('inspect_workspace', () => isWorkspaceInspectionTool(toolName, args));
     this.#startReadyTasks(plan);
-    this.#completeTaskIf('plan_solution', () => isPlanningTool(toolName));
-    this.#startReadyTasks(plan);
-    this.#completeTaskIf('plan_solution', () => isMutationTool(toolName, args));
+    // plan_solution 可以通过显式的计划工具或直接开始修改来完成
+    this.#completeTaskIf('plan_solution', () => isPlanningTool(toolName) || isMutationTool(toolName, args));
     this.#startReadyTasks(plan);
     this.#recordMutationPath(toolName, args);
     this.#completeTaskIf(
@@ -237,14 +333,27 @@ export class AgentPlanner {
           name: t.name,
           status: t.status,
           description: t.description,
+          dependencies: [...t.dependencies],
+          scopeFiles: t.scopeFiles || [],
         }));
         this.#onPlanAdvance({
+          planId: plan.id,
           tasks,
           total: tasks.length,
           completed: tasks.filter((t) => t.status === 'completed').length,
           running: tasks.filter((t) => t.status === 'running').length,
           failed: tasks.filter((t) => t.status === 'failed').length,
           planStatus: plan.status,
+          plan: {
+            id: plan.id,
+            name: plan.name,
+            description: plan.description,
+            tasks,
+            status: plan.status,
+            createdAt: plan.createdAt,
+            completedAt: plan.completedAt,
+            decompositionMethod: 'auto',
+          },
         });
       }
     }
@@ -362,5 +471,84 @@ export class AgentPlanner {
       }
     }
     return true;
+  }
+
+  /**
+   * 根据 taskProfile 调整外部 plan
+   * 如果外部 plan 缺少必要的任务，则添加它们
+   * @param {ExecutionPlan} plan - 外部 plan
+   * @param {object} taskProfile - 任务分类结果
+   */
+  #adjustPlanByTaskProfile(plan, taskProfile) {
+    if (!plan || !taskProfile) {
+      return;
+    }
+
+    // 如果外部 plan 没有 inspect_workspace 任务，添加它
+    if (!plan.getTask('inspect_workspace')) {
+      plan.addTask({
+        id: 'inspect_workspace',
+        name: 'Inspect workspace',
+        description:
+          'Discover the relevant project structure and existing files before reading or writing.',
+        dependencies: [],
+      });
+    }
+
+    // 如果外部 plan 没有 plan_solution 任务，添加它
+    if (!plan.getTask('plan_solution')) {
+      plan.addTask({
+        id: 'plan_solution',
+        name: 'Plan solution',
+        description: 'Choose the implementation approach and file split for the requested change.',
+        dependencies: ['inspect_workspace'],
+      });
+    }
+
+    // 如果外部 plan 没有 implement_changes 任务，添加它
+    if (!plan.getTask('implement_changes')) {
+      plan.addTask({
+        id: 'implement_changes',
+        name: 'Implement changes',
+        description: 'Create or edit the required files using the smallest necessary changes.',
+        dependencies: ['plan_solution'],
+      });
+    }
+
+    // 如果外部 plan 没有 inspect_changes 任务，添加它
+    if (!plan.getTask('inspect_changes')) {
+      plan.addTask({
+        id: 'inspect_changes',
+        name: 'Inspect changes',
+        description: 'Read back or otherwise inspect the files that were created or edited.',
+        dependencies: ['implement_changes'],
+      });
+    }
+
+    // 如果需要语义风险审查，添加 semantic_risk_review 任务
+    if (taskProfile.requiresSemanticRiskReview && !plan.getTask('semantic_risk_review')) {
+      plan.addTask({
+        id: 'semantic_risk_review',
+        name: 'Semantic/API risk review',
+        description: `Review the changed code against semantic risk domains: ${taskProfile.semanticRiskDomains.map((d) => d.label).join('; ')}.`,
+        dependencies: ['inspect_changes'],
+      });
+    }
+
+    // 如果外部 plan 没有 verify_result 任务，添加它
+    if (!plan.getTask('verify_result')) {
+      plan.addTask({
+        id: 'verify_result',
+        name: 'Verify result',
+        description: 'Run an appropriate command/tool to verify the requested behavior.',
+        dependencies: taskProfile.requiresSemanticRiskReview
+          ? ['semantic_risk_review']
+          : ['inspect_changes'],
+      });
+    }
+
+    // 更新 requiredMutationPaths
+    this.#requiredMutationPaths = this.#extractRequestedFilePaths(plan.description);
+    this.#completedMutationPaths = new Set();
   }
 }

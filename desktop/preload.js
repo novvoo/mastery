@@ -820,7 +820,7 @@ try {
 
     toggleModel: async (modelId, enabled) => {
       try {
-        return await ipcRenderer.invoke('llm:toggle-model', { modelId, enabled });
+        return await ipcRenderer.invoke('llm:toggle-model', { id: modelId, enabled });
       } catch (error) {
         console.error('[Preload] toggleModel 失败:', error);
         throw error;

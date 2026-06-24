@@ -1,11 +1,7 @@
 import { tmpdir, homedir } from 'os';
 import { delimiter, resolve, sep } from 'path';
 import { spawnSync } from 'child_process';
-
-const NETWORK_COMMAND_PATTERN =
-  /\b(curl|wget|ssh|scp|sftp|rsync|nc|netcat|telnet|ftp|git\s+clone|git\s+fetch|git\s+pull|npm\s+install|bun\s+install|pnpm\s+install|yarn\s+install|pip\s+install)\b/i;
-const WRITE_COMMAND_PATTERN =
-  /\b(>|>>|tee|touch|mkdir|rm|rmdir|mv|cp|install|chmod|chown|sed\s+-i|perl\s+-i)\b/i;
+import { NETWORK_COMMAND_PATTERN, WRITE_COMMAND_PATTERN, isNetworkCommand, isWriteCommand } from '../utils/patterns.js';
 
 export class ShellSandboxConfig {
   constructor(options = {}) {
@@ -233,7 +229,7 @@ export class ShellSandbox {
   }
 
   #checkPolicy(command, cwd) {
-    if (!this.config.network.enabled && NETWORK_COMMAND_PATTERN.test(command)) {
+    if (!this.config.network.enabled && isNetworkCommand(command)) {
       return 'Network-like command blocked by shell sandbox policy. Enable AGENT_SANDBOX_NETWORK=true or add an explicit excluded command.';
     }
 
@@ -249,7 +245,7 @@ export class ShellSandbox {
       }
     }
 
-    if (WRITE_COMMAND_PATTERN.test(command)) {
+    if (isWriteCommand(command)) {
       const absolutePaths = extractAbsolutePaths(command);
       const outsideAllowedWrite = absolutePaths.find(
         (path) => !allowedWrites.some((allowedPath) => isPathInside(path, allowedPath)),

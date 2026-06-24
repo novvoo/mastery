@@ -268,6 +268,8 @@ export function createFileSystemTools() {
         }
 
         const results = [];
+        const snapshotStore = ctx.snapshotStore;
+        
         for (const path of paths) {
           const safe = safeResolvePath(ctx.workingDirectory, path);
           if (!safe.ok) {
@@ -281,7 +283,24 @@ export function createFileSystemTools() {
           }
 
           try {
-            const content = await readFile(safe.fullPath, 'utf-8');
+            let content;
+            
+            // 尝试从缓存获取（如果文件未变）
+            if (snapshotStore && typeof snapshotStore.head === 'function') {
+              const currentTag = snapshotStore.head(path);
+              if (currentTag && typeof snapshotStore.byHash === 'function') {
+                const cachedEntry = snapshotStore.byHash(path, currentTag);
+                if (cachedEntry) {
+                  content = cachedEntry.content || cachedEntry.data?.text;
+                }
+              }
+            }
+            
+            // 缓存未命中，从磁盘读取
+            if (!content) {
+              content = await readFile(safe.fullPath, 'utf-8');
+            }
+
             const numbered = content
               .split('\n')
               .map((line, i) => `${i + 1}: ${line}`)

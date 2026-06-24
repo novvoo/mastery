@@ -1,6 +1,7 @@
 import { select, input } from '@inquirer/prompts';
 import { assertSupportedProvider, createModelProviderForSwitch } from './model-provider-factory.js';
 import { enhancedUI } from './enhanced-ui.js';
+import { writeUserEnv, getUserEnvPath } from '../core/runtime/runtime-config.js';
 
 export async function handleModelCommand(agent, args) {
   if (!args || args === 'list') {
@@ -104,8 +105,27 @@ export async function switchModel(agent, provider, model) {
 
     agent.modelProvider = newProvider;
 
+    const envValues = {
+      MODEL_PROVIDER: provider,
+    };
+
+    const providerEnvMap = {
+      openai: 'OPENAI_MODEL',
+      zhipu: 'ZHIPU_MODEL',
+      deepseek: 'DEEPSEEK_MODEL',
+      openrouter: 'OPENROUTER_MODEL',
+    };
+
+    const modelVar = providerEnvMap[provider];
+    if (modelVar) {
+      envValues[modelVar] = model;
+    }
+
+    writeUserEnv(envValues);
+
     spinner.stop();
     enhancedUI.success(`Switched to ${provider}:${model}`);
+    enhancedUI.info(`Configuration saved to ${getUserEnvPath()}`);
     console.log('');
   } catch (error) {
     spinner.stop();

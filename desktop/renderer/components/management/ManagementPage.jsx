@@ -28,6 +28,8 @@ export function ManagementPage({
   onUpdateModel,
   onDeleteModel,
   onToggleModel,
+  toggleError = null,
+  toggleSuccess = null,
   mcpServers,
   onAddMcpServer,
   onDeleteMcpServer,
@@ -153,6 +155,8 @@ export function ManagementPage({
             onUpdateModel={onUpdateModel}
             onDeleteModel={onDeleteModel}
             onToggleModel={onToggleModel}
+            toggleError={toggleError}
+            toggleSuccess={toggleSuccess}
           />
         );
       case 'mcp':

@@ -387,18 +387,56 @@ export class ReActAgent {
     iterationLoop:
     while (iteration < maxIterations) {
       iteration++;
+
+      // 检查中断请求：只有在plan完成或需要用户交互时才允许中断
       if (this.#stopRequested) {
-        return this.#completeRun({
-          success: false,
-          status: 'cancelled',
-          answer: '',
-          reason: 'user_stop',
-          iterations: iteration,
-          startedAt: runStartedAt,
-        });
+        const planComplete = this.#planner.isCompleted();
+        const needsUserInput = this.isWaitingForUserInput;
+
+        if (!planComplete && !needsUserInput) {
+          // plan未完成且不需要用户交互，不应该中断
+          this.#debugEvent('Stop requested but blocked - plan incomplete', {
+            iteration,
+            planStatus: this.#planner.activePlan?.status,
+            planSummary: this.#planner.activePlan ? this.#summarizePlanStatus() : 'no plan',
+          });
+
+          this.#sessionManager.addUserMessage(
+            '⚠️ 执行计划未完成，请继续执行当前任务。不要提前给出最终答案。\n' +
+            '当前计划状态：\n' + this.#summarizePlanStatus()
+          );
+
+          this.#stopRequested = false; // 重置中断标志
+          // 继续执行，不中断
+        } else {
+          // plan已完成或需要用户交互，允许中断
+          return this.#completeRun({
+            success: false,
+            status: 'cancelled',
+            answer: '',
+            reason: needsUserInput ? 'user_stop_waiting_input' : 'user_stop_plan_complete',
+            iterations: iteration,
+            startedAt: runStartedAt,
+          });
+        }
       }
 
       this.#ui.iteration(iteration, maxIterations);
+
+      // 注入工作区上下文（包含最近的工具结果和文件快照）
+      // 工具结果不直接作为消息发出，而是通过 aggregateContext 聚合后注入
+      if (this.#workspaceState) {
+        const ctx = this.#workspaceState.aggregateContext({
+          maxFiles: 6,
+          maxCharsPerFile: 500,
+          maxTotalChars: 2400,
+        });
+        if (ctx && ctx.summary && ctx.files.length > 0) {
+          this.#sessionManager.addSystemMessage(
+            `<!-- workspace-context: files=${ctx.files.join(',')} -->\n${ctx.summary}`,
+          );
+        }
+      }
 
       // 停滞检测 + 上下文管理
       const planSummary = this.#planner.activePlan
@@ -863,34 +901,15 @@ export class ReActAgent {
             isMutationTool(name, r?.args || {}),
           );
 
-          // 添加 Observation 到会话（硬上限截断保护上下文窗口）
-          if (!toolResult.skipped) {
-            const content =
-              typeof toolResult.result === 'string'
-                ? toolResult.result
-                : JSON.stringify(toolResult.result);
-            const processedContent = this.#tokenJuice
-              ? this.#tokenJuice.compressToolResult(content, {
-                  input: { toolName: toolResult.name },
-                }).inlineText || content
-              : content;
-
-            // 硬性截断：防止超大工具结果撑爆上下文窗口
-            const OBSERVATION_HARD_LINES = 80;  // 最多 80 行
-            const OBSERVATION_HARD_CHARS = 2500; // 最多 2500 字符
-            let cappedContent = processedContent;
-            const lines = processedContent.split('\n');
-            if (lines.length > OBSERVATION_HARD_LINES) {
-              cappedContent = lines.slice(0, OBSERVATION_HARD_LINES).join('\n') +
-                `\n... [${lines.length - OBSERVATION_HARD_LINES} more lines truncated to save context]`;
-            }
-            if (cappedContent.length > OBSERVATION_HARD_CHARS) {
-              cappedContent = cappedContent.slice(0, OBSERVATION_HARD_CHARS) +
-                `\n... [content truncated at ${OBSERVATION_HARD_CHARS} chars to save context]`;
-            }
-
-            this.#sessionManager.addUserMessage(
-              `Observation from ${toolResult.name}:\n${cappedContent}`,
+          // 记录工具结果到 WorkspaceState（不直接添加到会话消息）
+          // 工具结果将通过 aggregateContext 在下次迭代时注入到会话中
+          if (!toolResult.skipped && this.#workspaceState) {
+            const success = !toolResult.error && !String(toolResult.result).startsWith('Error:');
+            this.#workspaceState.recordToolResult(
+              toolResult.name,
+              toolCall.arguments || {},
+              toolResult.result,
+              success,
             );
           }
 
@@ -1024,6 +1043,22 @@ export class ReActAgent {
     this.#modelProvider.dispose?.();
   }
 
+  /**
+   * 设置外部创建的 plan（由 GraphPlanner 创建）
+   * @param {ExecutionPlan} plan - 外部创建的执行计划
+   */
+  setPlan(plan) {
+    this.#planner.setPlan(plan);
+  }
+
+  /**
+   * 获取内部 planner 实例（用于测试和高级操作）
+   * @returns {AgentPlanner}
+   */
+  get planner() {
+    return this.#planner;
+  }
+
   // ============================================================
   // 私有方法
   // ============================================================
@@ -1139,6 +1174,25 @@ export class ReActAgent {
       }
     }
     return total;
+  }
+
+  /** 总结当前plan的状态 */
+  #summarizePlanStatus() {
+    if (!this.#planner.activePlan) {
+      return 'No active plan';
+    }
+
+    const plan = this.#planner.activePlan;
+    const tasks = Array.from(plan.tasks.values());
+    const completed = tasks.filter(t => t.status === TaskStatus.COMPLETED).length;
+    const running = tasks.filter(t => t.status === TaskStatus.RUNNING).length;
+    const pending = tasks.filter(t => t.status === TaskStatus.PENDING).length;
+    const blocked = tasks.filter(t => t.status === TaskStatus.BLOCKED).length;
+
+    return `Plan status: ${plan.status}\n` +
+           `Tasks: ${tasks.length} total, ${completed} completed, ${running} running, ${pending} pending, ${blocked} blocked\n` +
+           `Task details:\n` +
+           tasks.map(t => `  - ${t.id}: ${t.status} - ${t.name}`).join('\n');
   }
 
   #recordTokenUsage(messages, response) {

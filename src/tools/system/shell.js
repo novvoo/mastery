@@ -7,35 +7,11 @@ import { ToolCategory } from '../../core/types.js';
 import { classifyLongRunningCommand } from '../../core/long-running-command.js';
 import { createShellSandbox, shellSandboxConfigFromEnv } from '../../sandbox/shell-sandbox.js';
 import { startPtyCommand } from './pty.js';
-
-const DANGEROUS_PATTERNS = [
-  // Destructive rm targeting sensitive paths (with leading-path variations like
-  // /bin/rm, and whitespace variations).
-  /(?:^|[\s;&|`$()])(?:\/\S+\/)?rm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*|-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*|--recursive\s+--force)\s+(?:\/|~|\.\.\/|\$\{|`)/,
-  /(?:^|[\s;&|`$()])(?:\/\S+\/)?rm\s+-[a-zA-Z]*(?:rf|fr)[a-zA-Z]*\s+(?:\/|~|\.\.)/,
-  // mkfs, dd, mkswap and friends.
-  /(?:^|[\s;&|`$()])(?:mkfs|mkswap|dd|shred)\b/,
-  // Writing directly to block/device nodes.
-  />\s*\/dev\//,
-  // World-writable chmod on system paths.
-  /chmod\s+(?:-R\s+)?777\s+(?:\/|~|\.\.)/,
-  // Piping downloads directly into a shell interpreter.
-  /(?:curl|wget|aria2c|python|python3|node)\b[^\n;|&`]*\|\s*(?:ba|z|k|da)?sh\b/,
-  /(?:curl|wget)\b[^\n;|&`]*>\s*(?:\/tmp|\/var)\/.*\.(?:sh|py|pl)\b/,
-  // Classic fork bomb.
-  /:\s*\(\s*\)\s*\{[^{}]*\}\s*;\s*:/,
-  // Attempting to elevate privileges blindly.
-  /\b(?:sudo|su|doas|pkexec)\s+-[a-zA-Z]*[iSs]\b/,
-  // Writing to /etc, /usr, /boot, /proc/sys without a clear sandbox prefix.
-  />\s*(?:\/etc|\/usr|\/boot|\/proc\/sys|\/sys)\//,
-];
+import { DANGEROUS_SHELL_PATTERNS, isDangerousCommand } from '../../utils/patterns.js';
 
 const MAX_COMMAND_LENGTH = 8192;
 const HARD_TIMEOUT_MS = 120000;
 
-/**
- * 异步执行命令（不阻塞事件循环）
- */
 function executeAsync(command, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(options.executable || command, options.args || [], {
@@ -72,7 +48,6 @@ function executeAsync(command, options = {}) {
       reject(error);
     });
 
-    // 超时处理
     const timer = setTimeout(() => {
       killed = true;
       child.kill('SIGTERM');
@@ -127,9 +102,7 @@ export function createShellTool(options = {}) {
         });
       }
 
-      // Safety check -- before any execution. Runs the raw string through each
-      // pattern to catch obvious destructive operations.
-      for (const pattern of DANGEROUS_PATTERNS) {
+      for (const pattern of DANGEROUS_SHELL_PATTERNS) {
         if (pattern.test(cmd)) {
           if (ctx.debug && ctx.ui?.debugEvent) {
             ctx.ui.debugEvent('Shell command blocked', {

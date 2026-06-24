@@ -120,6 +120,11 @@ export function isSemanticRiskReviewTool(toolName, args, profile) {
 // ============== 判断工具结果是否"成功" ==============
 
 export function isSuccessfulToolResult(result) {
+  // 如果是跳过的工具调用，仍然视为成功（因为这是正常的缓存行为）
+  if (result && result.skipped) {
+    return true;
+  }
+  
   const text = typeof result === 'string' ? result : JSON.stringify(result ?? '');
   if (!text.trim()) {
     return false;

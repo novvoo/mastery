@@ -96,6 +96,8 @@ function App() {
   const [llmSetupError, setLLMSetupError] = useState('');
   const [llmSetupSaving, setLLMSetupSaving] = useState(false);
   const [modelConfigs, setModelConfigs] = useState([]);
+  const [toggleModelError, setToggleModelError] = useState(null);
+  const [toggleModelSuccess, setToggleModelSuccess] = useState(null);
   const [mcpServers, setMcpServers] = useState([]);
   const [platformInfo, setPlatformInfo] = useState(null);
   const [windowState, setWindowState] = useState({
@@ -1210,11 +1212,57 @@ function App() {
     setModelConfigs(prev => prev.filter(c => c.id !== id));
   }, []);
 
-  const handleToggleModel = useCallback((id) => {
-    setModelConfigs(prev => prev.map(c =>
-      c.id === id ? { ...c, enabled: !c.enabled } : c
-    ));
-  }, []);
+  const handleToggleModel = useCallback(async (id) => {
+    try {
+      setToggleModelError(null);
+      setToggleModelSuccess(null);
+      const config = modelConfigs.find(c => c.id === id);
+      if (!config) return;
+
+      const newEnabled = !config.enabled;
+      
+      // 如果要启用某个模型，先禁用所有其他模型
+      if (newEnabled) {
+        setModelConfigs(prev => prev.map(c => ({
+          ...c,
+          enabled: c.id === id ? true : false
+        })));
+      } else {
+        // 如果要禁用当前激活的模型，不允许
+        if (config.enabled) {
+          setToggleModelError('不能禁用当前激活的模型，请先启用其他模型');
+          return;
+        }
+        setModelConfigs(prev => prev.map(c =>
+          c.id === id ? { ...c, enabled: false } : c
+        ));
+      }
+
+      // 调用后端保存
+      const result = await ipc.toggleModel(id, newEnabled);
+      
+      if (!result.success) {
+        setToggleModelError(result.error || '操作失败');
+        // 回滚状态
+        setModelConfigs(prev => prev.map(c =>
+          c.id === id ? { ...c, enabled: !newEnabled } : c
+        ));
+      } else {
+        // 显示成功信息
+        if (result.provider && result.model) {
+          setToggleModelSuccess(`✅ 已切换到 ${result.provider}:${result.model}，配置已同步到 .env`);
+          // 3秒后清除成功提示
+          setTimeout(() => setToggleModelSuccess(null), 3000);
+        }
+      }
+    } catch (error) {
+      setToggleModelError(error.message);
+      // 回滚状态
+      setModelConfigs(prev => prev.map(c =>
+        c.id === id ? { ...c, enabled: c.enabled } : c
+      ));
+    }
+  }, [modelConfigs]);
 
   // ===== MCP 管理 Handlers =====
   const handleAddMcpServer = useCallback((server) => {
@@ -1508,6 +1556,8 @@ function App() {
           onUpdateModel={handleUpdateModel}
           onDeleteModel={handleDeleteModel}
           onToggleModel={handleToggleModel}
+          toggleError={toggleModelError}
+          toggleSuccess={toggleModelSuccess}
           mcpServers={mcpServers}
           onAddMcpServer={handleAddMcpServer}
           onDeleteMcpServer={handleDeleteMcpServer}

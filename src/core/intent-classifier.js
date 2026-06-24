@@ -16,7 +16,8 @@ import {
   computeIterationBudget,
   getCompletionGates,
 } from './risk-budget.js';
-import { SEMANTIC_RISK_DOMAINS, MAX_ITERATIONS_DEFAULT } from './agent-constants.js';
+import { SEMANTIC_RISK_DOMAINS } from '../utils/patterns.js';
+import { MAX_ITERATIONS_DEFAULT } from './agent-constants.js';
 
 const DEFAULT_CONFIDENCE_THRESHOLD = 0.75;
 

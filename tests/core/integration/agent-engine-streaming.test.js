@@ -54,6 +54,7 @@ mock.module('../../../src/core/dynamic-context-pruning.js', () => ({
 mock.module('../../../src/core/workspace-index.js', () => ({
   WorkspaceIndex: class WorkspaceIndex {
     constructor() {}
+    startPeriodicSync() {}
     stopPeriodicSync() {}
   },
 }));
@@ -246,8 +247,8 @@ describe('AgentEngine Streaming', () => {
     const streamingModelProvider = {
       async chatStream(messages, options = {}) {
         const innerEvents = (async function* () {
-          yield { type: StreamEventType.TOOL_CALL_DELTA, name: 'read_file', arguments: '{"path":' };
-          yield { type: StreamEventType.TOOL_CALL_DELTA, arguments: '"a.txt"}' };
+          yield { type: StreamEventType.TOOL_CALL_DELTA, index: 0, name: 'read_file', arguments: '{"path":' };
+          yield { type: StreamEventType.TOOL_CALL_DELTA, index: 0, arguments: '"a.txt"}' };
           yield { type: StreamEventType.FINISH, finishReason: 'tool_use' };
         })();
 

@@ -287,12 +287,36 @@ export function saveAllModelConfigs(ctx, configs) {
 export function saveSingleModelConfig(ctx, config) {
   const configs = readAllModelConfigs(ctx);
   const idx = configs.findIndex(c => c.id === config.id);
+  
   if (idx >= 0) {
+    // 如果启用了某个模型，先禁用所有其他模型
+    if (config.enabled) {
+      configs.forEach((c, i) => {
+        configs[i].enabled = c.id === config.id ? true : false;
+      });
+    }
     configs[idx] = { ...configs[idx], ...config };
   } else {
+    // 新添加的模型如果启用，先禁用所有其他模型
+    if (config.enabled) {
+      configs.forEach((c, i) => {
+        configs[i].enabled = false;
+      });
+    }
     configs.push(config);
   }
-  return saveAllModelConfigs(ctx, configs);
+  
+  const result = saveAllModelConfigs(ctx, configs);
+  
+  // 如果保存的模型是启用的，同步到 .env
+  if (config.enabled) {
+    const activeConfig = configs.find(c => c.id === config.id);
+    if (activeConfig) {
+      syncActiveModelToEnv(ctx, activeConfig);
+    }
+  }
+  
+  return result;
 }
 
 export function deleteModelConfig(ctx, id) {
@@ -302,9 +326,81 @@ export function deleteModelConfig(ctx, id) {
 }
 
 export function toggleModelConfig(ctx, id, enabled) {
+  console.log(`🔍 toggleModelConfig called: id=${id}, enabled=${enabled}, ctx.userEnvPath=${ctx.userEnvPath}`);
+  
   const configs = readAllModelConfigs(ctx);
-  const updated = configs.map(c =>
-    c.id === id ? { ...c, enabled: enabled !== undefined ? enabled : !c.enabled } : c
-  );
-  return saveAllModelConfigs(ctx, updated);
+  console.log(`📋 Current configs: ${JSON.stringify(configs)}`);
+  
+  // 如果启用某个模型，先禁用所有其他模型（单选模式）
+  if (enabled) {
+    const updated = configs.map(c => ({
+      ...c,
+      enabled: c.id === id ? true : false
+    }));
+    saveAllModelConfigs(ctx, updated);
+    
+    // 将启用的模型同步到 .env
+    const activeConfig = updated.find(c => c.id === id);
+    console.log(`🎯 Active config to sync: ${JSON.stringify(activeConfig)}`);
+    
+    const syncResult = activeConfig ? syncActiveModelToEnv(ctx, activeConfig) : { success: false };
+    
+    console.log(`📝 Sync result: ${JSON.stringify(syncResult)}`);
+    
+    return { 
+      success: syncResult.success, 
+      configs: updated,
+      provider: syncResult.provider,
+      model: syncResult.model,
+      error: syncResult.error,
+      envPath: ctx.userEnvPath
+    };
+  } else {
+    // 如果禁用当前模型，不允许（至少需要一个启用的模型）
+    const currentActive = configs.find(c => c.enabled);
+    if (currentActive && currentActive.id === id) {
+      return { success: false, error: '不能禁用当前激活的模型，请先启用其他模型' };
+    }
+    
+    const updated = configs.map(c => c.id === id ? { ...c, enabled: false } : c);
+    return saveAllModelConfigs(ctx, updated);
+  }
+}
+
+/**
+ * 将激活的模型配置同步到 .env 文件
+ */
+function syncActiveModelToEnv(ctx, config) {
+  const provider = config.provider || 'openai';
+  const requirement = getProviderRequirement(provider);
+  if (!requirement) {
+    console.warn(`不支持的模型提供商: ${provider}`);
+    return { success: false, error: `不支持的模型提供商: ${provider}` };
+  }
+
+  // 检查必要字段
+  if (!config.apiKey || !config.model) {
+    console.warn('模型配置不完整，无法同步到 .env');
+    return { success: false, error: '模型配置不完整（缺少 API Key 或模型名称）' };
+  }
+
+  const values = {
+    MODEL_PROVIDER: provider,
+    [requirement.keyVar]: config.apiKey,
+    [requirement.modelVar]: config.model
+  };
+
+  if (config.baseUrl) {
+    values[requirement.baseUrlVar] = config.baseUrl;
+  }
+
+  try {
+    writeUserEnv(values, { envPath: ctx.userEnvPath });
+    applyRuntimeValues(values);
+    console.log(`✅ 已同步激活模型到 .env: ${provider}:${config.model}`);
+    return { success: true, provider, model: config.model };
+  } catch (error) {
+    console.error(`❌ 同步模型配置失败: ${error.message}`);
+    return { success: false, error: error.message };
+  }
 }

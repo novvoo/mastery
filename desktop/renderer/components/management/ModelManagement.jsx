@@ -50,6 +50,8 @@ export default function ModelManagement({
   onUpdateModel,
   onDeleteModel,
   onToggleModel,
+  toggleError = null,
+  toggleSuccess = null,
 }) {
   const [expandedProviders, setExpandedProviders] = useState(() => {
     const init = {};
@@ -59,6 +61,7 @@ export default function ModelManagement({
   const [editingId, setEditingId] = useState(null);
 
   const grouped = groupByProvider(modelConfigs);
+  const activeModel = modelConfigs.find(c => c.enabled);
 
   const toggleProvider = useCallback((provider) => {
     setExpandedProviders(prev => ({ ...prev, [provider]: !prev[provider] }));
@@ -92,6 +95,52 @@ export default function ModelManagement({
           {t('management.models_desc')}
         </p>
       </div>
+
+      {activeModel && (
+        <div style={{
+          padding: '12px 16px',
+          marginBottom: '12px',
+          backgroundColor: 'var(--success-soft)',
+          borderRadius: '6px',
+          border: '1px solid var(--success-color)',
+        }}>
+          <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--success-color)' }}>
+            ✓ 当前激活模型: {activeModel.name || activeModel.provider} ({activeModel.model})
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+            配置已同步到 CLI 共享的 .env 文件
+          </div>
+        </div>
+      )}
+
+      {toggleSuccess && (
+        <div style={{
+          padding: '12px 16px',
+          marginBottom: '12px',
+          backgroundColor: 'var(--success-soft)',
+          borderRadius: '6px',
+          border: '1px solid var(--success-color)',
+          animation: 'fadeIn 0.3s ease-in-out',
+        }}>
+          <div style={{ fontSize: '13px', color: 'var(--success-color)' }}>
+            {toggleSuccess}
+          </div>
+        </div>
+      )}
+
+      {toggleError && (
+        <div style={{
+          padding: '12px 16px',
+          marginBottom: '12px',
+          backgroundColor: 'var(--error-soft)',
+          borderRadius: '6px',
+          border: '1px solid var(--error-color)',
+        }}>
+          <div style={{ fontSize: '13px', color: 'var(--error-color)' }}>
+            ⚠️ {toggleError}
+          </div>
+        </div>
+      )}
 
       {PROVIDER_ORDER.map(provider => {
         const option = LLM_PROVIDER_OPTIONS[provider];
@@ -134,6 +183,7 @@ export default function ModelManagement({
                     onCancel={() => setEditingId(null)}
                     onDelete={() => handleDelete(config.id)}
                     onToggle={() => onToggleModel && onToggleModel(config.id)}
+                    isActive={activeModel?.id === config.id}
                   />
                 ))}
                 <button
@@ -163,6 +213,7 @@ function ModelConfigCard({
   onCancel,
   onDelete,
   onToggle,
+  isActive = false,
 }) {
   const [form, setForm] = useState({
     name: config.name,
@@ -182,7 +233,13 @@ function ModelConfigCard({
   const isConfigured = config.apiKey && config.model;
 
   return (
-    <div style={styles.modelCard}>
+    <div style={{
+      ...styles.modelCard,
+      ...(isActive ? {
+        border: '1px solid var(--success-color)',
+        backgroundColor: 'var(--success-soft)',
+      } : {})
+    }}>
       {/* Header row: name + enabled switch + actions */}
       <div style={styles.modelCardHeader}>
         <div style={styles.modelCardInfo}>
@@ -196,8 +253,12 @@ function ModelConfigCard({
             />
           ) : (
             <>
-              <span style={styles.modelCardName}>
+              <span style={{
+                ...styles.modelCardName,
+                ...(isActive ? { color: 'var(--success-color)', fontWeight: 700 } : {})
+              }}>
                 {config.name || providerOption.label}
+                {isActive && ' ✓'}
               </span>
               <span style={{
                 fontSize: '10px',
@@ -247,6 +308,7 @@ function ModelConfigCard({
             style={{ ...styles.modelActionBtn, color: 'var(--error-color)' }}
             onClick={onDelete}
             title={t('management.delete_model')}
+            disabled={isActive}
           >
             ✕
           </button>

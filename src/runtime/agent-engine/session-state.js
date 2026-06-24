@@ -8,6 +8,7 @@
  */
 
 import { ReActAgent } from '../../core/runtime/agent/agent.js';
+import { IntentClassifier } from '../../core/intent-classifier.js';
 import { HOOKS } from '../plugin-system.js';
 import { RuntimeEvent } from '../types.js';
 
@@ -59,16 +60,41 @@ export async function processInput(ctx, input, options = {}) {
     timestamp: ctx.state.startTime,
   });
 
+  // 先进行意图分析，然后根据意图分析的结果来创建 plan
+  let taskProfile = {
+    isCodingTask: false,
+    isModificationTask: false,
+    riskLevel: 'low',
+    semanticRiskDomains: [],
+    requiresSemanticRiskReview: false,
+  };
+  
+  if (ctx.modelProvider && typeof ctx.modelProvider.chat === 'function') {
+    try {
+      const intentClassifier = new IntentClassifier(ctx.modelProvider, ctx.toolRegistry);
+      const intent = intentClassifier.classify(input);
+      taskProfile = intentClassifier.classifyTask(input, intent) || taskProfile;
+      
+      if (ctx.config.debug) {
+        console.log('[IntentClassifier] 任务分类结果:', JSON.stringify(taskProfile));
+      }
+    } catch (err) {
+      if (ctx.config.debug) {
+        console.warn('[IntentClassifier] 意图分析失败:', err.message);
+      }
+    }
+  }
+
   // 高级图规划（LLM 驱动 + 模板回退）
   let planContext = null;
+  let executionPlan = null;
   try {
     const taskName = input.substring(0, 48).trim();
-    const plan = ctx.graphPlanner.createPlan(taskName, input, {
+    executionPlan = ctx.graphPlanner.createPlan(taskName, input, {
       workingDirectory: ctx.config.workingDirectory,
     });
-    ctx.state.currentPlanId = plan.id;
+    ctx.state.currentPlanId = executionPlan.id;
 
-    // 优先 LLM 分解，回退模板
     let subtaskDefs;
     let decompositionMethod = 'template';
 
@@ -86,16 +112,19 @@ export async function processInput(ctx, input, options = {}) {
         subtaskDefs = await ctx.graphPlanner.decomposeTaskLLM(input, ctx.modelProvider, {
           availableTools,
           workingDirectory: ctx.config.workingDirectory,
+          taskProfile,
         });
         decompositionMethod = 'llm';
       } catch (llmErr) {
-        // LLM 失败 → 回退模板
         subtaskDefs = ctx.graphPlanner.decomposeTask(null, input, { template: 'default' });
       }
     } else {
       const lowerInput = input.toLowerCase();
       let template = 'default';
-      if (lowerInput.includes('review') || lowerInput.includes('审查')) {
+      // 根据意图分析的结果选择模板，而不是简单的关键词匹配
+      if (taskProfile.isBugTask) {
+        template = 'default';
+      } else if (lowerInput.includes('review') || lowerInput.includes('审查')) {
         template = 'code_review';
       } else if (lowerInput.includes('refactor') || lowerInput.includes('重构')) {
         template = 'refactor';
@@ -103,84 +132,24 @@ export async function processInput(ctx, input, options = {}) {
       subtaskDefs = ctx.graphPlanner.decomposeTask(null, input, { template });
     }
 
-    // 将 LLM 分解结果注册到 plan
     if (decompositionMethod === 'llm') {
       for (const def of subtaskDefs) {
-        plan.addTask(def);
+        executionPlan.addTask(def);
       }
     }
 
-    const tasksList = Array.from(plan.tasks.values()).map((t) => ({
-      id: t.id,
-      name: t.name,
-      description: t.description,
-      status: t.status,
-      dependencies: [...t.dependencies],
-      scopeFiles: t.scopeFiles || [],
-    }));
-
-    ctx.eventBus.emit(RuntimeEvent.EXECUTION_PLAN_CREATED, {
-      planId: plan.id,
-      taskCount: tasksList.length,
-      plan: {
-        id: plan.id,
-        name: plan.name,
-        description: plan.description,
-        tasks: tasksList,
-        status: plan.status,
-        createdAt: plan.createdAt,
-        decompositionMethod,
-      },
-      summary:
-        decompositionMethod === 'llm'
-          ? `AI 已分析并分解为 ${tasksList.length} 个子任务`
-          : `计划已分解为 ${tasksList.length} 个子任务`,
-    });
-
-    ctx.eventBus.emit(RuntimeEvent.EXECUTION_PLAN_UPDATED, {
-      plan: {
-        id: plan.id,
-        name: plan.name,
-        description: plan.description,
-        tasks: tasksList,
-        status: plan.status,
-        createdAt: plan.createdAt,
-        decompositionMethod,
-      },
-      summary: `计划: ${plan.name}`,
-      update: { after: `${tasksList.length} 个子任务，方法=${decompositionMethod}` },
-    });
-
-    // 构建计划上下文文本（注入到 Agent 执行流程中，含文件作用域）
-    const taskLines = tasksList
-      .map(
-        (t) => {
-          const scopeStr = t.scopeFiles && t.scopeFiles.length > 0
-            ? ` 📁 [${t.scopeFiles.join(', ')}]`
-            : '';
-          return `- ${t.id}: ${t.name} [${t.status}]${scopeStr} - ${t.description}${t.dependencies.length > 0 ? ` (依赖: ${t.dependencies.join(', ')})` : ''}`;
-        },
-      )
-      .join('\n');
-
-    // 收集所有子任务的文件作用域作为整体任务边界
-    const allScopeFiles = [...new Set(tasksList.flatMap(t => t.scopeFiles || []))];
-
-    planContext = {
-      planId: plan.id,
-      taskCount: tasksList.length,
-      method: decompositionMethod,
-      text:
-        `## 执行计划 (${decompositionMethod === 'llm' ? 'AI 生成' : '模板生成'})\n` +
-        `任务: ${input.substring(0, 200)}\n\n` +
-        `子任务 DAG (${tasksList.length} 个):\n${taskLines}\n\n` +
-        `📋 整体任务文件范围: ${allScopeFiles.length > 0 ? allScopeFiles.join(', ') : '待确定'}\n` +
-        `文件作用域由引擎强制执行。编码变更必须在完成前做运行时验证（test/lint/build）。`,
-    };
+    executionPlan.status = 'running';
+    executionPlan.startedAt = Date.now();
+    const firstReadyTask = Array.from(executionPlan.tasks.values()).find(
+      (t) => t.status === 'pending' && t.dependencies.size === 0
+    );
+    if (firstReadyTask) {
+      firstReadyTask.updateStatus('running');
+    }
 
     if (ctx.config.debug) {
       console.log(
-        `[GraphPlanner] 创建执行计划 (${decompositionMethod}), ${tasksList.length} 个子任务`,
+        `[GraphPlanner] 创建执行计划 (${decompositionMethod}), ${Array.from(executionPlan.tasks.values()).length} 个子任务`,
       );
     }
   } catch (planError) {
@@ -188,16 +157,7 @@ export async function processInput(ctx, input, options = {}) {
       console.warn('[GraphPlanner] 任务规划失败，降级为线性执行:', planError.message);
     } catch {}
     ctx.state.currentPlanId = null;
-    planContext = null;
-  }
-
-  // 将计划上下文注入 session，使 Agent 可感知计划阶段
-  if (planContext && ctx.sessionManager) {
-    try {
-      ctx.sessionManager.addSystemMessage(
-        `[PlanContext] planId=${planContext.planId} method=${planContext.method}\n${planContext.text}`,
-      );
-    } catch {}
+    executionPlan = null;
   }
 
   // 创建 Agent 实例（注入 onPlanAdvance 用于实时推送 plan 进度）
@@ -217,25 +177,78 @@ export async function processInput(ctx, input, options = {}) {
       intentClassification: ctx.config.intentClassification !== false,
       toolResultCacheEnabled: ctx.config.toolResultCacheEnabled,
       session: ctx.sessionManager,
-      // plan 进度回调：AgentPlanner.advance() 时实时推送 plan 更新到事件总线
       onPlanAdvance: (progress) => {
+        if (progress.planCreated) {
+          ctx.eventBus.emit(RuntimeEvent.EXECUTION_PLAN_CREATED, {
+            planId: progress.planId,
+            taskCount: progress.total,
+            plan: progress.plan,
+            summary: `AI 已分析并分解为 ${progress.total} 个子任务`,
+          });
+          ctx.state.currentPlanId = progress.planId;
+
+          const taskLines = progress.tasks
+            .map(
+              (t) => {
+                const scopeStr = t.scopeFiles && t.scopeFiles.length > 0
+                  ? ` 📁 [${t.scopeFiles.join(', ')}]`
+                  : '';
+                return `- ${t.id}: ${t.name} [${t.status}]${scopeStr} - ${t.description}${t.dependencies.length > 0 ? ` (依赖: ${t.dependencies.join(', ')})` : ''}`;
+              },
+            )
+            .join('\n');
+
+          planContext = {
+            planId: progress.planId,
+            taskCount: progress.total,
+            method: progress.plan.decompositionMethod,
+            text:
+              `## 执行计划 (${progress.plan.decompositionMethod === 'auto' ? '自动生成' : progress.plan.decompositionMethod === 'external' ? '外部生成' : '模板生成'})\n` +
+              `任务: ${input.substring(0, 200)}\n\n` +
+              `子任务 DAG (${progress.total} 个):\n${taskLines}\n\n` +
+              `📋 整体任务文件范围: 待确定\n` +
+              `文件作用域由引擎强制执行。编码变更必须在完成前做运行时验证（test/lint/build）。`,
+          };
+
+          if (ctx.sessionManager) {
+            try {
+              ctx.sessionManager.addSystemMessage(
+                `[PlanContext] planId=${planContext.planId} method=${planContext.method}\n${planContext.text}`,
+              );
+            } catch {}
+          }
+        }
+
         ctx.eventBus.emit(RuntimeEvent.EXECUTION_PLAN_UPDATED, {
           plan: {
+            id: progress.planId,
+            name: progress.plan?.name,
+            description: progress.plan?.description,
             tasks: progress.tasks.map((t) => ({
               id: t.id,
               name: t.name,
               status: t.status,
               description: t.description,
+              dependencies: t.dependencies || [],
+              scopeFiles: t.scopeFiles || [],
             })),
             status: progress.planStatus,
+            createdAt: progress.plan?.createdAt,
+            decompositionMethod: progress.plan?.decompositionMethod,
           },
           summary: `进度: ${progress.completed}/${progress.total}`,
+          update: { after: `${progress.completed}/${progress.total} 完成` },
         });
       },
     },
     uIFacade,
   );
   ctx.agent = agent;
+
+  // 将 GraphPlanner 创建的 plan 传递给 Agent
+  if (executionPlan) {
+    agent.setPlan(executionPlan);
+  }
 
   // 启动 agent.run() 但不 await —— suspend/resume 模式下 ask_user 会挂起 Promise
   // 启动 agent.run() 作为后台任务

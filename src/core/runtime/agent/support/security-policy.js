@@ -496,7 +496,7 @@ export class SecurityPolicy {
       scope: this.#globalPolicy.defaultScope,
       isConcurrencySafe: inferred.isConcurrencySafe ?? true,
       hasExternalEffect: inferred.hasExternalEffect ?? false,
-      maxResultChars: 100000,
+      maxResultChars: 10000,
       requiresApproval: inferred.requiresApproval ?? false,
       description: '(default policy — tool was not explicitly registered)',
       rateLimit: null,
