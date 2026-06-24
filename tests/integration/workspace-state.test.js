@@ -40,7 +40,10 @@ describe('WorkspaceState（多文件上下文聚合）', () => {
     for (let i = 0; i < 5; i++) {
       ws.setFileSnapshot(`/f-${i}.js`, 'x'.repeat(2000));
     }
-    const { summary, totalChars } = ws.aggregateContext({ maxTotalChars: 1500, maxCharsPerFile: 400 });
+    const { summary, totalChars } = ws.aggregateContext({
+      maxTotalChars: 1500,
+      maxCharsPerFile: 400,
+    });
     expect(totalChars).toBeLessThanOrEqual(1500);
     expect(typeof summary).toBe('string');
   });

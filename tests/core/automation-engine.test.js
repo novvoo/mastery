@@ -102,8 +102,8 @@ describe('AutomationEngine', () => {
     engine.registerTrigger('t2', { type: TriggerType.EVENT });
     const list = engine.listTriggers();
     expect(list).toHaveLength(2);
-    expect(list.map(t => t.id)).toContain('t1');
-    expect(list.map(t => t.id)).toContain('t2');
+    expect(list.map((t) => t.id)).toContain('t1');
+    expect(list.map((t) => t.id)).toContain('t2');
   });
 
   test('createWorkflow creates workflow and emits event', () => {
@@ -135,8 +135,18 @@ describe('AutomationEngine', () => {
     const callOrder = [];
     engine.createWorkflow('wf1', {
       steps: [
-        { execute: () => { callOrder.push('step1'); return { a: 1 }; } },
-        { execute: (ctx) => { callOrder.push('step2'); expect(ctx.a).toBe(1); } },
+        {
+          execute: () => {
+            callOrder.push('step1');
+            return { a: 1 };
+          },
+        },
+        {
+          execute: (ctx) => {
+            callOrder.push('step2');
+            expect(ctx.a).toBe(1);
+          },
+        },
       ],
     });
 
@@ -157,7 +167,11 @@ describe('AutomationEngine', () => {
   test('executeWorkflow with onError stop sets status to failed on error', async () => {
     engine.createWorkflow('wf1', {
       steps: [
-        { execute: () => { throw new Error('Step failed'); } },
+        {
+          execute: () => {
+            throw new Error('Step failed');
+          },
+        },
       ],
       onError: 'stop',
     });
@@ -171,7 +185,14 @@ describe('AutomationEngine', () => {
     let attempt = 0;
     engine.createWorkflow('wf1', {
       steps: [
-        { execute: () => { attempt++; if (attempt < 2) {throw new Error('retry me');} } },
+        {
+          execute: () => {
+            attempt++;
+            if (attempt < 2) {
+              throw new Error('retry me');
+            }
+          },
+        },
       ],
       onError: 'retry',
       maxRetries: 3,
@@ -186,7 +207,7 @@ describe('AutomationEngine', () => {
     engine.createWorkflow('wf1', { steps: [] });
     const result = engine.pauseWorkflow('wf1');
     expect(result).toBe(true);
-    const wf = engine.listWorkflows().find(w => w.id === 'wf1');
+    const wf = engine.listWorkflows().find((w) => w.id === 'wf1');
     expect(wf.status).toBe(WorkflowStatus.PAUSED);
   });
 
@@ -317,7 +338,12 @@ describe('AutomationEngine', () => {
   test('executeWorkflow merges initial context', async () => {
     engine.createWorkflow('wf1', {
       steps: [
-        { execute: (ctx) => { expect(ctx.key).toBe('value'); return { result: true }; } },
+        {
+          execute: (ctx) => {
+            expect(ctx.key).toBe('value');
+            return { result: true };
+          },
+        },
       ],
       context: { existing: true },
     });
@@ -330,7 +356,9 @@ describe('AutomationEngine', () => {
     let called = false;
     engine.createWorkflow('wf1', {
       steps: [
-        (ctx) => { called = true; },
+        (ctx) => {
+          called = true;
+        },
       ],
     });
 

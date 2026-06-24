@@ -10,13 +10,18 @@ let testDir;
 let agentMemory;
 
 beforeEach(() => {
-  testDir = join(tmpdir(), `topic-memory-test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+  testDir = join(
+    tmpdir(),
+    `topic-memory-test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+  );
   mkdirSync(testDir, { recursive: true });
   agentMemory = new AgentMemory(testDir, null);
 });
 
 afterEach(() => {
-  try { rmSync(testDir, { recursive: true, force: true }); } catch {}
+  try {
+    rmSync(testDir, { recursive: true, force: true });
+  } catch {}
 });
 
 // =====================================================
@@ -24,11 +29,15 @@ afterEach(() => {
 // =====================================================
 describe('inferTopic', () => {
   test('infers debugging from error content', () => {
-    expect(inferTopic('project', [], 'fix bug in login flow error trace')).toBe(MemoryTopic.DEBUGGING);
+    expect(inferTopic('project', [], 'fix bug in login flow error trace')).toBe(
+      MemoryTopic.DEBUGGING,
+    );
   });
 
   test('infers architecture from design content', () => {
-    expect(inferTopic('project', [], 'module structure and pipeline design pattern')).toBe(MemoryTopic.ARCHITECTURE);
+    expect(inferTopic('project', [], 'module structure and pipeline design pattern')).toBe(
+      MemoryTopic.ARCHITECTURE,
+    );
   });
 
   test('infers conventions from style tags', () => {
@@ -36,23 +45,33 @@ describe('inferTopic', () => {
   });
 
   test('infers dependencies from package content', () => {
-    expect(inferTopic('reference', [], 'upgrade npm dependency to latest version')).toBe(MemoryTopic.DEPENDENCIES);
+    expect(inferTopic('reference', [], 'upgrade npm dependency to latest version')).toBe(
+      MemoryTopic.DEPENDENCIES,
+    );
   });
 
   test('infers performance from optimization content', () => {
-    expect(inferTopic('project', [], 'optimize slow query with cache layer')).toBe(MemoryTopic.PERFORMANCE);
+    expect(inferTopic('project', [], 'optimize slow query with cache layer')).toBe(
+      MemoryTopic.PERFORMANCE,
+    );
   });
 
   test('infers security from auth content', () => {
-    expect(inferTopic('reference', [], 'csrf token validation vulnerability fix')).toBe(MemoryTopic.SECURITY);
+    expect(inferTopic('reference', [], 'csrf token validation vulnerability fix')).toBe(
+      MemoryTopic.SECURITY,
+    );
   });
 
   test('infers testing from spec content', () => {
-    expect(inferTopic('project', [], 'unit test coverage for assert module')).toBe(MemoryTopic.TESTING);
+    expect(inferTopic('project', [], 'unit test coverage for assert module')).toBe(
+      MemoryTopic.TESTING,
+    );
   });
 
   test('infers deployment from CI content', () => {
-    expect(inferTopic('project', [], 'docker deploy pipeline helm chart')).toBe(MemoryTopic.DEPLOYMENT);
+    expect(inferTopic('project', [], 'docker deploy pipeline helm chart')).toBe(
+      MemoryTopic.DEPLOYMENT,
+    );
   });
 
   test('infers api from endpoint content', () => {
@@ -76,14 +95,24 @@ describe('StructuredMemory topic system', () => {
     const topics = agentMemory.listTopics();
     expect(topics.length).toBeGreaterThan(0);
 
-    const apiTopic = topics.find(t => t.topic === 'api');
+    const apiTopic = topics.find((t) => t.topic === 'api');
     expect(apiTopic).toBeTruthy();
     expect(apiTopic.entryCount).toBe(1);
   });
 
   test('readTopic returns content with explicit topic', () => {
-    agentMemory.addWithTopic('project', 'Architecture Overview', 'Monorepo with packages/* layout', { topic: 'architecture' });
-    agentMemory.addWithTopic('project', 'Module Design', 'Core module uses hexagonal architecture', { topic: 'architecture' });
+    agentMemory.addWithTopic(
+      'project',
+      'Architecture Overview',
+      'Monorepo with packages/* layout',
+      { topic: 'architecture' },
+    );
+    agentMemory.addWithTopic(
+      'project',
+      'Module Design',
+      'Core module uses hexagonal architecture',
+      { topic: 'architecture' },
+    );
 
     const archContent = agentMemory.readTopic('architecture');
     expect(archContent).toBeTruthy();
@@ -94,10 +123,12 @@ describe('StructuredMemory topic system', () => {
   });
 
   test('addWithTopic allows explicit topic selection', () => {
-    agentMemory.addWithTopic('reference', 'Git Config', 'Use rebase strategy', { topic: 'general' });
+    agentMemory.addWithTopic('reference', 'Git Config', 'Use rebase strategy', {
+      topic: 'general',
+    });
 
     const topics = agentMemory.listTopics();
-    const generalTopic = topics.find(t => t.topic === 'general');
+    const generalTopic = topics.find((t) => t.topic === 'general');
     expect(generalTopic).toBeTruthy();
 
     const content = agentMemory.readTopic('general');
@@ -127,8 +158,14 @@ describe('StructuredMemory topic system', () => {
   });
 
   test('multiple entries of same topic append correctly', () => {
-    agentMemory.addWithTopic('project', 'Bug 1', 'Null pointer in auth module', { topic: 'debugging', tags: ['debug'] });
-    agentMemory.addWithTopic('project', 'Bug 2', 'Race condition in cache layer', { topic: 'debugging', tags: ['debug'] });
+    agentMemory.addWithTopic('project', 'Bug 1', 'Null pointer in auth module', {
+      topic: 'debugging',
+      tags: ['debug'],
+    });
+    agentMemory.addWithTopic('project', 'Bug 2', 'Race condition in cache layer', {
+      topic: 'debugging',
+      tags: ['debug'],
+    });
 
     const content = agentMemory.readTopic('debugging');
     expect(content).toBeTruthy();
@@ -210,7 +247,7 @@ describe('Auto-memory system', () => {
   test('isWorthRemembering without model uses heuristics', async () => {
     const result = await agentMemory.isWorthRemembering(
       'The database connection string uses postgres:// with SSL enabled',
-      { type: 'reference', reason: 'project config' }
+      { type: 'reference', reason: 'project config' },
     );
     expect(result).toBe(true);
 
@@ -237,7 +274,11 @@ describe('Path-scoped rules loading', () => {
     const subDir = join(testDir, 'src', 'components');
     const rulesDir = join(subDir, '.agent-rules');
     mkdirSync(rulesDir, { recursive: true });
-    writeFileSync(join(rulesDir, 'instructions.md'), '# Component rules\nUse React functional components.', 'utf-8');
+    writeFileSync(
+      join(rulesDir, 'instructions.md'),
+      '# Component rules\nUse React functional components.',
+      'utf-8',
+    );
 
     const { loaded, hasNewRules } = agentMemory.ensureRulesForPath(subDir);
     expect(hasNewRules).toBe(true);
@@ -263,7 +304,11 @@ describe('Path-scoped rules loading', () => {
     const grandparent = join(testDir, 'packages');
     const rulesDir1 = join(grandparent, '.agent-rules');
     mkdirSync(rulesDir1, { recursive: true });
-    writeFileSync(join(rulesDir1, 'instructions.md'), '# Packages rules\nMonorepo layout.', 'utf-8');
+    writeFileSync(
+      join(rulesDir1, 'instructions.md'),
+      '# Packages rules\nMonorepo layout.',
+      'utf-8',
+    );
 
     // Query from deep subdirectory
     const deepDir = join(grandparent, 'pkg-a', 'src', 'utils');

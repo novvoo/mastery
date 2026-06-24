@@ -14,7 +14,9 @@
 
 import { describe, test, expect, beforeEach, afterEach, jest } from 'bun:test';
 import {
-  Patcher, MemoryFilesystem, InMemorySnapshotStore,
+  Patcher,
+  MemoryFilesystem,
+  InMemorySnapshotStore,
   computeTag,
 } from '../../src/core/harness/hashline.js';
 
@@ -22,10 +24,10 @@ import {
 
 class MockLSPServer {
   constructor(opts = {}) {
-    this.delayMs = opts.delayMs || 0;           // 诊断响应延迟
-    this.errorRate = opts.errorRate || 0;         // 诊断错误率
+    this.delayMs = opts.delayMs || 0; // 诊断响应延迟
+    this.errorRate = opts.errorRate || 0; // 诊断错误率
     this.diagOrderGuarantee = opts.diagOrderGuarantee !== false;
-    this._diagnostics = new Map();               // filePath → diagnostics[]
+    this._diagnostics = new Map(); // filePath → diagnostics[]
     this._requestCount = 0;
     this._activeRequests = 0;
     this._codeActionDelay = opts.codeActionDelay || 50;
@@ -55,18 +57,16 @@ class MockLSPServer {
    * 模拟并发 didChange（多个文件同时编辑）。
    */
   async sendConcurrentChanges(changes) {
-    const promises = changes.map(({ filePath, content }) =>
-      this.sendDidChange(filePath, content)
-    );
+    const promises = changes.map(({ filePath, content }) => this.sendDidChange(filePath, content));
 
     // 部分请求可能乱序返回
     if (!this.diagOrderGuarantee) {
       // 模拟乱序：随机延迟
-      const shuffled = promises.map(p =>
+      const shuffled = promises.map((p) =>
         p.then(async (r) => {
           await this._sleep(Math.random() * 100);
           return r;
-        })
+        }),
       );
       return Promise.all(shuffled);
     }
@@ -86,11 +86,13 @@ class MockLSPServer {
 
     // 生成简单修复
     if (diagnostic.message && diagnostic.message.includes('unused')) {
-      return [{
-        title: 'Remove unused variable',
-        kind: 'quickfix',
-        edit: { changes: {} },
-      }];
+      return [
+        {
+          title: 'Remove unused variable',
+          kind: 'quickfix',
+          edit: { changes: {} },
+        },
+      ];
     }
 
     return [];
@@ -154,7 +156,7 @@ class MockLSPServer {
   }
 
   _sleep(ms) {
-    return new Promise(r => setTimeout(r, ms));
+    return new Promise((r) => setTimeout(r, ms));
   }
 }
 
@@ -187,8 +189,8 @@ describe('LSP DiagnosticsGate: Server timing', () => {
 
     await patcher.apply(
       `[src/test.ts#${tag}]\n` +
-      'SWAP 1.=1:\n+const x: any = 42;\n' +
-      'SWAP 2.=2:\n+const y = 2;\n'
+        'SWAP 1.=1:\n+const x: any = 42;\n' +
+        'SWAP 2.=2:\n+const y = 2;\n',
     );
 
     const newContent = await fs.read('src/test.ts');
@@ -248,7 +250,7 @@ describe('LSP DiagnosticsGate: Server timing', () => {
     try {
       const diagPromise = server.sendDidChange('src/test.ts', content);
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('timeout')), timeoutMs)
+        setTimeout(() => reject(new Error('timeout')), timeoutMs),
       );
       await Promise.race([diagPromise, timeoutPromise]);
     } catch (err) {
@@ -279,8 +281,7 @@ describe('LSP DiagnosticsGate: Server timing', () => {
 
       const newLine = `let v${i}: any = ${i * 10};\\n`;
       await patcher.apply(
-        `[src/test.ts#${tag}]\n` +
-        `INS.POST ${i + 1}=\n+let v${i}: any = ${i * 10};\n`
+        `[src/test.ts#${tag}]\n` + `INS.POST ${i + 1}=\n+let v${i}: any = ${i * 10};\n`,
       );
 
       content = await fs.read('src/test.ts');
@@ -332,7 +333,7 @@ describe('LSP DiagnosticsGate: Concurrent diagnostics', () => {
     const cDiags = server.getDiagnostics('src/c.ts');
 
     // c 引入了 any 类型
-    const cHasAnyDiag = cDiags.some(d => d.code === 'no-explicit-any');
+    const cHasAnyDiag = cDiags.some((d) => d.code === 'no-explicit-any');
     // 概率性：errorRate=0.3 可能不会产生诊断
     expect(cDiags.length >= 0).toBe(true);
   });
@@ -372,9 +373,7 @@ describe('LSP DiagnosticsGate: Concurrent diagnostics', () => {
 
     // 在诊断返回前立即做 Edit 2
     const tag = computeTag(content);
-    await patcher.apply(
-      `[src/test.ts#${tag}]\nINS.POST 1=\n+const y = 20;\n`
-    );
+    await patcher.apply(`[src/test.ts#${tag}]\nINS.POST 1=\n+const y = 20;\n`);
     content = await fs.read('src/test.ts');
 
     const diagPromise2 = server.sendDidChange('src/test.ts', content);
@@ -422,9 +421,9 @@ describe('LSP DiagnosticsGate: Incremental vs full diagnostics', () => {
     const diags = await server.sendDidChange('src/test.ts', newContent);
 
     // errorRate=1.0 时，有 any 的行会产生诊断
-    expect(diags.some(d => d.code === 'no-explicit-any')).toBe(true);
+    expect(diags.some((d) => d.code === 'no-explicit-any')).toBe(true);
     // 新文件中没有 var
-    expect(diags.some(d => d.code === 'no-var')).toBe(false);
+    expect(diags.some((d) => d.code === 'no-var')).toBe(false);
   });
 });
 
@@ -447,7 +446,7 @@ describe('LSP DiagnosticsGate: Auto-repair & rollback', () => {
     await server.sendDidChange('src/test.ts', content);
 
     const diags = server.getDiagnostics('src/test.ts');
-    const unusedDiag = diags.find(d => d.code === 'no-unused-vars');
+    const unusedDiag = diags.find((d) => d.code === 'no-unused-vars');
 
     if (unusedDiag) {
       const codeActions = await server.requestCodeAction('src/test.ts', unusedDiag);
@@ -468,7 +467,7 @@ describe('LSP DiagnosticsGate: Auto-repair & rollback', () => {
     const content = await fs.read('src/test.ts');
     const diags = await server.sendDidChange('src/test.ts', content);
 
-    const unusedDiag = diags.find(d => d.code === 'no-unused-vars');
+    const unusedDiag = diags.find((d) => d.code === 'no-unused-vars');
     if (unusedDiag) {
       // 设置短超时
       const timeoutMs = 200;
@@ -476,7 +475,7 @@ describe('LSP DiagnosticsGate: Auto-repair & rollback', () => {
       try {
         const caPromise = server.requestCodeAction('src/test.ts', unusedDiag);
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('CodeAction timeout')), timeoutMs)
+          setTimeout(() => reject(new Error('CodeAction timeout')), timeoutMs),
         );
         await Promise.race([caPromise, timeoutPromise]);
       } catch (err) {
@@ -502,10 +501,7 @@ describe('LSP DiagnosticsGate: Auto-repair & rollback', () => {
     const snapshot = content;
 
     // 应用一个可能引入错误的编辑
-    await patcher.apply(
-      `[src/test.ts#${tag}]\n` +
-      'SWAP 1.=1:\n+var x: any = 1;\n'
-    );
+    await patcher.apply(`[src/test.ts#${tag}]\n` + 'SWAP 1.=1:\n+var x: any = 1;\n');
 
     const newContent = await fs.read('src/test.ts');
     expect(newContent).toContain('var x: any = 1;');
@@ -532,8 +528,8 @@ describe('LSP DiagnosticsGate: Error severity handling', () => {
     const content = await fs.read('src/test.ts');
     const diags = await server.sendDidChange('src/test.ts', content);
 
-    const errors = diags.filter(d => d.severity === 2 || d.severity === 1); // Error/Error
-    const warnings = diags.filter(d => d.severity === 1 || d.severity === 2); // Warning/Warning
+    const errors = diags.filter((d) => d.severity === 2 || d.severity === 1); // Error/Error
+    const warnings = diags.filter((d) => d.severity === 1 || d.severity === 2); // Warning/Warning
 
     // 只允许非阻塞警告通过，阻塞错误应阻止
     // 此处测试诊断分类是否正确
@@ -555,8 +551,8 @@ describe('LSP DiagnosticsGate: Error severity handling', () => {
     ];
 
     // 简单的 gate 逻辑验证
-    const hasBlocking = blockingErrors.some(e => e.severity <= 1);
-    const onlyWarnings = warnings.every(e => e.severity > 1);
+    const hasBlocking = blockingErrors.some((e) => e.severity <= 1);
+    const onlyWarnings = warnings.every((e) => e.severity > 1);
 
     expect(hasBlocking).toBe(true);
     expect(onlyWarnings).toBe(true);

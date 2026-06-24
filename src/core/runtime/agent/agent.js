@@ -145,7 +145,8 @@ export class ReActAgent {
 
     // 初始化 ConversationSummarizer 并注入到 contextPruner
     // 这使得 token 超限时不丢弃消息，而是将其压缩为语义摘要
-    this.#conversationSummarizer = config.conversationSummarizer || new ConversationSummarizer(this.#workspaceState);
+    this.#conversationSummarizer =
+      config.conversationSummarizer || new ConversationSummarizer(this.#workspaceState);
     if (typeof this.#contextPruner.setSummarizer === 'function') {
       this.#contextPruner.setSummarizer(this.#conversationSummarizer);
     }
@@ -384,8 +385,7 @@ export class ReActAgent {
     // ============================================================
     let iteration = 0;
 
-    iterationLoop:
-    while (iteration < maxIterations) {
+    iterationLoop: while (iteration < maxIterations) {
       iteration++;
 
       // 检查中断请求：只有在plan完成或需要用户交互时才允许中断
@@ -403,7 +403,8 @@ export class ReActAgent {
 
           this.#sessionManager.addUserMessage(
             '⚠️ 执行计划未完成，请继续执行当前任务。不要提前给出最终答案。\n' +
-            '当前计划状态：\n' + this.#summarizePlanStatus()
+              '当前计划状态：\n' +
+              this.#summarizePlanStatus(),
           );
 
           this.#stopRequested = false; // 重置中断标志
@@ -800,8 +801,8 @@ export class ReActAgent {
           this.#sessionManager.addAssistantMessage(response.text);
           this.#sessionManager.addUserMessage(
             `This is a coding task and no tool has been executed yet. The engine has pre-computed workspace structure and project memory — use this context directly. ` +
-            `To complete this task: (a) read the specific code sections you need to edit, (b) write code with write_file/edit_file, (c) verify with shell/verify. ` +
-            `Do not finish until you have produced and verified real code changes.`,
+              `To complete this task: (a) read the specific code sections you need to edit, (b) write code with write_file/edit_file, (c) verify with shell/verify. ` +
+              `Do not finish until you have produced and verified real code changes.`,
           );
           continue;
         }
@@ -815,16 +816,19 @@ export class ReActAgent {
             this.#sessionManager.addAssistantMessage(response.text);
             this.#sessionManager.addUserMessage(
               `[HARD STOP] You have produced ${this.#agentContext.zeroToolCallStreak}+ consecutive responses with ZERO tool calls.\n` +
-              `You are stuck in an analysis loop that is consuming context without making progress.\n` +
-              `IMMEDIATELY call write_file or edit_file to make the code change, OR provide FINAL_ANSWER with what you have. ` +
-              `Do NOT output any more analysis or planning — ACT NOW.`,
+                `You are stuck in an analysis loop that is consuming context without making progress.\n` +
+                `IMMEDIATELY call write_file or edit_file to make the code change, OR provide FINAL_ANSWER with what you have. ` +
+                `Do NOT output any more analysis or planning — ACT NOW.`,
             );
             continue;
           }
 
           // 探索预算超出 → 强制行动 nudge（比上面更温和，留给一次机会）
           let nudgeMsg = '';
-          if (this.#agentContext.isExplorationBudgetExceeded() && !this.#agentContext.forceActionTriggered) {
+          if (
+            this.#agentContext.isExplorationBudgetExceeded() &&
+            !this.#agentContext.forceActionTriggered
+          ) {
             nudgeMsg = this.#agentContext.triggerForceAction() || '';
           } else if (
             this.#agentContext.forceActionTriggered &&
@@ -838,7 +842,7 @@ export class ReActAgent {
           this.#sessionManager.addAssistantMessage(response.text);
           this.#sessionManager.addUserMessage(
             (nudgeMsg ? nudgeMsg + '\n\n' : '') +
-            `No tool call detected in your response. To use a tool, output in one of these formats:\n` +
+              `No tool call detected in your response. To use a tool, output in one of these formats:\n` +
               `1. CALL tool_name({"param": "value"})\n` +
               `2. \`\`\`tool\n{"name": "tool_name", "arguments": {"param": "value"}}\n\`\`\`\n` +
               `3. <||DSML||tool_calls>\n   <||DSML||invoke name="tool_name">\n   <||DSML||parameter name="param" string="true">value<||DSML||parameter>\n   <||DSML||invoke>\n   <||DSML||tool_calls>\n\n` +
@@ -874,14 +878,10 @@ export class ReActAgent {
                 continue iterationLoop;
               }
               const suspendResult = await this.#suspendForUserInput(toolResult.result);
-              // 如果返回了 __needsUserInput 标志，说明是测试模式，需要立即返回 needs_user_input
-              if (suspendResult?.__needsUserInput) {
-                return this.#completeUserInputRequest(suspendResult.askResult, {
-                  iteration,
-                  startedAt: runStartedAt,
-                });
-              }
-              this.#injectUserInputAsObservation(toolResult.result, suspendResult.userInput || suspendResult);
+              this.#injectUserInputAsObservation(
+                toolResult.result,
+                suspendResult.userInput || suspendResult,
+              );
               continue iterationLoop;
             }
           }
@@ -903,7 +903,8 @@ export class ReActAgent {
 
           // 记录工具结果到 WorkspaceState（不直接添加到会话消息）
           // 工具结果将通过 aggregateContext 在下次迭代时注入到会话中
-          if (!toolResult.skipped && this.#workspaceState) {
+          // cached 结果也需要记录，因为模型可能需要重新消费上次的结果
+          if ((!toolResult.skipped || toolResult.cached) && this.#workspaceState) {
             const success = !toolResult.error && !String(toolResult.result).startsWith('Error:');
             this.#workspaceState.recordToolResult(
               toolResult.name,
@@ -922,14 +923,10 @@ export class ReActAgent {
               continue iterationLoop;
             }
             const suspendResult = await this.#suspendForUserInput(toolResult.result);
-            // 如果返回了 __needsUserInput 标志，说明是测试模式，需要立即返回 needs_user_input
-            if (suspendResult?.__needsUserInput) {
-              return this.#completeUserInputRequest(suspendResult.askResult, {
-                iteration,
-                startedAt: runStartedAt,
-              });
-            }
-            this.#injectUserInputAsObservation(toolResult.result, suspendResult.userInput || suspendResult);
+            this.#injectUserInputAsObservation(
+              toolResult.result,
+              suspendResult.userInput || suspendResult,
+            );
             continue iterationLoop;
           }
         }
@@ -1073,7 +1070,8 @@ export class ReActAgent {
       // 1. 工作区结构 → layer1_structure
       const wsSummary = this.#workspaceIndex?.getSummary?.();
       if (wsSummary && wsSummary.length > 0) {
-        this.#sessionManager.addLayer('layer1_structure',
+        this.#sessionManager.addLayer(
+          'layer1_structure',
           `[WORKSPACE STRUCTURE — pre-indexed]\n${wsSummary}`,
           { priority: SessionManager.LAYER.STRUCTURE },
         );
@@ -1094,7 +1092,8 @@ export class ReActAgent {
               })
             : '';
         if (memCtx && memCtx.trim()) {
-          this.#sessionManager.addLayer('layer4_memory',
+          this.#sessionManager.addLayer(
+            'layer4_memory',
             `[PROJECT MEMORY — git-aware]\n${memCtx}`,
             { priority: SessionManager.LAYER.MEMORY },
           );
@@ -1160,7 +1159,8 @@ export class ReActAgent {
     if (!Array.isArray(messages)) return 0;
     let total = 0;
     for (const msg of messages) {
-      const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
+      const content =
+        typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
       const cjkCount = (content.match(/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/g) || []).length;
       const otherCount = content.length - cjkCount;
       total += Math.ceil(cjkCount * 2.0 + otherCount / 3.5);
@@ -1168,7 +1168,10 @@ export class ReActAgent {
         const calls = msg.toolCalls || msg.tool_calls || [];
         for (const call of calls) {
           total += 10; // function name overhead
-          const args = typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments || '');
+          const args =
+            typeof call.arguments === 'string'
+              ? call.arguments
+              : JSON.stringify(call.arguments || '');
           total += Math.ceil(args.length / 4);
         }
       }
@@ -1184,15 +1187,17 @@ export class ReActAgent {
 
     const plan = this.#planner.activePlan;
     const tasks = Array.from(plan.tasks.values());
-    const completed = tasks.filter(t => t.status === TaskStatus.COMPLETED).length;
-    const running = tasks.filter(t => t.status === TaskStatus.RUNNING).length;
-    const pending = tasks.filter(t => t.status === TaskStatus.PENDING).length;
-    const blocked = tasks.filter(t => t.status === TaskStatus.BLOCKED).length;
+    const completed = tasks.filter((t) => t.status === TaskStatus.COMPLETED).length;
+    const running = tasks.filter((t) => t.status === TaskStatus.RUNNING).length;
+    const pending = tasks.filter((t) => t.status === TaskStatus.PENDING).length;
+    const blocked = tasks.filter((t) => t.status === TaskStatus.BLOCKED).length;
 
-    return `Plan status: ${plan.status}\n` +
-           `Tasks: ${tasks.length} total, ${completed} completed, ${running} running, ${pending} pending, ${blocked} blocked\n` +
-           `Task details:\n` +
-           tasks.map(t => `  - ${t.id}: ${t.status} - ${t.name}`).join('\n');
+    return (
+      `Plan status: ${plan.status}\n` +
+      `Tasks: ${tasks.length} total, ${completed} completed, ${running} running, ${pending} pending, ${blocked} blocked\n` +
+      `Task details:\n` +
+      tasks.map((t) => `  - ${t.id}: ${t.status} - ${t.name}`).join('\n')
+    );
   }
 
   #recordTokenUsage(messages, response) {
@@ -1300,7 +1305,10 @@ export class ReActAgent {
     // 取最近一条用户消息作为最小任务上下文
     const history = this.#sessionManager.getHistory?.() || [];
     const lastUserMsg =
-      [...history].reverse().find((m) => m.role === 'user')?.content?.slice(0, 600) || '';
+      [...history]
+        .reverse()
+        .find((m) => m.role === 'user')
+        ?.content?.slice(0, 600) || '';
 
     const prompt = [
       {
@@ -1429,8 +1437,7 @@ export class ReActAgent {
     // 清除挂起状态
     this.#pendingUserInputRequest = null;
 
-    // 返回一个特殊的标志，让 agent.run() 知道返回 needs_user_input 状态
-    return { __needsUserInput: true, userInput, askResult };
+    return { userInput, askResult };
   }
 
   /**
@@ -1438,7 +1445,10 @@ export class ReActAgent {
    */
   #completeUserInputRequest(askResult, { iteration, startedAt }) {
     const answer = askResult.answer || this.#formatUserInputRequestAnswer(askResult);
-    this.#debugEvent('User input requested', { reason: askResult.reason, questions: askResult.questions || [] });
+    this.#debugEvent('User input requested', {
+      reason: askResult.reason,
+      questions: askResult.questions || [],
+    });
     this.#ui.finalAnswer(answer);
     this.#sessionManager.addAssistantMessage(`FINAL_ANSWER: ${answer}`);
     return this.#completeRun({
@@ -1468,9 +1478,8 @@ export class ReActAgent {
   /** 将用户回答作为 Observation 注入到会话中，LLM 在下一轮迭代自然继续 */
   #injectUserInputAsObservation(askResult, userInput) {
     const questions = Array.isArray(askResult.questions) ? askResult.questions : [];
-    const questionText = questions.length > 0
-      ? questions.map((q, i) => `${i + 1}. ${q}`).join('; ')
-      : '请补充信息';
+    const questionText =
+      questions.length > 0 ? questions.map((q, i) => `${i + 1}. ${q}`).join('; ') : '请补充信息';
     this.#sessionManager.addUserMessage(
       `[User response to ask_user] Questions: ${questionText}\nAnswer: ${userInput}\n\n` +
         `Continue with the task incorporating the user's answer. Do not ask the same question again.`,

@@ -75,7 +75,7 @@ describe('WorkspaceState', () => {
     ws.recordFileRead('/src/missing.js', false, { error: 'not found' });
     const critical = ws.getCriticalFacts();
     expect(critical.length).toBeGreaterThan(0);
-    expect(critical.every(f => f.priority === 'high')).toBe(true);
+    expect(critical.every((f) => f.priority === 'high')).toBe(true);
   });
 
   test('predictToolResult predicts failure for not_found path', () => {
@@ -146,7 +146,7 @@ describe('WorkspaceState', () => {
     ws.addFact('type1', { x: 2 }, 'high');
     const facts = ws.queryFacts('type1');
     // dedup: same type+value should be one entry
-    const type1X1 = facts.filter(f => JSON.stringify(f.value) === JSON.stringify({x:1}));
+    const type1X1 = facts.filter((f) => JSON.stringify(f.value) === JSON.stringify({ x: 1 }));
     expect(type1X1.length).toBe(1);
   });
 });

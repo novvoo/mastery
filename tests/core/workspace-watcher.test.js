@@ -39,8 +39,8 @@ describe('workspace-watcher', () => {
   test('listWorkspaceDirectory separates directories and files', () => {
     const result = listWorkspaceDirectory(tempDir);
     expect(result.success).toBe(true);
-    const dirs = result.entries.filter(e => e.type === 'directory');
-    const files = result.entries.filter(e => e.type === 'file');
+    const dirs = result.entries.filter((e) => e.type === 'directory');
+    const files = result.entries.filter((e) => e.type === 'file');
     expect(dirs.length).toBeGreaterThan(0);
     expect(files.length).toBeGreaterThan(0);
   });
@@ -76,15 +76,19 @@ describe('workspace-watcher', () => {
 
   test('createWorkspaceWatcher detects file changes', async () => {
     const changes = [];
-    const watcher = createWorkspaceWatcher(tempDir, (change) => {
-      changes.push(change);
-    }, { debounceMs: 30, pollIntervalMs: 0 });
+    const watcher = createWorkspaceWatcher(
+      tempDir,
+      (change) => {
+        changes.push(change);
+      },
+      { debounceMs: 30, pollIntervalMs: 0 },
+    );
 
     // Create a new file
     fs.writeFileSync(path.join(tempDir, 'new-file.txt'), 'hello');
 
     // Wait for debounce
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
     watcher.close();
     expect(changes.length).toBeGreaterThan(0);

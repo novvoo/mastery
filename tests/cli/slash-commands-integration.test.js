@@ -1,17 +1,23 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  processCommand,
-} from '../../src/cli/agent-app-slash-commands.js';
+import { processCommand } from '../../src/cli/agent-app-slash-commands.js';
 
 // parseKeyValueArgs, parseTddShorthand, coerceSlashValue are not exported.
 // We test them indirectly through processCommand and by re-implementing the logic here
 // for unit verification.
 
 function coerceSlashValue(value) {
-  if (value === 'true') { return true; }
-  if (value === 'false') { return false; }
-  if (value === 'null') { return null; }
-  if (/^-?\d+(?:\.\d+)?$/.test(value)) { return Number(value); }
+  if (value === 'true') {
+    return true;
+  }
+  if (value === 'false') {
+    return false;
+  }
+  if (value === 'null') {
+    return null;
+  }
+  if (/^-?\d+(?:\.\d+)?$/.test(value)) {
+    return Number(value);
+  }
   return value;
 }
 
@@ -55,7 +61,14 @@ function createMockAgent() {
     engine: {
       processInput: async () => ({ answer: 'mock answer', status: 'completed' }),
       getMemoryManager: () => ({
-        getContext: () => ({ projectInfo: { name: 'test', path: '/tmp' }, keyDecisions: [], constraints: [], fileMap: [], sessionHistory: [], notes: [] }),
+        getContext: () => ({
+          projectInfo: { name: 'test', path: '/tmp' },
+          keyDecisions: [],
+          constraints: [],
+          fileMap: [],
+          sessionHistory: [],
+          notes: [],
+        }),
         getContextPath: () => '/tmp/CONTEXT.md',
         toMarkdown: () => '# Context',
       }),
@@ -85,7 +98,13 @@ function createMockAgent() {
     },
     tokenJuice: {
       compress: (text) => text,
-      getStats: (orig, comp) => ({ originalChars: orig.length, originalTokens: Math.ceil(orig.length / 4), compressedChars: comp.length, compressedTokens: Math.ceil(comp.length / 4), savingsPercent: 50 }),
+      getStats: (orig, comp) => ({
+        originalChars: orig.length,
+        originalTokens: Math.ceil(orig.length / 4),
+        compressedChars: comp.length,
+        compressedTokens: Math.ceil(comp.length / 4),
+        savingsPercent: 50,
+      }),
     },
   };
 }

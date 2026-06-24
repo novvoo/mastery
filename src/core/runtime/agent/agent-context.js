@@ -17,6 +17,11 @@ import {
   EXPLORATION_BUDGET,
   FORCE_ACTION_GRACE_TURNS,
 } from '../../agent-constants.js';
+import {
+  isWorkspaceInspectionTool,
+  isVerificationTool,
+  isPlanningTool,
+} from './execution-plan-manager.js';
 
 export class AgentContext {
   #debugEvent;
@@ -84,7 +89,7 @@ export class AgentContext {
         : 0.5;
 
     const thresholdBase = 0.55; // 从 0.7 降低到 0.55，更早触发裁剪防止上下文溢出
-    const thresholdMin = 0.35;  // 从 0.4 降低到 0.35，后期更激进
+    const thresholdMin = 0.35; // 从 0.4 降低到 0.35，后期更激进
     const progressFactor = Math.min(progress, 1.0);
     const threshold = maxTokens * (thresholdBase - (thresholdBase - thresholdMin) * progressFactor);
 
@@ -110,7 +115,10 @@ export class AgentContext {
           preserveRecentMessages: preserveMessages,
         });
         // 优先使用摘要压缩（保留语义），回退到裁剪丢弃
-        if (typeof this.#contextPruner.compress === 'function' && typeof this.#sessionManager.compressWithSummarizer === 'function') {
+        if (
+          typeof this.#contextPruner.compress === 'function' &&
+          typeof this.#sessionManager.compressWithSummarizer === 'function'
+        ) {
           this.#sessionManager.compressWithSummarizer(this.#contextPruner, {
             maxTokens,
             targetTokens,
@@ -227,11 +235,10 @@ export class AgentContext {
     // 进度检查点
     if (iteration % PROGRESS_CHECKPOINT_INTERVAL === 0) {
       const planStatus = planSummary || 'not available';
-      const hasWritten =
-        this.#stagnationWindow.some((t) => t.isMutation);
+      const hasWritten = this.#stagnationWindow.some((t) => t.isMutation);
       this.#sessionManager.addUserMessage(
         `[Progress checkpoint @iter ${iteration}/${maxIterations}]\nPlan status:\n${planStatus}\n` +
-        `${hasWritten ? 'You have made code changes — verify and complete.' : 'WARNING: No code modifications yet. If you have identified the issue, use write_file/edit_file NOW to fix it. Do NOT keep exploring.'}`,
+          `${hasWritten ? 'You have made code changes — verify and complete.' : 'WARNING: No code modifications yet. If you have identified the issue, use write_file/edit_file NOW to fix it. Do NOT keep exploring.'}`,
       );
       return;
     }
@@ -281,21 +288,29 @@ export class AgentContext {
 
   /**
    * 记录工具调用到停滞检测窗口，同时追踪探索预算
+   * 有效进展包括：mutation工具、探索工具、验证工具、规划工具
    */
   recordToolCallForStagnation(toolResult, iteration, isMutationFn) {
     if (!toolResult || !toolResult.name) {
       return;
     }
     const isMutation = isMutationFn ? isMutationFn(toolResult.name, toolResult) : false;
+    const args = toolResult.result?.args || toolResult.args || {};
+    const isExploration = isWorkspaceInspectionTool(toolResult.name, args);
+    const isVerification = isVerificationTool(toolResult.name, args);
+    const isPlanning = isPlanningTool(toolResult.name);
+    const hasProgress = isMutation || isExploration || isVerification || isPlanning;
+
     this.#stagnationWindow.push({
       toolName: toolResult.name,
       iteration,
       isMutation,
+      hasProgress,
     });
     if (this.#stagnationWindow.length > STAGNATION_LOOKBACK) {
       this.#stagnationWindow.shift();
     }
-    if (isMutation) {
+    if (hasProgress) {
       this.#lastMutationIteration = iteration;
       this.#explorationIterations = 0;
       this.#forceActionTriggered = false;
@@ -321,10 +336,7 @@ export class AgentContext {
 
   /** 探索预算 + grace turns 后应强制终止 */
   shouldHardStopForExploration() {
-    return (
-      this.#forceActionTriggered &&
-      this.#forceActionIgnored >= FORCE_ACTION_GRACE_TURNS
-    );
+    return this.#forceActionTriggered && this.#forceActionIgnored >= FORCE_ACTION_GRACE_TURNS;
   }
 
   /** 连续零工具调用超过 5 回合 */

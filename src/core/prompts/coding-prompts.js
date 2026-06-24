@@ -26,10 +26,9 @@ export function buildCodingTaskOperatingPrompt({
     ? getMethodologyGuidance(riskLevel, profile)
     : 'Use the same methodology directly in your reasoning because methodology tools are not registered in this runtime.';
 
-  const bugFixGuidance =
-    profile.isBugTask
-      ? `BUG FIX TASK: Your job is to FIX the bug, not to write a diagnostic report. Read the code where the bug resides, identify the root cause, apply the fix, then verify. Do NOT spend iterations generating analysis reports — the user wants the bug fixed, not documented. A fixed bug with verification evidence is the only acceptable outcome.\n`
-      : '';
+  const bugFixGuidance = profile.isBugTask
+    ? `BUG FIX TASK: Your job is to FIX the bug, not to write a diagnostic report. Read the code where the bug resides, identify the root cause, apply the fix, then verify. Do NOT spend iterations generating analysis reports — the user wants the bug fixed, not documented. A fixed bug with verification evidence is the only acceptable outcome.\n`
+    : '';
 
   return (
     `Coding task mode is active for the previous user request:\n${userInput}\n\n` +

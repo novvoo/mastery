@@ -22,11 +22,13 @@ export default function askUser() {
     params: {
       reason: {
         type: 'string',
-        description: 'Why the agent cannot determine the answer on its own (must be a genuine gap, not something deducible through reasoning).',
+        description:
+          'Why the agent cannot determine the answer on its own (must be a genuine gap, not something deducible through reasoning).',
       },
       questions: {
         type: 'array',
-        description: 'One to three concise questions. Only ask what you genuinely cannot figure out—answerable questions will be auto-resolved by the engine.',
+        description:
+          'One to three concise questions. Only ask what you genuinely cannot figure out—answerable questions will be auto-resolved by the engine.',
         items: { type: 'string', description: 'Question to ask the user.' },
       },
       blocking_facts: {

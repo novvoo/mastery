@@ -40,7 +40,10 @@ describe('WorkspaceIndex', () => {
     try {
       // Create a source file for indexing
       await mkdir(join(tempDir, 'src'), { recursive: true });
-      await writeFile(join(tempDir, 'src', 'hello.js'), 'export function hello() { return "world"; }\n');
+      await writeFile(
+        join(tempDir, 'src', 'hello.js'),
+        'export function hello() { return "world"; }\n',
+      );
 
       // Build index
       const idx1 = new WorkspaceIndex(tempDir);
@@ -65,7 +68,10 @@ describe('WorkspaceIndex', () => {
     try {
       await mkdir(join(tempDir, 'src'), { recursive: true });
       await writeFile(join(tempDir, 'src', 'app.js'), 'const x = 1;\n');
-      await writeFile(join(tempDir, 'src', 'util.ts'), 'export function util(): string { return "u"; }\n');
+      await writeFile(
+        join(tempDir, 'src', 'util.ts'),
+        'export function util(): string { return "u"; }\n',
+      );
 
       const idx = new WorkspaceIndex(tempDir);
       const summary = await idx.warm();

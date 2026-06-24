@@ -22,21 +22,43 @@ describe('RuleBasedSelector', () => {
   test('select filters by keyword match', () => {
     const selector = new RuleBasedSelector();
     const candidates = [
-      new MemoryEntry({ type: MemoryType.USER, title: 'React preference', content: 'User likes React' }),
+      new MemoryEntry({
+        type: MemoryType.USER,
+        title: 'React preference',
+        content: 'User likes React',
+      }),
       new MemoryEntry({ type: MemoryType.PROJECT, title: 'Vue project', content: 'Using Vue.js' }),
-      new MemoryEntry({ type: MemoryType.REFERENCE, title: 'React docs', content: 'React documentation' }),
+      new MemoryEntry({
+        type: MemoryType.REFERENCE,
+        title: 'React docs',
+        content: 'React documentation',
+      }),
     ];
     const result = selector.select('React', candidates, { limit: 2 });
     expect(result.length).toBe(2);
-    expect(result.every(r => r.title.toLowerCase().includes('react') || r.content.toLowerCase().includes('react'))).toBe(true);
+    expect(
+      result.every(
+        (r) => r.title.toLowerCase().includes('react') || r.content.toLowerCase().includes('react'),
+      ),
+    ).toBe(true);
   });
 
   test('select scores project entries higher', () => {
     const selector = new RuleBasedSelector();
     const oldTimestamp = Date.now() - 1000;
     const candidates = [
-      new MemoryEntry({ type: MemoryType.USER, title: 'React', content: 'React content', timestamp: Date.now() }),
-      new MemoryEntry({ type: MemoryType.PROJECT, title: 'React', content: 'React content', timestamp: oldTimestamp }),
+      new MemoryEntry({
+        type: MemoryType.USER,
+        title: 'React',
+        content: 'React content',
+        timestamp: Date.now(),
+      }),
+      new MemoryEntry({
+        type: MemoryType.PROJECT,
+        title: 'React',
+        content: 'React content',
+        timestamp: oldTimestamp,
+      }),
     ];
     const result = selector.select('React', candidates, { limit: 2 });
     expect(result[0].type).toBe(MemoryType.PROJECT);
@@ -44,11 +66,21 @@ describe('RuleBasedSelector', () => {
 
   test('select penalizes older entries', () => {
     const selector = new RuleBasedSelector();
-    const oldTimestamp = Date.now() - (5 * 24 * 60 * 60 * 1000);
+    const oldTimestamp = Date.now() - 5 * 24 * 60 * 60 * 1000;
     const recentTimestamp = Date.now();
     const candidates = [
-      new MemoryEntry({ type: MemoryType.USER, title: 'React old', content: 'React content with multiple React mentions React', timestamp: oldTimestamp }),
-      new MemoryEntry({ type: MemoryType.USER, title: 'React new', content: 'React content', timestamp: recentTimestamp }),
+      new MemoryEntry({
+        type: MemoryType.USER,
+        title: 'React old',
+        content: 'React content with multiple React mentions React',
+        timestamp: oldTimestamp,
+      }),
+      new MemoryEntry({
+        type: MemoryType.USER,
+        title: 'React new',
+        content: 'React content',
+        timestamp: recentTimestamp,
+      }),
     ];
     const result = selector.select('React', candidates, { limit: 2 });
     expect(result.length).toBe(2);
@@ -78,8 +110,18 @@ describe('RuleBasedSelector', () => {
   test('keywordMatch uses tags for matching', () => {
     const selector = new RuleBasedSelector();
     const candidates = [
-      new MemoryEntry({ type: MemoryType.USER, title: 'Test', content: 'No match', tags: ['react'] }),
-      new MemoryEntry({ type: MemoryType.PROJECT, title: 'Test', content: 'No match', tags: ['vue'] }),
+      new MemoryEntry({
+        type: MemoryType.USER,
+        title: 'Test',
+        content: 'No match',
+        tags: ['react'],
+      }),
+      new MemoryEntry({
+        type: MemoryType.PROJECT,
+        title: 'Test',
+        content: 'No match',
+        tags: ['vue'],
+      }),
     ];
     const result = selector.keywordMatch('react', candidates, 1);
     expect(result.length).toBe(1);
@@ -107,7 +149,11 @@ describe('MemorySelector', () => {
   test('select falls back to rule-based when no model provider', async () => {
     const selector = new MemorySelector();
     const candidates = [
-      new MemoryEntry({ type: MemoryType.USER, title: 'React preference', content: 'User likes React' }),
+      new MemoryEntry({
+        type: MemoryType.USER,
+        title: 'React preference',
+        content: 'User likes React',
+      }),
       new MemoryEntry({ type: MemoryType.PROJECT, title: 'Vue project', content: 'Using Vue.js' }),
     ];
     const result = await selector.select('React', candidates, { limit: 1 });
@@ -123,7 +169,11 @@ describe('MemorySelector', () => {
     };
     const selector = new MemorySelector(mockProvider);
     const candidates = [
-      new MemoryEntry({ type: MemoryType.USER, title: 'React preference', content: 'User likes React' }),
+      new MemoryEntry({
+        type: MemoryType.USER,
+        title: 'React preference',
+        content: 'User likes React',
+      }),
       new MemoryEntry({ type: MemoryType.PROJECT, title: 'Vue project', content: 'Using Vue.js' }),
     ];
     const result = await selector.select('React', candidates, { limit: 1 });
@@ -139,7 +189,11 @@ describe('MemorySelector', () => {
     };
     const selector = new MemorySelector(mockProvider);
     const candidates = [
-      new MemoryEntry({ type: MemoryType.USER, title: 'React preference', content: 'User likes React' }),
+      new MemoryEntry({
+        type: MemoryType.USER,
+        title: 'React preference',
+        content: 'User likes React',
+      }),
       new MemoryEntry({ type: MemoryType.PROJECT, title: 'Vue project', content: 'Using Vue.js' }),
     ];
     const result = await selector.select('React', candidates, { limit: 1 });
@@ -157,7 +211,12 @@ describe('MemorySelector', () => {
 
   test('validate marks as verified when verification succeeds', async () => {
     const selector = new MemorySelector();
-    const memory = new MemoryEntry({ type: MemoryType.USER, title: 'Test', content: 'Content', source: { type: 'file', path: 'test.txt' } });
+    const memory = new MemoryEntry({
+      type: MemoryType.USER,
+      title: 'Test',
+      content: 'Content',
+      source: { type: 'file', path: 'test.txt' },
+    });
     const result = await selector.validate(memory, () => ({ valid: true }));
     expect(result.valid).toBe(true);
     expect(memory.status).toBe('verified');
@@ -165,7 +224,12 @@ describe('MemorySelector', () => {
 
   test('validate marks as stale when verification fails', async () => {
     const selector = new MemorySelector();
-    const memory = new MemoryEntry({ type: MemoryType.USER, title: 'Test', content: 'Content', source: { type: 'file', path: 'test.txt' } });
+    const memory = new MemoryEntry({
+      type: MemoryType.USER,
+      title: 'Test',
+      content: 'Content',
+      source: { type: 'file', path: 'test.txt' },
+    });
     const result = await selector.validate(memory, () => ({ valid: false, message: 'Failed' }));
     expect(result.valid).toBe(false);
     expect(memory.status).toBe('stale');
@@ -173,8 +237,15 @@ describe('MemorySelector', () => {
 
   test('validate handles verification errors', async () => {
     const selector = new MemorySelector();
-    const memory = new MemoryEntry({ type: MemoryType.USER, title: 'Test', content: 'Content', source: { type: 'file', path: 'test.txt' } });
-    const result = await selector.validate(memory, () => { throw new Error('Verification error'); });
+    const memory = new MemoryEntry({
+      type: MemoryType.USER,
+      title: 'Test',
+      content: 'Content',
+      source: { type: 'file', path: 'test.txt' },
+    });
+    const result = await selector.validate(memory, () => {
+      throw new Error('Verification error');
+    });
     expect(result.valid).toBe(true);
     expect(result.message).toContain('Verification skipped');
   });

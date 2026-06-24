@@ -16,11 +16,14 @@ describe('runtime event normalization', () => {
   });
 
   test('safeStringify handles BigInt, functions, and truncation', () => {
-    const text = safeStringify({
-      count: 10n,
-      handler() {},
-      long: 'x'.repeat(80),
-    }, { maxChars: 60 });
+    const text = safeStringify(
+      {
+        count: 10n,
+        handler() {},
+        long: 'x'.repeat(80),
+      },
+      { maxChars: 60 },
+    );
 
     expect(text).toContain('"10"');
     expect(text).toContain('[Function handler]');

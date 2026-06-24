@@ -75,7 +75,7 @@ describe('DynamicContextPruning', () => {
       { role: 'assistant', content: 'Answer two that is also somewhat detailed' },
     ];
     const result = pruning.prune(messages);
-    const systemMessages = result.messages.filter(m => m.role === 'system');
+    const systemMessages = result.messages.filter((m) => m.role === 'system');
     // The original system prompt should be preserved (or a summary injected)
     expect(systemMessages.length).toBeGreaterThanOrEqual(1);
   });
@@ -91,8 +91,14 @@ describe('DynamicContextPruning', () => {
     // Create many messages that exceed target
     const messages = [];
     for (let i = 0; i < 30; i++) {
-      messages.push({ role: 'user', content: `This is message number ${i} with some content to add tokens to the context window` });
-      messages.push({ role: 'assistant', content: `This is response number ${i} with enough content to make the total tokens exceed the target` });
+      messages.push({
+        role: 'user',
+        content: `This is message number ${i} with some content to add tokens to the context window`,
+      });
+      messages.push({
+        role: 'assistant',
+        content: `This is response number ${i} with enough content to make the total tokens exceed the target`,
+      });
     }
 
     const result = pruning.prune(messages);
@@ -111,14 +117,17 @@ describe('DynamicContextPruning', () => {
 
     const messages = [];
     for (let i = 0; i < 20; i++) {
-      messages.push({ role: 'user', content: `Message ${i} with enough text to take up token space in the overall context` });
+      messages.push({
+        role: 'user',
+        content: `Message ${i} with enough text to take up token space in the overall context`,
+      });
     }
 
     const result = pruning.prune(messages);
     // Last 3 messages should be preserved
     const lastThree = messages.slice(-3);
     for (const msg of lastThree) {
-      const found = result.messages.some(m => m.content === msg.content);
+      const found = result.messages.some((m) => m.content === msg.content);
       expect(found).toBe(true);
     }
   });
@@ -132,14 +141,22 @@ describe('DynamicContextPruning', () => {
 
     const messages = [];
     for (let i = 0; i < 20; i++) {
-      messages.push({ role: 'user', content: `User message number ${i} with some meaningful content about topic ${i}` });
-      messages.push({ role: 'assistant', content: `Assistant response number ${i} with helpful information about topic ${i}` });
+      messages.push({
+        role: 'user',
+        content: `User message number ${i} with some meaningful content about topic ${i}`,
+      });
+      messages.push({
+        role: 'assistant',
+        content: `Assistant response number ${i} with helpful information about topic ${i}`,
+      });
     }
 
     const result = pruning.prune(messages);
     if (result.stats.messagesRemoved > 0) {
       // A summary message should be injected
-      const summaryMsg = result.messages.find(m => m.role === 'system' && m.content?.includes('[Context summary'));
+      const summaryMsg = result.messages.find(
+        (m) => m.role === 'system' && m.content?.includes('[Context summary'),
+      );
       expect(summaryMsg).toBeDefined();
     }
   });
@@ -197,7 +214,10 @@ describe('DynamicContextPruning', () => {
     // Create many messages to exceed token capacity
     const messages = [];
     for (let i = 0; i < 20; i++) {
-      messages.push({ role: 'user', content: `Message ${i} with substantial content about various programming topics and issues` });
+      messages.push({
+        role: 'user',
+        content: `Message ${i} with substantial content about various programming topics and issues`,
+      });
     }
 
     const suggestions = pruning.suggestOptimizations(messages);
@@ -211,11 +231,14 @@ describe('DynamicContextPruning', () => {
 
     const messages = [];
     for (let i = 0; i < 50; i++) {
-      messages.push({ role: 'user', content: `This is a long message ${i} with lots of content that will push the total token count very high beyond the maximum limit configured` });
+      messages.push({
+        role: 'user',
+        content: `This is a long message ${i} with lots of content that will push the total token count very high beyond the maximum limit configured`,
+      });
     }
 
     const suggestions = pruning.suggestOptimizations(messages);
-    const overflow = suggestions.find(s => s.type === 'critical_overflow');
+    const overflow = suggestions.find((s) => s.type === 'critical_overflow');
     expect(overflow).toBeDefined();
   });
 
@@ -228,7 +251,7 @@ describe('DynamicContextPruning', () => {
     }
 
     const suggestions = pruning.suggestOptimizations(messages);
-    const toolSuggestion = suggestions.find(s => s.type === 'excessive_tool_results');
+    const toolSuggestion = suggestions.find((s) => s.type === 'excessive_tool_results');
     expect(toolSuggestion).toBeDefined();
   });
 
@@ -252,7 +275,9 @@ describe('DynamicContextPruning', () => {
     let scorerCalled = false;
     const customScorer = (message) => {
       scorerCalled = true;
-      if (message.role === 'system') {return 100;}
+      if (message.role === 'system') {
+        return 100;
+      }
       return 10;
     };
     const pruning = new DynamicContextPruning({
@@ -279,9 +304,7 @@ describe('DynamicContextPruning', () => {
       maxTokens: 100000,
       targetTokens: 50000,
     });
-    const messages = [
-      { role: 'user', content: 'Hello world' },
-    ];
+    const messages = [{ role: 'user', content: 'Hello world' }];
     pruning.prune(messages);
     expect(customCounter).toHaveBeenCalled();
   });
@@ -289,7 +312,11 @@ describe('DynamicContextPruning', () => {
   test('prune handles messages with tool_calls', () => {
     const pruning = new DynamicContextPruning({ maxTokens: 100000, targetTokens: 50000 });
     const messages = [
-      { role: 'assistant', content: 'Using tool', tool_calls: [{ function: { name: 'read_file', arguments: '{"path": "/test"}' } }] },
+      {
+        role: 'assistant',
+        content: 'Using tool',
+        tool_calls: [{ function: { name: 'read_file', arguments: '{"path": "/test"}' } }],
+      },
     ];
     const result = pruning.prune(messages);
     expect(result.messages.length).toBe(1);
@@ -297,18 +324,14 @@ describe('DynamicContextPruning', () => {
 
   test('prune handles messages with tool_call_id', () => {
     const pruning = new DynamicContextPruning({ maxTokens: 100000, targetTokens: 50000 });
-    const messages = [
-      { role: 'tool', content: 'Result', tool_call_id: 'call_123' },
-    ];
+    const messages = [{ role: 'tool', content: 'Result', tool_call_id: 'call_123' }];
     const result = pruning.prune(messages);
     expect(result.messages.length).toBe(1);
   });
 
   test('prune handles messages with name field', () => {
     const pruning = new DynamicContextPruning({ maxTokens: 100000, targetTokens: 50000 });
-    const messages = [
-      { role: 'assistant', content: 'Response', name: 'helper_agent' },
-    ];
+    const messages = [{ role: 'assistant', content: 'Response', name: 'helper_agent' }];
     const result = pruning.prune(messages);
     expect(result.messages.length).toBe(1);
   });

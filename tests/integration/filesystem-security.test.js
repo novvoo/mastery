@@ -28,7 +28,9 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  try { rmSync(workdir, { recursive: true, force: true }); } catch {}
+  try {
+    rmSync(workdir, { recursive: true, force: true });
+  } catch {}
 });
 
 // 一个最简单的 ctx 对象，供工具 handler 调用
@@ -54,10 +56,7 @@ describe('Filesystem sandbox: path containment', () => {
   });
 
   test('read_file 拒绝路径穿越 ../secret.txt', async () => {
-    const result = await tools.read_file.handler(
-      { path: '../secret.txt' },
-      makeCtx(workdir),
-    );
+    const result = await tools.read_file.handler({ path: '../secret.txt' }, makeCtx(workdir));
     // 失败的路径穿越应返回以 "Error:" 开头的错误信息
     expect(String(result)).toMatch(/Error/i);
     // 且不应当包含敏感文件内容
@@ -74,10 +73,7 @@ describe('Filesystem sandbox: path containment', () => {
   });
 
   test('read_file 允许相对路径读取工作目录内合法文件', async () => {
-    const result = await tools.read_file.handler(
-      { path: 'hello.txt' },
-      makeCtx(workdir),
-    );
+    const result = await tools.read_file.handler({ path: 'hello.txt' }, makeCtx(workdir));
     expect(String(result)).toMatch(/Hello, world!/);
   });
 
@@ -103,10 +99,7 @@ describe('Filesystem sandbox: path containment', () => {
       makeCtx(workdir),
     );
     expect(String(written)).toMatch(/success/i);
-    const result = await tools.read_file.handler(
-      { path: 'roundtrip.txt' },
-      makeCtx(workdir),
-    );
+    const result = await tools.read_file.handler({ path: 'roundtrip.txt' }, makeCtx(workdir));
     expect(String(result)).toMatch(/roundtrip value/);
   });
 });
@@ -173,7 +166,8 @@ describe('SecurityPolicy permission levels', () => {
     expect(typeof report.globalPolicy).toBe('object');
     expect(Array.isArray(report.byDecision?.byDecision ?? report.byDecision?.allow)).toBe(false);
     // 至少 report 包含 keys 是我们关心的
-    expect(['totalTools', 'byDecision', 'globalPolicy']
-      .every(k => Object.keys(report).includes(k))).toBe(true);
+    expect(
+      ['totalTools', 'byDecision', 'globalPolicy'].every((k) => Object.keys(report).includes(k)),
+    ).toBe(true);
   });
 });

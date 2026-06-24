@@ -14,7 +14,11 @@ describe('MemoryVerifier', () => {
     mkdirSync(workingDir, { recursive: true });
     writeFileSync(join(workingDir, '.env'), 'TEST_FLAG=true\nOTHER_FLAG=false', 'utf-8');
     writeFileSync(join(workingDir, 'test-file.txt'), 'test content', 'utf-8');
-    writeFileSync(join(workingDir, 'test-function.js'), 'export function testFunction() { return "test"; }', 'utf-8');
+    writeFileSync(
+      join(workingDir, 'test-function.js'),
+      'export function testFunction() { return "test"; }',
+      'utf-8',
+    );
     verifier = new MemoryVerifier(workingDir);
   });
 
@@ -32,11 +36,11 @@ describe('MemoryVerifier', () => {
   });
 
   test('verifyMemory handles unknown source type', async () => {
-    const memory = new MemoryEntry({ 
-      type: 'user', 
-      title: 'Test', 
+    const memory = new MemoryEntry({
+      type: 'user',
+      title: 'Test',
       content: 'Content',
-      source: { type: 'unknown' }
+      source: { type: 'unknown' },
     });
     const result = await verifier.verifyMemory(memory);
     expect(result.valid).toBe(true);
@@ -51,11 +55,11 @@ describe('MemoryVerifier', () => {
   });
 
   test('verifyFileReference returns valid when file exists', async () => {
-    const memory = new MemoryEntry({ 
-      type: 'user', 
-      title: 'Test', 
+    const memory = new MemoryEntry({
+      type: 'user',
+      title: 'Test',
       content: 'Content',
-      source: { type: 'file', path: 'test-file.txt' }
+      source: { type: 'file', path: 'test-file.txt' },
     });
     const result = await verifier.verifyFileReference(memory);
     expect(result.valid).toBe(true);
@@ -63,11 +67,11 @@ describe('MemoryVerifier', () => {
   });
 
   test('verifyFileReference returns invalid when file not found', async () => {
-    const memory = new MemoryEntry({ 
-      type: 'user', 
-      title: 'Test', 
+    const memory = new MemoryEntry({
+      type: 'user',
+      title: 'Test',
       content: 'Content',
-      source: { type: 'file', path: 'non-existent.txt' }
+      source: { type: 'file', path: 'non-existent.txt' },
     });
     const result = await verifier.verifyFileReference(memory);
     expect(result.valid).toBe(false);
@@ -76,12 +80,12 @@ describe('MemoryVerifier', () => {
 
   test('verifyFileReference returns invalid when file modified after memory', async () => {
     const oldTimestamp = Date.now() - 10000;
-    const memory = new MemoryEntry({ 
-      type: 'user', 
-      title: 'Test', 
+    const memory = new MemoryEntry({
+      type: 'user',
+      title: 'Test',
       content: 'Content',
       timestamp: oldTimestamp,
-      source: { type: 'file', path: 'test-file.txt' }
+      source: { type: 'file', path: 'test-file.txt' },
     });
     writeFileSync(join(workingDir, 'test-file.txt'), 'modified content', 'utf-8');
     const result = await verifier.verifyFileReference(memory);
@@ -90,11 +94,11 @@ describe('MemoryVerifier', () => {
   });
 
   test('verifyFileReference checks content hash when provided', async () => {
-    const memory = new MemoryEntry({ 
-      type: 'user', 
-      title: 'Test', 
+    const memory = new MemoryEntry({
+      type: 'user',
+      title: 'Test',
       content: 'Content',
-      source: { type: 'file', path: 'test-file.txt', contentHash: 'invalid-hash' }
+      source: { type: 'file', path: 'test-file.txt', contentHash: 'invalid-hash' },
     });
     const result = await verifier.verifyFileReference(memory);
     expect(result.valid).toBe(false);
@@ -109,11 +113,11 @@ describe('MemoryVerifier', () => {
   });
 
   test('verifyFunctionReference returns valid when function exists', async () => {
-    const memory = new MemoryEntry({ 
-      type: 'user', 
-      title: 'Test', 
+    const memory = new MemoryEntry({
+      type: 'user',
+      title: 'Test',
       content: 'Content',
-      source: { type: 'function', file: 'test-function.js', name: 'testFunction' }
+      source: { type: 'function', file: 'test-function.js', name: 'testFunction' },
     });
     const result = await verifier.verifyFunctionReference(memory);
     expect(result.valid).toBe(true);
@@ -121,11 +125,11 @@ describe('MemoryVerifier', () => {
   });
 
   test('verifyFunctionReference returns invalid when file not found', async () => {
-    const memory = new MemoryEntry({ 
-      type: 'user', 
-      title: 'Test', 
+    const memory = new MemoryEntry({
+      type: 'user',
+      title: 'Test',
       content: 'Content',
-      source: { type: 'function', file: 'non-existent.js', name: 'testFunction' }
+      source: { type: 'function', file: 'non-existent.js', name: 'testFunction' },
     });
     const result = await verifier.verifyFunctionReference(memory);
     expect(result.valid).toBe(false);
@@ -133,11 +137,11 @@ describe('MemoryVerifier', () => {
   });
 
   test('verifyFunctionReference returns invalid when function not found', async () => {
-    const memory = new MemoryEntry({ 
-      type: 'user', 
-      title: 'Test', 
+    const memory = new MemoryEntry({
+      type: 'user',
+      title: 'Test',
       content: 'Content',
-      source: { type: 'function', file: 'test-function.js', name: 'nonExistentFunction' }
+      source: { type: 'function', file: 'test-function.js', name: 'nonExistentFunction' },
     });
     const result = await verifier.verifyFunctionReference(memory);
     expect(result.valid).toBe(false);
@@ -152,11 +156,11 @@ describe('MemoryVerifier', () => {
   });
 
   test('verifyFlag returns valid when flag exists', async () => {
-    const memory = new MemoryEntry({ 
-      type: 'user', 
-      title: 'Test', 
+    const memory = new MemoryEntry({
+      type: 'user',
+      title: 'Test',
       content: 'Content',
-      source: { type: 'flag', name: 'TEST_FLAG' }
+      source: { type: 'flag', name: 'TEST_FLAG' },
     });
     const result = await verifier.verifyFlag(memory);
     expect(result.valid).toBe(true);
@@ -164,11 +168,11 @@ describe('MemoryVerifier', () => {
   });
 
   test('verifyFlag returns valid when flag value matches', async () => {
-    const memory = new MemoryEntry({ 
-      type: 'user', 
-      title: 'Test', 
+    const memory = new MemoryEntry({
+      type: 'user',
+      title: 'Test',
       content: 'Content',
-      source: { type: 'flag', name: 'TEST_FLAG', value: 'true' }
+      source: { type: 'flag', name: 'TEST_FLAG', value: 'true' },
     });
     const result = await verifier.verifyFlag(memory);
     expect(result.valid).toBe(true);
@@ -176,11 +180,11 @@ describe('MemoryVerifier', () => {
   });
 
   test('verifyFlag returns invalid when flag not found', async () => {
-    const memory = new MemoryEntry({ 
-      type: 'user', 
-      title: 'Test', 
+    const memory = new MemoryEntry({
+      type: 'user',
+      title: 'Test',
       content: 'Content',
-      source: { type: 'flag', name: 'NON_EXISTENT_FLAG' }
+      source: { type: 'flag', name: 'NON_EXISTENT_FLAG' },
     });
     const result = await verifier.verifyFlag(memory);
     expect(result.valid).toBe(false);
@@ -188,11 +192,11 @@ describe('MemoryVerifier', () => {
   });
 
   test('verifyFlag returns invalid when flag value mismatch', async () => {
-    const memory = new MemoryEntry({ 
-      type: 'user', 
-      title: 'Test', 
+    const memory = new MemoryEntry({
+      type: 'user',
+      title: 'Test',
       content: 'Content',
-      source: { type: 'flag', name: 'TEST_FLAG', value: 'false' }
+      source: { type: 'flag', name: 'TEST_FLAG', value: 'false' },
     });
     const result = await verifier.verifyFlag(memory);
     expect(result.valid).toBe(false);
@@ -201,11 +205,11 @@ describe('MemoryVerifier', () => {
 
   test('verifyFlag uses custom config file', async () => {
     writeFileSync(join(workingDir, 'custom.env'), 'CUSTOM_FLAG=value', 'utf-8');
-    const memory = new MemoryEntry({ 
-      type: 'user', 
-      title: 'Test', 
+    const memory = new MemoryEntry({
+      type: 'user',
+      title: 'Test',
       content: 'Content',
-      source: { type: 'flag', name: 'CUSTOM_FLAG', file: 'custom.env' }
+      source: { type: 'flag', name: 'CUSTOM_FLAG', file: 'custom.env' },
     });
     const result = await verifier.verifyFlag(memory);
     expect(result.valid).toBe(true);

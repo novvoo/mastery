@@ -43,7 +43,7 @@ describe('resolveEmbeddingModelDownloadCandidates', () => {
 
   test('includes huggingface endpoint', () => {
     const candidates = resolveEmbeddingModelDownloadCandidates();
-    const hasHF = candidates.some(u => u.includes('huggingface.co'));
+    const hasHF = candidates.some((u) => u.includes('huggingface.co'));
     expect(hasHF).toBe(true);
   });
 
@@ -67,7 +67,7 @@ describe('resolveEmbeddingFileDownloadCandidates', () => {
     const candidates = resolveEmbeddingFileDownloadCandidates('onnx/model.onnx', {
       repo: 'my-org/my-model',
     });
-    expect(candidates.some(u => u.includes('my-org/my-model'))).toBe(true);
+    expect(candidates.some((u) => u.includes('my-org/my-model'))).toBe(true);
   });
 });
 
@@ -153,7 +153,7 @@ describe('mmrReRank', () => {
       { score: 0.9, text: 'b' },
     ];
     const result = mmrReRank(items, { limit: 5 });
-    expect(result.some(r => r._origIndex !== undefined)).toBe(true);
+    expect(result.some((r) => r._origIndex !== undefined)).toBe(true);
   });
 });
 

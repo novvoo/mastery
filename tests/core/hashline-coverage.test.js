@@ -94,7 +94,9 @@ describe('hashline coverage: DiskFilesystem stat & realpath', () => {
       const r2 = fs._getRealpath(tmp);
       expect(r1).toBe(r2);
       expect(fs._realpathCache.has(tmp)).toBe(true);
-    } finally { await rm(tmp, { recursive: true, force: true }); }
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
   });
 
   test('_getRealpath returns path on lstat/readlink error', async () => {
@@ -104,7 +106,9 @@ describe('hashline coverage: DiskFilesystem stat & realpath', () => {
     try {
       const result = fs._getRealpath(tmp + '/___no_such_path___');
       expect(typeof result).toBe('string');
-    } finally { await rm(tmp, { recursive: true, force: true }); }
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
   });
 
   test('_resolve handles normal path', async () => {
@@ -114,7 +118,9 @@ describe('hashline coverage: DiskFilesystem stat & realpath', () => {
     try {
       const resolved = fs._resolve('test.js');
       expect(resolved).toContain('hl-rslv-');
-    } finally { await rm(tmp, { recursive: true, force: true }); }
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
   });
 
   test('_resolve root with trailing separator', async () => {
@@ -124,7 +130,9 @@ describe('hashline coverage: DiskFilesystem stat & realpath', () => {
     try {
       const resolved = fs._resolve('test.js');
       expect(resolved).toContain('hl-root-');
-    } finally { await rm(tmp, { recursive: true, force: true }); }
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
   });
 });
 
@@ -132,7 +140,11 @@ describe('hashline coverage: MemoryFilesystem stat error', () => {
   test('stat throws ENOENT on missing file', async () => {
     const fs = new MemoryFilesystem();
     let err;
-    try { await fs.stat('nope'); } catch (e) { err = e; }
+    try {
+      await fs.stat('nope');
+    } catch (e) {
+      err = e;
+    }
     expect(err).toBeDefined();
     expect(err.code).toBe('ENOENT');
   });
@@ -150,7 +162,11 @@ describe('hashline coverage: MemoryFilesystem stat error', () => {
 
 describe('hashline coverage: InMemorySnapshotStore edges', () => {
   test('maxTotalBytes eviction triggers on large content', () => {
-    const s = new InMemorySnapshotStore({ maxPaths: 10, maxVersionsPerPath: 5, maxTotalBytes: 200 });
+    const s = new InMemorySnapshotStore({
+      maxPaths: 10,
+      maxVersionsPerPath: 5,
+      maxTotalBytes: 200,
+    });
     const big = 'x'.repeat(100);
     // 超出总字节上限，应逐出最老 path 的最老版本
     s.record('a', big);
@@ -189,7 +205,9 @@ describe('hashline coverage: InMemorySnapshotStore edges', () => {
     const s = new InMemorySnapshotStore();
     // 预先灌满 seen lines
     let text = '';
-    for (let i = 0; i < 5000; i++) { text += `line_${i}\n`; }
+    for (let i = 0; i < 5000; i++) {
+      text += `line_${i}\n`;
+    }
     s.record('a', text);
     const seen = s.seenLines('a');
     // 不应超过 4096
@@ -243,7 +261,9 @@ describe('hashline coverage: Patcher._checkFilePolicy', () => {
     const snapshots = new InMemorySnapshotStore();
     const p = new Patcher({ fs, snapshots });
     snapshots.record('src/types.d.ts', 'export type Foo = number;');
-    const r = await p.apply('[src/types.d.ts#' + computeTag('export type Foo = number;\n') + ']\nDEL 1.=1');
+    const r = await p.apply(
+      '[src/types.d.ts#' + computeTag('export type Foo = number;\n') + ']\nDEL 1.=1',
+    );
     expect(r.ok).toBe(false);
     expect(r.policyBlocked).toBe(true);
   });
@@ -273,7 +293,9 @@ describe('hashline coverage: Patcher._checkFilePolicy', () => {
     const snapshots = new InMemorySnapshotStore();
     const p = new Patcher({ fs, snapshots });
     snapshots.record('/node_modules/pkg/index.js', 'module.exports = 1;\n');
-    const r = await p.apply('[/node_modules/pkg/index.js#' + computeTag('module.exports = 1;\n') + ']\nDEL 1.=1');
+    const r = await p.apply(
+      '[/node_modules/pkg/index.js#' + computeTag('module.exports = 1;\n') + ']\nDEL 1.=1',
+    );
     expect(r.ok).toBe(false);
     expect(r.policyBlocked).toBe(true);
   });
@@ -336,7 +358,9 @@ describe('hashline coverage: Patcher._checkFilePolicy', () => {
     // 但是 Patcher 的 apply 会在 preflight 阶段遇到 file not found
     // 这里我们只测 policy 不阻塞的情况
     const p = new Patcher({ fs, snapshots: new InMemorySnapshotStore() });
-    const r = await p.apply('[newfile.js#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nINS.PRE 1=\n+hello');
+    const r = await p.apply(
+      '[newfile.js#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nINS.PRE 1=\n+hello',
+    );
     // 文件不存在 → preflight 失败但不是 policyBlocked
     expect(r.ok).toBe(false);
     expect(r.error).toContain('file not found');
@@ -365,7 +389,9 @@ describe('hashline coverage: parsePatchExtended', () => {
   });
 
   test('parses ABORT sentinel', () => {
-    const patch = parsePatchExtended('[test.txt#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nABORT');
+    const patch = parsePatchExtended(
+      '[test.txt#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nABORT',
+    );
     expect(patch.sections.length).toBe(1);
     expect(patch.sections[0].hunks.length).toBe(1);
     expect(patch.sections[0].hunks[0].op).toBe(OP_ABORT);
@@ -378,23 +404,31 @@ describe('hashline coverage: parsePatchExtended', () => {
   });
 
   test('parses INS.BLK.POST', () => {
-    const patch = parsePatchExtended('[test.txt#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nINS.BLK.POST 3=\n+after block');
+    const patch = parsePatchExtended(
+      '[test.txt#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nINS.BLK.POST 3=\n+after block',
+    );
     expect(patch.sections[0].hunks[0].op).toBe(OP_INS_BLK_POST);
   });
 
   test('parses SWAP.BLK', () => {
-    const patch = parsePatchExtended('[test.txt#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nSWAP.BLK 3=\n+new');
+    const patch = parsePatchExtended(
+      '[test.txt#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nSWAP.BLK 3=\n+new',
+    );
     expect(patch.sections[0].hunks[0].op).toBe(OP_SWAP_BLK);
   });
 
   test('parses DEL.BLK', () => {
-    const patch = parsePatchExtended('[test.txt#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nDEL.BLK 3=');
+    const patch = parsePatchExtended(
+      '[test.txt#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nDEL.BLK 3=',
+    );
     expect(patch.sections[0].hunks[0].op).toBe(OP_DEL_BLK);
   });
 
   test('throws StructuredParseError on unrecognized line', () => {
     try {
-      parsePatchExtended('[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\n??GARBAGE 1');
+      parsePatchExtended(
+        '[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\n??GARBAGE 1',
+      );
     } catch (e) {
       expect(e).toBeInstanceOf(StructuredParseError);
       expect(e.code).toBe(HashlineErrorCode.PARSE_UNEXPECTED_TOKEN);
@@ -404,7 +438,9 @@ describe('hashline coverage: parsePatchExtended', () => {
 
   test('throws on content line without op', () => {
     try {
-      parsePatchExtended('[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\n+content');
+      parsePatchExtended(
+        '[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\n+content',
+      );
     } catch (e) {
       expect(e).toBeInstanceOf(StructuredParseError);
       expect(e.code).toBe(HashlineErrorCode.PARSE_CONTENT_WITHOUT_OP);
@@ -413,7 +449,9 @@ describe('hashline coverage: parsePatchExtended', () => {
 
   test('throws on content before section', () => {
     try {
-      parsePatchExtended('+content\n[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nDEL 1.=1');
+      parsePatchExtended(
+        '+content\n[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nDEL 1.=1',
+      );
     } catch (e) {
       expect(e).toBeInstanceOf(StructuredParseError);
       expect(e.code).toBe(HashlineErrorCode.PARSE_NO_SECTION_OPEN);
@@ -422,11 +460,17 @@ describe('hashline coverage: parsePatchExtended', () => {
 
   test('ABORT skips content lines after', () => {
     // ABORT 后 flushOp → 后续 + 行应报错（没有 op）
-    expect(() => parsePatchExtended('[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nABORT\n+should not be here')).toThrow();
+    expect(() =>
+      parsePatchExtended(
+        '[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nABORT\n+should not be here',
+      ),
+    ).toThrow();
   });
 
   test('INS.HEAD + INS.TAIL in same section', () => {
-    const p = parsePatchExtended('[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nINS.HEAD 1=\n+// top\nINS.TAIL 3=\n+// bottom');
+    const p = parsePatchExtended(
+      '[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nINS.HEAD 1=\n+// top\nINS.TAIL 3=\n+// bottom',
+    );
     const h = p.sections[0].hunks;
     expect(h[0].op).toBe(OP_INS_HEAD);
     expect(h[0].lines).toEqual(['// top']);
@@ -458,9 +502,12 @@ describe('hashline coverage: applyHunksToTextExtended BLK ops', () => {
   });
 
   test('SWAP.BLK replaces entire blank-line-delimited block', () => {
-    const text = 'import x;\n\nfunction foo() {\n  return 1;\n}\n\nfunction bar() {\n  return 2;\n}';
+    const text =
+      'import x;\n\nfunction foo() {\n  return 1;\n}\n\nfunction bar() {\n  return 2;\n}';
     // anchor at line 3 (inside foo block), should swap entire foo block
-    const hunks = [{ op: OP_SWAP_BLK, start: 3, end: 3, lines: ['function foo() {', '  return 99;', '}'] }];
+    const hunks = [
+      { op: OP_SWAP_BLK, start: 3, end: 3, lines: ['function foo() {', '  return 99;', '}'] },
+    ];
     const r = applyHunksToTextExtended(text, hunks);
     expect(r).toContain('return 99');
     expect(r).toContain('function bar');
@@ -468,7 +515,9 @@ describe('hashline coverage: applyHunksToTextExtended BLK ops', () => {
 
   test('SWAP.BLK at first block (no preceding blank line)', () => {
     const text = 'function first() {\n  return 1;\n}\n\nfunction second() {\n}';
-    const hunks = [{ op: OP_SWAP_BLK, start: 1, end: 1, lines: ['function first() {', '  return 99;', '}'] }];
+    const hunks = [
+      { op: OP_SWAP_BLK, start: 1, end: 1, lines: ['function first() {', '  return 99;', '}'] },
+    ];
     const r = applyHunksToTextExtended(text, hunks);
     expect(r).toContain('return 99');
     expect(r).toContain('function second');
@@ -505,20 +554,25 @@ describe('hashline coverage: applyHunksToTextExtended BLK ops', () => {
   });
 
   test('unknown op throws in applyHunksToText', () => {
-    expect(() => applyHunksToText('x\n', [{ op: 'UNKNOWN', start: 1, end: 1, lines: [] }])).toThrow('unknown op');
+    expect(() => applyHunksToText('x\n', [{ op: 'UNKNOWN', start: 1, end: 1, lines: [] }])).toThrow(
+      'unknown op',
+    );
   });
 
   test('unknown op throws in applyHunksToTextExtended', () => {
-    expect(() => applyHunksToTextExtended('x\n', [{ op: 'UNKNOWN', start: 1, end: 1, lines: [] }]))
-      .toThrow(PatchApplyError);
+    expect(() =>
+      applyHunksToTextExtended('x\n', [{ op: 'UNKNOWN', start: 1, end: 1, lines: [] }]),
+    ).toThrow(PatchApplyError);
   });
 
   test('overlapping hunks in extended throws when simplified check', () => {
     // 两个非空区间重叠
-    expect(() => applyHunksToTextExtended('a\nb\nc\nd\n', [
-      { op: OP_SWAP, start: 2, end: 3, lines: ['x'] },
-      { op: OP_SWAP, start: 3, end: 4, lines: ['y'] },
-    ])).toThrow(PatchApplyError);
+    expect(() =>
+      applyHunksToTextExtended('a\nb\nc\nd\n', [
+        { op: OP_SWAP, start: 2, end: 3, lines: ['x'] },
+        { op: OP_SWAP, start: 3, end: 4, lines: ['y'] },
+      ]),
+    ).toThrow(PatchApplyError);
   });
 });
 
@@ -582,7 +636,12 @@ describe('hashline coverage: Patcher recovery internals', () => {
     // 触发贪心 LCS（n * m > 1M）
     const lines = Array.from({ length: 1100 }, (_, i) => `line${i}`);
     const base = lines.join('\n') + '\n';
-    const cur = 'INSERTED\n' + lines.slice(0, 500).join('\n') + '\nMIDDLE\n' + lines.slice(500).join('\n') + '\n';
+    const cur =
+      'INSERTED\n' +
+      lines.slice(0, 500).join('\n') +
+      '\nMIDDLE\n' +
+      lines.slice(500).join('\n') +
+      '\n';
     const fs = new MemoryFilesystem({ 'big.txt': cur });
     const snapshots = new InMemorySnapshotStore();
     const tag = snapshots.record('big.txt', base);
@@ -601,7 +660,9 @@ describe('hashline coverage: Patcher recovery internals', () => {
 
   test('_contentMatchScore: includes substring match', () => {
     const p = new Patcher();
-    const score = p._contentMatchScore('function helper', 'export function helper(x): number', ['line1']);
+    const score = p._contentMatchScore('function helper', 'export function helper(x): number', [
+      'line1',
+    ]);
     expect(score).toBe(0.6);
   });
 
@@ -769,8 +830,8 @@ describe('hashline coverage: Diff3MergeEngine', () => {
     const baseText = 'line1\nline2\nline3\nline4\n';
     const currentText = 'line1\nMODIFIED\nline3\nline4\n';
     const hunks = [
-      { op: 'SWAP', start: 2, end: 2, lines: ['PATCHED_line2'] },  // overlaps modified
-      { op: 'INS_POST', start: 4, end: 4, lines: ['appended'] },     // no overlap
+      { op: 'SWAP', start: 2, end: 2, lines: ['PATCHED_line2'] }, // overlaps modified
+      { op: 'INS_POST', start: 4, end: 4, lines: ['appended'] }, // no overlap
     ];
     const result = Diff3MergeEngine.merge(baseText, currentText, hunks, 'test.txt');
     // conflict on SWAP hunk, INS_POST resolved
@@ -838,7 +899,7 @@ describe('hashline coverage: error formatting & utilities', () => {
       HashlineErrorCode.APPLY_FILE_NOT_FOUND,
       'File not found: test.txt',
       { line: 5, column: 1, span: 'DEL 1.=1' },
-      { path: 'test.txt' }
+      { path: 'test.txt' },
     );
     expect(err.code).toBe(HashlineErrorCode.APPLY_FILE_NOT_FOUND);
     expect(err.severity).toBe('ERROR');
@@ -1028,7 +1089,11 @@ describe('hashline coverage: recovery edge cases', () => {
     expect(r.ok).toBe(true);
     expect(r.sections[0].recovered).toBe(true);
     // fallback warnings should include 'diff3 merge incomplete'
-    expect(r.sections[0].warnings.some(w => w.includes('diff3 merge incomplete') || w.includes('fallback'))).toBe(true);
+    expect(
+      r.sections[0].warnings.some(
+        (w) => w.includes('diff3 merge incomplete') || w.includes('fallback'),
+      ),
+    ).toBe(true);
   });
 
   test('Patcher.apply compute error returns failure', async () => {
@@ -1045,18 +1110,29 @@ describe('hashline coverage: recovery edge cases', () => {
   });
 
   test('del single line shorthand in parsePatch', () => {
-    const p = parsePatch('[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nDEL 3');
+    const p = parsePatch(
+      '[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nDEL 3',
+    );
     expect(p.sections[0].hunks[0]).toMatchObject({ op: OP_DEL, start: 3, end: 3 });
   });
 
   test('swap single line shorthand with colon', () => {
-    const p = parsePatch('[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nSWAP 1:\n+replaced');
-    expect(p.sections[0].hunks[0]).toMatchObject({ op: OP_SWAP, start: 1, end: 1, lines: ['replaced'] });
+    const p = parsePatch(
+      '[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nSWAP 1:\n+replaced',
+    );
+    expect(p.sections[0].hunks[0]).toMatchObject({
+      op: OP_SWAP,
+      start: 1,
+      end: 1,
+      lines: ['replaced'],
+    });
   });
 
   test('parseExtended throws on garbage after ABORT', () => {
     expect(() =>
-      parsePatchExtended('[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nGARBAGE_LINE')
+      parsePatchExtended(
+        '[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nGARBAGE_LINE',
+      ),
     ).toThrow(StructuredParseError);
   });
 

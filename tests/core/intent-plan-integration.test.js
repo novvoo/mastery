@@ -76,7 +76,7 @@ describe('Intent Analysis and Plan Creation Integration', () => {
   describe('AgentPlanner #adjustPlanByTaskProfile', () => {
     test('adds missing inspect_workspace task to external plan', () => {
       const { planner } = createPlanner();
-      
+
       const externalPlan = new ExecutionPlan({
         name: 'External Plan',
         description: 'Test plan',
@@ -87,16 +87,16 @@ describe('Intent Analysis and Plan Creation Integration', () => {
         description: 'Plan the solution',
         dependencies: [],
       });
-      
+
       planner.setPlan(externalPlan);
       planner.createIfNeeded('test task', standardProfile());
-      
+
       expect(externalPlan.getTask('inspect_workspace')).not.toBeNull();
     });
 
     test('adds semantic_risk_review when required', () => {
       const { planner } = createPlanner();
-      
+
       const externalPlan = new ExecutionPlan({
         name: 'External Plan',
         description: 'Test plan',
@@ -113,19 +113,22 @@ describe('Intent Analysis and Plan Creation Integration', () => {
         description: 'Inspect changes',
         dependencies: ['inspect_workspace'],
       });
-      
+
       planner.setPlan(externalPlan);
-      planner.createIfNeeded('test task', standardProfile({
-        requiresSemanticRiskReview: true,
-        semanticRiskDomains: [{ label: 'API' }],
-      }));
-      
+      planner.createIfNeeded(
+        'test task',
+        standardProfile({
+          requiresSemanticRiskReview: true,
+          semanticRiskDomains: [{ label: 'API' }],
+        }),
+      );
+
       expect(externalPlan.getTask('semantic_risk_review')).not.toBeNull();
     });
 
     test('does not duplicate existing tasks', () => {
       const { planner } = createPlanner();
-      
+
       const externalPlan = new ExecutionPlan({
         name: 'External Plan',
         description: 'Test plan',
@@ -142,12 +145,12 @@ describe('Intent Analysis and Plan Creation Integration', () => {
         description: 'Plan',
         dependencies: ['inspect_workspace'],
       });
-      
+
       planner.setPlan(externalPlan);
       const initialTaskCount = Array.from(externalPlan.tasks.keys()).length;
-      
+
       planner.createIfNeeded('test task', standardProfile());
-      
+
       const finalTaskCount = Array.from(externalPlan.tasks.keys()).length;
       expect(finalTaskCount).toBeGreaterThanOrEqual(initialTaskCount);
       expect(externalPlan.getTask('inspect_workspace')).not.toBeNull();
@@ -155,15 +158,15 @@ describe('Intent Analysis and Plan Creation Integration', () => {
 
     test('adds all required tasks to minimal external plan', () => {
       const { planner } = createPlanner();
-      
+
       const externalPlan = new ExecutionPlan({
         name: 'External Plan',
         description: 'Test plan',
       });
-      
+
       planner.setPlan(externalPlan);
       planner.createIfNeeded('test task', standardProfile());
-      
+
       expect(externalPlan.getTask('inspect_workspace')).not.toBeNull();
       expect(externalPlan.getTask('plan_solution')).not.toBeNull();
       expect(externalPlan.getTask('implement_changes')).not.toBeNull();
@@ -187,7 +190,7 @@ describe('Intent Analysis and Plan Creation Integration', () => {
         })),
       };
       const planner = new GraphPlanner();
-      
+
       const result = await planner.decomposeTaskLLM('修复 bug', mockModelProvider, {
         availableTools: ['read_file', 'write_file'],
         taskProfile: {
@@ -195,7 +198,7 @@ describe('Intent Analysis and Plan Creation Integration', () => {
           riskLevel: 'high',
         },
       });
-      
+
       expect(result).toBeDefined();
       expect(result.length).toBeGreaterThan(0);
     });
@@ -214,12 +217,12 @@ describe('Intent Analysis and Plan Creation Integration', () => {
         })),
       };
       const planner = new GraphPlanner();
-      
+
       const result = await planner.decomposeTaskLLM('测试任务', mockModelProvider, {
         availableTools: ['read_file'],
         taskProfile: null,
       });
-      
+
       expect(result).toBeDefined();
     });
   });
@@ -227,21 +230,21 @@ describe('Intent Analysis and Plan Creation Integration', () => {
   describe('End-to-End Integration', () => {
     test('intent analysis result affects plan creation', () => {
       const { planner } = createPlanner();
-      
+
       const externalPlan = new ExecutionPlan({
         name: 'External Plan',
         description: '修复用户登录的 bug',
       });
-      
+
       planner.setPlan(externalPlan);
-      
+
       const bugProfile = standardProfile({
         isBugTask: true,
         riskLevel: 'high',
       });
-      
+
       const resultPlan = planner.createIfNeeded('修复用户登录的 bug', bugProfile);
-      
+
       expect(resultPlan).not.toBeNull();
       expect(resultPlan.getTask('inspect_workspace')).not.toBeNull();
       expect(resultPlan.getTask('verify_result')).not.toBeNull();
@@ -249,14 +252,14 @@ describe('Intent Analysis and Plan Creation Integration', () => {
 
     test('normal coding task gets correct plan structure', () => {
       const { planner } = createPlanner();
-      
+
       const profile = standardProfile({
         isCodingTask: true,
         isModificationTask: true,
       });
-      
+
       const plan = planner.createIfNeeded('修改首页样式', profile);
-      
+
       expect(plan).not.toBeNull();
       const taskIds = Array.from(plan.tasks.keys());
       expect(taskIds).toContain('inspect_workspace');
@@ -267,7 +270,7 @@ describe('Intent Analysis and Plan Creation Integration', () => {
 
     test('external plan with code_review template gets adjusted', () => {
       const { planner } = createPlanner();
-      
+
       const externalPlan = new ExecutionPlan({
         name: 'Code Review Plan',
         description: '审查代码',
@@ -284,14 +287,14 @@ describe('Intent Analysis and Plan Creation Integration', () => {
         description: 'Check code style',
         dependencies: ['analyze_code'],
       });
-      
+
       planner.setPlan(externalPlan);
       const profile = standardProfile({
         isCodingTask: true,
       });
-      
+
       planner.createIfNeeded('审查代码', profile);
-      
+
       expect(externalPlan.getTask('inspect_workspace')).not.toBeNull();
       expect(externalPlan.getTask('verify_result')).not.toBeNull();
     });
@@ -300,13 +303,13 @@ describe('Intent Analysis and Plan Creation Integration', () => {
   describe('Tool Results Should Not Be Emitted As Messages', () => {
     test('WorkspaceState.recordToolResult stores result without emitting', () => {
       const ws = new WorkspaceState();
-      
+
       ws.recordToolResult('read_file', { path: '/test/file.txt' }, { text: 'Hello World' }, true);
-      
+
       const snapshot = ws.getFileSnapshot('/test/file.txt');
       expect(snapshot).not.toBeNull();
       expect(snapshot.content).toBe('Hello World');
-      
+
       const facts = ws.queryFacts('tool_result');
       expect(facts.length).toBeGreaterThan(0);
       expect(facts[0].type).toBe('tool_result');
@@ -314,9 +317,14 @@ describe('Intent Analysis and Plan Creation Integration', () => {
 
     test('WorkspaceState.recordToolResult handles write_file correctly', () => {
       const ws = new WorkspaceState();
-      
-      ws.recordToolResult('write_file', { path: '/test/output.txt', content: 'New content' }, null, true);
-      
+
+      ws.recordToolResult(
+        'write_file',
+        { path: '/test/output.txt', content: 'New content' },
+        null,
+        true,
+      );
+
       const snapshot = ws.getFileSnapshot('/test/output.txt');
       expect(snapshot).not.toBeNull();
       expect(snapshot.content).toBe('New content');
@@ -324,25 +332,30 @@ describe('Intent Analysis and Plan Creation Integration', () => {
 
     test('WorkspaceState.recordToolResult handles list_dir correctly', () => {
       const ws = new WorkspaceState();
-      
-      ws.recordToolResult('list_dir', { path: '/test' }, { entries: ['file1.txt', 'file2.txt'] }, true);
-      
+
+      ws.recordToolResult(
+        'list_dir',
+        { path: '/test' },
+        { entries: ['file1.txt', 'file2.txt'] },
+        true,
+      );
+
       const exists = ws.checkPathExists('/test');
       expect(exists).toBe('exists');
-      
+
       const facts = ws.queryFacts('directory_listing');
       expect(facts.length).toBeGreaterThan(0);
     });
 
     test('WorkspaceState.recordToolResult truncates large results', () => {
       const ws = new WorkspaceState();
-      
+
       const largeContent = 'x'.repeat(1000);
       ws.recordToolResult('read_file', { path: '/test/large.txt' }, { text: largeContent }, true);
-      
+
       const facts = ws.queryFacts('tool_result');
       expect(facts.length).toBeGreaterThan(0);
-      
+
       const resultStr = String(facts[0].value.result);
       expect(resultStr.length).toBeLessThanOrEqual(510);
       expect(resultStr).toContain('...');
@@ -350,25 +363,30 @@ describe('Intent Analysis and Plan Creation Integration', () => {
 
     test('WorkspaceState.aggregateContext includes tool results', () => {
       const ws = new WorkspaceState();
-      
+
       ws.recordToolResult('read_file', { path: '/test/file1.txt' }, { text: 'Content 1' }, true);
       ws.recordToolResult('read_file', { path: '/test/file2.txt' }, { text: 'Content 2' }, true);
-      
+
       const ctx = ws.aggregateContext({ maxFiles: 2 });
-      
+
       expect(ctx.files.length).toBeGreaterThan(0);
       expect(ctx.summary).toContain('file1.txt');
     });
 
     test('WorkspaceState.recordToolResult normalizes args (truncates content)', () => {
       const ws = new WorkspaceState();
-      
+
       const largeContent = 'x'.repeat(5000);
-      ws.recordToolResult('write_file', { path: '/test/large.txt', content: largeContent }, null, true);
-      
+      ws.recordToolResult(
+        'write_file',
+        { path: '/test/large.txt', content: largeContent },
+        null,
+        true,
+      );
+
       const facts = ws.queryFacts('tool_result');
       expect(facts.length).toBeGreaterThan(0);
-      
+
       const argsStr = JSON.stringify(facts[0].value.args);
       expect(argsStr).not.toContain(largeContent);
       expect(argsStr).toContain('[content truncated to 5000 chars]');

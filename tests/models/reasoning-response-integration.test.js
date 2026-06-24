@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { extractReasoningFromChoice, summarizeReasoning } from '../../src/models/reasoning-response.js';
+import {
+  extractReasoningFromChoice,
+  summarizeReasoning,
+} from '../../src/models/reasoning-response.js';
 
 describe('reasoning-response integration', () => {
   // --- extractReasoningFromChoice edge cases ---

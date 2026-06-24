@@ -167,7 +167,9 @@ describe('classifyLongRunningCommand', () => {
   });
 
   test('handles model throwing error gracefully', async () => {
-    const chatMock = mock(() => { throw new Error('Model error'); });
+    const chatMock = mock(() => {
+      throw new Error('Model error');
+    });
 
     const result = await classifyLongRunningCommand('npm start', {
       modelProvider: { chat: chatMock },

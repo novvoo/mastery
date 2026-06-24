@@ -78,7 +78,8 @@ describe('ContextManager', () => {
     test('returns { trimmed: true } when current tokens exceed threshold', () => {
       const sm = createMockSessionManager({
         getTokenCount: () => 7000,
-        getHistory: () => Array.from({ length: 20 }, (_, i) => ({ role: 'user', content: `msg ${i}` })),
+        getHistory: () =>
+          Array.from({ length: 20 }, (_, i) => ({ role: 'user', content: `msg ${i}` })),
         trimWithPruner: () => ({ pruned: 5 }),
       });
       const cm = new ContextManager({
@@ -118,11 +119,14 @@ describe('ContextManager', () => {
       let trimCalled = false;
       const sm = createMockSessionManager({
         getTokenCount: () => 7000,
-        getHistory: () => Array.from({ length: 15 }, (_, i) => ({ role: 'user', content: `msg ${i}` })),
+        getHistory: () =>
+          Array.from({ length: 15 }, (_, i) => ({ role: 'user', content: `msg ${i}` })),
         // Do NOT include trimWithPruner — only trimToContextWindow
       });
       delete sm.trimWithPruner;
-      sm.trimToContextWindow = () => { trimCalled = true; };
+      sm.trimToContextWindow = () => {
+        trimCalled = true;
+      };
       const cm = new ContextManager({
         sessionManager: sm,
         tokenScope: createMockTokenScope(8000),
@@ -134,11 +138,14 @@ describe('ContextManager', () => {
     test('calls contextPruner.updateConfig when available', () => {
       let updateConfigCalled = false;
       const pruner = {
-        updateConfig: () => { updateConfigCalled = true; },
+        updateConfig: () => {
+          updateConfigCalled = true;
+        },
       };
       const sm = createMockSessionManager({
         getTokenCount: () => 7000,
-        getHistory: () => Array.from({ length: 15 }, (_, i) => ({ role: 'user', content: `msg ${i}` })),
+        getHistory: () =>
+          Array.from({ length: 15 }, (_, i) => ({ role: 'user', content: `msg ${i}` })),
         trimWithPruner: () => null,
       });
       const cm = new ContextManager({
@@ -153,7 +160,8 @@ describe('ContextManager', () => {
     test('adjusts preserveRecentMessages based on iteration progress', () => {
       const sm = createMockSessionManager({
         getTokenCount: () => 7000,
-        getHistory: () => Array.from({ length: 15 }, (_, i) => ({ role: 'user', content: `msg ${i}` })),
+        getHistory: () =>
+          Array.from({ length: 15 }, (_, i) => ({ role: 'user', content: `msg ${i}` })),
         trimWithPruner: () => null,
       });
       const cm = new ContextManager({
@@ -172,7 +180,9 @@ describe('ContextManager', () => {
     test('does nothing when workspaceState is null', () => {
       let addSystemMessageCalled = false;
       const sm = createMockSessionManager({
-        addSystemMessage: () => { addSystemMessageCalled = true; },
+        addSystemMessage: () => {
+          addSystemMessageCalled = true;
+        },
       });
       const cm = new ContextManager({ sessionManager: sm, workspaceState: null });
       cm.injectSummaryIfStale();
@@ -218,7 +228,9 @@ describe('ContextManager', () => {
     test('uses cached hint within 30 seconds', () => {
       let callCount = 0;
       const sm = createMockSessionManager({
-        addSystemMessage: () => { callCount++; },
+        addSystemMessage: () => {
+          callCount++;
+        },
       });
       const ws = createMockWorkspaceState();
       const cm = new ContextManager({
@@ -310,9 +322,7 @@ describe('ContextManager', () => {
       });
       const ws = createMockWorkspaceState({
         getSummary: () => ({ trackedFiles: 3, trackedDirectories: 1 }),
-        getCriticalFacts: () => [
-          { type: 'architecture', value: 'uses MVC pattern' },
-        ],
+        getCriticalFacts: () => [{ type: 'architecture', value: 'uses MVC pattern' }],
       });
       const cm = new ContextManager({
         sessionManager: sm,

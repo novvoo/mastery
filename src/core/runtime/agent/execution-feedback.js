@@ -32,7 +32,7 @@ class ExecutionRecord {
 
     // 各阶段完成情况
     this.phasesCompleted = data.phasesCompleted || []; // ['exploration','planning',...]
-    this.phaseTimings = data.phaseTimings || {};       // { exploration: 1200, ... }
+    this.phaseTimings = data.phaseTimings || {}; // { exploration: 1200, ... }
 
     // Hashline 相关
     this.hashlineConflicts = data.hashlineConflicts ?? 0;
@@ -68,7 +68,7 @@ class DecompositionPattern {
   constructor() {
     this.taskType = '';
     this.patternSignature = ''; // 子任务名称序列的哈希
-    this.subtaskNames = [];     // 分解出的子任务 ID 列表
+    this.subtaskNames = []; // 分解出的子任务 ID 列表
     this.totalRuns = 0;
     this.successRuns = 0;
     this.avgDurationMs = 0;
@@ -93,8 +93,9 @@ class DecompositionPattern {
       (this.avgDurationMs * (this.totalRuns - 1) + (record.durationMs || 0)) / this.totalRuns;
     this.avgIterations =
       (this.avgIterations * (this.totalRuns - 1) + (record.iterations || 0)) / this.totalRuns;
-    for (const phase of (record.phasesCompleted || [])) {
-      if (!this.phaseCompletionRates[phase]) this.phaseCompletionRates[phase] = { total: 0, completed: 0 };
+    for (const phase of record.phasesCompleted || []) {
+      if (!this.phaseCompletionRates[phase])
+        this.phaseCompletionRates[phase] = { total: 0, completed: 0 };
       this.phaseCompletionRates[phase].total++;
       this.phaseCompletionRates[phase].completed++;
     }
@@ -107,11 +108,11 @@ class DecompositionPattern {
  */
 class ConflictPattern {
   constructor() {
-    this.conflictType = '';      // tag_mismatch | patch_rejected | diag_new_errors | recovery_failed
+    this.conflictType = ''; // tag_mismatch | patch_rejected | diag_new_errors | recovery_failed
     this.totalOccurrences = 0;
     this.successfulRecoveries = 0; // 成功恢复次数
     this.avgRepairTimeMs = 0;
-    this.recoveryStrategies = [];  // 历史有效的恢复策略
+    this.recoveryStrategies = []; // 历史有效的恢复策略
     this.affectedFiles = new Set();
     this.lastSeen = 0;
   }
@@ -125,7 +126,8 @@ class ConflictPattern {
     this.totalOccurrences++;
     if (recovered) this.successfulRecoveries++;
     this.avgRepairTimeMs =
-      (this.avgRepairTimeMs * (this.totalOccurrences - 1) + (repairTimeMs || 0)) / this.totalOccurrences;
+      (this.avgRepairTimeMs * (this.totalOccurrences - 1) + (repairTimeMs || 0)) /
+      this.totalOccurrences;
     if (file) this.affectedFiles.add(file);
     this.lastSeen = Date.now();
   }
@@ -156,7 +158,7 @@ export class ExecutionFeedbackLoop {
       avgDurationMs: 0,
       avgIterations: 0,
       // 意图分类准确度追踪
-      intentHits: {},    // { 'coding_task': { total: N, correct: M }, ... }
+      intentHits: {}, // { 'coding_task': { total: N, correct: M }, ... }
       // 推荐工具的有效性
       toolEffectiveness: {}, // { toolName: { recommended: N, actuallyUsed: M }, ... }
     };
@@ -279,11 +281,14 @@ export class ExecutionFeedbackLoop {
     return {
       conflictType,
       affectedFiles,
-      suggestedStrategies: strategies.length > 0 ? strategies : [
-        '重新读取冲突文件确认当前状态',
-        '分析冲突原因（tag 过期 / 并发修改 / 语法差异）',
-        '用正确的上下文重新生成编辑 patch',
-      ],
+      suggestedStrategies:
+        strategies.length > 0
+          ? strategies
+          : [
+              '重新读取冲突文件确认当前状态',
+              '分析冲突原因（tag 过期 / 并发修改 / 语法差异）',
+              '用正确的上下文重新生成编辑 patch',
+            ],
       severity: conflictType === 'recovery_failed' ? 'high' : 'medium',
     };
   }
@@ -328,9 +333,7 @@ export class ExecutionFeedbackLoop {
         llmSuccessRate,
         templateSuccessRate,
         llmAvgIterations:
-          llmRuns.length > 0
-            ? llmRuns.reduce((s, r) => s + r.iterations, 0) / llmRuns.length
-            : 0,
+          llmRuns.length > 0 ? llmRuns.reduce((s, r) => s + r.iterations, 0) / llmRuns.length : 0,
         templateAvgIterations:
           templateRuns.length > 0
             ? templateRuns.reduce((s, r) => s + r.iterations, 0) / templateRuns.length
@@ -395,12 +398,13 @@ export class ExecutionFeedbackLoop {
     const gs = this.globalStats;
     return {
       totalRuns: gs.totalRuns,
-      successRate: gs.totalRuns > 0 ? (gs.successRuns / gs.totalRuns * 100).toFixed(1) + '%' : 'N/A',
+      successRate:
+        gs.totalRuns > 0 ? ((gs.successRuns / gs.totalRuns) * 100).toFixed(1) + '%' : 'N/A',
       avgDurationMs: Math.round(gs.avgDurationMs),
       avgIterations: gs.avgIterations.toFixed(1),
       llmDecompositionSuccessRate:
         gs.llmDecompositionRuns > 0
-          ? (gs.llmDecompositionSuccesses / gs.llmDecompositionRuns * 100).toFixed(1) + '%'
+          ? ((gs.llmDecompositionSuccesses / gs.llmDecompositionRuns) * 100).toFixed(1) + '%'
           : 'N/A',
       conflictPatterns: Array.from(this.conflictStats.entries()).map(([type, p]) => ({
         type,

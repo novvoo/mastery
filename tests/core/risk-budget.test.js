@@ -26,9 +26,15 @@ describe('risk-budget', () => {
 
   describe('ITERATION_RATIO', () => {
     test('is monotonically non-decreasing', () => {
-      expect(ITERATION_RATIO[RISK_LEVEL.LOW]).toBeLessThanOrEqual(ITERATION_RATIO[RISK_LEVEL.MEDIUM]);
-      expect(ITERATION_RATIO[RISK_LEVEL.MEDIUM]).toBeLessThanOrEqual(ITERATION_RATIO[RISK_LEVEL.HIGH]);
-      expect(ITERATION_RATIO[RISK_LEVEL.HIGH]).toBeLessThanOrEqual(ITERATION_RATIO[RISK_LEVEL.CRITICAL]);
+      expect(ITERATION_RATIO[RISK_LEVEL.LOW]).toBeLessThanOrEqual(
+        ITERATION_RATIO[RISK_LEVEL.MEDIUM],
+      );
+      expect(ITERATION_RATIO[RISK_LEVEL.MEDIUM]).toBeLessThanOrEqual(
+        ITERATION_RATIO[RISK_LEVEL.HIGH],
+      );
+      expect(ITERATION_RATIO[RISK_LEVEL.HIGH]).toBeLessThanOrEqual(
+        ITERATION_RATIO[RISK_LEVEL.CRITICAL],
+      );
     });
   });
 
@@ -184,8 +190,18 @@ describe('risk-budget', () => {
     });
 
     test('high confidence coding intent upgrades isCodingTask', () => {
-      const quick = { riskLevel: 'low', score: 0, reasons: [], isCodingTask: false, isLikelyTrivial: false };
-      const merged = mergeIntentProfile(quick, { intent: 'coding_task', confidence: 0.9, isCodingRelated: true });
+      const quick = {
+        riskLevel: 'low',
+        score: 0,
+        reasons: [],
+        isCodingTask: false,
+        isLikelyTrivial: false,
+      };
+      const merged = mergeIntentProfile(quick, {
+        intent: 'coding_task',
+        confidence: 0.9,
+        isCodingRelated: true,
+      });
       expect(merged.isCodingTask).toBe(true);
     });
 

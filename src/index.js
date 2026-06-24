@@ -156,7 +156,11 @@ export {
 } from './lsp/index.js';
 
 // ── Memory 子系统增强: verifier / agent / structured / selector ───────
-export { MemoryVerifier, MemoryProvenance, GitDiffStaleDetector } from './memory/memory-verifier.js';
+export {
+  MemoryVerifier,
+  MemoryProvenance,
+  GitDiffStaleDetector,
+} from './memory/memory-verifier.js';
 export { AgentMemory } from './memory/agent-memory.js';
 export { StructuredMemory } from './memory/structured-memory.js';
 export { MemorySelector, RuleBasedSelector } from './memory/memory-selector.js';

@@ -90,8 +90,8 @@ describe('activity-summary (src/core)', () => {
     expect(summary.activities.length).toBe(2);
     expect(summary.completed).toBe(1);
     expect(summary.failed).toBe(1);
-    expect(summary.files.map(file => file.path)).toContain('src/app.js');
-    expect(summary.files.find(file => file.path === 'src/out.js')?.status).toBe('failed');
+    expect(summary.files.map((file) => file.path)).toContain('src/app.js');
+    expect(summary.files.find((file) => file.path === 'src/out.js')?.status).toBe('failed');
   });
 
   test('buildActivitySummary builds task stages', () => {
@@ -123,8 +123,8 @@ describe('activity-summary (src/core)', () => {
     ];
     const summary = buildActivitySummary(details);
     expect(summary.taskStages.length).toBe(4);
-    const inspect = summary.taskStages.find(s => s.id === 'inspect');
-    const verify = summary.taskStages.find(s => s.id === 'verify');
+    const inspect = summary.taskStages.find((s) => s.id === 'inspect');
+    const verify = summary.taskStages.find((s) => s.id === 'verify');
     expect(inspect.status).toBe('completed');
     expect(verify.status).toBe('running');
   });

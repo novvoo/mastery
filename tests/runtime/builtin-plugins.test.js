@@ -57,7 +57,7 @@ describe('builtin-plugins', () => {
 
     test('initialize sets up tracking state', () => {
       const mockConfig = {
-        get: (key) => key === 'logInterval' ? 5000 : true,
+        get: (key) => (key === 'logInterval' ? 5000 : true),
       };
       const mockEventBus = {
         subscribe: mock(() => {}),
@@ -145,7 +145,7 @@ describe('builtin-plugins', () => {
 
     test('initialize sets up cache with config values', () => {
       const mockConfig = {
-        get: (key) => key === 'maxSize' ? 50 : 30000,
+        get: (key) => (key === 'maxSize' ? 50 : 30000),
       };
 
       CachePlugin.initialize({ config: mockConfig });
@@ -162,7 +162,7 @@ describe('builtin-plugins', () => {
     });
 
     test('middleware has correct structure and name', () => {
-      const mockConfig = { get: (key) => key === 'maxSize' ? 10 : 60000 };
+      const mockConfig = { get: (key) => (key === 'maxSize' ? 10 : 60000) };
       CachePlugin.initialize({ config: mockConfig });
 
       expect(CachePlugin.middlewares).toHaveLength(1);
@@ -174,7 +174,7 @@ describe('builtin-plugins', () => {
     });
 
     test('middleware before uses cacheKey from toolName+args', () => {
-      const mockConfig = { get: (key) => key === 'maxSize' ? 10 : 60000 };
+      const mockConfig = { get: (key) => (key === 'maxSize' ? 10 : 60000) };
       CachePlugin.initialize({ config: mockConfig });
 
       // Verify cache was initialized
@@ -190,7 +190,7 @@ describe('builtin-plugins', () => {
     });
 
     test('middleware evicts oldest when maxSize reached', () => {
-      const mockConfig = { get: (key) => key === 'maxSize' ? 2 : 60000 };
+      const mockConfig = { get: (key) => (key === 'maxSize' ? 2 : 60000) };
       CachePlugin.initialize({ config: mockConfig });
 
       // Simulate cache eviction behavior

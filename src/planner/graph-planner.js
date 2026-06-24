@@ -442,9 +442,18 @@ export class GraphPlanner extends EventEmitter {
     const lower = (taskName + ' ' + description).toLowerCase();
     if (/\b(verify|test|validate|confirm|lint|build_check)\b/.test(lower)) return 'verification';
     if (/\b(inspect|review|check|audit|read_back|审[核查]|复查)\b/.test(lower)) return 'inspection';
-    if (/\b(implement|create|edit|write|fix|add|update|refactor|build|code|修改|实现|创建|編写|修复|重构)\b/.test(lower)) return 'implementation';
-    if (/\b(plan|design|architect|brainstorm|grill|zoom_out|approach|方案|设计|规划)\b/.test(lower)) return 'planning';
-    if (/\b(inspect|explore|discover|read|gather|analyze|了解|探索|检查|分析|读取|发现)\b/.test(lower)) return 'exploration';
+    if (
+      /\b(implement|create|edit|write|fix|add|update|refactor|build|code|修改|实现|创建|編写|修复|重构)\b/.test(
+        lower,
+      )
+    )
+      return 'implementation';
+    if (/\b(plan|design|architect|brainstorm|grill|zoom_out|approach|方案|设计|规划)\b/.test(lower))
+      return 'planning';
+    if (
+      /\b(inspect|explore|discover|read|gather|analyze|了解|探索|检查|分析|读取|发现)\b/.test(lower)
+    )
+      return 'exploration';
     // 默认按任务顺序：第一个 → exploration，中间 → implementation，最后一个 → verification
     return null;
   }
@@ -516,15 +525,11 @@ export class GraphPlanner extends EventEmitter {
 
     // ==== 反馈闭环：消费 ExecutionFeedbackLoop 提供的历史经验 ====
     const feedbackContext = options.feedbackContext || null;
-    const feedbackSection = feedbackContext
-      ? this.#buildFeedbackPrompt(feedbackContext)
-      : '';
+    const feedbackSection = feedbackContext ? this.#buildFeedbackPrompt(feedbackContext) : '';
 
     // ==== 任务分类结果 ====
     const taskProfile = options.taskProfile || null;
-    const taskProfileSection = taskProfile
-      ? this.#buildTaskProfilePrompt(taskProfile)
-      : '';
+    const taskProfileSection = taskProfile ? this.#buildTaskProfilePrompt(taskProfile) : '';
 
     const systemPrompt = `你是一个任务规划专家。你的职责是将用户的任务描述分解为结构化的有向无环图(DAG)子任务列表。
 
@@ -578,7 +583,8 @@ ${toolHint}
         { maxTokens: 1500, temperature: 0.2 },
       );
 
-      const text = typeof response === 'string' ? response : response?.text || response?.content || '';
+      const text =
+        typeof response === 'string' ? response : response?.text || response?.content || '';
       return this.#parseLLMSubtasks(text, taskDescription, options);
     } catch (err) {
       // LLM 调用失败，回退到模板
@@ -699,9 +705,7 @@ ${toolHint}
       );
     }
 
-    lines.push(
-      '\n请结合以上历史反馈优化本次分解策略，但不要生搬硬套 —— 每个任务都有其特殊性。',
-    );
+    lines.push('\n请结合以上历史反馈优化本次分解策略，但不要生搬硬套 —— 每个任务都有其特殊性。');
 
     return lines.join('\n');
   }
@@ -721,9 +725,7 @@ ${toolHint}
     }
     if (taskProfile.isBugTask) {
       lines.push('- 任务类型: Bug修复任务');
-      lines.push(
-        '  → 建议分解步骤: 复现问题 → 定位根因 → 编写修复 → 验证修复 → 编写测试',
-      );
+      lines.push('  → 建议分解步骤: 复现问题 → 定位根因 → 编写修复 → 验证修复 → 编写测试');
     }
     if (taskProfile.isDocumentationTask) {
       lines.push('- 任务类型: 文档任务');
@@ -733,17 +735,13 @@ ${toolHint}
     if (taskProfile.riskLevel) {
       lines.push(`- 风险等级: ${taskProfile.riskLevel}`);
       if (taskProfile.riskLevel === 'high') {
-        lines.push(
-          '  → 高风险任务: 建议增加验证步骤，每个关键变更后都进行测试',
-        );
+        lines.push('  → 高风险任务: 建议增加验证步骤，每个关键变更后都进行测试');
       }
     }
 
     if (taskProfile.requiresSemanticRiskReview) {
       lines.push('- 需要语义风险审查');
-      lines.push(
-        '  → 建议在实现后添加 API/语义风险审查步骤',
-      );
+      lines.push('  → 建议在实现后添加 API/语义风险审查步骤');
     }
 
     if (taskProfile.semanticRiskDomains && taskProfile.semanticRiskDomains.length > 0) {
@@ -752,9 +750,7 @@ ${toolHint}
       );
     }
 
-    lines.push(
-      '\n请根据以上任务分类结果调整分解策略，确保子任务覆盖所有必要阶段。',
-    );
+    lines.push('\n请根据以上任务分类结果调整分解策略，确保子任务覆盖所有必要阶段。');
 
     return lines.join('\n');
   }

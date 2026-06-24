@@ -109,12 +109,12 @@ describe('AgentMemory', () => {
   });
 
   test('retrieve excludes expired memories', async () => {
-    const oldTimestamp = Date.now() - (31 * 24 * 60 * 60 * 1000);
+    const oldTimestamp = Date.now() - 31 * 24 * 60 * 60 * 1000;
     const expiredEntry = memory.addUser('Expired', 'test content');
     expiredEntry.timestamp = oldTimestamp;
-    
+
     const freshEntry = memory.addUser('Fresh', 'test content');
-    
+
     const results = await memory.retrieve('test');
     expect(results.length).toBe(1);
     expect(results[0].title).toBe('Fresh');
@@ -192,7 +192,7 @@ describe('AgentMemory', () => {
   test('flush persists changes', () => {
     const entry = memory.addUser('Test', 'Content');
     memory.flush();
-    
+
     const memory2 = new AgentMemory(workingDir);
     const retrieved = memory2.get(entry.id);
     expect(retrieved).not.toBe(null);

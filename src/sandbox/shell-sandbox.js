@@ -1,7 +1,12 @@
 import { tmpdir, homedir } from 'os';
 import { delimiter, resolve, sep } from 'path';
 import { spawnSync } from 'child_process';
-import { NETWORK_COMMAND_PATTERN, WRITE_COMMAND_PATTERN, isNetworkCommand, isWriteCommand } from '../utils/patterns.js';
+import {
+  NETWORK_COMMAND_PATTERN,
+  WRITE_COMMAND_PATTERN,
+  isNetworkCommand,
+  isWriteCommand,
+} from '../utils/patterns.js';
 
 export class ShellSandboxConfig {
   constructor(options = {}) {

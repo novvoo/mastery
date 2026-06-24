@@ -95,20 +95,24 @@ export class AgentRouter {
     const resultMode = options.resultMode || 'tool';
     const startedAt = Date.now();
 
-    // 去重
+    // 去重 - 重复调用时复用上次结果而非跳过
     const callSignature = `${name}:${JSON.stringify(args)}`;
     await this.#loadToolResultCache();
     if (this.#toolCallHistory.includes(callSignature) || this.#toolResultCache.has(callSignature)) {
-      this.#ui.warn(`Duplicate tool call detected: ${name}. Skipping.`);
       const cachedResult = this.#toolResultCache.get(callSignature);
-      this.#debugEvent('Tool call skipped', {
-        reason: 'duplicate',
-        tool: name,
-        arguments: args,
-        resultMode,
-        cachedResult: Boolean(cachedResult),
-      });
-      return { name, result: cachedResult || null, skipped: true };
+      if (cachedResult) {
+        this.#ui.info(`Duplicate tool call: ${name}. Reusing cached result.`);
+        this.#debugEvent('Tool call cached', {
+          reason: 'duplicate',
+          tool: name,
+          arguments: args,
+          resultMode,
+          cachedResult: true,
+        });
+        return { name, result: cachedResult, cached: true };
+      }
+      this.#ui.warn(`Duplicate tool call detected: ${name}. No cached result available.`);
+      return { name, result: null, skipped: true };
     }
     this.#toolCallHistory.push(callSignature);
     if (this.#toolCallHistory.length > 50) {

@@ -351,11 +351,10 @@ export class AgentEngine {
     const modelProvider = options.modelProvider || ctx.modelProvider;
 
     // 1. 创建执行计划
-    const plan = ctx.graphPlanner.createPlan(
+    const plan = ctx.graphPlanner.createPlan(taskDescription, `执行计划: ${taskDescription}`, {
       taskDescription,
-      `执行计划: ${taskDescription}`,
-      { taskDescription, ...(options.context || {}) },
-    );
+      ...(options.context || {}),
+    });
 
     // 2. 发射 plan:created 事件
     ctx.eventBus.emit(RuntimeEvent.EXECUTION_PLAN_CREATED, {
@@ -376,33 +375,26 @@ export class AgentEngine {
 
     if (modelProvider && typeof modelProvider.chat === 'function') {
       // LLM 驱动分解：带方法论工具建议 + Hashline 工具感知
-      const availableTools = ctx.toolRegistry
-        ? ctx.toolRegistry.getAll().map((t) => t.name)
-        : [];
+      const availableTools = ctx.toolRegistry ? ctx.toolRegistry.getAll().map((t) => t.name) : [];
 
       ctx.eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
         message: 'AI 正在分析任务并生成执行计划...',
         level: 'info',
       });
 
-      subtaskDefs = await ctx.graphPlanner.decomposeTaskLLM(
-        taskDescription,
-        modelProvider,
-        {
-          availableTools,
-          workingDirectory: ctx.config?.workingDirectory,
-          priority: options.priority,
-          template: options.template,
-        },
-      );
+      subtaskDefs = await ctx.graphPlanner.decomposeTaskLLM(taskDescription, modelProvider, {
+        availableTools,
+        workingDirectory: ctx.config?.workingDirectory,
+        priority: options.priority,
+        template: options.template,
+      });
       decompositionMethod = 'llm';
     } else {
       // 模板回退
-      subtaskDefs = ctx.graphPlanner.decomposeTask(
-        plan.id,
-        taskDescription,
-        { template: options.template, priority: options.priority },
-      );
+      subtaskDefs = ctx.graphPlanner.decomposeTask(plan.id, taskDescription, {
+        template: options.template,
+        priority: options.priority,
+      });
       decompositionMethod = 'template';
     }
 

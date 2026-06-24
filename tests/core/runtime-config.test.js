@@ -54,7 +54,11 @@ describe('runtime-config (src/core)', () => {
   });
 
   test('getUserEnvPath returns .env path', () => {
-    const envPath = getUserEnvPath({ env: { HOME: '/home' }, platform: () => 'linux', home: '/home' });
+    const envPath = getUserEnvPath({
+      env: { HOME: '/home' },
+      platform: () => 'linux',
+      home: '/home',
+    });
     expect(envPath).toContain('.env');
   });
 
@@ -96,7 +100,10 @@ describe('runtime-config (src/core)', () => {
   });
 
   test('getMissingRequiredConfig returns empty when key is set', () => {
-    const missing = getMissingRequiredConfig({ MODEL_PROVIDER: 'openai', OPENAI_API_KEY: 'sk-test' });
+    const missing = getMissingRequiredConfig({
+      MODEL_PROVIDER: 'openai',
+      OPENAI_API_KEY: 'sk-test',
+    });
     expect(missing).toEqual([]);
   });
 

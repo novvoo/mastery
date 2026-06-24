@@ -40,11 +40,7 @@ const READ_ONLY_TOOLS = new Set([
 // 当执行计划提供了当前子任务的 scopeFiles 时，
 // 以下工具的目标路径必须在 scopeFiles 范围内，否则直接拦截。
 
-const SCOPE_READ_TOOLS = new Set([
-  'read_file',
-  'list_dir',
-  'tree',
-]);
+const SCOPE_READ_TOOLS = new Set(['read_file', 'list_dir', 'tree']);
 
 /**
  * 从工具参数中提取目标文件路径（用于作用域匹配）。
@@ -222,9 +218,10 @@ export class ToolExecutor {
     // ============ 去重：内存 + 持久化缓存（读工具使用文件 hash 智能跳过） ============
     await this.#loadResultCache();
     const isReadOnly = READ_ONLY_TOOLS.has(name);
-    
+
     // 非读工具：同一会话内 callHistory 阻止重复，跨会话 resultCache 启用缓存
-    let cacheHit = !isReadOnly && (this.#callHistory.has(callSignature) || this.#resultCache.has(callSignature));
+    let cacheHit =
+      !isReadOnly && (this.#callHistory.has(callSignature) || this.#resultCache.has(callSignature));
 
     // 读工具：基于文件 hash 智能跳过（文件未变则可跳过，文件已变则重新读取）
     if (isReadOnly && !cacheHit) {
@@ -241,7 +238,7 @@ export class ToolExecutor {
         if (targetPath && this.#snapshotStore) {
           const currentTag = this.#snapshotStore.head(targetPath);
           const cached = this.#resultCache.get(callSignature);
-          
+
           if (cached && currentTag) {
             const cachedData = typeof cached === 'string' ? JSON.parse(cached) : cached;
             // 只有当文件tag匹配时才跳过
@@ -258,7 +255,7 @@ export class ToolExecutor {
             }
           }
         }
-        
+
         // 目录类工具：TTL 缓存（30秒内重复调用直接返回缓存）
         const dirTools = ['list_dir', 'glob', 'tree'];
         if (dirTools.includes(name) && !cacheHit) {
@@ -274,7 +271,7 @@ export class ToolExecutor {
     if (cacheHit) {
       const cachedEntry = this.#resultCache.get(callSignature);
       const dirCached = this.#dirToolCache.get(callSignature);
-      
+
       // 检查是否有有效的缓存结果
       let hasValidCache = false;
       if (cachedEntry) {
@@ -292,7 +289,7 @@ export class ToolExecutor {
       } else if (['list_dir', 'glob', 'tree'].includes(name) && dirCached) {
         hasValidCache = true;
       }
-      
+
       // 如果没有有效缓存，则重新执行
       if (!hasValidCache) {
         cacheHit = false;
@@ -303,7 +300,7 @@ export class ToolExecutor {
       this.#ui.warn?.(`Duplicate tool call detected: ${name}. Skipping.`);
       let cachedResult = null;
       const cachedEntry = this.#resultCache.get(callSignature);
-      
+
       if (cachedEntry) {
         cachedResult = typeof cachedEntry === 'string' ? cachedEntry : cachedEntry.result;
       } else if (name === 'read_file' && (args.offset || args.limit)) {
@@ -328,7 +325,7 @@ export class ToolExecutor {
           cachedResult = dirCached.result;
         }
       }
-      
+
       const observation = cachedResult
         ? `Duplicate call to ${name} skipped (file unchanged). Previous result:\n${cachedResult}\n\nUse this observation to provide the final answer.`
         : `Warning: Duplicate call to ${name} skipped. Use the existing observations to provide the final answer.`;
@@ -429,13 +426,16 @@ export class ToolExecutor {
     }
 
     // ============ 文件作用域强制（工程级：硬拦截越界读取） ============
-    if (
-      SCOPE_READ_TOOLS.has(name) &&
-      context.scopeFiles &&
-      context.scopeFiles.length > 0
-    ) {
+    if (SCOPE_READ_TOOLS.has(name) && context.scopeFiles && context.scopeFiles.length > 0) {
       const targetPath = getScopeTargetPath(name, effectiveArgs);
-      if (targetPath && !isPathInScope(targetPath, context.scopeFiles, this.#config.workingDirectory || process.cwd())) {
+      if (
+        targetPath &&
+        !isPathInScope(
+          targetPath,
+          context.scopeFiles,
+          this.#config.workingDirectory || process.cwd(),
+        )
+      ) {
         const scopeList = context.scopeFiles.join(', ');
         const blockedMsg =
           `SCOPE_BLOCKED: "${targetPath}" 不在当前子任务的作用域内 [${scopeList}]。\n` +
@@ -487,9 +487,15 @@ export class ToolExecutor {
           typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult);
         this.#resultCache.set(callSignature, cachedValue);
         this.#flushCacheEntry(callSignature, cachedValue);
-        
+
         // 写文件后预填充读缓存，避免立即重复读取
-        const writeTools = ['write_file', 'write_file_with_hashline', 'edit_file', 'update_file', 'rename_file'];
+        const writeTools = [
+          'write_file',
+          'write_file_with_hashline',
+          'edit_file',
+          'update_file',
+          'rename_file',
+        ];
         if (writeTools.includes(name)) {
           const targetPath = getScopeTargetPath(name, effectiveArgs);
           if (targetPath && this.#snapshotStore) {
@@ -497,7 +503,7 @@ export class ToolExecutor {
             if (fileTag) {
               // 尝试从参数中获取内容（如果可用）
               let content = effectiveArgs.content || effectiveArgs.text;
-              
+
               // 如果参数中没有内容，从磁盘读取
               if (!content) {
                 try {
@@ -506,7 +512,7 @@ export class ToolExecutor {
                   // 文件可能还未创建或无法读取
                 }
               }
-              
+
               if (content) {
                 // 预填充带行号的结果缓存（模拟 read_file 的输出格式）
                 const lines = content.split('\n');
@@ -520,19 +526,18 @@ export class ToolExecutor {
       } else {
         // 读工具：存储结果和当前文件 tag 到内存缓存，供后续 hash 比对
         const targetPath = getScopeTargetPath(name, effectiveArgs);
-        const fileTag = targetPath && this.#snapshotStore
-          ? this.#snapshotStore.head(targetPath)
-          : null;
+        const fileTag =
+          targetPath && this.#snapshotStore ? this.#snapshotStore.head(targetPath) : null;
         this.#resultCache.set(callSignature, { result: finalResult, fileTag });
-        
+
         // 目录类工具：存储到 TTL 缓存
         const dirTools = ['list_dir', 'glob', 'tree'];
         if (dirTools.includes(name)) {
           this.#dirToolCache.set(callSignature, {
             result: finalResult,
-            timestamp: Date.now()
+            timestamp: Date.now(),
           });
-          
+
           // 限制目录工具缓存大小
           if (this.#dirToolCache.size > 50) {
             const oldestKey = this.#dirToolCache.keys().next().value;

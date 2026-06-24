@@ -21,7 +21,6 @@ describe('i18n 默认语言验证', () => {
 });
 
 describe('DesktopCore - UI 适配器与事件流', () => {
-
   let eventBus;
 
   beforeEach(() => {
@@ -31,7 +30,7 @@ describe('DesktopCore - UI 适配器与事件流', () => {
   test('DesktopCore.initialize 时会通过 bootstrapRuntime 创建 engine', async () => {
     const desktopCore = createDesktopCore({
       workingDirectory: process.cwd(),
-      debug: false
+      debug: false,
     });
     try {
       await desktopCore.initialize();
@@ -46,7 +45,7 @@ describe('DesktopCore - UI 适配器与事件流', () => {
   test('初始化时创建的 engine 应该有工具', async () => {
     const desktopCore = createDesktopCore({
       workingDirectory: process.cwd(),
-      debug: false
+      debug: false,
     });
     try {
       await desktopCore.initialize();
@@ -60,20 +59,23 @@ describe('DesktopCore - UI 适配器与事件流', () => {
 });
 
 describe('runtime-bootstrap - ui 适配器桥接', () => {
-
   test('bootstrapRuntime 可以接受 ui 参数', async () => {
     let toolCallCount = 0;
     let toolResultCount = 0;
 
     const uiAdapter = {
-      toolCall: (name, args) => { toolCallCount++; },
-      toolResult: (name, result) => { toolResultCount++; },
+      toolCall: (name, args) => {
+        toolCallCount++;
+      },
+      toolResult: (name, result) => {
+        toolResultCount++;
+      },
       toolError: () => {},
       iteration: () => {},
       finalAnswer: () => {},
       warn: () => {},
       debugEvent: () => {},
-      debug: () => {}
+      debug: () => {},
     };
 
     const runtime = await bootstrapRuntime({
@@ -83,7 +85,7 @@ describe('runtime-bootstrap - ui 适配器桥接', () => {
       securityPolicy: 'full',
       modelProvider: null,
       memoryManager: null,
-      ui: uiAdapter
+      ui: uiAdapter,
     });
 
     expect(runtime).toBeDefined();
@@ -130,7 +132,7 @@ describe('runtime-bootstrap - ui 适配器桥接', () => {
         } else {
           eventBus.emit(RuntimeEvent.AGENT_THINKING, { eventName: name, data });
         }
-      }
+      },
     };
 
     const runtime = await bootstrapRuntime({
@@ -140,7 +142,7 @@ describe('runtime-bootstrap - ui 适配器桥接', () => {
       securityPolicy: 'full',
       modelProvider: null,
       memoryManager: null,
-      ui: uiAdapter
+      ui: uiAdapter,
     });
 
     const eventBusEvents = [];
@@ -164,8 +166,8 @@ describe('runtime-bootstrap - ui 适配器桥接', () => {
       // processInput 必然走 ui 回调
       expect(receivedEvents.length).toBeGreaterThan(0);
       // 至少会有一个 AGENT_START 或 AGENT_THINKING 事件
-      const hasStart = eventBusEvents.some(e => e.type === RuntimeEvent.AGENT_START);
-      const hasThinking = eventBusEvents.some(e => e.type === RuntimeEvent.AGENT_THINKING);
+      const hasStart = eventBusEvents.some((e) => e.type === RuntimeEvent.AGENT_START);
+      const hasThinking = eventBusEvents.some((e) => e.type === RuntimeEvent.AGENT_THINKING);
       expect(hasStart || hasThinking).toBe(true);
     } finally {
       unsubStart && unsubStart();
@@ -177,12 +179,11 @@ describe('runtime-bootstrap - ui 适配器桥接', () => {
 });
 
 describe('DesktopCore - 运行详情事件转发', () => {
-
   test('engine 通过 ui adapter 发出的 tool:call 事件被转发到 UIBridge', async () => {
     const eventBus = getEventBus();
     const desktopCore = createDesktopCore({
       workingDirectory: process.cwd(),
-      debug: false
+      debug: false,
     });
 
     try {
@@ -195,7 +196,7 @@ describe('DesktopCore - 运行详情事件转发', () => {
           received.push(message);
         },
         attachCoreRef: () => {},
-        disconnect: () => {}
+        disconnect: () => {},
       };
       desktopCore.attachUIBridge(uiBridge);
 
@@ -203,13 +204,13 @@ describe('DesktopCore - 运行详情事件转发', () => {
       // （这模拟了 engine.ui.toolCall 的效果）
       eventBus.emit(RuntimeEvent.TOOL_CALL, {
         name: 'filesystem_list_directory',
-        arguments: { path: '.' }
+        arguments: { path: '.' },
       });
 
       // 等待事件传播
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const toolCallMessages = received.filter(m => m.type === RuntimeEvent.TOOL_CALL);
+      const toolCallMessages = received.filter((m) => m.type === RuntimeEvent.TOOL_CALL);
       expect(toolCallMessages.length).toBeGreaterThan(0);
       expect(toolCallMessages[0].data.name).toBe('filesystem_list_directory');
     } finally {
@@ -220,7 +221,7 @@ describe('DesktopCore - 运行详情事件转发', () => {
   test('eventBus 事件通过 desktopCore.#setupEventForwarding 转发', async () => {
     const desktopCore = createDesktopCore({
       workingDirectory: process.cwd(),
-      debug: false
+      debug: false,
     });
 
     try {
@@ -232,7 +233,7 @@ describe('DesktopCore - 运行详情事件转发', () => {
           received.push(message);
         },
         attachCoreRef: () => {},
-        disconnect: () => {}
+        disconnect: () => {},
       };
       desktopCore.attachUIBridge(uiBridge);
 
@@ -243,10 +244,10 @@ describe('DesktopCore - 运行详情事件转发', () => {
       eventBus.emit(RuntimeEvent.STATUS_UPDATE, { status: 'running' });
       eventBus.emit(RuntimeEvent.AGENT_COMPLETE, { answer: 'done' });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(received.length).toBeGreaterThan(0);
-      const startEvent = received.find(m => m.type === RuntimeEvent.AGENT_START);
+      const startEvent = received.find((m) => m.type === RuntimeEvent.AGENT_START);
       expect(startEvent).toBeDefined();
       expect(startEvent.data.message).toBe('test event');
     } finally {
@@ -257,7 +258,7 @@ describe('DesktopCore - 运行详情事件转发', () => {
   test('plan events are forwarded to UIBridge', async () => {
     const desktopCore = createDesktopCore({
       workingDirectory: process.cwd(),
-      debug: false
+      debug: false,
     });
 
     try {
@@ -267,24 +268,25 @@ describe('DesktopCore - 运行详情事件转发', () => {
       desktopCore.attachUIBridge({
         onMessage: (message) => received.push(message),
         attachCoreRef: () => {},
-        disconnect: () => {}
+        disconnect: () => {},
       });
 
       const eventBus = desktopCore.getEventBus();
       const plan = {
         name: 'Automatic coding task plan',
-        tasks: [
-          { id: 'inspect_workspace', name: 'Inspect workspace', status: 'running' }
-        ]
+        tasks: [{ id: 'inspect_workspace', name: 'Inspect workspace', status: 'running' }],
       };
 
       eventBus.emit(RuntimeEvent.EXECUTION_PLAN_CREATED, { plan });
-      eventBus.emit(RuntimeEvent.EXECUTION_PLAN_UPDATED, { plan, update: { after: '- inspect_workspace: completed' } });
+      eventBus.emit(RuntimeEvent.EXECUTION_PLAN_UPDATED, {
+        plan,
+        update: { after: '- inspect_workspace: completed' },
+      });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
-      expect(received.some(m => m.type === RuntimeEvent.EXECUTION_PLAN_CREATED)).toBe(true);
-      expect(received.some(m => m.type === RuntimeEvent.EXECUTION_PLAN_UPDATED)).toBe(true);
+      expect(received.some((m) => m.type === RuntimeEvent.EXECUTION_PLAN_CREATED)).toBe(true);
+      expect(received.some((m) => m.type === RuntimeEvent.EXECUTION_PLAN_UPDATED)).toBe(true);
     } finally {
       await desktopCore.dispose();
     }
@@ -292,7 +294,6 @@ describe('DesktopCore - 运行详情事件转发', () => {
 });
 
 describe('bootstrapRuntime 基础功能验证', () => {
-
   test('返回完整的 runtime 组件：engine, toolRegistry, workspaceState 等', async () => {
     const runtime = await bootstrapRuntime({
       workingDirectory: process.cwd(),
@@ -301,7 +302,7 @@ describe('bootstrapRuntime 基础功能验证', () => {
       securityPolicy: 'full',
       modelProvider: null,
       memoryManager: null,
-      ui: null
+      ui: null,
     });
 
     expect(runtime.engine).toBeDefined();
@@ -322,7 +323,7 @@ describe('bootstrapRuntime 基础功能验证', () => {
       maxIterations: 5,
       debug: false,
       securityPolicy: 'full',
-      ui: null
+      ui: null,
     });
 
     const state = runtime.engine.getState();
@@ -340,7 +341,7 @@ describe('bootstrapRuntime 基础功能验证', () => {
       debug: false,
       securityPolicy: 'full',
       modelProvider: null,
-      ui: null
+      ui: null,
     });
 
     const result = await runtime.engine.processInput('just a test');
@@ -351,11 +352,10 @@ describe('bootstrapRuntime 基础功能验证', () => {
 });
 
 describe('DesktopCore - 流式事件转发', () => {
-
   test('agent:text_delta 事件通过 eventBus 转发', async () => {
     const desktopCore = createDesktopCore({
       workingDirectory: process.cwd(),
-      debug: false
+      debug: false,
     });
 
     try {
@@ -363,9 +363,11 @@ describe('DesktopCore - 流式事件转发', () => {
 
       const received = [];
       const uiBridge = {
-        onMessage: (message) => { received.push(message); },
+        onMessage: (message) => {
+          received.push(message);
+        },
         attachCoreRef: () => {},
-        disconnect: () => {}
+        disconnect: () => {},
       };
       desktopCore.attachUIBridge(uiBridge);
 
@@ -373,9 +375,9 @@ describe('DesktopCore - 流式事件转发', () => {
       eventBus.emit(RuntimeEvent.AGENT_TEXT_DELTA, { text: 'Hello', timestamp: Date.now() });
       eventBus.emit(RuntimeEvent.AGENT_TEXT_DELTA, { text: ' World', timestamp: Date.now() });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const textDeltaEvents = received.filter(m => m.type === RuntimeEvent.AGENT_TEXT_DELTA);
+      const textDeltaEvents = received.filter((m) => m.type === RuntimeEvent.AGENT_TEXT_DELTA);
       expect(textDeltaEvents.length).toBeGreaterThanOrEqual(2);
       expect(textDeltaEvents[0].data.text).toBe('Hello');
       expect(textDeltaEvents[1].data.text).toBe(' World');
@@ -387,7 +389,7 @@ describe('DesktopCore - 流式事件转发', () => {
   test('agent:reasoning_delta 事件通过 eventBus 转发', async () => {
     const desktopCore = createDesktopCore({
       workingDirectory: process.cwd(),
-      debug: false
+      debug: false,
     });
 
     try {
@@ -395,18 +397,22 @@ describe('DesktopCore - 流式事件转发', () => {
 
       const received = [];
       const uiBridge = {
-        onMessage: (message) => { received.push(message); },
+        onMessage: (message) => {
+          received.push(message);
+        },
         attachCoreRef: () => {},
-        disconnect: () => {}
+        disconnect: () => {},
       };
       desktopCore.attachUIBridge(uiBridge);
 
       const eventBus = desktopCore.getEventBus();
       eventBus.emit(RuntimeEvent.AGENT_REASONING_DELTA, { text: '思考中', timestamp: Date.now() });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const reasoningDeltaEvents = received.filter(m => m.type === RuntimeEvent.AGENT_REASONING_DELTA);
+      const reasoningDeltaEvents = received.filter(
+        (m) => m.type === RuntimeEvent.AGENT_REASONING_DELTA,
+      );
       expect(reasoningDeltaEvents.length).toBe(1);
       expect(reasoningDeltaEvents[0].data.text).toBe('思考中');
     } finally {
@@ -417,7 +423,7 @@ describe('DesktopCore - 流式事件转发', () => {
   test('agent:tool_call_delta 事件通过 eventBus 转发', async () => {
     const desktopCore = createDesktopCore({
       workingDirectory: process.cwd(),
-      debug: false
+      debug: false,
     });
 
     try {
@@ -425,18 +431,27 @@ describe('DesktopCore - 流式事件转发', () => {
 
       const received = [];
       const uiBridge = {
-        onMessage: (message) => { received.push(message); },
+        onMessage: (message) => {
+          received.push(message);
+        },
         attachCoreRef: () => {},
-        disconnect: () => {}
+        disconnect: () => {},
       };
       desktopCore.attachUIBridge(uiBridge);
 
       const eventBus = desktopCore.getEventBus();
-      eventBus.emit(RuntimeEvent.AGENT_TOOL_CALL_DELTA, { index: 0, name: 'read_file', arguments: '{"path":"a.txt"}', timestamp: Date.now() });
+      eventBus.emit(RuntimeEvent.AGENT_TOOL_CALL_DELTA, {
+        index: 0,
+        name: 'read_file',
+        arguments: '{"path":"a.txt"}',
+        timestamp: Date.now(),
+      });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const toolCallDeltaEvents = received.filter(m => m.type === RuntimeEvent.AGENT_TOOL_CALL_DELTA);
+      const toolCallDeltaEvents = received.filter(
+        (m) => m.type === RuntimeEvent.AGENT_TOOL_CALL_DELTA,
+      );
       expect(toolCallDeltaEvents.length).toBe(1);
       expect(toolCallDeltaEvents[0].data.name).toBe('read_file');
       expect(toolCallDeltaEvents[0].data.arguments).toBe('{"path":"a.txt"}');
@@ -449,9 +464,15 @@ describe('DesktopCore - 流式事件转发', () => {
     const eventBus = getEventBus();
 
     const receivedEvents = [];
-    const unsubText = eventBus.subscribe(RuntimeEvent.AGENT_TEXT_DELTA, (d) => receivedEvents.push({ ...d, __type: 'text_delta' }));
-    const unsubReasoning = eventBus.subscribe(RuntimeEvent.AGENT_REASONING_DELTA, (d) => receivedEvents.push({ ...d, __type: 'reasoning_delta' }));
-    const unsubToolCall = eventBus.subscribe(RuntimeEvent.AGENT_TOOL_CALL_DELTA, (d) => receivedEvents.push({ ...d, __type: 'tool_call_delta' }));
+    const unsubText = eventBus.subscribe(RuntimeEvent.AGENT_TEXT_DELTA, (d) =>
+      receivedEvents.push({ ...d, __type: 'text_delta' }),
+    );
+    const unsubReasoning = eventBus.subscribe(RuntimeEvent.AGENT_REASONING_DELTA, (d) =>
+      receivedEvents.push({ ...d, __type: 'reasoning_delta' }),
+    );
+    const unsubToolCall = eventBus.subscribe(RuntimeEvent.AGENT_TOOL_CALL_DELTA, (d) =>
+      receivedEvents.push({ ...d, __type: 'tool_call_delta' }),
+    );
 
     try {
       const uiAdapter = {
@@ -465,9 +486,9 @@ describe('DesktopCore - 流式事件转发', () => {
       uiAdapter.onReasoningDelta('正在思考');
       uiAdapter.onToolCallDelta({ index: 0, name: 'foo', arguments: '{}' });
 
-      const textEvents = receivedEvents.filter(e => e.__type === 'text_delta');
-      const reasoningEvents = receivedEvents.filter(e => e.__type === 'reasoning_delta');
-      const toolCallEvents = receivedEvents.filter(e => e.__type === 'tool_call_delta');
+      const textEvents = receivedEvents.filter((e) => e.__type === 'text_delta');
+      const reasoningEvents = receivedEvents.filter((e) => e.__type === 'reasoning_delta');
+      const toolCallEvents = receivedEvents.filter((e) => e.__type === 'tool_call_delta');
 
       expect(textEvents.length).toBe(2);
       expect(textEvents[0].text).toBe('你');

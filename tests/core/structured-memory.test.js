@@ -73,7 +73,7 @@ describe('StructuredMemory', () => {
     memory.addProject('Project1', 'Content3');
     const users = memory.getAll(MemoryType.USER);
     expect(users.length).toBe(2);
-    expect(users.every(u => u.type === MemoryType.USER)).toBe(true);
+    expect(users.every((u) => u.type === MemoryType.USER)).toBe(true);
   });
 
   test('delete removes entry', () => {
@@ -137,7 +137,7 @@ describe('StructuredMemory', () => {
   test('flush writes changes to disk', () => {
     const entry = memory.addUser('Test', 'Content');
     memory.flush();
-    
+
     const memory2 = new StructuredMemory(workingDir);
     const retrieved = memory2.get(entry.id);
     expect(retrieved).not.toBe(null);
@@ -169,10 +169,13 @@ describe('StructuredMemory', () => {
   });
 
   test('handles entries with special characters', () => {
-    const entry = memory.addUser('Title with "quotes" and @special#chars', 'Content with new\nlines and special chars: $%^&*');
+    const entry = memory.addUser(
+      'Title with "quotes" and @special#chars',
+      'Content with new\nlines and special chars: $%^&*',
+    );
     expect(entry.title).toBe('Title with "quotes" and @special#chars');
     expect(entry.content).toBe('Content with new\nlines and special chars: $%^&*');
-    
+
     const retrieved = memory.get(entry.id);
     expect(retrieved.title).toBe(entry.title);
     expect(retrieved.content).toBe(entry.content);

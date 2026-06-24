@@ -13,11 +13,11 @@ function makeTool(name, extra = {}) {
 }
 
 function makeMockRegistry(tools = []) {
-  const map = new Map(tools.map(t => [t.name, t]));
+  const map = new Map(tools.map((t) => [t.name, t]));
   return {
-    get: mock(name => map.get(name)),
+    get: mock((name) => map.get(name)),
     validateAndCoerceArgs: mock((name, args) => ({ valid: true, coercedArgs: args || {} })),
-    has: mock(name => map.has(name)),
+    has: mock((name) => map.has(name)),
   };
 }
 
@@ -46,7 +46,11 @@ describe('ToolExecutor', () => {
     const tool = makeTool('read_file', { handler: async () => 'file content' });
     const { executor } = makeMockExecutor({ tools: [tool] });
 
-    const result = await executor.execute({ id: '1', name: 'read_file', arguments: { path: '/a.txt' } });
+    const result = await executor.execute({
+      id: '1',
+      name: 'read_file',
+      arguments: { path: '/a.txt' },
+    });
 
     expect(result.name).toBe('read_file');
     expect(result.result).toBe('file content');
@@ -82,7 +86,11 @@ describe('ToolExecutor', () => {
     };
     const { executor } = makeMockExecutor({ tools: [tool], securityPolicy: policy });
 
-    const result = await executor.execute({ id: '1', name: 'shell', arguments: { command: 'rm -rf /' } });
+    const result = await executor.execute({
+      id: '1',
+      name: 'shell',
+      arguments: { command: 'rm -rf /' },
+    });
 
     expect(result.error).toContain('dangerous command');
     expect(result.result).toContain('Security policy blocked');
@@ -91,7 +99,10 @@ describe('ToolExecutor', () => {
   test('blocks tool call when security policy requires approval', async () => {
     const tool = makeTool('shell', { handler: async () => 'output' });
     const policy = {
-      evaluate: mock(() => ({ decision: Decision.REQUIRE_APPROVAL, suggestedMessage: 'needs approval' })),
+      evaluate: mock(() => ({
+        decision: Decision.REQUIRE_APPROVAL,
+        suggestedMessage: 'needs approval',
+      })),
     };
     const { executor } = makeMockExecutor({ tools: [tool], securityPolicy: policy });
 
@@ -103,7 +114,10 @@ describe('ToolExecutor', () => {
   test('blocks tool call when security policy rate limited', async () => {
     const tool = makeTool('shell', { handler: async () => 'output' });
     const policy = {
-      evaluate: mock(() => ({ decision: Decision.RATE_LIMITED, suggestedMessage: 'too many calls' })),
+      evaluate: mock(() => ({
+        decision: Decision.RATE_LIMITED,
+        suggestedMessage: 'too many calls',
+      })),
     };
     const { executor } = makeMockExecutor({ tools: [tool], securityPolicy: policy });
 
@@ -116,7 +130,11 @@ describe('ToolExecutor', () => {
     const tool = makeTool('write_file', { required: ['path', 'content'] });
     const { executor } = makeMockExecutor({ tools: [tool] });
 
-    const result = await executor.execute({ id: '1', name: 'write_file', arguments: { path: '/a.txt' } });
+    const result = await executor.execute({
+      id: '1',
+      name: 'write_file',
+      arguments: { path: '/a.txt' },
+    });
 
     expect(result.error).toContain('Missing required parameter');
     expect(result.error).toContain('content');
@@ -153,7 +171,7 @@ describe('ToolExecutor', () => {
     const { executor } = makeMockExecutor({ tools: [tool] });
     const received = [];
 
-    const unsub = executor.onEvent(event => received.push(event));
+    const unsub = executor.onEvent((event) => received.push(event));
     await executor.execute({ id: '1', name: 'read_file', arguments: { path: '/a.txt' } });
 
     expect(received.length).toBe(1);
@@ -176,14 +194,20 @@ describe('ToolExecutor', () => {
     expect(executor.events.length).toBe(0);
 
     // After reset, same call should not be deduped
-    const result = await executor.execute({ id: '2', name: 'read_file', arguments: { path: '/a.txt' } });
+    const result = await executor.execute({
+      id: '2',
+      name: 'read_file',
+      arguments: { path: '/a.txt' },
+    });
     expect(result.skipped).toBeUndefined();
     expect(result.result).toBe('ok');
   });
 
   test('handles tool handler errors gracefully', async () => {
     const tool = makeTool('fail_tool', {
-      handler: async () => { throw new Error('something broke'); },
+      handler: async () => {
+        throw new Error('something broke');
+      },
     });
     const { executor } = makeMockExecutor({ tools: [tool] });
 
@@ -199,7 +223,11 @@ describe('ToolExecutor', () => {
     const tool = makeTool('read_file', { handler: async (args) => args.path });
     const { executor } = makeMockExecutor({ tools: [tool] });
 
-    const result = await executor.execute({ id: '1', name: 'read_file', arguments: '{"path":"/x.txt"}' });
+    const result = await executor.execute({
+      id: '1',
+      name: 'read_file',
+      arguments: '{"path":"/x.txt"}',
+    });
 
     expect(result.name).toBe('read_file');
   });
@@ -213,8 +241,19 @@ describe('ToolExecutor', () => {
       coercedArgs: args || {},
     }));
     const textToolParser = { parse: mock(() => []) };
-    const ui = { toolCall: mock(() => {}), toolResult: mock(() => {}), toolError: mock(() => {}), warn: mock(() => {}), debug: mock(() => {}) };
-    const executor = new ToolExecutor({ toolRegistry: registry, textToolParser, ui, config: { toolResultCacheEnabled: false } });
+    const ui = {
+      toolCall: mock(() => {}),
+      toolResult: mock(() => {}),
+      toolError: mock(() => {}),
+      warn: mock(() => {}),
+      debug: mock(() => {}),
+    };
+    const executor = new ToolExecutor({
+      toolRegistry: registry,
+      textToolParser,
+      ui,
+      config: { toolResultCacheEnabled: false },
+    });
 
     const result = await executor.execute({ id: '1', name: 'search', arguments: {} });
 
@@ -225,7 +264,7 @@ describe('ToolExecutor', () => {
   test('backward-compatible security policy: requiresApproval', async () => {
     const tool = makeTool('shell', { handler: async () => 'ok' });
     const policy = {
-      requiresApproval: mock(name => name === 'shell'),
+      requiresApproval: mock((name) => name === 'shell'),
     };
     const { executor } = makeMockExecutor({ tools: [tool], securityPolicy: policy });
 
@@ -249,11 +288,19 @@ describe('ToolExecutor', () => {
   test('workspaceState prediction skips tool', async () => {
     const tool = makeTool('read_file', { handler: async () => 'content' });
     const workspaceState = {
-      predictToolResult: mock(() => ({ canSkip: true, reason: 'file already read', predicted: 'cached content' })),
+      predictToolResult: mock(() => ({
+        canSkip: true,
+        reason: 'file already read',
+        predicted: 'cached content',
+      })),
     };
     const { executor } = makeMockExecutor({ tools: [tool], config: { workspaceState } });
 
-    const result = await executor.execute({ id: '1', name: 'read_file', arguments: { path: '/a.txt' } });
+    const result = await executor.execute({
+      id: '1',
+      name: 'read_file',
+      arguments: { path: '/a.txt' },
+    });
 
     expect(result.skipped).toBe(true);
     expect(result.predicted).toBe(true);
@@ -277,7 +324,9 @@ describe('ToolExecutor', () => {
     const tool = makeTool('read_file', { handler: async () => 'data' });
     const { executor } = makeMockExecutor({ tools: [tool] });
     const observations = [];
-    const emitObservation = mock((id, name, result, mode) => observations.push({ id, name, result, mode }));
+    const emitObservation = mock((id, name, result, mode) =>
+      observations.push({ id, name, result, mode }),
+    );
 
     await executor.execute(
       { id: '1', name: 'read_file', arguments: { path: '/a.txt' } },
@@ -293,7 +342,10 @@ describe('ToolExecutor', () => {
   test('passes execution context to tool handler', async () => {
     let capturedCtx = null;
     const tool = makeTool('ctx_tool', {
-      handler: async (args, ctx) => { capturedCtx = ctx; return 'ok'; },
+      handler: async (args, ctx) => {
+        capturedCtx = ctx;
+        return 'ok';
+      },
     });
     const { executor } = makeMockExecutor({ tools: [tool] });
 
@@ -315,7 +367,11 @@ describe('ToolExecutor', () => {
     };
     const { executor } = makeMockExecutor({ tools: [tool], securityPolicy: policy });
 
-    const result = await executor.execute({ id: '1', name: 'read_file', arguments: { path: '/a.txt' } });
+    const result = await executor.execute({
+      id: '1',
+      name: 'read_file',
+      arguments: { path: '/a.txt' },
+    });
 
     expect(result.error).toBeUndefined();
     expect(result.result).toBe('ok');
@@ -329,7 +385,11 @@ describe('ToolExecutor', () => {
     };
     const { executor } = makeMockExecutor({ tools: [tool], securityPolicy: policy });
 
-    const result = await executor.execute({ id: '1', name: 'read_file', arguments: { path: '/a.txt' } });
+    const result = await executor.execute({
+      id: '1',
+      name: 'read_file',
+      arguments: { path: '/a.txt' },
+    });
 
     expect(result.result).toBe('long ');
   });

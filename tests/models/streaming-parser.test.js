@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { parseSSE, normalizeStreamEvents, StreamEventType } from '../../src/models/streaming-parser.js';
+import {
+  parseSSE,
+  normalizeStreamEvents,
+  StreamEventType,
+} from '../../src/models/streaming-parser.js';
 
 describe('parseSSE', () => {
   test('解析单行数据事件', async () => {
@@ -27,7 +31,7 @@ describe('parseSSE', () => {
       events.push(evt);
     }
 
-    const types = events.map(e => e.type);
+    const types = events.map((e) => e.type);
     expect(types).toContain('done');
   });
 
@@ -44,7 +48,7 @@ describe('parseSSE', () => {
       events.push(evt);
     }
 
-    const dataEvents = events.filter(e => e.type === 'data');
+    const dataEvents = events.filter((e) => e.type === 'data');
     expect(dataEvents.length).toBeGreaterThan(0);
     expect(dataEvents[0].data).toContain('x');
   });
@@ -59,7 +63,7 @@ describe('parseSSE', () => {
       events.push(evt);
     }
 
-    const eventEvt = events.find(e => e.type === 'event');
+    const eventEvt = events.find((e) => e.type === 'event');
     expect(eventEvt).toBeDefined();
     expect(eventEvt?.event).toBe('custom_event');
   });
@@ -78,26 +82,37 @@ describe('normalizeStreamEvents', () => {
       normalized.push(evt);
     }
 
-    const textDeltas = normalized.filter(e => e.type === StreamEventType.TEXT_DELTA);
+    const textDeltas = normalized.filter((e) => e.type === StreamEventType.TEXT_DELTA);
     expect(textDeltas.length).toBeGreaterThanOrEqual(2);
     expect(textDeltas[0].text).toContain('你好');
     expect(textDeltas[1].text).toContain('，');
 
-    const finishEvent = normalized.find(e => e.type === StreamEventType.FINISH);
+    const finishEvent = normalized.find((e) => e.type === StreamEventType.FINISH);
     expect(finishEvent).toBeDefined();
   });
 
   test('tool_call 增量转换为 tool_call_delta', async () => {
     const events = (async function* () {
-      yield { type: 'data', data: JSON.stringify({
-        choices: [{ delta: { tool_calls: [{ index: 0, function: { name: 'tool_a', arguments: '' } }] } }]
-      }) };
-      yield { type: 'data', data: JSON.stringify({
-        choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '{"k":' } }] } }]
-      }) };
-      yield { type: 'data', data: JSON.stringify({
-        choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '"v"}' } }] } }]
-      }) };
+      yield {
+        type: 'data',
+        data: JSON.stringify({
+          choices: [
+            { delta: { tool_calls: [{ index: 0, function: { name: 'tool_a', arguments: '' } }] } },
+          ],
+        }),
+      };
+      yield {
+        type: 'data',
+        data: JSON.stringify({
+          choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '{"k":' } }] } }],
+        }),
+      };
+      yield {
+        type: 'data',
+        data: JSON.stringify({
+          choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '"v"}' } }] } }],
+        }),
+      };
       yield { type: 'done' };
     })();
 
@@ -106,19 +121,25 @@ describe('normalizeStreamEvents', () => {
       normalized.push(evt);
     }
 
-    const toolDeltas = normalized.filter(e => e.type === StreamEventType.TOOL_CALL_DELTA);
+    const toolDeltas = normalized.filter((e) => e.type === StreamEventType.TOOL_CALL_DELTA);
     expect(toolDeltas.length).toBeGreaterThanOrEqual(3);
     expect(toolDeltas[0].name).toBe('tool_a');
   });
 
   test('reasoning_content 转换为 reasoning_delta', async () => {
     const events = (async function* () {
-      yield { type: 'data', data: JSON.stringify({
-        choices: [{ delta: { reasoning_content: '第一步' } }]
-      }) };
-      yield { type: 'data', data: JSON.stringify({
-        choices: [{ delta: { reasoning_content: '分析中' } }]
-      }) };
+      yield {
+        type: 'data',
+        data: JSON.stringify({
+          choices: [{ delta: { reasoning_content: '第一步' } }],
+        }),
+      };
+      yield {
+        type: 'data',
+        data: JSON.stringify({
+          choices: [{ delta: { reasoning_content: '分析中' } }],
+        }),
+      };
       yield { type: 'done' };
     })();
 
@@ -127,7 +148,7 @@ describe('normalizeStreamEvents', () => {
       normalized.push(evt);
     }
 
-    const reasoningDeltas = normalized.filter(e => e.type === StreamEventType.REASONING_DELTA);
+    const reasoningDeltas = normalized.filter((e) => e.type === StreamEventType.REASONING_DELTA);
     expect(reasoningDeltas.length).toBeGreaterThanOrEqual(2);
     expect(reasoningDeltas[0].text).toBe('第一步');
     expect(reasoningDeltas[1].text).toBe('分析中');
@@ -135,10 +156,13 @@ describe('normalizeStreamEvents', () => {
 
   test('usage 信息提取', async () => {
     const events = (async function* () {
-      yield { type: 'data', data: JSON.stringify({
-        choices: [{ delta: { content: 'hi' } }],
-        usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 }
-      }) };
+      yield {
+        type: 'data',
+        data: JSON.stringify({
+          choices: [{ delta: { content: 'hi' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 },
+        }),
+      };
       yield { type: 'done' };
     })();
 
@@ -147,7 +171,7 @@ describe('normalizeStreamEvents', () => {
       normalized.push(evt);
     }
 
-    const usageEvent = normalized.find(e => e.type === StreamEventType.USAGE);
+    const usageEvent = normalized.find((e) => e.type === StreamEventType.USAGE);
     expect(usageEvent).toBeDefined();
     expect(usageEvent?.usage?.total_tokens).toBe(12);
   });
@@ -164,7 +188,7 @@ describe('normalizeStreamEvents', () => {
       normalized.push(evt);
     }
 
-    const textDeltas = normalized.filter(e => e.type === StreamEventType.TEXT_DELTA);
+    const textDeltas = normalized.filter((e) => e.type === StreamEventType.TEXT_DELTA);
     expect(textDeltas.length).toBe(1);
     expect(textDeltas[0].text).toBe('real');
   });

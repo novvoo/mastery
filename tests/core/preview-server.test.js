@@ -1,5 +1,13 @@
 import { describe, test, expect, mock, beforeEach, afterEach } from 'bun:test';
-import { PREVIEW_HOST, PREVIEW_PORT_START, PREVIEW_PORT_END, startPreview, stopPreview, listPreviews, stopAllPreviews } from '../../src/core/preview-server.js';
+import {
+  PREVIEW_HOST,
+  PREVIEW_PORT_START,
+  PREVIEW_PORT_END,
+  startPreview,
+  stopPreview,
+  listPreviews,
+  stopAllPreviews,
+} from '../../src/core/preview-server.js';
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -47,7 +55,11 @@ describe('startPreview - static mode', () => {
 
   test('starts a static preview for a specific HTML file', async () => {
     const htmlPath = join(testDir, 'index.html');
-    const result = await startPreview({ workingDirectory: testDir, target: htmlPath, kind: 'static' });
+    const result = await startPreview({
+      workingDirectory: testDir,
+      target: htmlPath,
+      kind: 'static',
+    });
     expect(result.success).toBe(true);
     expect(result.mode).toBe('static');
   });
@@ -70,7 +82,9 @@ describe('startPreview - static mode', () => {
     } catch (error) {
       expect(error.message).toBeDefined();
     } finally {
-      try { rmSync(emptyDir, { recursive: true, force: true }); } catch {}
+      try {
+        rmSync(emptyDir, { recursive: true, force: true });
+      } catch {}
     }
   });
 

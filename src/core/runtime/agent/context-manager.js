@@ -70,7 +70,7 @@ export class ContextManager {
 
     const currentTokens = this.#sessionManager.getTokenCount?.() ?? 0;
     const thresholdBase = 0.55; // 从 0.7 降低到 0.55
-    const thresholdMin = 0.35;   // 从 0.4 降低到 0.35
+    const thresholdMin = 0.35; // 从 0.4 降低到 0.35
     const threshold =
       maxTokens * (thresholdBase - (thresholdBase - thresholdMin) * Math.min(progress, 1));
 

@@ -99,7 +99,7 @@ class AIEngineeringAgent {
   async initialize() {
     // 先加载 .env 文件，确保配置检查能读取到 .env 中的配置
     loadRuntimeEnv();
-    
+
     await ensureRuntimeConfig();
     this.config = loadConfig();
     this.workingDir = this.config.workingDir;

@@ -101,12 +101,10 @@ export function quickAssess(userInput) {
     /\b(文档|readme|说明|指南|教程|docs?|document|guide|tutorial|manual)\b/i.test(text);
 
   const isAnalysisTask =
-    !cliCommand &&
-    /\b(分析|审计|审查|评估|review|audit|analyze|evaluate|inspect)\b/i.test(text);
+    !cliCommand && /\b(分析|审计|审查|评估|review|audit|analyze|evaluate|inspect)\b/i.test(text);
 
   const isResearchTask =
-    !cliCommand &&
-    /\b(研究|调研|探索|搜索|查找|research|explore|search|investigate)\b/i.test(text);
+    !cliCommand && /\b(研究|调研|探索|搜索|查找|research|explore|search|investigate)\b/i.test(text);
 
   const inPlanBlacklist = isInPlanBlacklist(userInput);
   const requiresPlanning = !cliCommand && !inPlanBlacklist;
@@ -342,7 +340,7 @@ export function mergeIntentProfile(quickResult, intent, userInput = '') {
     isInformationalQuery:
       intentName === 'explanation' || intentName === 'general_chat'
         ? true
-        : quickResult.isInformationalQuery ?? !finalIsCoding,
+        : (quickResult.isInformationalQuery ?? !finalIsCoding),
   };
 }
 

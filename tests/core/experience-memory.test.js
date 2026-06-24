@@ -107,10 +107,10 @@ describe('ExperienceMemory', () => {
     const filePath = join(tmpDir, 'experiences.json');
     const mem1 = new ExperienceMemory({ filePath });
     mem1.recordSuccess('write code', 'write_file', 'plan first');
-    
+
     const mem2 = new ExperienceMemory({ filePath });
     expect(mem2.getStats().total).toBe(1);
-    
+
     rmSync(tmpDir, { recursive: true, force: true });
   });
 

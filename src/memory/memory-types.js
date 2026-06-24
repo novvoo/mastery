@@ -145,16 +145,16 @@ export const InitialImportance = Object.freeze({
  * 半衰期越短，淡忘越快。
  */
 export const ImportanceHalfLife = Object.freeze({
-  USER: 90,       // 用户偏好最持久
-  FEEDBACK: 30,   // 反馈可能过时
-  PROJECT: 14,    // 项目知识变化快
-  REFERENCE: 60,  // 参考资料较稳定
+  USER: 90, // 用户偏好最持久
+  FEEDBACK: 30, // 反馈可能过时
+  PROJECT: 14, // 项目知识变化快
+  REFERENCE: 60, // 参考资料较稳定
 });
 
 /**
  * 软排除阈值：relevanceScore 低于此值的记忆在检索/上下文中被排除。
  */
-export const SOFT_EVICTION_THRESHOLD = 0.30;
+export const SOFT_EVICTION_THRESHOLD = 0.3;
 
 /**
  * 硬驱逐阈值：relevanceScore 低于此值的记忆在 compaction 时被删除。

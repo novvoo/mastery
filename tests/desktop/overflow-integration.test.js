@@ -41,7 +41,7 @@ function shouldPanelBeVisible(runtimeDetails, isRunningGroup) {
 
 // ===== 辅助函数：模拟 visibleRuntimeDetails 过滤逻辑 =====
 function getVisibleRuntimeDetails(runtimeDetails) {
-  return runtimeDetails.filter(msg => !isStatusUpdateMessage(msg) && !isThinkingMessage(msg));
+  return runtimeDetails.filter((msg) => !isStatusUpdateMessage(msg) && !isThinkingMessage(msg));
 }
 
 // ===== 辅助函数：模拟 overflow 链路可见性 =====
@@ -92,11 +92,16 @@ describe('运行详情面板可见性集成测试', () => {
     const runtimeDetails = [
       { id: 's1', event: 'status:update', type: 'event', message: 'starting' },
       {
-        id: 'a1', event: 'tool:activity', timestamp: 1,
+        id: 'a1',
+        event: 'tool:activity',
+        timestamp: 1,
         activity: {
-          kind: 'tool_activity', id: 'read:src/app.js',
-          phase: 'completed', intent: 'read',
-          toolName: 'read_file', target: 'src/app.js',
+          kind: 'tool_activity',
+          id: 'read:src/app.js',
+          phase: 'completed',
+          intent: 'read',
+          toolName: 'read_file',
+          target: 'src/app.js',
           statusText: '已读取 src/app.js',
         },
       },
@@ -117,9 +122,7 @@ describe('运行详情面板可见性集成测试', () => {
   // ----- 场景2：完整对话流程 -----
   test('完整对话流程：用户提问 → 运行 → 完成，面板全程可见', () => {
     // 阶段1：用户发送消息
-    const messagesPhase1 = [
-      { id: 'u1', type: 'user', content: '帮我重构这个文件' },
-    ];
+    const messagesPhase1 = [{ id: 'u1', type: 'user', content: '帮我重构这个文件' }];
     const groupsPhase1 = createConversationGroups(messagesPhase1, {
       messageIsVisible: () => true,
       messageMatchesSearch: () => true,
@@ -196,9 +199,10 @@ describe('overflow 链路集成测试', () => {
 
   test('RuntimeDetailsPanel 不使用 overflow:hidden', async () => {
     // 读取样式文件验证
-    const stylesContent = await import(
-      '../../desktop/renderer/components/message-log/styles/MessageLog.styles.js'
-    ).then(m => m.styles);
+    const stylesContent =
+      await import('../../desktop/renderer/components/message-log/styles/MessageLog.styles.js').then(
+        (m) => m.styles,
+      );
 
     expect(stylesContent.runtimeDetailsPanel.overflow).not.toBe('hidden');
     // 应该是 'visible'
@@ -206,36 +210,37 @@ describe('overflow 链路集成测试', () => {
   });
 
   test('thinkingPanel 不使用 overflow:hidden', async () => {
-    const stylesContent = await import(
-      '../../desktop/renderer/components/message-log/styles/MessageLog.styles.js'
-    ).then(m => m.styles);
+    const stylesContent =
+      await import('../../desktop/renderer/components/message-log/styles/MessageLog.styles.js').then(
+        (m) => m.styles,
+      );
 
     expect(stylesContent.thinkingPanel.overflow).not.toBe('hidden');
     expect(stylesContent.thinkingPanel.overflow).toBe('visible');
   });
 
   test('MessageLog container 不使用 overflow:hidden', async () => {
-    const stylesContent = await import(
-      '../../desktop/renderer/components/message-log/styles/MessageLog.styles.js'
-    ).then(m => m.styles);
+    const stylesContent =
+      await import('../../desktop/renderer/components/message-log/styles/MessageLog.styles.js').then(
+        (m) => m.styles,
+      );
 
     expect(stylesContent.container.overflow).not.toBe('hidden');
     expect(stylesContent.container.overflow).toBe('visible');
   });
 
   test('app messageContainer 不使用 overflow:hidden', async () => {
-    const appStyles = await import(
-      '../../desktop/renderer/app/styles.js'
-    ).then(m => m.styles);
+    const appStyles = await import('../../desktop/renderer/app/styles.js').then((m) => m.styles);
 
     expect(appStyles.messageContainer.overflow).not.toBe('hidden');
     expect(appStyles.messageContainer.overflow).toBe('visible');
   });
 
   test('消息滚动容器 messageList 使用 overflowY:auto（不裁切内容）', async () => {
-    const stylesContent = await import(
-      '../../desktop/renderer/components/message-log/styles/MessageLog.styles.js'
-    ).then(m => m.styles);
+    const stylesContent =
+      await import('../../desktop/renderer/components/message-log/styles/MessageLog.styles.js').then(
+        (m) => m.styles,
+      );
 
     // messageList 应该是 overflowY: 'auto'，允许滚动但不裁切
     expect(stylesContent.messageList.overflowY).toBe('auto');
@@ -243,22 +248,21 @@ describe('overflow 链路集成测试', () => {
 
   test('overflow 链路中不应有 hidden 阻断展开内容', async () => {
     // 模拟从外到内的 overflow 链路
-    const appStyles = await import(
-      '../../desktop/renderer/app/styles.js'
-    ).then(m => m.styles);
-    const msgStyles = await import(
-      '../../desktop/renderer/components/message-log/styles/MessageLog.styles.js'
-    ).then(m => m.styles);
+    const appStyles = await import('../../desktop/renderer/app/styles.js').then((m) => m.styles);
+    const msgStyles =
+      await import('../../desktop/renderer/components/message-log/styles/MessageLog.styles.js').then(
+        (m) => m.styles,
+      );
 
     // 从 chatArea → messageContainer → MessageLog container → messageList
     // 只有 messageList 可以是 auto（滚动容器），其他不应是 hidden
     const criticalOverflowChain = [
-      appStyles.messageContainer.overflow,     // messageContainer
-      msgStyles.container.overflow,            // MessageLog container
+      appStyles.messageContainer.overflow, // messageContainer
+      msgStyles.container.overflow, // MessageLog container
     ];
 
     // 这些关键层不应有 hidden
-    expect(criticalOverflowChain.every(v => v !== 'hidden')).toBe(true);
+    expect(criticalOverflowChain.every((v) => v !== 'hidden')).toBe(true);
   });
 
   test('RuntimeDetailsPanel tabContent 不使用 overflow:hidden', async () => {
@@ -266,8 +270,17 @@ describe('overflow 链路集成测试', () => {
     const fs = await import('fs');
     const path = await import('path');
     const content = fs.readFileSync(
-      path.resolve(import.meta.dirname, '..', '..', 'desktop', 'renderer', 'components', 'message-log', 'RuntimeDetailsPanel.jsx'),
-      'utf-8'
+      path.resolve(
+        import.meta.dirname,
+        '..',
+        '..',
+        'desktop',
+        'renderer',
+        'components',
+        'message-log',
+        'RuntimeDetailsPanel.jsx',
+      ),
+      'utf-8',
     );
 
     // tabContent 不应该是 overflow: 'hidden'
@@ -275,9 +288,10 @@ describe('overflow 链路集成测试', () => {
   });
 
   test('header 元素有 borderRadius 补偿外层 overflow:visible', async () => {
-    const msgStyles = await import(
-      '../../desktop/renderer/components/message-log/styles/MessageLog.styles.js'
-    ).then(m => m.styles);
+    const msgStyles =
+      await import('../../desktop/renderer/components/message-log/styles/MessageLog.styles.js').then(
+        (m) => m.styles,
+      );
 
     // runtimeDetailsHeader 和 thinkingHeader 应有顶部圆角
     expect(msgStyles.runtimeDetailsHeader.borderRadius).toBeDefined();
@@ -312,36 +326,55 @@ describe('面板内容完整性集成测试', () => {
   test('activity 摘要正确汇总文件状态', () => {
     const runtimeDetails = [
       {
-        event: 'tool:activity', timestamp: 1,
+        event: 'tool:activity',
+        timestamp: 1,
         activity: {
-          kind: 'tool_activity', id: 'read:a.js',
-          phase: 'completed', intent: 'read',
-          toolName: 'read_file', target: 'a.js',
+          kind: 'tool_activity',
+          id: 'read:a.js',
+          phase: 'completed',
+          intent: 'read',
+          toolName: 'read_file',
+          target: 'a.js',
         },
       },
       {
-        event: 'tool:activity', timestamp: 2,
+        event: 'tool:activity',
+        timestamp: 2,
         activity: {
-          kind: 'tool_activity', id: 'edit:b.js',
-          phase: 'completed', intent: 'edit',
-          toolName: 'edit_file', target: 'b.js', canUndo: true,
+          kind: 'tool_activity',
+          id: 'edit:b.js',
+          phase: 'completed',
+          intent: 'edit',
+          toolName: 'edit_file',
+          target: 'b.js',
+          canUndo: true,
         },
       },
       {
-        event: 'tool:activity', timestamp: 3,
+        event: 'tool:activity',
+        timestamp: 3,
         activity: {
-          kind: 'tool_activity', id: 'write:c.js',
-          phase: 'running', intent: 'write',
-          toolName: 'write_file', target: 'c.js',
+          kind: 'tool_activity',
+          id: 'write:c.js',
+          phase: 'running',
+          intent: 'write',
+          toolName: 'write_file',
+          target: 'c.js',
         },
       },
     ];
 
     const summary = buildActivitySummary(runtimeDetails);
     expect(summary.files).toHaveLength(3);
-    expect(summary.files.find(f => f.path === 'a.js')).toMatchObject({ status: 'read', operation: 'read' });
-    expect(summary.files.find(f => f.path === 'b.js')).toMatchObject({ status: 'edited', operation: 'edit' });
-    expect(summary.files.find(f => f.path === 'c.js')?.status).toBe('running');
+    expect(summary.files.find((f) => f.path === 'a.js')).toMatchObject({
+      status: 'read',
+      operation: 'read',
+    });
+    expect(summary.files.find((f) => f.path === 'b.js')).toMatchObject({
+      status: 'edited',
+      operation: 'edit',
+    });
+    expect(summary.files.find((f) => f.path === 'c.js')?.status).toBe('running');
     expect(summary.completed).toBe(2);
     expect(summary.running).toBe(1);
     expect(summary.undoable).toBe(1);
@@ -349,8 +382,20 @@ describe('面板内容完整性集成测试', () => {
 
   test('导出数据保留完整运行时信息', () => {
     const runtimeDetails = [
-      { event: 'tool:call', type: 'tool', timestamp: 1000, toolName: 'shell', args: { command: 'ls' } },
-      { event: 'tool:result', type: 'tool_result', timestamp: 2000, toolName: 'shell', result: 'file1\nfile2' },
+      {
+        event: 'tool:call',
+        type: 'tool',
+        timestamp: 1000,
+        toolName: 'shell',
+        args: { command: 'ls' },
+      },
+      {
+        event: 'tool:result',
+        type: 'tool_result',
+        timestamp: 2000,
+        toolName: 'shell',
+        result: 'file1\nfile2',
+      },
       { event: 'agent:thinking', type: 'thinking', timestamp: 3000, content: 'thinking...' },
     ];
 
@@ -399,7 +444,7 @@ describe('搜索/过滤场景集成测试', () => {
         ...runtimeDetails,
         { id: 'a1', type: 'agent', content: 'done' },
       ],
-      { messageIsVisible: () => true, messageMatchesSearch }
+      { messageIsVisible: () => true, messageMatchesSearch },
     );
 
     // runtimeDetails 在搜索不匹配时不会被推入 group

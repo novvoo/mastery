@@ -19,7 +19,10 @@ import {
   hashContent,
   HashlineBridge,
 } from '../../src/core/harness/hashline.js';
-import { ContentAddressableStore, FileAnalyzer } from '../../src/core/harness/content-addressing.js';
+import {
+  ContentAddressableStore,
+  FileAnalyzer,
+} from '../../src/core/harness/content-addressing.js';
 
 let workDir;
 
@@ -29,7 +32,9 @@ beforeEach(async () => {
 
 afterEach(async () => {
   if (workDir) {
-    try { await rm(workDir, { recursive: true, force: true }); } catch {}
+    try {
+      await rm(workDir, { recursive: true, force: true });
+    } catch {}
   }
 });
 
@@ -183,9 +188,7 @@ describe('hashline integration: DiskFilesystem + bridge + ContentAddressableStor
     const t1 = snapshots.record(f1, 'a1\na2\n');
     const t2 = snapshots.record(f2, 'b1\n'); // snapshot 存在但文件不存在
     const patcher = new Patcher({ fs: new DiskFilesystem(workDir), snapshots });
-    const r = await patcher.apply(
-      `[${f1}#${t1}]\nDEL 1.=1\n[${f2}#${t2}]\nDEL 1.=1`,
-    );
+    const r = await patcher.apply(`[${f1}#${t1}]\nDEL 1.=1\n[${f2}#${t2}]\nDEL 1.=1`);
     expect(r.ok).toBe(false);
     // f1 不应被修改
     expect(await readFile(f1, 'utf-8')).toBe('a1\na2\n');

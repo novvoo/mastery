@@ -1,7 +1,12 @@
 import { StructuredMemory } from './structured-memory.js';
 import { MemorySelector, RuleBasedSelector } from './memory-selector.js';
 import { MemoryVerifier } from './memory-verifier.js';
-import { MemoryType, inferTopic, SOFT_EVICTION_THRESHOLD, HARD_EVICTION_THRESHOLD } from './memory-types.js';
+import {
+  MemoryType,
+  inferTopic,
+  SOFT_EVICTION_THRESHOLD,
+  HARD_EVICTION_THRESHOLD,
+} from './memory-types.js';
 import { MemoryManager } from './memory-manager.js';
 import { ProjectRules } from './project-rules.js';
 import { AdvancedMemoryManager } from './advanced-memory.js';
@@ -668,9 +673,7 @@ export class AgentMemory extends MemoryManager {
       const evictMsg = evictIds.length > 0 ? `${evictIds.length} decayed` : '';
       const msg = [dupMsg, evictMsg].filter(Boolean).join(', ');
       if (typeof process !== 'undefined' && process.env?.AGENT_DEBUG) {
-        console.warn(
-          `[Memory] Auto-compacted ${msg} (${merged.length} remain)`,
-        );
+        console.warn(`[Memory] Auto-compacted ${msg} (${merged.length} remain)`);
       }
     }
   }
@@ -1124,7 +1127,10 @@ Answer ONLY "YES" or "NO":`;
       return false;
     }
     // 衰减过低：软排除
-    if (typeof m.getRelevanceScore === 'function' && m.getRelevanceScore() < SOFT_EVICTION_THRESHOLD) {
+    if (
+      typeof m.getRelevanceScore === 'function' &&
+      m.getRelevanceScore() < SOFT_EVICTION_THRESHOLD
+    ) {
       return false;
     }
     return true;

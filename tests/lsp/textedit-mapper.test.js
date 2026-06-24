@@ -13,8 +13,15 @@
  */
 
 import { describe, test, expect, beforeEach } from 'bun:test';
-import { TextEditMapper, convertTextEditsToHashline } from '../../src/core/harness/textedit-mapper.js';
-import { Patcher, MemoryFilesystem, InMemorySnapshotStore } from '../../src/core/harness/hashline.js';
+import {
+  TextEditMapper,
+  convertTextEditsToHashline,
+} from '../../src/core/harness/textedit-mapper.js';
+import {
+  Patcher,
+  MemoryFilesystem,
+  InMemorySnapshotStore,
+} from '../../src/core/harness/hashline.js';
 
 // 辅助：创建 LSP TextEdit
 function makeEdit(startLine, startChar, endLine, endChar, newText) {
@@ -81,8 +88,8 @@ describe('TextEditMapper: Basic classification', () => {
   test('handle multiple non-overlapping edits', () => {
     const content = 'line1\nline2\nline3\nline4\nline5\n';
     const edits = [
-      makeEdit(1, 0, 1, 5, 'REPLACED1'),  // SWAP line 2
-      makeEdit(4, 0, 4, 5, 'REPLACED2'),  // SWAP line 5
+      makeEdit(1, 0, 1, 5, 'REPLACED1'), // SWAP line 2
+      makeEdit(4, 0, 4, 5, 'REPLACED2'), // SWAP line 5
     ];
 
     const result = convert(content, edits);
@@ -100,10 +107,7 @@ describe('TextEditMapper: Same-line multi-edit', () => {
     const content = 'ABCDEFGHIJ\n';
     // Edit 1: replace "BCD" (char 1-4) with "X"
     // Edit 2: replace "FGH" (char 5-8) with "Y"
-    const edits = [
-      makeEdit(0, 1, 0, 4, 'X'),
-      makeEdit(0, 5, 0, 8, 'Y'),
-    ];
+    const edits = [makeEdit(0, 1, 0, 4, 'X'), makeEdit(0, 5, 0, 8, 'Y')];
 
     const result = convert(content, edits, { autoMerge: true });
     expect(result.stats.merged).toBe(1);
@@ -116,10 +120,7 @@ describe('TextEditMapper: Same-line multi-edit', () => {
   test('merge two same-line edits in reverse order', () => {
     const content = 'ABCDEFGHIJ\n';
     // Edit 2 first (later position), Edit 1 second (earlier position)
-    const edits = [
-      makeEdit(0, 5, 0, 8, 'Y'),
-      makeEdit(0, 1, 0, 4, 'X'),
-    ];
+    const edits = [makeEdit(0, 5, 0, 8, 'Y'), makeEdit(0, 1, 0, 4, 'X')];
 
     const result = convert(content, edits, { autoMerge: true });
     expect(result.stats.merged).toBe(1);
@@ -130,8 +131,8 @@ describe('TextEditMapper: Same-line multi-edit', () => {
     const content = 'ABCDEFGHIJ\n';
     // Overlapping character ranges
     const edits = [
-      makeEdit(0, 1, 0, 6, 'X'),   // char 1-6
-      makeEdit(0, 4, 0, 8, 'Y'),   // char 4-8 (overlaps)
+      makeEdit(0, 1, 0, 6, 'X'), // char 1-6
+      makeEdit(0, 4, 0, 8, 'Y'), // char 4-8 (overlaps)
     ];
 
     const result = convert(content, edits, { autoMerge: true, strictOverlap: true });
@@ -143,8 +144,8 @@ describe('TextEditMapper: Same-line multi-edit', () => {
     const content = 'const x = 1;\n';
     // Replace "x" with "y", then insert "let " before the line
     const edits = [
-      makeEdit(0, 6, 0, 7, 'y'),     // rename x → y
-      makeEdit(0, 0, 0, 0, 'let '),  // add let before
+      makeEdit(0, 6, 0, 7, 'y'), // rename x → y
+      makeEdit(0, 0, 0, 0, 'let '), // add let before
     ];
 
     const result = convert(content, edits, { autoMerge: true });
@@ -156,8 +157,8 @@ describe('TextEditMapper: Same-line multi-edit', () => {
   test('handle 3+ same-line edits', () => {
     const content = 'abcdefghijklmnop\n';
     const edits = [
-      makeEdit(0, 0, 0, 1, 'A'),   // a → A
-      makeEdit(0, 7, 0, 8, 'H'),   // h → H
+      makeEdit(0, 0, 0, 1, 'A'), // a → A
+      makeEdit(0, 7, 0, 8, 'H'), // h → H
       makeEdit(0, 14, 0, 15, 'O'), // o → O
     ];
 
@@ -175,8 +176,8 @@ describe('TextEditMapper: Overlapping edit detection', () => {
   test('detect line-range overlap', () => {
     const content = 'line1\nline2\nline3\nline4\nline5\n';
     const edits = [
-      makeEdit(1, 0, 3, 0, 'replaced\n'),   // covers lines 2-4
-      makeEdit(2, 0, 4, 0, 'replaced2\n'),  // partially overlaps
+      makeEdit(1, 0, 3, 0, 'replaced\n'), // covers lines 2-4
+      makeEdit(2, 0, 4, 0, 'replaced2\n'), // partially overlaps
     ];
 
     const result = convert(content, edits, { strictOverlap: true });
@@ -187,8 +188,8 @@ describe('TextEditMapper: Overlapping edit detection', () => {
   test('allow non-overlapping adjacent edits', () => {
     const content = 'line1\nline2\nline3\nline4\n';
     const edits = [
-      makeEdit(1, 0, 2, 0, 'new2\n'),   // lines 2-3
-      makeEdit(3, 0, 4, 0, 'new4\n'),   // lines 4-5 (adjacent, no overlap)
+      makeEdit(1, 0, 2, 0, 'new2\n'), // lines 2-3
+      makeEdit(3, 0, 4, 0, 'new4\n'), // lines 4-5 (adjacent, no overlap)
     ];
 
     const result = convert(content, edits);
@@ -198,10 +199,7 @@ describe('TextEditMapper: Overlapping edit detection', () => {
 
   test('identical range edits are conflicting', () => {
     const content = 'line1\nline2\n';
-    const edits = [
-      makeEdit(0, 0, 1, 0, 'A\n'),
-      makeEdit(0, 0, 1, 0, 'B\n'),
-    ];
+    const edits = [makeEdit(0, 0, 1, 0, 'A\n'), makeEdit(0, 0, 1, 0, 'B\n')];
 
     const result = convert(content, edits, { strictOverlap: true });
     expect(result.conflicts.length).toBeGreaterThan(0);
@@ -212,8 +210,8 @@ describe('TextEditMapper: Overlapping edit detection', () => {
     // "import { " = 8 chars, then "A, " = 3 chars, then "B, " = 3 chars, then "C"
     // Remove "A, " (chars 8-11) then remove ", C" (chars 13-16)
     const edits = [
-      makeEdit(0, 8, 0, 11, ''),   // remove "A, "
-      makeEdit(0, 13, 0, 16, ''),  // remove ", C"
+      makeEdit(0, 8, 0, 11, ''), // remove "A, "
+      makeEdit(0, 13, 0, 16, ''), // remove ", C"
     ];
 
     const result = convert(content, edits, { autoMerge: true });
@@ -232,15 +230,15 @@ describe('TextEditMapper: Mixed create-delete-rename', () => {
   test('detect rename pattern: delete old + insert similar new', () => {
     const content = 'function oldName() {\n  return 1;\n}\n\nother stuff\n';
     const edits = [
-      makeEdit(0, 0, 3, 0, ''),                                          // delete old function
-      makeEdit(0, 0, 0, 0, 'function newName() {\n  return 1;\n}\n'),    // insert renamed
+      makeEdit(0, 0, 3, 0, ''), // delete old function
+      makeEdit(0, 0, 0, 0, 'function newName() {\n  return 1;\n}\n'), // insert renamed
     ];
 
     const result = convert(content, edits);
     // Should be detected as rename → merged into SWAP
     const merged = result.stats.merged > 0;
     if (merged) {
-      const swapEdit = result.mappedEdits.find(e => e.op === 'SWAP');
+      const swapEdit = result.mappedEdits.find((e) => e.op === 'SWAP');
       expect(swapEdit).toBeTruthy();
     }
   });
@@ -248,20 +246,20 @@ describe('TextEditMapper: Mixed create-delete-rename', () => {
   test('detect replace pattern: delete + create different content', () => {
     const content = 'const x = oldValue;\nother stuff\n';
     const edits = [
-      makeEdit(0, 0, 1, 0, ''),                     // delete old line
+      makeEdit(0, 0, 1, 0, ''), // delete old line
       makeEdit(0, 0, 0, 0, 'const x = newValue;\n'), // insert new line
     ];
 
     const result = convert(content, edits);
     // Should merge into a single SWAP
-    const swapCount = result.mappedEdits.filter(e => e.op === 'SWAP').length;
+    const swapCount = result.mappedEdits.filter((e) => e.op === 'SWAP').length;
     expect(swapCount).toBeGreaterThanOrEqual(0); // May or may not merge depending on similarity
   });
 
   test('keep separate when delete + create are unrelated', () => {
     const content = '// old comment\nline1\nline2\n';
     const edits = [
-      makeEdit(0, 0, 1, 0, ''),                           // delete comment
+      makeEdit(0, 0, 1, 0, ''), // delete comment
       makeEdit(2, 0, 2, 0, 'import { newLib } from "x";\n'), // insert import after
     ];
 
@@ -273,11 +271,11 @@ describe('TextEditMapper: Mixed create-delete-rename', () => {
   test('mixed create-delete-rename with 3+ edits', () => {
     const content = 'import Old from "old";\nimport Old2 from "old2";\n\nconst x = Old();\n';
     const edits = [
-      makeEdit(0, 0, 1, 0, ''),                                  // delete line 1
-      makeEdit(0, 0, 0, 0, 'import New from "new";\n'),         // insert new import
-      makeEdit(1, 0, 2, 0, ''),                                  // delete line 2
-      makeEdit(1, 0, 1, 0, 'import New2 from "new2";\n'),       // replace line 2
-      makeEdit(3, 12, 3, 15, 'New'),                            // rename Old→New on line 4
+      makeEdit(0, 0, 1, 0, ''), // delete line 1
+      makeEdit(0, 0, 0, 0, 'import New from "new";\n'), // insert new import
+      makeEdit(1, 0, 2, 0, ''), // delete line 2
+      makeEdit(1, 0, 1, 0, 'import New2 from "new2";\n'), // replace line 2
+      makeEdit(3, 12, 3, 15, 'New'), // rename Old→New on line 4
     ];
 
     const result = convert(content, edits);
@@ -304,8 +302,8 @@ describe('TextEditMapper: Hashline patch generation & roundtrip', () => {
   test('patch roundtrip: apply generated patch back to file', async () => {
     const content = 'line1\nline2\nline3\nline4\n';
     const edits = [
-      makeEdit(1, 0, 2, 0, 'REPLACED_L2\n'),  // replace line 2
-      makeEdit(3, 0, 4, 0, 'REPLACED_L4\n'),  // replace line 4
+      makeEdit(1, 0, 2, 0, 'REPLACED_L2\n'), // replace line 2
+      makeEdit(3, 0, 4, 0, 'REPLACED_L4\n'), // replace line 4
     ];
 
     const result = convertTextEditsToHashline('test.ts', content, edits);
@@ -333,9 +331,9 @@ describe('TextEditMapper: Hashline patch generation & roundtrip', () => {
     const content = 'const a = 1, b = 2, c = 3;\n';
     // Character positions: a at 6, b at 13, c at 20
     const edits = [
-      makeEdit(0, 6, 0, 7, 'x'),     // rename a → x
-      makeEdit(0, 13, 0, 14, 'y'),   // rename b → y
-      makeEdit(0, 20, 0, 21, 'z'),   // rename c → z
+      makeEdit(0, 6, 0, 7, 'x'), // rename a → x
+      makeEdit(0, 13, 0, 14, 'y'), // rename b → y
+      makeEdit(0, 20, 0, 21, 'z'), // rename c → z
     ];
 
     const result = convertTextEditsToHashline('test.ts', content, edits);
@@ -355,10 +353,7 @@ describe('TextEditMapper: Hashline patch generation & roundtrip', () => {
 
   test('patch with overlapping edits detected as conflicts', async () => {
     const content = 'line1\nline2\nline3\n';
-    const edits = [
-      makeEdit(1, 0, 2, 0, 'A\n'),
-      makeEdit(1, 0, 3, 0, 'B\n'),
-    ];
+    const edits = [makeEdit(1, 0, 2, 0, 'A\n'), makeEdit(1, 0, 3, 0, 'B\n')];
 
     const result = convertTextEditsToHashline('test.ts', content, edits, { strictOverlap: true });
     expect(result.conflicts.length).toBeGreaterThan(0);
@@ -492,14 +487,15 @@ describe('TextEditMapper: Large file stress', () => {
 
 describe('TextEditMapper: Real-world scenarios', () => {
   test('rename variable across function with multiple references', () => {
-    const content = [
-      'function process(data) {',
-      '  const result = data.map(x => x * 2);',
-      '  const sum = result.reduce((a, b) => a + b, 0);',
-      '  console.log(sum);',
-      '  return sum;',
-      '}',
-    ].join('\n') + '\n';
+    const content =
+      [
+        'function process(data) {',
+        '  const result = data.map(x => x * 2);',
+        '  const sum = result.reduce((a, b) => a + b, 0);',
+        '  console.log(sum);',
+        '  return sum;',
+        '}',
+      ].join('\n') + '\n';
 
     // LSP TextEdits for renaming "sum" to "total"
     const edits = [
@@ -514,26 +510,37 @@ describe('TextEditMapper: Real-world scenarios', () => {
   });
 
   test('extract method refactoring', () => {
-    const content = [
-      'class Calculator {',
-      '  compute() {',
-      '    const a = this.getA();',
-      '    const b = this.getB();',
-      '    const sum = a + b;',
-      '    return sum * 2;',
-      '  }',
-      '}',
-    ].join('\n') + '\n';
+    const content =
+      [
+        'class Calculator {',
+        '  compute() {',
+        '    const a = this.getA();',
+        '    const b = this.getB();',
+        '    const sum = a + b;',
+        '    return sum * 2;',
+        '  }',
+        '}',
+      ].join('\n') + '\n';
 
     // Extract "const sum = a + b; return sum * 2;" into separate method
     const edits = [
       // Add new method after compute
-      makeEdit(6, 0, 6, 0, '\n  computeInner(a, b) {\n    const sum = a + b;\n    return sum * 2;\n  }\n'),
+      makeEdit(
+        6,
+        0,
+        6,
+        0,
+        '\n  computeInner(a, b) {\n    const sum = a + b;\n    return sum * 2;\n  }\n',
+      ),
       // Replace body of compute
-      makeEdit(2, 0, 6, 0,
+      makeEdit(
+        2,
+        0,
+        6,
+        0,
         '    const a = this.getA();\n' +
-        '    const b = this.getB();\n' +
-        '    return this.computeInner(a, b);\n',
+          '    const b = this.getB();\n' +
+          '    return this.computeInner(a, b);\n',
       ),
     ];
 
@@ -543,14 +550,15 @@ describe('TextEditMapper: Real-world scenarios', () => {
   });
 
   test('add import + rename usage', () => {
-    const content = [
-      '// no imports',
-      '',
-      'function main() {',
-      '  const result = oldFunction();',
-      '  return result;',
-      '}',
-    ].join('\n') + '\n';
+    const content =
+      [
+        '// no imports',
+        '',
+        'function main() {',
+        '  const result = oldFunction();',
+        '  return result;',
+        '}',
+      ].join('\n') + '\n';
 
     const edits = [
       makeEdit(0, 0, 0, 0, 'import { newFunction } from "./lib";\n'),
@@ -563,13 +571,14 @@ describe('TextEditMapper: Real-world scenarios', () => {
   });
 
   test('type-only import + value rename combo', () => {
-    const content = [
-      'import type { OldType } from "./types";',
-      '',
-      'function process(input: OldType): OldType {',
-      '  return input;',
-      '}',
-    ].join('\n') + '\n';
+    const content =
+      [
+        'import type { OldType } from "./types";',
+        '',
+        'function process(input: OldType): OldType {',
+        '  return input;',
+        '}',
+      ].join('\n') + '\n';
 
     const edits = [
       makeEdit(0, 14, 0, 21, 'NewType'),

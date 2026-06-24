@@ -85,7 +85,9 @@ function simulateRenameEdits(files, oldName, newName, options = {}) {
 
   for (const [filePath, content] of Object.entries(files)) {
     const ext = filePath.substring(filePath.lastIndexOf('.'));
-    if (!fileTypes.some(t => ext === t || ext === t.replace('.', ''))) {continue;}
+    if (!fileTypes.some((t) => ext === t || ext === t.replace('.', ''))) {
+      continue;
+    }
 
     const lines = content.split('\n');
     const edits = [];
@@ -96,7 +98,9 @@ function simulateRenameEdits(files, oldName, newName, options = {}) {
 
       while (true) {
         const idx = line.indexOf(oldName, searchPos);
-        if (idx === -1) {break;}
+        if (idx === -1) {
+          break;
+        }
 
         // 检查是否为完整标识符
         const before = line[idx - 1] || ' ';
@@ -133,7 +137,9 @@ function lspTextEditsToHashlinePatch(editsByPath) {
     lines.push(`[${filePath}#${tag}]`);
 
     const sorted = [...edits].sort((a, b) => {
-      if (b.range.start.line !== a.range.start.line) {return b.range.start.line - a.range.start.line;}
+      if (b.range.start.line !== a.range.start.line) {
+        return b.range.start.line - a.range.start.line;
+      }
       return b.range.start.character - a.range.start.character;
     });
 
@@ -151,7 +157,9 @@ function lspTextEditsToHashlinePatch(editsByPath) {
         const before = lineContent.substring(0, startChar);
         const after = lineContent.substring(endChar);
         const replacement = before + (edit.newText || '') + after;
-        if (replacement) {lines.push(`+${replacement}`);}
+        if (replacement) {
+          lines.push(`+${replacement}`);
+        }
       } else {
         // 跨行编辑
         lines.push(`SWAP ${startLine}.=${endLine}:`);
@@ -168,16 +176,22 @@ function lspTextEditsToHashlinePatch(editsByPath) {
 function applyTextEdits(text, edits) {
   let result = text;
   const sorted = [...edits].sort((a, b) => {
-    if (b.range.start.line !== a.range.start.line) {return b.range.start.line - a.range.start.line;}
+    if (b.range.start.line !== a.range.start.line) {
+      return b.range.start.line - a.range.start.line;
+    }
     return b.range.start.character - a.range.start.character;
   });
   for (const edit of sorted) {
     const lines = result.split('\n');
     let startOffset = 0;
     let endOffset = 0;
-    for (let i = 0; i < edit.range.start.line; i++) {startOffset += lines[i].length + 1;}
+    for (let i = 0; i < edit.range.start.line; i++) {
+      startOffset += lines[i].length + 1;
+    }
     startOffset += edit.range.start.character;
-    for (let i = 0; i < edit.range.end.line; i++) {endOffset += lines[i].length + 1;}
+    for (let i = 0; i < edit.range.end.line; i++) {
+      endOffset += lines[i].length + 1;
+    }
     endOffset += edit.range.end.character;
     result = result.substring(0, startOffset) + (edit.newText || '') + result.substring(endOffset);
   }
@@ -187,12 +201,15 @@ function applyTextEdits(text, edits) {
 function detectOverlappingEdits(editsByPath) {
   const conflicts = [];
   for (const [filePath, { edits }] of Object.entries(editsByPath)) {
-    const sorted = [...edits].sort((a, b) =>
-      a.range.start.line - b.range.start.line || a.range.start.character - b.range.start.character
+    const sorted = [...edits].sort(
+      (a, b) =>
+        a.range.start.line - b.range.start.line ||
+        a.range.start.character - b.range.start.character,
     );
     for (let i = 0; i < sorted.length; i++) {
       for (let j = i + 1; j < sorted.length; j++) {
-        const a = sorted[i], b = sorted[j];
+        const a = sorted[i],
+          b = sorted[j];
         if (b.range.start.line <= a.range.end.line) {
           if (b.range.start.line === a.range.end.line) {
             if (b.range.start.character < a.range.end.character) {
@@ -220,16 +237,20 @@ describe('Rename Torture Tests', () => {
     beforeAll(async () => {
       project = new TestProject('tsconfig-paths');
       await project.setup({
-        'tsconfig.json': JSON.stringify({
-          compilerOptions: {
-            baseUrl: '.',
-            paths: {
-              '@app/*': ['src/*'],
-              '@components/*': ['src/components/*'],
-              '@utils/*': ['src/utils/*'],
+        'tsconfig.json': JSON.stringify(
+          {
+            compilerOptions: {
+              baseUrl: '.',
+              paths: {
+                '@app/*': ['src/*'],
+                '@components/*': ['src/components/*'],
+                '@utils/*': ['src/utils/*'],
+              },
             },
           },
-        }, null, 2),
+          null,
+          2,
+        ),
         'src/index.ts': `import { OldButton } from '@components/OldButton';
 import { formatDate } from '@utils/date';
 import { config } from '@app/config';
@@ -253,7 +274,9 @@ export const OldButton: React.FC<ButtonProps> = (props) => {
       });
     });
 
-    afterAll(async () => { await project.cleanup(); });
+    afterAll(async () => {
+      await project.cleanup();
+    });
 
     it('should rename symbol across tsconfig paths alias references', () => {
       const oldName = 'OldButton';
@@ -262,7 +285,8 @@ export const OldButton: React.FC<ButtonProps> = (props) => {
       // 模拟 LSP rename 生成的 workspace edit
       const workspaceEdit = simulateRenameEdits(
         Object.fromEntries(project.files),
-        oldName, newName,
+        oldName,
+        newName,
       );
 
       // 验证所有引用都被找到
@@ -272,7 +296,7 @@ export const OldButton: React.FC<ButtonProps> = (props) => {
       // 检查 index.ts barrel export 也被更新
       const indexEdits = workspaceEdit.changes[`file://src/index.ts`];
       expect(indexEdits).toBeDefined();
-      expect(indexEdits.some(e => e.newText === newName)).toBe(true);
+      expect(indexEdits.some((e) => e.newText === newName)).toBe(true);
 
       // 检查 components/OldButton.ts 的定义处
       const componentEdits = workspaceEdit.changes[`file://src/components/OldButton.ts`];
@@ -323,24 +347,28 @@ export const OldButton: React.FC<ButtonProps> = (props) => {
     beforeAll(async () => {
       project = new TestProject('pkg-exports');
       await project.setup({
-        'package.json': JSON.stringify({
-          name: '@myorg/ui-lib',
-          version: '1.0.0',
-          main: 'dist/index.js',
-          exports: {
-            '.': './dist/index.js',
-            './button': './dist/components/Button.js',
-            './card': './dist/components/Card.js',
-            './utils': './dist/utils/index.js',
-            './theme': './dist/theme/colors.js',
-          },
-          typesVersions: {
-            '*': {
-              button: ['./dist/components/Button.d.ts'],
-              card: ['./dist/components/Card.d.ts'],
+        'package.json': JSON.stringify(
+          {
+            name: '@myorg/ui-lib',
+            version: '1.0.0',
+            main: 'dist/index.js',
+            exports: {
+              '.': './dist/index.js',
+              './button': './dist/components/Button.js',
+              './card': './dist/components/Card.js',
+              './utils': './dist/utils/index.js',
+              './theme': './dist/theme/colors.js',
+            },
+            typesVersions: {
+              '*': {
+                button: ['./dist/components/Button.d.ts'],
+                card: ['./dist/components/Card.d.ts'],
+              },
             },
           },
-        }, null, 2),
+          null,
+          2,
+        ),
         'src/index.ts': `export { OldButton } from './components/OldButton';
 export { Card } from './components/Card';
 export * from './utils';`,
@@ -375,7 +403,9 @@ export default () => <div><OldButton {...props} /><Card title="Hello" /></div>;`
       });
     });
 
-    afterAll(async () => { await project.cleanup(); });
+    afterAll(async () => {
+      await project.cleanup();
+    });
 
     it('should rename symbol that is exported via package.json subpath exports', () => {
       const oldName = 'OldButton';
@@ -383,7 +413,8 @@ export default () => <div><OldButton {...props} /><Card title="Hello" /></div>;`
 
       const workspaceEdit = simulateRenameEdits(
         Object.fromEntries(project.files),
-        oldName, newName,
+        oldName,
+        newName,
       );
 
       // 检查 barrel export 更新
@@ -427,10 +458,14 @@ export default () => <div><OldButton {...props} /><Card title="Hello" /></div>;`
         'pnpm-workspace.yaml': `packages:
   - 'packages/*'
   - 'apps/*'`,
-        'package.json': JSON.stringify({
-          name: 'monorepo-root',
-          private: true,
-        }, null, 2),
+        'package.json': JSON.stringify(
+          {
+            name: 'monorepo-root',
+            private: true,
+          },
+          null,
+          2,
+        ),
         'packages/shared/src/index.ts': `export { OldLogger } from './logger';
 export type { LogLevel } from './types';`,
         'packages/shared/src/logger.ts': `import type { LogLevel } from './types';
@@ -440,16 +475,20 @@ export class OldLogger {
   log(msg: string) { console.log("[OLD]", msg); }
 }`,
         'packages/shared/src/types.ts': `export type LogLevel = 'debug' | 'info' | 'warn' | 'error';`,
-        'packages/shared/package.json': JSON.stringify({
-          name: '@mono/shared',
-          version: '1.0.0',
-          main: 'src/index.ts',
-          exports: {
-            '.': './src/index.ts',
-            './logger': './src/logger.ts',
-            './types': './src/types.ts',
+        'packages/shared/package.json': JSON.stringify(
+          {
+            name: '@mono/shared',
+            version: '1.0.0',
+            main: 'src/index.ts',
+            exports: {
+              '.': './src/index.ts',
+              './logger': './src/logger.ts',
+              './types': './src/types.ts',
+            },
           },
-        }, null, 2),
+          null,
+          2,
+        ),
         'apps/web/src/App.tsx': `import { OldLogger } from '@mono/shared/logger';
 import type { LogLevel } from '@mono/shared/types';
 
@@ -460,28 +499,38 @@ export const setupLogging = (level: LogLevel) => {
   const logger = new OldLogger();
   logger.log('Logging configured');
 };`,
-        'apps/web/package.json': JSON.stringify({
-          name: '@mono/web',
-          version: '1.0.0',
-          dependencies: { '@mono/shared': 'workspace:*' },
-          devDependencies: {
-            '@types/react': '^18.0.0',
-            typescript: '^5.0.0',
+        'apps/web/package.json': JSON.stringify(
+          {
+            name: '@mono/web',
+            version: '1.0.0',
+            dependencies: { '@mono/shared': 'workspace:*' },
+            devDependencies: {
+              '@types/react': '^18.0.0',
+              typescript: '^5.0.0',
+            },
           },
-        }, null, 2),
+          null,
+          2,
+        ),
         'apps/admin/src/dashboard.ts': `import { OldLogger } from '@mono/shared';
 
 const auditLog = new OldLogger();
 auditLog.log('Admin action');`,
-        'apps/admin/package.json': JSON.stringify({
-          name: '@mono/admin',
-          version: '1.0.0',
-          dependencies: { '@mono/shared': 'workspace:*' },
-        }, null, 2),
+        'apps/admin/package.json': JSON.stringify(
+          {
+            name: '@mono/admin',
+            version: '1.0.0',
+            dependencies: { '@mono/shared': 'workspace:*' },
+          },
+          null,
+          2,
+        ),
       });
     });
 
-    afterAll(async () => { await project.cleanup(); });
+    afterAll(async () => {
+      await project.cleanup();
+    });
 
     it('should rename across pnpm workspace packages with all references', () => {
       const oldName = 'OldLogger';
@@ -489,14 +538,15 @@ auditLog.log('Admin action');`,
 
       const workspaceEdit = simulateRenameEdits(
         Object.fromEntries(project.files),
-        oldName, newName,
+        oldName,
+        newName,
       );
 
       // shared/logger.ts 的定义处
       const loggerEdits = workspaceEdit.changes[`file://packages/shared/src/logger.ts`];
       expect(loggerEdits).toBeDefined();
       if (loggerEdits) {
-        const classRename = loggerEdits.find(e => e.newText === newName);
+        const classRename = loggerEdits.find((e) => e.newText === newName);
         expect(classRename).toBeDefined();
       }
 
@@ -603,7 +653,9 @@ export const Home: React.FC = () => {
       });
     });
 
-    afterAll(async () => { await project.cleanup(); });
+    afterAll(async () => {
+      await project.cleanup();
+    });
 
     it('should rename through 3-level barrel chain (src/index → components/index → OldInput)', () => {
       const oldName = 'OldInput';
@@ -611,7 +663,8 @@ export const Home: React.FC = () => {
 
       const workspaceEdit = simulateRenameEdits(
         Object.fromEntries(project.files),
-        oldName, newName,
+        oldName,
+        newName,
       );
 
       // 叶子定义 (OldInput → Input, OldInputProps → InputProps)
@@ -619,7 +672,7 @@ export const Home: React.FC = () => {
       expect(leafEdits).toBeDefined();
       if (leafEdits) {
         // 至少有对 OldInput 本身的 rename
-        const classRename = leafEdits.filter(e => e.newText === newName);
+        const classRename = leafEdits.filter((e) => e.newText === newName);
         expect(classRename.length).toBeGreaterThan(0);
       }
 
@@ -701,7 +754,9 @@ export { UserCard } from './components';`,
       });
     });
 
-    afterAll(async () => { await project.cleanup(); });
+    afterAll(async () => {
+      await project.cleanup();
+    });
 
     it('should rename type-only imported symbols', () => {
       const oldName = 'OldUser';
@@ -709,7 +764,8 @@ export { UserCard } from './components';`,
 
       const workspaceEdit = simulateRenameEdits(
         Object.fromEntries(project.files),
-        oldName, newName,
+        oldName,
+        newName,
       );
 
       // 类型定义处
@@ -730,8 +786,8 @@ export { UserCard } from './components';`,
 
       // 验证 import type 语句被正确处理
       if (svcEdits) {
-        const importTypeEdit = svcEdits.find(e =>
-          e.range.start.line === 0 && e.newText && e.newText.includes(newName)
+        const importTypeEdit = svcEdits.find(
+          (e) => e.range.start.line === 0 && e.newText && e.newText.includes(newName),
         );
         expect(importTypeEdit).toBeDefined();
       }
@@ -770,7 +826,9 @@ export const renderComponent = () => OldComponent({ title: 'Static' });`,
       });
     });
 
-    afterAll(async () => { await project.cleanup(); });
+    afterAll(async () => {
+      await project.cleanup();
+    });
 
     it('should rename default-exported symbol and update default imports', () => {
       const oldName = 'OldComponent';
@@ -778,7 +836,8 @@ export const renderComponent = () => OldComponent({ title: 'Static' });`,
 
       const workspaceEdit = simulateRenameEdits(
         Object.fromEntries(project.files),
-        oldName, newName,
+        oldName,
+        newName,
       );
 
       // 定义文件
@@ -790,10 +849,8 @@ export const renderComponent = () => OldComponent({ title: 'Static' });`,
       expect(appEdits).toBeDefined();
       if (appEdits) {
         // 需要更新 import 声明中的标识符 + JSX 使用
-        const importEdit = appEdits.find(e => e.newText === newName);
-        const jsxEdit = appEdits.find(e =>
-          e.range.start.line > 0 && e.newText === newName
-        );
+        const importEdit = appEdits.find((e) => e.newText === newName);
+        const jsxEdit = appEdits.find((e) => e.range.start.line > 0 && e.newText === newName);
         expect(importEdit).toBeDefined();
       }
 
@@ -840,7 +897,9 @@ export { cached } from './cache-layer';`,
       });
     });
 
-    afterAll(async () => { await project.cleanup(); });
+    afterAll(async () => {
+      await project.cleanup();
+    });
 
     it('should rename original symbol while preserving local alias names', () => {
       const oldName = 'OldApiClient';
@@ -848,7 +907,8 @@ export { cached } from './cache-layer';`,
 
       const workspaceEdit = simulateRenameEdits(
         Object.fromEntries(project.files),
-        oldName, newName,
+        oldName,
+        newName,
         { renameSymbolOnly: false },
       );
 
@@ -899,7 +959,9 @@ export { oldVar };`,
       });
     });
 
-    afterAll(async () => { await project.cleanup(); });
+    afterAll(async () => {
+      await project.cleanup();
+    });
 
     it('should handle multiple same-line edits: oldVar→newVar, oldFunc→newFunc, oldArg→newArg', () => {
       const content = project.files.get('src/code.ts');
@@ -918,7 +980,9 @@ export { oldVar };`,
 
       // 排序后从后往前应用
       const sorted = [...edits].sort((a, b) => {
-        if (b.range.start.line !== a.range.start.line) {return b.range.start.line - a.range.start.line;}
+        if (b.range.start.line !== a.range.start.line) {
+          return b.range.start.line - a.range.start.line;
+        }
         return b.range.start.character - a.range.start.character;
       });
 
@@ -957,8 +1021,8 @@ export { oldVar };`,
     it('should detect overlapping edits as conflicts', () => {
       const content = 'const testVar = 42;';
       const overlapEdits = [
-        makeTextEdit(0, 6, 0, 13, 'newTest'),   // 6-13
-        makeTextEdit(0, 10, 0, 18, 'changed'),    // 10-18 (重叠!)
+        makeTextEdit(0, 6, 0, 13, 'newTest'), // 6-13
+        makeTextEdit(0, 10, 0, 18, 'changed'), // 10-18 (重叠!)
       ];
 
       const editsByPath = {
@@ -997,7 +1061,9 @@ svc.disconnect();`,
       });
     });
 
-    afterAll(async () => { await project.cleanup(); });
+    afterAll(async () => {
+      await project.cleanup();
+    });
 
     it('should handle rename that also involves add/remove of lines around the symbol', () => {
       const oldName = 'OldService';
@@ -1008,11 +1074,19 @@ svc.disconnect();`,
 
       // Find line numbers from content
       const defLines = definitionContent.split('\n');
-      let classLine = -1, connectLine = -1, disconnectLine = -1;
+      let classLine = -1,
+        connectLine = -1,
+        disconnectLine = -1;
       for (let i = 0; i < defLines.length; i++) {
-        if (defLines[i].includes(`class ${oldName}`)) {classLine = i;}
-        if (defLines[i].includes('connect()')) {connectLine = i;}
-        if (defLines[i].includes('disconnect()')) {disconnectLine = i;}
+        if (defLines[i].includes(`class ${oldName}`)) {
+          classLine = i;
+        }
+        if (defLines[i].includes('connect()')) {
+          connectLine = i;
+        }
+        if (defLines[i].includes('disconnect()')) {
+          disconnectLine = i;
+        }
       }
 
       expect(classLine).toBeGreaterThanOrEqual(0);
@@ -1021,14 +1095,24 @@ svc.disconnect();`,
         // 重命名 class
         makeTextEdit(classLine, 13, classLine, 13 + oldName.length, newName),
         // 新增方法（在 connect 之后）
-        makeTextEdit(connectLine + 1, 0, connectLine + 1, 0, '  query() { console.log("querying"); }\n'),
+        makeTextEdit(
+          connectLine + 1,
+          0,
+          connectLine + 1,
+          0,
+          '  query() { console.log("querying"); }\n',
+        ),
         // 删除 disconnect 方法
         makeTextEdit(disconnectLine, 0, disconnectLine + 1, 0, ''),
       ];
 
       // 应用编辑
       let result = definitionContent;
-      for (const edit of edits.sort((a, b) => b.range.start.line - a.range.start.line || b.range.start.character - a.range.start.character)) {
+      for (const edit of edits.sort(
+        (a, b) =>
+          b.range.start.line - a.range.start.line ||
+          b.range.start.character - a.range.start.character,
+      )) {
         result = applyTextEdits(result, [edit]);
       }
 
@@ -1084,7 +1168,9 @@ svc.disconnect();`,
       await project.setup(files);
     });
 
-    afterAll(async () => { await project.cleanup(); });
+    afterAll(async () => {
+      await project.cleanup();
+    });
 
     it('should correctly rename 50+ occurrences across files', () => {
       const oldName = 'oldTargetFn';
@@ -1092,7 +1178,8 @@ svc.disconnect();`,
 
       const workspaceEdit = simulateRenameEdits(
         Object.fromEntries(project.files),
-        oldName, newName,
+        oldName,
+        newName,
       );
 
       // 统计编辑数
@@ -1115,8 +1202,11 @@ svc.disconnect();`,
       }
 
       // 新名称出现次数 === 旧名称本应出现的位置数
-      const mainOccurrences = (editedFiles['src/main.ts'].match(new RegExp(newName, 'g')) || []).length;
-      const consumerOccurrences = (editedFiles['src/consumer.ts'].match(new RegExp(newName, 'g')) || []).length;
+      const mainOccurrences = (editedFiles['src/main.ts'].match(new RegExp(newName, 'g')) || [])
+        .length;
+      const consumerOccurrences = (
+        editedFiles['src/consumer.ts'].match(new RegExp(newName, 'g')) || []
+      ).length;
       expect(mainOccurrences).toBeGreaterThanOrEqual(50);
       expect(consumerOccurrences).toBeGreaterThanOrEqual(50);
 
@@ -1152,7 +1242,9 @@ svc.disconnect();`,
       });
     });
 
-    afterAll(async () => { await project.cleanup(); });
+    afterAll(async () => {
+      await project.cleanup();
+    });
 
     it('should produce correct Hashline patches that include all files', () => {
       const edits = {

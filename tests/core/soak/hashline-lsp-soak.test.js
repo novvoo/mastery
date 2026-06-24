@@ -60,7 +60,9 @@ class SoakProject {
   }
 
   sha256(content) {
-    return createHash('sha256').update(content || '').digest('hex');
+    return createHash('sha256')
+      .update(content || '')
+      .digest('hex');
   }
 
   /** Collect all file paths. */
@@ -76,7 +78,9 @@ class SoakProject {
         }
       }
     };
-    try { walk(this.root); } catch {}
+    try {
+      walk(this.root);
+    } catch {}
     return result;
   }
 }
@@ -84,7 +88,10 @@ class SoakProject {
 // ── 轻量 Hashline Patch 模拟 ───────────────────────────────────────────
 
 function computeTag(content) {
-  return createHash('sha256').update(content || '').digest('hex').substring(0, 12);
+  return createHash('sha256')
+    .update(content || '')
+    .digest('hex')
+    .substring(0, 12);
 }
 
 /**
@@ -111,7 +118,12 @@ class MinimalHashlinePatcher {
         } else {
           const currentTag = computeTag(content);
           const ok = currentTag === sec.tag;
-          results.push({ path: sec.path, ok, error: ok ? null : `tag mismatch: expected ${sec.tag}, got ${currentTag}`, recoverable: !ok });
+          results.push({
+            path: sec.path,
+            ok,
+            error: ok ? null : `tag mismatch: expected ${sec.tag}, got ${currentTag}`,
+            recoverable: !ok,
+          });
         }
       } catch {
         results.push({ path: sec.path, ok: false, error: 'read error', recoverable: false });
@@ -143,14 +155,19 @@ class MinimalHashlinePatcher {
       for (const sec of sections) {
         const { path } = sec;
         const original = await this.project.read(path);
-        if (original === null) { throw new Error(`file not found: ${path}`); }
+        if (original === null) {
+          throw new Error(`file not found: ${path}`);
+        }
         backups.set(path, original);
 
         // 应用替换操作
         let content = original;
         for (const op of sec.operations) {
           if (op.type === 'replace' && content.includes(op.old)) {
-            content = content.replace(new RegExp(op.old.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), op.new);
+            content = content.replace(
+              new RegExp(op.old.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
+              op.new,
+            );
           } else if (op.type === 'swap-line' && content.includes(op.lineContent)) {
             content = content.replace(op.lineContent, op.newContent);
           }
@@ -168,7 +185,9 @@ class MinimalHashlinePatcher {
     } catch (err) {
       // Rollback
       for (const [path, content] of backups) {
-        try { await this.project.write(path, content); } catch {}
+        try {
+          await this.project.write(path, content);
+        } catch {}
       }
       return { ok: false, error: err.message, rolledBack: true };
     }
@@ -181,7 +200,9 @@ class MinimalHashlinePatcher {
     for (const line of lines) {
       const headerMatch = line.match(/^\[(.+?)#([a-f0-9]+)\]$/);
       if (headerMatch) {
-        if (current) { sections.push(current); }
+        if (current) {
+          sections.push(current);
+        }
         current = { path: headerMatch[1], tag: headerMatch[2], operations: [] };
       } else if (current) {
         const replMatch = line.match(/^REPLACE\s+(.+?)\s*→\s*(.+)$/);
@@ -190,7 +211,9 @@ class MinimalHashlinePatcher {
         }
       }
     }
-    if (current) { sections.push(current); }
+    if (current) {
+      sections.push(current);
+    }
     return sections;
   }
 }
@@ -319,12 +342,16 @@ describe('Soak: Hashline + LSP Pipeline Integration', () => {
       'src/app.ts',
     ];
 
-    const patchLines = [`[src/services/UserService.ts#${computeTag(await project.read('src/services/UserService.ts'))}]`];
+    const patchLines = [
+      `[src/services/UserService.ts#${computeTag(await project.read('src/services/UserService.ts'))}]`,
+    ];
     patchLines.push('REPLACE UserService → UserManager');
 
     for (const f of filesToPatch.slice(1)) {
       const content = await project.read(f);
-      if (!content) { continue; }
+      if (!content) {
+        continue;
+      }
       patchLines.push(`[${f}#${computeTag(content)}]`);
       patchLines.push('REPLACE UserService → UserManager');
     }
@@ -345,7 +372,11 @@ describe('Soak: Hashline + LSP Pipeline Integration', () => {
       expect(content).not.toContain('UserService');
     }
 
-    tracker.record('rename_UserService', { from: 'UserService', to: 'UserManager', files: filesToPatch.length });
+    tracker.record('rename_UserService', {
+      from: 'UserService',
+      to: 'UserManager',
+      files: filesToPatch.length,
+    });
   });
 
   // ── Test 2: Atomic rollback on conflict ─────────────────────────────
@@ -395,11 +426,15 @@ describe('Soak: Hashline + LSP Pipeline Integration', () => {
       const patchLines = [];
       for (const f of patchedFiles) {
         const content = await project.read(f);
-        if (!content || !content.includes(rename.old)) { continue; }
+        if (!content || !content.includes(rename.old)) {
+          continue;
+        }
         patchLines.push(`[${f}#${computeTag(content)}]`);
         patchLines.push(`REPLACE ${rename.old} → ${rename.new}`);
       }
-      if (patchLines.length === 0) { continue; }
+      if (patchLines.length === 0) {
+        continue;
+      }
 
       const result = await patcher.apply(patchLines.join('\n'));
       expect(result.ok).toBe(true);
@@ -422,9 +457,13 @@ describe('Soak: Hashline + LSP Pipeline Integration', () => {
     for (const name of cycleNames) {
       // 每次循环：重命名 UserManager → UserManager_CycleN → UserManager
       const content = await project.read('src/services/UserService.ts');
-      if (!content) { continue; }
+      if (!content) {
+        continue;
+      }
       const currentClass = content.match(/export class (\w+)/)?.[1] || 'UserManager';
-      const newClass = currentClass.startsWith('UserManager_') ? 'UserManager' : `UserManager_${name}`;
+      const newClass = currentClass.startsWith('UserManager_')
+        ? 'UserManager'
+        : `UserManager_${name}`;
 
       const patchedFiles = [
         'src/services/UserService.ts',
@@ -436,7 +475,9 @@ describe('Soak: Hashline + LSP Pipeline Integration', () => {
       const patchLines = [];
       for (const f of patchedFiles) {
         const fileContent = await project.read(f);
-        if (!fileContent || !fileContent.includes(currentClass)) { continue; }
+        if (!fileContent || !fileContent.includes(currentClass)) {
+          continue;
+        }
         patchLines.push(`[${f}#${computeTag(fileContent)}]`);
         patchLines.push(`REPLACE ${currentClass} → ${newClass}`);
       }
@@ -498,7 +539,9 @@ describe('Soak: Hashline + LSP Pipeline Integration', () => {
           },
           async () => {
             const files = project.listFiles().filter((f) => f.endsWith('.ts'));
-            if (files.length === 0) { return; }
+            if (files.length === 0) {
+              return;
+            }
             const f = files[ops % files.length];
             const content = await project.read(f);
             if (content) {
@@ -531,7 +574,9 @@ describe('Soak: Hashline + LSP Pipeline Integration', () => {
       }
 
       const duration = Date.now() - startTime;
-      console.log(`[Soak] Completed ${ops} operations in ${duration}ms (${(1000 * ops / duration).toFixed(1)} ops/s)`);
+      console.log(
+        `[Soak] Completed ${ops} operations in ${duration}ms (${((1000 * ops) / duration).toFixed(1)} ops/s)`,
+      );
 
       expect(ops).toBeGreaterThan(0);
       const stats = tracker.stats();

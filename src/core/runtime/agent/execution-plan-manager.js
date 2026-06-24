@@ -124,7 +124,7 @@ export function isSuccessfulToolResult(result) {
   if (result && result.skipped) {
     return true;
   }
-  
+
   const text = typeof result === 'string' ? result : JSON.stringify(result ?? '');
   if (!text.trim()) {
     return false;
@@ -274,16 +274,16 @@ export class ExecutionPlanManager {
     const taskType = profile?.isBugTask
       ? 'bug_fix'
       : profile?.isDocumentationTask
-      ? 'documentation'
-      : profile?.isAnalysisTask
-      ? 'analysis'
-      : profile?.isResearchTask
-      ? 'research'
-      : profile?.isModificationTask
-      ? 'modification'
-      : profile?.isCodingTask
-      ? 'coding'
-      : 'general';
+        ? 'documentation'
+        : profile?.isAnalysisTask
+          ? 'analysis'
+          : profile?.isResearchTask
+            ? 'research'
+            : profile?.isModificationTask
+              ? 'modification'
+              : profile?.isCodingTask
+                ? 'coding'
+                : 'general';
 
     let inspectDesc = 'Explore the context and gather necessary information before proceeding.';
     let planDesc = 'Plan the approach and define the steps needed to accomplish the task.';
@@ -293,10 +293,12 @@ export class ExecutionPlanManager {
 
     switch (taskType) {
       case 'coding':
-        inspectDesc = 'Discover the relevant project structure and existing files before reading or writing.';
+        inspectDesc =
+          'Discover the relevant project structure and existing files before reading or writing.';
         planDesc = 'Choose the implementation approach and file split for the requested change.';
         implementDesc = 'Create or edit the required files using the smallest necessary changes.';
-        inspectChangesDesc = 'Read back or otherwise inspect the files that were created or edited.';
+        inspectChangesDesc =
+          'Read back or otherwise inspect the files that were created or edited.';
         verifyDesc = 'Run an appropriate command/tool to verify the requested behavior.';
         break;
       case 'modification':
@@ -304,7 +306,8 @@ export class ExecutionPlanManager {
         planDesc = 'Plan the modification approach and identify the smallest necessary changes.';
         implementDesc = 'Make the planned changes to the existing code.';
         inspectChangesDesc = 'Read back the modified files to verify the changes.';
-        verifyDesc = 'Run tests or verification commands to ensure the modification works correctly.';
+        verifyDesc =
+          'Run tests or verification commands to ensure the modification works correctly.';
         break;
       case 'bug_fix':
         inspectDesc = 'Read the relevant code to understand the bug and its root cause.';
@@ -321,16 +324,19 @@ export class ExecutionPlanManager {
         verifyDesc = 'Verify the documentation is complete, accurate, and well-structured.';
         break;
       case 'analysis':
-        inspectDesc = 'Read relevant files, search codebase, and gather all necessary information for analysis.';
+        inspectDesc =
+          'Read relevant files, search codebase, and gather all necessary information for analysis.';
         planDesc = 'Plan the analysis approach and define the key questions to answer.';
-        implementDesc = 'Analyze the gathered information and generate insights, findings, and recommendations.';
+        implementDesc =
+          'Analyze the gathered information and generate insights, findings, and recommendations.';
         inspectChangesDesc = 'Review the analysis results for accuracy and completeness.';
         verifyDesc = 'Verify the analysis conclusions against the actual codebase or evidence.';
         break;
       case 'research':
         inspectDesc = 'Clarify the research question and define the scope of the investigation.';
         planDesc = 'Plan the research approach and identify relevant sources to consult.';
-        implementDesc = 'Search, read, and gather information from various sources to answer the research question.';
+        implementDesc =
+          'Search, read, and gather information from various sources to answer the research question.';
         inspectChangesDesc = 'Synthesize the research findings into a coherent summary.';
         verifyDesc = 'Verify the research findings are accurate, comprehensive, and well-sourced.';
         break;
@@ -508,9 +514,7 @@ export class ExecutionPlanManager {
       .toJSON()
       .tasks.map((t) => {
         const scopeStr =
-          t.scopeFiles && t.scopeFiles.length > 0
-            ? ` [📁: ${t.scopeFiles.join(', ')}]`
-            : '';
+          t.scopeFiles && t.scopeFiles.length > 0 ? ` [📁: ${t.scopeFiles.join(', ')}]` : '';
         return `- ${t.id}: ${t.name} [${t.status}]${scopeStr} - ${t.description}`;
       })
       .join('\n');
@@ -605,14 +609,8 @@ export class ExecutionPlanManager {
       // 子任务名称序列（用于分解模式签名）
       subtaskNames: tasks.map((t) => t.name || t.id),
       // Hashline 冲突计数（从 task metadata 提取）
-      hashlineConflicts: tasks.reduce(
-        (sum, t) => sum + (t.metadata?.hashlineConflicts || 0),
-        0,
-      ),
-      hashlineRollbacks: tasks.reduce(
-        (sum, t) => sum + (t.metadata?.hashlineRollbacks || 0),
-        0,
-      ),
+      hashlineConflicts: tasks.reduce((sum, t) => sum + (t.metadata?.hashlineConflicts || 0), 0),
+      hashlineRollbacks: tasks.reduce((sum, t) => sum + (t.metadata?.hashlineRollbacks || 0), 0),
       hashlineAutoRepairs: tasks.reduce(
         (sum, t) => sum + (t.metadata?.hashlineAutoRepairs || 0),
         0,
@@ -748,11 +746,50 @@ export class ExecutionPlanManager {
     // 回退：按 phase 前缀匹配（LLM 分解可能在 name/id 中包含阶段信息）
     if (!target) {
       const prefixMap = {
-        [ExecutionPlanManager.PHASE.EXPLORATION]: ['inspect', 'explore', 'discover', 'read', 'gather', 'analyze'],
-        [ExecutionPlanManager.PHASE.PLANNING]: ['plan', 'design', 'architect', 'brainstorm', 'grill', 'zoom_out', 'approach'],
-        [ExecutionPlanManager.PHASE.IMPLEMENTATION]: ['implement', 'create', 'edit', 'write', 'fix', 'add', 'update', 'refactor', 'build', 'code'],
-        [ExecutionPlanManager.PHASE.INSPECTION]: ['inspect', 'review', 'check', 'audit', 'read_back'],
-        [ExecutionPlanManager.PHASE.VERIFICATION]: ['verify', 'test', 'validate', 'confirm', 'lint', 'build_check'],
+        [ExecutionPlanManager.PHASE.EXPLORATION]: [
+          'inspect',
+          'explore',
+          'discover',
+          'read',
+          'gather',
+          'analyze',
+        ],
+        [ExecutionPlanManager.PHASE.PLANNING]: [
+          'plan',
+          'design',
+          'architect',
+          'brainstorm',
+          'grill',
+          'zoom_out',
+          'approach',
+        ],
+        [ExecutionPlanManager.PHASE.IMPLEMENTATION]: [
+          'implement',
+          'create',
+          'edit',
+          'write',
+          'fix',
+          'add',
+          'update',
+          'refactor',
+          'build',
+          'code',
+        ],
+        [ExecutionPlanManager.PHASE.INSPECTION]: [
+          'inspect',
+          'review',
+          'check',
+          'audit',
+          'read_back',
+        ],
+        [ExecutionPlanManager.PHASE.VERIFICATION]: [
+          'verify',
+          'test',
+          'validate',
+          'confirm',
+          'lint',
+          'build_check',
+        ],
       };
       const prefixes = prefixMap[targetPhase] || [];
       target = runningTasks.find((t) => {
@@ -761,7 +798,9 @@ export class ExecutionPlanManager {
       });
     }
     if (target) {
-      target.updateStatus(TaskStatus.COMPLETED, { result: { completedBy: 'tool-observation', phase: targetPhase } });
+      target.updateStatus(TaskStatus.COMPLETED, {
+        result: { completedBy: 'tool-observation', phase: targetPhase },
+      });
     }
   }
 

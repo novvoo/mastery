@@ -1,6 +1,10 @@
 import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test';
 import { switchModel } from '../../src/cli/agent-app-model-commands.js';
-import { getUserEnvPath, writeUserEnv, loadRuntimeEnv } from '../../src/core/runtime/runtime-config.js';
+import {
+  getUserEnvPath,
+  writeUserEnv,
+  loadRuntimeEnv,
+} from '../../src/core/runtime/runtime-config.js';
 import { existsSync, readFileSync, unlinkSync, mkdirSync, rmdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -16,14 +20,14 @@ describe('Model Switch Configuration Persistence', () => {
   });
 
   afterEach(() => {
-    Object.keys(process.env).forEach(key => {
+    Object.keys(process.env).forEach((key) => {
       if (originalEnv[key] === undefined) {
         delete process.env[key];
       } else {
         process.env[key] = originalEnv[key];
       }
     });
-    
+
     try {
       rmdirSync(testDir, { recursive: true });
     } catch {}
@@ -36,11 +40,11 @@ describe('Model Switch Configuration Persistence', () => {
       ZHIPU_MODEL: 'glm-4',
       ZHIPU_API_KEY: 'test-key',
     };
-    
+
     writeUserEnv(values, { envPath });
-    
+
     expect(existsSync(envPath)).toBe(true);
-    
+
     const content = readFileSync(envPath, 'utf-8');
     expect(content).toContain('MODEL_PROVIDER=zhipu');
     expect(content).toContain('ZHIPU_MODEL=glm-4');
@@ -51,7 +55,7 @@ describe('Model Switch Configuration Persistence', () => {
     const envPath = join(testDir, '.env');
     writeUserEnv({ EXISTING_KEY: 'existing-value' }, { envPath });
     writeUserEnv({ NEW_KEY: 'new-value' }, { envPath });
-    
+
     const content = readFileSync(envPath, 'utf-8');
     expect(content).toContain('EXISTING_KEY=existing-value');
     expect(content).toContain('NEW_KEY=new-value');
@@ -60,7 +64,7 @@ describe('Model Switch Configuration Persistence', () => {
   test('writeUserEnv handles empty values', () => {
     const envPath = join(testDir, '.env');
     writeUserEnv({ EMPTY: '', UNDEFINED: undefined, VALID: 'value' }, { envPath });
-    
+
     const content = readFileSync(envPath, 'utf-8');
     expect(content).not.toContain('EMPTY');
     expect(content).not.toContain('UNDEFINED');
@@ -69,12 +73,15 @@ describe('Model Switch Configuration Persistence', () => {
 
   test('writeUserEnv escapes special characters', () => {
     const envPath = join(testDir, '.env');
-    writeUserEnv({ 
-      WITH_SPACE: 'hello world',
-      WITH_QUOTE: 'it"s a test',
-      COMPLEX: 'path/to/file?query=1',
-    }, { envPath });
-    
+    writeUserEnv(
+      {
+        WITH_SPACE: 'hello world',
+        WITH_QUOTE: 'it"s a test',
+        COMPLEX: 'path/to/file?query=1',
+      },
+      { envPath },
+    );
+
     const content = readFileSync(envPath, 'utf-8');
     expect(content).toContain('WITH_SPACE="hello world"');
     expect(content).toContain(JSON.stringify('it"s a test'));
@@ -90,20 +97,20 @@ describe('Model Switch Configuration Persistence', () => {
   test('loadRuntimeEnv reads from user config path', () => {
     const envPath = join(testDir, '.env');
     writeUserEnv({ TEST_VAR: 'test-value' }, { envPath });
-    
+
     const mockEnv = {};
     loadRuntimeEnv({ env: mockEnv, userEnvPath: envPath, cwdEnvPath: '/nonexistent/.env' });
-    
+
     expect(mockEnv.TEST_VAR).toBe('test-value');
   });
 
   test('loadRuntimeEnv gives priority to process.env over user config', () => {
     const envPath = join(testDir, '.env');
     writeUserEnv({ TEST_VAR: 'file-value' }, { envPath });
-    
+
     const mockEnv = { TEST_VAR: 'env-value' };
     loadRuntimeEnv({ env: mockEnv, userEnvPath: envPath, cwdEnvPath: '/nonexistent/.env' });
-    
+
     expect(mockEnv.TEST_VAR).toBe('env-value');
   });
 
@@ -125,8 +132,9 @@ describe('Model Switch Configuration Persistence', () => {
         createModelProviderForSwitch: () => ({ mock: 'provider' }),
       }));
 
-      const { switchModel: mockedSwitchModel } = await import('../../src/cli/agent-app-model-commands.js');
-      
+      const { switchModel: mockedSwitchModel } =
+        await import('../../src/cli/agent-app-model-commands.js');
+
       const agent = {
         config: { provider: 'zhipu', model: 'glm-4', temperature: 0.7, maxIterations: 10 },
         debugMode: false,
@@ -136,7 +144,7 @@ describe('Model Switch Configuration Persistence', () => {
       };
 
       await mockedSwitchModel(agent, 'openai', 'gpt-4o');
-      
+
       expect(agent.config.provider).toBe('openai');
       expect(agent.config.model).toBe('gpt-4o');
     });
@@ -147,8 +155,9 @@ describe('Model Switch Configuration Persistence', () => {
         createModelProviderForSwitch: () => ({ mock: 'provider' }),
       }));
 
-      const { switchModel: mockedSwitchModel } = await import('../../src/cli/agent-app-model-commands.js');
-      
+      const { switchModel: mockedSwitchModel } =
+        await import('../../src/cli/agent-app-model-commands.js');
+
       const agent = {
         config: { provider: 'openai', model: 'gpt-4', temperature: 0.7, maxIterations: 10 },
         debugMode: false,
@@ -158,7 +167,7 @@ describe('Model Switch Configuration Persistence', () => {
       };
 
       await mockedSwitchModel(agent, 'zhipu', 'glm-4');
-      
+
       expect(agent.config.provider).toBe('zhipu');
       expect(agent.config.model).toBe('glm-4');
     });
@@ -169,8 +178,9 @@ describe('Model Switch Configuration Persistence', () => {
         createModelProviderForSwitch: () => ({ mock: 'provider' }),
       }));
 
-      const { switchModel: mockedSwitchModel } = await import('../../src/cli/agent-app-model-commands.js');
-      
+      const { switchModel: mockedSwitchModel } =
+        await import('../../src/cli/agent-app-model-commands.js');
+
       const agent = {
         config: { provider: 'openai', model: 'gpt-4', temperature: 0.7, maxIterations: 10 },
         debugMode: false,
@@ -180,7 +190,7 @@ describe('Model Switch Configuration Persistence', () => {
       };
 
       await mockedSwitchModel(agent, 'deepseek', 'deepseek-chat');
-      
+
       expect(agent.config.provider).toBe('deepseek');
       expect(agent.config.model).toBe('deepseek-chat');
     });
@@ -191,8 +201,9 @@ describe('Model Switch Configuration Persistence', () => {
         createModelProviderForSwitch: () => ({ mock: 'provider' }),
       }));
 
-      const { switchModel: mockedSwitchModel } = await import('../../src/cli/agent-app-model-commands.js');
-      
+      const { switchModel: mockedSwitchModel } =
+        await import('../../src/cli/agent-app-model-commands.js');
+
       const agent = {
         config: { provider: 'openai', model: 'gpt-4', temperature: 0.7, maxIterations: 10 },
         debugMode: false,
@@ -202,7 +213,7 @@ describe('Model Switch Configuration Persistence', () => {
       };
 
       await mockedSwitchModel(agent, 'openrouter', 'anthropic/claude-3-sonnet');
-      
+
       expect(agent.config.provider).toBe('openrouter');
       expect(agent.config.model).toBe('anthropic/claude-3-sonnet');
     });

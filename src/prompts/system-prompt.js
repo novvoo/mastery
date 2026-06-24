@@ -300,7 +300,9 @@ function formatToolList(registry) {
   if (registry && typeof registry.getRegisteredNames === 'function') {
     const names = registry.getRegisteredNames();
     if (names?.length > 0) {
-      lines.push(`Registered tools: ${names.slice(0, 40).join(', ')}${names.length > 40 ? ` ... (+${names.length - 40} more)` : ''}`);
+      lines.push(
+        `Registered tools: ${names.slice(0, 40).join(', ')}${names.length > 40 ? ` ... (+${names.length - 40} more)` : ''}`,
+      );
     }
   }
 

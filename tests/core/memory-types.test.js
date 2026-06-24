@@ -1,5 +1,10 @@
 import { describe, test, expect, beforeEach } from 'bun:test';
-import { MemoryEntry, MemoryType, MemoryStatus, StaleThreshold } from '../../src/memory/memory-types.js';
+import {
+  MemoryEntry,
+  MemoryType,
+  MemoryStatus,
+  StaleThreshold,
+} from '../../src/memory/memory-types.js';
 
 describe('MemoryType', () => {
   test('defines all expected types', () => {
@@ -76,17 +81,21 @@ describe('MemoryEntry', () => {
   });
 
   test('constructor validates required fields', () => {
-    expect(() => new MemoryEntry({ type: MemoryType.USER, title: 'Test' }))
-      .toThrow('Memory content is required');
-    expect(() => new MemoryEntry({ type: MemoryType.USER, content: 'Test' }))
-      .toThrow('Memory title is required');
-    expect(() => new MemoryEntry({ title: 'Test', content: 'Test' }))
-      .toThrow('Invalid memory type');
+    expect(() => new MemoryEntry({ type: MemoryType.USER, title: 'Test' })).toThrow(
+      'Memory content is required',
+    );
+    expect(() => new MemoryEntry({ type: MemoryType.USER, content: 'Test' })).toThrow(
+      'Memory title is required',
+    );
+    expect(() => new MemoryEntry({ title: 'Test', content: 'Test' })).toThrow(
+      'Invalid memory type',
+    );
   });
 
   test('constructor validates type', () => {
-    expect(() => new MemoryEntry({ type: 'invalid', title: 'Test', content: 'Test' }))
-      .toThrow('Invalid memory type');
+    expect(() => new MemoryEntry({ type: 'invalid', title: 'Test', content: 'Test' })).toThrow(
+      'Invalid memory type',
+    );
   });
 
   test('toMarkdown generates correct format', () => {
@@ -143,19 +152,23 @@ Test content`;
   });
 
   test('isStale returns true for stale entries', () => {
-    const oldTimestamp = Date.now() - (StaleThreshold.USER * 24 * 60 * 60 * 1000) - 1000;
+    const oldTimestamp = Date.now() - StaleThreshold.USER * 24 * 60 * 60 * 1000 - 1000;
     const entry = new MemoryEntry({ ...baseData, timestamp: oldTimestamp });
     expect(entry.isStale()).toBe(true);
   });
 
   test('isStale uses type-specific thresholds', () => {
     const userEntry = new MemoryEntry({ type: MemoryType.USER, title: 'User', content: 'Test' });
-    const feedbackEntry = new MemoryEntry({ type: MemoryType.FEEDBACK, title: 'Feedback', content: 'Test' });
-    
-    const staleTime = Date.now() - (StaleThreshold.FEEDBACK * 24 * 60 * 60 * 1000) - 1000;
+    const feedbackEntry = new MemoryEntry({
+      type: MemoryType.FEEDBACK,
+      title: 'Feedback',
+      content: 'Test',
+    });
+
+    const staleTime = Date.now() - StaleThreshold.FEEDBACK * 24 * 60 * 60 * 1000 - 1000;
     userEntry.timestamp = staleTime;
     feedbackEntry.timestamp = staleTime;
-    
+
     expect(userEntry.isStale()).toBe(false);
     expect(feedbackEntry.isStale()).toBe(true);
   });
@@ -166,7 +179,7 @@ Test content`;
   });
 
   test('isExpired returns true for entries older than 30 days', () => {
-    const oldTimestamp = Date.now() - (31 * 24 * 60 * 60 * 1000);
+    const oldTimestamp = Date.now() - 31 * 24 * 60 * 60 * 1000;
     const entry = new MemoryEntry({ ...baseData, timestamp: oldTimestamp });
     expect(entry.isExpired()).toBe(true);
   });
@@ -174,9 +187,9 @@ Test content`;
   test('access updates lastUsed and usageCount', () => {
     const entry = new MemoryEntry(baseData);
     const initialCount = entry.usageCount;
-    
+
     entry.access();
-    
+
     expect(entry.usageCount).toBe(initialCount + 1);
     expect(entry.lastUsed).toBeDefined();
   });

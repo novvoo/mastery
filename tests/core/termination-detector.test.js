@@ -1,5 +1,11 @@
 import { describe, test, expect } from 'bun:test';
-import { isTermination, extractFinalAnswer, normalizeFinalAnswer, StagnationDetector, Termination } from '../../src/core/termination-detector.js';
+import {
+  isTermination,
+  extractFinalAnswer,
+  normalizeFinalAnswer,
+  StagnationDetector,
+  Termination,
+} from '../../src/core/termination-detector.js';
 
 describe('Termination Detection', () => {
   test('isTermination returns false for empty/null', () => {

@@ -416,7 +416,8 @@ export class DynamicContextPruning {
         messages: [...systemMessages, ...trimmedRecent],
         stats: {
           originalTokens: startTokens,
-          prunedTokens: startTokens - this.#calculateTotalTokens([...systemMessages, ...trimmedRecent], config),
+          prunedTokens:
+            startTokens - this.#calculateTotalTokens([...systemMessages, ...trimmedRecent], config),
           messagesRemoved: messages.length - systemMessages.length - trimmedRecent.length,
           compressionRatio: 0.3,
           finalTokens: this.#calculateTotalTokens([...systemMessages, ...trimmedRecent], config),
@@ -429,7 +430,10 @@ export class DynamicContextPruning {
     let summaryContent;
     if (this.#summarizer && nonSystemMessages.length > 0) {
       // 使用 ConversationSummarizer 生成富语义摘要
-      const maxSummaryChars = Math.min(MAX_SUMMARY_CHARS_FOR_INJECT, Math.floor(availableForCompressed * 3));
+      const maxSummaryChars = Math.min(
+        MAX_SUMMARY_CHARS_FOR_INJECT,
+        Math.floor(availableForCompressed * 3),
+      );
       summaryContent = this.#summarizer.summarize(nonSystemMessages, { maxChars: maxSummaryChars });
     } else {
       // 回退：简单的消息计数摘要
@@ -470,7 +474,12 @@ export class DynamicContextPruning {
     const userMsgs = messages.filter((m) => m.role === 'user');
     if (userMsgs.length > 0) {
       const topics = userMsgs
-        .map((m) => String(m.content || '').split(/[.!?\n]/)[0]?.trim().slice(0, 120))
+        .map((m) =>
+          String(m.content || '')
+            .split(/[.!?\n]/)[0]
+            ?.trim()
+            .slice(0, 120),
+        )
         .filter(Boolean);
       if (topics.length > 0) {
         parts.push(`User requests (${topics.length}): ${topics.slice(0, 5).join(' | ')}`);

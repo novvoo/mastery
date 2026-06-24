@@ -43,20 +43,34 @@ describe('TokenScope', () => {
   test('setBudgetLimit triggers warning callback', () => {
     let warningCalled = false;
     const scope = new TokenScope({
-      onBudgetWarning: () => { warningCalled = true; },
+      onBudgetWarning: () => {
+        warningCalled = true;
+      },
     });
     scope.setBudgetLimit('user1', 0.01, 50);
-    scope.recordRequest({ model: 'gpt-4o', inputTokens: 1_000_000, outputTokens: 500_000, userId: 'user1' });
+    scope.recordRequest({
+      model: 'gpt-4o',
+      inputTokens: 1_000_000,
+      outputTokens: 500_000,
+      userId: 'user1',
+    });
     expect(warningCalled).toBe(true);
   });
 
   test('setBudgetLimit triggers exceeded callback', () => {
     let exceededCalled = false;
     const scope = new TokenScope({
-      onBudgetExceeded: () => { exceededCalled = true; },
+      onBudgetExceeded: () => {
+        exceededCalled = true;
+      },
     });
     scope.setBudgetLimit('user1', 0.001, 50);
-    scope.recordRequest({ model: 'gpt-4o', inputTokens: 1_000_000, outputTokens: 1_000_000, userId: 'user1' });
+    scope.recordRequest({
+      model: 'gpt-4o',
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
+      userId: 'user1',
+    });
     expect(exceededCalled).toBe(true);
   });
 

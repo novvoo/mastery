@@ -55,7 +55,10 @@ describe('session-store (src/core)', () => {
   });
 
   test('upsertAgentSession respects MAX_AGENT_SESSIONS', () => {
-    const sessions = Array.from({ length: MAX_AGENT_SESSIONS }, (_, i) => ({ id: `s${i}`, messages: [] }));
+    const sessions = Array.from({ length: MAX_AGENT_SESSIONS }, (_, i) => ({
+      id: `s${i}`,
+      messages: [],
+    }));
     const updated = upsertAgentSession(sessions, { id: 'new', messages: [] });
     expect(updated.length).toBe(MAX_AGENT_SESSIONS);
     expect(updated[0].id).toBe('new');
@@ -69,14 +72,19 @@ describe('session-store (src/core)', () => {
   });
 
   test('saveAgentInputHistory respects MAX_AGENT_HISTORY_ITEMS', () => {
-    const history = Array.from({ length: MAX_AGENT_HISTORY_ITEMS }, (_, i) => ({ input: `cmd${i}`, timestamp: i }));
+    const history = Array.from({ length: MAX_AGENT_HISTORY_ITEMS }, (_, i) => ({
+      input: `cmd${i}`,
+      timestamp: i,
+    }));
     const updated = saveAgentInputHistory(history, 'new_cmd', 's1');
     expect(updated.length).toBe(MAX_AGENT_HISTORY_ITEMS);
     expect(updated[0].input).toBe('new_cmd');
   });
 
   test('normalizeRagDocuments normalizes document structure', () => {
-    const docs = [{ id: 'd1', title: 'Test', source: '/path/to/test.md', kind: 'file', chunks: 5, chars: 1000 }];
+    const docs = [
+      { id: 'd1', title: 'Test', source: '/path/to/test.md', kind: 'file', chunks: 5, chars: 1000 },
+    ];
     const result = normalizeRagDocuments(docs);
     expect(result[0].name).toBe('Test');
     expect(result[0].path).toBe('/path/to/test.md');
@@ -84,11 +92,17 @@ describe('session-store (src/core)', () => {
   });
 
   test('mergeRagDocuments deduplicates by id', () => {
-    const current = [{ id: 'd1', name: 'Doc1' }, { id: 'd2', name: 'Doc2' }];
-    const next = [{ id: 'd2', name: 'Doc2 Updated' }, { id: 'd3', name: 'Doc3' }];
+    const current = [
+      { id: 'd1', name: 'Doc1' },
+      { id: 'd2', name: 'Doc2' },
+    ];
+    const next = [
+      { id: 'd2', name: 'Doc2 Updated' },
+      { id: 'd3', name: 'Doc3' },
+    ];
     const merged = mergeRagDocuments(current, next);
     expect(merged.length).toBe(3);
-    const d2 = merged.find(d => d.id === 'd2');
+    const d2 = merged.find((d) => d.id === 'd2');
     expect(d2.name).toBe('Doc2 Updated');
   });
 

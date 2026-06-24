@@ -14,7 +14,11 @@ describe('ObservationSummarizer', () => {
   test('processToolResult for list_dir with string result', () => {
     const ws = new WorkspaceState();
     const os = new ObservationSummarizer(ws);
-    const result = os.processToolResult('list_dir', { path: '/src' }, 'file1.js\nfile2.js\nfile3.js');
+    const result = os.processToolResult(
+      'list_dir',
+      { path: '/src' },
+      'file1.js\nfile2.js\nfile3.js',
+    );
     expect(result.summary).toContain('3');
     expect(result.facts.length).toBeGreaterThan(0);
   });
@@ -30,7 +34,11 @@ describe('ObservationSummarizer', () => {
   test('processToolResult for read_file failure', () => {
     const ws = new WorkspaceState();
     const os = new ObservationSummarizer(ws);
-    const result = os.processToolResult('read_file', { path: '/missing.js' }, 'Error: No such file');
+    const result = os.processToolResult(
+      'read_file',
+      { path: '/missing.js' },
+      'Error: No such file',
+    );
     expect(result.summary).toContain('missing.js');
   });
 
@@ -51,14 +59,22 @@ describe('ObservationSummarizer', () => {
   test('processToolResult for search', () => {
     const ws = new WorkspaceState();
     const os = new ObservationSummarizer(ws);
-    const result = os.processToolResult('search', { query: 'hello' }, '---\nfile1.js\n---\nfile2.js\n');
+    const result = os.processToolResult(
+      'search',
+      { query: 'hello' },
+      '---\nfile1.js\n---\nfile2.js\n',
+    );
     expect(result.summary).toContain('2');
   });
 
   test('processToolResult for shell with git status', () => {
     const ws = new WorkspaceState();
     const os = new ObservationSummarizer(ws);
-    const result = os.processToolResult('shell', { command: 'git status' }, ' M file1.js\n?? new.js');
+    const result = os.processToolResult(
+      'shell',
+      { command: 'git status' },
+      ' M file1.js\n?? new.js',
+    );
     expect(result.facts.length).toBeGreaterThan(0);
   });
 

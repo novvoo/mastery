@@ -38,8 +38,18 @@ describe('CommandCatalog', () => {
 
   it('模糊搜索按关键字匹配 category / keywords / title', () => {
     catalog.bulk({
-      'toggle-debug': { title: '切换调试', category: '设置', keywords: ['debug'], handler: () => ({ success: true }) },
-      'clear-session': { title: '清空会话', category: '会话', keywords: ['session'], handler: () => ({ success: true }) },
+      'toggle-debug': {
+        title: '切换调试',
+        category: '设置',
+        keywords: ['debug'],
+        handler: () => ({ success: true }),
+      },
+      'clear-session': {
+        title: '清空会话',
+        category: '会话',
+        keywords: ['session'],
+        handler: () => ({ success: true }),
+      },
     });
     expect(catalog.filter('debug').length).toBe(1);
     expect(catalog.filter('会话').length).toBe(1);
@@ -67,7 +77,9 @@ describe('CommandCatalog', () => {
       id: 'boom',
       title: 'Boom',
       category: '调试',
-      handler: () => { throw new Error('nope'); },
+      handler: () => {
+        throw new Error('nope');
+      },
     });
     const r = await catalog.run('boom');
     expect(r.success).toBe(false);

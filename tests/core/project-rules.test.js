@@ -14,12 +14,19 @@ describe('ProjectRules', () => {
   let originalHome;
 
   beforeEach(() => {
-    tmpDir = join(tmpdir(), `agent-test-rules-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+    tmpDir = join(
+      tmpdir(),
+      `agent-test-rules-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    );
     mkdirSync(tmpDir, { recursive: true });
   });
 
   afterEach(() => {
-    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
+    try {
+      rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      /* ok */
+    }
   });
 
   function writeRule(subPath, content) {
@@ -66,7 +73,11 @@ describe('ProjectRules', () => {
   it('supports @import directives', () => {
     writeRule('.', '# Main Rules\n@import conventions.md');
     const rulesDir = join(tmpDir, '.agent-rules');
-    writeFileSync(join(rulesDir, 'conventions.md'), '# Conventions\n- Use tabs for indentation', 'utf-8');
+    writeFileSync(
+      join(rulesDir, 'conventions.md'),
+      '# Conventions\n- Use tabs for indentation',
+      'utf-8',
+    );
 
     const rules = new ProjectRules(tmpDir);
     rules.load();
@@ -126,7 +137,7 @@ describe('ProjectRules', () => {
     expect(rules.hasRules()).toBe(false);
 
     writeRule('.', '# New rules');
-    rules.load();  // reload
+    rules.load(); // reload
     expect(rules.hasRules()).toBe(true);
   });
 

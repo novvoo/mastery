@@ -17,7 +17,6 @@ function createParser() {
 }
 
 describe('CALL format: nested braces in string values', () => {
-
   it('parses CALL with simple string argument (baseline)', () => {
     const parser = createParser();
     const text = 'CALL shell({"command": "echo hello"})';
@@ -38,7 +37,7 @@ describe('CALL format: nested braces in string values', () => {
 
   it('parses CALL with deeply nested braces (snake game scenario)', () => {
     const parser = createParser();
-    const innerCode = "let snake = [{ x: 10, y: 10 }, { x: 9, y: 10 }]; if (true) { score++; }";
+    const innerCode = 'let snake = [{ x: 10, y: 10 }, { x: 9, y: 10 }]; if (true) { score++; }';
     const text = `CALL shell({"command": "python3 -c \\"code = '''${innerCode}'''\nprint('ok')\\""})`;
     const result = parser.parse(text);
     expect(result.length).toBeGreaterThan(0);

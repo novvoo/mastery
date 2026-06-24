@@ -65,7 +65,9 @@ describe('runtime-details (src/core)', () => {
 
   test('getRuntimeDetailContent extracts content from messages', () => {
     expect(getRuntimeDetailContent({ content: 'hello' })).toBe('hello');
-    expect(getRuntimeDetailContent({ toolName: 'read_file', content: 'data' })).toContain('read_file');
+    expect(getRuntimeDetailContent({ toolName: 'read_file', content: 'data' })).toContain(
+      'read_file',
+    );
   });
 
   test('buildThinkingSummary aggregates thinking messages', () => {
@@ -105,7 +107,7 @@ describe('runtime-details (src/core)', () => {
     });
     expect(groups.length).toBeGreaterThan(0);
     // Should have runtimeDetails in some group
-    const allRuntimeDetails = groups.flatMap(g => g.runtimeDetails);
+    const allRuntimeDetails = groups.flatMap((g) => g.runtimeDetails);
     expect(allRuntimeDetails.length).toBeGreaterThan(0);
   });
 

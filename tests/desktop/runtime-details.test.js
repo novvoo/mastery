@@ -57,14 +57,28 @@ describe('runtime details helpers', () => {
     });
 
     expect(groups).toHaveLength(1);
-    expect(groups[0].messages.map(msg => msg.id)).toEqual(['u1', 'a1']);
-    expect(groups[0].runtimeDetails.map(msg => msg.id)).toEqual(['s1', 'r1', 't1', 'c1']);
+    expect(groups[0].messages.map((msg) => msg.id)).toEqual(['u1', 'a1']);
+    expect(groups[0].runtimeDetails.map((msg) => msg.id)).toEqual(['s1', 'r1', 't1', 'c1']);
   });
 
   test('builds thinking summaries across iterations', () => {
     const summary = buildThinkingSummary([
-      { id: 'r1', event: 'agent:thinking', type: 'thinking', iteration: 1, summary: '读上下文', thinkingText: '先读取上下文。' },
-      { id: 'r2', event: 'agent:thinking', type: 'thinking', iteration: 2, summary: '验证结果', thinkingText: '再验证结果。' },
+      {
+        id: 'r1',
+        event: 'agent:thinking',
+        type: 'thinking',
+        iteration: 1,
+        summary: '读上下文',
+        thinkingText: '先读取上下文。',
+      },
+      {
+        id: 'r2',
+        event: 'agent:thinking',
+        type: 'thinking',
+        iteration: 2,
+        summary: '验证结果',
+        thinkingText: '再验证结果。',
+      },
       { id: 't1', event: 'tool:call', type: 'tool' },
     ]);
 
@@ -76,7 +90,13 @@ describe('runtime details helpers', () => {
   });
 
   test('creates collision-resistant ids and export data', () => {
-    const detail = { event: 'tool:call', type: 'tool', timestamp: 123, toolName: 'shell', args: { command: 'pwd' } };
+    const detail = {
+      event: 'tool:call',
+      type: 'tool',
+      timestamp: 123,
+      toolName: 'shell',
+      args: { command: 'pwd' },
+    };
 
     expect(createRuntimeDetailId('group', detail, 0)).toBe('group_tool:call_123_0');
     expect(createRuntimeDetailId('group', detail, 1)).toBe('group_tool:call_123_1');
@@ -129,8 +149,12 @@ describe('runtime details helpers', () => {
     expect(summary.reviewable).toBe(1);
     expect(summary.undoable).toBe(1);
     expect(summary.progress).toBeGreaterThan(0);
-    expect(summary.files[0]).toMatchObject({ path: 'src/app.js', status: 'edited', operation: 'edit' });
-    expect(summary.taskStages.find(stage => stage.id === 'change')?.status).toBe('completed');
+    expect(summary.files[0]).toMatchObject({
+      path: 'src/app.js',
+      status: 'edited',
+      operation: 'edit',
+    });
+    expect(summary.taskStages.find((stage) => stage.id === 'change')?.status).toBe('completed');
     expect(summary.activities[0].statusText).toBe('已编辑 src/app.js');
   });
 
@@ -181,7 +205,7 @@ describe('runtime details helpers', () => {
     ]);
 
     expect(summary.plan.updateCount).toBe(1);
-    expect(summary.plan.tasks.map(task => task.status)).toEqual(['completed', 'completed']);
+    expect(summary.plan.tasks.map((task) => task.status)).toEqual(['completed', 'completed']);
     expect(summary.plan.progress.progress).toBe(100);
     expect(summary.files[0]).toMatchObject({
       path: 'src/app.js',
@@ -191,11 +215,15 @@ describe('runtime details helpers', () => {
       linesDeleted: 2,
       linesWritten: 4,
     });
-    expect(summary.activities.find(activity => activity.toolName === 'write_file')?.counts).toMatchObject({
+    expect(
+      summary.activities.find((activity) => activity.toolName === 'write_file')?.counts,
+    ).toMatchObject({
       additions: 3,
       deletions: 0,
     });
-    expect(summary.activities.find(activity => activity.toolName === 'edit_file')?.counts).toMatchObject({
+    expect(
+      summary.activities.find((activity) => activity.toolName === 'edit_file')?.counts,
+    ).toMatchObject({
       additions: 1,
       deletions: 2,
     });
@@ -213,7 +241,7 @@ describe('runtime details helpers', () => {
     ]);
 
     expect(summary.waitingForUser).toBe(true);
-    expect(summary.taskStages.find(stage => stage.id === 'complete')?.status).toBe('waiting');
+    expect(summary.taskStages.find((stage) => stage.id === 'complete')?.status).toBe('waiting');
     expect(getFileStatusLabel('created')).toBe('已创建');
   });
 
@@ -229,7 +257,7 @@ describe('runtime details helpers', () => {
 
     // thinking 和 status:update 消息被过滤，visibleRuntimeDetails 为空
     const visibleRuntimeDetails = runtimeDetails.filter(
-      msg => !isStatusUpdateMessage(msg) && msg.type !== 'thinking'
+      (msg) => !isStatusUpdateMessage(msg) && msg.type !== 'thinking',
     );
     expect(visibleRuntimeDetails).toHaveLength(0);
 
@@ -268,18 +296,23 @@ describe('runtime details helpers', () => {
     const runtimeDetails = [
       { id: 's1', event: 'status:update', type: 'event', message: 'starting' },
       {
-        id: 'a1', event: 'tool:activity', timestamp: 1,
+        id: 'a1',
+        event: 'tool:activity',
+        timestamp: 1,
         activity: {
-          kind: 'tool_activity', id: 'read:src/app.js',
-          phase: 'completed', intent: 'read',
-          toolName: 'read_file', target: 'src/app.js',
+          kind: 'tool_activity',
+          id: 'read:src/app.js',
+          phase: 'completed',
+          intent: 'read',
+          toolName: 'read_file',
+          target: 'src/app.js',
           statusText: '已读取 src/app.js',
         },
       },
     ];
 
     const visibleRuntimeDetails = runtimeDetails.filter(
-      msg => !isStatusUpdateMessage(msg) && msg.type !== 'thinking'
+      (msg) => !isStatusUpdateMessage(msg) && msg.type !== 'thinking',
     );
     // activity 消息不在 visible 列表
     // 但 buildActivitySummary 会识别它

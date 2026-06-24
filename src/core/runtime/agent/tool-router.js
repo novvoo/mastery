@@ -25,20 +25,20 @@ const HASHLINE_TOOLS = ['apply_hashline_patch'];
 // These replace read_file/list_dir for locating code, finding references,
 // tracing call chains, and understanding types/symbols.
 const LSP_NAV_TOOLS = [
-  'lsp_diagnostics',    // instant error/warning location
-  'lsp_definition',     // jump to definition (replaces grep + read_file)
-  'lsp_references',     // find all usages (replaces multi-file search)
+  'lsp_diagnostics', // instant error/warning location
+  'lsp_definition', // jump to definition (replaces grep + read_file)
+  'lsp_references', // find all usages (replaces multi-file search)
   'lsp_call_hierarchy', // trace incoming/outgoing call chains
-  'lsp_symbols',        // workspace-wide symbol search
-  'lsp_hover',          // type info and documentation at cursor
-  'lsp_type_definition',// type definition (replaces reading type files)
+  'lsp_symbols', // workspace-wide symbol search
+  'lsp_hover', // type info and documentation at cursor
+  'lsp_type_definition', // type definition (replaces reading type files)
   'lsp_implementation', // find interface/abstract implementations
 ];
 
 // LSP editing tools — code modifications with full Hashline transaction pipeline.
 const LSP_EDIT_TOOLS = [
-  'lsp_rename',         // rename + sync references + barrel/alias
-  'lsp_code_action',    // quick fixes, organize imports, etc.
+  'lsp_rename', // rename + sync references + barrel/alias
+  'lsp_code_action', // quick fixes, organize imports, etc.
   'lsp_workspace_edit', // cross-file workspace edits (move/rename/update-imports)
 ];
 

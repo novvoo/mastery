@@ -3,17 +3,29 @@ import { describe, expect, test, beforeEach, mock } from 'bun:test';
 mock.module('../../../src/core/session-manager.js', () => ({
   SessionManager: class SessionManager {
     static PRIORITY = Object.freeze({ ORDINARY: 1, EVIDENCE: 2, DECISION: 3 });
-    static LAYER = Object.freeze({ STRUCTURE: 0, PROJECTION: 10, DIAGNOSTICS: 20, DEPENDENCIES: 30, MEMORY: 40 });
+    static LAYER = Object.freeze({
+      STRUCTURE: 0,
+      PROJECTION: 10,
+      DIAGNOSTICS: 20,
+      DEPENDENCIES: 30,
+      MEMORY: 40,
+    });
     constructor(opts = {}) {}
     setSystemPrompt() {}
     addSystemMessage() {}
     addMessage() {}
     addUserMessage() {}
     addAssistantMessage() {}
-    getMessages() { return []; }
-    getHistory() { return []; }
+    getMessages() {
+      return [];
+    }
+    getHistory() {
+      return [];
+    }
     clear() {}
-    get length() { return 0; }
+    get length() {
+      return 0;
+    }
   },
 }));
 
@@ -23,9 +35,15 @@ mock.module('../../../src/prompts/system-prompt.js', () => ({
 
 mock.module('../../../src/errors/error-handler.js', () => ({
   RetryStrategy: class RetryStrategy {
-    shouldRetry() { return false; }
-    getDelay() { return 0; }
-    async executeWithRetry(fn) { return await fn(); }
+    shouldRetry() {
+      return false;
+    }
+    getDelay() {
+      return 0;
+    }
+    async executeWithRetry(fn) {
+      return await fn();
+    }
   },
   withTimeout: (fn) => fn(),
 }));
@@ -33,21 +51,29 @@ mock.module('../../../src/errors/error-handler.js', () => ({
 mock.module('../../../src/core/text-tool-parser.js', () => ({
   TextToolParser: class TextToolParser {
     constructor() {}
-    parse() { return []; }
-    generateToolPrompt() { return ''; }
+    parse() {
+      return [];
+    }
+    generateToolPrompt() {
+      return '';
+    }
   },
 }));
 
 mock.module('../../../src/core/intent-classifier.js', () => ({
   IntentClassifier: class IntentClassifier {
     constructor() {}
-    async classify() { return null; }
+    async classify() {
+      return null;
+    }
   },
 }));
 
 mock.module('../../../src/core/dynamic-context-pruning.js', () => ({
   DynamicContextPruning: class DynamicContextPruning {
-    prune(messages) { return messages; }
+    prune(messages) {
+      return messages;
+    }
   },
 }));
 
@@ -62,8 +88,12 @@ mock.module('../../../src/core/workspace-index.js', () => ({
 mock.module('../../../src/core/workspace-state.js', () => ({
   WorkspaceState: class WorkspaceState {
     constructor() {}
-    aggregateContext() { return null; }
-    getFileSnapshot() { return null; }
+    aggregateContext() {
+      return null;
+    }
+    getFileSnapshot() {
+      return null;
+    }
   },
 }));
 
@@ -76,32 +106,48 @@ mock.module('../../../src/core/token-scope.js', () => ({
     constructor() {}
     allocate() {}
     release() {}
-    getRemaining() { return Infinity; }
+    getRemaining() {
+      return Infinity;
+    }
   },
 }));
 
 mock.module('../../../src/core/execution-plan-manager.js', () => ({
   ExecutionPlanManager: class ExecutionPlanManager {
     constructor() {}
-    get plan() { return null; }
-    get isCompleted() { return true; }
-    buildPlan() { return null; }
-    createIfNeeded() { return null; }
+    get plan() {
+      return null;
+    }
+    get isCompleted() {
+      return true;
+    }
+    buildPlan() {
+      return null;
+    }
+    createIfNeeded() {
+      return null;
+    }
   },
 }));
 
 mock.module('../../../src/core/tool-executor.js', () => ({
   ToolExecutor: class ToolExecutor {
-    constructor() { this.events = []; }
+    constructor() {
+      this.events = [];
+    }
     reset() {}
-    async execute() { return {}; }
+    async execute() {
+      return {};
+    }
   },
 }));
 
 mock.module('../../../src/core/context-manager.js', () => ({
   ContextManager: class ContextManager {
     constructor() {}
-    prepareContext() { return {}; }
+    prepareContext() {
+      return {};
+    }
     manage() {}
   },
 }));
@@ -138,8 +184,12 @@ mock.module('../../../src/core/termination-detector.js', () => ({
   StagnationDetector: class StagnationDetector {
     constructor() {}
     reset() {}
-    check() { return { shouldStop: false, reason: '' }; }
-    nudge() { return null; }
+    check() {
+      return { shouldStop: false, reason: '' };
+    }
+    nudge() {
+      return null;
+    }
     recordTool() {}
   },
 }));
@@ -204,7 +254,9 @@ describe('AgentEngine Streaming', () => {
           },
         };
       },
-      async chat() { return { content: 'fallback', finishReason: 'stop' }; },
+      async chat() {
+        return { content: 'fallback', finishReason: 'stop' };
+      },
       async dispose() {},
     };
 
@@ -236,7 +288,7 @@ describe('AgentEngine Streaming', () => {
       expect(result).toBeDefined();
 
       // UI 回调中应包含 text_delta 事件
-      const textDeltaEvents = uiEvents.filter(e => e.type === 'text_delta');
+      const textDeltaEvents = uiEvents.filter((e) => e.type === 'text_delta');
       expect(textDeltaEvents.length).toBeGreaterThan(1);
     } finally {
       engine.dispose();
@@ -247,7 +299,12 @@ describe('AgentEngine Streaming', () => {
     const streamingModelProvider = {
       async chatStream(messages, options = {}) {
         const innerEvents = (async function* () {
-          yield { type: StreamEventType.TOOL_CALL_DELTA, index: 0, name: 'read_file', arguments: '{"path":' };
+          yield {
+            type: StreamEventType.TOOL_CALL_DELTA,
+            index: 0,
+            name: 'read_file',
+            arguments: '{"path":',
+          };
           yield { type: StreamEventType.TOOL_CALL_DELTA, index: 0, arguments: '"a.txt"}' };
           yield { type: StreamEventType.FINISH, finishReason: 'tool_use' };
         })();
@@ -266,7 +323,9 @@ describe('AgentEngine Streaming', () => {
           },
         };
       },
-      async chat() { return { content: 'fallback', finishReason: 'stop' }; },
+      async chat() {
+        return { content: 'fallback', finishReason: 'stop' };
+      },
       async dispose() {},
     };
 
@@ -283,7 +342,7 @@ describe('AgentEngine Streaming', () => {
     try {
       await engine.processInput('读取文件');
 
-      const toolDeltaEvents = uiEvents.filter(e => e.type === 'tool_call_delta');
+      const toolDeltaEvents = uiEvents.filter((e) => e.type === 'tool_call_delta');
       expect(toolDeltaEvents.length).toBeGreaterThanOrEqual(1);
     } finally {
       engine.dispose();
@@ -299,7 +358,11 @@ describe('AgentEngine Streaming', () => {
     const mockProvider = {
       async chatStream() {
         chatStreamCalled = true;
-        return { stream: () => (async function* () {})(), abort: async () => {}, finalize: async () => ({}) };
+        return {
+          stream: () => (async function* () {})(),
+          abort: async () => {},
+          finalize: async () => ({}),
+        };
       },
       async chat() {
         chatCalled = true;
@@ -335,7 +398,9 @@ describe('AgentEngine Streaming', () => {
   test('默认 UI 适配器提供空实现的 delta 回调', () => {
     const engine = createAgentEngine({
       modelProvider: {
-        async chat() { return { content: 'ok', finishReason: 'stop' }; },
+        async chat() {
+          return { content: 'ok', finishReason: 'stop' };
+        },
         async dispose() {},
       },
       ui: null,

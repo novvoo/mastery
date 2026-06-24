@@ -81,12 +81,16 @@ describe('IPC MessageQueue e2e', () => {
 
 describe('IPCMessage serialization e2e', () => {
   test('round-trips through toJSON/fromJSON', () => {
-    const original = new IPCMessage(IPCMessageType.REQUEST, { key: 'value' }, {
-      correlationId: 'corr-1',
-      metadata: { channel: 'test' },
-      source: 'renderer',
-      target: 'main',
-    });
+    const original = new IPCMessage(
+      IPCMessageType.REQUEST,
+      { key: 'value' },
+      {
+        correlationId: 'corr-1',
+        metadata: { channel: 'test' },
+        source: 'renderer',
+        target: 'main',
+      },
+    );
     original.status = IPCMessageStatus.SUCCESS;
 
     const json = original.toJSON();
@@ -206,8 +210,12 @@ describe('PluginManager lifecycle e2e', () => {
     const plugin = createPlugin({
       name: 'lifecycle-test',
       version: '1.0.0',
-      initialize() { events.push('init'); },
-      cleanup() { events.push('cleanup'); },
+      initialize() {
+        events.push('init');
+      },
+      cleanup() {
+        events.push('cleanup');
+      },
       hooks: {},
       middlewares: [],
     });
@@ -294,15 +302,23 @@ describe('PluginManager lifecycle e2e', () => {
     const mgr = createManager();
     const events = [];
 
-    await mgr.register(createPlugin({
-      name: 'alpha',
-      cleanup() { events.push('cleanup:alpha'); },
-    }));
-    await mgr.register(createPlugin({
-      name: 'beta',
-      dependencies: ['alpha'],
-      cleanup() { events.push('cleanup:beta'); },
-    }));
+    await mgr.register(
+      createPlugin({
+        name: 'alpha',
+        cleanup() {
+          events.push('cleanup:alpha');
+        },
+      }),
+    );
+    await mgr.register(
+      createPlugin({
+        name: 'beta',
+        dependencies: ['alpha'],
+        cleanup() {
+          events.push('cleanup:beta');
+        },
+      }),
+    );
 
     await mgr.dispose();
     expect(mgr.getPluginCount()).toBe(0);

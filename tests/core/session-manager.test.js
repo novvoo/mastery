@@ -28,21 +28,21 @@ describe('SessionManager', () => {
     const sm = new SessionManager();
     sm.addUserMessage('Hello');
     const msgs = sm.getHistory();
-    expect(msgs.some(m => m.role === 'user' && m.content === 'Hello')).toBe(true);
+    expect(msgs.some((m) => m.role === 'user' && m.content === 'Hello')).toBe(true);
   });
 
   test('addAssistantMessage adds assistant message', () => {
     const sm = new SessionManager();
     sm.addAssistantMessage('Hi there');
     const msgs = sm.getHistory();
-    expect(msgs.some(m => m.role === 'assistant')).toBe(true);
+    expect(msgs.some((m) => m.role === 'assistant')).toBe(true);
   });
 
   test('addToolResult adds tool result', () => {
     const sm = new SessionManager();
     sm.addToolResult('call_1', 'read_file', 'file content');
     const msgs = sm.getHistory();
-    expect(msgs.some(m => m.role === 'tool')).toBe(true);
+    expect(msgs.some((m) => m.role === 'tool')).toBe(true);
   });
 
   test('tagLastMessage changes priority', () => {

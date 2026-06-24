@@ -3,15 +3,23 @@
  */
 
 import { describe, test, expect, beforeEach } from 'bun:test';
-import { MainProcessIPCAdapter, IPCMessage, IPCMessageType } from '../../src/adapters/desktop/ipc-adapter.js';
+import {
+  MainProcessIPCAdapter,
+  IPCMessage,
+  IPCMessageType,
+} from '../../src/adapters/desktop/ipc-adapter.js';
 
 function makeFakeIpcMain() {
   const handles = new Map();
   const listeners = new Map();
   return {
-    handle(name, fn) { handles.set(name, fn); },
+    handle(name, fn) {
+      handles.set(name, fn);
+    },
     on(name, fn) {
-      if (!listeners.has(name)) {listeners.set(name, []);}
+      if (!listeners.has(name)) {
+        listeners.set(name, []);
+      }
       listeners.get(name).push(fn);
     },
     handles,
@@ -23,14 +31,18 @@ function makeFakeSender() {
   const sent = [];
   return {
     id: 99,
-    send(channel, payload) { sent.push({ channel, payload }); },
+    send(channel, payload) {
+      sent.push({ channel, payload });
+    },
     sent,
   };
 }
 
 describe('Desktop IPC: handler registration & validation', () => {
   let ipcMain;
-  beforeEach(() => { ipcMain = makeFakeIpcMain(); });
+  beforeEach(() => {
+    ipcMain = makeFakeIpcMain();
+  });
 
   test('initialize() 注册 CONNECT / REQUEST handler', async () => {
     const adapter = new MainProcessIPCAdapter(ipcMain, { emit() {} });
@@ -71,14 +83,18 @@ describe('Desktop IPC: message validation', () => {
   test('request handler 对未注册 channel 返回错误响应 (不抛)', async () => {
     const sender = makeFakeSender();
     const handler = ipcMain.listeners.get('ipc:request')[0];
-    const message = new IPCMessage(IPCMessageType.REQUEST, { path: 'foo' }, {
-      metadata: { channel: 'unknown:channel' },
-    });
+    const message = new IPCMessage(
+      IPCMessageType.REQUEST,
+      { path: 'foo' },
+      {
+        metadata: { channel: 'unknown:channel' },
+      },
+    );
     await handler({ sender }, message.toJSON());
     // 至少发送一条 ipc:response / ipc:error 消息
     expect(sender.sent.length).toBeGreaterThan(0);
-    const anyResponse = sender.sent.find(s =>
-      s.channel === 'ipc:response' || s.channel === 'ipc:error'
+    const anyResponse = sender.sent.find(
+      (s) => s.channel === 'ipc:response' || s.channel === 'ipc:error',
     );
     expect(anyResponse).toBeTruthy();
   });

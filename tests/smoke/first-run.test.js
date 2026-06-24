@@ -40,7 +40,6 @@ afterAll(() => {
 });
 
 describe('smoke: 零配置 / 首次运行验证', () => {
-
   describe('1. 入口模块可导入', () => {
     it('src/index.js 能作为 ESM 模块加载', async () => {
       const mod = await import('../../src/index.js');

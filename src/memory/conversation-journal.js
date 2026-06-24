@@ -82,8 +82,7 @@ export class ConversationJournal {
         answer.length > 1200
           ? answer.slice(0, 1200).replace(/\n$/, '') + '\n\n*(... 已截断)*'
           : answer;
-      resultBlock =
-        '\n**Agent 结果:**\n\n```\n' + preview + '\n```\n';
+      resultBlock = '\n**Agent 结果:**\n\n```\n' + preview + '\n```\n';
     } else {
       resultBlock = '\n**Agent 结果:** *(无输出)*\n';
     }

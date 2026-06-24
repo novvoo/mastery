@@ -16,9 +16,7 @@ describe('coding-prompts', () => {
     });
 
     test('returns guidance string with single domain', () => {
-      const domains = [
-        { label: 'units/time', checklist: 'verify timing behavior' },
-      ];
+      const domains = [{ label: 'units/time', checklist: 'verify timing behavior' }];
       const result = buildSemanticRiskGuidance(domains);
       expect(result).toContain('Semantic/API risk review is required');
       expect(result).toContain('- units/time: verify timing behavior');

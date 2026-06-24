@@ -1,5 +1,12 @@
 import { describe, test, expect, beforeEach } from 'bun:test';
-import { SecurityPolicy, Decision, DenyReason, createReadOnlyPolicy, createRestrictedPolicy, createFullPolicy } from '../../src/core/security-policy.js';
+import {
+  SecurityPolicy,
+  Decision,
+  DenyReason,
+  createReadOnlyPolicy,
+  createRestrictedPolicy,
+  createFullPolicy,
+} from '../../src/core/security-policy.js';
 
 describe('SecurityPolicy', () => {
   describe('Decision and DenyReason', () => {
@@ -20,7 +27,9 @@ describe('SecurityPolicy', () => {
 
   describe('constructor and registerPolicy', () => {
     let policy;
-    beforeEach(() => { policy = new SecurityPolicy(); });
+    beforeEach(() => {
+      policy = new SecurityPolicy();
+    });
 
     test('creates with default options', () => {
       expect(policy).toBeDefined();
@@ -44,7 +53,9 @@ describe('SecurityPolicy', () => {
 
   describe('evaluate', () => {
     let policy;
-    beforeEach(() => { policy = new SecurityPolicy(); });
+    beforeEach(() => {
+      policy = new SecurityPolicy();
+    });
 
     test('allows tool with no restrictions', () => {
       policy.registerPolicy('safe_tool');

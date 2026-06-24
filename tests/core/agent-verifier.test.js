@@ -48,7 +48,11 @@ describe('AgentVerifier', () => {
 
   test('buildCodingCompletionGatePrompt returns string', () => {
     const verifier = new AgentVerifier(makeMockDeps());
-    const result = verifier.buildCodingCompletionGatePrompt('fix bug', { reason: 'no verification' }, { riskLevel: 'low' });
+    const result = verifier.buildCodingCompletionGatePrompt(
+      'fix bug',
+      { reason: 'no verification' },
+      { riskLevel: 'low' },
+    );
     expect(typeof result).toBe('string');
   });
 

@@ -73,7 +73,11 @@ import {
 } from './support/prompt-builder.js';
 import { StagnationDetector } from './termination-detector.js';
 import { TaskStatus } from '../../../planner/graph-planner.js';
-import { MAX_ITERATIONS_DEFAULT, EXPLORATION_BUDGET, FORCE_ACTION_GRACE_TURNS } from '../../agent-constants.js';
+import {
+  MAX_ITERATIONS_DEFAULT,
+  EXPLORATION_BUDGET,
+  FORCE_ACTION_GRACE_TURNS,
+} from '../../agent-constants.js';
 
 /**
  * AgentEngine 工厂函数。供 CLI/Desktop 调用。
@@ -211,22 +215,38 @@ function scoreNumberedItem(item) {
   let s = 0;
 
   // +2: 强可执行动作 —— LLM 通过工具调用实际能做的事
-  if (/\b(?:create|write|build|run|execute|install|deploy|modify|edit|delete|remove|add|update|generate|compile|test|refactor|move|rename|copy|commit|push|configure|set\s*up|implement|replace|fix|patch|创建|编写|构建|运行|执行|安装|部署|修改|编辑|删除|移除|添加|更新|生成|编译|测试|重构|移动|重命名|复制|提交|推送|配置|实现|替换|修复|修补)\b/i.test(item)) {
+  if (
+    /\b(?:create|write|build|run|execute|install|deploy|modify|edit|delete|remove|add|update|generate|compile|test|refactor|move|rename|copy|commit|push|configure|set\s*up|implement|replace|fix|patch|创建|编写|构建|运行|执行|安装|部署|修改|编辑|删除|移除|添加|更新|生成|编译|测试|重构|移动|重命名|复制|提交|推送|配置|实现|替换|修复|修补)\b/i.test(
+      item,
+    )
+  ) {
     s += 2;
   }
 
   // -2: 定义/描述标记 —— 陈述事实而非发指令
-  if (/(?:是指|指的是|即|意为|定义为|是[一种个项类]|属于|指代|称作|所谓|is\s+(?:a|an|the)\b|refers?\s+to|means?\b|is\s+defined\s+as|consists?\s+of|comprises?\b|stands?\s+for)/i.test(item)) {
+  if (
+    /(?:是指|指的是|即|意为|定义为|是[一种个项类]|属于|指代|称作|所谓|is\s+(?:a|an|the)\b|refers?\s+to|means?\b|is\s+defined\s+as|consists?\s+of|comprises?\b|stands?\s+for)/i.test(
+      item,
+    )
+  ) {
     s -= 2;
   }
 
   // +1: 工程产物 —— 计划的直接产出
-  if (/\b(?:file|function|class|component|module|route|endpoint|config|directory|repo|package|dependency|import|export|interface|type|hook|middleware|service|controller|model|schema|migration|seed|文档|文件|函数|类|组件|模块|路由|接口|配置|目录|包|依赖)\b/i.test(item)) {
+  if (
+    /\b(?:file|function|class|component|module|route|endpoint|config|directory|repo|package|dependency|import|export|interface|type|hook|middleware|service|controller|model|schema|migration|seed|文档|文件|函数|类|组件|模块|路由|接口|配置|目录|包|依赖)\b/i.test(
+      item,
+    )
+  ) {
     s += 1;
   }
 
   // +1: 未来/意图词 —— 表明之后要做
-  if (/\b(?:will|shall|going\s+to|need\s+to|should|must|have\s+to|plan\s+to|intend\s+to|将|要|需要|应该|必须|打算|计划)\b/i.test(item)) {
+  if (
+    /\b(?:will|shall|going\s+to|need\s+to|should|must|have\s+to|plan\s+to|intend\s+to|将|要|需要|应该|必须|打算|计划)\b/i.test(
+      item,
+    )
+  ) {
     s += 1;
   }
 
@@ -254,7 +274,9 @@ function isActionableTaskList(text) {
 
 // ---------- 检测前导句是否为计划声明 ----------
 function hasPlanLeadIn(text) {
-  return /\b(?:Here(?:'s| is) (?:my|the) plan|I(?:'ll| will) do the following|Steps?(?:\s+to\s+\w+)?:|My approach:|Plan:|执行计划|实施方案|操作步骤|按以下步骤)\b/i.test(text);
+  return /\b(?:Here(?:'s| is) (?:my|the) plan|I(?:'ll| will) do the following|Steps?(?:\s+to\s+\w+)?:|My approach:|Plan:|执行计划|实施方案|操作步骤|按以下步骤)\b/i.test(
+    text,
+  );
 }
 
 // =========================================================================
@@ -275,14 +297,19 @@ function looksLikePlanWithoutExecution(text) {
     if (hasPlanLeadIn(t)) {
       let score = 0;
       for (const item of items) score += scoreNumberedItem(item);
-      if (score >= 1) return true;  // 有计划声明时，微弱正评分即通过
+      if (score >= 1) return true; // 有计划声明时，微弱正评分即通过
     }
     // 否则用标准阈值
     if (isActionableTaskList(t)) return true;
   }
 
   // -------- "I will / I'll / I am going to" 创建/写/构建——明确执行意图 --------
-  if (/\b(I will|I'll|I am going to)\s+(create|write|build|make|implement|创建|编写|构建|实现)\b/i.test(t)) return true;
+  if (
+    /\b(I will|I'll|I am going to)\s+(create|write|build|make|implement|创建|编写|构建|实现)\b/i.test(
+      t,
+    )
+  )
+    return true;
 
   // -------- "Let me first" —— 顺序执行意图 --------
   if (/\bLet me first\b/i.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) return true;
@@ -291,13 +318,25 @@ function looksLikePlanWithoutExecution(text) {
   if (/\bstep[-\s]by[-\s]step\b/i.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) return true;
 
   // -------- "Let me read/understand the codebase" —— 阅读意图未执行 --------
-  if (/\b(?:Let me|I(?:'ll| will| need to)?)\s+(?:understand|read|examine|review|analyze|inspect|look (?:at|into)|check|explore|scan|study)\s+(?:the\s+)?(?:full\s+)?(?:codebase|project|files?|code|repository|source|directory|structure)/i.test(t) &&
-      !/CALL\s+\w+|action["<]/i.test(t)) return true;
+  if (
+    /\b(?:Let me|I(?:'ll| will| need to)?)\s+(?:understand|read|examine|review|analyze|inspect|look (?:at|into)|check|explore|scan|study)\s+(?:the\s+)?(?:full\s+)?(?:codebase|project|files?|code|repository|source|directory|structure)/i.test(
+      t,
+    ) &&
+    !/CALL\s+\w+|action["<]/i.test(t)
+  )
+    return true;
 
   // -------- "在 X 之前先 Y" —— 顺序依赖声明 --------
-  if (/\b(?:before|first|prior to)\s+(?:creating|writing|modifying|changing|editing|deleting|implementing|building)/i.test(t) &&
-      /\b(?:let me|I(?:'ll| will)?|need to|should|must|going to)\s+(?:understand|read|examine|review|analyze|check|look|explore|scan)/i.test(t) &&
-      !/CALL\s+\w+|action["<]/i.test(t)) return true;
+  if (
+    /\b(?:before|first|prior to)\s+(?:creating|writing|modifying|changing|editing|deleting|implementing|building)/i.test(
+      t,
+    ) &&
+    /\b(?:let me|I(?:'ll| will)?|need to|should|must|going to)\s+(?:understand|read|examine|review|analyze|check|look|explore|scan)/i.test(
+      t,
+    ) &&
+    !/CALL\s+\w+|action["<]/i.test(t)
+  )
+    return true;
 
   return false;
 }
@@ -321,8 +360,11 @@ function looksLikeLeakedThinking(text) {
   // 标签之外没有任何实质内容（没有 CALL、没有 tool call、没有 FINAL_ANSWER）
   if (!withoutTags || withoutTags.length < 20) return true;
   // 剩余内容只是 "Let me..." / "Thinking..." 之类无动作的声明
-  if (/^(Let me|Thinking|I should|I need to|I'll)\b/i.test(withoutTags) &&
-      !/CALL\s+\w+|action["<]/i.test(withoutTags)) return true;
+  if (
+    /^(Let me|Thinking|I should|I need to|I'll)\b/i.test(withoutTags) &&
+    !/CALL\s+\w+|action["<]/i.test(withoutTags)
+  )
+    return true;
   return false;
 }
 
@@ -340,34 +382,47 @@ function looksLikeFakeExecution(text, toolEventsInRun) {
   if (/\b(Files (C|c)reated|Created files|新增文件|已创建文件)/.test(t)) indicators++;
 
   // 标记 2：虚构的构建/验证输出（npm run build / yarn build 等 + 统计数字）
-  if (/```\s*\n.*(?:build|vite|webpack|tsc|esbuild|rollup).*(?:\n|$)/.test(t) ||
-      /(?:modules? transformed|bundle generated|built in \d|构建完成|编译成功|Production bundle)/i.test(t))
+  if (
+    /```\s*\n.*(?:build|vite|webpack|tsc|esbuild|rollup).*(?:\n|$)/.test(t) ||
+    /(?:modules? transformed|bundle generated|built in \d|构建完成|编译成功|Production bundle)/i.test(
+      t,
+    )
+  )
     indicators++;
 
   // 标记 3：虚构的验证章节（Verification / 验证 / npm run build 带 ✅✓）
-  if (/\b(Verification|验证|Test results?)\b/i.test(t) &&
-      /(?:✅|✓|pass|success|成功|通过|No errors|zero errors)/i.test(t))
+  if (
+    /\b(Verification|验证|Test results?)\b/i.test(t) &&
+    /(?:✅|✓|pass|success|成功|通过|No errors|zero errors)/i.test(t)
+  )
     indicators++;
 
   // 标记 4：虚构的错误诊断修正报告（"Root Cause" + "Fix" + 无工具执行）
-  if (/\bRoot Cause\b/i.test(t) &&
-      (/\bFiles? (C|c)reated\b/.test(t) || /\bFix\b/i.test(t) || /\bResolution\b/i.test(t)) &&
-      !/CALL\s+\w+|action["<]/i.test(t))
+  if (
+    /\bRoot Cause\b/i.test(t) &&
+    (/\bFiles? (C|c)reated\b/.test(t) || /\bFix\b/i.test(t) || /\bResolution\b/i.test(t)) &&
+    !/CALL\s+\w+|action["<]/i.test(t)
+  )
     indicators++;
 
   // 标记 5：虚构的"错误已解决"开篇（The error is resolved / The issue is fixed）
-  if (/^(?:The |这个)(?:error|issue|bug|problem|错误|问题)\b.{0,30}\b(?:resolved|fixed|solved|解决|修复)/im.test(t))
+  if (
+    /^(?:The |这个)(?:error|issue|bug|problem|错误|问题)\b.{0,30}\b(?:resolved|fixed|solved|解决|修复)/im.test(
+      t,
+    )
+  )
     indicators++;
 
   // 标记 6：虚构的文件导出声明（"Exports XXX class" / "Exports XXX function"）
-  if (/^###\s+\d+\.\s+`[^`]+`\s*\n(?:Exports|导出)/m.test(t) &&
-      !/CALL\s+\w+|action["<]/i.test(t))
+  if (/^###\s+\d+\.\s+`[^`]+`\s*\n(?:Exports|导出)/m.test(t) && !/CALL\s+\w+|action["<]/i.test(t))
     indicators++;
 
   // 标记 7：详细虚构文件内容描述（列出了具体方法名如 humanAct/processNight 等）
-  if (/\b(?:humanAct|processNight|processDay|processDayVote|checkVictory|performAction)\b/.test(t) &&
-      /\b(class|method|function|array|stub)\b/i.test(t) &&
-      !/CALL\s+\w+|action["<]/i.test(t))
+  if (
+    /\b(?:humanAct|processNight|processDay|processDayVote|checkVictory|performAction)\b/.test(t) &&
+    /\b(class|method|function|array|stub)\b/i.test(t) &&
+    !/CALL\s+\w+|action["<]/i.test(t)
+  )
     indicators++;
 
   // 至少 2 个信号同时命中才判定为虚构
@@ -380,13 +435,20 @@ function looksLikeIntentToReadWithoutTools(text) {
   if (!text?.trim()) return false;
   const t = text.trim();
   // 表达了阅读/探索意图
-  const readIntent = /\b(?:let me|I(?:'ll| will| need to| should| must)?|need to|going to)\s+(?:understand|read|examine|review|analyze|inspect|look\s+(?:at|into)|check\s+(?:out)?|explore|scan|study|get\s+(?:to\s+)?know|familiarize)\b/i;
-  const readTarget = /\b(?:the\s+)?(?:full\s+)?(?:codebase|project|files?|code|repository|source|directory|structure|key\s+files?|relevant\s+(?:files?|code)|implementation|module|package)/i;
+  const readIntent =
+    /\b(?:let me|I(?:'ll| will| need to| should| must)?|need to|going to)\s+(?:understand|read|examine|review|analyze|inspect|look\s+(?:at|into)|check\s+(?:out)?|explore|scan|study|get\s+(?:to\s+)?know|familiarize)\b/i;
+  const readTarget =
+    /\b(?:the\s+)?(?:full\s+)?(?:codebase|project|files?|code|repository|source|directory|structure|key\s+files?|relevant\s+(?:files?|code)|implementation|module|package)/i;
   if (readIntent.test(t) && readTarget.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) return true;
   // "before X, let me Y" 模式 (Y 是阅读操作)
-  if (/\b(?:before|first|prior to)\s+(?:creating|writing|modifying|changing|editing|deleting|implementing|building|fixing|adding|removing)/i.test(t) &&
-      readIntent.test(t) &&
-      !/CALL\s+\w+|action["<]/i.test(t)) return true;
+  if (
+    /\b(?:before|first|prior to)\s+(?:creating|writing|modifying|changing|editing|deleting|implementing|building|fixing|adding|removing)/i.test(
+      t,
+    ) &&
+    readIntent.test(t) &&
+    !/CALL\s+\w+|action["<]/i.test(t)
+  )
+    return true;
   return false;
 }
 
@@ -620,7 +682,9 @@ export class AgentEngine {
     if (this.#conversationJournal) {
       try {
         this.#conversationJournal.recordInput(userInput, runId);
-      } catch { /* 不阻塞 */ }
+      } catch {
+        /* 不阻塞 */
+      }
     }
     this.#lastRunResult = {
       runId,
@@ -670,7 +734,10 @@ export class AgentEngine {
 
       // 生成记忆上下文：使用 token-budget 感知的上下文构建器，避免无限制注入
       let memoryContext = '';
-      if (this.#memoryManager && typeof this.#memoryManager.getBudgetedMemoryContext === 'function') {
+      if (
+        this.#memoryManager &&
+        typeof this.#memoryManager.getBudgetedMemoryContext === 'function'
+      ) {
         try {
           const inputPreview = typeof userInput === 'string' ? userInput.substring(0, 200) : '';
           memoryContext = this.#memoryManager.getBudgetedMemoryContext({
@@ -752,21 +819,20 @@ export class AgentEngine {
 
     // ========== Step 2：任务分类（合并进 IntentClassifier，消除一层路由） ==========
     const taskProfile =
-      this.#intentClassifier?.classifyTask?.(userInput, intent, classificationFeedback) ?? quickAssess(userInput);
+      this.#intentClassifier?.classifyTask?.(userInput, intent, classificationFeedback) ??
+      quickAssess(userInput);
 
     // ========== Step 3：准备运行上下文 ==========
     // 原始任务以 DECISION 优先级写入，确保上下文裁剪时不被丢弃
-    this.#sessionManager.addMessage(
-      'user',
-      userInput,
-      undefined,
-      SessionManager.PRIORITY.DECISION,
-    );
+    this.#sessionManager.addMessage('user', userInput, undefined, SessionManager.PRIORITY.DECISION);
     // 同时注入 system prompt：system prompt 永不裁剪，防止模型读完大量文件后"遗忘"任务
     this.#sessionManager.addSystemMessage(
       `[CURRENT TASK] You MUST complete this user request: ${userInput}`,
     );
-    const routingPrompt = this.#intentClassifier?.buildRoutingPrompt?.(intent, classificationFeedback);
+    const routingPrompt = this.#intentClassifier?.buildRoutingPrompt?.(
+      intent,
+      classificationFeedback,
+    );
     if (routingPrompt) {
       this.#sessionManager.addUserMessage(routingPrompt);
     }
@@ -776,9 +842,14 @@ export class AgentEngine {
 
     // ==== 意图分析 → Plan 智能分解：编码任务强制走 plan，LLM 驱动子任务拆分 ====
     // ==== 反馈闭环：注入历史分解经验到 GraphPlanner.decomposeTaskLLM ====
-    const decompositionFeedback = this.#feedbackLoop?.enrichDecompositionContext?.(
-      taskProfile.isBugTask ? 'bug_fix' : taskProfile.isModificationTask ? 'modification' : 'coding',
-    ) || null;
+    const decompositionFeedback =
+      this.#feedbackLoop?.enrichDecompositionContext?.(
+        taskProfile.isBugTask
+          ? 'bug_fix'
+          : taskProfile.isModificationTask
+            ? 'modification'
+            : 'coding',
+      ) || null;
     const executionPlan = await this.#executionPlanManager.createIfNeeded(userInput, taskProfile, {
       modelProvider: this.#modelProvider,
       intent,
@@ -1314,10 +1385,7 @@ export class AgentEngine {
         looksLikeLeakedThinking(response.text)
       ) {
         // 剥离所有非工具 XML 标签再写入 session，防止污染上下文
-        const cleanText = response.text
-          .replace(ANY_XML_TAG, '')
-          .replace(DSML_PIPE_TAG, '')
-          .trim();
+        const cleanText = response.text.replace(ANY_XML_TAG, '').replace(DSML_PIPE_TAG, '').trim();
         const assistantMsg = cleanText || '(thinking)';
         this.#sessionManager.addAssistantMessage(assistantMsg);
         this.#sessionManager.addUserMessage(
@@ -1910,7 +1978,8 @@ export class AgentEngine {
     try {
       const wsSummary = this.#workspaceIndex?.getSummary?.();
       if (wsSummary && wsSummary.length > 0) {
-        this.#sessionManager.addLayer('layer1_structure',
+        this.#sessionManager.addLayer(
+          'layer1_structure',
           `[WORKSPACE STRUCTURE — pre-indexed]\n${wsSummary}`,
           { priority: SessionManager.LAYER.STRUCTURE },
         );
@@ -1923,7 +1992,8 @@ export class AgentEngine {
     try {
       const projection = this.#tryCreateProjection(taskProfile);
       if (projection) {
-        this.#sessionManager.addLayer('layer2_projection',
+        this.#sessionManager.addLayer(
+          'layer2_projection',
           `[CONTEXT PROJECTION for task]\n${projection}`,
           { priority: SessionManager.LAYER.PROJECTION },
         );
@@ -1950,7 +2020,8 @@ export class AgentEngine {
             }
           }
           if (graphLines.length > 0) {
-            this.#sessionManager.addLayer('layer3_dependencies',
+            this.#sessionManager.addLayer(
+              'layer3_dependencies',
               `[IMPORT GRAPH — file references in task]\n${graphLines.join('\n')}`,
               { priority: SessionManager.LAYER.DEPENDENCIES },
             );
@@ -1988,7 +2059,8 @@ export class AgentEngine {
               })
             : '';
         if (memCtx && memCtx.trim()) {
-          this.#sessionManager.refreshLayer('layer4_memory',
+          this.#sessionManager.refreshLayer(
+            'layer4_memory',
             `[PROJECT MEMORY — git-aware, refreshed]\n${memCtx}`,
             { priority: SessionManager.LAYER.MEMORY },
           );
@@ -2012,10 +2084,18 @@ export class AgentEngine {
     if (!allToolCalls || allToolCalls.length === 0) return;
 
     const mutationNames = new Set([
-      'write_file', 'edit_file', 'delete_file', 'rename_file',
-      'apply_hashline_patch', 'git_apply_patch', 'git_commit',
-      'harness_replace', 'harness_insert', 'harness_delete',
-      'lsp_rename', 'lsp_workspace_edit',
+      'write_file',
+      'edit_file',
+      'delete_file',
+      'rename_file',
+      'apply_hashline_patch',
+      'git_apply_patch',
+      'git_commit',
+      'harness_replace',
+      'harness_insert',
+      'harness_delete',
+      'lsp_rename',
+      'lsp_workspace_edit',
     ]);
 
     const hasMutation = allToolCalls.some((tc) => {
@@ -2172,7 +2252,8 @@ export class AgentEngine {
       // Step 1: warm 工作区索引 → 刷新 layer1_structure
       const wsSummary = await this.#workspaceIndex?.warm?.();
       if (wsSummary && this.#sessionManager) {
-        this.#sessionManager.refreshLayer('layer1_structure',
+        this.#sessionManager.refreshLayer(
+          'layer1_structure',
           `[WORKSPACE STRUCTURE — fully warmed]\n${wsSummary}`,
           { priority: SessionManager.LAYER.STRUCTURE },
         );
@@ -2186,9 +2267,9 @@ export class AgentEngine {
       if (this.#lspManager) {
         const diagContext = await this.#collectLspDiagnostics();
         if (diagContext && this.#sessionManager) {
-          this.#sessionManager.addLayer('layer_diagnostics', diagContext,
-            { priority: SessionManager.LAYER.DIAGNOSTICS },
-          );
+          this.#sessionManager.addLayer('layer_diagnostics', diagContext, {
+            priority: SessionManager.LAYER.DIAGNOSTICS,
+          });
         }
       }
     } catch (err) {
@@ -2202,9 +2283,9 @@ export class AgentEngine {
       if (this.#lspManager && this.#importGraph) {
         const enhancedDiags = await this.#enhanceDiagnosticsWithImportGraph();
         if (enhancedDiags && this.#sessionManager) {
-          this.#sessionManager.refreshLayer('layer3_dependencies', enhancedDiags,
-            { priority: SessionManager.LAYER.DEPENDENCIES },
-          );
+          this.#sessionManager.refreshLayer('layer3_dependencies', enhancedDiags, {
+            priority: SessionManager.LAYER.DEPENDENCIES,
+          });
         }
       }
     } catch (err) {
@@ -2305,12 +2386,18 @@ export class AgentEngine {
           const parts = [];
           if (deps.length > 0) {
             parts.push(
-              `imports: ${deps.slice(0, 5).map((d) => `\`${typeof d === 'string' ? d : d.path || d}\``).join(', ')}${deps.length > 5 ? ` +${deps.length - 5} more` : ''}`,
+              `imports: ${deps
+                .slice(0, 5)
+                .map((d) => `\`${typeof d === 'string' ? d : d.path || d}\``)
+                .join(', ')}${deps.length > 5 ? ` +${deps.length - 5} more` : ''}`,
             );
           }
           if (dependents.length > 0) {
             parts.push(
-              `depended on by: ${dependents.slice(0, 5).map((d) => `\`${typeof d === 'string' ? d : d.path || d}\``).join(', ')}${dependents.length > 5 ? ` +${dependents.length - 5} more` : ''}`,
+              `depended on by: ${dependents
+                .slice(0, 5)
+                .map((d) => `\`${typeof d === 'string' ? d : d.path || d}\``)
+                .join(', ')}${dependents.length > 5 ? ` +${dependents.length - 5} more` : ''}`,
             );
           }
           lines.push(`  - \`${file}\`: ${parts.join('; ')}`);
@@ -2331,7 +2418,8 @@ export class AgentEngine {
     if (typeof userInput !== 'string' || !userInput) return [];
     const refs = new Set();
     // 匹配反引号包裹的文件路径: `src/foo/bar.ts`
-    const backtickPattern = /`([^`]+\.(?:js|ts|jsx|tsx|mjs|cjs|py|rs|go|java|vue|svelte|css|html))`/gi;
+    const backtickPattern =
+      /`([^`]+\.(?:js|ts|jsx|tsx|mjs|cjs|py|rs|go|java|vue|svelte|css|html))`/gi;
     let match;
     while ((match = backtickPattern.exec(userInput)) !== null) {
       refs.add(match[1]);
@@ -2361,7 +2449,14 @@ export class AgentEngine {
     const toolName = execResult?.name || '';
 
     // 仅关注 Hashline 编辑相关工具
-    const hashRelatedTools = ['apply_hashline_patch', 'write_file', 'edit_file', 'harness_replace', 'harness_insert', 'harness_delete'];
+    const hashRelatedTools = [
+      'apply_hashline_patch',
+      'write_file',
+      'edit_file',
+      'harness_replace',
+      'harness_insert',
+      'harness_delete',
+    ];
     if (!hashRelatedTools.includes(toolName)) return;
 
     // 解析冲突信号
@@ -2372,7 +2467,11 @@ export class AgentEngine {
 
     // 尝试从 result 文本中提取冲突信息
     const resultText = typeof result === 'string' ? result : JSON.stringify(result || '');
-    const errorText = error ? (typeof error === 'string' ? error : error.message || JSON.stringify(error)) : '';
+    const errorText = error
+      ? typeof error === 'string'
+        ? error
+        : error.message || JSON.stringify(error)
+      : '';
 
     if (
       resultText.includes('rollback') ||
@@ -2398,7 +2497,9 @@ export class AgentEngine {
       recovered = resultText.includes('recovered') || resultText.includes('retry succeeded');
     } else if (
       resultText.includes('diagnostics') &&
-      (resultText.includes('new error') || resultText.includes('新错误') || resultText.includes('introduced'))
+      (resultText.includes('new error') ||
+        resultText.includes('新错误') ||
+        resultText.includes('introduced'))
     ) {
       conflictType = 'diag_new_errors';
       recovered = resultText.includes('auto-repaired') || resultText.includes('自动修复');
@@ -2407,7 +2508,9 @@ export class AgentEngine {
     if (!conflictType) return; // 无冲突信号
 
     // 提取受影响的文件
-    const fileMatch = resultText.match(/["'`]?([\w.\-/]+\.(?:js|ts|tsx|jsx|json|css|html|py|md))["'`]?/);
+    const fileMatch = resultText.match(
+      /["'`]?([\w.\-/]+\.(?:js|ts|tsx|jsx|json|css|html|py|md))["'`]?/,
+    );
     affectedFile = fileMatch ? fileMatch[1] : '';
 
     // 记录到反馈循环
@@ -2430,8 +2533,8 @@ export class AgentEngine {
           // 注入 replan 上下文到下一轮 LLM 对话
           this.#sessionManager.addSystemMessage(
             `[HASHLINE CONFLICT] ${conflictType} detected on file: ${affectedFile || 'unknown'}. ` +
-            `Dynamic replan activated: diagnose → retry → re-verify. ` +
-            `Strategies: ${(replanHints.suggestedStrategies || []).join('; ')}`,
+              `Dynamic replan activated: diagnose → retry → re-verify. ` +
+              `Strategies: ${(replanHints.suggestedStrategies || []).join('; ')}`,
           );
         }
       }
@@ -2564,14 +2667,19 @@ export class AgentEngine {
         // 收集工具有效性
         const recommendedTools = this.#lastIntent?.recommendedTools || [];
         const actuallyUsedTools = toolEventsData.map((e) => e.name || '').filter(Boolean);
-        this.#feedbackLoop.collectToolEffectiveness?.(recommendedTools, [...new Set(actuallyUsedTools)]);
+        this.#feedbackLoop.collectToolEffectiveness?.(recommendedTools, [
+          ...new Set(actuallyUsedTools),
+        ]);
 
         // 构建执行记录并收集到反馈循环
         this.#feedbackLoop.collect?.({
           runId: result.runId,
-          taskType: planSummary.decompositionMode === 'llm'
-            ? 'coding' // LLM 分解模式下的任务类型从 plan 推断
-            : (this.#executionPlanManager?.isBugTask ? 'bug_fix' : 'coding'),
+          taskType:
+            planSummary.decompositionMode === 'llm'
+              ? 'coding' // LLM 分解模式下的任务类型从 plan 推断
+              : this.#executionPlanManager?.isBugTask
+                ? 'bug_fix'
+                : 'coding',
           decompositionMode: planSummary.decompositionMode,
           intent: this.#lastIntent?.intent || '',
           intentConfidence: this.#lastIntent?.confidence ?? 0,
@@ -2590,7 +2698,8 @@ export class AgentEngine {
           failedSubtasks: planSummary.failedSubtasks,
           toolSuccessRate:
             toolEventsData.length > 0
-              ? toolEventsData.filter((e) => !e.error && !e.result?.error).length / toolEventsData.length
+              ? toolEventsData.filter((e) => !e.error && !e.result?.error).length /
+                toolEventsData.length
               : 0,
         });
       }
@@ -2618,10 +2727,10 @@ export class AgentEngine {
       if (ratio < 0.05) {
         return 'exploration';
       }
-      if (ratio < 0.10) {
+      if (ratio < 0.1) {
         return 'planning';
       }
-      if (ratio < 0.70) {
+      if (ratio < 0.7) {
         return 'implementation';
       }
       if (ratio < 0.85) {

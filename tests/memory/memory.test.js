@@ -13,7 +13,9 @@ import { tmpdir } from 'os';
 import { randomBytes } from 'crypto';
 import { execSync } from 'child_process';
 import {
-  MemoryProvenance, MemoryVerifier, GitDiffStaleDetector,
+  MemoryProvenance,
+  MemoryVerifier,
+  GitDiffStaleDetector,
 } from '../../src/memory/memory-verifier.js';
 import { StructuredMemory } from '../../src/memory/structured-memory.js';
 import { ProjectRules } from '../../src/memory/project-rules.js';
@@ -24,12 +26,22 @@ async function setupEnv() {
   testDir = join(tmpdir(), `mem-test-${randomBytes(6).toString('hex')}`);
   await mkdir(testDir, { recursive: true });
   await mkdir(join(testDir, 'src'), { recursive: true });
-  await writeFile(join(testDir, 'src/config.ts'), 'export const API_URL = "https://api.example.com";\n');
-  await writeFile(join(testDir, 'src/utils.ts'), 'export function formatDate(d: Date) { return d.toISOString(); }\n');
+  await writeFile(
+    join(testDir, 'src/config.ts'),
+    'export const API_URL = "https://api.example.com";\n',
+  );
+  await writeFile(
+    join(testDir, 'src/utils.ts'),
+    'export function formatDate(d: Date) { return d.toISOString(); }\n',
+  );
 }
 
 async function cleanupEnv() {
-  try { if (testDir) {await rm(testDir, { recursive: true, force: true });} } catch {}
+  try {
+    if (testDir) {
+      await rm(testDir, { recursive: true, force: true });
+    }
+  } catch {}
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -40,13 +52,20 @@ describe('Memory: Provenance', () => {
   test('create provenance with source file hashes', async () => {
     await setupEnv();
     try {
-      const memory = { id: 'm1', title: 'Config', source: { path: 'src/config.ts', type: 'file' }, timestamp: Date.now() };
+      const memory = {
+        id: 'm1',
+        title: 'Config',
+        source: { path: 'src/config.ts', type: 'file' },
+        timestamp: Date.now(),
+      };
       const prov = MemoryProvenance.create(memory, testDir);
       expect(prov.sourceFiles.length).toBeGreaterThanOrEqual(1);
-      const sf = prov.sourceFiles.find(s => s.path === 'src/config.ts');
+      const sf = prov.sourceFiles.find((s) => s.path === 'src/config.ts');
       expect(sf).toBeTruthy();
       expect(sf.hash).toBeTruthy();
-    } finally { await cleanupEnv(); }
+    } finally {
+      await cleanupEnv();
+    }
   });
 
   test('reverify detects stale files', async () => {
@@ -57,11 +76,13 @@ describe('Memory: Provenance', () => {
       const prov = MemoryProvenance.create(memory, testDir);
       await writeFile(join(testDir, 'data.txt'), 'modified');
       MemoryProvenance.reverify(prov, testDir);
-      const sf = prov.sourceFiles.find(s => s.path === 'data.txt');
+      const sf = prov.sourceFiles.find((s) => s.path === 'data.txt');
       if (sf && sf.currentHash !== null) {
         expect(sf.stale).toBe(true);
       }
-    } finally { await cleanupEnv(); }
+    } finally {
+      await cleanupEnv();
+    }
   });
 });
 
@@ -94,20 +115,30 @@ describe('Memory: Enhanced Verifier', () => {
     await setupEnv();
     try {
       const verifier = new MemoryVerifier(testDir);
-      const memory = { source: { path: 'src/config.ts', type: 'file' }, timestamp: Date.now() + 100000 };
+      const memory = {
+        source: { path: 'src/config.ts', type: 'file' },
+        timestamp: Date.now() + 100000,
+      };
       const result = await verifier.verifyFileReference(memory);
       expect(result.valid).toBe(true);
-    } finally { await cleanupEnv(); }
+    } finally {
+      await cleanupEnv();
+    }
   });
 
   test('verify function reference', async () => {
     await setupEnv();
     try {
       const verifier = new MemoryVerifier(testDir);
-      const memory = { source: { file: 'src/utils.ts', name: 'formatDate', type: 'function', lineRange: [1, 1] }, timestamp: Date.now() + 100000 };
+      const memory = {
+        source: { file: 'src/utils.ts', name: 'formatDate', type: 'function', lineRange: [1, 1] },
+        timestamp: Date.now() + 100000,
+      };
       const result = await verifier.verifyFunctionReference(memory);
       expect(result.valid).toBe(true);
-    } finally { await cleanupEnv(); }
+    } finally {
+      await cleanupEnv();
+    }
   });
 
   test('batch verify all', async () => {
@@ -115,13 +146,19 @@ describe('Memory: Enhanced Verifier', () => {
     try {
       const verifier = new MemoryVerifier(testDir);
       const memories = [
-        { id: 'a', source: { path: 'src/config.ts', type: 'file' }, timestamp: Date.now() + 100000 },
+        {
+          id: 'a',
+          source: { path: 'src/config.ts', type: 'file' },
+          timestamp: Date.now() + 100000,
+        },
         { id: 'b', source: { path: 'nonexistent.ts', type: 'file' }, timestamp: Date.now() },
       ];
       const { valid, stale } = await verifier.verifyAll(memories);
       expect(valid.length).toBe(1);
       expect(stale.length).toBe(1);
-    } finally { await cleanupEnv(); }
+    } finally {
+      await cleanupEnv();
+    }
   });
 });
 
@@ -191,8 +228,10 @@ describe('Memory: StructuredMemory', () => {
       expect(entry.id).toBeTruthy();
       expect(sm.getAll().length).toBeGreaterThan(0);
     } finally {
-      await new Promise(r => setTimeout(r, 100));
-      try { await rm(memDir, { recursive: true, force: true }); } catch {}
+      await new Promise((r) => setTimeout(r, 100));
+      try {
+        await rm(memDir, { recursive: true, force: true });
+      } catch {}
     }
   });
 });
@@ -204,9 +243,15 @@ describe('Memory: StructuredMemory', () => {
 describe('Memory: Confirmation Policy', () => {
   test('classify memory confidence', () => {
     const classify = (m) => {
-      if (m.type === 'project_fact' && m.confidence > 0.9) {return { autoWrite: true, needConfirm: false };}
-      if (m.type === 'user_preference') {return { autoWrite: false, needConfirm: true };}
-      if (m.type === 'speculation') {return { neverWrite: true };}
+      if (m.type === 'project_fact' && m.confidence > 0.9) {
+        return { autoWrite: true, needConfirm: false };
+      }
+      if (m.type === 'user_preference') {
+        return { autoWrite: false, needConfirm: true };
+      }
+      if (m.type === 'speculation') {
+        return { neverWrite: true };
+      }
       return { autoWrite: false, needConfirm: true };
     };
     expect(classify({ type: 'project_fact', confidence: 0.95 }).autoWrite).toBe(true);

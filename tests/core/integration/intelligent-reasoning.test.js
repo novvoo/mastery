@@ -4,8 +4,12 @@ import { describe, test, expect, mock } from 'bun:test';
 mock.module('../../../src/core/intent-classifier.js', () => ({
   IntentClassifier: class IntentClassifier {
     constructor() {}
-    async classify() { return null; }
-    classifyTask() { return null; }
+    async classify() {
+      return null;
+    }
+    classifyTask() {
+      return null;
+    }
   },
 }));
 
@@ -19,7 +23,7 @@ import { IntelligentReasoning } from '../../../src/core/intelligent-reasoning.js
 function makeMockToolRegistry(tools = []) {
   return {
     getAll: mock(() => tools),
-    get: mock((name) => tools.find(t => t.name === name)),
+    get: mock((name) => tools.find((t) => t.name === name)),
   };
 }
 
@@ -128,7 +132,7 @@ describe('IntelligentReasoning.decomposeTask', () => {
     const ir = new IntelligentReasoning();
     const result = await ir.decomposeTask('Task A and Task B and Task C');
     expect(result.length).toBeGreaterThanOrEqual(2);
-    expect(result.some(r => r.parallel === true)).toBe(true);
+    expect(result.some((r) => r.parallel === true)).toBe(true);
   });
 
   test('handles Chinese sequential connectors', async () => {
@@ -203,9 +207,7 @@ describe('IntelligentReasoning.generateStrategy', () => {
 
   test('returns single_tool type for high confidence tool', () => {
     const ir = new IntelligentReasoning();
-    const strategy = ir.generateStrategy('task', [
-      { name: 'read_file', confidence: 0.9 },
-    ]);
+    const strategy = ir.generateStrategy('task', [{ name: 'read_file', confidence: 0.9 }]);
     expect(strategy.type).toBe('single_tool');
     expect(strategy.tool).toBe('read_file');
   });

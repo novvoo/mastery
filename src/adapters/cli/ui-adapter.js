@@ -226,9 +226,7 @@ export class CLIUIAdapter {
     const { theme } = enhancedUI;
     console.log('\n' + theme.dim('┌' + '─'.repeat(60) + '┐'));
     console.log(
-      theme.dim('│') +
-        theme.primaryBold('  📋 执行计划已创建') +
-        theme.dim(' '.repeat(41) + '│'),
+      theme.dim('│') + theme.primaryBold('  📋 执行计划已创建') + theme.dim(' '.repeat(41) + '│'),
     );
     console.log(
       theme.dim('│') +
@@ -261,14 +259,10 @@ export class CLIUIAdapter {
     this.#currentPlanTasks = subtasks;
 
     const { theme } = enhancedUI;
-    console.log(
-      theme.dim('\n┌─ 任务分解 ───────────────────────────────────────────────┐'),
-    );
+    console.log(theme.dim('\n┌─ 任务分解 ───────────────────────────────────────────────┐'));
 
     if (subtasks.length === 0) {
-      console.log(
-        theme.dim('│') + theme.muted('  无子任务') + theme.dim(' '.repeat(52) + '│'),
-      );
+      console.log(theme.dim('│') + theme.muted('  无子任务') + theme.dim(' '.repeat(52) + '│'));
     } else {
       subtasks.forEach((task, i) => {
         const isLast = i === subtasks.length - 1;
@@ -291,7 +285,11 @@ export class CLIUIAdapter {
             ' ' +
             theme.white(task.name || task.id) +
             deps +
-            theme.dim(' '.repeat(Math.max(0, 48 - (task.name || task.id || '').length - (deps ? deps.length : 0))) + '│'),
+            theme.dim(
+              ' '.repeat(
+                Math.max(0, 48 - (task.name || task.id || '').length - (deps ? deps.length : 0)),
+              ) + '│',
+            ),
         );
       });
     }
@@ -326,9 +324,7 @@ export class CLIUIAdapter {
 
     // 只在有变化时渲染详情（避免在 plan:created 后立即重复渲染）
     if (total > 0 && (event.update || completed > 0 || running > 0)) {
-      console.log(
-        theme.dim('\n┌─ 计划进度 ───────────────────────────────────────────────┐'),
-      );
+      console.log(theme.dim('\n┌─ 计划进度 ───────────────────────────────────────────────┐'));
       console.log(
         theme.dim('│ ') +
           theme.white(plan.name || '执行计划') +

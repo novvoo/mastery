@@ -38,13 +38,19 @@ mock.module('../../src/planner/graph-planner.js', () => {
           status: TaskStatus.PENDING,
           updateStatus(status, data) {
             this.status = status;
-            if (data?.result) {this.result = data.result;}
+            if (data?.result) {
+              this.result = data.result;
+            }
           },
           checkDependencies(taskMap) {
-            if (this.dependencies.size === 0) {return true;}
+            if (this.dependencies.size === 0) {
+              return true;
+            }
             for (const depId of this.dependencies) {
               const dep = taskMap.get(depId);
-              if (!dep || dep.status !== TaskStatus.COMPLETED) {return false;}
+              if (!dep || dep.status !== TaskStatus.COMPLETED) {
+                return false;
+              }
             }
             return true;
           },
@@ -57,7 +63,9 @@ mock.module('../../src/planner/graph-planner.js', () => {
       }
 
       getReadyTasks() {
-        return Array.from(this.tasks.values()).filter(t => t.status === TaskStatus.PENDING || t.status === TaskStatus.BLOCKED);
+        return Array.from(this.tasks.values()).filter(
+          (t) => t.status === TaskStatus.PENDING || t.status === TaskStatus.BLOCKED,
+        );
       }
 
       toJSON() {
@@ -65,7 +73,7 @@ mock.module('../../src/planner/graph-planner.js', () => {
           name: this.name,
           description: this.description,
           status: this.status,
-          tasks: Array.from(this.tasks.values()).map(t => ({
+          tasks: Array.from(this.tasks.values()).map((t) => ({
             id: t.id,
             name: t.name,
             description: t.description,
@@ -76,9 +84,15 @@ mock.module('../../src/planner/graph-planner.js', () => {
       }
     },
     default: class GraphPlanner {
-      constructor() { this._latestPlanId = null; }
-      createPlan() { this._latestPlanId = 'mock-plan'; }
-      decomposeTask() { return []; }
+      constructor() {
+        this._latestPlanId = null;
+      }
+      createPlan() {
+        this._latestPlanId = 'mock-plan';
+      }
+      decomposeTask() {
+        return [];
+      }
     },
   };
 });
@@ -276,12 +290,16 @@ describe('isSemanticRiskReviewTool', () => {
 
   test('returns true for verify tool with semantic focus', () => {
     const profile = { requiresSemanticRiskReview: true };
-    expect(isSemanticRiskReviewTool('verify', { focus_areas: 'semantic behavior' }, profile)).toBe(true);
+    expect(isSemanticRiskReviewTool('verify', { focus_areas: 'semantic behavior' }, profile)).toBe(
+      true,
+    );
   });
 
   test('returns true for shell with semantic-related command', () => {
     const profile = { requiresSemanticRiskReview: true };
-    expect(isSemanticRiskReviewTool('shell', { command: 'test semantic behavior' }, profile)).toBe(true);
+    expect(isSemanticRiskReviewTool('shell', { command: 'test semantic behavior' }, profile)).toBe(
+      true,
+    );
   });
 });
 
@@ -339,7 +357,9 @@ describe('ExecutionPlanManager', () => {
   });
 
   test('createIfNeeded returns null when profile does not require planning', async () => {
-    const result = await manager.createIfNeeded('Fix the bug', { requiresAutomaticPlanning: false });
+    const result = await manager.createIfNeeded('Fix the bug', {
+      requiresAutomaticPlanning: false,
+    });
     expect(result).toBeNull();
     expect(manager.plan).toBeNull();
   });

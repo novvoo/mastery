@@ -62,8 +62,6 @@ describe('ToolRegistry', () => {
     expect(reg.has('b')).toBe(false);
   });
 
-
-
   test('validateAndCoerceArgs validates required params', () => {
     const reg = new ToolRegistry();
     reg.register(makeTool('a', { params: { path: { type: 'string' } }, required: ['path'] }));
@@ -100,7 +98,9 @@ describe('ToolRegistry', () => {
 
   test('register normalizes params/parameters', () => {
     const reg = new ToolRegistry();
-    reg.register(makeTool('a', { parameters: { properties: { x: { type: 'string' } }, required: ['x'] } }));
+    reg.register(
+      makeTool('a', { parameters: { properties: { x: { type: 'string' } }, required: ['x'] } }),
+    );
     const tool = reg.get('a');
     expect(tool._schema).toBeDefined();
     expect(tool._schema.properties.x).toBeDefined();

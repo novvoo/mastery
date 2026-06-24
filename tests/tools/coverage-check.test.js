@@ -33,7 +33,8 @@ describe('coverage_check skill', () => {
     const result = await tool.handler({
       question: '这个模块的主要风险是什么？',
       required_facts: 'Relevant code locations or logs',
-      current_evidence: 'Relevant code locations or logs: src/runtime/agent-engine.js handles tool registration and event flow.',
+      current_evidence:
+        'Relevant code locations or logs: src/runtime/agent-engine.js handles tool registration and event flow.',
     });
 
     expect(result).toContain('READY');

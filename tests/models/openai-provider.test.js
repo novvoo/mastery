@@ -12,13 +12,16 @@ describe('OpenAIModelProvider request hygiene', () => {
     let parsedBody;
     globalThis.fetch = async (url, options) => {
       parsedBody = JSON.parse(options.body);
-      return new Response(JSON.stringify({
-        choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
-        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-      }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      );
     };
 
     const provider = new OpenAIModelProvider('test-key', 'https://example.test/v1', 'test-model');
@@ -32,4 +35,3 @@ describe('OpenAIModelProvider request hygiene', () => {
     expect(parsedBody.temperature).toBe(0.2);
   });
 });
-

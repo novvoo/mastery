@@ -34,11 +34,11 @@ export class SessionManager {
 
   // Layer priority 常量：数值越大越靠后（越接近对话），LLM 注意力权重自然更高
   static LAYER = Object.freeze({
-    STRUCTURE: 0,    // 项目结构
-    PROJECTION: 10,  // 状态图投影
+    STRUCTURE: 0, // 项目结构
+    PROJECTION: 10, // 状态图投影
     DIAGNOSTICS: 20, // LSP 诊断
     DEPENDENCIES: 30, // 依赖关系
-    MEMORY: 40,      // 项目记忆（最高优先级，最后注入）
+    MEMORY: 40, // 项目记忆（最高优先级，最后注入）
   });
 
   constructor(options = {}) {
@@ -216,8 +216,9 @@ export class SessionManager {
     }
 
     // 2. 分层上下文：按 priority 升序注入（低 priority 在前，LLM 越靠后的注意力越高）
-    const sortedLayers = [...this.#layers.entries()]
-      .sort(([, a], [, b]) => a.priority - b.priority);
+    const sortedLayers = [...this.#layers.entries()].sort(
+      ([, a], [, b]) => a.priority - b.priority,
+    );
 
     for (const [layerId, layer] of sortedLayers) {
       let content = layer.content;
@@ -226,7 +227,8 @@ export class SessionManager {
         const estimatedTokens = Math.ceil(content.length * 0.25);
         if (estimatedTokens > layer.tokenBudget) {
           const maxChars = Math.floor(layer.tokenBudget * 4);
-          content = content.substring(0, maxChars) + '\n... (layer truncated, see engine for full context)';
+          content =
+            content.substring(0, maxChars) + '\n... (layer truncated, see engine for full context)';
         }
       }
       all.push({ role: 'system', content });

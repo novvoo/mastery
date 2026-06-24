@@ -30,7 +30,11 @@ export async function processInput(ctx, input, options = {}) {
 
   // 检测是否为 ask_user 延续：agent 正在挂起等待用户输入
   // 跳过所有初始化流程（计划/事件/钩子），直接恢复执行
-  if (ctx.agent && typeof ctx.agent.isWaitingForUserInput === 'boolean' && ctx.agent.isWaitingForUserInput) {
+  if (
+    ctx.agent &&
+    typeof ctx.agent.isWaitingForUserInput === 'boolean' &&
+    ctx.agent.isWaitingForUserInput
+  ) {
     return await continueUserInput(ctx, input);
   }
 
@@ -68,13 +72,13 @@ export async function processInput(ctx, input, options = {}) {
     semanticRiskDomains: [],
     requiresSemanticRiskReview: false,
   };
-  
+
   if (ctx.modelProvider && typeof ctx.modelProvider.chat === 'function') {
     try {
       const intentClassifier = new IntentClassifier(ctx.modelProvider, ctx.toolRegistry);
       const intent = intentClassifier.classify(input);
       taskProfile = intentClassifier.classifyTask(input, intent) || taskProfile;
-      
+
       if (ctx.config.debug) {
         console.log('[IntentClassifier] 任务分类结果:', JSON.stringify(taskProfile));
       }
@@ -100,9 +104,7 @@ export async function processInput(ctx, input, options = {}) {
 
     if (ctx.modelProvider && typeof ctx.modelProvider.chat === 'function') {
       try {
-        const availableTools = ctx.toolRegistry
-          ? ctx.toolRegistry.getAll().map((t) => t.name)
-          : [];
+        const availableTools = ctx.toolRegistry ? ctx.toolRegistry.getAll().map((t) => t.name) : [];
 
         ctx.eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
           message: 'AI 正在分析任务并生成执行计划...',
@@ -141,7 +143,7 @@ export async function processInput(ctx, input, options = {}) {
     executionPlan.status = 'running';
     executionPlan.startedAt = Date.now();
     const firstReadyTask = Array.from(executionPlan.tasks.values()).find(
-      (t) => t.status === 'pending' && t.dependencies.size === 0
+      (t) => t.status === 'pending' && t.dependencies.size === 0,
     );
     if (firstReadyTask) {
       firstReadyTask.updateStatus('running');
@@ -188,14 +190,11 @@ export async function processInput(ctx, input, options = {}) {
           ctx.state.currentPlanId = progress.planId;
 
           const taskLines = progress.tasks
-            .map(
-              (t) => {
-                const scopeStr = t.scopeFiles && t.scopeFiles.length > 0
-                  ? ` 📁 [${t.scopeFiles.join(', ')}]`
-                  : '';
-                return `- ${t.id}: ${t.name} [${t.status}]${scopeStr} - ${t.description}${t.dependencies.length > 0 ? ` (依赖: ${t.dependencies.join(', ')})` : ''}`;
-              },
-            )
+            .map((t) => {
+              const scopeStr =
+                t.scopeFiles && t.scopeFiles.length > 0 ? ` 📁 [${t.scopeFiles.join(', ')}]` : '';
+              return `- ${t.id}: ${t.name} [${t.status}]${scopeStr} - ${t.description}${t.dependencies.length > 0 ? ` (依赖: ${t.dependencies.join(', ')})` : ''}`;
+            })
             .join('\n');
 
           planContext = {
@@ -252,49 +251,53 @@ export async function processInput(ctx, input, options = {}) {
 
   // 启动 agent.run() 但不 await —— suspend/resume 模式下 ask_user 会挂起 Promise
   // 启动 agent.run() 作为后台任务
-  const runPromise = agent.run(input).then(async (result) => {
-    ctx.state.status = result?.status === 'needs_user_input' ? 'needs_user_input' : 'completed';
-    ctx.eventBus.emit(RuntimeEvent.AGENT_COMPLETE, { result });
+  const runPromise = agent
+    .run(input)
+    .then(async (result) => {
+      ctx.state.status = result?.status === 'needs_user_input' ? 'needs_user_input' : 'completed';
+      ctx.eventBus.emit(RuntimeEvent.AGENT_COMPLETE, { result });
 
-    if (ctx.state.status === 'completed') {
+      if (ctx.state.status === 'completed') {
+        try {
+          await ctx.memoryManager.completeTask();
+        } catch (err) {
+          try {
+            console.warn('[MemoryManager] completeTask 失败:', err.message);
+          } catch {}
+        }
+      }
+
+      const tokenStats = ctx.tokenScope.getStats();
+      if (tokenStats.totalRequests > 0) {
+        const cost = tokenStats.totalCost
+          ? `$${tokenStats.totalCost.toFixed(4)}`
+          : 'N/A (未配置模型价格)';
+        console.log(
+          `[TokenScope] 本次任务: ${tokenStats.totalRequests} 请求, ${tokenStats.totalInputTokens}+${tokenStats.totalOutputTokens} tokens, ${cost} (${Math.round(tokenStats.duration / 1000)}s)`,
+        );
+      }
+
+      await ctx.pluginManager.triggerHook(HOOKS.ON_OUTPUT_GENERATED, result);
+      await ctx.pluginManager.triggerHook(HOOKS.AFTER_AGENT_COMPLETE, result);
+
+      return result;
+    })
+    .catch(async (error) => {
+      ctx.state.setError(error);
+      ctx.eventBus.emit(RuntimeEvent.AGENT_ERROR, { error: error.message });
+      await ctx.pluginManager.triggerHook(HOOKS.ON_TOOL_ERROR, null, error);
+      throw error;
+    })
+    .finally(async () => {
       try {
-        await ctx.memoryManager.completeTask();
+        await ctx.memoryManager.save();
       } catch (err) {
         try {
-          console.warn('[MemoryManager] completeTask 失败:', err.message);
+          console.warn('[MemoryManager] save 失败:', err.message);
         } catch {}
       }
-    }
-
-    const tokenStats = ctx.tokenScope.getStats();
-    if (tokenStats.totalRequests > 0) {
-      const cost = tokenStats.totalCost
-        ? `$${tokenStats.totalCost.toFixed(4)}`
-        : 'N/A (未配置模型价格)';
-      console.log(
-        `[TokenScope] 本次任务: ${tokenStats.totalRequests} 请求, ${tokenStats.totalInputTokens}+${tokenStats.totalOutputTokens} tokens, ${cost} (${Math.round(tokenStats.duration / 1000)}s)`,
-      );
-    }
-
-    await ctx.pluginManager.triggerHook(HOOKS.ON_OUTPUT_GENERATED, result);
-    await ctx.pluginManager.triggerHook(HOOKS.AFTER_AGENT_COMPLETE, result);
-
-    return result;
-  }).catch(async (error) => {
-    ctx.state.setError(error);
-    ctx.eventBus.emit(RuntimeEvent.AGENT_ERROR, { error: error.message });
-    await ctx.pluginManager.triggerHook(HOOKS.ON_TOOL_ERROR, null, error);
-    throw error;
-  }).finally(async () => {
-    try {
-      await ctx.memoryManager.save();
-    } catch (err) {
-      try {
-        console.warn('[MemoryManager] save 失败:', err.message);
-      } catch {}
-    }
-    ctx.state.lastActivity = Date.now();
-  });
+      ctx.state.lastActivity = Date.now();
+    });
 
   // 存储 run promise 供 continueUserInput 等待
   ctx._currentRunPromise = runPromise;
@@ -324,14 +327,16 @@ export async function processInput(ctx, input, options = {}) {
     }, 50);
 
     // 同时监听 agent 完成事件
-    runPromise.then((result) => {
-      clearInterval(checkInterval);
-      // 只有在尚未返回 needs_user_input 时才解析最终结果
-      resolve(result);
-    }).catch((error) => {
-      clearInterval(checkInterval);
-      resolve({ status: 'error', error: error.message });
-    });
+    runPromise
+      .then((result) => {
+        clearInterval(checkInterval);
+        // 只有在尚未返回 needs_user_input 时才解析最终结果
+        resolve(result);
+      })
+      .catch((error) => {
+        clearInterval(checkInterval);
+        resolve({ status: 'error', error: error.message });
+      });
   });
 
   return waitForUserInputOrComplete;

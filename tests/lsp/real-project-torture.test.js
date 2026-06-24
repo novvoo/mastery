@@ -64,34 +64,46 @@ describe('Real-Project Torture: Full Monorepo Barrel Chain', () => {
   beforeAll(async () => {
     // 模拟一个 5 包 monorepo 项目结构（类似 real-world 项目）
     await project.setup({
-      'package.json': JSON.stringify({
-        name: 'monorepo-barrel',
-        private: true,
-        workspaces: ['packages/*'],
-      }, null, 2),
+      'package.json': JSON.stringify(
+        {
+          name: 'monorepo-barrel',
+          private: true,
+          workspaces: ['packages/*'],
+        },
+        null,
+        2,
+      ),
       'pnpm-workspace.yaml': 'packages:\n  - "packages/*"\n',
-      'tsconfig.json': JSON.stringify({
-        compilerOptions: {
-          baseUrl: '.',
-          paths: {
-            '@mono/core': ['packages/core/src/index.ts'],
-            '@mono/ui': ['packages/ui/src/index.ts'],
-            '@mono/utils': ['packages/utils/src/index.ts'],
-            '@mono/types': ['packages/types/src/index.ts'],
+      'tsconfig.json': JSON.stringify(
+        {
+          compilerOptions: {
+            baseUrl: '.',
+            paths: {
+              '@mono/core': ['packages/core/src/index.ts'],
+              '@mono/ui': ['packages/ui/src/index.ts'],
+              '@mono/utils': ['packages/utils/src/index.ts'],
+              '@mono/types': ['packages/types/src/index.ts'],
+            },
           },
         },
-      }, null, 2),
+        null,
+        2,
+      ),
       // Package: @mono/types
-      'packages/types/package.json': JSON.stringify({
-        name: '@mono/types',
-        version: '1.0.0',
-        main: 'src/index.ts',
-        exports: {
-          '.': { import: './src/index.ts', types: './src/index.d.ts' },
-          './user': { import: './src/user.ts', types: './src/user.d.ts' },
-          './config': { import: './src/config.ts' },
+      'packages/types/package.json': JSON.stringify(
+        {
+          name: '@mono/types',
+          version: '1.0.0',
+          main: 'src/index.ts',
+          exports: {
+            '.': { import: './src/index.ts', types: './src/index.d.ts' },
+            './user': { import: './src/user.ts', types: './src/user.d.ts' },
+            './config': { import: './src/config.ts' },
+          },
         },
-      }, null, 2),
+        null,
+        2,
+      ),
       'packages/types/src/index.ts': [
         'export { type User, type UserRole } from "./user";',
         'export { type AppConfig } from "./config";',
@@ -120,12 +132,16 @@ describe('Real-Project Torture: Full Monorepo Barrel Chain', () => {
         '}',
       ].join('\n'),
       // Package: @mono/core (deep barrel chain)
-      'packages/core/package.json': JSON.stringify({
-        name: '@mono/core',
-        version: '1.0.0',
-        main: 'src/index.ts',
-        dependencies: { '@mono/types': 'workspace:*', '@mono/utils': 'workspace:*' },
-      }, null, 2),
+      'packages/core/package.json': JSON.stringify(
+        {
+          name: '@mono/core',
+          version: '1.0.0',
+          main: 'src/index.ts',
+          dependencies: { '@mono/types': 'workspace:*', '@mono/utils': 'workspace:*' },
+        },
+        null,
+        2,
+      ),
       // Level 1 barrel
       'packages/core/src/index.ts': [
         'export { UserService } from "./services/index";',
@@ -219,17 +235,21 @@ describe('Real-Project Torture: Full Monorepo Barrel Chain', () => {
         '}',
       ].join('\n'),
       // Package: @mono/ui
-      'packages/ui/package.json': JSON.stringify({
-        name: '@mono/ui',
-        version: '1.0.0',
-        main: 'src/index.ts',
-        exports: {
-          '.': { import: './src/index.ts', types: './src/index.d.ts' },
-          './components': { import: './src/components/index.ts' },
-          './hooks': { import: './src/hooks/index.ts' },
+      'packages/ui/package.json': JSON.stringify(
+        {
+          name: '@mono/ui',
+          version: '1.0.0',
+          main: 'src/index.ts',
+          exports: {
+            '.': { import: './src/index.ts', types: './src/index.d.ts' },
+            './components': { import: './src/components/index.ts' },
+            './hooks': { import: './src/hooks/index.ts' },
+          },
+          dependencies: { '@mono/core': 'workspace:*', '@mono/types': 'workspace:*' },
         },
-        dependencies: { '@mono/core': 'workspace:*', '@mono/types': 'workspace:*' },
-      }, null, 2),
+        null,
+        2,
+      ),
       'packages/ui/src/index.ts': [
         'export { Button } from "./components/Button";',
         'export { Dialog, DialogHeader } from "./components/Dialog/index";',
@@ -266,11 +286,15 @@ describe('Real-Project Torture: Full Monorepo Barrel Chain', () => {
         'export const UserProfile = ({ user }: { user: User }) => null;',
       ].join('\n'),
       // Package: @mono/utils (simple package)
-      'packages/utils/package.json': JSON.stringify({
-        name: '@mono/utils',
-        version: '1.0.0',
-        main: 'src/index.ts',
-      }, null, 2),
+      'packages/utils/package.json': JSON.stringify(
+        {
+          name: '@mono/utils',
+          version: '1.0.0',
+          main: 'src/index.ts',
+        },
+        null,
+        2,
+      ),
       'packages/utils/src/index.ts': [
         'export { formatDate } from "./date";',
         'export { debounce } from "./debounce";',
@@ -413,7 +437,9 @@ describe('Real-Project Torture: Full Monorepo Barrel Chain', () => {
 
   // ── Test 5: 50+ file reference verification framework ──────────────
   it('should detect all cross-references across 30+ files in monorepo', async () => {
-    const allFilePaths = [...project.files.keys()].filter((f) => f.endsWith('.ts') || f.endsWith('.tsx'));
+    const allFilePaths = [...project.files.keys()].filter(
+      (f) => f.endsWith('.ts') || f.endsWith('.tsx'),
+    );
     expect(allFilePaths.length).toBeGreaterThanOrEqual(20);
 
     // Count UserService / UserManager references across ALL files
@@ -498,7 +524,9 @@ describe('Real-Project Torture: Scaling (50+ files)', () => {
     for (let i = 0; i < 50; i++) {
       const content = await project.read(`src/module_${i}.ts`);
       const matches = content.match(/sharedUtil/g);
-      if (matches) { refCount += matches.length; }
+      if (matches) {
+        refCount += matches.length;
+      }
       expect(content).toContain(`export function func_${i}`);
     }
     expect(refCount).toBeGreaterThanOrEqual(50);

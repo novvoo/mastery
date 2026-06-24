@@ -67,19 +67,26 @@ describe('AgentRouter', () => {
     expect(result).toBeDefined();
   });
 
-  test('executeToolCall skips duplicate calls', async () => {
+  test('executeToolCall returns cached result for duplicate calls', async () => {
     const callCount = { value: 0 };
     const deps = makeMockDeps();
-    const handler = async () => { callCount.value++; return 'result'; };
+    const handler = async () => {
+      callCount.value++;
+      return 'result';
+    };
     deps.toolRegistry.get = (name) => ({ handler, category: 'test' });
     deps.toolRegistry.has = (name) => true;
+    deps.config.toolResultCacheEnabled = true;
     const router = new AgentRouter(deps);
 
     const call = { name: 'test', arguments: {} };
     const result1 = await router.executeToolCall(call);
     const result2 = await router.executeToolCall(call);
     expect(result1).toBeDefined();
-    expect(result2.skipped).toBe(true);
+    expect(result1.result).toBe('result');
+    expect(result2.cached).toBe(true);
+    expect(result2.result).toBe('result');
+    expect(callCount.value).toBe(1);
   });
 
   test('executeToolCall respects security policy', async () => {
@@ -108,7 +115,9 @@ describe('AgentRouter', () => {
   test('executeToolCall handles tool execution error', async () => {
     const deps = makeMockDeps();
     deps.toolRegistry.get = (name) => ({
-      handler: async () => { throw new Error('tool crashed'); },
+      handler: async () => {
+        throw new Error('tool crashed');
+      },
       category: 'test',
     });
     const router = new AgentRouter(deps);
@@ -123,9 +132,17 @@ describe('AgentRouter', () => {
     const router = new AgentRouter(deps);
 
     const workspaceState = {
-      predictToolResult: () => ({ canSkip: true, reason: 'already read', predicted: { content: 'cached' }, type: 'cache_hit' }),
+      predictToolResult: () => ({
+        canSkip: true,
+        reason: 'already read',
+        predicted: { content: 'cached' },
+        type: 'cache_hit',
+      }),
     };
-    const result = await router.executeToolCall({ name: 'read_file', arguments: { path: '/tmp/test' } }, { workspaceState });
+    const result = await router.executeToolCall(
+      { name: 'read_file', arguments: { path: '/tmp/test' } },
+      { workspaceState },
+    );
     expect(result.skipped).toBe(true);
   });
 });

@@ -9,7 +9,21 @@ import { TextToolParser } from '../../src/core/text-tool-parser.js';
 
 function createParser() {
   const tools = {
-    has: (name) => ['list_dir', 'read_file', 'write_file', 'shell', 'verify', 'diagnose', 'brainstorm', 'get_data', 'process_data', 'get_weather', 'list_files', 'create_task'].includes(name),
+    has: (name) =>
+      [
+        'list_dir',
+        'read_file',
+        'write_file',
+        'shell',
+        'verify',
+        'diagnose',
+        'brainstorm',
+        'get_data',
+        'process_data',
+        'get_weather',
+        'list_files',
+        'create_task',
+      ].includes(name),
     getAll: () => [
       { name: 'list_dir', category: 'workspace' },
       { name: 'read_file', category: 'workspace' },
@@ -24,11 +38,11 @@ function createParser() {
 }
 
 describe('TextToolParser DSML Format', () => {
-
   describe('Unicode fullwidth bar DSML', () => {
     it('parses single list_dir invoke with path parameter', () => {
       const parser = createParser();
-      const text = '<\uFF5C\uFF5CDSML\uFF5C\uFF5Ctool_calls>\n' +
+      const text =
+        '<\uFF5C\uFF5CDSML\uFF5C\uFF5Ctool_calls>\n' +
         '<\uFF5C\uFF5CDSML\uFF5C\uFF5Cinvoke name="list_dir">\n' +
         '<\uFF5C\uFF5CDSML\uFF5C\uFF5Cparameter name="path" string="true">/Users/jingslunt/workspace<\uFF5C\uFF5CDSML\uFF5C\uFF5Cparameter>\n' +
         '<\uFF5C\uFF5CDSML\uFF5C\uFF5Cinvoke>\n' +
@@ -43,7 +57,8 @@ describe('TextToolParser DSML Format', () => {
 
     it('parses multiple invoke blocks in one tool_calls envelope', () => {
       const parser = createParser();
-      const text = '<||DSML||tool_calls>\n' +
+      const text =
+        '<||DSML||tool_calls>\n' +
         '<||DSML||invoke name="list_dir">\n' +
         '<||DSML||parameter name="path" string="true">/tmp<||DSML||parameter>\n' +
         '<||DSML||invoke>\n' +
@@ -62,7 +77,8 @@ describe('TextToolParser DSML Format', () => {
   describe('ASCII pipe DSML', () => {
     it('parses write_file with path and content parameters', () => {
       const parser = createParser();
-      const text = '<||DSML||tool_calls>\n' +
+      const text =
+        '<||DSML||tool_calls>\n' +
         '<||DSML||invoke name="write_file">\n' +
         '<||DSML||parameter name="path" string="true">/tmp/test.js<||DSML||parameter>\n' +
         '<||DSML||parameter name="content" string="true">console.log("hello")<||DSML||parameter>\n' +
@@ -80,7 +96,8 @@ describe('TextToolParser DSML Format', () => {
   describe('Tool filtering', () => {
     it('filters out unknown tools silently', () => {
       const parser = createParser();
-      const text = '<||DSML||tool_calls>\n' +
+      const text =
+        '<||DSML||tool_calls>\n' +
         '<||DSML||invoke name="nonexistent_tool">\n' +
         '<||DSML||parameter name="x" string="true">1<||DSML||parameter>\n' +
         '<||DSML||invoke>\n' +
@@ -92,7 +109,8 @@ describe('TextToolParser DSML Format', () => {
 
     it('preserves known tools and drops unknown ones in mixed payload', () => {
       const parser = createParser();
-      const text = '<||DSML||tool_calls>\n' +
+      const text =
+        '<||DSML||tool_calls>\n' +
         '<||DSML||invoke name="list_dir">\n' +
         '<||DSML||parameter name="path" string="true">/tmp<||DSML||parameter>\n' +
         '<||DSML||invoke>\n' +
@@ -136,7 +154,8 @@ describe('TextToolParser DSML Format', () => {
   describe('Plain <invoke> format (no DSML prefix)', () => {
     it('parses single <invoke> with path parameter', () => {
       const parser = createParser();
-      const text = '<invoke name="list_dir">\n' +
+      const text =
+        '<invoke name="list_dir">\n' +
         '<parameter name="path" string="true">/Users/jingslunt/workspace</parameter>\n' +
         '</invoke>';
 
@@ -149,7 +168,8 @@ describe('TextToolParser DSML Format', () => {
 
     it('parses multiple <invoke> blocks without DSML prefix', () => {
       const parser = createParser();
-      const text = '<invoke name="list_dir">\n' +
+      const text =
+        '<invoke name="list_dir">\n' +
         '<parameter name="path" string="true">/tmp</parameter>\n' +
         '</invoke>\n' +
         '<invoke name="read_file">\n' +
@@ -165,7 +185,8 @@ describe('TextToolParser DSML Format', () => {
 
     it('parses <invoke> with multiple parameters', () => {
       const parser = createParser();
-      const text = '<invoke name="write_file">\n' +
+      const text =
+        '<invoke name="write_file">\n' +
         '<parameter name="path" string="true">/tmp/test.js</parameter>\n' +
         '<parameter name="content" string="true">console.log("hello")</parameter>\n' +
         '</invoke>';
@@ -179,7 +200,8 @@ describe('TextToolParser DSML Format', () => {
 
     it('filters out unknown tools in plain <invoke>', () => {
       const parser = createParser();
-      const text = '<invoke name="nonexistent_tool">\n' +
+      const text =
+        '<invoke name="nonexistent_tool">\n' +
         '<parameter name="x" string="true">1</parameter>\n' +
         '</invoke>';
 
@@ -191,7 +213,8 @@ describe('TextToolParser DSML Format', () => {
   describe('detectMalformedToolCall — plain <invoke>', () => {
     it('detects plain <invoke> without DSML prefix', () => {
       const parser = createParser();
-      const text = '<invoke name="unknown_tool">\n' +
+      const text =
+        '<invoke name="unknown_tool">\n' +
         '<parameter name="path" string="true">/tmp</parameter>\n' +
         '</invoke>';
 
@@ -202,7 +225,8 @@ describe('TextToolParser DSML Format', () => {
 
     it('returns null for <invoke> that parses successfully', () => {
       const parser = createParser();
-      const text = '<invoke name="list_dir">\n' +
+      const text =
+        '<invoke name="list_dir">\n' +
         '<parameter name="path" string="true">/tmp</parameter>\n' +
         '</invoke>';
 

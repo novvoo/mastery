@@ -26,7 +26,11 @@ console.log('current modelProvider:', engine.getModelProvider());
 
 console.log('\n=== Step 3: processInput without modelProvider ===');
 try {
-  const result = await engine.processInput('厦门天气', { debug: false, maxIterations: 60, autoSave: true });
+  const result = await engine.processInput('厦门天气', {
+    debug: false,
+    maxIterations: 60,
+    autoSave: true,
+  });
   console.log('result:', JSON.stringify(result).substring(0, 400));
 } catch (err) {
   console.log('ERROR:', err.message);
@@ -43,7 +47,11 @@ console.log('modelProvider now:', engine.getModelProvider()?.name || 'null');
 
 console.log('\n=== Step 5: processInput with modelProvider ===');
 try {
-  const result = await engine.processInput('厦门天气', { debug: false, maxIterations: 60, autoSave: true });
+  const result = await engine.processInput('厦门天气', {
+    debug: false,
+    maxIterations: 60,
+    autoSave: true,
+  });
   console.log('success:', result.success);
   console.log('status:', result.status);
   console.log('answer:', (result.answer || '').substring(0, 200));

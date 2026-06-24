@@ -36,7 +36,7 @@ describe('preview server', () => {
       expect(preview.mode).toBe('static');
       expect(preview.url).toContain('127.0.0.1');
 
-      const html = await fetch(preview.url).then(response => response.text());
+      const html = await fetch(preview.url).then((response) => response.text());
       expect(html).toContain('Preview OK');
 
       expect(stopPreview(preview.session_id).success).toBe(true);
@@ -48,10 +48,12 @@ describe('preview server', () => {
   test('blocks targets outside the working directory', async () => {
     const root = mkdtempSync(join(tmpdir(), 'preview-block-'));
     try {
-      await expect(startPreview({
-        workingDirectory: root,
-        target: '../outside.html',
-      })).rejects.toThrow('working directory');
+      await expect(
+        startPreview({
+          workingDirectory: root,
+          target: '../outside.html',
+        }),
+      ).rejects.toThrow('working directory');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -60,18 +62,24 @@ describe('preview server', () => {
   test('starts a Node preview command with PORT and HOST', async () => {
     const root = mkdtempSync(join(tmpdir(), 'preview-node-'));
     try {
-      writeFileSync(join(root, 'server.js'), `
+      writeFileSync(
+        join(root, 'server.js'),
+        `
         import http from 'http';
         const host = process.env.HOST || '127.0.0.1';
         const port = Number(process.env.PORT);
         http.createServer((req, res) => {
           res.end('Node Preview OK');
         }).listen(port, host);
-      `);
-      writeFileSync(join(root, 'package.json'), JSON.stringify({
-        type: 'module',
-        scripts: { dev: 'node server.js' },
-      }));
+      `,
+      );
+      writeFileSync(
+        join(root, 'package.json'),
+        JSON.stringify({
+          type: 'module',
+          scripts: { dev: 'node server.js' },
+        }),
+      );
 
       const preview = await startPreview({
         workingDirectory: root,
@@ -82,7 +90,7 @@ describe('preview server', () => {
 
       expect(preview.success).toBe(true);
       expect(preview.mode).toBe('node');
-      const text = await fetch(preview.url).then(response => response.text());
+      const text = await fetch(preview.url).then((response) => response.text());
       expect(text).toBe('Node Preview OK');
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -93,10 +101,13 @@ describe('preview server', () => {
     const root = mkdtempSync(join(tmpdir(), 'preview-tsc-only-'));
     try {
       writeFileSync(join(root, 'index.html'), '<h1>Snake Game</h1>');
-      writeFileSync(join(root, 'package.json'), JSON.stringify({
-        type: 'module',
-        scripts: { dev: 'tsc --watch' },
-      }));
+      writeFileSync(
+        join(root, 'package.json'),
+        JSON.stringify({
+          type: 'module',
+          scripts: { dev: 'tsc --watch' },
+        }),
+      );
 
       const preview = await startPreview({
         workingDirectory: root,
@@ -106,7 +117,7 @@ describe('preview server', () => {
 
       expect(preview.success).toBe(true);
       expect(preview.mode).toBe('static');
-      const html = await fetch(preview.url).then(response => response.text());
+      const html = await fetch(preview.url).then((response) => response.text());
       expect(html).toContain('Snake Game');
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -116,15 +127,21 @@ describe('preview server', () => {
   test('runs build before serving static frontend output', async () => {
     const root = mkdtempSync(join(tmpdir(), 'preview-build-static-'));
     try {
-      writeFileSync(join(root, 'build.js'), `
+      writeFileSync(
+        join(root, 'build.js'),
+        `
         import { mkdirSync, writeFileSync } from 'fs';
         mkdirSync('dist', { recursive: true });
         writeFileSync('dist/index.html', '<h1>Built Preview OK</h1>');
-      `);
-      writeFileSync(join(root, 'package.json'), JSON.stringify({
-        type: 'module',
-        scripts: { build: 'node build.js' },
-      }));
+      `,
+      );
+      writeFileSync(
+        join(root, 'package.json'),
+        JSON.stringify({
+          type: 'module',
+          scripts: { build: 'node build.js' },
+        }),
+      );
 
       const preview = await startPreview({
         workingDirectory: root,
@@ -135,9 +152,9 @@ describe('preview server', () => {
       expect(preview.success).toBe(true);
       expect(preview.mode).toBe('static');
       expect(preview.root).toBe(join(root, 'dist'));
-      expect(preview.pipeline.map(stage => stage.name)).toEqual(['build']);
+      expect(preview.pipeline.map((stage) => stage.name)).toEqual(['build']);
       expect(preview.pipeline[0].status).toBe('completed');
-      const html = await fetch(preview.url).then(response => response.text());
+      const html = await fetch(preview.url).then((response) => response.text());
       expect(html).toContain('Built Preview OK');
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -147,20 +164,28 @@ describe('preview server', () => {
   test('reports build stage failures with command output', async () => {
     const root = mkdtempSync(join(tmpdir(), 'preview-build-fail-'));
     try {
-      writeFileSync(join(root, 'build.js'), `
+      writeFileSync(
+        join(root, 'build.js'),
+        `
         console.error('build broke before preview');
         process.exit(2);
-      `);
-      writeFileSync(join(root, 'package.json'), JSON.stringify({
-        type: 'module',
-        scripts: { build: 'node build.js' },
-      }));
+      `,
+      );
+      writeFileSync(
+        join(root, 'package.json'),
+        JSON.stringify({
+          type: 'module',
+          scripts: { build: 'node build.js' },
+        }),
+      );
 
-      await expect(startPreview({
-        workingDirectory: root,
-        target: '.',
-        kind: 'auto',
-      })).rejects.toThrow(/Preview build stage failed[\s\S]*build broke before preview/);
+      await expect(
+        startPreview({
+          workingDirectory: root,
+          target: '.',
+          kind: 'auto',
+        }),
+      ).rejects.toThrow(/Preview build stage failed[\s\S]*build broke before preview/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -169,7 +194,9 @@ describe('preview server', () => {
   test('passes preview host and port flags to Vite dev scripts', async () => {
     const root = mkdtempSync(join(tmpdir(), 'preview-vite-script-'));
     try {
-      writeFileSync(join(root, 'server.js'), `
+      writeFileSync(
+        join(root, 'server.js'),
+        `
         import http from 'http';
         const portArg = process.argv[process.argv.indexOf('--port') + 1];
         const hostArg = process.argv[process.argv.indexOf('--host') + 1];
@@ -177,11 +204,15 @@ describe('preview server', () => {
         http.createServer((req, res) => {
           res.end(JSON.stringify({ hostArg, portArg }));
         }).listen(port, hostArg);
-      `);
-      writeFileSync(join(root, 'package.json'), JSON.stringify({
-        type: 'module',
-        scripts: { dev: 'node server.js vite' },
-      }));
+      `,
+      );
+      writeFileSync(
+        join(root, 'package.json'),
+        JSON.stringify({
+          type: 'module',
+          scripts: { dev: 'node server.js vite' },
+        }),
+      );
 
       const preview = await startPreview({
         workingDirectory: root,
@@ -191,7 +222,7 @@ describe('preview server', () => {
 
       expect(preview.success).toBe(true);
       expect(preview.mode).toBe('node');
-      const payload = await fetch(preview.url).then(response => response.json());
+      const payload = await fetch(preview.url).then((response) => response.json());
       expect(payload.hostArg).toBe('127.0.0.1');
       expect(Number(payload.portArg)).toBe(preview.port);
     } finally {
@@ -203,7 +234,9 @@ describe('preview server', () => {
     const root = mkdtempSync(join(tmpdir(), 'preview-fixed-port-'));
     const fixedPort = await getAvailablePort();
     try {
-      writeFileSync(join(root, 'server.js'), `
+      writeFileSync(
+        join(root, 'server.js'),
+        `
         import http from 'http';
         const port = Number(process.argv[2]);
         http.createServer((req, res) => {
@@ -212,11 +245,15 @@ describe('preview server', () => {
           console.log('Available on:');
           console.log('  http://127.0.0.1:' + port);
         });
-      `);
-      writeFileSync(join(root, 'package.json'), JSON.stringify({
-        type: 'module',
-        scripts: { start: `node server.js ${fixedPort}` },
-      }));
+      `,
+      );
+      writeFileSync(
+        join(root, 'package.json'),
+        JSON.stringify({
+          type: 'module',
+          scripts: { start: `node server.js ${fixedPort}` },
+        }),
+      );
 
       const preview = await startPreview({
         workingDirectory: root,
@@ -228,7 +265,7 @@ describe('preview server', () => {
       expect(preview.mode).toBe('node');
       expect(preview.port).toBe(fixedPort);
       expect(preview.url).toBe(`http://127.0.0.1:${fixedPort}/`);
-      const text = await fetch(preview.url).then(response => response.text());
+      const text = await fetch(preview.url).then((response) => response.text());
       expect(text).toBe('Fixed Port Preview OK');
     } finally {
       rmSync(root, { recursive: true, force: true });

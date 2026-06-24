@@ -29,11 +29,15 @@ describe('evidence-verifier', () => {
     });
 
     test('shell with write command is a mutation', () => {
-      expect(isMutationEvent({ name: 'shell', args: { command: 'npm install' }, success: true })).toBe(true);
+      expect(
+        isMutationEvent({ name: 'shell', args: { command: 'npm install' }, success: true }),
+      ).toBe(true);
     });
 
     test('shell with read-only command is not a mutation', () => {
-      expect(isMutationEvent({ name: 'shell', args: { command: 'ls -la' }, success: true })).toBe(false);
+      expect(isMutationEvent({ name: 'shell', args: { command: 'ls -la' }, success: true })).toBe(
+        false,
+      );
     });
 
     test('null/undefined event is not a mutation', () => {
@@ -48,15 +52,29 @@ describe('evidence-verifier', () => {
     });
 
     test('shell with test command is verification', () => {
-      expect(isRuntimeVerificationEvent({ name: 'shell', args: { command: 'bun test' }, success: true })).toBe(true);
+      expect(
+        isRuntimeVerificationEvent({ name: 'shell', args: { command: 'bun test' }, success: true }),
+      ).toBe(true);
     });
 
     test('shell with build command is verification', () => {
-      expect(isRuntimeVerificationEvent({ name: 'shell', args: { command: 'npm run build' }, success: true })).toBe(true);
+      expect(
+        isRuntimeVerificationEvent({
+          name: 'shell',
+          args: { command: 'npm run build' },
+          success: true,
+        }),
+      ).toBe(true);
     });
 
     test('shell with lint command is verification', () => {
-      expect(isRuntimeVerificationEvent({ name: 'shell', args: { command: 'eslint src/' }, success: true })).toBe(true);
+      expect(
+        isRuntimeVerificationEvent({
+          name: 'shell',
+          args: { command: 'eslint src/' },
+          success: true,
+        }),
+      ).toBe(true);
     });
 
     test('read_file is not verification', () => {
@@ -88,11 +106,23 @@ describe('evidence-verifier', () => {
     });
 
     test('review with semantic focus_areas counts', () => {
-      expect(isSemanticRiskReviewEvent({ name: 'review', args: { focus_areas: 'security' }, success: true })).toBe(true);
+      expect(
+        isSemanticRiskReviewEvent({
+          name: 'review',
+          args: { focus_areas: 'security' },
+          success: true,
+        }),
+      ).toBe(true);
     });
 
     test('review with non-semantic focus_areas does not count', () => {
-      expect(isSemanticRiskReviewEvent({ name: 'review', args: { focus_areas: 'formatting' }, success: true })).toBe(false);
+      expect(
+        isSemanticRiskReviewEvent({
+          name: 'review',
+          args: { focus_areas: 'formatting' },
+          success: true,
+        }),
+      ).toBe(false);
     });
 
     test('non-review tool is not semantic review', () => {
@@ -125,7 +155,7 @@ describe('evidence-verifier', () => {
       const result = checkCompletionGates(
         [{ name: 'read_file', success: true }],
         { requireMutation: true, requireRuntimeVerification: true },
-        { isModificationTask: true }
+        { isModificationTask: true },
       );
       expect(result.block).toBe(true);
       expect(result.missing).toContain('no_code_mutation');
@@ -135,7 +165,7 @@ describe('evidence-verifier', () => {
       const result = checkCompletionGates(
         [{ name: 'write_file', success: true }],
         { requireMutation: true, requireRuntimeVerification: true },
-        { isModificationTask: true }
+        { isModificationTask: true },
       );
       expect(result.block).toBe(true);
       expect(result.missing).toContain('no_runtime_verification');
@@ -148,8 +178,13 @@ describe('evidence-verifier', () => {
           { name: 'shell', args: { command: 'bun test' }, success: true },
           { name: 'review', success: true },
         ],
-        { requireMutation: true, requireRuntimeVerification: true, requireMethodologyTool: true, requireSemanticRiskReview: true },
-        { isModificationTask: true }
+        {
+          requireMutation: true,
+          requireRuntimeVerification: true,
+          requireMethodologyTool: true,
+          requireSemanticRiskReview: true,
+        },
+        { isModificationTask: true },
       );
       expect(result.block).toBe(false);
     });

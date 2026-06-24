@@ -1,5 +1,18 @@
 import { describe, test, expect } from 'bun:test';
-import { PromptBuilder, buildToolSyntaxCorrectionPrompt, buildToolUseCorrectionPrompt, buildCodingTaskOperatingPrompt, buildCodingCompletionGatePrompt, buildSemanticRiskGuidance, isTermination, extractFinalAnswer, normalizeFinalAnswer, containsUnparsedToolSyntax, shouldCorrectToolRefusal, shouldBlockCodingFinal } from '../../src/core/prompt-builder.js';
+import {
+  PromptBuilder,
+  buildToolSyntaxCorrectionPrompt,
+  buildToolUseCorrectionPrompt,
+  buildCodingTaskOperatingPrompt,
+  buildCodingCompletionGatePrompt,
+  buildSemanticRiskGuidance,
+  isTermination,
+  extractFinalAnswer,
+  normalizeFinalAnswer,
+  containsUnparsedToolSyntax,
+  shouldCorrectToolRefusal,
+  shouldBlockCodingFinal,
+} from '../../src/core/prompt-builder.js';
 
 describe('PromptBuilder', () => {
   test('PromptBuilder is an object with all methods', () => {
@@ -21,7 +34,12 @@ describe('buildToolSyntaxCorrectionPrompt', () => {
 
   test('includes diagnosis when parser detects malformed call', () => {
     const toolParser = {
-      detectMalformedToolCall: () => ({ tag: 'unclosed', opening: '<tool>', closing: null, hint: 'missing closing tag' }),
+      detectMalformedToolCall: () => ({
+        tag: 'unclosed',
+        opening: '<tool>',
+        closing: null,
+        hint: 'missing closing tag',
+      }),
     };
     const toolRegistry = { getAll: () => [] };
     const result = buildToolSyntaxCorrectionPrompt(toolParser, toolRegistry, 'some text');
@@ -121,15 +139,27 @@ describe('containsUnparsedToolSyntax', () => {
   });
 
   test('detects action tags', () => {
-    expect(containsUnparsedToolSyntax(null, '<action>{"action":"web_search","query":"厦门天气"}</action>')).toBe(true);
+    expect(
+      containsUnparsedToolSyntax(
+        null,
+        '<action>{"action":"web_search","query":"厦门天气"}</action>',
+      ),
+    ).toBe(true);
   });
 
   test('detects <invoke> blocks without DSML prefix', () => {
-    expect(containsUnparsedToolSyntax(null, '<invoke name="list_dir"><parameter name="path">/tmp</parameter></invoke>')).toBe(true);
+    expect(
+      containsUnparsedToolSyntax(
+        null,
+        '<invoke name="list_dir"><parameter name="path">/tmp</parameter></invoke>',
+      ),
+    ).toBe(true);
   });
 
   test('detects <function> blocks', () => {
-    expect(containsUnparsedToolSyntax(null, '<function>\n<name>search</name>\n</function>')).toBe(true);
+    expect(containsUnparsedToolSyntax(null, '<function>\n<name>search</name>\n</function>')).toBe(
+      true,
+    );
   });
 
   test('detects <tool>name</tool> blocks', () => {
@@ -157,25 +187,31 @@ describe('shouldCorrectToolRefusal', () => {
   });
 
   test('returns true when user asks local ops and AI refuses', () => {
-    expect(shouldCorrectToolRefusal(
-      { size: 5, getAll: () => [] },
-      'list files in current directory',
-      'I cannot access the local filesystem'
-    )).toBe(true);
+    expect(
+      shouldCorrectToolRefusal(
+        { size: 5, getAll: () => [] },
+        'list files in current directory',
+        'I cannot access the local filesystem',
+      ),
+    ).toBe(true);
   });
 
   test('returns false when not asking local ops', () => {
-    expect(shouldCorrectToolRefusal(
-      { size: 5, getAll: () => [] },
-      'tell me about quantum physics',
-      'I cannot access the filesystem'
-    )).toBe(false);
+    expect(
+      shouldCorrectToolRefusal(
+        { size: 5, getAll: () => [] },
+        'tell me about quantum physics',
+        'I cannot access the filesystem',
+      ),
+    ).toBe(false);
   });
 });
 
 describe('shouldBlockCodingFinal', () => {
   test('does not block non-modification tasks', () => {
-    const result = shouldBlockCodingFinal('fix bug', 'FINAL_ANSWER: done', { taskProfile: { isModificationTask: false } });
+    const result = shouldBlockCodingFinal('fix bug', 'FINAL_ANSWER: done', {
+      taskProfile: { isModificationTask: false },
+    });
     expect(result.block).toBe(false);
   });
 

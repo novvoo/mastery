@@ -32,12 +32,15 @@ class TestSoakSession {
 // ── SoakValidator（精简版，用于测试） ────────────────────────────────────────
 
 class TestSoakValidator {
-  constructor(projectDir) { this.projectDir = projectDir; this.metrics = {}; }
+  constructor(projectDir) {
+    this.projectDir = projectDir;
+    this.metrics = {};
+  }
 
   verifyMemoryIntegrity(sessions) {
-    const allMemories = sessions.flatMap(s => s.memoriesCreated);
+    const allMemories = sessions.flatMap((s) => s.memoriesCreated);
     const issues = [];
-    const uniqueTitles = new Set(allMemories.map(m => m.title));
+    const uniqueTitles = new Set(allMemories.map((m) => m.title));
     if (uniqueTitles.size !== allMemories.length) {
       issues.push(`Duplicate memory titles: ${allMemories.length - uniqueTitles.size} duplicates`);
     }
@@ -48,7 +51,11 @@ class TestSoakValidator {
         break;
       }
     }
-    this.metrics.memoryIntegrity = { total: allMemories.length, unique: uniqueTitles.size, issues: issues.length };
+    this.metrics.memoryIntegrity = {
+      total: allMemories.length,
+      unique: uniqueTitles.size,
+      issues: issues.length,
+    };
     return issues.length === 0;
   }
 
@@ -57,8 +64,10 @@ class TestSoakValidator {
     const totalOps = sessions.reduce((sum, s) => sum + s.editCount, 0);
     const errorRate = totalOps > 0 ? totalErrors / totalOps : 0;
     const issues = errorRate > 0.1 ? [`High error rate: ${(errorRate * 100).toFixed(1)}%`] : [];
-    const sessionErrors = sessions.map(s => s.errors.length);
-    if (Math.max(...sessionErrors, 0) > 20) {issues.push(`Max errors exceeds 20`);}
+    const sessionErrors = sessions.map((s) => s.errors.length);
+    if (Math.max(...sessionErrors, 0) > 20) {
+      issues.push(`Max errors exceeds 20`);
+    }
     this.metrics.lspStability = { totalErrors, totalOps, errorRate, perSession: sessionErrors };
     return issues.length === 0;
   }
@@ -75,7 +84,10 @@ class TestSoakValidator {
         }
       }
     }
-    this.metrics.hashlineCorrectness = { filesChecked: jsFiles.length, syntaxErrors: issues.length };
+    this.metrics.hashlineCorrectness = {
+      filesChecked: jsFiles.length,
+      syntaxErrors: issues.length,
+    };
     return issues.length === 0;
   }
 }
@@ -89,7 +101,9 @@ describe('SoakTest Infrastructure', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'soak-unit-'));
     projectDir = join(tmpDir, 'project');
     execSync(`mkdir -p "${projectDir}/src"`);
-    execSync(`cd "${projectDir}" && git init && git config user.email "test@test" && git config user.name "Test"`);
+    execSync(
+      `cd "${projectDir}" && git init && git config user.email "test@test" && git config user.name "Test"`,
+    );
     writeFileSync(join(projectDir, 'src/index.ts'), 'export const x = 1;\n');
     writeFileSync(join(projectDir, 'src/greet.ts'), 'export function greet() {}\n');
     execSync(`cd "${projectDir}" && git add -A && git commit -m "init"`);
@@ -102,10 +116,7 @@ describe('SoakTest Infrastructure', () => {
   // ── Memory Corruption 测试 ──
 
   it('should detect no memory corruption with clean sessions', () => {
-    const sessions = [
-      new TestSoakSession(projectDir, 0),
-      new TestSoakSession(projectDir, 1),
-    ];
+    const sessions = [new TestSoakSession(projectDir, 0), new TestSoakSession(projectDir, 1)];
     sessions[0].addMemory('project', 'mem-A', 'content A');
     sessions[0].addMemory('project', 'mem-B', 'content B');
     sessions[1].addMemory('reference', 'mem-C', 'content C');
@@ -195,7 +206,8 @@ describe('SoakTest Infrastructure', () => {
     // SoakValidator 的 verifyMultiBranchIntegrity 检查分支数
 
     const branches = execSync(`cd "${projectDir}" && git branch`, { encoding: 'utf-8' })
-      .split('\n').filter(Boolean);
+      .split('\n')
+      .filter(Boolean);
 
     expect(branches.length).toBeGreaterThanOrEqual(3); // main + feature/x + hotfix/y
   });
@@ -231,7 +243,7 @@ describe('SoakTest Infrastructure', () => {
 
     // 合并后不重复
     const all = [...session1.memoriesCreated, ...session2.memoriesCreated];
-    const titles = all.map(m => m.title);
+    const titles = all.map((m) => m.title);
     expect(new Set(titles).size).toBe(2);
   });
 

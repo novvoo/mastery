@@ -1,8 +1,13 @@
 import { describe, test, expect, beforeEach } from 'bun:test';
-import { I18n, getI18n, createI18n, SupportedLanguages, DEFAULT_LANGUAGE } from '../../src/core/i18n.js';
+import {
+  I18n,
+  getI18n,
+  createI18n,
+  SupportedLanguages,
+  DEFAULT_LANGUAGE,
+} from '../../src/core/i18n.js';
 
 describe('i18n - 默认语言与翻译', () => {
-
   beforeEach(() => {
     // 清除单例，以便每个测试从干净状态开始
   });

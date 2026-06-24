@@ -63,9 +63,8 @@ export function buildToolUseCorrectionPrompt(toolRegistry, userInput) {
 
 export function buildCodingTaskOperatingPrompt(params, extra = {}) {
   // 兼容旧调用：如果传入字符串，转为对象
-  const opts = typeof params === 'string'
-    ? { userInput: params, ...extra }
-    : { ...params, ...extra };
+  const opts =
+    typeof params === 'string' ? { userInput: params, ...extra } : { ...params, ...extra };
   if (typeof buildCodingTaskOperatingPromptText === 'function') {
     return buildCodingTaskOperatingPromptText(opts);
   }

@@ -4,7 +4,12 @@ import { buildWindowConfig } from '../../desktop/main-app/window-config.js';
 describe('buildWindowConfig', () => {
   test('common to all platforms: transparent + no opaque bg + show:false + hasShadow', () => {
     for (const platform of ['darwin', 'win32', 'linux']) {
-      const cfg = buildWindowConfig(platform, { width: 1400, height: 900, minWidth: 800, minHeight: 600 });
+      const cfg = buildWindowConfig(platform, {
+        width: 1400,
+        height: 900,
+        minWidth: 800,
+        minHeight: 600,
+      });
       expect(cfg.transparent).toBe(true);
       expect(cfg.backgroundColor).toBe('#00000000');
       expect(cfg.show).toBe(false);

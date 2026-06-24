@@ -141,9 +141,11 @@ export class StagnationDetector {
         message:
           `[Progress checkpoint @iter ${iteration}/${maxIterations}]\n` +
           `Plan status:\n${planStatus}\n` +
-          `${hasWritten
-            ? 'You have made code changes — verify them and complete.'
-            : 'WARNING: No code modifications yet. If you have identified the issue, use write_file/edit_file NOW. Do NOT keep exploring.'}`,
+          `${
+            hasWritten
+              ? 'You have made code changes — verify them and complete.'
+              : 'WARNING: No code modifications yet. If you have identified the issue, use write_file/edit_file NOW. Do NOT keep exploring.'
+          }`,
       };
     }
 
@@ -183,12 +185,12 @@ export class StagnationDetector {
       this.#lastMutationIteration = iteration;
       const planStatus = planSummary || 'not available';
       return {
-          type: 'no_mutation_stagnation',
-          message:
-            `[CRITICAL] No file modifications in ${STAGNATION_NO_MUTATION_LIMIT}+ iterations. You are stuck in exploration.\n` +
-            `Plan status:\n${planStatus}\n` +
-            `You MUST now use write_file or edit_file to implement the change, OR provide FINAL_ANSWER. Stop reading and start acting.`,
-          shouldDegradeBudget,
+        type: 'no_mutation_stagnation',
+        message:
+          `[CRITICAL] No file modifications in ${STAGNATION_NO_MUTATION_LIMIT}+ iterations. You are stuck in exploration.\n` +
+          `Plan status:\n${planStatus}\n` +
+          `You MUST now use write_file or edit_file to implement the change, OR provide FINAL_ANSWER. Stop reading and start acting.`,
+        shouldDegradeBudget,
       };
     }
 

@@ -14,14 +14,16 @@ describe('TextToolParser: detectMalformedToolCall', () => {
 
   it('returns null for well-formed <action>...</action>', () => {
     const p = new TextToolParser(makeRegistry(['write_file']));
-    const res = '<action>{"name": "write_file", "arguments": {"path": "x", "content": "y"}}</action>';
+    const res =
+      '<action>{"name": "write_file", "arguments": {"path": "x", "content": "y"}}</action>';
     expect(p.detectMalformedToolCall(res)).toBeNull();
   });
 
   it('parses action string objects inside <action> tags', () => {
     const p = new TextToolParser(makeRegistry(['web_search']));
-    const res = '<action>{"action":"web_search","query":"厦门天气 2026-06-18 气温","max_results":5}</action>';
-    const parsed = p.parse(res).filter(c => c.source !== 'natural_language');
+    const res =
+      '<action>{"action":"web_search","query":"厦门天气 2026-06-18 气温","max_results":5}</action>';
+    const parsed = p.parse(res).filter((c) => c.source !== 'natural_language');
     expect(parsed).toHaveLength(1);
     expect(parsed[0].name).toBe('web_search');
     expect(parsed[0].arguments.query).toBe('厦门天气 2026-06-18 气温');
@@ -68,7 +70,7 @@ describe('TextToolParser: detectMalformedToolCall', () => {
     const p = new TextToolParser(makeRegistry(['write_file']));
     const res = `<action>{"name": "write_file", "arguments": {"path": "x.js", "content": "hi"}}</annotation>`;
     // Should not parse as a tool call — let the correction loop ask LLM to retry.
-    const parsed = p.parse(res).filter(c => c.source !== 'natural_language');
+    const parsed = p.parse(res).filter((c) => c.source !== 'natural_language');
     expect(parsed.length).toBe(0);
   });
 });

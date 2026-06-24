@@ -112,7 +112,11 @@ describe('tool-activity integration', () => {
 
     test('shell: sed replacement → edit', () => {
       // The regex requires (>|writeFile|fs\.writeFile|replace\(|rename\(|unlink\(|rm\s+-|mv\s+) after sed
-      const a = describeToolActivity('shell', { command: "sed 's/old/new/g' > output.txt" }, 'running');
+      const a = describeToolActivity(
+        'shell',
+        { command: "sed 's/old/new/g' > output.txt" },
+        'running',
+      );
       expect(a.intent).toBe('edit');
     });
 

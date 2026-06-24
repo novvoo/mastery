@@ -17,7 +17,10 @@ import { WorkspaceState } from '../../src/core/workspace-state.js';
 // Helpers
 // ============================================================
 function makeTempDir(prefix) {
-  const dir = path.join(os.tmpdir(), `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+  const dir = path.join(
+    os.tmpdir(),
+    `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  );
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -33,8 +36,12 @@ function rmrf(p) {
 // ============================================================
 describe('MetricsSink', () => {
   let dir;
-  beforeEach(() => { dir = makeTempDir('metrics'); });
-  afterEach(() => { rmrf(dir); });
+  beforeEach(() => {
+    dir = makeTempDir('metrics');
+  });
+  afterEach(() => {
+    rmrf(dir);
+  });
 
   it('startRun / finishRun: 在 enabled 模式下真正写盘', () => {
     const sink = new MetricsSink({ logDir: dir, enabled: true });
@@ -42,12 +49,16 @@ describe('MetricsSink', () => {
     sink.startRun(runId);
     sink.finishRun(runId, { success: true, iterations: 3, durationMs: 120, toolCount: 5 });
 
-    const files = fs.readdirSync(dir).filter(n => n.endsWith('.ndjson'));
+    const files = fs.readdirSync(dir).filter((n) => n.endsWith('.ndjson'));
     expect(files.length).toBeGreaterThan(0);
 
     const content = fs.readFileSync(path.join(dir, files[0]), 'utf8');
-    const lines = content.trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
-    const sessionEvents = lines.filter(l => l.type === 'session');
+    const lines = content
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    const sessionEvents = lines.filter((l) => l.type === 'session');
     expect(sessionEvents.length).toBe(2);
     expect(sessionEvents[0].phase).toBe('start');
     expect(sessionEvents[0].runId).toBe('r-001');
@@ -61,9 +72,24 @@ describe('MetricsSink', () => {
     const sink = new MetricsSink({ logDir: dir, enabled: true });
     const runId = 'r-llm';
     sink.startRun(runId);
-    sink.recordLLMRequest({ runId, model: 'gpt-4o', durationMs: 820, tokensIn: 1200, tokensOut: 340, success: true, attempt: 1 });
+    sink.recordLLMRequest({
+      runId,
+      model: 'gpt-4o',
+      durationMs: 820,
+      tokensIn: 1200,
+      tokensOut: 340,
+      success: true,
+      attempt: 1,
+    });
     sink.recordToolCall({ runId, toolName: 'read_file', durationMs: 42, success: true });
-    sink.recordToolCall({ runId, toolName: 'write_file', durationMs: 60, success: false, error: 'permission denied', skipped: false });
+    sink.recordToolCall({
+      runId,
+      toolName: 'write_file',
+      durationMs: 60,
+      success: false,
+      error: 'permission denied',
+      skipped: false,
+    });
 
     const snap = sink.latestSnapshot();
     expect(snap.lastRunId).toBe('r-llm');
@@ -80,7 +106,15 @@ describe('MetricsSink', () => {
     const sink = new MetricsSink({ logDir: dir, enabled: false });
     const runId = 'r-mem';
     sink.startRun(runId);
-    sink.recordLLMRequest({ runId, model: 'fake', durationMs: 100, tokensIn: 10, tokensOut: 5, success: true, attempt: 1 });
+    sink.recordLLMRequest({
+      runId,
+      model: 'fake',
+      durationMs: 100,
+      tokensIn: 10,
+      tokensOut: 5,
+      success: true,
+      attempt: 1,
+    });
 
     // 不应该产生任何文件
     const files = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
@@ -116,8 +150,12 @@ describe('MetricsSink', () => {
 // ============================================================
 describe('WriteFileGuard', () => {
   let dir;
-  beforeEach(() => { dir = makeTempDir('wfg'); });
-  afterEach(() => { rmrf(dir); });
+  beforeEach(() => {
+    dir = makeTempDir('wfg');
+  });
+  afterEach(() => {
+    rmrf(dir);
+  });
 
   function makeIO(root) {
     return {
@@ -168,7 +206,9 @@ describe('WriteFileGuard', () => {
     const filePath = 'a.txt';
     // 构造"大改动"以触发 risky
     let oldContent = '';
-    for (let i = 0; i < 60; i++) {oldContent += `line${i}\n`;}
+    for (let i = 0; i < 60; i++) {
+      oldContent += `line${i}\n`;
+    }
     await fs.promises.writeFile(path.join(dir, filePath), oldContent, 'utf8');
 
     const guard = new WriteFileGuard({

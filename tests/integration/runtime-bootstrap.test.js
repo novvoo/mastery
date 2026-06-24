@@ -26,7 +26,9 @@ describe('runtime-bootstrap', () => {
     dir = mkdtempSync(join(tmpdir(), 'rb-'));
   });
   afterEach(() => {
-    try { rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch (_) {}
   });
 
   it('bootstrapRuntime 返回完整的 runtime 组件', async () => {
@@ -55,13 +57,13 @@ describe('runtime-bootstrap', () => {
       autoInitMCP: false,
     });
 
-    const names = rt.toolRegistry.getAll().map(tool => tool.name);
+    const names = rt.toolRegistry.getAll().map((tool) => tool.name);
     expect(names).toContain('list_dir');
     expect(names).toContain('tree');
     expect(names).toContain('write_file');
     expect(names).toContain('edit_file');
-    expect(names.some(name => name.startsWith('harness_'))).toBe(false);
-    expect(names.some(name => name.startsWith('sg_'))).toBe(false);
+    expect(names.some((name) => name.startsWith('harness_'))).toBe(false);
+    expect(names.some((name) => name.startsWith('sg_'))).toBe(false);
   });
 
   it('includeExperimentalTools=true 时仍可显式启用实验编辑工具', async () => {
@@ -72,7 +74,7 @@ describe('runtime-bootstrap', () => {
       includeExperimentalTools: true,
     });
 
-    const names = rt.toolRegistry.getAll().map(tool => tool.name);
+    const names = rt.toolRegistry.getAll().map((tool) => tool.name);
     expect(names).toContain('harness_analyze');
     expect(names).toContain('harness_replace');
     expect(names).toContain('sg_index');
@@ -100,7 +102,9 @@ describe('runtime-bootstrap', () => {
 
     const logDir = join(dir, '.agent-logs');
     expect(existsSync(logDir)).toBe(true);
-    const files = readdirSync(logDir).filter((n) => n.startsWith('metrics-') && n.endsWith('.ndjson'));
+    const files = readdirSync(logDir).filter(
+      (n) => n.startsWith('metrics-') && n.endsWith('.ndjson'),
+    );
     expect(files.length).toBeGreaterThan(0);
   });
 
@@ -158,7 +162,7 @@ describe('runtime-bootstrap', () => {
   it('securityPolicy=full 允许默认工具', () => {
     const policy = resolveSecurityPolicy('full');
     const verdict = policy.evaluate('list_dir', { directory: '.' });
-    const denied = verdict && (verdict.decision === 'deny');
+    const denied = verdict && verdict.decision === 'deny';
     expect(denied).toBe(false);
   });
 

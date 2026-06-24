@@ -10,7 +10,9 @@ function makeScriptedModelProvider(responseScript = []) {
   let idx = 0;
   return {
     constructor: { name: 'ScriptedModelProvider' },
-    getModelName() { return 'scripted'; },
+    getModelName() {
+      return 'scripted';
+    },
     async chat() {
       const next = responseScript[idx % Math.max(responseScript.length, 1)];
       idx++;
@@ -31,15 +33,21 @@ function makeScriptedModelProvider(responseScript = []) {
         usage: { inputTokens: 0, outputTokens: 0 },
       };
     },
-    get callCount() { return idx; },
+    get callCount() {
+      return idx;
+    },
   };
 }
 
 function makeFakeMemoryManager() {
   return {
-    toPromptFragment() { return '## Memory\n(no long-term memory fragments available in test harness)'; },
+    toPromptFragment() {
+      return '## Memory\n(no long-term memory fragments available in test harness)';
+    },
     async updateFileMap() {},
-    getSummary() { return []; },
+    getSummary() {
+      return [];
+    },
   };
 }
 
@@ -62,8 +70,12 @@ function makeRegistryWithTools() {
     permissionLevel: 'none',
     params: { message: { type: 'string', description: 'string to echo back' } },
     required: ['message'],
-    async call(args) { return { ok: true, echoed: args.message || '(empty)' }; },
-    async handler(args) { return { ok: true, echoed: args.message || '(empty)' }; },
+    async call(args) {
+      return { ok: true, echoed: args.message || '(empty)' };
+    },
+    async handler(args) {
+      return { ok: true, echoed: args.message || '(empty)' };
+    },
   });
   registry.register({
     name: 'sum',
@@ -75,16 +87,26 @@ function makeRegistryWithTools() {
       b: { type: 'number', description: 'second number' },
     },
     required: ['a', 'b'],
-    async call(args) { return { ok: true, result: Number(args.a) + Number(args.b) }; },
-    async handler(args) { return { ok: true, result: Number(args.a) + Number(args.b) }; },
+    async call(args) {
+      return { ok: true, result: Number(args.a) + Number(args.b) };
+    },
+    async handler(args) {
+      return { ok: true, result: Number(args.a) + Number(args.b) };
+    },
   });
   return registry;
 }
 
 function makeUi() {
   return {
-    iteration() {}, toolCall() {}, toolResult() {}, toolError() {},
-    finalAnswer() {}, warn() {}, debug() {}, thinking() {},
+    iteration() {},
+    toolCall() {},
+    toolResult() {},
+    toolError() {},
+    finalAnswer() {},
+    warn() {},
+    debug() {},
+    thinking() {},
     debugEvent() {},
   };
 }
@@ -100,7 +122,13 @@ describe('ReAct loop: real ToolRegistry + scripted model provider', () => {
   });
 
   afterEach(() => {
-    if (engine) { try { engine.dispose(); } catch { /* ok */ } }
+    if (engine) {
+      try {
+        engine.dispose();
+      } catch {
+        /* ok */
+      }
+    }
   });
 
   test('FINAL_ANSWER marker: terminates with success=true', async () => {
@@ -128,7 +156,7 @@ describe('ReAct loop: real ToolRegistry + scripted model provider', () => {
     const result = await engine.run('echo something');
     expect(result.success).toBe(true);
     expect(result.toolEvents.length).toBeGreaterThan(0);
-    const echoEvent = result.toolEvents.find(e => e.name === 'echo');
+    const echoEvent = result.toolEvents.find((e) => e.name === 'echo');
     expect(echoEvent).toBeTruthy();
     expect(echoEvent.success).toBe(true);
     expect(String(echoEvent.resultPreview || '')).toMatch(/ping/);
@@ -146,14 +174,16 @@ describe('ReAct loop: real ToolRegistry + scripted model provider', () => {
     engine = buildEngine(registry, model, ui);
     const result = await engine.run('sum 40 and 2');
     expect(result.success).toBe(true);
-    const sumEvent = result.toolEvents.find(e => e.name === 'sum');
+    const sumEvent = result.toolEvents.find((e) => e.name === 'sum');
     expect(sumEvent).toBeTruthy();
     expect(sumEvent.success).toBe(true);
     expect(String(sumEvent.resultPreview || '')).toMatch(/42/);
   });
 
   test('Provider returns stop with text → treated as final answer', async () => {
-    const model = makeScriptedModelProvider([{ text: 'The answer is blue.', finishReason: 'stop' }]);
+    const model = makeScriptedModelProvider([
+      { text: 'The answer is blue.', finishReason: 'stop' },
+    ]);
     engine = buildEngine(registry, model, ui);
     const result = await engine.run('color of the sky');
     expect(result.success).toBe(true);

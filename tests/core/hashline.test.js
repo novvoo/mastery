@@ -34,7 +34,10 @@ import {
   createDiff3Conflict,
   HashlineErrorCode,
 } from '../../src/core/harness/hashline.js';
-import { ContentAddressableStore, FileAnalyzer } from '../../src/core/harness/content-addressing.js';
+import {
+  ContentAddressableStore,
+  FileAnalyzer,
+} from '../../src/core/harness/content-addressing.js';
 
 // ── 哈希 / 规范化 ────────────────────────────────────────────────────────────
 
@@ -104,7 +107,9 @@ describe('hashline: DiskFilesystem', () => {
       expect(st.size).toBe(12);
     } finally {
       const { unlink } = await import('fs/promises');
-      try { await unlink(absPath); } catch {}
+      try {
+        await unlink(absPath);
+      } catch {}
     }
   });
 
@@ -234,7 +239,10 @@ describe('hashline: parsePatch', () => {
   test('parses SWAP range with multiple content lines', () => {
     const patch = parsePatch('[a#t]\nSWAP 2.=4:\n+x\n+y\n+z');
     expect(patch.sections[0].hunks[0]).toMatchObject({
-      op: OP_SWAP, start: 2, end: 4, lines: ['x', 'y', 'z'],
+      op: OP_SWAP,
+      start: 2,
+      end: 4,
+      lines: ['x', 'y', 'z'],
     });
   });
 
@@ -316,9 +324,7 @@ describe('hashline: applyHunksToText', () => {
   });
 
   test('DEL removes range', () => {
-    const out = applyHunksToText(text, [
-      { op: OP_DEL, start: 2, end: 3, lines: [], srcLine: 1 },
-    ]);
+    const out = applyHunksToText(text, [{ op: OP_DEL, start: 2, end: 3, lines: [], srcLine: 1 }]);
     expect(out).toBe('l1\nl4\nl5');
   });
 
@@ -397,9 +403,7 @@ describe('hashline: Patcher apply (clean)', () => {
     const tb = snapshots.record('b.txt', 'b1\nb2\n');
     const patcher = new Patcher({ fs, snapshots });
 
-    const r = await patcher.apply(
-      `[a.txt#${ta}]\nDEL 1.=1\n[b.txt#${tb}]\nSWAP 1.=1:\n+B1`,
-    );
+    const r = await patcher.apply(`[a.txt#${ta}]\nDEL 1.=1\n[b.txt#${tb}]\nSWAP 1.=1:\n+B1`);
     expect(r.ok).toBe(true);
     expect(await fs.read('a.txt')).toBe('a2\n');
     expect(await fs.read('b.txt')).toBe('B1\nb2\n');
@@ -526,7 +530,7 @@ describe('hashline: Patcher recovery', () => {
     expect(r.sections[0].recovered).toBe(true);
     expect(r.sections[0].conflicts.length).toBeGreaterThan(0);
     expect(r.sections[0].conflicts[0].type).toBe('conflict');
-    expect(r.sections[0].warnings.some(w => w.includes('conflict'))).toBe(true);
+    expect(r.sections[0].warnings.some((w) => w.includes('conflict'))).toBe(true);
   });
 
   test('LCS-based line mapping handles deletions correctly', async () => {
@@ -617,9 +621,15 @@ describe('hashline: HashlineBridge', () => {
 
   test('bridge swallows store errors', () => {
     const badStore = {
-      storeBlob() { throw new Error('boom'); },
-      setRef() { throw new Error('boom'); },
-      getRef() { return null; },
+      storeBlob() {
+        throw new Error('boom');
+      },
+      setRef() {
+        throw new Error('boom');
+      },
+      getRef() {
+        return null;
+      },
     };
     const bridge = new HashlineBridge(badStore);
     expect(() => bridge.recordApply('p', 'a', 'b', 't1', 't2')).not.toThrow();
@@ -699,7 +709,9 @@ async function _setupTestEnv() {
 }
 
 async function _cleanupTestEnv() {
-  try { await rm(_testDir, { recursive: true, force: true }); } catch {}
+  try {
+    await rm(_testDir, { recursive: true, force: true });
+  } catch {}
 }
 
 const _FOO_TS = `import { bar } from './bar';
@@ -725,7 +737,11 @@ describe('Hashline: Stale Anchor Recovery', () => {
   test('recover from stale tag via content remap', async () => {
     await _setupTestEnv();
     try {
-      const patcher = new Patcher({ fs: _diskFS, snapshots: new InMemorySnapshotStore(), autoRecord: true });
+      const patcher = new Patcher({
+        fs: _diskFS,
+        snapshots: new InMemorySnapshotStore(),
+        autoRecord: true,
+      });
       const barContent = await _diskFS.read('src/bar.ts');
       const barTag = computeTag(normalizeText(barContent));
       const patchText = `[src/bar.ts#${barTag}]
@@ -736,20 +752,26 @@ SWAP 1.=2:
       await _diskFS.write('src/bar.ts', barContent.replace('x * 2', 'x * 2.5'));
       const result = await patcher.apply(patchText);
       const sections = result.sections || [];
-      const appliedOrRecovered = sections.filter(s => s.applied || s.recovered);
+      const appliedOrRecovered = sections.filter((s) => s.applied || s.recovered);
       if (appliedOrRecovered.length === 0) {
         const finalContent = await _diskFS.read('src/bar.ts');
         expect(finalContent.includes('bar(x')).toBe(true);
       } else {
         expect(appliedOrRecovered.length).toBeGreaterThan(0);
       }
-    } finally { await _cleanupTestEnv(); }
+    } finally {
+      await _cleanupTestEnv();
+    }
   });
 
   test('detect un-recoverable stale tag', async () => {
     await _setupTestEnv();
     try {
-      const patcher = new Patcher({ fs: _diskFS, snapshots: new InMemorySnapshotStore(), autoRecord: true });
+      const patcher = new Patcher({
+        fs: _diskFS,
+        snapshots: new InMemorySnapshotStore(),
+        autoRecord: true,
+      });
       const fakeTag = 'a'.repeat(64);
       const patchText = `[src/bar.ts#${fakeTag}]
 SWAP 1.=2:
@@ -758,7 +780,9 @@ SWAP 1.=2:
 +}`;
       const result = await patcher.apply(patchText);
       expect(result.ok === false || (result.sections || []).length === 0).toBe(true);
-    } finally { await _cleanupTestEnv(); }
+    } finally {
+      await _cleanupTestEnv();
+    }
   });
 });
 
@@ -766,14 +790,23 @@ describe('Hashline: Moved Block Recovery', () => {
   test('track moved block via content fingerprint', async () => {
     await _setupTestEnv();
     try {
-      const patcher = new Patcher({ fs: _diskFS, snapshots: new InMemorySnapshotStore(), autoRecord: true });
+      const patcher = new Patcher({
+        fs: _diskFS,
+        snapshots: new InMemorySnapshotStore(),
+        autoRecord: true,
+      });
       const fooContent = await _diskFS.read('src/foo.ts');
       const fooTag = computeTag(normalizeText(fooContent));
       const lines = fooContent.split('\n');
       const classLines = lines.slice(3, 9);
       const restHead = lines.slice(0, 3);
       const restTail = lines.slice(9);
-      const movedContent = [...restHead, ...restTail.slice(0, 2), ...classLines, ...restTail.slice(2)].join('\n');
+      const movedContent = [
+        ...restHead,
+        ...restTail.slice(0, 2),
+        ...classLines,
+        ...restTail.slice(2),
+      ].join('\n');
       await _diskFS.write('src/foo.ts', movedContent);
       const patchText = `[src/foo.ts#${fooTag}]
 SWAP 4.=9:
@@ -787,7 +820,9 @@ SWAP 4.=9:
       const result = await patcher.apply(patchText);
       const sections = result.sections || [];
       expect(sections.length >= 0).toBe(true);
-    } finally { await _cleanupTestEnv(); }
+    } finally {
+      await _cleanupTestEnv();
+    }
   });
 });
 
@@ -799,7 +834,11 @@ describe('Hashline: Duplicate Block Matching', () => {
 export function main(x: number): number { return helper(x) * 2; }
 export function helper(x: number): number { return x + 1; }`;
       await _diskFS.write('src/dup.ts', dupContent);
-      const patcher = new Patcher({ fs: _diskFS, snapshots: new InMemorySnapshotStore(), autoRecord: true });
+      const patcher = new Patcher({
+        fs: _diskFS,
+        snapshots: new InMemorySnapshotStore(),
+        autoRecord: true,
+      });
       const tag = computeTag(normalizeText(dupContent));
       const patchText = `[src/dup.ts#${tag}]
 SWAP 1.=1:
@@ -809,7 +848,9 @@ SWAP 1.=1:
       await patcher.apply(patchText);
       const finalContent = await _diskFS.read('src/dup.ts');
       expect(finalContent.includes('x + 10')).toBe(true);
-    } finally { await _cleanupTestEnv(); }
+    } finally {
+      await _cleanupTestEnv();
+    }
   });
 });
 
@@ -819,13 +860,22 @@ describe('Hashline: Diff3 Conflict Detection', () => {
     try {
       const barContent = await _diskFS.read('src/bar.ts');
       const baseText = normalizeText(barContent);
-      const patchHunks = [{ op: 'SWAP', start: 1, end: 2, lines: ['export function bar(x: number): number {', '  return x * 3;'] }];
+      const patchHunks = [
+        {
+          op: 'SWAP',
+          start: 1,
+          end: 2,
+          lines: ['export function bar(x: number): number {', '  return x * 3;'],
+        },
+      ];
       const currentText = barContent.replace('x * 2', 'x * 999');
       const result = Diff3MergeEngine.merge(baseText, currentText, patchHunks, 'src/bar.ts');
       expect(result).toBeTruthy();
       expect(typeof result.merged === 'string' || result.merged === null).toBe(true);
       expect(Array.isArray(result.conflicts)).toBe(true);
-    } finally { await _cleanupTestEnv(); }
+    } finally {
+      await _cleanupTestEnv();
+    }
   });
 
   test('diff3 merge with identical base/current', async () => {
@@ -837,7 +887,9 @@ describe('Hashline: Diff3 Conflict Detection', () => {
       const result = Diff3MergeEngine.merge(baseText, baseText, patchHunks, 'src/bar.ts');
       expect(result).toBeTruthy();
       expect(Array.isArray(result.conflicts)).toBe(true);
-    } finally { await _cleanupTestEnv(); }
+    } finally {
+      await _cleanupTestEnv();
+    }
   });
 });
 
@@ -845,7 +897,11 @@ describe('Hashline: Rollback', () => {
   test('rollback after failed apply', async () => {
     await _setupTestEnv();
     try {
-      const patcher = new Patcher({ fs: _diskFS, snapshots: new InMemorySnapshotStore(), autoRecord: true });
+      const patcher = new Patcher({
+        fs: _diskFS,
+        snapshots: new InMemorySnapshotStore(),
+        autoRecord: true,
+      });
       const original = await _diskFS.read('src/baz.ts');
       const tag = computeTag(normalizeText(original));
       await patcher.apply(`[src/baz.ts#${tag}]
@@ -853,13 +909,19 @@ SWAP 999.=1000:
 +should fail`);
       const current = await _diskFS.read('src/baz.ts');
       expect(normalizeText(current)).toBe(normalizeText(original));
-    } finally { await _cleanupTestEnv(); }
+    } finally {
+      await _cleanupTestEnv();
+    }
   });
 
   test('rollback all on multi-section failure', async () => {
     await _setupTestEnv();
     try {
-      const patcher = new Patcher({ fs: _diskFS, snapshots: new InMemorySnapshotStore(), autoRecord: true });
+      const patcher = new Patcher({
+        fs: _diskFS,
+        snapshots: new InMemorySnapshotStore(),
+        autoRecord: true,
+      });
       const fooOrig = await _diskFS.read('src/foo.ts');
       const barOrig = await _diskFS.read('src/bar.ts');
       const fooTag = computeTag(normalizeText(fooOrig));
@@ -875,7 +937,9 @@ SWAP 999.=1000:
 +should fail`);
       const barCur = await _diskFS.read('src/bar.ts');
       expect(normalizeText(barCur)).toBe(normalizeText(barOrig));
-    } finally { await _cleanupTestEnv(); }
+    } finally {
+      await _cleanupTestEnv();
+    }
   });
 });
 
@@ -889,7 +953,11 @@ describe('Hashline: Symlink Escape Protection', () => {
     await mkdir(outsideDir, { recursive: true });
     await writeFile(join(outsideDir, 'secret.txt'), 'SECRET');
     try {
-      try { await symlink(outsideDir, join(symTestDir, 'src/escape-link')); } catch { return; }
+      try {
+        await symlink(outsideDir, join(symTestDir, 'src/escape-link'));
+      } catch {
+        return;
+      }
       const fs2 = new DiskFilesystem(symTestDir);
       try {
         await fs2.write('src/escape-link/exploit.txt', 'PWNED');
@@ -898,8 +966,12 @@ describe('Hashline: Symlink Escape Protection', () => {
         expect(err.message).toMatch(/escape|ENOENT/i);
       }
     } finally {
-      try { await rm(symTestDir, { recursive: true, force: true }); } catch {}
-      try { await rm(outsideDir, { recursive: true, force: true }); } catch {}
+      try {
+        await rm(symTestDir, { recursive: true, force: true });
+      } catch {}
+      try {
+        await rm(outsideDir, { recursive: true, force: true });
+      } catch {}
     }
   });
 
@@ -908,11 +980,15 @@ describe('Hashline: Symlink Escape Protection', () => {
     await mkdir(symTestDir, { recursive: true });
     try {
       const fs2 = new DiskFilesystem(symTestDir);
-      expect(async () => { await fs2.write('../outside.ts', 'ESCAPED'); }).toThrow(/escape/i);
+      expect(async () => {
+        await fs2.write('../outside.ts', 'ESCAPED');
+      }).toThrow(/escape/i);
     } catch {
       expect(true).toBe(true);
     } finally {
-      try { await rm(symTestDir, { recursive: true, force: true }); } catch {}
+      try {
+        await rm(symTestDir, { recursive: true, force: true });
+      } catch {}
     }
   });
 });
@@ -921,13 +997,20 @@ describe('Hashline: Policy Gate', () => {
   test('detect binary content', async () => {
     await _setupTestEnv();
     try {
-      await writeFile(join(_testDir, 'binary.dat'), Buffer.from([0x00, 0xFF, 0xFE]));
-      const patcher = new Patcher({ fs: _diskFS, snapshots: new InMemorySnapshotStore(), autoRecord: true });
-      const result = await patcher.apply(`[binary.dat#0000000000000000000000000000000000000000000000000000000000000000]
+      await writeFile(join(_testDir, 'binary.dat'), Buffer.from([0x00, 0xff, 0xfe]));
+      const patcher = new Patcher({
+        fs: _diskFS,
+        snapshots: new InMemorySnapshotStore(),
+        autoRecord: true,
+      });
+      const result =
+        await patcher.apply(`[binary.dat#0000000000000000000000000000000000000000000000000000000000000000]
 SWAP 1.=1:
 +not binary`);
       expect(result.ok === false || (result.sections || []).length === 0).toBe(true);
-    } finally { await _cleanupTestEnv(); }
+    } finally {
+      await _cleanupTestEnv();
+    }
   });
 });
 
@@ -956,7 +1039,9 @@ INS.TAIL 3=
 +// Tail`);
       expect(patch.sections.length).toBe(1);
       expect(patch.sections[0].hunks.length).toBe(2);
-    } finally { await _cleanupTestEnv(); }
+    } finally {
+      await _cleanupTestEnv();
+    }
   });
 });
 

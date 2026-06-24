@@ -191,7 +191,11 @@ describe('findTopLevelKeyPositions', () => {
 
 describe('extractRecoveredValue', () => {
   const mockSafeJSONParse = (str) => {
-    try { return JSON.parse(str); } catch { return null; }
+    try {
+      return JSON.parse(str);
+    } catch {
+      return null;
+    }
   };
 
   test('extracts double-quoted string value', () => {
@@ -237,10 +241,16 @@ describe('extractRecoveredValue', () => {
 
 describe('recoverCallArguments', () => {
   const mockExtractor = (raw) => {
-    if (!raw || typeof raw !== 'string') {return null;}
+    if (!raw || typeof raw !== 'string') {
+      return null;
+    }
     let val = raw.trim();
-    if (val.startsWith('"') && val.endsWith('"')) {return val.slice(1, -1);}
-    if (val.startsWith("'") && val.endsWith("'")) {return val.slice(1, -1);}
+    if (val.startsWith('"') && val.endsWith('"')) {
+      return val.slice(1, -1);
+    }
+    if (val.startsWith("'") && val.endsWith("'")) {
+      return val.slice(1, -1);
+    }
     return val;
   };
 
@@ -284,7 +294,13 @@ describe('parseCALLFormat', () => {
 
   const deps = {
     toolRegistry: makeToolRegistry(['read_file', 'shell', 'web_search']),
-    safeJSONParse: (str) => { try { return JSON.parse(str); } catch { return null; } },
+    safeJSONParse: (str) => {
+      try {
+        return JSON.parse(str);
+      } catch {
+        return null;
+      }
+    },
     normalizeJSONToolCall: (name, args) => ({ name, args }),
     recoverCallArguments: (raw) => null,
   };
@@ -320,7 +336,10 @@ describe('parseCALLFormat', () => {
   });
 
   test('handles CALL with nested JSON arguments', () => {
-    const result = parseCALLFormat('CALL read_file({"path": "/tmp", "opts": {"verbose": true}})', deps);
+    const result = parseCALLFormat(
+      'CALL read_file({"path": "/tmp", "opts": {"verbose": true}})',
+      deps,
+    );
     expect(result.length).toBe(1);
     expect(result[0].arguments.opts.verbose).toBe(true);
   });

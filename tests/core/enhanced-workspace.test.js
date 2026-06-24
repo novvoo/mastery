@@ -82,18 +82,18 @@ describe('createEnhancedWorkspace', () => {
     // Test workspaceState directly
     expect(ew.workspaceState.checkPathExists('/missing.js')).toBe('not_found');
     const facts = ew.workspaceState.getCriticalFacts();
-    expect(facts.some(f => f.type === 'path_not_found')).toBe(true);
+    expect(facts.some((f) => f.type === 'path_not_found')).toBe(true);
   });
 
   test('knownNonExistent paths are derivable from workspaceState critical facts', () => {
     const ew = createEnhancedWorkspace();
     // No failed paths
-    const facts1 = ew.workspaceState.getCriticalFacts().filter(f => f.type === 'path_not_found');
+    const facts1 = ew.workspaceState.getCriticalFacts().filter((f) => f.type === 'path_not_found');
     expect(facts1.length).toBe(0);
 
     // Add a failed path
     ew.workspaceState.recordPathNotFound('/gone.js', 'deleted');
-    const facts2 = ew.workspaceState.getCriticalFacts().filter(f => f.type === 'path_not_found');
+    const facts2 = ew.workspaceState.getCriticalFacts().filter((f) => f.type === 'path_not_found');
     expect(facts2.length).toBeGreaterThan(0);
     expect(facts2[0].value.path).toBe('/gone.js');
   });
@@ -126,8 +126,8 @@ describe('createEnhancedWorkspace', () => {
 
     const ew = createEnhancedWorkspace({ toolRegistry });
     expect(registeredTools.length).toBeGreaterThan(0);
-    expect(registeredTools.some(t => t.name === 'workspace_knowledge')).toBe(true);
-    expect(registeredTools.some(t => t.name === 'workspace_check_operation')).toBe(true);
+    expect(registeredTools.some((t) => t.name === 'workspace_knowledge')).toBe(true);
+    expect(registeredTools.some((t) => t.name === 'workspace_check_operation')).toBe(true);
   });
 
   test('does not register tools when includeToolsInRegistry is false', () => {

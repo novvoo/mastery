@@ -283,8 +283,18 @@ describe('LSPClient with mock server', () => {
   });
 
   afterEach(async () => {
-    if (client) { try { await client.shutdown(); } catch { /* ok */ } }
-    try { await rm(workDir, { recursive: true, force: true }); } catch { /* ok */ }
+    if (client) {
+      try {
+        await client.shutdown();
+      } catch {
+        /* ok */
+      }
+    }
+    try {
+      await rm(workDir, { recursive: true, force: true });
+    } catch {
+      /* ok */
+    }
     await delay(50);
   });
 
@@ -337,7 +347,12 @@ describe('LSPClient with mock server', () => {
     client.initialized();
     // 先开一个文档触发 diagnostics URI 定位
     client.notify('textDocument/didOpen', {
-      textDocument: { uri: 'file:///test.ts', languageId: 'typescript', version: 1, text: 'const x = 1;' },
+      textDocument: {
+        uri: 'file:///test.ts',
+        languageId: 'typescript',
+        version: 1,
+        text: 'const x = 1;',
+      },
     });
     const params = await diagPromise;
     expect(params.uri).toBeDefined();
@@ -365,8 +380,18 @@ describe('ServerManager', () => {
   });
 
   afterEach(async () => {
-    if (mgr) { try { await mgr.shutdown(); } catch { /* ok */ } }
-    try { await rm(workDir, { recursive: true, force: true }); } catch { /* ok */ }
+    if (mgr) {
+      try {
+        await mgr.shutdown();
+      } catch {
+        /* ok */
+      }
+    }
+    try {
+      await rm(workDir, { recursive: true, force: true });
+    } catch {
+      /* ok */
+    }
   });
 
   test('supportedLanguages lists configured languages', () => {
@@ -406,7 +431,11 @@ describe('ServerManager with mock server', () => {
   beforeEach(async () => {
     workDir = await mkdtemp(join(tmpdir(), 'lsp-mgr-int-'));
     testFile = join(workDir, 'test.ts');
-    await writeFile(testFile, 'const unused = 1;\nfunction oldFunc() {\n  return 42;\n}\nconst y: any = "hello";\n', 'utf-8');
+    await writeFile(
+      testFile,
+      'const unused = 1;\nfunction oldFunc() {\n  return 42;\n}\nconst y: any = "hello";\n',
+      'utf-8',
+    );
     mockScript = await createMockServerScript(workDir);
     mgr = new ServerManager({
       workspaceRoot: workDir,
@@ -421,16 +450,30 @@ describe('ServerManager with mock server', () => {
   });
 
   afterEach(async () => {
-    if (mgr) { try { await mgr.shutdown(); } catch { /* ok */ } }
-    try { await rm(workDir, { recursive: true, force: true }); } catch { /* ok */ }
+    if (mgr) {
+      try {
+        await mgr.shutdown();
+      } catch {
+        /* ok */
+      }
+    }
+    try {
+      await rm(workDir, { recursive: true, force: true });
+    } catch {
+      /* ok */
+    }
     await delay(50);
   });
 
   test('request textDocument/definition via ServerManager', async () => {
     const content = await readFile(testFile, 'utf-8');
     const result = await mgr.request(
-      'textDocument/definition', testFile, {},
-      { line: 1, character: 5 }, content, 10000,
+      'textDocument/definition',
+      testFile,
+      {},
+      { line: 1, character: 5 },
+      content,
+      10000,
     );
     expect(Array.isArray(result)).toBe(true);
     expect(result[0].uri).toBe(`file://${testFile}`);
@@ -439,9 +482,12 @@ describe('ServerManager with mock server', () => {
   test('request textDocument/references via ServerManager', async () => {
     const content = await readFile(testFile, 'utf-8');
     const result = await mgr.request(
-      'textDocument/references', testFile,
+      'textDocument/references',
+      testFile,
       { context: { includeDeclaration: true } },
-      { line: 1, character: 5 }, content, 10000,
+      { line: 1, character: 5 },
+      content,
+      10000,
     );
     expect(result.length).toBe(2);
   });
@@ -449,8 +495,12 @@ describe('ServerManager with mock server', () => {
   test('request textDocument/prepareRename via ServerManager', async () => {
     const content = await readFile(testFile, 'utf-8');
     const result = await mgr.request(
-      'textDocument/prepareRename', testFile, {},
-      { line: 1, character: 5 }, content, 10000,
+      'textDocument/prepareRename',
+      testFile,
+      {},
+      { line: 1, character: 5 },
+      content,
+      10000,
     );
     expect(result.placeholder).toBe('oldFunc');
   });
@@ -459,9 +509,16 @@ describe('ServerManager with mock server', () => {
     const content = await readFile(testFile, 'utf-8');
     // 使用 onDiagnostics 事件精确等待，避免轮询时序竞争
     const diagPromise = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('timed out waiting for diagnostics')), 10_000);
+      const timer = setTimeout(
+        () => reject(new Error('timed out waiting for diagnostics')),
+        10_000,
+      );
       const unsub = mgr.onDiagnostics((params) => {
-        if (params.uri === `file://${testFile}` && params.diagnostics && params.diagnostics.length >= 1) {
+        if (
+          params.uri === `file://${testFile}` &&
+          params.diagnostics &&
+          params.diagnostics.length >= 1
+        ) {
           clearTimeout(timer);
           unsub();
           resolve(params.diagnostics);
@@ -532,10 +589,7 @@ describe('createLSPTools', () => {
     const tools = createLSPTools({ lspManager: mgr });
     const diag = tools.find((t) => t.name === 'lsp_diagnostics');
     // 使用 * 通配符，返回空
-    const result = await diag.handler(
-      { filePath: '*' },
-      { workingDirectory: tmpdir() },
-    );
+    const result = await diag.handler({ filePath: '*' }, { workingDirectory: tmpdir() });
     expect(result.success).toBe(true);
     expect(result.totalDiagnostics).toBe(0);
   });
@@ -555,7 +609,11 @@ describe('LSP tools with mock server integration', () => {
     // 确保目录存在
     const { mkdir } = await import('fs/promises');
     await mkdir(join(workDir, 'src'), { recursive: true });
-    await writeFile(testFile, 'const unused = 1;\nfunction oldFunc() {\n  return 42;\n}\nconst y: any = "hello";\n', 'utf-8');
+    await writeFile(
+      testFile,
+      'const unused = 1;\nfunction oldFunc() {\n  return 42;\n}\nconst y: any = "hello";\n',
+      'utf-8',
+    );
     mockScript = await createMockServerScript(workDir);
     mgr = new ServerManager({
       workspaceRoot: workDir,
@@ -570,8 +628,18 @@ describe('LSP tools with mock server integration', () => {
   });
 
   afterEach(async () => {
-    if (mgr) { try { await mgr.shutdown(); } catch { /* ok */ } }
-    try { await rm(workDir, { recursive: true, force: true }); } catch { /* ok */ }
+    if (mgr) {
+      try {
+        await mgr.shutdown();
+      } catch {
+        /* ok */
+      }
+    }
+    try {
+      await rm(workDir, { recursive: true, force: true });
+    } catch {
+      /* ok */
+    }
     await delay(50);
   });
 
@@ -624,10 +692,7 @@ describe('LSP tools with mock server integration', () => {
   test('lsp_code_action returns action list', async () => {
     const tools = createLSPTools({ lspManager: mgr });
     const ca = tools.find((t) => t.name === 'lsp_code_action');
-    const result = await ca.handler(
-      { filePath: testFile },
-      { workingDirectory: workDir },
-    );
+    const result = await ca.handler({ filePath: testFile }, { workingDirectory: workDir });
     expect(result.success).toBe(true);
     expect(result.actions.length).toBeGreaterThanOrEqual(1);
   });
@@ -680,10 +745,7 @@ describe('LSP tools with mock server integration', () => {
   test('lsp_inlay_hints returns hints', async () => {
     const tools = createLSPTools({ lspManager: mgr });
     const ih = tools.find((t) => t.name === 'lsp_inlay_hints');
-    const result = await ih.handler(
-      { filePath: testFile },
-      { workingDirectory: workDir },
-    );
+    const result = await ih.handler({ filePath: testFile }, { workingDirectory: workDir });
     expect(result.success).toBe(true);
     expect(result.hints).toBeDefined();
     expect(result.count).toBeGreaterThanOrEqual(1);
@@ -692,10 +754,7 @@ describe('LSP tools with mock server integration', () => {
   test('lsp_folding_ranges returns folds', async () => {
     const tools = createLSPTools({ lspManager: mgr });
     const fr = tools.find((t) => t.name === 'lsp_folding_ranges');
-    const result = await fr.handler(
-      { filePath: testFile },
-      { workingDirectory: workDir },
-    );
+    const result = await fr.handler({ filePath: testFile }, { workingDirectory: workDir });
     expect(result.success).toBe(true);
     expect(result.folds).toBeDefined();
     expect(result.count).toBeGreaterThanOrEqual(1);
@@ -712,7 +771,7 @@ describe('LSP tools with mock server integration', () => {
     expect(result.ranges).toBeDefined();
     expect(result.count).toBeGreaterThanOrEqual(2);
     // 范围应有嵌套层级
-    const labels = result.ranges.map(r => r.snippet);
+    const labels = result.ranges.map((r) => r.snippet);
     expect(labels.length).toBeGreaterThanOrEqual(2);
   });
 });
@@ -728,10 +787,20 @@ async function _lspSetupEnv({ name = 'lsp-test', tsconfig } = {}) {
   await mkdir(_lspTestDir, { recursive: true });
   await mkdir(join(_lspTestDir, 'src'), { recursive: true });
   const ts = tsconfig || {
-    compilerOptions: { paths: { '@app/*': ['./src/app/*'], '@lib/*': ['./src/lib/*'], '@shared': ['./src/shared/index.ts'] }, baseUrl: '.' },
+    compilerOptions: {
+      paths: {
+        '@app/*': ['./src/app/*'],
+        '@lib/*': ['./src/lib/*'],
+        '@shared': ['./src/shared/index.ts'],
+      },
+      baseUrl: '.',
+    },
   };
   await writeFile(join(_lspTestDir, 'tsconfig.json'), JSON.stringify(ts, null, 2));
-  await writeFile(join(_lspTestDir, 'package.json'), JSON.stringify({ name: name || 'test-project', version: '1.0.0' }, null, 2));
+  await writeFile(
+    join(_lspTestDir, 'package.json'),
+    JSON.stringify({ name: name || 'test-project', version: '1.0.0' }, null, 2),
+  );
   await mkdir(join(_lspTestDir, 'src/app'), { recursive: true });
   await mkdir(join(_lspTestDir, 'src/lib'), { recursive: true });
   await mkdir(join(_lspTestDir, 'src/shared'), { recursive: true });
@@ -741,7 +810,11 @@ async function _lspSetupEnv({ name = 'lsp-test', tsconfig } = {}) {
 }
 
 async function _lspCleanupEnv() {
-  try { if (_lspTestDir) {await rm(_lspTestDir, { recursive: true, force: true });} } catch {}
+  try {
+    if (_lspTestDir) {
+      await rm(_lspTestDir, { recursive: true, force: true });
+    }
+  } catch {}
 }
 
 describe('LSP: ModuleResolver', () => {
@@ -753,7 +826,9 @@ describe('LSP: ModuleResolver', () => {
       const r = resolver.resolveImport('@app/main', join(_lspTestDir, 'src/app/main.ts'));
       expect(r).toBeTruthy();
       expect(r?.includes('src/app/main')).toBe(true);
-    } finally { await _lspCleanupEnv(); }
+    } finally {
+      await _lspCleanupEnv();
+    }
   });
 
   test('resolve @shared alias', async () => {
@@ -763,7 +838,9 @@ describe('LSP: ModuleResolver', () => {
       await resolver.init();
       const r = resolver.resolveImport('@shared', join(_lspTestDir, 'src/app/main.ts'));
       expect(r).toBeTruthy();
-    } finally { await _lspCleanupEnv(); }
+    } finally {
+      await _lspCleanupEnv();
+    }
   });
 
   test('resolve relative imports', async () => {
@@ -773,7 +850,9 @@ describe('LSP: ModuleResolver', () => {
       await resolver.init();
       const r = resolver.resolveImport('../lib/utils', join(_lspTestDir, 'src/app/main.ts'));
       expect(r?.includes('src/lib/utils')).toBe(true);
-    } finally { await _lspCleanupEnv(); }
+    } finally {
+      await _lspCleanupEnv();
+    }
   });
 
   test('match pipeline aliases', async () => {
@@ -785,7 +864,9 @@ describe('LSP: ModuleResolver', () => {
       expect(m1?.alias).toBe('@app');
       const m2 = resolver.matchAlias('@shared');
       expect(m2?.alias).toBe('@shared');
-    } finally { await _lspCleanupEnv(); }
+    } finally {
+      await _lspCleanupEnv();
+    }
   });
 });
 
@@ -793,17 +874,27 @@ describe('LSP: ImportGraph', () => {
   test('build graph from files', async () => {
     await _lspSetupEnv();
     try {
-      await writeFile(join(_lspTestDir, 'a.ts'), `import { b } from './b'; import { d } from './d'; export const a = 1;\n`);
+      await writeFile(
+        join(_lspTestDir, 'a.ts'),
+        `import { b } from './b'; import { d } from './d'; export const a = 1;\n`,
+      );
       await writeFile(join(_lspTestDir, 'b.ts'), `import { c } from './c'; export const b = 2;\n`);
       await writeFile(join(_lspTestDir, 'c.ts'), `export const c = 3;\n`);
       await writeFile(join(_lspTestDir, 'd.ts'), `export const d = 4;\n`);
       const graph = new ImportGraph({ workingDirectory: _lspTestDir });
-      const files = [join(_lspTestDir, 'a.ts'), join(_lspTestDir, 'b.ts'), join(_lspTestDir, 'c.ts'), join(_lspTestDir, 'd.ts')];
+      const files = [
+        join(_lspTestDir, 'a.ts'),
+        join(_lspTestDir, 'b.ts'),
+        join(_lspTestDir, 'c.ts'),
+        join(_lspTestDir, 'd.ts'),
+      ];
       await graph.build(files);
       expect(graph.graph.size).toBe(4);
       const aNode = graph.graph.get(join(_lspTestDir, 'a.ts'));
       expect(aNode.imports.length).toBeGreaterThanOrEqual(2);
-    } finally { await _lspCleanupEnv(); }
+    } finally {
+      await _lspCleanupEnv();
+    }
   });
 
   test('find transitive imports', async () => {
@@ -815,7 +906,9 @@ describe('LSP: ImportGraph', () => {
       const graph = new ImportGraph({ workingDirectory: _lspTestDir });
       const transitive = await graph.getTransitiveImports(join(_lspTestDir, 'a.ts'));
       expect(transitive.length).toBeGreaterThanOrEqual(2);
-    } finally { await _lspCleanupEnv(); }
+    } finally {
+      await _lspCleanupEnv();
+    }
   });
 
   test('find importers of a module', async () => {
@@ -825,11 +918,17 @@ describe('LSP: ImportGraph', () => {
       await writeFile(join(_lspTestDir, 'b.ts'), `import { c } from './c'; export const b = 2;\n`);
       await writeFile(join(_lspTestDir, 'c.ts'), `export const c = 3;\n`);
       const graph = new ImportGraph({ workingDirectory: _lspTestDir });
-      const files = [join(_lspTestDir, 'a.ts'), join(_lspTestDir, 'b.ts'), join(_lspTestDir, 'c.ts')];
+      const files = [
+        join(_lspTestDir, 'a.ts'),
+        join(_lspTestDir, 'b.ts'),
+        join(_lspTestDir, 'c.ts'),
+      ];
       await graph.build(files);
       const importers = await graph.getImporters(join(_lspTestDir, 'c.ts'), files);
-      expect(importers.some(i => i.endsWith('b.ts'))).toBe(true);
-    } finally { await _lspCleanupEnv(); }
+      expect(importers.some((i) => i.endsWith('b.ts'))).toBe(true);
+    } finally {
+      await _lspCleanupEnv();
+    }
   });
 });
 
@@ -838,12 +937,20 @@ describe('LSP: BarrelManager', () => {
     await _lspSetupEnv();
     try {
       await mkdir(join(_lspTestDir, 'src/utils'), { recursive: true });
-      await writeFile(join(_lspTestDir, 'src/utils/math.ts'), 'export const add = (a: number, b: number) => a + b;\nexport const sub = (a: number, b: number) => a - b;\n');
-      await writeFile(join(_lspTestDir, 'src/utils/index.ts'), 'export { add, sub } from "./math";\n');
+      await writeFile(
+        join(_lspTestDir, 'src/utils/math.ts'),
+        'export const add = (a: number, b: number) => a + b;\nexport const sub = (a: number, b: number) => a - b;\n',
+      );
+      await writeFile(
+        join(_lspTestDir, 'src/utils/index.ts'),
+        'export { add, sub } from "./math";\n',
+      );
       const barrel = new BarrelManager({ workingDirectory: _lspTestDir });
       const barrels = await barrel.discoverBarrels(_lspTestDir);
       expect(barrels.length).toBeGreaterThanOrEqual(1);
-    } finally { await _lspCleanupEnv(); }
+    } finally {
+      await _lspCleanupEnv();
+    }
   });
 
   test('add re-export to barrel', async () => {
@@ -861,7 +968,9 @@ describe('LSP: BarrelManager', () => {
         const content = readFileSync(indexPath, 'utf-8');
         expect(content.includes('mul')).toBe(true);
       }
-    } finally { await _lspCleanupEnv(); }
+    } finally {
+      await _lspCleanupEnv();
+    }
   });
 
   test('remove re-export from barrel', async () => {
@@ -869,7 +978,10 @@ describe('LSP: BarrelManager', () => {
     try {
       await mkdir(join(_lspTestDir, 'src/utils'), { recursive: true });
       const indexPath = join(_lspTestDir, 'src/utils/index.ts');
-      await writeFile(join(_lspTestDir, 'src/utils/math.ts'), 'export const add = (a: number, b: number) => a + b;\n');
+      await writeFile(
+        join(_lspTestDir, 'src/utils/math.ts'),
+        'export const add = (a: number, b: number) => a + b;\n',
+      );
       await writeFile(indexPath, 'export { add } from "./math";\n');
       const barrel = new BarrelManager({ workingDirectory: _lspTestDir });
       await barrel.discoverBarrels(_lspTestDir);
@@ -877,7 +989,9 @@ describe('LSP: BarrelManager', () => {
       expect(removed).toBe(true);
       const content = readFileSync(indexPath, 'utf-8');
       expect(content.includes('export { add }')).toBe(false);
-    } finally { await _lspCleanupEnv(); }
+    } finally {
+      await _lspCleanupEnv();
+    }
   });
 });
 
@@ -890,7 +1004,12 @@ describe('LSP: DiagnosticsGate', () => {
   });
 
   test('handle missing files gracefully', async () => {
-    const gate = new DiagnosticsGate({ lspManager: { getDiagnostics: () => [], syncDocument: async () => {} }, waitMs: 10, maxRetries: 1, autoRepair: false });
+    const gate = new DiagnosticsGate({
+      lspManager: { getDiagnostics: () => [], syncDocument: async () => {} },
+      waitMs: 10,
+      maxRetries: 1,
+      autoRepair: false,
+    });
     const result = await gate.check(['/nonexistent/path.ts']);
     expect(result.ok).toBe(true);
   });
@@ -915,8 +1034,14 @@ describe('LSP: TextEdit Conversion Torture Tests', () => {
     // 两个 edit 范围真正重叠：第一个改 0-8，第二个改 5-10
     const orch = await import('../../src/core/edit-orchestrator.js');
     const edits = [
-      { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 8 } }, newText: 'FIRST' },
-      { range: { start: { line: 0, character: 5 }, end: { line: 0, character: 10 } }, newText: 'SECOND' },
+      {
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 8 } },
+        newText: 'FIRST',
+      },
+      {
+        range: { start: { line: 0, character: 5 }, end: { line: 0, character: 10 } },
+        newText: 'SECOND',
+      },
     ];
     if (orch.EditOrchestrator) {
       const instance = new orch.EditOrchestrator({ workingDirectory: process.cwd() });
@@ -950,7 +1075,9 @@ describe('LSP: TextEdit Conversion Torture Tests', () => {
       const instance = new orch.EditOrchestrator({ workingDirectory: process.cwd() });
       const section = instance._editsToHashlineSection('test.ts', 'abc', 'line1\ntest\n', edits);
       // 空操作应产生空 section（只有 header）
-      expect(section.includes('SWAP') || section.includes('DEL') || section.includes('INS')).toBe(false);
+      expect(section.includes('SWAP') || section.includes('DEL') || section.includes('INS')).toBe(
+        false,
+      );
     }
   });
 
@@ -958,7 +1085,10 @@ describe('LSP: TextEdit Conversion Torture Tests', () => {
     // 在行末插入换行符 → 等价于在多行插入
     const orch = await import('../../src/core/edit-orchestrator.js');
     const edits = [
-      { range: { start: { line: 0, character: 5 }, end: { line: 0, character: 5 } }, newText: '\nnew line\n' },
+      {
+        range: { start: { line: 0, character: 5 }, end: { line: 0, character: 5 } },
+        newText: '\nnew line\n',
+      },
     ];
     if (orch.EditOrchestrator) {
       const instance = new orch.EditOrchestrator({ workingDirectory: process.cwd() });
@@ -976,14 +1106,25 @@ describe('LSP: TextEdit Conversion Torture Tests', () => {
     ];
     if (orch.EditOrchestrator) {
       const instance = new orch.EditOrchestrator({ workingDirectory: process.cwd() });
-      const section = instance._editsToHashlineSection('test.ts', 'abc', 'line1\nline2\nline3\n', edits);
+      const section = instance._editsToHashlineSection(
+        'test.ts',
+        'abc',
+        'line1\nline2\nline3\n',
+        edits,
+      );
       expect(section.includes('SWAP') || section.includes('DEL')).toBe(true);
     }
   });
 
   test('documentOps: create file', async () => {
     const orch = await import('../../src/core/edit-orchestrator.js');
-    const ops = [{ kind: 'create', path: join(tmpdir(), `create-${randomBytes(6).toString('hex')}.ts`), options: {} }];
+    const ops = [
+      {
+        kind: 'create',
+        path: join(tmpdir(), `create-${randomBytes(6).toString('hex')}.ts`),
+        options: {},
+      },
+    ];
     if (orch.EditOrchestrator) {
       const instance = new orch.EditOrchestrator({ workingDirectory: process.cwd() });
       try {
@@ -992,7 +1133,9 @@ describe('LSP: TextEdit Conversion Torture Tests', () => {
         expect(result.paths.length).toBe(1);
       } finally {
         // cleanup
-        try { await rm(ops[0].path, { force: true }); } catch {}
+        try {
+          await rm(ops[0].path, { force: true });
+        } catch {}
       }
     }
   });
@@ -1014,15 +1157,19 @@ describe('LSP: TextEdit Conversion Torture Tests', () => {
     if (orch.EditOrchestrator) {
       const instance = new orch.EditOrchestrator({ workingDirectory: process.cwd() });
       // 两个不重叠的 range
-      expect(instance._rangesOverlap(
-        { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } },
-        { start: { line: 0, character: 5 }, end: { line: 0, character: 10 } },
-      )).toBe(false);
+      expect(
+        instance._rangesOverlap(
+          { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } },
+          { start: { line: 0, character: 5 }, end: { line: 0, character: 10 } },
+        ),
+      ).toBe(false);
       // 两个重叠的 range
-      expect(instance._rangesOverlap(
-        { start: { line: 0, character: 0 }, end: { line: 0, character: 8 } },
-        { start: { line: 0, character: 5 }, end: { line: 0, character: 10 } },
-      )).toBe(true);
+      expect(
+        instance._rangesOverlap(
+          { start: { line: 0, character: 0 }, end: { line: 0, character: 8 } },
+          { start: { line: 0, character: 5 }, end: { line: 0, character: 10 } },
+        ),
+      ).toBe(true);
     }
   });
 });

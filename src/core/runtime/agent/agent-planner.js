@@ -54,11 +54,11 @@ export class AgentPlanner {
 
     if (plan.status === TaskStatus.RUNNING) {
       const runningTask = Array.from(plan.tasks.values()).find(
-        (t) => t.status === TaskStatus.RUNNING
+        (t) => t.status === TaskStatus.RUNNING,
       );
       if (!runningTask) {
         const firstReadyTask = Array.from(plan.tasks.values()).find(
-          (t) => t.status === TaskStatus.PENDING && t.dependencies.size === 0
+          (t) => t.status === TaskStatus.PENDING && t.dependencies.size === 0,
         );
         if (firstReadyTask) {
           firstReadyTask.updateStatus(TaskStatus.RUNNING);
@@ -110,7 +110,8 @@ export class AgentPlanner {
       return this.#activePlan;
     }
 
-    const isCoding = taskProfile?.isCodingTask || taskProfile?.isModificationTask || taskProfile?.isBugTask;
+    const isCoding =
+      taskProfile?.isCodingTask || taskProfile?.isModificationTask || taskProfile?.isBugTask;
     if (!isCoding && !taskProfile?.requiresAutomaticPlanning) {
       return null;
     }
@@ -289,7 +290,10 @@ export class AgentPlanner {
     this.#completeTaskIf('inspect_workspace', () => isWorkspaceInspectionTool(toolName, args));
     this.#startReadyTasks(plan);
     // plan_solution 可以通过显式的计划工具或直接开始修改来完成
-    this.#completeTaskIf('plan_solution', () => isPlanningTool(toolName) || isMutationTool(toolName, args));
+    this.#completeTaskIf(
+      'plan_solution',
+      () => isPlanningTool(toolName) || isMutationTool(toolName, args),
+    );
     this.#startReadyTasks(plan);
     this.#recordMutationPath(toolName, args);
     this.#completeTaskIf(

@@ -47,9 +47,10 @@ export class IntentClassifier {
 
     // ==== 反馈闭环：根据历史分类准确度动态调整置信度阈值 ====
     const feedbackContext = context.feedbackContext || null;
-    const adjustedThreshold = feedbackContext?.automationConfidenceAdjustment != null
-      ? this.#config.confidenceThreshold + feedbackContext.automationConfidenceAdjustment
-      : this.#config.confidenceThreshold;
+    const adjustedThreshold =
+      feedbackContext?.automationConfidenceAdjustment != null
+        ? this.#config.confidenceThreshold + feedbackContext.automationConfidenceAdjustment
+        : this.#config.confidenceThreshold;
 
     const systemPrompt = this.#buildSystemPrompt(feedbackContext);
 
@@ -107,7 +108,9 @@ export class IntentClassifier {
         .filter((te) => te.hitRate > 0.5 && te.used >= 2)
         .map((te) => te.tool);
       if (effectiveTools.length > 0) {
-        lines.push(`- historically effective tools for similar tasks: ${effectiveTools.join(', ')}`);
+        lines.push(
+          `- historically effective tools for similar tasks: ${effectiveTools.join(', ')}`,
+        );
       }
     }
 

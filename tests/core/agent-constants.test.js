@@ -69,9 +69,9 @@ describe('agent-constants', () => {
 
   test('RUNTIME_VERIFICATION_COMMAND_PATTERNS matches test commands', () => {
     expect(RUNTIME_VERIFICATION_COMMAND_PATTERNS.length).toBeGreaterThan(0);
-    expect(RUNTIME_VERIFICATION_COMMAND_PATTERNS.some(p => p.test('bun test'))).toBe(true);
-    expect(RUNTIME_VERIFICATION_COMMAND_PATTERNS.some(p => p.test('npm run build'))).toBe(true);
-    expect(RUNTIME_VERIFICATION_COMMAND_PATTERNS.some(p => p.test('eslint src/'))).toBe(true);
+    expect(RUNTIME_VERIFICATION_COMMAND_PATTERNS.some((p) => p.test('bun test'))).toBe(true);
+    expect(RUNTIME_VERIFICATION_COMMAND_PATTERNS.some((p) => p.test('npm run build'))).toBe(true);
+    expect(RUNTIME_VERIFICATION_COMMAND_PATTERNS.some((p) => p.test('eslint src/'))).toBe(true);
   });
 
   test('SEMANTIC_RISK_DOMAINS is non-empty array with required fields', () => {

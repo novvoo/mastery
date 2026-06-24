@@ -149,11 +149,11 @@ export class ConversationSummarizer {
   #summarizeToolOperations(toolResults) {
     // 按工具类型分组
     const byOperation = {
-      reads: [],   // read_file, file_read
-      writes: [],  // write_file, edit_file, replace_in_file
+      reads: [], // read_file, file_read
+      writes: [], // write_file, edit_file, replace_in_file
       searches: [], // search, grep, glob, find
-      lists: [],   // list_dir, ls
-      shells: [],  // execute_command, shell
+      lists: [], // list_dir, ls
+      shells: [], // execute_command, shell
       other: [],
     };
 
@@ -196,15 +196,27 @@ export class ConversationSummarizer {
 
     if (byOperation.writes.length > 0) {
       const uniquePaths = [...new Set(byOperation.writes.map((w) => w.path).filter(Boolean))];
-      lines.push(`Files Modified/Written (${byOperation.writes.length}): ${uniquePaths.join(', ')}`);
+      lines.push(
+        `Files Modified/Written (${byOperation.writes.length}): ${uniquePaths.join(', ')}`,
+      );
     }
 
     if (byOperation.searches.length > 0) {
-      lines.push(`Searches: ${byOperation.searches.slice(0, 5).map((s) => s.summary).join(' | ')}`);
+      lines.push(
+        `Searches: ${byOperation.searches
+          .slice(0, 5)
+          .map((s) => s.summary)
+          .join(' | ')}`,
+      );
     }
 
     if (byOperation.lists.length > 0) {
-      lines.push(`Directories Listed: ${byOperation.lists.slice(0, 5).map((l) => l.summary).join(', ')}`);
+      lines.push(
+        `Directories Listed: ${byOperation.lists
+          .slice(0, 5)
+          .map((l) => l.summary)
+          .join(', ')}`,
+      );
     }
 
     if (byOperation.shells.length > 0) {
@@ -219,7 +231,9 @@ export class ConversationSummarizer {
     const total = toolResults.length;
     lines.push(`Total tool operations in this segment: ${total}`);
 
-    return lines.length > 0 ? `Tool Operations Summary:\n${lines.map((l) => `  • ${l}`).join('\n')}` : null;
+    return lines.length > 0
+      ? `Tool Operations Summary:\n${lines.map((l) => `  • ${l}`).join('\n')}`
+      : null;
   }
 
   /**
@@ -234,10 +248,22 @@ export class ConversationSummarizer {
 
       // 提取关键决策信号
       const decisionPatterns = [
-        { regex: /I (will|am going to|plan to|need to|should|must)\s+(.{20,150})/gi, label: 'plan' },
-        { regex: /(?:decided|decision|choose|select)\s+(?:to\s+)?(.{20,150})/gi, label: 'decision' },
-        { regex: /(?:discovered|found|identified|noticed|realized)\s+(?:that\s+)?(.{20,150})/gi, label: 'discovery' },
-        { regex: /(?:the issue is|the problem is|the root cause is|the bug is)\s+(.{20,150})/gi, label: 'diagnosis' },
+        {
+          regex: /I (will|am going to|plan to|need to|should|must)\s+(.{20,150})/gi,
+          label: 'plan',
+        },
+        {
+          regex: /(?:decided|decision|choose|select)\s+(?:to\s+)?(.{20,150})/gi,
+          label: 'decision',
+        },
+        {
+          regex: /(?:discovered|found|identified|noticed|realized)\s+(?:that\s+)?(.{20,150})/gi,
+          label: 'discovery',
+        },
+        {
+          regex: /(?:the issue is|the problem is|the root cause is|the bug is)\s+(.{20,150})/gi,
+          label: 'diagnosis',
+        },
       ];
 
       for (const { regex, label } of decisionPatterns) {
@@ -260,17 +286,31 @@ export class ConversationSummarizer {
       }
 
       // 检测最终答案
-      if (/FINAL_ANSWER|final answer|summary of changes|here.*what.*(done|changed|created|fixed)/i.test(content)) {
+      if (
+        /FINAL_ANSWER|final answer|summary of changes|here.*what.*(done|changed|created|fixed)/i.test(
+          content,
+        )
+      ) {
         decisions.push('[produced] Final answer / task completion');
       }
     }
 
     const lines = [];
     if (decisions.length > 0) {
-      lines.push(`Key Decisions:\n${decisions.slice(0, 6).map((d) => `  • ${d}`).join('\n')}`);
+      lines.push(
+        `Key Decisions:\n${decisions
+          .slice(0, 6)
+          .map((d) => `  • ${d}`)
+          .join('\n')}`,
+      );
     }
     if (insights.length > 0) {
-      lines.push(`Key Insights:\n${insights.slice(0, 6).map((i) => `  • ${i}`).join('\n')}`);
+      lines.push(
+        `Key Insights:\n${insights
+          .slice(0, 6)
+          .map((i) => `  • ${i}`)
+          .join('\n')}`,
+      );
     }
     if (lines.length === 0 && messages.length > 0) {
       lines.push(`Assistant Responses: ${messages.length} messages`);
@@ -309,7 +349,12 @@ export class ConversationSummarizer {
             operations.modified.push(path);
           } else if (name.includes('delete') || name.includes('remove')) {
             operations.deleted.push(path);
-          } else if (name.includes('search') || name.includes('grep') || name.includes('find') || name.includes('glob')) {
+          } else if (
+            name.includes('search') ||
+            name.includes('grep') ||
+            name.includes('find') ||
+            name.includes('glob')
+          ) {
             operations.searched.push(args?.pattern || args?.query || args?.text || path);
           }
         }
@@ -317,13 +362,19 @@ export class ConversationSummarizer {
 
       // 从 tool result 中提取 "Successfully wrote/edited/deleted" 消息
       if (msg.role === 'tool' || msg.role === 'tool_result') {
-        const writeMatch = content.match(/(?:Successfully|成功)\s+(?:wrote|created|写入|创建)\s+(?:file\s+)?['"]?([^\s"'\n]+)/i);
+        const writeMatch = content.match(
+          /(?:Successfully|成功)\s+(?:wrote|created|写入|创建)\s+(?:file\s+)?['"]?([^\s"'\n]+)/i,
+        );
         if (writeMatch) operations.created.push(writeMatch[1]);
 
-        const editMatch = content.match(/(?:Successfully|成功)\s+(?:edited|modified|编辑|修改)\s+(?:file\s+)?['"]?([^\s"'\n]+)/i);
+        const editMatch = content.match(
+          /(?:Successfully|成功)\s+(?:edited|modified|编辑|修改)\s+(?:file\s+)?['"]?([^\s"'\n]+)/i,
+        );
         if (editMatch) operations.modified.push(editMatch[1]);
 
-        const delMatch = content.match(/(?:Successfully|成功)\s+(?:deleted|removed|删除)\s+(?:file\s+)?['"]?([^\s"'\n]+)/i);
+        const delMatch = content.match(
+          /(?:Successfully|成功)\s+(?:deleted|removed|删除)\s+(?:file\s+)?['"]?([^\s"'\n]+)/i,
+        );
         if (delMatch) operations.deleted.push(delMatch[1]);
       }
     }
@@ -361,7 +412,9 @@ export class ConversationSummarizer {
     const lines = [];
 
     if (summary.trackedFiles > 0 || summary.trackedDirectories > 0) {
-      lines.push(`Workspace explored: ${summary.trackedFiles} files, ${summary.trackedDirectories} dirs`);
+      lines.push(
+        `Workspace explored: ${summary.trackedFiles} files, ${summary.trackedDirectories} dirs`,
+      );
     }
 
     if (summary.knownNotFound > 0) {
@@ -370,7 +423,10 @@ export class ConversationSummarizer {
 
     if (criticalFacts.length > 0) {
       const factLines = criticalFacts.slice(0, 8).map((f) => {
-        const val = typeof f.value === 'object' ? JSON.stringify(f.value).slice(0, 80) : String(f.value).slice(0, 80);
+        const val =
+          typeof f.value === 'object'
+            ? JSON.stringify(f.value).slice(0, 80)
+            : String(f.value).slice(0, 80);
         return `  - ${f.type}: ${val}`;
       });
       lines.push(`Critical Facts:\n${factLines.join('\n')}`);
@@ -392,7 +448,7 @@ export class ConversationSummarizer {
     // read_file 结果
     if (toolName === 'read_file' || toolName === 'file_read') {
       const pathMatch = content.match(/File "([^"]+)"|Path "([^"]+)"/);
-      const path = pathMatch ? (pathMatch[1] || pathMatch[2]) : '';
+      const path = pathMatch ? pathMatch[1] || pathMatch[2] : '';
       const linesMatch = content.match(/(\d+)\s+(?:lines?|行)/);
       const lines = linesMatch ? linesMatch[1] : '?';
       return {
@@ -405,7 +461,7 @@ export class ConversationSummarizer {
     // write_file 结果
     if (toolName === 'write_file' || toolName === 'file_write') {
       const pathMatch = content.match(/File "([^"]+)"|file\s+([^\s,]+)/i);
-      const path = pathMatch ? (pathMatch[1] || pathMatch[2]) : '';
+      const path = pathMatch ? pathMatch[1] || pathMatch[2] : '';
       return {
         type: 'file_write',
         path,
@@ -416,7 +472,7 @@ export class ConversationSummarizer {
     // edit_file 结果
     if (toolName === 'edit_file' || toolName === 'replace_in_file') {
       const pathMatch = content.match(/File "([^"]+)"|file\s+([^\s,]+)/i);
-      const path = pathMatch ? (pathMatch[1] || pathMatch[2]) : '';
+      const path = pathMatch ? pathMatch[1] || pathMatch[2] : '';
       return {
         type: 'file_edit',
         path,
@@ -427,7 +483,7 @@ export class ConversationSummarizer {
     // list_dir 结果
     if (toolName === 'list_dir') {
       const pathMatch = content.match(/目录\s+(\S+)|Directory\s+"([^"]+)"/);
-      const path = pathMatch ? (pathMatch[1] || pathMatch[2]) : '';
+      const path = pathMatch ? pathMatch[1] || pathMatch[2] : '';
       const countMatch = content.match(/(\d+)\s+(?:个条目|entries?)/);
       const count = countMatch ? countMatch[1] : '?';
       return {
