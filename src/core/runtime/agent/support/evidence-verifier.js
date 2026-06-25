@@ -256,4 +256,7 @@ export default {
   METHODOLOGY_TOOL_NAMES,
 };
 
-export { RUNTIME_VERIFICATION_COMMAND_PATTERNS, MUTATION_SHELL_COMMAND_PATTERNS };
+// 注意：MUTATION_SHELL_COMMAND_PATTERNS 已不再从此模块 re-export
+//（mutation 判断已统一委托给 tool-semantics.js）
+// 如需外部使用，请直接从 utils/patterns.js 导入，或使用 tool-semantics.js 的 getToolEffect()
+export { RUNTIME_VERIFICATION_COMMAND_PATTERNS };
