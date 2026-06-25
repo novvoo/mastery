@@ -295,19 +295,38 @@ export class ExecutionPlanManager {
 
   /** 模板模式：标准 inspect → plan → implement → verify DAG */
   #buildTemplatePlan(plan, profile) {
-    const taskType = profile?.isBugTask
-      ? 'bug_fix'
-      : profile?.isDocumentationTask
-        ? 'documentation'
-        : profile?.isAnalysisTask
-          ? 'analysis'
-          : profile?.isResearchTask
-            ? 'research'
-            : profile?.isModificationTask
-              ? 'modification'
-              : profile?.isCodingTask
-                ? 'coding'
-                : 'general';
+    // 兼容新旧 profile 格式
+    // 新格式: { intent, mode, allowsMutation, ... }
+    // 旧格式: { isBugTask, isModificationTask, isCodingTask, ... }
+    const intent = profile?.intent;
+    const mode = profile?.mode;
+    const allowsMutation = profile?.allowsMutation;
+
+    // 从 intent 映射到 taskType
+    let taskType;
+    if (allowsMutation || mode === 'mutate') {
+      if (profile?.isBugTask || intent === 'diagnosis') {
+        taskType = 'bug_fix';
+      } else {
+        taskType = 'modification';
+      }
+    } else if (intent === 'project_info' || intent === 'how_to_run') {
+      taskType = 'research';
+    } else if (intent === 'diagnosis' || intent === 'code_modification') {
+      taskType = 'bug_fix';
+    } else if (intent === 'read_only_analysis' || mode === 'inspect') {
+      taskType = 'analysis';
+    } else if (profile?.isDocumentationTask) {
+      taskType = 'documentation';
+    } else if (profile?.isAnalysisTask) {
+      taskType = 'analysis';
+    } else if (profile?.isResearchTask) {
+      taskType = 'research';
+    } else if (profile?.isCodingTask || profile?.isModificationTask) {
+      taskType = profile?.isModificationTask ? 'modification' : 'coding';
+    } else {
+      taskType = 'general';
+    }
 
     let inspectDesc = 'Explore the context and gather necessary information before proceeding.';
     let planDesc = 'Plan the approach and define the steps needed to accomplish the task.';
