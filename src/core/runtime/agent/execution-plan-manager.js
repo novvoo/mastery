@@ -313,30 +313,42 @@ export class ExecutionPlanManager {
     const mode = profile?.mode;
     const allowsMutation = profile?.allowsMutation;
 
-    // 从 intent 映射到 taskType
+    // 从 intent/mode 映射到 taskType（必须与 isMutationTask 判断一致）
+    // 只有 allowsMutation=true 或 mode='mutate' 才是修改类任务
     let taskType;
     if (allowsMutation || mode === 'mutate') {
+      // 修改类任务
       if (profile?.isBugTask || intent === 'diagnosis') {
         taskType = 'bug_fix';
+      } else if (intent === 'code_modification' || intent === 'feature_implementation') {
+        taskType = 'modification';
+      } else if (profile?.isDocumentationTask) {
+        taskType = 'documentation';
+      } else if (profile?.isCodingTask) {
+        taskType = 'coding';
       } else {
         taskType = 'modification';
       }
-    } else if (intent === 'project_info' || intent === 'how_to_run') {
-      taskType = 'research';
-    } else if (intent === 'diagnosis' || intent === 'code_modification') {
-      taskType = 'bug_fix';
-    } else if (intent === 'read_only_analysis' || mode === 'inspect') {
-      taskType = 'analysis';
-    } else if (profile?.isDocumentationTask) {
-      taskType = 'documentation';
-    } else if (profile?.isAnalysisTask) {
-      taskType = 'analysis';
-    } else if (profile?.isResearchTask) {
-      taskType = 'research';
-    } else if (profile?.isCodingTask || profile?.isModificationTask) {
-      taskType = profile?.isModificationTask ? 'modification' : 'coding';
     } else {
-      taskType = 'general';
+      // 非修改类任务
+      if (intent === 'project_info' || intent === 'how_to_run') {
+        taskType = 'research';
+      } else if (intent === 'diagnosis') {
+        // 诊断任务但不是修改型：使用分析模板
+        taskType = 'analysis';
+      } else if (intent === 'read_only_analysis' || mode === 'inspect' || mode === 'diagnose') {
+        taskType = 'analysis';
+      } else if (intent === 'verify' || mode === 'verify') {
+        taskType = 'analysis';
+      } else if (profile?.isDocumentationTask) {
+        taskType = 'research';
+      } else if (profile?.isAnalysisTask) {
+        taskType = 'analysis';
+      } else if (profile?.isResearchTask) {
+        taskType = 'research';
+      } else {
+        taskType = 'general';
+      }
     }
 
     // ===== 查询/回答类任务：轻量 2 步流程 =====
