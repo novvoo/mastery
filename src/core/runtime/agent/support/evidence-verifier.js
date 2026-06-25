@@ -12,10 +12,9 @@
 
 import {
   RUNTIME_VERIFICATION_COMMAND_PATTERNS,
-  MUTATION_SHELL_COMMAND_PATTERNS,
   isRuntimeVerificationCommand,
-  isMutationShellCommand,
 } from '../../../../utils/patterns.js';
+import { isStrictMutation as isSemanticsStrictMutation } from './tool-semantics.js';
 
 const RUNTIME_VERIFICATION_TOOL_NAMES = new Set(['verify']);
 
@@ -57,30 +56,11 @@ function extractCommand(event) {
 }
 
 export function isMutationEvent(event) {
-  if (!event || !event.name) {
-    return false;
-  }
-  if (event.success === false) {
-    return false;
-  }
+  if (!event || !event.name) return false;
+  if (event.success === false) return false;
 
-  if (MUTATION_TOOL_NAMES.has(event.name)) {
-    return true;
-  }
-
-  if (event.name === 'shell' || event.name === 'pty_start' || event.name === 'pty_write') {
-    const cmd = extractCommand(event);
-    if (!cmd) {
-      return false;
-    }
-    const isPureRead = /\b(ls|cat|grep|rg|find|sed\s+-n|awk)\s/.test(cmd) && !/>|>>/.test(cmd);
-    if (isPureRead) {
-      return false;
-    }
-    return isMutationShellCommand(cmd);
-  }
-
-  return false;
+  // 委托给 tool-semantics.js 的 isStrictMutation（事件级别包装：含 success 检查）
+  return isSemanticsStrictMutation(event.name, event.args);
 }
 
 export function isRuntimeVerificationEvent(event) {

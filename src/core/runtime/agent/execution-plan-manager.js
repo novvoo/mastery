@@ -11,20 +11,12 @@
  */
 
 import { ExecutionPlan, TaskStatus, GraphPlanner } from '../../../planner/graph-planner.js';
+import { isMutation as isSemanticsMutation, isInspection as isSemanticsInspection } from './support/tool-semantics.js';
 
-// ============== 工具谓词：根据工具名/args 推断它归属哪一阶段 ==============
+// ============== 工具谓词：统一委托给 tool-semantics 模块 ==============
 
 export function isWorkspaceInspectionTool(toolName, args) {
-  if (
-    ['list_dir', 'glob', 'search', 'semantic_search', 'read_file', 'check_file'].includes(toolName)
-  ) {
-    return true;
-  }
-  if (toolName === 'shell') {
-    const command = String(args?.command || '').toLowerCase();
-    return /\b(pwd|ls|find|rg|grep|tree|cat|stat)\b/.test(command);
-  }
-  return false;
+  return isSemanticsInspection(toolName);
 }
 
 export function isPlanningTool(toolName) {
@@ -40,27 +32,9 @@ export function isPlanningTool(toolName) {
   ].includes(toolName);
 }
 
+/** @deprecated 委托给 tool-semantics.js 的 isMutation，保留以兼容外部调用 */
 export function isMutationTool(toolName, args) {
-  if (
-    [
-      'write_file',
-      'edit_file',
-      'git_apply_patch',
-      'git_commit',
-      'delete_file',
-      'rename_file',
-      'mkdir',
-    ].includes(toolName)
-  ) {
-    return true;
-  }
-  if (toolName === 'shell') {
-    const command = String(args?.command || args?.input || args?.text || '').toLowerCase();
-    return /(^|\s)(bun|npm|pnpm|yarn|npx|node|python|pytest|vitest|jest|eslint|tsc|git|touch|cp|mv|rm|sed|perl|tee)\b|>|>>|apply_patch/.test(
-      command,
-    );
-  }
-  return false;
+  return isSemanticsMutation(toolName, args);
 }
 
 export function isChangeInspectionTool(toolName, args) {
@@ -607,30 +581,37 @@ export class ExecutionPlanManager {
       ? 'LLM 智能分解模式：每个子任务有明确文件范围和依赖关系。按 DAG 顺序执行，完成后自动推进。\n'
       : 'Execute this DAG in dependency order. Do not skip ahead, and do not provide FINAL_ANSWER until every task is completed.\n';
 
-    // LLM 分解模式：动态获取第一个 RUNNING/PENDING 任务
+    // 统一策略：无论是否 LLM 分解模式，都优先选择真正 RUNNING 的任务，
+    // 避免 DAG 显示 inspect_workspace 但 prompt 又说 implement_changes 的矛盾信号。
     let firstTaskPrompt = '';
     let firstTaskScope = '';
-    if (this.#useLLMDecomposition) {
-      const firstTask = Array.from(plan.tasks.values()).find(
-        (t) => t.status === TaskStatus.RUNNING || t.status === TaskStatus.PENDING,
-      );
-      if (firstTask) {
-        firstTaskPrompt = `▶ 当前子任务: ${firstTask.id} — ${firstTask.description}`;
-        if (firstTask.scopeFiles?.length) {
-          firstTaskScope = `\n📁 文件作用域: ${firstTask.scopeFiles.join(', ')}`;
+    const runningTask =
+      Array.from(plan.tasks.values()).find((t) => t.status === TaskStatus.RUNNING) ||
+      Array.from(plan.tasks.values()).find((t) => t.status === TaskStatus.PENDING);
+
+    if (runningTask) {
+      const firstTaskId = runningTask.id;
+      if (this.#useLLMDecomposition) {
+        firstTaskPrompt = `▶ 当前子任务: ${firstTaskId} — ${runningTask.description}`;
+        if (runningTask.scopeFiles?.length) {
+          firstTaskScope = `\n📁 文件作用域: ${runningTask.scopeFiles.join(', ')}`;
+        }
+      } else {
+        firstTaskScope = runningTask.scopeFiles?.length
+          ? ` 📁 当前子任务文件作用域: ${runningTask.scopeFiles.join(', ')}`
+          : '';
+
+        if (firstTaskId === 'implement_changes') {
+          firstTaskPrompt =
+            `Current task: implement_changes. Read the relevant code with read_file, identify the bug, then fix it with write_file or edit_file. Do NOT produce a diagnostic report — fix the bug.`;
+        } else if (firstTaskId === 'inspect_workspace') {
+          firstTaskPrompt =
+            `Current task: inspect_workspace. Call list_dir or another filesystem discovery tool first, then continue through the plan.`;
+        } else {
+          firstTaskPrompt =
+            `Current task: ${firstTaskId}. ${runningTask.description} Complete this task using the appropriate available tools.`;
         }
       }
-    } else {
-      const firstTask = plan.getTask('implement_changes') || plan.getTask('inspect_workspace');
-      const firstTaskId = firstTask ? firstTask.id : 'inspect_workspace';
-      firstTaskScope =
-        firstTask && firstTask.scopeFiles?.length
-          ? ` 📁 当前子任务文件作用域: ${firstTask.scopeFiles.join(', ')}`
-          : '';
-      firstTaskPrompt =
-        firstTaskId === 'implement_changes'
-          ? `Current task: implement_changes. Read the relevant code with read_file, identify the bug, then fix it with write_file or edit_file. Do NOT produce a diagnostic report — fix the bug.`
-          : `Current task: inspect_workspace. Call list_dir or another filesystem discovery tool first, then continue through the plan.`;
     }
 
     return (

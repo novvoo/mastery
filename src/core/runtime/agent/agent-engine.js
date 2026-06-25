@@ -78,6 +78,7 @@ import {
   EXPLORATION_BUDGET,
   FORCE_ACTION_GRACE_TURNS,
 } from '../../agent-constants.js';
+import { getToolEffect, isMeaningfulProgress, ToolEffect } from './support/tool-semantics.js';
 import { loadRuntimeEnv } from '../../runtime-config.js';
 import { createConfiguredModelProvider } from '../../../cli/model-provider-factory.js';
 
@@ -1011,6 +1012,10 @@ export class AgentEngine {
       });
 
       // ======== force-action 模式：禁止只读工具，强制 Agent 写代码 ========
+      // 注意：此白名单比 tool-semantics.js 中的 MUTATION 更宽，额外包含：
+      //   - verify / review（允许验证已完成的变更，避免 agent 无法确认结果）
+      //   - shell（shell 内的具体操作由 getToolEffect 在运行时判断）
+      // 过滤逻辑在下方 forceActionTriggered 分支中生效。
       const FORCE_ACTION_MUTATION_TOOLS = new Set([
         'write_file',
         'edit_file',
@@ -1032,7 +1037,7 @@ export class AgentEngine {
         'git_pull',
         'git_stash',
         'git_reset',
-        'shell', // shell 中的写操作会在 hasMutation 中检测
+        'shell', // shell 具体操作由 tool-semantics.getToolEffect() 运行时分类
         'verify', // 允许验证已完成变更
         'review', // 允许审查已完成变更
       ]);
@@ -1553,44 +1558,70 @@ export class AgentEngine {
       }
 
       // ================================================================
-      // 探索预算 + 零调用硬约束（仅编码任务）：防止 agent 无限探索不动手
+      // Progress-Aware 探索预算 + 零调用硬约束（仅编码任务）
+      //
+      // 不再简单地"有 mutation 就清零，无 mutation 就累加"，而是区分：
+      //   - MUTATION / VERIFICATION → 清零（直接改代码或验证变更）
+      //   - TARGETED_INSPECTION + inScope → 不累加（有价值的有目标读取）
+      //   - TARGETED_INSPECTION (无上下文) / BROAD_EXPLORATION → 累加
       // ================================================================
       if (taskProfile.isCodingTask) {
-        // 更新探索计数器
+        // 获取当前 RUNNING 任务的文件范围，用于判断操作是否在范围内
+        const planTasks = executionPlan ? Array.from(executionPlan.tasks?.values() || []) : [];
+        const runningTask = planTasks.find((t) => t.status === TaskStatus.RUNNING);
+        const scopeFiles = new Set(runningTask?.scopeFiles || []);
+
         if (allToolCalls.length === 0) {
           zeroToolCallStreak++;
           explorationIterations++;
         } else {
           zeroToolCallStreak = 0;
-          const hasMutation = allToolCalls.some((tc) => {
+
+          // 使用统一的 tool-semantics 模块判断每个工具调用的效果
+          let hasMeaningfulProgress = false;
+          let allPartial = true; // 是否所有调用都是 "partial" 进展
+
+          for (const tc of allToolCalls) {
             const name = tc?.name || tc?.function?.name || '';
             const args = tc?.arguments || tc?.args || {};
-            // 显式 mutation 工具（对齐 execution-plan-manager.js isMutationTool）
-            if (
-              /^(write_file|edit_file|delete_file|rename_file|mkdir|apply_hashline_patch|lsp_rename|lsp_workspace_edit|lsp_code_action|git_apply_patch|git_commit)$/.test(
-                name,
-              )
-            ) {
-              return true;
+
+            // 判断工具调用是否在当前子任务文件范围内
+            const filePath = args?.filePath || args?.path || args?.file || '';
+            const isInScope = scopeFiles.size > 0 && (
+              scopeFiles.has(filePath) ||
+              Array.from(scopeFiles).some((sf) => filePath.includes(sf))
+            );
+
+            // 判断搜索是否有命中（基于 result 中是否有内容）
+            const hasSearchHit = tc?._result != null && (
+              (typeof tc._result === 'string' && tc._result.length > 50) ||
+              (typeof tc._result === 'object' && (
+                (Array.isArray(tc._result) && tc._result.length > 0) ||
+                (!Array.isArray(tc._result) && Object.keys(tc._result).length > 0)
+              ))
+            );
+
+            const progress = isMeaningfulProgress(name, args, { isInScope, hasSearchHit });
+
+            if (progress === true) {
+              hasMeaningfulProgress = true;
+              allPartial = false;
+            } else if (progress !== 'partial') {
+              allPartial = false;
             }
-            // harness state-centric 编辑工具
-            if (/^harness_(replace|insert|delete)$/.test(name)) {
-              return true;
-            }
-            // shell 写操作：命令中含有文件写入、包安装、构建等操作
-            if (name === 'shell') {
-              const cmd = String(args?.command || args?.input || args?.text || '').toLowerCase();
-              return /(^|\s)(bun|npm|pnpm|yarn|npx|node|python|pytest|vitest|jest|eslint|tsc|git|touch|cp|mv|rm|sed|perl|tee)\b|>|>>|apply_patch/.test(
-                cmd,
-              );
-            }
-            return false;
-          });
-          if (hasMutation) {
+          }
+
+          if (hasMeaningfulProgress) {
+            // 有明确进展：完全重置探索计数
             explorationIterations = 0;
             forceActionTriggered = false;
             forceActionIgnored = 0;
+          } else if (allPartial) {
+            // 所有调用都是 partial（targeted_inspection 但无法确认在范围内）：
+            // 不增加也不减少，保持当前计数，给 agent 更多定位空间
+            // 这样读多个相关文件不会被误杀
           } else {
+            // 无进展或广泛探索
             explorationIterations++;
           }
         }
