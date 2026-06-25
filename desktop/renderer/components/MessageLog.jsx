@@ -552,8 +552,6 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         return { icon: '思', text: '思考' };
       case 'plan':
         return { icon: '▦', text: '计划' };
-      case 'assistant_stream':
-        return { icon: '✨', text: '生成中' };
       default:
         return { icon: '📄', text: '消息' };
     }
