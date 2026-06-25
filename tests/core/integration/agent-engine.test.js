@@ -1,23 +1,49 @@
-import { describe, test, expect, mock } from 'bun:test';
+import { describe, test, expect, mock, beforeEach } from 'bun:test';
 
 // Mock all heavy dependencies before importing
+let sessionMessages = [];
+let sessionAssistantMessages = [];
+
 mock.module('../../../src/core/session-manager.js', () => ({
   SessionManager: class SessionManager {
-    constructor() {}
+    static PRIORITY = Object.freeze({ ORDINARY: 1, EVIDENCE: 2, DECISION: 3 });
+    static LAYER = Object.freeze({
+      STRUCTURE: 0,
+      PROJECTION: 10,
+      DIAGNOSTICS: 20,
+      DEPENDENCIES: 30,
+      MEMORY: 40,
+    });
+    constructor() {
+      sessionMessages = [];
+      sessionAssistantMessages = [];
+    }
     setSystemPrompt() {}
-    addSystemMessage() {}
-    addMessage() {}
-    addUserMessage() {}
-    addAssistantMessage() {}
+    addSystemMessage(msg) {
+      sessionMessages.push({ role: 'system', content: msg });
+    }
+    addMessage(msg) {
+      sessionMessages.push(msg);
+    }
+    addUserMessage(msg) {
+      sessionMessages.push({ role: 'user', content: msg });
+    }
+    addAssistantMessage(msg) {
+      sessionAssistantMessages.push(msg);
+      sessionMessages.push({ role: 'assistant', content: msg });
+    }
     getMessages() {
-      return [];
+      return sessionMessages;
     }
     getHistory() {
       return [];
     }
-    clear() {}
+    clear() {
+      sessionMessages = [];
+      sessionAssistantMessages = [];
+    }
     get length() {
-      return 0;
+      return sessionMessages.length;
     }
   },
 }));
@@ -34,18 +60,34 @@ mock.module('../../../src/errors/error-handler.js', () => ({
     getDelay() {
       return 0;
     }
+    async executeWithRetry(fn) {
+      return await fn();
+    }
   },
   withTimeout: (fn) => fn,
 }));
 
-mock.module('../../../src/core/text-tool-parser.js', () => ({
-  TextToolParser: class TextToolParser {
-    constructor() {}
-    parse() {
-      return [];
-    }
-  },
-}));
+mock.module('../../../src/core/text-tool-parser.js', () => {
+  let parseResult = [];
+  return {
+    TextToolParser: class TextToolParser {
+      constructor() {}
+      parse(text) {
+        if (text.includes('<action>')) {
+          return [{ name: 'read_file', arguments: { path: 'test.txt' }, source: 'action_tag' }];
+        }
+        if (text.includes('```json')) {
+          return [{ name: 'search_file', arguments: { pattern: 'test' }, source: 'code_fence' }];
+        }
+        return parseResult;
+      }
+      generateToolPrompt() {
+        return '';
+      }
+    },
+    _setParseResult: (result) => { parseResult = result; },
+  };
+});
 
 mock.module('../../../src/core/intent-classifier.js', () => ({
   IntentClassifier: class IntentClassifier {
@@ -354,6 +396,9 @@ mock.module('../../../src/core/tool-executor.js', () => ({
     constructor() {}
     get events() {
       return [];
+    }
+    async execute(toolCall) {
+      return { name: toolCall.name, result: 'mock result' };
     }
   },
 }));

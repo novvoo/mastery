@@ -16,6 +16,7 @@ mock.module('../../../src/core/session-manager.js', () => ({
     addMessage() {}
     addUserMessage() {}
     addAssistantMessage() {}
+    addToolResult() {}
     getMessages() {
       return [];
     }

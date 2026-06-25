@@ -452,19 +452,25 @@ export function createFileSystemTools() {
     {
       name: 'edit_file',
       description:
-        'Edit a file by replacing a specific text segment. The old_text must be unique in the file (exactly one match). Uses a content-addressable anchor hash to verify the unchanged region around the edit, and returns a deterministic diff.',
+        'Edit a file by replacing text. Supports three strategies (tried in order):\n' +
+        '1) Line-based: use line/startLine/endLine to specify exact line range\n' +
+        '2) Exact match: use old_text to find unique match in file\n' +
+        '3) Fuzzy fallback: trim old_text and find unique candidate',
       category: ToolCategory.FILESYSTEM,
       params: {
         path: { type: 'string', description: 'File path relative to working directory' },
         old_text: {
           type: 'string',
           description:
-            'The exact text to find and replace (must match exactly one location in the file)',
+            'The text to find and replace. If line/startLine/endLine is provided, old_text is optional (used for validation).',
         },
         new_text: { type: 'string', description: 'The replacement text' },
+        line: { type: 'number', description: 'Single line number (1-based) to replace' },
+        startLine: { type: 'number', description: 'Start line number (1-based, inclusive) for multi-line replace' },
+        endLine: { type: 'number', description: 'End line number (1-based, inclusive) for multi-line replace' },
       },
-      required: ['path', 'old_text', 'new_text'],
-      handler: async ({ path, old_text, new_text }, ctx) => {
+      required: ['path', 'new_text'],
+      handler: async ({ path, old_text, new_text, line, startLine, endLine }, ctx) => {
         const safe = safeResolvePath(ctx.workingDirectory, path);
         if (!safe.ok) {
           return safe.error;
@@ -476,51 +482,113 @@ export function createFileSystemTools() {
 
         try {
           const content = await readFile(fullPath, 'utf-8');
+          const lines = content.split('\n');
+          let matchOffset, matchLength, firstMatchLine, strategy;
 
-          // --- Uniqueness gate (anchor hash requires a single match) ---
-          const occurrences = countOccurrences(content, old_text);
-          if (occurrences === 0) {
-            return `Error: The specified old_text was not found in the file. Make sure it matches exactly (including whitespace/indentation).`;
-          }
-          if (occurrences > 1) {
-            const firstMatchLine = content
-              .substring(0, content.indexOf(old_text))
-              .split('\n').length;
-            return (
-              `Error: old_text matches ${occurrences} locations in the file (first match around line ${firstMatchLine}). ` +
-              `Make old_text more specific by including surrounding context lines so it matches exactly one location.`
-            );
+          const findMatchByLineRange = (start, end) => {
+            if (start < 1 || start > lines.length) return null;
+            if (end < start || end > lines.length) return null;
+            let offset = 0;
+            for (let i = 0; i < start - 1; i++) {
+              offset += lines[i].length + 1;
+            }
+            let length = 0;
+            for (let i = start - 1; i < end; i++) {
+              length += lines[i].length + 1;
+            }
+            length = Math.max(0, length - 1);
+            return { offset, length, line: start };
+          };
+
+          const findExactMatch = (text) => {
+            const occurrences = countOccurrences(content, text);
+            if (occurrences === 0) return null;
+            if (occurrences > 1) return { multiple: true };
+            const offset = content.indexOf(text);
+            return { offset, length: text.length, line: content.substring(0, offset).split('\n').length + 1 };
+          };
+
+          const findFuzzyMatch = (text) => {
+            if (!text || !text.trim()) return null;
+            const trimmed = text.trim();
+            const candidates = [];
+            for (let i = 0; i < lines.length; i++) {
+              if (lines[i].trim() === trimmed) {
+                candidates.push(i + 1);
+              }
+            }
+            if (candidates.length === 1) {
+              return findMatchByLineRange(candidates[0], candidates[0]);
+            }
+            return null;
+          };
+
+          if (line !== undefined && line !== null) {
+            const result = findMatchByLineRange(line, line);
+            if (result) {
+              matchOffset = result.offset;
+              matchLength = result.length;
+              firstMatchLine = result.line;
+              strategy = 'line';
+            } else {
+              return `Error: Line ${line} is out of range (file has ${lines.length} lines)`;
+            }
+          } else if (startLine !== undefined && startLine !== null) {
+            const end = endLine !== undefined && endLine !== null ? endLine : startLine;
+            const result = findMatchByLineRange(startLine, end);
+            if (result) {
+              matchOffset = result.offset;
+              matchLength = result.length;
+              firstMatchLine = result.line;
+              strategy = 'line-range';
+            } else {
+              return `Error: Line range ${startLine}-${end} is out of range (file has ${lines.length} lines)`;
+            }
+          } else if (old_text) {
+            const result = findExactMatch(old_text);
+            if (result?.multiple) {
+              const firstIdx = content.indexOf(old_text);
+              const firstLine = content.substring(0, firstIdx).split('\n').length + 1;
+              return `Error: old_text matches multiple locations (first at line ${firstLine}). Use line/startLine/endLine for unambiguous edits.`;
+            } else if (result) {
+              matchOffset = result.offset;
+              matchLength = result.length;
+              firstMatchLine = result.line;
+              strategy = 'exact';
+            } else {
+              const fuzzy = findFuzzyMatch(old_text);
+              if (fuzzy) {
+                matchOffset = fuzzy.offset;
+                matchLength = fuzzy.length;
+                firstMatchLine = fuzzy.line;
+                strategy = 'fuzzy';
+              } else {
+                return `Error: old_text not found in file. Try using line/startLine/endLine for line-based editing.`;
+              }
+            }
+          } else {
+            return `Error: Either old_text or line/startLine must be provided`;
           }
 
-          // --- Anchor hash: hash of the 200-char context window around the match.
-          //    This lets us detect whether the file was concurrently modified. ---
-          const matchOffset = content.indexOf(old_text);
+          const old_text_content = content.substring(matchOffset, matchOffset + matchLength);
+
           const ctxStart = Math.max(0, matchOffset - 200);
-          const ctxEnd = Math.min(content.length, matchOffset + old_text.length + 200);
+          const ctxEnd = Math.min(content.length, matchOffset + matchLength + 200);
           const anchorContext = content.substring(ctxStart, ctxEnd);
           const anchorHash = hashContent(anchorContext);
           const beforeHash = hashContent(content);
 
-          // Cross-check anchor hash against the harness ContentAddressableStore
-          // (ctx.contentStore is set by the agent if the store is available).
           if (ctx.contentStore) {
             const storedAnchor = ctx.contentStore.getAnchor(anchorHash);
             if (storedAnchor) {
-              const knownSnippet = storedAnchor.text.slice(
-                0,
-                Math.min(storedAnchor.text.length, 50),
-              );
+              const knownSnippet = storedAnchor.text.slice(0, Math.min(storedAnchor.text.length, 50));
               if (!anchorContext.includes(knownSnippet)) {
-                return (
-                  `Error: Anchor hash ${anchorHash.substring(0, 12)}... no longer matches file content. ` +
-                  `The file was modified underneath this edit. Re-read the file and try again.`
-                );
+                return `Error: Anchor hash ${anchorHash.substring(0, 12)}... no longer matches file content. The file was modified underneath this edit. Re-read the file and try again.`;
               }
             }
           }
 
-          const firstMatchLine = content.substring(0, matchOffset).split('\n').length;
-          const newContent = content.replace(old_text, new_text);
+          const newContent = content.substring(0, matchOffset) + new_text + content.substring(matchOffset + matchLength);
           const afterHash = hashContent(newContent);
           const diff = generateUnifiedDiff(content, newContent, path);
 
@@ -529,15 +597,9 @@ export function createFileSystemTools() {
             ctx.memoryManager.updateFileMap(path, 'edited').catch(() => {});
           }
 
-          // --- Record edit in the harness ContentAddressableStore (if available) ---
           if (ctx.contentStore) {
             try {
-              ctx.contentStore.storeAnchor(
-                path,
-                matchOffset,
-                matchOffset + old_text.length,
-                old_text,
-              );
+              ctx.contentStore.storeAnchor(path, matchOffset, matchOffset + matchLength, old_text_content);
               const newBlobHash = ctx.contentStore.storeBlob(newContent);
               ctx.contentStore.setRef(`file:${path}`, newBlobHash);
               if (ctx.fileAnalyzer && typeof ctx.fileAnalyzer.analyzeFile === 'function') {
@@ -546,16 +608,16 @@ export function createFileSystemTools() {
             } catch {}
           }
 
-          // 自动记录 snapshot 到 Hashline SnapshotStore
           if (ctx.snapshotStore && typeof ctx.snapshotStore.record === 'function') {
             try {
               ctx.snapshotStore.record(path, newContent);
             } catch {}
           }
 
-          const oldLineCount = old_text.split('\n').length;
+          const oldLineCount = old_text_content.split('\n').length;
           return (
             `File edited successfully: ${path}\n` +
+            `Strategy: ${strategy}\n` +
             `Changed ${oldLineCount} line(s) starting at line ${firstMatchLine}.\n` +
             `Anchor hash: ${anchorHash.substring(0, 16)}...\n` +
             `Before hash: ${beforeHash.substring(0, 16)}\n` +

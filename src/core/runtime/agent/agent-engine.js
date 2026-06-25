@@ -117,6 +117,13 @@ function createEmptyToolRegistry() {
   };
 }
 
+function stripActionBlocks(text = '') {
+  return text
+    .replace(/<action>[\s\S]*?<\/action>/gi, '')
+    .replace(/```(?:json)?\s*\{[\s\S]*?\}\s*```/gi, '')
+    .trim();
+}
+
 function normalizeModelResponse(response = {}) {
   const text =
     typeof response.text === 'string'
@@ -1688,7 +1695,14 @@ export class AgentEngine {
       }
 
       // -------- 常规路径：执行工具调用 --------
-      this.#sessionManager.addAssistantMessage(response.text);
+      if (allToolCalls.length > 0) {
+        const visibleText = stripActionBlocks(response.text);
+        if (visibleText) {
+          this.#sessionManager.addAssistantMessage(visibleText);
+        }
+      } else {
+        this.#sessionManager.addAssistantMessage(response.text);
+      }
 
       if (allToolCalls.length === 0) {
         // provider 没触发 stop，也没有工具调用 → 轻推一下避免死循环
