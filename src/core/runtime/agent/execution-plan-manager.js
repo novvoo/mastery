@@ -132,6 +132,7 @@ export class ExecutionPlanManager {
   #userInput = '';
   #requiredMutationPaths = new Set();
   #completedMutationPaths = new Set();
+  #mutationCallCount = 0; // 修改工具调用次数（用于无明确文件路径时的完成判断）
   #useLLMDecomposition = false; // 是否使用 LLM 智能分解（替代固定模板）
   #graphPlanner = null;
 
@@ -163,6 +164,7 @@ export class ExecutionPlanManager {
     
     this.#requiredMutationPaths = this.#extractRequestedFilePaths(this.#userInput);
     this.#completedMutationPaths = new Set();
+    this.#mutationCallCount = 0;
 
     // 使用 shouldEnablePlan 判断是否启用计划（考虑上下文）
     const planContext = options.planContext || { complexityScore: 0, fileCount: 0 };
@@ -385,7 +387,9 @@ export class ExecutionPlanManager {
       return;
     }
 
-    // ===== 修改类任务：完整流程 =====
+    // ===== 修改类任务：核心 4 步流程 =====
+    // 注：测试/验证由 createIfNeeded 的兜底逻辑按需自动添加，不写入模板
+
     // bug_fix 特殊处理：直接修复，无需前置探索
     if (taskType === 'bug_fix') {
       plan.addTask({
@@ -396,43 +400,33 @@ export class ExecutionPlanManager {
         phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
       });
       plan.addTask({
-        id: 'verify_result',
-        name: 'Run tests',
-        description: 'Run tests to verify the bug is resolved and no regressions were introduced.',
-        dependencies: ['implement_changes'],
-        phase: ExecutionPlanManager.PHASE.VERIFICATION,
-      });
-      plan.addTask({
         id: 'inspect_changes',
         name: 'Review changes',
         description: 'Read back the fixed code to verify the changes are correct.',
-        dependencies: ['verify_result'],
+        dependencies: ['implement_changes'],
         phase: ExecutionPlanManager.PHASE.INSPECTION,
       });
       return;
     }
 
-    // coding / modification / documentation：标准 5 步流程
+    // coding / modification / documentation：标准 4 步流程
     const descMap = {
       coding: {
         inspect: 'Discover the relevant project structure and existing files before reading or writing.',
         plan: 'Choose the implementation approach and file split for the requested change.',
         implement: 'Create or edit the required files using the smallest necessary changes.',
-        verify: 'Run tests, lint, or type-check to verify the implementation works correctly.',
         review: 'Read back or otherwise inspect the files that were created or edited.',
       },
       modification: {
         inspect: 'Read the existing code to understand the current implementation.',
         plan: 'Plan the modification approach and identify the smallest necessary changes.',
         implement: 'Make the planned changes to the existing code.',
-        verify: 'Run tests or verification commands to ensure the modification works correctly.',
         review: 'Read back the modified files to verify the changes.',
       },
       documentation: {
         inspect: 'Discover the project structure and identify existing documentation files.',
         plan: 'Plan the documentation structure, sections, and key topics to cover.',
         implement: 'Create or update documentation files with clear, structured content.',
-        verify: 'Verify the documentation is complete, accurate, and well-structured.',
         review: 'Read back and review the documentation for clarity and completeness.',
       },
     };
@@ -460,17 +454,10 @@ export class ExecutionPlanManager {
       phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
     });
     plan.addTask({
-      id: 'verify_result',
-      name: 'Verify',
-      description: desc.verify,
-      dependencies: ['implement_changes'],
-      phase: ExecutionPlanManager.PHASE.VERIFICATION,
-    });
-    plan.addTask({
       id: 'inspect_changes',
       name: 'Review',
       description: desc.review,
-      dependencies: ['verify_result'],
+      dependencies: ['implement_changes'],
       phase: ExecutionPlanManager.PHASE.INSPECTION,
     });
   }
@@ -977,6 +964,7 @@ export class ExecutionPlanManager {
     if (!['write_file', 'edit_file'].includes(toolName)) {
       return;
     }
+    this.#mutationCallCount += 1;
     const path = args?.path || args?.file_path || args?.file;
     if (path) {
       this.#completedMutationPaths.add(String(path));
@@ -985,7 +973,9 @@ export class ExecutionPlanManager {
 
   #hasCompletedRequiredMutationPaths() {
     if (this.#requiredMutationPaths.size === 0) {
-      return true;
+      // 无明确文件路径时：要求至少 2 次修改调用才认为完成
+      // 防止第一次修改工具调用就过早完成 implement_changes
+      return this.#mutationCallCount >= 2;
     }
     for (const p of this.#requiredMutationPaths) {
       if (!this.#completedMutationPaths.has(p)) {
