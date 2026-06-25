@@ -576,6 +576,11 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       msg.streamComplete === true
     );
 
+    // 判断当前任务是否有 plan（通过消息列表中是否有 plan 类型消息）
+    const hasPlanInTask = messages.some(m => m.type === 'plan');
+    // 判断 plan 是否已经出现（在当前消息之前或当前）
+    const planHasAppeared = hasPlanInTask && messages.slice(0, index + 1).some(m => m.type === 'plan');
+
     const renderAssistantBubble = ({ streaming = false } = {}) => {
       const content = getMessageDisplayText(msg);
 
@@ -917,7 +922,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       if (msg.type === 'error') return renderErrorCard();
       if (msg.type === 'thinking') return renderThinkingCard();
       if (msg.type === 'plan') return renderPlanCard();
-      if (isStreaming) return renderStreamingCard();
+      // streaming card：只有在没有 plan 的任务中立即显示，或者有 plan 但 plan 已经出现后才显示
+      if (isStreaming && (!hasPlanInTask || planHasAppeared)) return renderStreamingCard();
 
       const content = getMessageDisplayText(msg);
       return (
