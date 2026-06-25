@@ -107,9 +107,13 @@ export function RuntimeDetailsPanel({
   const thinkingSummary = buildThinkingSummary(runtimeDetails);
   const activitySummary = buildActivitySummary(runtimeDetails);
   const isRunningGroup = status === 'running' && isActiveGroup;
-  const statusText = isRunningGroup || latestStatusUpdate
-    ? getStatusUpdateText(latestStatusUpdate)
-    : '执行完成';
+  // 状态文本：只有 status 真正变为 completed/idle 时才显示"执行完成"
+  // 否则如果有 latestStatusUpdate 就显示其文本，否则显示"运行中"
+  const statusText = isRunningGroup
+    ? (latestStatusUpdate ? getStatusUpdateText(latestStatusUpdate) : '运行中')
+    : (status === 'completed' || status === 'idle'
+      ? '执行完成'
+      : (latestStatusUpdate ? getStatusUpdateText(latestStatusUpdate) : '运行中'));
   const runtimeDurationMs = useMemo(() => {
     const timestamps = runtimeDetails
       .map(detail => Number(detail?.timestamp || 0))
