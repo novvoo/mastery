@@ -270,18 +270,21 @@ export class ExecutionPlanManager {
       });
     }
 
-    // 确保有验证步骤
-    const hasVerification = Array.from(plan.tasks.values()).some(
-      (t) => t.name === 'verify_result' || t.description?.toLowerCase().includes('验证'),
-    );
-    if (!hasVerification) {
-      const lastId = Array.from(plan.tasks.keys()).at(-1);
-      plan.addTask({
-        id: 'verify_result',
-        name: 'Verify result',
-        description: 'Verify the final result: run tests / lint / build to confirm correctness.',
-        dependencies: lastId ? [lastId] : [],
-      });
+    // 只对修改类任务添加验证步骤
+    // 查询/回答类任务（research, general）和分析类任务（analysis）不需要验证
+    if (isMutationTask) {
+      const hasVerification = Array.from(plan.tasks.values()).some(
+        (t) => t.id === 'verify_result' || t.name?.toLowerCase().includes('verify'),
+      );
+      if (!hasVerification) {
+        const lastId = Array.from(plan.tasks.keys()).at(-1);
+        plan.addTask({
+          id: 'verify_result',
+          name: 'Verify result',
+          description: 'Verify the final result: run tests / lint / build to confirm correctness.',
+          dependencies: lastId ? [lastId] : [],
+        });
+      }
     }
 
     plan.status = TaskStatus.RUNNING;
