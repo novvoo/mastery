@@ -1566,13 +1566,14 @@ function App() {
           onClose={() => setShowManagement(false)}
         />
       )}
-      {/* LLM 设置弹窗 (保留备用) */}
+      {/* LLM 设置弹窗 */}
       {showLLMSetup && (
         <LLMSetupModal
           llmConfigStatus={llmConfigStatus}
           llmForm={llmForm}
           llmSetupError={llmSetupError}
           llmSetupSaving={llmSetupSaving}
+          modelConfigs={modelConfigs}
           onClose={() => setShowLLMSetup(false)}
           onFormChange={handleLLMFormChange}
           onProviderChange={handleLLMProviderChange}

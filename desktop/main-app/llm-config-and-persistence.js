@@ -172,6 +172,10 @@ export async function saveLLMConfig(ctx, config = {}) {
     envPath: ctx.userEnvPath
   });
   applyRuntimeValues(values);
+
+  // 同步到 models.json，确保模型设置管理页面也能看到这个配置
+  syncConfigToModelsJson(ctx, { provider, apiKey, model, baseUrl });
+
   const status = await attachConfiguredModelProvider(ctx);
 
   return {
@@ -179,6 +183,54 @@ export async function saveLLMConfig(ctx, config = {}) {
     envPath,
     status
   };
+}
+
+/**
+ * 将弹窗设置的模型同步到 models.json
+ * 如果已存在相同 provider 的配置则更新，否则新增
+ */
+function syncConfigToModelsJson(ctx, { provider, apiKey, model, baseUrl }) {
+  try {
+    const configs = readAllModelConfigs(ctx);
+    const newId = `model_${provider}_${Date.now()}`;
+
+    // 查找是否已有同 provider 的配置
+    const existingIdx = configs.findIndex(c => c.provider === provider);
+
+    if (existingIdx >= 0) {
+      // 更新已有配置，并设为启用
+      configs.forEach((c, i) => {
+        configs[i].enabled = i === existingIdx;
+      });
+      configs[existingIdx] = {
+        ...configs[existingIdx],
+        id: configs[existingIdx].id || newId,
+        provider,
+        apiKey,
+        model,
+        baseUrl: baseUrl || configs[existingIdx].baseUrl || '',
+        enabled: true
+      };
+    } else {
+      // 新增配置，禁用其他所有配置
+      configs.forEach((c, i) => {
+        configs[i].enabled = false;
+      });
+      configs.push({
+        id: newId,
+        provider,
+        apiKey,
+        model,
+        baseUrl: baseUrl || '',
+        enabled: true
+      });
+    }
+
+    saveAllModelConfigs(ctx, configs);
+    console.log(`✅ 已同步模型配置到 models.json: ${provider}:${model}`);
+  } catch (err) {
+    console.warn('同步模型配置到 models.json 失败:', err.message);
+  }
 }
 
 export async function handleSaveConfig(ctx) {
