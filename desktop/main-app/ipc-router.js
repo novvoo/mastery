@@ -211,8 +211,11 @@ export function registerCustomHandlers(ctx) {
   });
 
   ipc.registerHandler('workspace:listDirectory', async (options = {}) => {
+    const listOptions = typeof options === 'object' && options !== null
+      ? { ...(options.options || {}), path: options.path || options.options?.path || '' }
+      : { path: String(options || '') };
     return typeof ctx.listWorkspaceDirectory
-      ? ctx.listWorkspaceDirectory(ctx.config.workingDirectory, options)
+      ? ctx.listWorkspaceDirectory(ctx.config.workingDirectory, listOptions)
       : { success: false, error: 'listWorkspaceDirectory 未实现' };
   });
 
@@ -333,11 +336,11 @@ export function registerCustomHandlers(ctx) {
   });
 
   ipc.registerHandler('llm:save-model', async (config) => {
-    return typeof ctx.saveSingleModelConfig ? ctx.saveSingleModelConfig(config) : { success: false };
+    return typeof ctx.saveSingleModelConfig ? await ctx.saveSingleModelConfig(config) : { success: false };
   });
 
   ipc.registerHandler('llm:save-all-models', async (configs) => {
-    return typeof ctx.saveAllModelConfigs ? ctx.saveAllModelConfigs(configs) : { success: false };
+    return typeof ctx.saveAllModelConfigs ? await ctx.saveAllModelConfigs(configs) : { success: false };
   });
 
   ipc.registerHandler('llm:delete-model', async (id) => {
@@ -345,7 +348,7 @@ export function registerCustomHandlers(ctx) {
   });
 
   ipc.registerHandler('llm:toggle-model', async ({ id, enabled }) => {
-    return typeof ctx.toggleModelConfig ? ctx.toggleModelConfig(id, enabled) : { success: false };
+    return typeof ctx.toggleModelConfig ? await ctx.toggleModelConfig(id, enabled) : { success: false };
   });
 
   // ============ LSP 编辑器集成 ============

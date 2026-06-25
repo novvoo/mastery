@@ -79,10 +79,20 @@ export function createDesktopCore(options) {
  * 返回 { configured, provider, model, baseUrl, missingVars, ... }
  */
 export async function attachConfiguredModelProvider(ctx) {
-  const missingVars = getMissingRequiredConfig();
+  let missingVars = getMissingRequiredConfig();
   if (missingVars.length > 0) {
-    console.warn(`⚠️  未配置 LLM: 缺少 ${missingVars.join(', ')}。可在 ${ctx.userEnvPath} 或项目 .env 中配置。`);
-    return getLLMConfigStatus(ctx);
+    const activeConfig = findEnabledModelConfig(ctx);
+    if (activeConfig) {
+      const syncResult = syncActiveModelToEnv(ctx, activeConfig);
+      if (syncResult.success) {
+        missingVars = getMissingRequiredConfig();
+      }
+    }
+
+    if (missingVars.length > 0) {
+      console.warn(`⚠️  未配置 LLM: 缺少 ${missingVars.join(', ')}。可在 ${ctx.userEnvPath} 或项目 .env 中配置。`);
+      return getLLMConfigStatus(ctx);
+    }
   }
 
   const provider = process.env.MODEL_PROVIDER || 'openai';
@@ -336,8 +346,42 @@ export function saveAllModelConfigs(ctx, configs) {
   }
 }
 
-export function saveSingleModelConfig(ctx, config) {
-  const configs = readAllModelConfigs(ctx);
+export async function saveAllModelConfigsAndActivate(ctx, configs) {
+  const previousConfigs = readAllModelConfigs(ctx);
+  const activeConfig = Array.isArray(configs) ? configs.find(c => c.enabled) : null;
+  if (activeConfig) {
+    const validation = validateActiveModelConfig(activeConfig);
+    if (!validation.success) {
+      return validation;
+    }
+  }
+
+  const saveResult = saveAllModelConfigs(ctx, configs);
+  if (!saveResult.success) {
+    return saveResult;
+  }
+
+  if (!activeConfig) {
+    return saveResult;
+  }
+
+  const activateResult = await activateModelConfig(ctx, activeConfig);
+  if (!activateResult.success) {
+    saveAllModelConfigs(ctx, previousConfigs);
+  }
+  return { ...saveResult, ...activateResult };
+}
+
+export async function saveSingleModelConfig(ctx, config) {
+  const previousConfigs = readAllModelConfigs(ctx);
+  const configs = previousConfigs.map(c => ({ ...c }));
+  if (config.enabled) {
+    const validation = validateActiveModelConfig(config);
+    if (!validation.success) {
+      return validation;
+    }
+  }
+
   const idx = configs.findIndex(c => c.id === config.id);
   
   if (idx >= 0) {
@@ -359,12 +403,19 @@ export function saveSingleModelConfig(ctx, config) {
   }
   
   const result = saveAllModelConfigs(ctx, configs);
+  if (!result.success) {
+    return result;
+  }
   
-  // 如果保存的模型是启用的，同步到 .env
+  // 如果保存的模型是启用的，同步到 .env 并立即附加到运行时
   if (config.enabled) {
     const activeConfig = configs.find(c => c.id === config.id);
     if (activeConfig) {
-      syncActiveModelToEnv(ctx, activeConfig);
+      const activateResult = await activateModelConfig(ctx, activeConfig);
+      if (!activateResult.success) {
+        saveAllModelConfigs(ctx, previousConfigs);
+      }
+      return { ...result, ...activateResult };
     }
   }
   
@@ -377,7 +428,7 @@ export function deleteModelConfig(ctx, id) {
   return saveAllModelConfigs(ctx, filtered);
 }
 
-export function toggleModelConfig(ctx, id, enabled) {
+export async function toggleModelConfig(ctx, id, enabled) {
   console.log(`🔍 toggleModelConfig called: id=${id}, enabled=${enabled}, ctx.userEnvPath=${ctx.userEnvPath}`);
   
   const configs = readAllModelConfigs(ctx);
@@ -389,13 +440,30 @@ export function toggleModelConfig(ctx, id, enabled) {
       ...c,
       enabled: c.id === id ? true : false
     }));
-    saveAllModelConfigs(ctx, updated);
     
     // 将启用的模型同步到 .env
     const activeConfig = updated.find(c => c.id === id);
     console.log(`🎯 Active config to sync: ${JSON.stringify(activeConfig)}`);
-    
-    const syncResult = activeConfig ? syncActiveModelToEnv(ctx, activeConfig) : { success: false };
+
+    const validation = activeConfig ? validateActiveModelConfig(activeConfig) : { success: false };
+    if (!validation.success) {
+      return {
+        success: false,
+        configs,
+        error: validation.error,
+        envPath: ctx.userEnvPath
+      };
+    }
+
+    const saveResult = saveAllModelConfigs(ctx, updated);
+    if (!saveResult.success) {
+      return saveResult;
+    }
+
+    const syncResult = activeConfig ? await activateModelConfig(ctx, activeConfig) : { success: false };
+    if (!syncResult.success) {
+      saveAllModelConfigs(ctx, configs);
+    }
     
     console.log(`📝 Sync result: ${JSON.stringify(syncResult)}`);
     
@@ -416,6 +484,57 @@ export function toggleModelConfig(ctx, id, enabled) {
     
     const updated = configs.map(c => c.id === id ? { ...c, enabled: false } : c);
     return saveAllModelConfigs(ctx, updated);
+  }
+}
+
+function findEnabledModelConfig(ctx) {
+  try {
+    return readAllModelConfigs(ctx).find(c => c.enabled && c.apiKey && c.model) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function validateActiveModelConfig(config) {
+  const provider = config?.provider || 'openai';
+  const requirement = getProviderRequirement(provider);
+  if (!requirement) {
+    return { success: false, error: `不支持的模型提供商: ${provider}` };
+  }
+  if (!config?.apiKey || !config?.model) {
+    return { success: false, error: '模型配置不完整（缺少 API Key 或模型名称）' };
+  }
+  return { success: true };
+}
+
+async function activateModelConfig(ctx, config) {
+  const syncResult = syncActiveModelToEnv(ctx, config);
+  if (!syncResult.success) {
+    return syncResult;
+  }
+
+  if (!ctx.desktopCore) {
+    return {
+      ...syncResult,
+      status: getLLMConfigStatus(ctx)
+    };
+  }
+
+  try {
+    const status = await attachConfiguredModelProvider(ctx);
+    return {
+      ...syncResult,
+      status
+    };
+  } catch (error) {
+    console.error(`❌ 附加模型提供者失败: ${error.message}`);
+    return {
+      success: false,
+      provider: syncResult.provider,
+      model: syncResult.model,
+      error: error.message,
+      status: getLLMConfigStatus(ctx)
+    };
   }
 }
 

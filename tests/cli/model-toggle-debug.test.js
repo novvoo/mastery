@@ -55,10 +55,10 @@ describe('Model Toggle Sync End-to-End', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  test('should sync enabled model to .env when toggling', () => {
+  test('should sync enabled model to .env when toggling', async () => {
     console.log('=== 测试：启用模型同步到 .env ===');
 
-    const result = toggleModelConfig(ctx, 'model1', true);
+    const result = await toggleModelConfig(ctx, 'model1', true);
 
     console.log('Result:', JSON.stringify(result, null, 2));
 
@@ -90,7 +90,7 @@ describe('Model Toggle Sync End-to-End', () => {
     expect(configs.find((c) => c.id === 'model2').enabled).toBe(false);
   });
 
-  test('should not disable the only enabled model', () => {
+  test('should not disable the only enabled model', async () => {
     console.log('=== 测试：不能禁用唯一启用的模型 ===');
 
     // 修改配置，使 model1 成为唯一启用的模型
@@ -98,7 +98,7 @@ describe('Model Toggle Sync End-to-End', () => {
     configs.forEach((c) => (c.enabled = c.id === 'model1'));
     fs.writeFileSync(path.join(tmpDir, 'models.json'), JSON.stringify(configs, null, 2));
 
-    const result = toggleModelConfig(ctx, 'model1', false);
+    const result = await toggleModelConfig(ctx, 'model1', false);
 
     console.log('Result:', JSON.stringify(result, null, 2));
 
@@ -106,10 +106,10 @@ describe('Model Toggle Sync End-to-End', () => {
     expect(result.error).toBe('不能禁用当前激活的模型，请先启用其他模型');
   });
 
-  test('should handle zhipu model sync', () => {
+  test('should handle zhipu model sync', async () => {
     console.log('=== 测试：同步智谱模型到 .env ===');
 
-    const result = toggleModelConfig(ctx, 'model2', true);
+    const result = await toggleModelConfig(ctx, 'model2', true);
 
     console.log('Result:', JSON.stringify(result, null, 2));
 
@@ -124,7 +124,7 @@ describe('Model Toggle Sync End-to-End', () => {
     expect(envContent).toContain('ZHIPU_API_KEY=test-key-456');
   });
 
-  test('should handle deepseek model sync', () => {
+  test('should handle deepseek model sync', async () => {
     console.log('=== 测试：同步深度求索模型到 .env ===');
 
     // 添加一个 deepseek 模型
@@ -139,7 +139,7 @@ describe('Model Toggle Sync End-to-End', () => {
     });
     fs.writeFileSync(path.join(tmpDir, 'models.json'), JSON.stringify(configs, null, 2));
 
-    const result = toggleModelConfig(ctx, 'model3', true);
+    const result = await toggleModelConfig(ctx, 'model3', true);
 
     console.log('Result:', JSON.stringify(result, null, 2));
 
@@ -154,7 +154,7 @@ describe('Model Toggle Sync End-to-End', () => {
     expect(envContent).toContain('DEEPSEEK_API_KEY=test-key-789');
   });
 
-  test('should handle openrouter model sync', () => {
+  test('should handle openrouter model sync', async () => {
     console.log('=== 测试：同步 OpenRouter 模型到 .env ===');
 
     // 添加一个 openrouter 模型
@@ -169,7 +169,7 @@ describe('Model Toggle Sync End-to-End', () => {
     });
     fs.writeFileSync(path.join(tmpDir, 'models.json'), JSON.stringify(configs, null, 2));
 
-    const result = toggleModelConfig(ctx, 'model4', true);
+    const result = await toggleModelConfig(ctx, 'model4', true);
 
     console.log('Result:', JSON.stringify(result, null, 2));
 
@@ -184,7 +184,7 @@ describe('Model Toggle Sync End-to-End', () => {
     expect(envContent).toContain('OPENROUTER_API_KEY=test-key-abc');
   });
 
-  test('should handle missing apiKey or model', () => {
+  test('should handle missing apiKey or model', async () => {
     console.log('=== 测试：配置不完整时应该失败 ===');
 
     // 添加一个配置不完整的模型
@@ -199,11 +199,15 @@ describe('Model Toggle Sync End-to-End', () => {
     });
     fs.writeFileSync(path.join(tmpDir, 'models.json'), JSON.stringify(configs, null, 2));
 
-    const result = toggleModelConfig(ctx, 'model5', true);
+    const result = await toggleModelConfig(ctx, 'model5', true);
 
     console.log('Result:', JSON.stringify(result, null, 2));
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('模型配置不完整（缺少 API Key 或模型名称）');
+
+    const savedConfigs = JSON.parse(fs.readFileSync(path.join(tmpDir, 'models.json'), 'utf8'));
+    expect(savedConfigs.find((c) => c.id === 'model2').enabled).toBe(true);
+    expect(savedConfigs.find((c) => c.id === 'model5').enabled).toBe(false);
   });
 });

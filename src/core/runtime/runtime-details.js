@@ -94,6 +94,18 @@ export function isThinkingMessage(msg) {
   return msg?.type === 'thinking' || msg?.event === 'agent:thinking';
 }
 
+function isDebugThinkingEvent(msg) {
+  const payload = msg?.payload || msg?.raw || {};
+  const hasDebugPayload = Boolean(payload?.eventName || payload?.data);
+  const hasThinkingText = Boolean(
+    (typeof msg?.thinkingText === 'string' && msg.thinkingText.trim()) ||
+      (typeof payload?.text === 'string' && payload.text.trim()) ||
+      (typeof payload?.reasoning === 'string' && payload.reasoning.trim()),
+  );
+
+  return isThinkingMessage(msg) && hasDebugPayload && !hasThinkingText;
+}
+
 export function isStatusUpdateMessage(msg) {
   return msg?.event === 'status:update';
 }
@@ -179,7 +191,9 @@ export function getRuntimeDetailContent(msg) {
 }
 
 export function buildThinkingSummary(runtimeDetails = []) {
-  const thinkingMessages = runtimeDetails.filter(isThinkingMessage);
+  const thinkingMessages = runtimeDetails.filter(
+    (msg) => isThinkingMessage(msg) && !isDebugThinkingEvent(msg),
+  );
   const iterations = thinkingMessages
     .map((msg) => msg.iteration)
     .filter((value) => value !== null && value !== undefined);

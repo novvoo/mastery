@@ -149,7 +149,8 @@ function stripActionBlocks(text = '') {
 // 判断是否为工具协议 JSON，如果是则抑制显示，否则 flush 到 UI。
 // ============================================================
 
-const PROTOCOL_FIELD_PATTERN = /"action"\s*:|"evaluation_previous_goal"\s*:|"next_goal"\s*:|"memory"\s*:/;
+const PROTOCOL_FIELD_PATTERN =
+  /"action"\s*:|"evaluation_previous_goal"\s*:|"next_goal"\s*:|"memory"\s*:/;
 const MAX_PROTO_BUFFER_SIZE = 2048; // 最多缓冲 2KB
 
 /**
@@ -1159,9 +1160,14 @@ export class AgentEngine {
       }
       const activeRoutedToolNames = new Set(routedTools.map((tool) => tool.name));
       const functions = this.#toolRegistry.toFunctionDefinitions(routedTools);
+      const routedToolPrompt = [
+        this.#textToolParser.generateToolPrompt(routedTools),
+        `Workspace: all relative paths resolve from ${this.#config.workingDirectory}. ` +
+          `Shell cwd is ${this.#config.workingDirectory}.`,
+      ].join('\n\n');
       const messages = withRoutedToolContext(
         this.#sessionManager.getMessages(),
-        this.#textToolParser.generateToolPrompt(routedTools),
+        routedToolPrompt,
         currentPhase,
       );
 
@@ -1692,19 +1698,18 @@ export class AgentEngine {
 
             // 判断工具调用是否在当前子任务文件范围内
             const filePath = args?.filePath || args?.path || args?.file || '';
-            const isInScope = scopeFiles.size > 0 && (
-              scopeFiles.has(filePath) ||
-              Array.from(scopeFiles).some((sf) => filePath.includes(sf))
-            );
+            const isInScope =
+              scopeFiles.size > 0 &&
+              (scopeFiles.has(filePath) ||
+                Array.from(scopeFiles).some((sf) => filePath.includes(sf)));
 
             // 判断搜索是否有命中（基于 result 中是否有内容）
-            const hasSearchHit = tc?._result != null && (
-              (typeof tc._result === 'string' && tc._result.length > 50) ||
-              (typeof tc._result === 'object' && (
-                (Array.isArray(tc._result) && tc._result.length > 0) ||
-                (!Array.isArray(tc._result) && Object.keys(tc._result).length > 0)
-              ))
-            );
+            const hasSearchHit =
+              tc?._result != null &&
+              ((typeof tc._result === 'string' && tc._result.length > 50) ||
+                (typeof tc._result === 'object' &&
+                  ((Array.isArray(tc._result) && tc._result.length > 0) ||
+                    (!Array.isArray(tc._result) && Object.keys(tc._result).length > 0))));
 
             const progress = isMeaningfulProgress(name, args, { isInScope, hasSearchHit });
 
@@ -2004,6 +2009,9 @@ export class AgentEngine {
       return;
     }
     this.#config.workingDirectory = directory;
+    this.#systemPromptInitialized = false;
+    this.#workspaceState?.clear?.();
+    this.#contextManager?.clear?.();
 
     // 同步更新依赖组件，确保目录切换后所有子系统都在新目录下工作
     if (typeof this.#workspaceIndex?.setWorkingDirectory === 'function') {
@@ -2076,8 +2084,10 @@ export class AgentEngine {
 
   /** 返回引擎状态（idle / running / stopped / error） */
   getState() {
+    const status = this.#stopRequested ? 'stopped' : this.#lastRunResult?.status || 'idle';
     return {
-      state: this.#stopRequested ? 'stopped' : this.#lastRunResult?.status || 'idle',
+      state: status,
+      status,
       workingDirectory: this.#config.workingDirectory,
       maxIterations: this.#config.maxIterations,
       toolCount: this.#toolRegistry.size,

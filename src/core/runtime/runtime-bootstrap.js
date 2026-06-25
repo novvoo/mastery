@@ -159,8 +159,7 @@ export async function bootstrapRuntime(options = {}) {
     includeExperimentalTools: options.includeExperimentalTools === true,
   });
 
-  // 4) WorkspaceState & Metrics
-  const workspaceState = new WorkspaceState();
+  // 4) Metrics. WorkspaceState belongs to AgentEngine; expose the same instance below.
   const ms = ensureMetricsSink({
     enabled: options.metrics?.enabled !== false,
     logDir: options.metrics?.logDir || null,
@@ -193,7 +192,7 @@ export async function bootstrapRuntime(options = {}) {
     engine,
     toolRegistry,
     securityPolicy,
-    workspaceState,
+    workspaceState: engine.getWorkspaceState?.() || new WorkspaceState(),
     metricsSink: ms,
     mcpClient,
     workingDirectory,

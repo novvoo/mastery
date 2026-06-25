@@ -50,6 +50,28 @@ describe('runtime-bootstrap', () => {
     expect(rt.workingDirectory).toBe(dir);
   });
 
+  it('bootstrapRuntime 暴露 engine 实际使用的 workspaceState', async () => {
+    const rt = await bootstrapRuntime({
+      workingDirectory: dir,
+      metrics: { enabled: false },
+      autoInitMCP: false,
+    });
+
+    expect(rt.workspaceState).toBe(rt.engine.getWorkspaceState());
+  });
+
+  it('bootstrapRuntime engine 状态同时提供 state/status 兼容字段', async () => {
+    const rt = await bootstrapRuntime({
+      workingDirectory: dir,
+      metrics: { enabled: false },
+      autoInitMCP: false,
+    });
+
+    const state = rt.engine.getState();
+    expect(state.state).toBe('idle');
+    expect(state.status).toBe('idle');
+  });
+
   it('默认工具集不暴露实验编辑工具，避免 list/write 能力重复', async () => {
     const rt = await bootstrapRuntime({
       workingDirectory: dir,

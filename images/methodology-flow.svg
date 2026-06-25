@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-labelledby="title desc">
   <title id="title">AI Engineering Mastery Agent workflow</title>
-  <desc id="desc">A workflow diagram showing methodology, tool routing, execution, verification, and delivery.</desc>
+  <desc id="desc">A workflow diagram showing the methodology-driven AI engineering agent flow: alignment, diagnosis, tool routing, streaming execution with protocol filtering, verification, and delivery.</desc>
   <defs>
     <style>
       .bg { fill: #0f141c; }
@@ -12,24 +12,36 @@
       .body { fill: #a8b3c1; font: 400 13px Inter, Arial, sans-serif; }
       .chip { fill: #1f2937; stroke: #3b4a5f; stroke-width: 1; }
       .chip-text { fill: #cbd5e1; font: 600 12px Inter, Arial, sans-serif; }
-      .accent-blue { fill: #2dd4bf; }
-      .accent-cyan { fill: #38bdf8; }
-      .accent-green { fill: #86efac; }
       .accent-yellow { fill: #facc15; }
+      .accent-cyan { fill: #38bdf8; }
+      .accent-blue { fill: #2dd4bf; }
+      .accent-green { fill: #86efac; }
       .accent-red { fill: #fb7185; }
+      .accent-purple { fill: #c084fc; }
       .arrow { stroke: #62748a; stroke-width: 2.2; fill: none; marker-end: url(#arrowhead); }
+      .arrow-dashed { stroke: #62748a; stroke-width: 1.8; stroke-dasharray: 6 4; fill: none; marker-end: url(#arrowhead); }
       .thin { stroke: #405166; stroke-width: 1.4; fill: none; }
+      .badge { fill: #1a2332; stroke: #3b82f6; stroke-width: 1.2; }
+      .badge-text { fill: #60a5fa; font: 600 11px Inter, Arial, sans-serif; }
     </style>
     <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="8.5" refY="5" orient="auto">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#62748a"/>
     </marker>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
 
-  <rect class="bg" width="1200" height="620" rx="22"/>
+  <rect class="bg" width="1200" height="640" rx="22"/>
 
   <text x="60" y="64" class="title">Methodology-driven AI engineering agent</text>
-  <text x="60" y="92" class="subtitle">不是只补全代码，而是把需求对齐、工具选择、代码执行和证据验证放进同一条工程闭环。</text>
+  <text x="60" y="92" class="subtitle">需求对齐 · 工具路由 · 流式执行（含协议过滤）· 证据验证 · 工程闭环</text>
 
+  <!-- Row 1: Core workflow -->
   <rect x="60" y="132" width="205" height="155" rx="14" class="panel"/>
   <circle cx="92" cy="166" r="11" class="accent-yellow"/>
   <text x="112" y="171" class="label">1. 对齐与看全局</text>
@@ -53,15 +65,17 @@
 
   <rect x="822" y="132" width="205" height="155" rx="14" class="panel"/>
   <circle cx="854" cy="166" r="11" class="accent-green"/>
-  <text x="874" y="171" class="label">4. 执行与观察</text>
-  <text x="846" y="205" class="body">读代码、改文件、运行命令</text>
-  <text x="846" y="229" class="body">Desktop 独立执行过程</text>
-  <text x="846" y="253" class="body">状态进度条 + 可展开事件</text>
+  <text x="874" y="171" class="label">4. 流式执行</text>
+  <text x="846" y="205" class="body">ReAct 流式输出 + 协议过滤</text>
+  <text x="846" y="229" class="body">ToolProtocolStreamFilter</text>
+  <text x="846" y="253" class="body">防止工具 JSON 泄漏到 UI</text>
 
+  <!-- Arrows Row 1 -->
   <path class="arrow" d="M 265 210 L 306 210"/>
   <path class="arrow" d="M 519 210 L 560 210"/>
   <path class="arrow" d="M 773 210 L 814 210"/>
 
+  <!-- Row 2: Verification & Delivery -->
   <rect x="210" y="365" width="260" height="145" rx="14" class="panel-soft"/>
   <circle cx="242" cy="399" r="11" class="accent-red"/>
   <text x="262" y="404" class="label">5. 审查与验证</text>
@@ -70,16 +84,38 @@
   <text x="238" y="486" class="body">缺少证据时标出风险和下一步</text>
 
   <rect x="550" y="365" width="260" height="145" rx="14" class="panel-soft"/>
-  <circle cx="582" cy="399" r="11" class="accent-green"/>
+  <circle cx="582" cy="399" r="11" class="accent-purple"/>
   <text x="602" y="404" class="label">6. 交付与记忆</text>
   <text x="578" y="438" class="body">handoff: 变更、验证、风险摘要</text>
   <text x="578" y="462" class="body">项目隔离的文档索引和历史会话</text>
   <text x="578" y="486" class="body">CLI 与 Desktop 共享 RAG 能力</text>
 
+  <!-- Arrows Row 2 -->
   <path class="arrow" d="M 925 287 C 925 338 795 342 795 390"/>
   <path class="arrow" d="M 470 438 L 542 438"/>
-  <path class="arrow" d="M 680 365 C 680 330 120 330 120 287"/>
 
-  <rect x="60" y="540" width="1080" height="42" rx="10" class="chip"/>
-  <text x="86" y="566" class="chip-text">安全边界：工作区路径策略 / 敏感路径限制 / Shell 沙箱 / 工具安全检查 / 上下文预算裁剪</text>
+  <!-- Protocol Filter Detail Box -->
+  <rect x="860" y="365" width="280" height="145" rx="12" class="badge"/>
+  <text x="880" y="395" class="badge-text" fill="#60a5fa">ToolProtocolStreamFilter</text>
+  <text x="880" y="420" class="body" fill="#94a3b8">• 缓冲 { 开头文本</text>
+  <text x="880" y="442" class="body" fill="#94a3b8">• 检测 "action"/"evaluation_</text>
+  <text x="880" y="462" class="body" fill="#94a3b8">  previous_goal"/"next_goal"</text>
+  <text x="880" y="484" class="body" fill="#86efac">✓ 协议 JSON 抑制显示</text>
+  <text x="880" y="504" class="body" fill="#fb7185">✗ 普通 JSON 正常输出</text>
+
+  <!-- Dashed arrow to protocol filter -->
+  <path class="arrow-dashed" d="M 1027 287 L 1027 358"/>
+  <text x="1035" y="345" class="body" fill="#64748b" font-size="11">debug</text>
+
+  <!-- Loop back arrow -->
+  <path class="arrow-dashed" d="M 680 365 C 680 330 120 330 120 287"/>
+
+  <!-- Bottom chip: Safety boundaries -->
+  <rect x="60" y="560" width="1080" height="42" rx="10" class="chip"/>
+  <text x="86" y="586" class="chip-text">安全边界：工作区路径策略 / 敏感路径限制 / Shell 沙箱 / 工具安全检查 / 上下文预算裁剪</text>
+
+  <!-- Legend -->
+  <rect x="980" y="540" width="160" height="32" rx="6" fill="none" stroke="#2d3748" stroke-width="1"/>
+  <text x="1000" y="560" class="body" fill="#64748b" font-size="11">— 实线: 主流程</text>
+  <text x="1000" y="576" class="body" fill="#64748b" font-size="11">- - 实线: 反馈/调试</text>
 </svg>

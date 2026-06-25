@@ -376,7 +376,7 @@ describe('ExecutionPlanManager', () => {
 
   test('createIfNeeded returns null when profile does not require planning', async () => {
     const result = await manager.createIfNeeded('Fix the bug', {
-      requiresAutomaticPlanning: false,
+requiresAutomaticPlanning: false,
     });
     expect(result).toBeNull();
     expect(manager.plan).toBeNull();
@@ -389,7 +389,9 @@ describe('ExecutionPlanManager', () => {
 
   test('createIfNeeded creates plan when profile requires planning', () => {
     const result = manager.createIfNeeded('Fix app.js bug', {
-      requiresAutomaticPlanning: true,
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
     });
     expect(result).not.toBeNull();
     expect(manager.plan).not.toBeNull();
@@ -398,7 +400,9 @@ describe('ExecutionPlanManager', () => {
 
   test('createIfNeeded creates plan with correct tasks', () => {
     manager.createIfNeeded('Fix app.js bug', {
-      requiresAutomaticPlanning: true,
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
     });
     const plan = manager.plan;
     expect(plan.getTask('inspect_workspace')).toBeDefined();
@@ -410,7 +414,9 @@ describe('ExecutionPlanManager', () => {
 
   test('createIfNeeded includes semantic_risk_review when profile requires it', () => {
     manager.createIfNeeded('Fix app.js bug', {
-      requiresAutomaticPlanning: true,
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
       requiresSemanticRiskReview: true,
       semanticRiskDomains: [{ label: 'API Surface', checklist: ['Check backwards compat'] }],
     });
@@ -419,7 +425,9 @@ describe('ExecutionPlanManager', () => {
 
   test('createIfNeeded extracts file paths from user input', () => {
     manager.createIfNeeded('Edit app.js and utils.ts', {
-      requiresAutomaticPlanning: true,
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
     });
     // Plan should be created; file paths tracked internally
     expect(manager.plan).not.toBeNull();
@@ -431,20 +439,20 @@ describe('ExecutionPlanManager', () => {
   });
 
   test('advance returns null for failed tool result', () => {
-    manager.createIfNeeded('Fix bug', { requiresAutomaticPlanning: true });
+    manager.createIfNeeded('Fix bug', { requiresPlan: true, mode: 'mutate', allowsMutation: true });
     const result = manager.advance('list_dir', {}, 'Error: something failed');
     expect(result).toBeNull();
   });
 
   test('advance completes inspect_workspace on inspection tool', () => {
-    manager.createIfNeeded('Fix bug in app.js', { requiresAutomaticPlanning: true });
+    manager.createIfNeeded('Fix bug in app.js', { requiresPlan: true, mode: 'mutate', allowsMutation: true });
     const result = manager.advance('list_dir', {}, 'OK');
     // Should have progress change since inspect_workspace is the first running task
     expect(result).not.toBeNull();
   });
 
   test('advance progresses through plan stages', () => {
-    manager.createIfNeeded('Fix bug in app.js', { requiresAutomaticPlanning: true });
+    manager.createIfNeeded('Fix bug in app.js', { requiresPlan: true, mode: 'mutate', allowsMutation: true });
 
     // Step 1: inspect workspace
     const r1 = manager.advance('list_dir', {}, 'OK');
@@ -468,7 +476,7 @@ describe('ExecutionPlanManager', () => {
   });
 
   test('buildPrompt returns prompt text when plan exists', () => {
-    manager.createIfNeeded('Fix bug', { requiresAutomaticPlanning: true });
+    manager.createIfNeeded('Fix bug', { requiresPlan: true, mode: 'mutate', allowsMutation: true });
     const prompt = manager.buildPrompt();
     expect(prompt).toContain('Automatic task orchestration');
     expect(prompt).toContain('inspect_workspace');
@@ -477,7 +485,9 @@ describe('ExecutionPlanManager', () => {
 
   test('buildPrompt includes semantic risk guidance when profile requires it', () => {
     manager.createIfNeeded('Fix bug', {
-      requiresAutomaticPlanning: true,
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
       requiresSemanticRiskReview: true,
       semanticRiskDomains: [{ label: 'Performance', checklist: ['Check FPS'] }],
     });
@@ -487,7 +497,7 @@ describe('ExecutionPlanManager', () => {
   });
 
   test('markCompleted marks plan as completed', () => {
-    manager.createIfNeeded('Fix bug', { requiresAutomaticPlanning: true });
+    manager.createIfNeeded('Fix bug', { requiresPlan: true, mode: 'mutate', allowsMutation: true });
     manager.markCompleted();
     expect(manager.isCompleted).toBe(true);
   });
@@ -497,7 +507,7 @@ describe('ExecutionPlanManager', () => {
   });
 
   test('advance with mutation tool records file path', () => {
-    manager.createIfNeeded('Fix bug in app.js', { requiresAutomaticPlanning: true });
+    manager.createIfNeeded('Fix bug in app.js', { requiresPlan: true, mode: 'mutate', allowsMutation: true });
     // Complete inspection first
     manager.advance('list_dir', {}, 'OK');
     // Then use mutation tool

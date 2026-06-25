@@ -12,11 +12,29 @@
 
 import { ExecutionPlan, TaskStatus, GraphPlanner } from '../../../planner/graph-planner.js';
 import { isMutation as isSemanticsMutation, isInspection as isSemanticsInspection } from './support/tool-semantics.js';
+import { shouldEnablePlan } from './support/task-profile.js';
 
 // ============== 工具谓词：统一委托给 tool-semantics 模块 ==============
 
 export function isWorkspaceInspectionTool(toolName, args) {
-  return isSemanticsInspection(toolName);
+  // 先检查是否是检查类工具
+  if (isSemanticsInspection(toolName)) {
+    return true;
+  }
+  // Shell 命令需要检查命令内容
+  if (toolName === 'shell') {
+    const command = String(args?.command || args?.input || args?.text || '').toLowerCase();
+    // 只读命令模式
+    const readonlyPatterns = /\b(ls|cat|grep|rg|find|pwd|tree|stat|head|tail|wc|which|whereis|echo|print)\b/;
+    if (readonlyPatterns.test(command)) {
+      return true;
+    }
+    // git 只读子命令
+    if (/^git\s+(log|status|diff|show|branch|tag|rev-parse|config\s+--list|remote\s+-v)\b/.test(command)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function isPlanningTool(toolName) {
@@ -128,26 +146,41 @@ export class ExecutionPlanManager {
     VERIFICATION: 'verification',
   });
 
-  /** 根据 profile 决定是否创建计划；返回 plan（非编码 / 非 automatic-planning 任务返回 null） */
+  /** 根据 profile 决定是否创建计划
+   *
+   * 重构说明：
+   * - MUTATE 模式强制创建 plan
+   * - 其他模式根据 profile.requiresPlan（boolean 或 'optional'）和上下文决定
+   * - 非 mutate 任务的 plan 可能是轻量计划，不强制 LLM 分解
+   */
   async createIfNeeded(userInput, profile, options = {}) {
     this.#userInput = String(userInput || '');
-    this.#profile = profile || null;
+    
+    // 兼容处理：profile 可能是 quickAssess 的完整返回值（包含 taskProfile 字段）
+    // 需要提取内部的结构化 taskProfile
+    const taskProfile = profile?.taskProfile || profile;
+    this.#profile = taskProfile || null;
+    
     this.#requiredMutationPaths = this.#extractRequestedFilePaths(this.#userInput);
     this.#completedMutationPaths = new Set();
 
-    // 编码任务是 Plan 的标配：不管 requiresAutomaticPlanning 如何，编码任务一律创建 plan
-    const isCodingTask = profile?.isCodingTask || profile?.isModificationTask || profile?.isBugTask;
-    if (!isCodingTask && !profile?.requiresAutomaticPlanning) {
+    // 使用 shouldEnablePlan 判断是否启用计划（考虑上下文）
+    const planContext = options.planContext || { complexityScore: 0, fileCount: 0 };
+    if (!shouldEnablePlan(taskProfile, planContext)) {
       this.#plan = null;
       this.#useLLMDecomposition = false;
       return null;
     }
 
+    // 确认是否是修改型任务
+    const isMutationTask = taskProfile?.mode === 'mutate' || taskProfile?.allowsMutation;
+
     const { modelProvider, intent, availableTools, feedbackContext } = options;
 
     // ==== LLM 智能分解：用意图分析结果驱动 GraphPlanner.decomposeTaskLLM ====
     let llmSubtasks = null;
-    if (modelProvider && isCodingTask) {
+    if (modelProvider && isMutationTask) {
+      // 只有修改型任务使用 LLM 智能分解
       try {
         const intentContext = intent
           ? {

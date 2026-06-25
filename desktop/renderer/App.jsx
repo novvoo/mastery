@@ -1219,6 +1219,7 @@ function App() {
       const config = modelConfigs.find(c => c.id === id);
       if (!config) return;
 
+      const previousConfigs = modelConfigs;
       const newEnabled = !config.enabled;
       
       // 如果要启用某个模型，先禁用所有其他模型
@@ -1243,11 +1244,11 @@ function App() {
       
       if (!result.success) {
         setToggleModelError(result.error || '操作失败');
-        // 回滚状态
-        setModelConfigs(prev => prev.map(c =>
-          c.id === id ? { ...c, enabled: !newEnabled } : c
-        ));
+        setModelConfigs(previousConfigs);
       } else {
+        if (Array.isArray(result.configs)) {
+          setModelConfigs(result.configs);
+        }
         // 显示成功信息
         if (result.provider && result.model) {
           setToggleModelSuccess(`✅ 已切换到 ${result.provider}:${result.model}，配置已同步到 .env`);
@@ -1257,10 +1258,7 @@ function App() {
       }
     } catch (error) {
       setToggleModelError(error.message);
-      // 回滚状态
-      setModelConfigs(prev => prev.map(c =>
-        c.id === id ? { ...c, enabled: c.enabled } : c
-      ));
+      setModelConfigs(modelConfigs);
     }
   }, [modelConfigs]);
 

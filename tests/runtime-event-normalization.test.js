@@ -76,11 +76,16 @@ describe('runtime event normalization', () => {
     const choice = normalizeRuntimeEventMessage('agent:complete', {
       choices: [{ message: { content: '来自 choices 的回复' } }],
     });
+    const finalAnswer = normalizeRuntimeEventMessage('agent:complete', {
+      result: { finalAnswer: '来自 finalAnswer 的回复' },
+    });
 
     expect(direct.message.type).toBe('result');
     expect(direct.message.content).toBe('来自 content 的回复');
     expect(choice.message.type).toBe('result');
     expect(choice.message.content).toBe('来自 choices 的回复');
+    expect(finalAnswer.message.type).toBe('result');
+    expect(finalAnswer.message.content).toBe('来自 finalAnswer 的回复');
   });
 
   test('normalizeRuntimeEventMessage renders completed status answers as assistant results', () => {

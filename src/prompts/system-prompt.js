@@ -276,7 +276,19 @@ export function buildSystemPrompt(memoryManager, toolRegistry, workingDirectory,
     sections.push('');
   }
 
-  sections.push(`## Working Directory: ${workingDirectory}`);
+  sections.push('## Workspace Contract');
+  sections.push(`- workingDirectory: ${workingDirectory}`);
+  sections.push('- Treat workingDirectory as the default project root.');
+  sections.push('- Resolve all relative file paths from workingDirectory.');
+  sections.push(
+    '- Filesystem tools already run relative to workingDirectory; use relative paths unless the user gives an absolute path inside this workspace.',
+  );
+  sections.push(
+    '- Shell commands run with workingDirectory as cwd; do not cd elsewhere unless the task explicitly requires it.',
+  );
+  sections.push(
+    '- If the user asks about "this project", "the repo", or local files, start from workingDirectory.',
+  );
   sections.push('');
   sections.push('## Quality Gates (check before FINAL_ANSWER)');
   sections.push('1. **Alignment** — Did I understand correctly? Did I expose assumptions?');

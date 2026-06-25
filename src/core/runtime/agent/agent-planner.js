@@ -237,8 +237,16 @@ export class AgentPlanner {
   }
 
   /** 重置当前计划（每次 run 开始时调用） */
-  reset() {
+  reset({ preserveExternalPlan = false } = {}) {
+    if (preserveExternalPlan && this.#useExternalPlan && this.#activePlan) {
+      this.#requiredMutationPaths = new Set();
+      this.#completedMutationPaths = new Set();
+      return;
+    }
+
     this.#activePlan = null;
+    this.#useExternalPlan = false;
+    this.#executor = null;
     this.#requiredMutationPaths = new Set();
     this.#completedMutationPaths = new Set();
   }
@@ -246,6 +254,83 @@ export class AgentPlanner {
   /** @returns {ExecutionPlan|null} */
   get activePlan() {
     return this.#activePlan;
+  }
+
+  /**
+   * 动态修改当前计划。
+   *
+   * mode:
+   * - replace: 用 tasks 替换所有未完成任务，保留 completed 任务作为进度基座
+   * - insertBefore: 将 tasks 插入 targetTaskId 之前
+   * - insertAfter: 将 tasks 插入 targetTaskId 之后
+   * - append: 将 tasks 追加到计划末尾
+   */
+  changePlan({ mode = 'append', tasks = [], targetTaskId = null, reason = '' } = {}) {
+    const plan = this.#activePlan;
+    if (!plan) {
+      return { success: false, error: 'No active plan to change' };
+    }
+    if (!Array.isArray(tasks) || tasks.length === 0) {
+      return { success: false, error: 'Plan change requires at least one task' };
+    }
+
+    const before = this.#summarizeProgress(plan);
+    const snapshot = this.#snapshotPlan(plan);
+    let insertedTasks = [];
+
+    try {
+      if (mode === 'replace') {
+        insertedTasks = this.#replaceUnfinishedTasks(plan, tasks);
+      } else if (mode === 'insertBefore') {
+        insertedTasks = this.#insertTasksBefore(plan, targetTaskId, tasks);
+      } else if (mode === 'insertAfter') {
+        insertedTasks = this.#insertTasksAfter(plan, targetTaskId, tasks);
+      } else if (mode === 'append') {
+        insertedTasks = this.#appendTasks(plan, tasks);
+      } else {
+        return { success: false, error: `Unsupported plan change mode: ${mode}` };
+      }
+
+      if (plan.detectCycle()) {
+        this.#restorePlanSnapshot(plan, snapshot);
+        return { success: false, error: 'Plan change would create a dependency cycle' };
+      }
+    } catch (error) {
+      this.#restorePlanSnapshot(plan, snapshot);
+      return { success: false, error: error.message };
+    }
+
+    plan.status = TaskStatus.RUNNING;
+    plan.completedAt = null;
+    this.#executor = new PlanExecutor(plan);
+    this.#startReadyTasks(plan);
+
+    const after = this.#summarizeProgress(plan);
+    this.#debugEvent('Dynamic plan change applied', {
+      mode,
+      targetTaskId,
+      reason,
+      insertedTasks,
+      before,
+      after,
+    });
+
+    this.#sessionManager.addUserMessage(
+      `Automatic task orchestration plan changed (${mode}${reason ? `: ${reason}` : ''}).\n` +
+        `${after}\n\nContinue with the current ready task: ${this.#currentTaskLabel(plan)}.`,
+    );
+    this.#emitPlanProgress(plan, {
+      planChanged: true,
+      change: { mode, targetTaskId, reason, insertedTasks },
+      decompositionMethod: 'dynamic',
+    });
+
+    return {
+      success: true,
+      plan,
+      insertedTasks,
+      planStatus: plan.status,
+    };
   }
 
   /**
@@ -354,12 +439,8 @@ export class AgentPlanner {
       isChangeInspectionTool(toolName, args),
     );
     this.#startReadyTasks(plan);
-    this.#completeTaskIf(
-      'semantic_risk_review',
-      toolName,
-      args,
-      result,
-      () => isSemanticRiskReviewTool(toolName, args, this.#activePlan),
+    this.#completeTaskIf('semantic_risk_review', toolName, args, result, () =>
+      isSemanticRiskReviewTool(toolName, args, this.#activePlan),
     );
     this.#startReadyTasks(plan);
     this.#completeTaskIf('verify_result', toolName, args, result, () =>
@@ -474,7 +555,9 @@ export class AgentPlanner {
         toolName,
         allowedTools: task.allowedTools,
         completionPredicate: task.completionPredicate
-          ? (typeof task.completionPredicate === 'function' ? 'function' : task.completionPredicate)
+          ? typeof task.completionPredicate === 'function'
+            ? 'function'
+            : task.completionPredicate
           : null,
       });
       return; // 工具不被此任务接受，不标记完成
@@ -495,7 +578,7 @@ export class AgentPlanner {
     }
 
     // 所有验证通过，正式标记为 COMPLETED
-    task.updateStatus(TaskStatus.COMPLETED, { 
+    task.updateStatus(TaskStatus.COMPLETED, {
       result: { completedBy: 'strict-validation', toolName, validationReason: validation.reason },
       validatedAt: Date.now(),
     });
@@ -509,8 +592,16 @@ export class AgentPlanner {
   }
 
   #startReadyTasks(plan) {
-    for (const task of plan.getReadyTasks()) {
-      if (task.status === TaskStatus.PENDING || task.status === TaskStatus.BLOCKED) {
+    const readyTasks = [
+      ...Array.from(plan.tasks.values()).filter((task) => task.status === TaskStatus.READY),
+      ...plan.getReadyTasks(),
+    ];
+    for (const task of readyTasks) {
+      if (
+        task.status === TaskStatus.PENDING ||
+        task.status === TaskStatus.BLOCKED ||
+        task.status === TaskStatus.READY
+      ) {
         task.updateStatus(TaskStatus.RUNNING);
         return;
       }
@@ -575,6 +666,239 @@ export class AgentPlanner {
       }
     }
     return true;
+  }
+
+  #replaceUnfinishedTasks(plan, taskDefs) {
+    const completedTasks = Array.from(plan.tasks.values()).filter(
+      (task) => task.status === TaskStatus.COMPLETED,
+    );
+    const removeIds = Array.from(plan.tasks.values())
+      .filter((task) => task.status !== TaskStatus.COMPLETED)
+      .map((task) => task.id);
+    this.#removeTasks(plan, removeIds);
+
+    const defaultDeps = this.#leafTaskIds(completedTasks);
+    return this.#addTaskChain(plan, taskDefs, { defaultFirstDependencies: defaultDeps });
+  }
+
+  #insertTasksBefore(plan, targetTaskId, taskDefs) {
+    const target = plan.getTask(targetTaskId);
+    if (!target) {
+      throw new Error(`Target task not found: ${targetTaskId}`);
+    }
+    if (target.status === TaskStatus.COMPLETED) {
+      throw new Error(`Cannot insert before completed task: ${targetTaskId}`);
+    }
+
+    const originalDeps = Array.from(target.dependencies);
+    const inserted = this.#addTaskChain(plan, taskDefs, { defaultFirstDependencies: originalDeps });
+    target.dependencies = new Set([inserted[inserted.length - 1]]);
+    if (target.status === TaskStatus.RUNNING || target.status === TaskStatus.READY) {
+      target.updateStatus(TaskStatus.PENDING);
+    }
+    this.#reorderTasks(plan, { before: targetTaskId, ids: inserted });
+    return inserted;
+  }
+
+  #insertTasksAfter(plan, targetTaskId, taskDefs) {
+    const target = plan.getTask(targetTaskId);
+    if (!target) {
+      throw new Error(`Target task not found: ${targetTaskId}`);
+    }
+
+    const inserted = this.#addTaskChain(plan, taskDefs, { defaultFirstDependencies: [targetTaskId] });
+    const lastInserted = inserted[inserted.length - 1];
+    for (const task of plan.tasks.values()) {
+      if (inserted.includes(task.id) || task.id === targetTaskId || task.status === TaskStatus.COMPLETED) {
+        continue;
+      }
+      if (task.dependencies.has(targetTaskId)) {
+        task.dependencies.delete(targetTaskId);
+        task.dependencies.add(lastInserted);
+      }
+    }
+    this.#reorderTasks(plan, { after: targetTaskId, ids: inserted });
+    return inserted;
+  }
+
+  #appendTasks(plan, taskDefs) {
+    const existing = Array.from(plan.tasks.values());
+    const defaultDeps = existing.length > 0 ? [existing[existing.length - 1].id] : [];
+    return this.#addTaskChain(plan, taskDefs, { defaultFirstDependencies: defaultDeps });
+  }
+
+  #addTaskChain(plan, taskDefs, { defaultFirstDependencies = [] } = {}) {
+    const inserted = [];
+    let previousId = null;
+    for (const raw of taskDefs) {
+      const id = this.#uniqueTaskId(plan, raw.id || raw.name || `dynamic_task_${inserted.length + 1}`);
+      const hasExplicitDeps = Array.isArray(raw.dependencies);
+      const dependencies = hasExplicitDeps
+        ? raw.dependencies
+        : previousId
+          ? [previousId]
+          : defaultFirstDependencies;
+      plan.addTask({
+        ...raw,
+        id,
+        name: raw.name || id,
+        dependencies,
+        metadata: {
+          ...(raw.metadata || {}),
+          source: raw.metadata?.source || 'dynamic-plan-change',
+        },
+      });
+      inserted.push(id);
+      previousId = id;
+    }
+    this.#rebuildGraph(plan);
+    return inserted;
+  }
+
+  #removeTasks(plan, taskIds) {
+    const remove = new Set(taskIds);
+    for (const id of remove) {
+      plan.tasks.delete(id);
+      plan.edges.delete(id);
+    }
+    for (const task of plan.tasks.values()) {
+      task.dependencies = new Set(Array.from(task.dependencies).filter((dep) => !remove.has(dep)));
+      task.dependents = new Set(Array.from(task.dependents).filter((dep) => !remove.has(dep)));
+    }
+    this.#rebuildGraph(plan);
+  }
+
+  #reorderTasks(plan, { before = null, after = null, ids = [] } = {}) {
+    const moving = new Set(ids);
+    const ordered = [];
+    const movedTasks = ids.map((id) => plan.getTask(id)).filter(Boolean);
+    for (const task of plan.tasks.values()) {
+      if (moving.has(task.id)) {
+        continue;
+      }
+      if (before && task.id === before) {
+        ordered.push(...movedTasks);
+      }
+      ordered.push(task);
+      if (after && task.id === after) {
+        ordered.push(...movedTasks);
+      }
+    }
+    plan.tasks = new Map(ordered.map((task) => [task.id, task]));
+    this.#rebuildGraph(plan);
+  }
+
+  #rebuildGraph(plan) {
+    plan.edges = new Map();
+    for (const task of plan.tasks.values()) {
+      task.dependents = new Set();
+      plan.edges.set(task.id, new Set());
+    }
+    for (const task of plan.tasks.values()) {
+      task.dependencies = new Set(
+        Array.from(task.dependencies || []).filter((depId) => plan.tasks.has(depId)),
+      );
+      for (const depId of task.dependencies) {
+        if (!plan.edges.has(depId)) {
+          plan.edges.set(depId, new Set());
+        }
+        plan.edges.get(depId).add(task.id);
+        plan.getTask(depId)?.dependents.add(task.id);
+      }
+    }
+  }
+
+  #leafTaskIds(tasks) {
+    const ids = new Set(tasks.map((task) => task.id));
+    const dependedOn = new Set();
+    for (const task of tasks) {
+      for (const depId of task.dependencies || []) {
+        if (ids.has(depId)) {
+          dependedOn.add(depId);
+        }
+      }
+    }
+    return tasks.filter((task) => !dependedOn.has(task.id)).map((task) => task.id);
+  }
+
+  #uniqueTaskId(plan, preferredId) {
+    const base = String(preferredId || 'dynamic_task').replace(/\s+/g, '_');
+    let id = base;
+    let counter = 1;
+    while (plan.tasks.has(id)) {
+      id = `${base}_${counter++}`;
+    }
+    return id;
+  }
+
+  #snapshotPlan(plan) {
+    return {
+      status: plan.status,
+      completedAt: plan.completedAt,
+      tasks: Array.from(plan.tasks.values()).map((task) => ({
+        task,
+        dependencies: new Set(task.dependencies),
+        dependents: new Set(task.dependents),
+        status: task.status,
+        startedAt: task.startedAt,
+        completedAt: task.completedAt,
+        result: task.result,
+        error: task.error,
+        toolCallsHistory: Array.isArray(task.toolCallsHistory) ? [...task.toolCallsHistory] : [],
+      })),
+      edges: new Map(Array.from(plan.edges.entries()).map(([id, deps]) => [id, new Set(deps)])),
+    };
+  }
+
+  #restorePlanSnapshot(plan, snapshot) {
+    plan.status = snapshot.status;
+    plan.completedAt = snapshot.completedAt;
+    plan.tasks = new Map(snapshot.tasks.map(({ task }) => [task.id, task]));
+    plan.edges = new Map(Array.from(snapshot.edges.entries()).map(([id, deps]) => [id, new Set(deps)]));
+    for (const item of snapshot.tasks) {
+      item.task.dependencies = new Set(item.dependencies);
+      item.task.dependents = new Set(item.dependents);
+      item.task.status = item.status;
+      item.task.startedAt = item.startedAt;
+      item.task.completedAt = item.completedAt;
+      item.task.result = item.result;
+      item.task.error = item.error;
+      item.task.toolCallsHistory = [...item.toolCallsHistory];
+    }
+  }
+
+  #emitPlanProgress(plan, extra = {}) {
+    if (!this.#onPlanAdvance) {
+      return;
+    }
+    const tasks = plan.toJSON().tasks.map((t) => ({
+      id: t.id,
+      name: t.name,
+      status: t.status,
+      description: t.description,
+      dependencies: [...t.dependencies],
+      scopeFiles: t.scopeFiles || [],
+    }));
+    this.#onPlanAdvance({
+      ...extra,
+      planId: plan.id,
+      tasks,
+      total: tasks.length,
+      completed: tasks.filter((t) => t.status === 'completed').length,
+      running: tasks.filter((t) => t.status === 'running').length,
+      failed: tasks.filter((t) => t.status === 'failed').length,
+      planStatus: plan.status,
+      plan: {
+        id: plan.id,
+        name: plan.name,
+        description: plan.description,
+        tasks,
+        status: plan.status,
+        createdAt: plan.createdAt,
+        completedAt: plan.completedAt,
+        decompositionMethod: extra.decompositionMethod || 'auto',
+      },
+    });
   }
 
   /**

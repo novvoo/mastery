@@ -73,93 +73,97 @@ export async function processInput(ctx, input, options = {}) {
     requiresSemanticRiskReview: false,
   };
 
-  if (ctx.modelProvider && typeof ctx.modelProvider.chat === 'function') {
-    try {
-      const intentClassifier = new IntentClassifier(ctx.modelProvider, ctx.toolRegistry);
-      const intent = intentClassifier.classify(input);
-      taskProfile = intentClassifier.classifyTask(input, intent) || taskProfile;
+  try {
+    // ReActAgent 内部会做真正的 LLM 意图识别；这里仅做本地任务画像，
+    // 避免 runtime 外壳和 agent 内核重复消费同一个 modelProvider。
+    const intentClassifier = new IntentClassifier(null, ctx.toolRegistry);
+    taskProfile = intentClassifier.classifyTask(input, null) || taskProfile;
 
-      if (ctx.config.debug) {
-        console.log('[IntentClassifier] 任务分类结果:', JSON.stringify(taskProfile));
-      }
-    } catch (err) {
-      if (ctx.config.debug) {
-        console.warn('[IntentClassifier] 意图分析失败:', err.message);
-      }
+    if (ctx.config.debug) {
+      console.log('[IntentClassifier] 任务分类结果:', JSON.stringify(taskProfile));
+    }
+  } catch (err) {
+    if (ctx.config.debug) {
+      console.warn('[IntentClassifier] 本地任务分类失败:', err.message);
     }
   }
 
-  // 高级图规划（LLM 驱动 + 模板回退）
+  // 高级图规划（旧 runtime 外壳路径）。
+  // 默认关闭，避免和 ReActAgent 内核自己的 planner/IntentClassifier 重复消费 modelProvider。
   let planContext = null;
   let executionPlan = null;
-  try {
-    const taskName = input.substring(0, 48).trim();
-    executionPlan = ctx.graphPlanner.createPlan(taskName, input, {
-      workingDirectory: ctx.config.workingDirectory,
-    });
-    ctx.state.currentPlanId = executionPlan.id;
-
-    let subtaskDefs;
-    let decompositionMethod = 'template';
-
-    if (ctx.modelProvider && typeof ctx.modelProvider.chat === 'function') {
-      try {
-        const availableTools = ctx.toolRegistry ? ctx.toolRegistry.getAll().map((t) => t.name) : [];
-
-        ctx.eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
-          message: 'AI 正在分析任务并生成执行计划...',
-          level: 'info',
-        });
-
-        subtaskDefs = await ctx.graphPlanner.decomposeTaskLLM(input, ctx.modelProvider, {
-          availableTools,
-          workingDirectory: ctx.config.workingDirectory,
-          taskProfile,
-        });
-        decompositionMethod = 'llm';
-      } catch (llmErr) {
-        subtaskDefs = ctx.graphPlanner.decomposeTask(null, input, { template: 'default' });
-      }
-    } else {
-      const lowerInput = input.toLowerCase();
-      let template = 'default';
-      // 根据意图分析的结果选择模板，而不是简单的关键词匹配
-      if (taskProfile.isBugTask) {
-        template = 'default';
-      } else if (lowerInput.includes('review') || lowerInput.includes('审查')) {
-        template = 'code_review';
-      } else if (lowerInput.includes('refactor') || lowerInput.includes('重构')) {
-        template = 'refactor';
-      }
-      subtaskDefs = ctx.graphPlanner.decomposeTask(null, input, { template });
-    }
-
-    if (decompositionMethod === 'llm') {
-      for (const def of subtaskDefs) {
-        executionPlan.addTask(def);
-      }
-    }
-
-    executionPlan.status = 'running';
-    executionPlan.startedAt = Date.now();
-    const firstReadyTask = Array.from(executionPlan.tasks.values()).find(
-      (t) => t.status === 'pending' && t.dependencies.size === 0,
-    );
-    if (firstReadyTask) {
-      firstReadyTask.updateStatus('running');
-    }
-
-    if (ctx.config.debug) {
-      console.log(
-        `[GraphPlanner] 创建执行计划 (${decompositionMethod}), ${Array.from(executionPlan.tasks.values()).length} 个子任务`,
-      );
-    }
-  } catch (planError) {
+  if (ctx.config.enableRuntimePreplanning === true) {
     try {
-      console.warn('[GraphPlanner] 任务规划失败，降级为线性执行:', planError.message);
-    } catch {}
-    ctx.state.currentPlanId = null;
-    executionPlan = null;
+      const taskName = input.substring(0, 48).trim();
+      executionPlan = ctx.graphPlanner.createPlan(taskName, input, {
+        workingDirectory: ctx.config.workingDirectory,
+      });
+      ctx.state.currentPlanId = executionPlan.id;
+
+      let subtaskDefs;
+      let decompositionMethod = 'template';
+
+      if (ctx.modelProvider && typeof ctx.modelProvider.chat === 'function') {
+        try {
+          const availableTools = ctx.toolRegistry
+            ? ctx.toolRegistry.getAll().map((t) => t.name)
+            : [];
+
+          ctx.eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
+            message: 'AI 正在分析任务并生成执行计划...',
+            level: 'info',
+          });
+
+          subtaskDefs = await ctx.graphPlanner.decomposeTaskLLM(input, ctx.modelProvider, {
+            availableTools,
+            workingDirectory: ctx.config.workingDirectory,
+            taskProfile,
+          });
+          decompositionMethod = 'llm';
+        } catch (llmErr) {
+          subtaskDefs = ctx.graphPlanner.decomposeTask(null, input, { template: 'default' });
+        }
+      } else {
+        const lowerInput = input.toLowerCase();
+        let template = 'default';
+        // 根据意图分析的结果选择模板，而不是简单的关键词匹配
+        if (taskProfile.isBugTask) {
+          template = 'default';
+        } else if (lowerInput.includes('review') || lowerInput.includes('审查')) {
+          template = 'code_review';
+        } else if (lowerInput.includes('refactor') || lowerInput.includes('重构')) {
+          template = 'refactor';
+        }
+        subtaskDefs = ctx.graphPlanner.decomposeTask(null, input, { template });
+      }
+
+      if (decompositionMethod === 'llm') {
+        for (const def of subtaskDefs) {
+          executionPlan.addTask(def);
+        }
+      }
+
+      executionPlan.status = 'running';
+      executionPlan.startedAt = Date.now();
+      const firstReadyTask = Array.from(executionPlan.tasks.values()).find(
+        (t) => t.status === 'pending' && t.dependencies.size === 0,
+      );
+      if (firstReadyTask) {
+        firstReadyTask.updateStatus('running');
+      }
+
+      if (ctx.config.debug) {
+        console.log(
+          `[GraphPlanner] 创建执行计划 (${decompositionMethod}), ${Array.from(executionPlan.tasks.values()).length} 个子任务`,
+        );
+      }
+    } catch (planError) {
+      try {
+        console.warn('[GraphPlanner] 任务规划失败，降级为线性执行:', planError.message);
+      } catch {}
+      ctx.state.currentPlanId = null;
+      executionPlan = null;
+    }
   }
 
   // 创建 Agent 实例（注入 onPlanAdvance 用于实时推送 plan 进度）

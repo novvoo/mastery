@@ -1056,7 +1056,7 @@ pre code {
 /* ================== Markdown 样式 ================== */
 .markdown {
   color: var(--text-color);
-  line-height: 1.7;
+  line-height: 1.2;
 }
 
 .markdown h1,
@@ -1065,8 +1065,8 @@ pre code {
 .markdown h4,
 .markdown h5,
 .markdown h6 {
-  margin-top: 1em;
-  margin-bottom: 0.4em;
+  margin-top: 0.4em;
+  margin-bottom: 0.2em;
   font-weight: 700;
   color: var(--text-color);
   letter-spacing: -0.01em;
@@ -1075,34 +1075,34 @@ pre code {
 .markdown h1 {
   font-size: 1.6em;
   border-bottom: 1px solid var(--border-subtle);
-  padding-bottom: 0.4em;
+  padding-bottom: 0.3em;
 }
 
 .markdown h2 {
   font-size: 1.35em;
   border-bottom: 1px solid var(--border-subtle);
-  padding-bottom: 0.3em;
+  padding-bottom: 0.2em;
 }
 
 .markdown h3 { font-size: 1.15em; }
 .markdown h4 { font-size: 1.05em; }
 
-.markdown p { margin: 0.4em 0; }
+.markdown p { margin: 0.15em 0; }
 
 .markdown ul,
 .markdown ol {
-  margin-top: 0.3em;
-  margin-bottom: 0.3em;
+  margin-top: 0.15em;
+  margin-bottom: 0.15em;
   padding-left: 1.5em;
 }
 
 .markdown li {
-  margin-top: 0.15em;
-  margin-bottom: 0.15em;
+  margin-top: 0.05em;
+  margin-bottom: 0.05em;
 }
 
 .markdown blockquote {
-  margin: 0.6em 0;
+  margin: 0.3em 0;
   padding: 0.8em 1.2em;
   border-left: 4px solid var(--primary-color);
   background-color: var(--surface-subtle);
@@ -1125,7 +1125,7 @@ pre code {
 .markdown table {
   width: 100%;
   border-collapse: collapse;
-  margin: 0.6em 0;
+  margin: 0.4em 0;
   border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid var(--border-subtle);
@@ -1133,7 +1133,7 @@ pre code {
 
 .markdown th,
 .markdown td {
-  padding: 0.6em 1em;
+  padding: 0.2em 0.4em;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -1182,8 +1182,7 @@ pre code {
   padding: 1em;
   border-radius: var(--radius-md);
   overflow-x: auto;
-  margin: 0.6em 0;
-  border: 1px solid var(--border-subtle);
+  margin: 0.3em 0;
 }
 
 .markdown pre code {

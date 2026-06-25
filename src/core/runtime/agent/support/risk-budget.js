@@ -10,6 +10,11 @@
  * 风险评估分两阶段：
  * 1) quickAssess - 纯文本，<5ms，零工具调用，决定首步行动
  * 2) deepAssess  - 轻量代码扫描，不阻塞首步，迭代中动态调整
+ *
+ * 重构说明：
+ * - 新增 classifyTask 整合：将纯文本分类与风险评分分离
+ * - quickAssess 现在同时返回 riskProfile（旧字段兼容）和 taskProfile（新结构）
+ * - 策略决策应优先使用 taskProfile，只有在需要风险评分时才使用 riskProfile
  */
 
 import { MAX_ITERATIONS_DEFAULT } from '../../../agent-constants.js';
@@ -28,6 +33,7 @@ import {
   isInPlanBlacklist as isInPlanBlacklistUtil,
   inferSemanticRiskDomains as inferSemanticRiskDomainsUtil,
 } from '../../../../utils/patterns.js';
+import { classifyTask, TaskMode, TaskIntent } from './task-profile.js';
 
 export const RISK_LEVEL = {
   LOW: 'low',
@@ -169,6 +175,10 @@ export function quickAssess(userInput) {
     riskLevel = RISK_LEVEL.LOW;
   }
 
+  // === 新增：结构化任务分类 (TaskProfile) ===
+  // 使用 classifyTask 进行精确的意图分类，与风险评分分离
+  const taskProfile = classifyTask(userInput);
+
   return {
     riskLevel,
     score,
@@ -184,6 +194,8 @@ export function quickAssess(userInput) {
     requiresPlanning,
     inPlanBlacklist,
     isInformationalQuery: !isCodingTask,
+    // === 新增的结构化字段 ===
+    taskProfile,
   };
 }
 
@@ -400,6 +412,10 @@ export default {
   computeIterationBudget,
   getCompletionGates,
   getMethodologyGuidance,
+  // 新增导出
+  classifyTask,
+  TaskMode,
+  TaskIntent,
 };
 
 export {

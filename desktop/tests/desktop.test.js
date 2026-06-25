@@ -416,6 +416,157 @@ describe('Desktop App Config Persistence', () => {
   });
 });
 
+describe('Desktop Model Management Activation', () => {
+  const envKeys = ['MODEL_PROVIDER', 'OPENAI_API_KEY', 'OPENAI_MODEL', 'OPENAI_BASE_URL', 'OPENAI_API_URL'];
+
+  function snapshotEnv() {
+    return Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+  }
+
+  function restoreEnv(snapshot) {
+    for (const key of envKeys) {
+      if (snapshot[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = snapshot[key];
+      }
+    }
+  }
+
+  async function createModelTestContext(prefix = 'mastery-model-mgmt-') {
+    const os = await import('os');
+    const fs = await import('fs');
+    const path = await import('path');
+    const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+    const attachedProviders = [];
+    return {
+      fs,
+      path,
+      userDataDir,
+      ctx: {
+        userEnvPath: path.join(userDataDir, '.env'),
+        config: { debug: false },
+        electron: {
+          app: {
+            getPath(name) {
+              if (name !== 'userData') {
+                throw new Error(`unexpected path: ${name}`);
+              }
+              return userDataDir;
+            }
+          }
+        },
+        desktopCore: {
+          attachModelProvider(provider) {
+            attachedProviders.push(provider);
+          }
+        },
+        attachedProviders
+      }
+    };
+  }
+
+  test('saveSingleModelConfig activates an enabled model immediately', async () => {
+    const savedEnv = snapshotEnv();
+    const { fs, userDataDir, ctx } = await createModelTestContext();
+    try {
+      for (const key of envKeys) delete process.env[key];
+      const { saveSingleModelConfig } = await import('../main-app/llm-config-and-persistence.js');
+
+      const result = await saveSingleModelConfig(ctx, {
+        id: 'model-openai',
+        provider: 'openai',
+        model: 'gpt-4o',
+        apiKey: 'test-key-from-management',
+        enabled: true,
+        name: 'OpenAI'
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.provider).toBe('openai');
+      expect(result.model).toBe('gpt-4o');
+      expect(result.status?.configured).toBe(true);
+      expect(ctx.attachedProviders.length).toBe(1);
+      expect(process.env.MODEL_PROVIDER).toBe('openai');
+      expect(process.env.OPENAI_MODEL).toBe('gpt-4o');
+      expect(process.env.OPENAI_API_KEY).toBe('test-key-from-management');
+    } finally {
+      restoreEnv(savedEnv);
+      fs.rmSync(userDataDir, { recursive: true, force: true });
+    }
+  });
+
+  test('attachConfiguredModelProvider restores active model from models.json when env is missing', async () => {
+    const savedEnv = snapshotEnv();
+    const { fs, path, userDataDir, ctx } = await createModelTestContext('mastery-model-restore-');
+    try {
+      for (const key of envKeys) delete process.env[key];
+      fs.writeFileSync(path.join(userDataDir, 'models.json'), JSON.stringify([
+        {
+          id: 'model-openai',
+          provider: 'openai',
+          model: 'gpt-4o-mini',
+          apiKey: 'test-key-restored',
+          enabled: true,
+          name: 'OpenAI Mini'
+        }
+      ], null, 2));
+
+      const { attachConfiguredModelProvider } = await import('../main-app/llm-config-and-persistence.js');
+      const status = await attachConfiguredModelProvider(ctx);
+
+      expect(status.configured).toBe(true);
+      expect(status.provider).toBe('openai');
+      expect(status.model).toBe('gpt-4o-mini');
+      expect(ctx.attachedProviders.length).toBe(1);
+      expect(process.env.OPENAI_API_KEY).toBe('test-key-restored');
+    } finally {
+      restoreEnv(savedEnv);
+      fs.rmSync(userDataDir, { recursive: true, force: true });
+    }
+  });
+
+  test('saveAllModelConfigsAndActivate does not persist an invalid active model', async () => {
+    const savedEnv = snapshotEnv();
+    const { fs, path, userDataDir, ctx } = await createModelTestContext('mastery-model-invalid-');
+    try {
+      for (const key of envKeys) delete process.env[key];
+      const initialConfigs = [
+        {
+          id: 'model-openai',
+          provider: 'openai',
+          model: 'gpt-4o',
+          apiKey: 'valid-key',
+          enabled: true,
+          name: 'OpenAI'
+        }
+      ];
+      fs.writeFileSync(path.join(userDataDir, 'models.json'), JSON.stringify(initialConfigs, null, 2));
+
+      const { saveAllModelConfigsAndActivate } = await import('../main-app/llm-config-and-persistence.js');
+      const result = await saveAllModelConfigsAndActivate(ctx, [
+        {
+          id: 'model-bad',
+          provider: 'openai',
+          model: '',
+          apiKey: '',
+          enabled: true,
+          name: 'Broken'
+        }
+      ]);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('模型配置不完整（缺少 API Key 或模型名称）');
+      const savedConfigs = JSON.parse(fs.readFileSync(path.join(userDataDir, 'models.json'), 'utf8'));
+      expect(savedConfigs).toEqual(initialConfigs);
+      expect(ctx.attachedProviders.length).toBe(0);
+    } finally {
+      restoreEnv(savedEnv);
+      fs.rmSync(userDataDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('Desktop IPC Preload Bridge', () => {
   test('ElectronMainApp always points BrowserWindow preload at sandbox-compatible CommonJS preload', async () => {
     const path = await import('path');
@@ -528,6 +679,51 @@ describe('Desktop IPC Preload Bridge', () => {
     expect(result.preload.exists).toBe(true);
     expect(result.window.senderMatchesMainWindow).toBe(true);
     expect(result.ipc.isConnected).toBe(true);
+  });
+
+  test('workspace:listDirectory flattens legacy preload options payload', async () => {
+    const { registerCustomHandlers } = await import('../main-app/ipc-router.js');
+
+    const handlers = new Map();
+    let captured = null;
+    const ctx = {
+      ipcAdapter: {
+        getStats: () => ({}),
+        registerHandler(channel, handler) {
+          handlers.set(channel, handler);
+        }
+      },
+      config: {
+        debug: false,
+        workingDirectory: REPO_ROOT,
+        window: { webPreferences: {} }
+      },
+      mainWindow: { webContents: { id: 1, getURL: () => '' } },
+      listWorkspaceDirectory(root, options) {
+        captured = { root, options };
+        return { success: true, entries: [] };
+      },
+      electron: {
+        BrowserWindow: {
+          getAllWindows: () => [],
+          fromWebContents: () => null
+        },
+        dialog: {},
+        Notification: function Notification() {},
+        shell: {},
+        app: {}
+      }
+    };
+
+    registerCustomHandlers(ctx);
+    const result = await handlers.get('workspace:listDirectory')({
+      path: 'src',
+      options: { maxEntries: 7 }
+    });
+
+    expect(result.success).toBe(true);
+    expect(captured.root).toBe(REPO_ROOT);
+    expect(captured.options).toEqual({ maxEntries: 7, path: 'src' });
   });
 });
 

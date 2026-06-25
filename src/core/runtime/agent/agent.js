@@ -329,7 +329,7 @@ export class ReActAgent {
     this.#implementationNoMutationIterations = 0;
     this.#implementationPhaseStarted = false;
 
-    this.#planner.reset();
+    this.#planner.reset({ preserveExternalPlan: true });
     this.#router.reset();
     this.#agentContext.reset();
 
@@ -469,7 +469,7 @@ export class ReActAgent {
         // ✅ 获取当前可执行任务（用于 task 约束）
         const currentTask = this.#planner.getCurrentRunnableTask();
         const allowedTools = this.#planner.getCurrentAllowedTools();
-        
+
         const routedTools = selectToolsForRequest(this.#toolRegistry.getAll(), {
           userInput,
           taskProfile: this.#activeTaskProfile,
@@ -479,7 +479,7 @@ export class ReActAgent {
         });
         this.#activeRoutedToolNames = new Set(routedTools.map((tool) => tool.name));
         const functions = this.#toolRegistry.toFunctionDefinitions(routedTools);
-        
+
         // ✅ 新增：注入任务约束指令
         if (currentTask && allowedTools) {
           const taskConstraintPrompt = buildTaskConstraintPrompt(currentTask, allowedTools);
@@ -492,10 +492,15 @@ export class ReActAgent {
             });
           }
         }
-        
+
+        const routedToolPrompt = [
+          this.#textToolParser.generateToolPrompt(routedTools),
+          `Workspace: all relative paths resolve from ${this.#config.workingDirectory}. ` +
+            `Shell cwd is ${this.#config.workingDirectory}.`,
+        ].join('\n\n');
         const messages = withRoutedToolContext(
           this.#sessionManager.getMessages(),
-          this.#textToolParser.generateToolPrompt(routedTools),
+          routedToolPrompt,
           currentPhase,
         );
 
@@ -1140,6 +1145,14 @@ export class ReActAgent {
    */
   setPlan(plan) {
     this.#planner.setPlan(plan);
+  }
+
+  /**
+   * 动态修改当前执行计划。
+   * @param {{mode?: string, tasks?: Array, targetTaskId?: string, reason?: string}} change
+   */
+  changePlan(change) {
+    return this.#planner.changePlan(change);
   }
 
   /**

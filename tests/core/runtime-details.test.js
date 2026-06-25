@@ -161,6 +161,32 @@ describe('runtime-details (src/core)', () => {
     expect(summary.latest.content).toBe('second thought');
   });
 
+  test('buildThinkingSummary excludes debug LLM previews masquerading as thinking', () => {
+    const summary = buildThinkingSummary([
+      {
+        event: 'agent:thinking',
+        type: 'thinking',
+        content: '正在分析上下文',
+        payload: {
+          eventName: 'LLM response',
+          data: {
+            textPreview: '```read_file\n{"path":"index.html"}\n```',
+          },
+        },
+      },
+      {
+        event: 'agent:thinking',
+        type: 'thinking',
+        summary: '读取上下文',
+        thinkingText: '正在读取项目结构。',
+      },
+    ]);
+
+    expect(summary.count).toBe(1);
+    expect(summary.fullText).not.toContain('read_file');
+    expect(summary.summary).toBe('读取上下文');
+  });
+
   test('getRuntimeDetailPreviewText provides one-line preview', () => {
     expect(getRuntimeDetailPreviewText({ content: 'line1\nline2' })).toBe('line1');
     expect(getRuntimeDetailPreviewText({ toolName: 'read' })).toBe('工具: read');

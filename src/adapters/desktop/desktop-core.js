@@ -239,7 +239,8 @@ export class DesktopCore {
         });
       },
       debug(message) {
-        eventBus.emit(RuntimeEvent.AGENT_THINKING, {
+        eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
+          level: 'debug',
           message: typeof message === 'string' ? message : String(message),
           timestamp: Date.now(),
         });
@@ -266,7 +267,9 @@ export class DesktopCore {
             timestamp: Date.now(),
           });
         } else {
-          eventBus.emit(RuntimeEvent.AGENT_THINKING, {
+          eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
+            level: 'debug',
+            message: `[${name}]`,
             eventName: name,
             data: data || null,
             timestamp: Date.now(),

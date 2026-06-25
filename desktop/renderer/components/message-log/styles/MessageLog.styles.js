@@ -636,7 +636,8 @@ export const styles = {
     border: '1px solid var(--message-agent-border)',
     boxShadow: 'var(--message-shadow)',
     color: 'var(--text-color)',
-    maxWidth: '85%'
+    maxWidth: '85%',
+    lineHeight: '1.2'
   },
 
   messageBubbleUser: {

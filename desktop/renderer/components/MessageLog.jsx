@@ -180,6 +180,11 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   }
 
   function messageIsVisible(msg) {
+    // 运行时详情消息（tool/tool_result/thinking/event/debug）
+    // 只显示在执行概览的原始日志中，不显示在主消息气泡里
+    if (isRuntimeDetailMessage(msg)) {
+      return false;
+    }
     return messageMatchesFilter(msg) && messageMatchesSearch(msg);
   }
 

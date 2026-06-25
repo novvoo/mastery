@@ -323,7 +323,12 @@ export class AgentEngine {
 
   setWorkingDirectory(directory) {
     if (this.#config && typeof directory === 'string' && directory.trim()) {
-      this.#config.workingDirectory = directory;
+      this.#config.update?.('workingDirectory', directory);
+      if (!this.#config.update) {
+        this.#config.workingDirectory = directory;
+      }
+      this.#agent?.clearSession?.(true);
+      this.#agent = null;
     }
   }
 

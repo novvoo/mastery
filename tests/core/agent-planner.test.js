@@ -3,11 +3,12 @@ import { AgentPlanner } from '../../src/core/agent-planner.js';
 import { ExecutionPlan, TaskStatus } from '../../src/planner/graph-planner.js';
 
 // Helper: create a minimal AgentPlanner with mock dependencies
-function createPlanner() {
+function createPlanner(overrides = {}) {
   const debugEvent = mock(() => {});
   const sessionManager = { addUserMessage: mock(() => {}) };
-  const planner = new AgentPlanner({ debugEvent, sessionManager });
-  return { planner, debugEvent, sessionManager };
+  const onPlanAdvance = overrides.onPlanAdvance || null;
+  const planner = new AgentPlanner({ debugEvent, sessionManager, onPlanAdvance });
+  return { planner, debugEvent, sessionManager, onPlanAdvance };
 }
 
 // Helper: create a standard task profile
@@ -241,5 +242,131 @@ describe('AgentPlanner', () => {
     planner.advance('semantic_search', { query: 'foo' }, ['result']);
     expect(inspectTask.status).toBe(TaskStatus.COMPLETED);
     expect(planner.activePlan.getTask('plan_solution').status).toBe(TaskStatus.RUNNING);
+  });
+
+  test('changePlan replace preserves completed tasks and replaces unfinished work', () => {
+    const { planner } = createPlanner();
+    const plan = planner.createIfNeeded('edit app.js', standardProfile());
+    plan.getTask('inspect_workspace').updateStatus(TaskStatus.COMPLETED);
+
+    const result = planner.changePlan({
+      mode: 'replace',
+      reason: 'scope changed',
+      tasks: [
+        {
+          id: 'diagnose_new_scope',
+          name: 'Diagnose new scope',
+          description: 'Read the new files before editing',
+          phase: 'exploration',
+        },
+        {
+          id: 'implement_new_scope',
+          name: 'Implement new scope',
+          description: 'Apply the new change',
+          phase: 'implementation',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(plan.getTask('inspect_workspace').status).toBe(TaskStatus.COMPLETED);
+    expect(plan.getTask('plan_solution')).toBeUndefined();
+    expect(plan.getTask('diagnose_new_scope')).not.toBeUndefined();
+    expect(plan.getTask('diagnose_new_scope').dependencies.has('inspect_workspace')).toBe(true);
+    expect(plan.getTask('implement_new_scope').dependencies.has('diagnose_new_scope')).toBe(true);
+  });
+
+  test('changePlan insertBefore pauses target and runs inserted task first', () => {
+    const { planner } = createPlanner();
+    const plan = planner.createIfNeeded('edit app.js', standardProfile());
+    plan.getTask('inspect_workspace').updateStatus(TaskStatus.COMPLETED);
+    const planTask = plan.getTask('plan_solution');
+    planTask.updateStatus(TaskStatus.RUNNING);
+
+    const result = planner.changePlan({
+      mode: 'insertBefore',
+      targetTaskId: 'plan_solution',
+      tasks: [
+        {
+          id: 'clarify_scope',
+          name: 'Clarify scope',
+          description: 'Clarify missing details',
+          phase: 'planning',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(plan.getTask('clarify_scope').dependencies.has('inspect_workspace')).toBe(true);
+    expect(plan.getTask('plan_solution').dependencies.has('clarify_scope')).toBe(true);
+    expect(plan.getTask('plan_solution').status).toBe(TaskStatus.PENDING);
+    expect(plan.getTask('clarify_scope').status).toBe(TaskStatus.RUNNING);
+  });
+
+  test('changePlan insertAfter reconnects downstream dependencies', () => {
+    const { planner } = createPlanner();
+    const plan = planner.createIfNeeded('edit app.js', standardProfile());
+
+    const result = planner.changePlan({
+      mode: 'insertAfter',
+      targetTaskId: 'plan_solution',
+      tasks: [
+        {
+          id: 'review_design',
+          name: 'Review design',
+          description: 'Review the design before implementation',
+          phase: 'planning',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(plan.getTask('review_design').dependencies.has('plan_solution')).toBe(true);
+    expect(plan.getTask('implement_changes').dependencies.has('review_design')).toBe(true);
+    expect(plan.getTask('implement_changes').dependencies.has('plan_solution')).toBe(false);
+  });
+
+  test('changePlan emits refreshed full plan progress', () => {
+    const onPlanAdvance = mock(() => {});
+    const { planner } = createPlanner({ onPlanAdvance });
+    planner.createIfNeeded('edit app.js', standardProfile());
+    onPlanAdvance.mockClear();
+
+    const result = planner.changePlan({
+      mode: 'append',
+      reason: 'add extra verification',
+      tasks: [
+        {
+          id: 'manual_verify',
+          name: 'Manual verify',
+          description: 'Manually verify the behavior',
+          phase: 'verification',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(onPlanAdvance).toHaveBeenCalled();
+    const payload = onPlanAdvance.mock.calls.at(-1)[0];
+    expect(payload.planChanged).toBe(true);
+    expect(payload.change.insertedTasks).toEqual(['manual_verify']);
+    expect(payload.plan.tasks.map((task) => task.id)).toContain('manual_verify');
+  });
+
+  test('changePlan failure leaves existing plan unchanged', () => {
+    const { planner } = createPlanner();
+    const plan = planner.createIfNeeded('edit app.js', standardProfile());
+    plan.getTask('inspect_workspace').updateStatus(TaskStatus.COMPLETED);
+    const before = plan.toJSON();
+
+    const result = planner.changePlan({
+      mode: 'insertBefore',
+      targetTaskId: 'inspect_workspace',
+      tasks: [{ id: 'illegal_task', name: 'Illegal task' }],
+    });
+
+    expect(result.success).toBe(false);
+    expect(plan.toJSON()).toEqual(before);
+    expect(plan.getTask('illegal_task')).toBeUndefined();
   });
 });

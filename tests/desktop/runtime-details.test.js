@@ -89,6 +89,26 @@ describe('runtime details helpers', () => {
     expect(summary.fullText).toContain('再验证结果');
   });
 
+  test('does not surface tool protocol textPreview as thinking content', () => {
+    const summary = buildThinkingSummary([
+      {
+        id: 'debug1',
+        event: 'agent:thinking',
+        type: 'thinking',
+        content: '正在分析上下文',
+        payload: {
+          eventName: 'LLM response',
+          data: {
+            textPreview: '```read_file\n{"path":"index.html"}\n```',
+          },
+        },
+      },
+    ]);
+
+    expect(summary.count).toBe(0);
+    expect(summary.fullText).toBe('');
+  });
+
   test('creates collision-resistant ids and export data', () => {
     const detail = {
       event: 'tool:call',

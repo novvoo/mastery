@@ -94,6 +94,28 @@ describe('Intent Analysis and Plan Creation Integration', () => {
       expect(externalPlan.getTask('inspect_workspace')).not.toBeNull();
     });
 
+    test('preserves external plan across run reset', () => {
+      const { planner } = createPlanner();
+
+      const externalPlan = new ExecutionPlan({
+        name: 'External Plan',
+        description: 'Runtime-created plan',
+      });
+      externalPlan.addTask({
+        id: 'runtime_task',
+        name: 'Runtime task',
+        description: 'Created before ReActAgent.run',
+        dependencies: [],
+      });
+
+      planner.setPlan(externalPlan);
+      planner.reset({ preserveExternalPlan: true });
+
+      const plan = planner.createIfNeeded('test task', standardProfile());
+      expect(plan).toBe(externalPlan);
+      expect(plan.getTask('runtime_task')).not.toBeNull();
+    });
+
     test('adds semantic_risk_review when required', () => {
       const { planner } = createPlanner();
 

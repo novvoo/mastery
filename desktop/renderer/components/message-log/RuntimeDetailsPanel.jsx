@@ -12,28 +12,12 @@ import {
   isThinkingMessage,
   isStatusUpdateMessage,
 } from './utils/runtime-details.js';
-import { buildActivitySummary, getActivityTone, getFileStatusLabel, getFileTypeIcon, formatDuration } from './utils/activity-summary.js';
+import { buildActivitySummary, getActivityTone, getFileTypeIcon, formatDuration } from './utils/activity-summary.js';
 
-// ===== Tab 定义（2 个 Tab：文件 / 活动） =====
+// ===== Tab 定义（1 个 Tab：活动）=====
 const TABS = [
-  { id: 'files', key: 'exec.tools_used', icon: '🗂' },
   { id: 'activity', key: 'exec.activity_log', icon: '⚡' },
 ];
-
-// ===== 文件状态颜色 =====
-function fileStatusColor(status) {
-  switch (status) {
-    case 'read': return 'var(--info-color)';
-    case 'edited': return 'var(--warning-color)';
-    case 'created': return 'var(--success-color)';
-    case 'deleted': return 'var(--error-color)';
-    case 'completed': return 'var(--success-color)';
-    case 'running': return 'var(--primary-color)';
-    case 'waiting': return 'var(--warning-color)';
-    case 'failed': return 'var(--error-color)';
-    default: return 'var(--text-muted)';
-  }
-}
 
 // ===== 活动 intent 过滤选项 =====
 const INTENT_FILTERS = [
@@ -117,7 +101,9 @@ export function RuntimeDetailsPanel({
   const ipc = useIPC();
   const runtimeDetails = group?.runtimeDetails || [];
   const visibleRuntimeDetails = runtimeDetails.filter(msg => !isStatusUpdateMessage(msg) && !isThinkingMessage(msg));
-  const latestStatusUpdate = [...runtimeDetails].reverse().find(isStatusUpdateMessage);
+  const latestStatusUpdate = [...runtimeDetails]
+    .reverse()
+    .find(msg => isStatusUpdateMessage(msg) && msg.level !== 'debug' && msg.payload?.level !== 'debug');
   const thinkingSummary = buildThinkingSummary(runtimeDetails);
   const activitySummary = buildActivitySummary(runtimeDetails);
   const isRunningGroup = status === 'running' && isActiveGroup;
@@ -145,13 +131,9 @@ export function RuntimeDetailsPanel({
   const hasFileChanges = changedFiles.length > 0;
 
   // Tab 状态
-  const [activeTab, setActiveTab] = useState('files');
-  // 文件列表展开状态
-  const [showAllFiles, setShowAllFiles] = useState(false);
+  const [activeTab, setActiveTab] = useState('activity');
   // 活动列表展开状态
   const [showAllActivities, setShowAllActivities] = useState(false);
-  // 文件 intent 过滤（files Tab 专用，与 activity 分离避免互相干扰）
-  const [fileIntentFilter, setFileIntentFilter] = useState('all');
   // 活动 intent 过滤（activity Tab 专用）
   const [activityIntentFilter, setActivityIntentFilter] = useState('all');
   // 活动 phase 过滤
@@ -164,9 +146,6 @@ export function RuntimeDetailsPanel({
   const [showActivityReasoning, setShowActivityReasoning] = useState(false);
   // 展开的活动详情
   const [expandedActivities, setExpandedActivities] = useState(new Set());
-  const [expandedFileDiffs, setExpandedFileDiffs] = useState(new Set());
-  const [fileDiffs, setFileDiffs] = useState({});
-  const [loadingDiffs, setLoadingDiffs] = useState(new Set());
   const [changeDrawer, setChangeDrawer] = useState({
     open: false,
     mode: 'review',
@@ -181,46 +160,6 @@ export function RuntimeDetailsPanel({
       return next;
     });
   }, []);
-
-  const toggleFileDiff = useCallback(async (filePath) => {
-    if (!filePath) {
-      return;
-    }
-
-    setExpandedFileDiffs(prev => {
-      const next = new Set(prev);
-      if (next.has(filePath)) {
-        next.delete(filePath);
-      } else {
-        next.add(filePath);
-      }
-      return next;
-    });
-
-    if (fileDiffs[filePath] || loadingDiffs.has(filePath)) {
-      return;
-    }
-
-    setLoadingDiffs(prev => new Set(prev).add(filePath));
-    try {
-      const result = await ipc.getFileDiff?.(filePath);
-      setFileDiffs(prev => ({
-        ...prev,
-        [filePath]: result || { success: false, error: '无法读取 diff' },
-      }));
-    } catch (error) {
-      setFileDiffs(prev => ({
-        ...prev,
-        [filePath]: { success: false, error: error.message },
-      }));
-    } finally {
-      setLoadingDiffs(prev => {
-        const next = new Set(prev);
-        next.delete(filePath);
-        return next;
-      });
-    }
-  }, [fileDiffs, ipc, loadingDiffs]);
 
   const openChangeDrawer = useCallback(async (mode) => {
     if (changedFiles.length === 0) {
@@ -277,14 +216,7 @@ export function RuntimeDetailsPanel({
     return activities;
   }, [activitySummary.activities, activityIntentFilter, activityPhaseFilter, activitySearch]);
 
-  const fileListFiltered = useMemo(() => {
-    if (fileIntentFilter === 'all') return activitySummary.files;
-    return activitySummary.files.filter(f => f.status === fileIntentFilter);
-  }, [activitySummary.files, fileIntentFilter]);
-
-  const displayedFiles = showAllFiles ? activitySummary.files : activitySummary.files.slice(0, 6);
   const displayedActivities = showAllActivities ? filteredActivities : filteredActivities.slice(-8);
-  const hasMoreFiles = activitySummary.files.length > 6;
   const hasMoreActivities = filteredActivities.length > 8;
 
   const renderLineDelta = (parts, compact = false) => {
@@ -340,103 +272,6 @@ export function RuntimeDetailsPanel({
     </div>
   );
 
-  // ===== 文件 Tab：完整文件列表 + diff + 独立过滤（不与 activity 共享） =====
-  const renderFiles = () => (
-    <>
-      <div style={localStyles.fileListHeader}>
-        <span style={localStyles.fileListCount}>
-          {fileIntentFilter !== 'all'
-            ? `${fileListFiltered.length} / ${activitySummary.files.length}`
-            : activitySummary.files.length}
-        </span>
-        <div style={localStyles.fileFilterGroup}>
-          {['all', 'running', 'completed', 'failed', 'waiting'].map(filter => (
-            <button
-              key={filter}
-              type="button"
-              style={{
-                ...localStyles.filterChip,
-                ...(fileIntentFilter === filter ? localStyles.filterChipActive : {}),
-              }}
-              onClick={(e) => { e.stopPropagation(); setFileIntentFilter(filter); }}
-            >
-              {filter === 'all' ? t('ui.root') : getFileStatusLabel(filter)}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div style={localStyles.fileList}>
-        {(showAllFiles ? fileListFiltered : fileListFiltered.slice(0, 8)).map(file => {
-          const isDiffExpanded = expandedFileDiffs.has(file.path);
-          const diffResult = fileDiffs[file.path];
-          const isDiffLoading = loadingDiffs.has(file.path);
-
-          return (
-            <div key={file.path}>
-              <button
-                type="button"
-                style={localStyles.fileItemButton}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  toggleFileDiff(file.path);
-                }}
-                title={isDiffExpanded ? t('exec.collapse_diff') : t('exec.expand_diff')}
-              >
-                <span style={localStyles.fileTypeIcon}>{getFileTypeIcon(file.path)}</span>
-                <span style={localStyles.filePath} title={file.path}>{file.path}</span>
-                <span style={{ ...localStyles.fileStatusChip, color: fileStatusColor(file.status) }}>
-                  {getFileStatusLabel(file.status)}
-                </span>
-                {renderLineDelta(fileLineChangeParts(file))}
-                {file.updatedAt && (
-                  <span style={localStyles.fileTime}>
-                    {new Date(file.updatedAt).toLocaleTimeString()}
-                  </span>
-                )}
-                <span style={localStyles.fileDiffToggle}>{isDiffExpanded ? '▾' : '▸'}</span>
-              </button>
-              {isDiffExpanded && (
-                <div style={localStyles.fileDiffPanel}>
-                  {isDiffLoading && <div style={localStyles.fileDiffEmpty}>{t('common.loading')}</div>}
-                  {!isDiffLoading && diffResult?.success === false && (
-                    <div style={localStyles.fileDiffEmpty}>{diffResult.error || t('common.error')}</div>
-                  )}
-                  {!isDiffLoading && diffResult?.success !== false && !diffResult?.hasDiff && (
-                    <div style={localStyles.fileDiffEmpty}>{t('status.completed')}</div>
-                  )}
-                  {!isDiffLoading && diffResult?.diff && (
-                    <pre style={localStyles.fileDiffPre}>{diffResult.diff}</pre>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      {fileListFiltered.length > 8 && !showAllFiles && (
-        <button
-          type="button"
-          style={localStyles.showMoreButton}
-          onClick={(e) => { e.stopPropagation(); setShowAllFiles(true); }}
-        >
-          {fileListFiltered.length}
-        </button>
-      )}
-      {showAllFiles && fileListFiltered.length > 8 && (
-        <button
-          type="button"
-          style={localStyles.showMoreButton}
-          onClick={(e) => { e.stopPropagation(); setShowAllFiles(false); }}
-        >
-          {t('msg.collapse')}
-        </button>
-      )}
-      {activitySummary.files.length === 0 && (
-        <div style={localStyles.emptyTab}>{t('status.not_set')}</div>
-      )}
-    </>
-  );
-
   // ===== 活动 Tab：视图切换（结构化 checklist | 原始日志）+ 顶部 reasoning 折叠 =====
   const renderActivity = () => (
     <>
@@ -469,7 +304,7 @@ export function RuntimeDetailsPanel({
                   {msg.timestamp && <span style={localStyles.reasoningTime}>{new Date(msg.timestamp).toLocaleTimeString()}</span>}
                 </div>
                 <div style={localStyles.reasoningText}>
-                  {msg.thinkingText || msg.summary || msg.payload?.message || msg.payload?.data?.textPreview || msg.content || t('msg.model_thinking')}
+                  {msg.thinkingText || msg.summary || msg.payload?.message || msg.content || t('msg.model_thinking')}
                 </div>
               </div>
             ))}
@@ -771,11 +606,7 @@ export function RuntimeDetailsPanel({
 
   // ===== 渲染 Tab 内容 =====
   const renderTabContent = () => {
-    switch (activeTab) {
-      case 'files': return renderFiles();
-      case 'activity': return renderActivity();
-      default: return renderFiles();
-    }
+    return renderActivity();
   };
 
   const renderDiffBlock = (diffText) => (
@@ -842,13 +673,13 @@ export function RuntimeDetailsPanel({
 
   const renderCompactCompletedPanel = () => {
     const failedActivityCount = activitySummary.activities.filter(activity => activity.phase === 'failed').length;
-    const totalActivityCount = activitySummary.total || visibleRuntimeDetails.length || activitySummary.activities.length;
-    const fileCount = changedFiles.length || activitySummary.files.length;
+    const totalActivityCount = activitySummary.total || activitySummary.activities.length;
+    const changedFileCount = changedFiles.length;
     const summaryItems = [
-      runtimeDurationMs > 0 ? formatDuration(runtimeDurationMs) : null,
-      totalActivityCount > 0 ? `${totalActivityCount} steps` : null,
-      fileCount > 0 ? `${fileCount} files` : null,
-      failedActivityCount > 0 ? `${failedActivityCount} failed` : null,
+      runtimeDurationMs > 0 ? `耗时 ${formatDuration(runtimeDurationMs)}` : null,
+      changedFileCount > 0 ? `改动 ${changedFileCount} 个文件` : null,
+      changedFileCount === 0 && totalActivityCount > 0 ? `完成 ${totalActivityCount} 项操作` : null,
+      failedActivityCount > 0 ? `${failedActivityCount} 项失败` : null,
     ].filter(Boolean);
 
     return (
@@ -881,30 +712,6 @@ export function RuntimeDetailsPanel({
           </div>
 
           <div style={localStyles.executionActionCluster}>
-            {hasFileChanges && (
-              <>
-                <button
-                  type="button"
-                  style={localStyles.capsuleActionButton}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openChangeDrawer('undo');
-                  }}
-                >
-                  撤销
-                </button>
-                <button
-                  type="button"
-                  style={localStyles.capsuleActionButton}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openChangeDrawer('review');
-                  }}
-                >
-                  审核
-                </button>
-              </>
-            )}
             <button
               type="button"
               style={localStyles.capsuleDetailsButton}
@@ -917,7 +724,6 @@ export function RuntimeDetailsPanel({
             </button>
           </div>
         </div>
-        {renderChangeDrawer()}
       </div>
     );
   };

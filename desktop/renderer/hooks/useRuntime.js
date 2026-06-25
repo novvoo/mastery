@@ -627,6 +627,7 @@ export function useRuntime() {
 
         if (eventName === 'agent:complete') {
           const answer = extractAgentAnswer(payload);
+          const needsUserInput = payload?.result?.status === 'needs_user_input' || payload?.status === 'needs_user_input';
           // 场景A：有流式消息 + 有答案 → 原地收口为 agent 消息（不额外添加 result 消息）
           if (answer && closedTextStream?.id) {
             completedByEventRef.current = true;
@@ -642,6 +643,11 @@ export function useRuntime() {
                 }
                 : msg
             ));
+            setStatus(needsUserInput ? 'needs_user_input' : 'completed');
+            setStats(prev => ({
+              ...prev,
+              endTime: Date.now()
+            }));
             return;
           }
           // 场景B：有流式消息 + 无答案 + 无内容 → 删除空的流式消息
@@ -653,9 +659,22 @@ export function useRuntime() {
           if (answer && answer === lastAnswerRef.current) {
             return;
           }
-          // 场景D：无流式消息（流式消息已被 tool:call 等事件切断）
-          // 不设置 completedByEventRef，也不设置 lastAnswerRef
-          // 让 processInput 的 await 分支来添加独立的 result 消息
+          // 场景D：无流式消息（通常已被 tool:call/tool:result 切断）
+          // async/background 模式下 processInput 不会再返回最终结果，所以这里必须落一条主消息。
+          if (answer) {
+            completedByEventRef.current = true;
+            lastAnswerRef.current = answer;
+            addMessage({
+              type: needsUserInput ? 'warning' : 'result',
+              content: answer,
+              resultMeta: payload,
+            });
+            setStatus(needsUserInput ? 'needs_user_input' : 'completed');
+            setStats(prev => ({
+              ...prev,
+              endTime: Date.now()
+            }));
+          }
           return;
         }
 
@@ -979,6 +998,10 @@ function extractAgentAnswer(data) {
     return stripActionBlocks(data.answer);
   }
 
+  if (typeof data.finalAnswer === 'string' && data.finalAnswer.trim()) {
+    return stripActionBlocks(data.finalAnswer);
+  }
+
   if (typeof data.content === 'string' && data.content.trim()) {
     return stripActionBlocks(data.content);
   }
@@ -1013,6 +1036,10 @@ function extractAgentAnswer(data) {
 
   if (typeof data.result?.answer === 'string' && data.result.answer.trim()) {
     return stripActionBlocks(data.result.answer);
+  }
+
+  if (typeof data.result?.finalAnswer === 'string' && data.result.finalAnswer.trim()) {
+    return stripActionBlocks(data.result.finalAnswer);
   }
 
   if (typeof data.result?.response === 'string' && data.result.response.trim()) {
