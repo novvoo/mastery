@@ -119,10 +119,103 @@ function createEmptyToolRegistry() {
 }
 
 function stripActionBlocks(text = '') {
-  return text
+  if (typeof text !== 'string') return text;
+
+  let out = text
     .replace(/<action>[\s\S]*?<\/action>/gi, '')
-    .replace(/```(?:json)?\s*\{[\s\S]*?\}\s*```/gi, '')
-    .trim();
+    .replace(/```(?:json|tool)?\s*\{[\s\S]*?\}\s*```/gi, '');
+
+  // 裸 ReAct JSON：{"action": {...}} / {"evaluation_previous_goal": ...} 等
+  const trimmed = out.trim();
+  if (
+    trimmed.startsWith('{') &&
+    (trimmed.endsWith('}') || trimmed.endsWith('}\n')) &&
+    /"action"\s*:|"evaluation_previous_goal"\s*:|"next_goal"\s*:|"memory"\s*:/.test(trimmed)
+  ) {
+    return '';
+  }
+
+  return out.trim();
+}
+
+// ============================================================
+// ToolProtocolStreamFilter — 流式协议文本过滤
+//
+// 问题：模型输出的工具调用 JSON（如 {"action": {"list_dir": {...}}}）
+// 会通过 text_delta 直接进入 UI 聊天气泡，在 parser 识别为工具调用前
+// 就已经显示给用户了。
+//
+// 解决：在流式管道中增加 buffer，当检测到文本以 '{' 开始时先缓冲，
+// 判断是否为工具协议 JSON，如果是则抑制显示，否则 flush 到 UI。
+// ============================================================
+
+const PROTOCOL_FIELD_PATTERN = /"action"\s*:|"evaluation_previous_goal"\s*:|"next_goal"\s*:|"memory"\s*:/;
+const MAX_PROTO_BUFFER_SIZE = 2048; // 最多缓冲 2KB
+
+/**
+ * 创建一个流式协议过滤器实例。
+ * @returns {{ push: (text: string) => { visibleText: string, protocolDetected: boolean, protocolPreview?: string } }}
+ */
+function createProtocolStreamFilter() {
+  let buffer = '';
+  let isBuffering = false;
+
+  function push(text) {
+    if (!text || typeof text !== 'string') return { visibleText: '', protocolDetected: false };
+
+    if (!isBuffering) {
+      // 普通状态：检查是否进入协议模式（以 { 开头）
+      const trimmedLeading = text.trimStart();
+      if (!trimmedLeading.startsWith('{')) {
+        // 普通文本，直接放行
+        return { visibleText: text, protocolDetected: false };
+      }
+
+      // 以 { 开头，进入缓冲模式
+      isBuffering = true;
+      buffer = text;
+    } else {
+      buffer += text;
+    }
+
+    // 缓冲中：检查是否已能判断是否为协议 JSON
+    if (buffer.length > MAX_PROTO_BUFFER_SIZE) {
+      // 超过最大缓冲大小，当作普通文本 flush
+      isBuffering = false;
+      const out = buffer;
+      buffer = '';
+      return { visibleText: out, protocolDetected: false };
+    }
+
+    // 检查是否有协议特征字段
+    if (PROTOCOL_FIELD_PATTERN.test(buffer)) {
+      // 确认是协议 JSON → 抑制显示
+      const preview = buffer.length <= 200 ? buffer : buffer.slice(0, 200) + '...';
+      buffer = '';
+      isBuffering = false;
+      return { visibleText: '', protocolDetected: true, protocolPreview: preview };
+    }
+
+    // 如果已经闭合（有匹配的 }）且不含协议字段 → 不是协议 JSON，flush
+    // 用简单的括号计数判断闭合（不需要完美解析）
+    let depth = 0;
+    for (let i = 0; i < buffer.length; i++) {
+      if (buffer[i] === '{') depth++;
+      else if (buffer[i] === '}') depth--;
+      if (depth === 0 && i > 0) {
+        // 已闭合且不含协议字段 → 普通文本
+        isBuffering = false;
+        const out = buffer;
+        buffer = '';
+        return { visibleText: out, protocolDetected: false };
+      }
+    }
+
+    // 还未闭合，继续缓冲（不输出可见文本）
+    return { visibleText: '', protocolDetected: false };
+  }
+
+  return { push };
 }
 
 function normalizeModelResponse(response = {}) {
@@ -1179,17 +1272,29 @@ export class AgentEngine {
 
         if (hasValidStream) {
           // ===== 优先走流式分支：逐 token 推送增量到 UI =====
+          // 使用 ToolProtocolStreamFilter 缓冲并过滤工具协议文本，
+          // 避免裸 JSON（如 {"action": {"tool_name": {...}}}）被当作用户可见文本显示到 UI
+          const protoFilter = createProtocolStreamFilter();
+
           response = await this.#retryStrategy.executeWithRetry(async () => {
             llmAttempts++;
             return await withTimeout(
               async () => {
-                // 迭代增量事件，转发到 UI
+                // 迭代增量事件，经协议过滤后转发到 UI
                 for await (const evt of streamResult.stream()) {
-                  if (!evt) {
-                    continue;
-                  }
+                  if (!evt) continue;
+
                   if (evt.type === 'text_delta' && evt.text) {
-                    this.#ui.onTextDelta?.(evt.text);
+                    const out = protoFilter.push(evt.text);
+                    if (out.visibleText) {
+                      this.#ui.onTextDelta?.(out.visibleText);
+                    }
+                    if (out.protocolDetected) {
+                      this.#ui.debugEvent?.('Tool protocol text suppressed from stream', {
+                        reason: 'tool_call_text_protocol',
+                        preview: out.protocolPreview,
+                      });
+                    }
                   } else if (evt.type === 'reasoning_delta' && evt.text) {
                     this.#ui.onReasoningDelta?.(evt.text);
                   } else if (evt.type === 'tool_call_delta') {

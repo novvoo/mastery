@@ -8,16 +8,53 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 
 /**
- * 过滤掉内部控制 JSON 块（如 <action> 和代码块中的 JSON 工具调用）
+ * 过滤掉内部控制 JSON 块（工具协议文本不应作为用户可见内容展示）
+ *
+ * 支持过滤：
+ *   1. <action>...</action> 标签
+ *   2. 代码块中的 JSON/tool 工具调用
+ *   3. 裸 ReAct JSON：{"action": {...}} / {"evaluation_previous_goal": ...} / {"next_goal": ...}
+ *
  * @param {string} text - 原始文本
  * @returns {string} 过滤后的文本
  */
 function stripActionBlocks(text = '') {
   if (typeof text !== 'string') return text;
-  return text
+
+  let out = text
+    // 1) <action> 标签包裹的工具调用
     .replace(/<action>[\s\S]*?<\/action>/gi, '')
-    .replace(/```(?:json)?\s*\{[\s\S]*?\}\s*```/gi, '')
-    .trim();
+    // 2) ```json / ```tool / ``` 代码块中的工具 JSON
+    .replace(/```(?:json|tool)?\s*\{[\s\S]*?\}\s*```/gi, '');
+
+  // 3) 裸 ReAct JSON（完整匹配）：{"action": ...} 或含 evaluation_previous_goal / next_goal / memory 的对象
+  const trimmed = out.trim();
+  if (
+    trimmed.startsWith('{') &&
+    (trimmed.endsWith('}') || trimmed.endsWith('}\n')) &&
+    /"action"\s*:|"evaluation_previous_goal"\s*:|"next_goal"\s*:|"memory"\s*:/.test(trimmed)
+  ) {
+    return '';
+  }
+
+  return out.trim();
+}
+
+/**
+ * 判断一段累积的流式文本是否看起来像是工具协议的开头。
+ * 用于流式 buffer 判断是否应该延迟显示。
+ */
+function looksLikeProtocolStart(text) {
+  const t = text.trim();
+  if (!t.startsWith('{')) return false;
+  // 检查前 200 字符内是否有协议特征字段
+  const head = t.slice(0, Math.min(t.length, 200));
+  return (
+    /"action"\s*:/.test(head) ||
+    /"evaluation_previous_goal"\s*:/.test(head) ||
+    /"next_goal"\s*:/.test(head) ||
+    /"memory"\s*:/.test(head)
+  );
 }
 
 /**
@@ -488,12 +525,23 @@ export function useRuntime() {
         || eventName === 'agent:complete'
         || eventName === 'agent:stop'
         || eventName === 'agent:error'
-        || eventName === 'agent:thinking';
+        || eventName === 'agent:thinking'
+        || eventName === 'agent:stream_reset';
 
       let closedTextStream = null;
       if (isCutoffEvent) {
         closedTextStream = cutoffStream(streamingMessageIdRef, 'agent');
         cutoffStream(streamingReasoningIdRef, 'thinking');
+      }
+
+      // ===== stream_reset：工具调用确认后，删除已被误显示的协议文本气泡 =====
+      if (eventName === 'agent:stream_reset' && streamingMessageIdRef.current) {
+        const msgId = streamingMessageIdRef.current;
+        flushMessageDeltas();
+        setMessages(prev => prev.filter(msg => msg.id !== msgId));
+        streamingMessageIdRef.current = null;
+        streamingTextRef.current = '';
+        return;
       }
 
       // ===== 2) 流式增量事件（打字机效果）=====
