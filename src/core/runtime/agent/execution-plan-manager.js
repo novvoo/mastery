@@ -293,11 +293,17 @@ export class ExecutionPlanManager {
     return plan;
   }
 
-  /** 模板模式：标准 inspect → plan → implement → verify DAG */
+  /** 模板模式：根据任务类型生成不同的 plan DAG
+   *
+   * 任务类型 → 计划模板映射：
+   * - 查询/回答类 (research, general): 轻量 2 步 → explore → answer
+   * - 分析类 (analysis): 3 步 → explore → analyze → report
+   * - 修改类 (coding, modification, bug_fix, documentation): 完整流程
+   *   - bug_fix: implement → inspect（直接修复，无前置探索）
+   *   - 其他修改: explore → plan → implement → inspect
+   */
   #buildTemplatePlan(plan, profile) {
     // 兼容新旧 profile 格式
-    // 新格式: { intent, mode, allowsMutation, ... }
-    // 旧格式: { isBugTask, isModificationTask, isCodingTask, ... }
     const intent = profile?.intent;
     const mode = profile?.mode;
     const allowsMutation = profile?.allowsMutation;
@@ -328,108 +334,145 @@ export class ExecutionPlanManager {
       taskType = 'general';
     }
 
-    let inspectDesc = 'Explore the context and gather necessary information before proceeding.';
-    let planDesc = 'Plan the approach and define the steps needed to accomplish the task.';
-    let implementDesc = 'Execute the planned approach to accomplish the task.';
-    let inspectChangesDesc = 'Review the work that was done to ensure it meets requirements.';
-    let verifyDesc = 'Verify the final result to confirm the task is complete.';
-
-    switch (taskType) {
-      case 'coding':
-        inspectDesc =
-          'Discover the relevant project structure and existing files before reading or writing.';
-        planDesc = 'Choose the implementation approach and file split for the requested change.';
-        implementDesc = 'Create or edit the required files using the smallest necessary changes.';
-        inspectChangesDesc =
-          'Read back or otherwise inspect the files that were created or edited.';
-        verifyDesc = 'Run an appropriate command/tool to verify the requested behavior.';
-        break;
-      case 'modification':
-        inspectDesc = 'Read the existing code to understand the current implementation.';
-        planDesc = 'Plan the modification approach and identify the smallest necessary changes.';
-        implementDesc = 'Make the planned changes to the existing code.';
-        inspectChangesDesc = 'Read back the modified files to verify the changes.';
-        verifyDesc =
-          'Run tests or verification commands to ensure the modification works correctly.';
-        break;
-      case 'bug_fix':
-        inspectDesc = 'Read the relevant code to understand the bug and its root cause.';
-        planDesc = 'Plan the minimal fix approach to resolve the bug.';
-        implementDesc = 'Implement the bug fix directly. Focus on fixing, not analyzing.';
-        inspectChangesDesc = 'Read back the fixed code to verify the changes.';
-        verifyDesc = 'Run tests to verify the bug is resolved and no regressions were introduced.';
-        break;
-      case 'documentation':
-        inspectDesc = 'Discover the project structure and identify existing documentation files.';
-        planDesc = 'Plan the documentation structure, sections, and key topics to cover.';
-        implementDesc = 'Create or update documentation files with clear, structured content.';
-        inspectChangesDesc = 'Read back and review the documentation for clarity and completeness.';
-        verifyDesc = 'Verify the documentation is complete, accurate, and well-structured.';
-        break;
-      case 'analysis':
-        inspectDesc =
-          'Read relevant files, search codebase, and gather all necessary information for analysis.';
-        planDesc = 'Plan the analysis approach and define the key questions to answer.';
-        implementDesc =
-          'Analyze the gathered information and generate insights, findings, and recommendations.';
-        inspectChangesDesc = 'Review the analysis results for accuracy and completeness.';
-        verifyDesc = 'Verify the analysis conclusions against the actual codebase or evidence.';
-        break;
-      case 'research':
-        inspectDesc = 'Clarify the research question and define the scope of the investigation.';
-        planDesc = 'Plan the research approach and identify relevant sources to consult.';
-        implementDesc =
-          'Search, read, and gather information from various sources to answer the research question.';
-        inspectChangesDesc = 'Synthesize the research findings into a coherent summary.';
-        verifyDesc = 'Verify the research findings are accurate, comprehensive, and well-sourced.';
-        break;
-    }
-
-    if (taskType === 'bug_fix') {
-      plan.addTask({
-        id: 'implement_changes',
-        name: 'Implement bug fix',
-        description: implementDesc,
-        dependencies: [],
-        phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
-      });
-      plan.addTask({
-        id: 'inspect_changes',
-        name: 'Inspect changes',
-        description: inspectChangesDesc,
-        dependencies: ['implement_changes'],
-        phase: ExecutionPlanManager.PHASE.INSPECTION,
-      });
-    } else {
+    // ===== 查询/回答类任务：轻量 2 步流程 =====
+    if (taskType === 'research' || taskType === 'general') {
       plan.addTask({
         id: 'inspect_workspace',
         name: 'Explore context',
-        description: inspectDesc,
+        description:
+          taskType === 'research'
+            ? 'Search and gather relevant information from the codebase to answer the question.'
+            : 'Understand the user request and gather any necessary context.',
         dependencies: [],
         phase: ExecutionPlanManager.PHASE.EXPLORATION,
       });
       plan.addTask({
-        id: 'plan_solution',
-        name: 'Plan approach',
-        description: planDesc,
+        id: 'answer_question',
+        name: 'Provide answer',
+        description:
+          'Synthesize the gathered information into a clear, accurate response. No file modifications needed.',
         dependencies: ['inspect_workspace'],
-        phase: ExecutionPlanManager.PHASE.PLANNING,
+        phase: ExecutionPlanManager.PHASE.VERIFICATION,
+      });
+      return;
+    }
+
+    // ===== 分析类任务：3 步流程 =====
+    if (taskType === 'analysis') {
+      plan.addTask({
+        id: 'inspect_workspace',
+        name: 'Explore context',
+        description:
+          'Read relevant files, search codebase, and gather all necessary information for analysis.',
+        dependencies: [],
+        phase: ExecutionPlanManager.PHASE.EXPLORATION,
       });
       plan.addTask({
-        id: 'implement_changes',
-        name: 'Execute',
-        description: implementDesc,
-        dependencies: ['plan_solution'],
+        id: 'analyze_findings',
+        name: 'Analyze findings',
+        description:
+          'Analyze the gathered information and generate insights, findings, and recommendations.',
+        dependencies: ['inspect_workspace'],
         phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
       });
       plan.addTask({
-        id: 'inspect_changes',
-        name: 'Review work',
-        description: inspectChangesDesc,
+        id: 'generate_report',
+        name: 'Generate report',
+        description: 'Compile the analysis into a structured report or summary.',
+        dependencies: ['analyze_findings'],
+        phase: ExecutionPlanManager.PHASE.VERIFICATION,
+      });
+      return;
+    }
+
+    // ===== 修改类任务：完整流程 =====
+    // bug_fix 特殊处理：直接修复，无需前置探索
+    if (taskType === 'bug_fix') {
+      plan.addTask({
+        id: 'implement_changes',
+        name: 'Implement bug fix',
+        description: 'Implement the bug fix directly. Focus on fixing, not analyzing.',
+        dependencies: [],
+        phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
+      });
+      plan.addTask({
+        id: 'verify_result',
+        name: 'Run tests',
+        description: 'Run tests to verify the bug is resolved and no regressions were introduced.',
         dependencies: ['implement_changes'],
+        phase: ExecutionPlanManager.PHASE.VERIFICATION,
+      });
+      plan.addTask({
+        id: 'inspect_changes',
+        name: 'Review changes',
+        description: 'Read back the fixed code to verify the changes are correct.',
+        dependencies: ['verify_result'],
         phase: ExecutionPlanManager.PHASE.INSPECTION,
       });
+      return;
     }
+
+    // coding / modification / documentation：标准 5 步流程
+    const descMap = {
+      coding: {
+        inspect: 'Discover the relevant project structure and existing files before reading or writing.',
+        plan: 'Choose the implementation approach and file split for the requested change.',
+        implement: 'Create or edit the required files using the smallest necessary changes.',
+        verify: 'Run tests, lint, or type-check to verify the implementation works correctly.',
+        review: 'Read back or otherwise inspect the files that were created or edited.',
+      },
+      modification: {
+        inspect: 'Read the existing code to understand the current implementation.',
+        plan: 'Plan the modification approach and identify the smallest necessary changes.',
+        implement: 'Make the planned changes to the existing code.',
+        verify: 'Run tests or verification commands to ensure the modification works correctly.',
+        review: 'Read back the modified files to verify the changes.',
+      },
+      documentation: {
+        inspect: 'Discover the project structure and identify existing documentation files.',
+        plan: 'Plan the documentation structure, sections, and key topics to cover.',
+        implement: 'Create or update documentation files with clear, structured content.',
+        verify: 'Verify the documentation is complete, accurate, and well-structured.',
+        review: 'Read back and review the documentation for clarity and completeness.',
+      },
+    };
+    const desc = descMap[taskType] || descMap.modification;
+
+    plan.addTask({
+      id: 'inspect_workspace',
+      name: 'Explore context',
+      description: desc.inspect,
+      dependencies: [],
+      phase: ExecutionPlanManager.PHASE.EXPLORATION,
+    });
+    plan.addTask({
+      id: 'plan_solution',
+      name: 'Plan approach',
+      description: desc.plan,
+      dependencies: ['inspect_workspace'],
+      phase: ExecutionPlanManager.PHASE.PLANNING,
+    });
+    plan.addTask({
+      id: 'implement_changes',
+      name: 'Execute',
+      description: desc.implement,
+      dependencies: ['plan_solution'],
+      phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
+    });
+    plan.addTask({
+      id: 'verify_result',
+      name: 'Verify',
+      description: desc.verify,
+      dependencies: ['implement_changes'],
+      phase: ExecutionPlanManager.PHASE.VERIFICATION,
+    });
+    plan.addTask({
+      id: 'inspect_changes',
+      name: 'Review',
+      description: desc.review,
+      dependencies: ['verify_result'],
+      phase: ExecutionPlanManager.PHASE.INSPECTION,
+    });
   }
 
   get plan() {
