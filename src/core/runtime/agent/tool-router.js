@@ -163,10 +163,12 @@ const PHASE_CANDIDATE_TOOLS = {
  * Select the smallest useful set of tools for the current request.
  * This is deliberately local and cheap: it avoids a preflight LLM call on
  * obvious coding tasks, while still exposing broad capabilities when needed.
+ * 
+ * ✅ Enhanced: Now supports currentTask.allowedTools for strict task-based tool constraints
  */
 export function selectToolsForRequest(
   allTools,
-  { userInput = '', taskProfile = null, intent = null, currentPhase = null, maxTools = 32 } = {},
+  { userInput = '', taskProfile = null, intent = null, currentPhase = null, currentTask = null, maxTools = 32 } = {},
 ) {
   const byName = new Map(allTools.map((tool) => [tool.name, tool]));
   const selected = new Map();
@@ -180,6 +182,17 @@ export function selectToolsForRequest(
       }
     }
   };
+
+  // ✅ 新增：currentTask 约束是最高优先级
+  // 如果有 currentTask 且定义了 allowedTools，就只选这些工具，忽略其他逻辑
+  if (currentTask && currentTask.allowedTools && currentTask.allowedTools.length > 0) {
+    add(currentTask.allowedTools);
+    const selectedTools = Array.from(selected.values());
+    // 即使超过 maxTools，也要保留所有 allowedTools（这些是任务必需的）
+    return selectedTools;
+  }
+
+  // 以下为原有逻辑（当没有 currentTask 约束时使用）
 
   const asksForFreshData =
     Boolean(intent?.requiresFreshData) ||

@@ -77,7 +77,7 @@ export class AgentRouter {
   /**
    * 执行单个工具调用
    * @param {object} toolCall
-   * @param {object} options - { resultMode, activeRoutedToolNames, workspaceState, observationSummarizer }
+   * @param {object} options - { resultMode, activeRoutedToolNames, workspaceState, observationSummarizer, currentTask }
    * @returns {Promise<{name:string, result:any, error?:string, skipped?:boolean}>}
    */
   async executeToolCall(toolCall, options = {}) {
@@ -95,8 +95,8 @@ export class AgentRouter {
     const resultMode = options.resultMode || 'tool';
     const startedAt = Date.now();
 
-    // 去重 - 重复调用时复用上次结果而非跳过
-    const callSignature = `${name}:${JSON.stringify(args)}`;
+    // 去重 - Phase 6 优化：使用增强签名，降低跨任务/同参数不同上下文的误伤
+    const callSignature = this.#computeCallSignature(name, args, options);
     await this.#loadToolResultCache();
     if (this.#toolCallHistory.includes(callSignature) || this.#toolResultCache.has(callSignature)) {
       const cachedResult = this.#toolResultCache.get(callSignature);
@@ -108,11 +108,17 @@ export class AgentRouter {
           arguments: args,
           resultMode,
           cachedResult: true,
+          currentTaskId: options.currentTask?.id,
         });
-        return { name, result: cachedResult, cached: true };
+        return { name, result: cachedResult, cached: true, reused: true };
       }
       this.#ui.warn(`Duplicate tool call detected: ${name}. No cached result available.`);
-      return { name, result: null, skipped: true };
+      return {
+        name,
+        result: `Duplicate ${name} blocked: no cached result available. Change arguments or move to the next task.`,
+        skipped: true,
+        duplicate: true,
+      };
     }
     this.#toolCallHistory.push(callSignature);
     if (this.#toolCallHistory.length > 50) {
@@ -336,6 +342,72 @@ export class AgentRouter {
       try {
         console.warn('[ToolCache] 写入失败:', err.message);
       } catch {}
+    }
+  }
+
+  // ---- 去重签名（Phase 6） ----
+
+  /**
+   * 计算增强的工具调用签名，用于精确去重。
+   * 相比旧的 `${name}:${JSON.stringify(args)}`，改进点：
+   *   1. 参数键按字母顺序规范化，避免键序不同导致重复 miss
+   *   2. 加入 currentTask.id，避免跨任务同参数被误判为重复
+   *   3. 读工具加入工作区文件 tag/版本，避免文件已变更后仍复用旧结果
+   */
+  #computeCallSignature(name, args, options = {}) {
+    const normalizedArgs = this.#normalizeArgsForSignature(args);
+    const parts = [name, JSON.stringify(normalizedArgs)];
+
+    if (options.currentTask?.id) {
+      parts.push(`task:${options.currentTask.id}`);
+    }
+
+    // 对读工具，若 workspaceState 能提供文件版本标识，则加入签名
+    if (this.#isReadTool(name) && options.workspaceState) {
+      const targetPath = this.#getReadToolTargetPath(name, args);
+      if (targetPath && typeof options.workspaceState.getFileTag === 'function') {
+        const tag = options.workspaceState.getFileTag(targetPath);
+        if (tag) {
+          parts.push(`tag:${tag}`);
+        }
+      }
+    }
+
+    return parts.join('|');
+  }
+
+  #normalizeArgsForSignature(value) {
+    if (value === null || typeof value !== 'object') {
+      return value;
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => this.#normalizeArgsForSignature(item));
+    }
+    const sorted = {};
+    for (const key of Object.keys(value).sort()) {
+      sorted[key] = this.#normalizeArgsForSignature(value[key]);
+    }
+    return sorted;
+  }
+
+  #isReadTool(name) {
+    return ['read_file', 'list_dir', 'glob', 'tree', 'stat_file', 'search_codebase'].includes(name);
+  }
+
+  #getReadToolTargetPath(name, args) {
+    if (!args) return null;
+    switch (name) {
+      case 'read_file':
+        return args.path || args.filePath || null;
+      case 'list_dir':
+      case 'glob':
+      case 'tree':
+      case 'stat_file':
+        return args.path || null;
+      case 'search_codebase':
+        return args.path || args.target_directories?.[0] || null;
+      default:
+        return null;
     }
   }
 

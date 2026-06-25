@@ -36,6 +36,9 @@ mock.module('../../src/planner/graph-planner.js', () => {
           dependencies: new Set(deps),
           dependents: new Set(),
           status: TaskStatus.PENDING,
+          allowedTools: task.allowedTools || [],
+          completionPredicate: task.completionPredicate || null,
+          toolCallsHistory: [],
           updateStatus(status, data) {
             this.status = status;
             if (data?.result) {
@@ -53,6 +56,21 @@ mock.module('../../src/planner/graph-planner.js', () => {
               }
             }
             return true;
+          },
+          recordToolCall(toolName, args, result) {
+            this.toolCallsHistory.push({ toolName, args, result, timestamp: Date.now() });
+          },
+          canBeAdvancedBy(toolName) {
+            if (this.allowedTools.length > 0 && !this.allowedTools.includes(toolName)) {
+              return false;
+            }
+            if (typeof this.completionPredicate === 'function') {
+              return this.completionPredicate({ toolName });
+            }
+            return true;
+          },
+          validateCompletion() {
+            return { completed: true, reason: 'mock-validation' };
           },
         };
         this.tasks.set(task.id, t);

@@ -51,6 +51,10 @@ const MUTATION_TOOLS = new Set([
   'hashline_apply',
 ]);
 
+function isPlanTaskPseudoTool(name) {
+  return /^task_\d+$/i.test(String(name || ''));
+}
+
 // ==== 文件作用域强制：工程级约束，不依赖 prompt ====
 // 当执行计划提供了当前子任务的 scopeFiles 时，
 // 以下工具的目标路径必须在 scopeFiles 范围内，否则直接拦截。
@@ -361,7 +365,12 @@ export class ToolExecutor {
 
     const tool = this.#toolRegistry.get(name);
     if (!tool) {
-      const msg = `Tool "${name}" is not registered.`;
+      let msg;
+      if (isPlanTaskPseudoTool(name)) {
+        msg = `Invalid tool "${name}". This is a plan task label, not an executable tool. Use real tools such as list_dir, read_file, edit_file, write_file, shell, or verify.`;
+      } else {
+        msg = `Tool "${name}" is not registered.`;
+      }
       options.emitObservation?.(id, name, msg, resultMode);
       this.#recordEvent(name, args, false, msg);
       this.#ui.toolError?.(name, msg);

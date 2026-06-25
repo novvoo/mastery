@@ -7,9 +7,17 @@
  *   - 推导当前执行阶段 (exploration/planning/implementation/inspection/verification)
  *   - 生成面向 LLM 的计划状态提示
  *   - 跟踪必要的文件修改路径
+ *
+ * 三层执行链集成（Phase 7）：
+ *   Methodology（阶段约束） ← Plan（任务 DAG） ← Executor（当前可执行任务）
+ *   - PlanExecutor 负责选出 currentRunnableTask
+ *   - 当前 task 的 phase 属性直接驱动 methodology phase
+ *   - ToolRouter 按 currentTask.allowedTools 限制可用工具
+ *   - System Prompt 按当前 task 注入执行约束
+ * 这样 Plan 不再是“展示列表”，而是真正的执行调度器。
  */
 
-import { ExecutionPlan, TaskStatus } from '../../../planner/graph-planner.js';
+import { ExecutionPlan, TaskStatus, PlanExecutor } from '../../../planner/graph-planner.js';
 import {
   isWorkspaceInspectionTool,
   isPlanningTool,
@@ -27,6 +35,8 @@ export class AgentPlanner {
 
   /** @type {ExecutionPlan|null} */
   #activePlan = null;
+  /** @type {PlanExecutor|null} */
+  #executor = null;
   /** @type {Set<string>} */
   #requiredMutationPaths = new Set();
   /** @type {Set<string>} */
@@ -51,6 +61,9 @@ export class AgentPlanner {
 
     this.#activePlan = plan;
     this.#useExternalPlan = true;
+
+    // ✅ 创建 PlanExecutor 来管理任务执行
+    this.#executor = new PlanExecutor(plan);
 
     if (plan.status === TaskStatus.RUNNING) {
       const runningTask = Array.from(plan.tasks.values()).find(
@@ -131,24 +144,32 @@ export class AgentPlanner {
       description:
         'Discover the relevant project structure and existing files before reading or writing.',
       dependencies: [],
+      phase: 'exploration',
+      allowedTools: ['list_dir', 'glob', 'read_file', 'search_codebase', 'semantic_search'],
     });
     plan.addTask({
       id: 'plan_solution',
       name: 'Plan solution',
       description: 'Choose the implementation approach and file split for the requested change.',
       dependencies: ['inspect_workspace'],
+      phase: 'planning',
+      allowedTools: ['ask_user', 'brainstorm', 'architect', 'tdd'],
     });
     plan.addTask({
       id: 'implement_changes',
       name: 'Implement changes',
       description: 'Create or edit the required files using the smallest necessary changes.',
       dependencies: ['plan_solution'],
+      phase: 'implementation',
+      allowedTools: ['write_file', 'edit_file', 'apply_hashline_patch', 'shell'],
     });
     plan.addTask({
       id: 'inspect_changes',
       name: 'Inspect changes',
       description: 'Read back or otherwise inspect the files that were created or edited.',
       dependencies: ['implement_changes'],
+      phase: 'inspection',
+      allowedTools: ['read_file', 'list_dir', 'glob', 'search_codebase'],
     });
     if (taskProfile.requiresSemanticRiskReview) {
       plan.addTask({
@@ -156,6 +177,8 @@ export class AgentPlanner {
         name: 'Semantic/API risk review',
         description: `Review the changed code against semantic risk domains: ${taskProfile.semanticRiskDomains.map((d) => d.label).join('; ')}.`,
         dependencies: ['inspect_changes'],
+        phase: 'inspection',
+        allowedTools: ['review', 'read_file'],
       });
     }
     plan.addTask({
@@ -165,6 +188,8 @@ export class AgentPlanner {
       dependencies: taskProfile.requiresSemanticRiskReview
         ? ['semantic_risk_review']
         : ['inspect_changes'],
+      phase: 'verification',
+      allowedTools: ['shell', 'verify', 'lsp_diagnostics'],
     });
 
     plan.status = TaskStatus.RUNNING;
@@ -174,6 +199,9 @@ export class AgentPlanner {
     this.#activePlan = plan;
     this.#requiredMutationPaths = this.#extractRequestedFilePaths(userInput);
     this.#completedMutationPaths = new Set();
+
+    // ✅ 创建 PlanExecutor，使模板计划也能被 Executor 层调度
+    this.#executor = new PlanExecutor(plan);
 
     // 推送计划创建事件到 UI
     if (this.#onPlanAdvance) {
@@ -222,6 +250,8 @@ export class AgentPlanner {
 
   /**
    * 推导当前执行阶段
+   * 三层架构原则：优先使用当前可执行 Plan task 的 phase 属性驱动 methodology phase。
+   * 这样 Plan task 成为 phase 的单一事实来源，避免全局 phase 与 Plan 脱节。
    * @returns {string|null} exploration|planning|implementation|inspection|verification
    */
   deriveCurrentPhase() {
@@ -230,11 +260,22 @@ export class AgentPlanner {
       return null;
     }
 
+    // 1) 最高优先级：当前可执行任务的 phase 属性（Plan → Methodology）
+    const currentTask = this.getCurrentRunnableTask();
+    if (currentTask?.phase) {
+      return currentTask.phase;
+    }
+
     const runningTask = Array.from(plan.tasks.values()).find(
       (task) => task.status === TaskStatus.RUNNING,
     );
 
     if (runningTask) {
+      // 2) 次优先级：task 对象上的 phase 字段（LLM 分解任务通常带有）
+      if (runningTask.phase) {
+        return runningTask.phase;
+      }
+
       switch (runningTask.id) {
         case 'inspect_workspace':
         case 'gather_information':
@@ -287,27 +328,43 @@ export class AgentPlanner {
 
     const before = this.#summarizeProgress(plan);
 
-    this.#completeTaskIf('inspect_workspace', () => isWorkspaceInspectionTool(toolName, args));
+    this.#completeTaskIf('inspect_workspace', toolName, args, result, () =>
+      isWorkspaceInspectionTool(toolName, args),
+    );
     this.#startReadyTasks(plan);
     // plan_solution 可以通过显式的计划工具或直接开始修改来完成
     this.#completeTaskIf(
       'plan_solution',
+      toolName,
+      args,
+      result,
       () => isPlanningTool(toolName) || isMutationTool(toolName, args),
     );
     this.#startReadyTasks(plan);
     this.#recordMutationPath(toolName, args);
     this.#completeTaskIf(
       'implement_changes',
+      toolName,
+      args,
+      result,
       () => isMutationTool(toolName, args) && this.#hasCompletedRequiredMutationPaths(),
     );
     this.#startReadyTasks(plan);
-    this.#completeTaskIf('inspect_changes', () => isChangeInspectionTool(toolName, args));
-    this.#startReadyTasks(plan);
-    this.#completeTaskIf('semantic_risk_review', () =>
-      isSemanticRiskReviewTool(toolName, args, this.#activePlan),
+    this.#completeTaskIf('inspect_changes', toolName, args, result, () =>
+      isChangeInspectionTool(toolName, args),
     );
     this.#startReadyTasks(plan);
-    this.#completeTaskIf('verify_result', () => isVerificationTool(toolName, args));
+    this.#completeTaskIf(
+      'semantic_risk_review',
+      toolName,
+      args,
+      result,
+      () => isSemanticRiskReviewTool(toolName, args, this.#activePlan),
+    );
+    this.#startReadyTasks(plan);
+    this.#completeTaskIf('verify_result', toolName, args, result, () =>
+      isVerificationTool(toolName, args),
+    );
     this.#startReadyTasks(plan);
 
     if (Array.from(plan.tasks.values()).every((task) => task.status === TaskStatus.COMPLETED)) {
@@ -394,7 +451,7 @@ export class AgentPlanner {
 
   // ---- private ----
 
-  #completeTaskIf(taskId, predicate) {
+  #completeTaskIf(taskId, toolName, args, result, predicate) {
     const task = this.#activePlan?.getTask(taskId);
     if (
       !task ||
@@ -403,9 +460,52 @@ export class AgentPlanner {
     ) {
       return;
     }
-    if (predicate()) {
-      task.updateStatus(TaskStatus.COMPLETED, { result: { completedBy: 'tool-observation' } });
+    if (!predicate()) {
+      return;
     }
+
+    // ✅ 第 9 阶段增强：记录工具调用历史
+    task.recordToolCall(toolName, args, result);
+
+    // ✅ 第 9 阶段：双重验证 — 先检查 canBeAdvancedBy，再用 validateCompletion 严格验证
+    if (!task.canBeAdvancedBy(toolName, args, result)) {
+      this.#debugEvent('Task completion blocked by task constraints', {
+        taskId,
+        toolName,
+        allowedTools: task.allowedTools,
+        completionPredicate: task.completionPredicate
+          ? (typeof task.completionPredicate === 'function' ? 'function' : task.completionPredicate)
+          : null,
+      });
+      return; // 工具不被此任务接受，不标记完成
+    }
+
+    // ✅ 第 9 阶段：严格的多维度完成条件验证（防止虚假完成）
+    const validation = task.validateCompletion({ strictMode: true });
+    if (!validation.completed) {
+      this.#debugEvent('Task strict validation failed - not marking complete', {
+        taskId,
+        toolName,
+        missingRequirements: validation.missingRequirements,
+        reason: validation.reason,
+        toolCallsHistoryLength: task.toolCallsHistory.length,
+      });
+      // 不标记为 COMPLETED，让任务继续等待更多工具调用
+      return;
+    }
+
+    // 所有验证通过，正式标记为 COMPLETED
+    task.updateStatus(TaskStatus.COMPLETED, { 
+      result: { completedBy: 'strict-validation', toolName, validationReason: validation.reason },
+      validatedAt: Date.now(),
+    });
+
+    this.#debugEvent('Task completed with strict validation', {
+      taskId,
+      toolName,
+      validationReason: validation.reason,
+      totalToolCalls: task.toolCallsHistory.length,
+    });
   }
 
   #startReadyTasks(plan) {
@@ -496,6 +596,8 @@ export class AgentPlanner {
         description:
           'Discover the relevant project structure and existing files before reading or writing.',
         dependencies: [],
+        phase: 'exploration',
+        allowedTools: ['list_dir', 'glob', 'read_file', 'search_codebase', 'semantic_search'],
       });
     }
 
@@ -506,6 +608,8 @@ export class AgentPlanner {
         name: 'Plan solution',
         description: 'Choose the implementation approach and file split for the requested change.',
         dependencies: ['inspect_workspace'],
+        phase: 'planning',
+        allowedTools: ['ask_user', 'brainstorm', 'architect', 'tdd'],
       });
     }
 
@@ -516,6 +620,8 @@ export class AgentPlanner {
         name: 'Implement changes',
         description: 'Create or edit the required files using the smallest necessary changes.',
         dependencies: ['plan_solution'],
+        phase: 'implementation',
+        allowedTools: ['write_file', 'edit_file', 'apply_hashline_patch', 'shell'],
       });
     }
 
@@ -526,6 +632,8 @@ export class AgentPlanner {
         name: 'Inspect changes',
         description: 'Read back or otherwise inspect the files that were created or edited.',
         dependencies: ['implement_changes'],
+        phase: 'inspection',
+        allowedTools: ['read_file', 'list_dir', 'glob', 'search_codebase'],
       });
     }
 
@@ -536,6 +644,8 @@ export class AgentPlanner {
         name: 'Semantic/API risk review',
         description: `Review the changed code against semantic risk domains: ${taskProfile.semanticRiskDomains.map((d) => d.label).join('; ')}.`,
         dependencies: ['inspect_changes'],
+        phase: 'inspection',
+        allowedTools: ['review', 'read_file'],
       });
     }
 
@@ -548,11 +658,45 @@ export class AgentPlanner {
         dependencies: taskProfile.requiresSemanticRiskReview
           ? ['semantic_risk_review']
           : ['inspect_changes'],
+        phase: 'verification',
+        allowedTools: ['shell', 'verify', 'lsp_diagnostics'],
       });
+    }
+
+    // ✅ 更新 executor（如果已存在）
+    if (this.#executor) {
+      this.#executor = new PlanExecutor(plan);
     }
 
     // 更新 requiredMutationPaths
     this.#requiredMutationPaths = this.#extractRequestedFilePaths(plan.description);
     this.#completedMutationPaths = new Set();
+  }
+
+  /**
+   * ✅ 获取当前可执行任务
+   */
+  getCurrentRunnableTask() {
+    if (!this.#executor) {
+      return null;
+    }
+    return this.#executor.getCurrentRunnableTask();
+  }
+
+  /**
+   * ✅ 获取当前任务允许的工具列表
+   */
+  getCurrentAllowedTools() {
+    if (!this.#executor) {
+      return null;
+    }
+    return this.#executor.getCurrentAllowedTools();
+  }
+
+  /**
+   * ✅ 获取 Plan Executor（用于直接调用其方法）
+   */
+  getExecutor() {
+    return this.#executor;
   }
 }

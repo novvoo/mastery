@@ -217,15 +217,32 @@ export class ExecutionPlanManager {
       // LLM 智能分解模式：使用 GraphPlanner 返回的子任务填充 DAG
       this.#useLLMDecomposition = true;
 
+      // 修复：LLM 可能返回重复 task id（如多个 "查看项目结构"），需要重命名并更新依赖
+      const seenIds = new Set();
+      const idMap = new Map(); // originalId -> finalId
       for (const st of llmSubtasks) {
+        let taskId = String(st.name || '').trim();
+        if (!taskId) {
+          taskId = `llm_task_${seenIds.size + 1}`;
+        }
+        const originalId = taskId;
+        let counter = 1;
+        while (seenIds.has(taskId)) {
+          taskId = `${originalId}_${counter++}`;
+        }
+        seenIds.add(taskId);
+        if (originalId !== taskId) {
+          idMap.set(originalId, taskId);
+        }
+
         plan.addTask({
-          id: st.name,
+          id: taskId,
           name: st.description?.substring(0, 80) || st.name,
           description: st.description || '',
-          dependencies: st.dependencies || [],
+          dependencies: (st.dependencies || []).map((dep) => idMap.get(dep) || dep),
           scopeFiles: st.scopeFiles || [],
           phase: st.phase || null,
-          metadata: { source: 'llm-decomposition' },
+          metadata: { source: 'llm-decomposition', originalId },
         });
       }
     } else {
@@ -402,7 +419,12 @@ export class ExecutionPlanManager {
     return !!this.#profile?.isBugTask;
   }
 
-  /** 记录工具调用后推进计划；返回 plan 的新摘要（若有变化） */
+  /** 记录工具调用后推进计划；返回 plan 的新摘要（若有变化）
+   * ✅ 第 9 阶段增强：
+   * - 优先使用 task.completionPredicate 判断完成（而非宽松的工具谓词）
+   * - 双重验证：工具谓词 + completionPredicate
+   * - 防止虚假完成（一个 read_file 不应同时完成多个 exploration 任务）
+   */
   advance(toolName, args, result) {
     if (!this.isActive) {
       return null;
@@ -414,13 +436,8 @@ export class ExecutionPlanManager {
     const plan = this.#plan;
     const before = this.#summarizeProgress(plan);
 
-    if (this.#useLLMDecomposition) {
-      // LLM 分解模式：按阶段推进动态子任务
-      this.#advanceLLMPlan(plan, toolName, args);
-    } else {
-      // 模板模式：按固定 taskId 推进
-      this.#advanceTemplatePlan(plan, toolName, args);
-    }
+    // ✅ 第 9 阶段：严格模式 — 使用 completionPredicate 验证
+    this.#advanceWithStrictValidation(plan, toolName, args, result);
 
     const allDone = Array.from(plan.tasks.values()).every((t) => t.status === TaskStatus.COMPLETED);
     if (allDone) {
@@ -434,7 +451,74 @@ export class ExecutionPlanManager {
       : null;
   }
 
-  /** LLM 分解模式：按阶段匹配完成当前 RUNNING 子任务 */
+  /**
+   * ✅ 第 9 阶段：严格完成条件验证的推进逻辑
+   * 
+   * 核心改进：
+   * 1. 只推进当前 RUNNING 状态的任务（不批量推进）
+   * 2. 使用 task.completionPredicate / canBeAdvancedBy 进行精确匹配
+   * 3. 工具调用只作用于一个任务（防止虚假并行推进）
+   * 4. 记录工具调用历史，使谓词可以基于历史判断
+   */
+  #advanceWithStrictValidation(plan, toolName, args, result) {
+    // 找到当前 RUNNING 的任务
+    const runningTasks = Array.from(plan.tasks.values()).filter(
+      (t) => t.status === TaskStatus.RUNNING,
+    );
+
+    if (runningTasks.length === 0) {
+      // 没有 RUNNING 任务，检查是否有 READY 任务可以启动
+      this.#startReadyTasks(plan);
+      return;
+    }
+
+    // 尝试将此工具调用匹配到一个 RUNNING 任务
+    let matchedTask = null;
+    let matchedByPredicate = false;
+
+    for (const task of runningTasks) {
+      // 记录工具调用历史
+      task.recordToolCall(toolName, args, result);
+
+      // 检查任务是否可以被此工具推进
+      if (task.canBeAdvancedBy(toolName, args, result)) {
+        matchedTask = task;
+        // 如果有 completionPredicate 且满足，标记为谓词匹配
+        if (task.completionPredicate) {
+          const validation = task.validateCompletion({ strictMode: false });
+          if (validation.completed) {
+            matchedByPredicate = true;
+          }
+        }
+        break; // 一个工具调用只能推进一个任务
+      }
+    }
+
+    if (!matchedTask) {
+      // 没有任何 RUNNING 任务接受这个工具调用
+      // 可能是任务还未启动或工具不在允许列表中
+      this.#startReadyTasks(plan);
+      return;
+    }
+
+    // ✅ 第 9 阶段关键：使用 validateCompletion 进行多维度验证
+    const validation = matchedTask.validateCompletion({ strictMode: true });
+
+    if (validation.completed || matchedByPredicate) {
+      // 完成条件满足，标记为 COMPLETED
+      matchedTask.updateStatus(TaskStatus.COMPLETED, { 
+        result: { completedBy: 'strict-validation', toolName, args },
+        validatedAt: Date.now(),
+        validationReason: validation.reason,
+      });
+
+      // 启动依赖已满足的后继任务
+      this.#startReadyTasks(plan);
+    }
+    // 否则：任务继续 RUNNING 状态，等待更多工具调用
+  }
+
+  /** LLM 分解模式：按阶段匹配完成当前 RUNNING 子任务（保留作为 fallback） */
   #advanceLLMPlan(plan, toolName, args) {
     // 阶段 1: Exploration — 工作区探索工具完成后，完成当前 exploration 阶段的任务
     if (isWorkspaceInspectionTool(toolName, args)) {

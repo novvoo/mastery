@@ -92,6 +92,29 @@ describe('AgentRouter', () => {
     expect(callCount.value).toBe(1);
   });
 
+  test('executeToolCall does not treat same args as duplicate across different tasks', async () => {
+    const callCount = { value: 0 };
+    const deps = makeMockDeps();
+    deps.config.workingDirectory = `/tmp/test-agent-${Date.now()}`;
+    deps.config.toolResultCacheEnabled = true;
+    const handler = async () => {
+      callCount.value++;
+      return 'result';
+    };
+    deps.toolRegistry.get = (name) => ({ handler, category: 'test' });
+    deps.toolRegistry.has = (name) => true;
+    const router = new AgentRouter(deps);
+
+    const call = { name: 'test', arguments: { path: 'foo.txt' } };
+    const result1 = await router.executeToolCall(call, { currentTask: { id: 'inspect_workspace' } });
+    expect(result1.cached).not.toBe(true);
+    expect(callCount.value).toBe(1);
+
+    const result2 = await router.executeToolCall(call, { currentTask: { id: 'inspect_changes' } });
+    expect(result2.cached).not.toBe(true);
+    expect(callCount.value).toBe(2);
+  });
+
   test('executeToolCall respects security policy', async () => {
     const deps = makeMockDeps();
     deps.config.securityPolicy = { requiresApproval: (name) => name === 'dangerous' };

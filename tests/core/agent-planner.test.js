@@ -223,4 +223,23 @@ describe('AgentPlanner', () => {
     expect(planner.isCompleted()).toBe(true);
     expect(planner.activePlan.status).toBe(TaskStatus.COMPLETED);
   });
+
+  test('advance respects task completionPredicate (Phase 9)', () => {
+    const { planner, debugEvent } = createPlanner();
+    planner.createIfNeeded('edit app.js', standardProfile());
+
+    const inspectTask = planner.activePlan.getTask('inspect_workspace');
+    // 设置严格的完成条件：只有 semantic_search 才能结束 inspect_workspace
+    inspectTask.completionPredicate = ({ toolName }) => toolName === 'semantic_search';
+
+    // list_dir 满足类型谓词但不满足 completionPredicate → 不完成
+    planner.advance('list_dir', { path: '/src' }, 'file1.js\nfile2.js');
+    expect(inspectTask.status).toBe(TaskStatus.RUNNING);
+    expect(inspectTask.toolCallsHistory.length).toBeGreaterThan(0);
+
+    // semantic_search 同时满足类型谓词和 completionPredicate → 完成
+    planner.advance('semantic_search', { query: 'foo' }, ['result']);
+    expect(inspectTask.status).toBe(TaskStatus.COMPLETED);
+    expect(planner.activePlan.getTask('plan_solution').status).toBe(TaskStatus.RUNNING);
+  });
 });

@@ -289,6 +289,68 @@ export function buildSystemPrompt(memoryManager, toolRegistry, workingDirectory,
   return sections.join('\n\n');
 }
 
+/**
+ * ✅ 新增：生成任务约束指令
+ * 根据当前执行的任务生成动态的约束指令
+ */
+export function buildTaskConstraintPrompt(currentTask, allowedTools) {
+  if (!currentTask) {
+    return '';
+  }
+
+  const lines = [
+    '## 📋 Current Execution Task (STRICT CONSTRAINTS)',
+    '',
+    `**Task ID:** ${currentTask.id}`,
+    `**Task Name:** ${currentTask.name}`,
+    currentTask.description ? `**Description:** ${currentTask.description}` : '',
+    '',
+    '### ⚡ STRICT RULES FOR THIS TASK',
+    '',
+  ];
+
+  // 约束 1：只能调用允许的工具
+  if (allowedTools && allowedTools.length > 0) {
+    lines.push(`**Allowed Tools (ONLY use these):**`);
+    lines.push(allowedTools.map((t) => `- ${t}`).join('\n'));
+    lines.push('');
+    lines.push(`❌ Do NOT call tools outside this list.`);
+    lines.push('');
+  }
+
+  // 约束 2：禁止生成任务ID
+  lines.push(`**Task ID Convention:**`);
+  lines.push(`- This is task "${currentTask.id}" — a semantic identifier, NOT a tool.`);
+  lines.push(`- ❌ NEVER output task references like "task_1", "step_1", or "${currentTask.id}"`);
+  lines.push(`  in your responses — those are not actions.`);
+  lines.push(`- ✅ ONLY output CALL tool_name(...) or FINAL_ANSWER`);
+  lines.push('');
+
+  // 约束 3：禁止空输出
+  lines.push(`**Output Requirement:**`);
+  lines.push(`- ✅ EVERY response MUST contain exactly ONE tool call (CALL format)`);
+  lines.push(`- ❌ Do NOT output analysis, planning, or discussion without a tool call`);
+  lines.push(`- ❌ Do NOT skip the tool — this is mandatory for this task`);
+  lines.push('');
+
+  // 约束 4：任务完成标准
+  if (currentTask.completionPredicate) {
+    lines.push(`**Task Completion Criteria:**`);
+    if (typeof currentTask.completionPredicate === 'string') {
+      lines.push(`${currentTask.completionPredicate}`);
+    } else {
+      lines.push(`This task will be marked complete after the required tool is called.`);
+    }
+    lines.push('');
+  }
+
+  lines.push(
+    `**Current Phase:** ${currentTask.phase || 'unknown'} — focus on tools relevant to this phase.`,
+  );
+
+  return lines.join('\n');
+}
+
 function formatToolList(registry) {
   const lines = [
     'The runtime advertises the task-relevant tool subset in each LLM request.',

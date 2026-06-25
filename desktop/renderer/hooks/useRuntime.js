@@ -8,6 +8,19 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 
 /**
+ * 过滤掉内部控制 JSON 块（如 <action> 和代码块中的 JSON 工具调用）
+ * @param {string} text - 原始文本
+ * @returns {string} 过滤后的文本
+ */
+function stripActionBlocks(text = '') {
+  if (typeof text !== 'string') return text;
+  return text
+    .replace(/<action>[\s\S]*?<\/action>/gi, '')
+    .replace(/```(?:json)?\s*\{[\s\S]*?\}\s*```/gi, '')
+    .trim();
+}
+
+/**
  * Runtime Hook
  * 管理 Agent 的状态、消息、工具等
  * @returns {Object} Runtime 状态和方法
@@ -66,15 +79,19 @@ export function useRuntime() {
   const queueMessageDelta = useCallback((messageId, textToAppend, updates = {}) => {
     if (!messageId || !textToAppend) return;
 
+    // 过滤掉内部控制 JSON 块
+    const filteredText = stripActionBlocks(textToAppend);
+    if (!filteredText) return;
+
     if (messageId === streamingMessageIdRef.current) {
-      streamingTextRef.current += textToAppend;
+      streamingTextRef.current += filteredText;
     }
 
     const existing = pendingMessageDeltasRef.current.get(messageId) || { text: '' };
     pendingMessageDeltasRef.current.set(messageId, {
       ...existing,
       ...updates,
-      text: existing.text + textToAppend,
+      text: existing.text + filteredText,
     });
 
     if (!pendingMessageDeltaTimerRef.current) {
@@ -483,21 +500,25 @@ export function useRuntime() {
       if (eventName === 'agent:text_delta') {
         const msgId = streamingMessageIdRef.current;
         if (payload?.text) {
+          // 过滤掉内部控制 JSON 块
+          const filteredText = stripActionBlocks(payload.text);
+          if (!filteredText) return;
+
           if (!msgId) {
             // 当前没有活跃的流消息 → 创建新的消息气泡
             const now = Date.now();
             const newId = `msg_stream_${now}_${Math.random().toString(36).substr(2, 9)}`;
             streamingMessageIdRef.current = newId;
-            streamingTextRef.current = payload.text;
+            streamingTextRef.current = filteredText;
             setMessages(prev => [...prev, {
               id: newId,
               type: 'assistant_stream',
-              content: payload.text,
+              content: filteredText,
               timestamp: now,
               isStreaming: true,
             }]);
           } else {
-            queueMessageDelta(msgId, payload.text, { type: 'assistant_stream' });
+            queueMessageDelta(msgId, filteredText, { type: 'assistant_stream' });
           }
         }
         return;
@@ -903,55 +924,55 @@ function extractAgentAnswer(data) {
   if (!data) return '';
 
   if (typeof data === 'string') {
-    return data;
+    return stripActionBlocks(data);
   }
 
   if (typeof data.answer === 'string' && data.answer.trim()) {
-    return data.answer;
+    return stripActionBlocks(data.answer);
   }
 
   if (typeof data.content === 'string' && data.content.trim()) {
-    return data.content;
+    return stripActionBlocks(data.content);
   }
 
   if (typeof data.text === 'string' && data.text.trim()) {
-    return data.text;
+    return stripActionBlocks(data.text);
   }
 
   if (typeof data.response === 'string' && data.response.trim()) {
-    return data.response;
+    return stripActionBlocks(data.response);
   }
 
   if (typeof data.message?.content === 'string' && data.message.content.trim()) {
-    return data.message.content;
+    return stripActionBlocks(data.message.content);
   }
 
   if (typeof data.choices?.[0]?.message?.content === 'string' && data.choices[0].message.content.trim()) {
-    return data.choices[0].message.content;
+    return stripActionBlocks(data.choices[0].message.content);
   }
 
   if (typeof data.choices?.[0]?.delta?.content === 'string' && data.choices[0].delta.content.trim()) {
-    return data.choices[0].delta.content;
+    return stripActionBlocks(data.choices[0].delta.content);
   }
 
   if (data.localCommand && typeof data.content === 'string' && data.content.trim()) {
-    return data.content;
+    return stripActionBlocks(data.content);
   }
 
   if (typeof data.result === 'string' && data.result.trim()) {
-    return data.result;
+    return stripActionBlocks(data.result);
   }
 
   if (typeof data.result?.answer === 'string' && data.result.answer.trim()) {
-    return data.result.answer;
+    return stripActionBlocks(data.result.answer);
   }
 
   if (typeof data.result?.response === 'string' && data.result.response.trim()) {
-    return data.result.response;
+    return stripActionBlocks(data.result.response);
   }
 
   if (typeof data.result?.text === 'string' && data.result.text.trim()) {
-    return data.result.text;
+    return stripActionBlocks(data.result.text);
   }
 
   return '';

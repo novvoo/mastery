@@ -11,7 +11,7 @@
  */
 
 import { SessionManager } from '../../session-manager.js';
-import { buildSystemPrompt } from '../../../prompts/system-prompt.js';
+import { buildSystemPrompt, buildTaskConstraintPrompt } from '../../../prompts/system-prompt.js';
 import { classifyError, RetryStrategy, withTimeout } from '../../../errors/error-handler.js';
 import { ui } from '../../../cli/ui.js';
 import { TextToolParser } from '../../text-tool-parser.js';
@@ -71,6 +71,10 @@ export class ReActAgent {
   #pendingUserInputRequest = null;
   // plan 进度回调：由外部（session-state）注入，用于推送 plan 更新到 UI 事件总线
   #onPlanAdvance = null;
+
+  // ✅ 新增：实现阶段无代码变更熔断追踪
+  #implementationNoMutationIterations = 0;
+  #implementationPhaseStarted = false;
 
   // 子系统
   #textToolParser;
@@ -321,6 +325,9 @@ export class ReActAgent {
     this.#activeTaskProfile = taskProfile;
     this.#activeRoutedToolNames = null;
     this.#stagnationBudgetDowngrade = false;
+    // ✅ 重置熔断追踪
+    this.#implementationNoMutationIterations = 0;
+    this.#implementationPhaseStarted = false;
 
     this.#planner.reset();
     this.#router.reset();
@@ -454,16 +461,38 @@ export class ReActAgent {
       });
 
       try {
-        // 工具路由
+        // 三层执行链（Phase 7）：Plan task → Methodology phase → Tool pool
+        // deriveCurrentPhase() 内部已优先使用 currentRunnableTask.phase，
+        // 因此 methodology phase 由 Plan task 驱动。
         const currentPhase = this.#planner.deriveCurrentPhase();
+
+        // ✅ 获取当前可执行任务（用于 task 约束）
+        const currentTask = this.#planner.getCurrentRunnableTask();
+        const allowedTools = this.#planner.getCurrentAllowedTools();
+        
         const routedTools = selectToolsForRequest(this.#toolRegistry.getAll(), {
           userInput,
           taskProfile: this.#activeTaskProfile,
           intent,
           currentPhase,
+          currentTask, // ✅ 传递 currentTask 给工具路由
         });
         this.#activeRoutedToolNames = new Set(routedTools.map((tool) => tool.name));
         const functions = this.#toolRegistry.toFunctionDefinitions(routedTools);
+        
+        // ✅ 新增：注入任务约束指令
+        if (currentTask && allowedTools) {
+          const taskConstraintPrompt = buildTaskConstraintPrompt(currentTask, allowedTools);
+          if (taskConstraintPrompt) {
+            this.#sessionManager.addSystemMessage(taskConstraintPrompt);
+            this.#debugEvent('Task constraint prompt injected', {
+              taskId: currentTask.id,
+              taskName: currentTask.name,
+              allowedTools,
+            });
+          }
+        }
+        
         const messages = withRoutedToolContext(
           this.#sessionManager.getMessages(),
           this.#textToolParser.generateToolPrompt(routedTools),
@@ -856,10 +885,12 @@ export class ReActAgent {
           this.#sessionManager.addAssistantMessage(response.text, nativeToolCalls);
           for (const toolCall of nativeToolCalls) {
             const toolStart = Date.now();
+            const currentTaskForRouter = this.#planner.getCurrentRunnableTask();
             const toolResult = await this.#router.executeToolCall(toolCall, {
               resultMode: 'tool',
               activeRoutedToolNames: this.#activeRoutedToolNames,
               workspaceState: this.#workspaceState,
+              currentTask: currentTaskForRouter,
             });
             this.#recordToolEvent(toolResult, { durationMs: Date.now() - toolStart });
             this.#agentContext.recordToolCallForStagnation(toolResult, iteration, (name, r) =>
@@ -891,10 +922,12 @@ export class ReActAgent {
 
         for (const toolCall of parsedToolCalls) {
           const toolStart = Date.now();
+          const currentTaskForRouter = this.#planner.getCurrentRunnableTask();
           const toolResult = await this.#router.executeToolCall(toolCall, {
             resultMode: 'observation',
             activeRoutedToolNames: this.#activeRoutedToolNames,
             workspaceState: this.#workspaceState,
+            currentTask: currentTaskForRouter,
           });
           this.#recordToolEvent(toolResult, { durationMs: Date.now() - toolStart });
           this.#agentContext.recordToolCallForStagnation(toolResult, iteration, (name, r) =>
@@ -929,6 +962,67 @@ export class ReActAgent {
             );
             continue iterationLoop;
           }
+        }
+
+        // ✅ 新增：实现阶段熔断机制
+        // 检查是否处于实现阶段，以及是否有代码变更
+        const breakerPhase = this.#planner.deriveCurrentPhase();
+        if (breakerPhase === 'implementation' || breakerPhase === 'coding') {
+          this.#implementationPhaseStarted = true;
+
+          // 检查本轮迭代是否有代码变更工具调用
+          const hasMutationInThisIteration =
+            nativeToolCalls.some((tc) => isMutationTool(tc.name, tc.arguments || {})) ||
+            parsedToolCalls.some((tc) => isMutationTool(tc.name, tc.arguments || {}));
+
+          if (!hasMutationInThisIteration) {
+            this.#implementationNoMutationIterations++;
+            this.#debugEvent('Implementation phase - no mutation iteration', {
+              iteration,
+              noMutationCount: this.#implementationNoMutationIterations,
+              phase: breakerPhase,
+              toolCallCount: allToolCalls.length,
+            });
+
+            // 熔断阈值：连续 2 次没有代码变更就强制行动
+            if (this.#implementationNoMutationIterations >= 2) {
+              this.#debugEvent('Implementation phase - activating forced action breaker', {
+                iteration,
+                noMutationCount: this.#implementationNoMutationIterations,
+                forceWriteToolOnly: true,
+              });
+
+              // 强制要求下一轮只能调用写文件工具
+              const forceActionPrompt =
+                `\n[CRITICAL - IMPLEMENTATION FORCED ACTION]\n` +
+                `You are in IMPLEMENTATION phase and have NOT made any code changes in the last ${this.#implementationNoMutationIterations} iteration(s).\n` +
+                `This breaker forces you to take action NOW:\n\n` +
+                `✅ REQUIRED: Your NEXT response MUST contain exactly ONE of these tools:\n` +
+                `  - write_file: Create a new file\n` +
+                `  - edit_file: Modify an existing file\n` +
+                `  - apply_hashline_patch: Apply a patch\n\n` +
+                `❌ FORBIDDEN: Do NOT output:\n` +
+                `  - Analysis, planning, or discussion\n` +
+                `  - read_file, list_dir, or other read-only tools\n` +
+                `  - Summaries or next steps\n\n` +
+                `If you truly cannot proceed, respond with "FINAL_ANSWER:" to stop.`;
+
+              this.#sessionManager.addUserMessage(forceActionPrompt);
+
+              // 重置计数器以防止重复触发
+              this.#implementationNoMutationIterations = 0;
+
+              // 注册下一轮的工具约束检查（在下一轮迭代开始时）
+              // 这将通过 selectToolsForRequest 中的 currentPhase 约束来实现
+            }
+          } else {
+            // 有代码变更，重置计数器
+            this.#implementationNoMutationIterations = 0;
+          }
+        } else if (this.#implementationPhaseStarted) {
+          // 从实现阶段退出，重置追踪
+          this.#implementationNoMutationIterations = 0;
+          this.#implementationPhaseStarted = false;
         }
       } catch (error) {
         const agentError = classifyError(error);

@@ -7,7 +7,7 @@ const RUNTIME_DETAIL_ROLES = new Set(['system', 'developer']);
 const RUNTIME_DETAIL_TYPES = new Set(['tool', 'tool_result', 'debug', 'event', 'thinking']);
 const RUNTIME_DETAIL_SOURCES = new Set(['tool_instruction', 'system_instruction', 'internal']);
 const RUNTIME_DETAIL_LEVELS = new Set(['debug', 'trace', 'info']);
-const EVENT_PREFIXES = ['agent:', 'tool:', 'status:', 'plan:', 'workspace:'];
+const EVENT_PREFIXES = ['agent:', 'tool:', 'status:', 'workspace:', 'plan:'];
 const TOOL_RELATED_FIELDS = [
   'toolName',
   'toolCallId',
@@ -30,6 +30,10 @@ const INTERNAL_CONTENT_PATTERNS = [
 
 export function isRuntimeDetailMessage(msg) {
   if (!msg || typeof msg !== 'object') {
+    return false;
+  }
+
+  if (msg.type === 'plan' || typeof msg.plan !== 'undefined' || Array.isArray(msg.planTasks)) {
     return false;
   }
 

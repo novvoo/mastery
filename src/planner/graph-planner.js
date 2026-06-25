@@ -26,6 +26,209 @@ export const TaskStatus = {
 };
 
 /**
+ * 🎯 任务模板库 - 方法论级别的任务定义
+ * 包含：语义化 ID、执行约束、工具限制、完成条件
+ * 
+ * 这些模板防止 LLM 生成 task_1/task_2，而是使用语义化 ID
+ */
+export const TASK_TEMPLATE_REGISTRY = {
+  // ===== 探索阶段 (inspection) 任务 =====
+  'inspect_readme': {
+    id: 'inspect_readme',
+    semanticName: '阅读项目说明',
+    phase: 'exploration',
+    priority: 100,
+    allowedTools: ['read_file', 'glob'],
+    requiredToolIntents: ['read'],
+    completionPredicate: (toolCall, result) => 
+      toolCall.name === 'read_file' && 
+      (result.path || '').toLowerCase().includes('readme'),
+    description: '通过 read_file 工具读取 README.md 理解项目',
+    methodologyHint: 'inspect'
+  },
+
+  'inspect_workspace': {
+    id: 'inspect_workspace',
+    semanticName: '查看项目结构',
+    phase: 'exploration',
+    priority: 90,
+    allowedTools: ['list_dir', 'glob', 'read_file'],
+    requiredToolIntents: ['read'],
+    completionPredicate: (toolCall, result) =>
+      ['list_dir', 'glob', 'read_file'].includes(toolCall.name),
+    description: '通过 list_dir/glob 工具查看项目目录结构',
+    methodologyHint: 'inspect'
+  },
+
+  'inspect_existing_code': {
+    id: 'inspect_existing_code',
+    semanticName: '检查现有代码',
+    phase: 'exploration',
+    priority: 80,
+    allowedTools: ['read_file', 'glob', 'search'],
+    requiredToolIntents: ['read'],
+    completionPredicate: (toolCall, result) =>
+      ['read_file', 'glob', 'search'].includes(toolCall.name),
+    description: '读取关键源文件，理解现有实现',
+    methodologyHint: 'inspect'
+  },
+
+  'analyze_requirements': {
+    id: 'analyze_requirements',
+    semanticName: '分析需求',
+    phase: 'planning',
+    priority: 70,
+    allowedTools: ['read_file', 'semantic_search', 'context_assess'],
+    requiredToolIntents: ['read'],
+    completionPredicate: (toolCall, result) =>
+      ['read_file', 'semantic_search', 'context_assess'].includes(toolCall.name),
+    description: '基于代码现状分析需求和缺失功能',
+    methodologyHint: 'plan'
+  },
+
+  // ===== 规划阶段 (planning) 任务 =====
+  'plan_solution': {
+    id: 'plan_solution',
+    semanticName: '规划实现方案',
+    phase: 'planning',
+    priority: 60,
+    allowedTools: ['context_assess'],
+    requiredToolIntents: [],
+    completionPredicate: (toolCall, result) =>
+      toolCall.name === 'context_assess',
+    description: '设计实现方案，分解为具体改动',
+    methodologyHint: 'plan'
+  },
+
+  'design_changes': {
+    id: 'design_changes',
+    semanticName: '设计改动方案',
+    phase: 'planning',
+    priority: 55,
+    allowedTools: ['context_assess'],
+    requiredToolIntents: [],
+    completionPredicate: (toolCall, result) =>
+      toolCall.name === 'context_assess',
+    description: '确定具体修改文件和代码位置',
+    methodologyHint: 'plan'
+  },
+
+  // ===== 实现阶段 (implementation) 任务 =====
+  'implement_features': {
+    id: 'implement_features',
+    semanticName: '实现功能',
+    phase: 'implementation',
+    priority: 50,
+    allowedTools: ['write_file', 'edit_file', 'apply_hashline_patch'],
+    requiredToolIntents: ['write'],
+    completionPredicate: (toolCall, result) =>
+      ['write_file', 'edit_file', 'apply_hashline_patch'].includes(toolCall.name) &&
+      result?.success === true,
+    description: '通过 write_file/edit_file 修改源代码实现功能',
+    methodologyHint: 'implement',
+    requiresMutation: true
+  },
+
+  'implement_changes': {
+    id: 'implement_changes',
+    semanticName: '实现代码改动',
+    phase: 'implementation',
+    priority: 50,
+    allowedTools: ['write_file', 'edit_file', 'apply_hashline_patch'],
+    requiredToolIntents: ['write'],
+    completionPredicate: (toolCall, result) =>
+      ['write_file', 'edit_file', 'apply_hashline_patch'].includes(toolCall.name) &&
+      result?.success === true,
+    description: '执行实际代码修改',
+    methodologyHint: 'implement',
+    requiresMutation: true
+  },
+
+  'create_new_files': {
+    id: 'create_new_files',
+    semanticName: '创建新文件',
+    phase: 'implementation',
+    priority: 45,
+    allowedTools: ['write_file', 'apply_hashline_patch'],
+    requiredToolIntents: ['write'],
+    completionPredicate: (toolCall, result) =>
+      ['write_file', 'apply_hashline_patch'].includes(toolCall.name) &&
+      result?.success === true,
+    description: '创建新的源代码文件',
+    methodologyHint: 'implement',
+    requiresMutation: true
+  },
+
+  'refactor_code': {
+    id: 'refactor_code',
+    semanticName: '重构代码',
+    phase: 'implementation',
+    priority: 40,
+    allowedTools: ['edit_file', 'apply_hashline_patch'],
+    requiredToolIntents: ['write'],
+    completionPredicate: (toolCall, result) =>
+      ['edit_file', 'apply_hashline_patch'].includes(toolCall.name) &&
+      result?.success === true,
+    description: '重构现有代码改进质量',
+    methodologyHint: 'implement',
+    requiresMutation: true
+  },
+
+  // ===== 验证阶段 (verification) 任务 =====
+  'verify_result': {
+    id: 'verify_result',
+    semanticName: '验证结果',
+    phase: 'verification',
+    priority: 30,
+    allowedTools: ['shell', 'lsp_diagnostics', 'read_file'],
+    requiredToolIntents: ['execute', 'read'],
+    completionPredicate: (toolCall, result) =>
+      ['shell', 'lsp_diagnostics'].includes(toolCall.name),
+    description: '运行测试、构建、linter 验证改动',
+    methodologyHint: 'verify'
+  },
+
+  'run_tests': {
+    id: 'run_tests',
+    semanticName: '运行测试',
+    phase: 'verification',
+    priority: 25,
+    allowedTools: ['shell', 'read_file'],
+    requiredToolIntents: ['execute'],
+    completionPredicate: (toolCall, result) =>
+      toolCall.name === 'shell' && (result.command || '').includes('test'),
+    description: '执行测试套件验证功能正确性',
+    methodologyHint: 'verify'
+  },
+
+  'check_diagnostics': {
+    id: 'check_diagnostics',
+    semanticName: '检查诊断结果',
+    phase: 'verification',
+    priority: 20,
+    allowedTools: ['lsp_diagnostics', 'shell'],
+    requiredToolIntents: ['read'],
+    completionPredicate: (toolCall, result) =>
+      ['lsp_diagnostics', 'shell'].includes(toolCall.name),
+    description: '检查 LSP 诊断信息，确保无错误',
+    methodologyHint: 'verify'
+  },
+
+  'review_changes': {
+    id: 'review_changes',
+    semanticName: '审查改动',
+    phase: 'verification',
+    priority: 15,
+    allowedTools: ['read_file', 'shell'],
+    requiredToolIntents: ['read'],
+    completionPredicate: (toolCall, result) =>
+      ['read_file', 'shell'].includes(toolCall.name),
+    description: '检查修改的代码，确保符合标准',
+    methodologyHint: 'verify'
+  },
+};
+
+/**
  * 子任务节点
  */
 export class Subtask {
@@ -58,6 +261,25 @@ export class Subtask {
     // 生命周期阶段：exploration | planning | implementation | inspection | verification
     this.phase = data.phase || null;
     this.priority = data.priority || 0; // 优先级，数字越大优先级越高
+
+    // ✅ 新增：执行约束
+    // allowedTools: 该 task 只能调用这些工具
+    this.allowedTools = Array.isArray(data.allowedTools) ? data.allowedTools : [];
+
+    // requiredToolIntents: 该 task 必须调用的工具类型（如 'read', 'write'）
+    this.requiredToolIntents = Array.isArray(data.requiredToolIntents)
+      ? data.requiredToolIntents
+      : [];
+
+    // completionPredicate: 判断 task 是否完成的谓词
+    // 可以是字符串（如 'toolName:read_file && success') 或函数 (toolResult) => boolean
+    this.completionPredicate = data.completionPredicate || null;
+
+    // requiredMutationPaths: 该 task 需要修改的文件路径
+    this.requiredMutationPaths = new Set(data.requiredMutationPaths || []);
+
+    // 追踪该任务进行的工具调用（用于完成条件检查）
+    this.toolCallsHistory = [];
   }
 
   /**
@@ -99,6 +321,177 @@ export class Subtask {
     }
 
     return { oldStatus, newStatus };
+  }
+
+  /**
+   * 检查工具调用是否可以推进此 task
+   * @param {string} toolName - 工具名称
+   * @param {object} args - 工具参数
+   * @param {object} result - 工具结果（可选，用于结果敏感谓词）
+   * @returns {boolean}
+   */
+  canBeAdvancedBy(toolName, args, result = null) {
+    // 如果定义了 allowedTools，工具必须在列表中
+    if (this.allowedTools.length > 0 && !this.allowedTools.includes(toolName)) {
+      return false;
+    }
+
+    // 如果定义了 completionPredicate，检查是否满足条件（传入完整上下文）
+    if (typeof this.completionPredicate === 'function') {
+      try {
+        return this.completionPredicate({
+          toolName,
+          args,
+          result: result ?? undefined,
+          toolCallsHistory: this.toolCallsHistory,
+          taskPhase: this.phase,
+          taskId: this.id,
+        });
+      } catch (e) {
+        console.error(`Error evaluating completionPredicate for task ${this.id}:`, e);
+        return false;
+      }
+    }
+
+    if (typeof this.completionPredicate === 'string') {
+      return this.evaluatePredicateString(this.completionPredicate, { 
+        toolName, 
+        success: result?.success !== false && result?.error == null 
+      });
+    }
+
+    return true;
+  }
+
+  /**
+   * ✅ 第 9 阶段增强：严格验证任务是否真正完成
+   * 基于多维度检查，防止虚假完成：
+   * 1. completionPredicate 是否满足
+   * 2. requiredToolIntents 是否全部覆盖
+   * 3. requiredMutationPaths 是否全部修改
+   * 4. 工具调用历史是否足够丰富
+   *
+   * @param {object} options - 验证选项
+   * @param {boolean} options.strictMode - 严格模式：要求所有必须意图都满足
+   * @returns {{ completed: boolean, reason: string, missingRequirements: string[] }}
+   */
+  validateCompletion(options = {}) {
+    const { strictMode = true } = options;
+    const missingRequirements = [];
+
+    // 1. 检查是否有工具调用历史
+    if (this.toolCallsHistory.length === 0) {
+      return {
+        completed: false,
+        reason: 'No tool calls recorded for this task',
+        missingRequirements: ['tool_calls'],
+      };
+    }
+
+    // 2. 检查必需的工具意图是否都满足
+    if (strictMode && this.requiredToolIntents.length > 0) {
+      const satisfiedIntents = new Set();
+      for (const call of this.toolCallsHistory) {
+        for (const intent of this.requiredToolIntents) {
+          if (Subtask.#toolMatchesIntent(call.toolName, intent)) {
+            satisfiedIntents.add(intent);
+          }
+        }
+      }
+      const missingIntents = this.requiredToolIntents.filter((i) => !satisfiedIntents.has(i));
+      if (missingIntents.length > 0) {
+        missingRequirements.push(`missing_intents: ${missingIntents.join(', ')}`);
+      }
+    }
+
+    // 3. 检查必需的修改路径是否都已覆盖
+    if (strictMode && this.requiredMutationPaths.size > 0) {
+      const mutatedPaths = new Set();
+      for (const call of this.toolCallsHistory) {
+        const path = call.args?.path || call.args?.file_path || call.args?.file;
+        if (path) {
+          mutatedPaths.add(String(path));
+        }
+      }
+      const missingPaths = Array.from(this.requiredMutationPaths).filter(
+        (p) => !mutatedPaths.has(p),
+      );
+      if (missingPaths.length > 0) {
+        missingRequirements.push(`missing_mutations: ${missingPaths.join(', ')}`);
+      }
+    }
+
+    // 4. 使用 completionPredicate 进行最终判定
+    const lastCall = this.toolCallsHistory[this.toolCallsHistory.length - 1];
+    if (lastCall && this.completionPredicate) {
+      const predicateSatisfied = this.canBeAdvancedBy(
+        lastCall.toolName,
+        lastCall.args,
+        lastCall.result,
+      );
+      if (!predicateSatisfied) {
+        missingRequirements.push('completion_predicate_not_satisfied');
+      }
+    }
+
+    // 判定结果
+    const completed = missingRequirements.length === 0;
+    return {
+      completed,
+      reason: completed
+        ? 'Task completion validated'
+        : `Task not yet complete: ${missingRequirements.join('; ')}`,
+      missingRequirements,
+    };
+  }
+
+  /**
+   * 工具是否匹配意图（静态方法，供外部调用）
+   */
+  static #toolMatchesIntent(toolName, intent) {
+    const intentMap = {
+      read: ['read_file', 'list_dir', 'glob', 'semantic_search', 'grep_search', 'search_codebase'],
+      write: ['write_file', 'edit_file', 'apply_hashline_patch', 'create_file', 'create_directory'],
+      execute: ['shell', 'run_in_terminal'],
+      search: ['semantic_search', 'grep_search', 'file_search', 'search_codebase'],
+      inspect: ['lsp_diagnostics', 'lsp_hover', 'get_errors', 'verify'],
+    };
+
+    const tools = intentMap[intent] || [];
+    return tools.includes(toolName);
+  }
+
+  /**
+   * 评估简单的谓词字符串
+   * 例如: 'toolName:read_file && success'
+   */
+  evaluatePredicateString(predicateStr, context) {
+    try {
+      return predicateStr.split('&&').every((condition) => {
+        const [key, value] = condition.trim().split(':');
+        if (!key || !value) {
+          return true; // 格式错误时默认通过
+        }
+        const normalizedKey = key.trim();
+        const normalizedValue = value.trim();
+        return String(context[normalizedKey]) === normalizedValue;
+      });
+    } catch (e) {
+      console.error(`Error evaluating predicate string "${predicateStr}":`, e);
+      return false;
+    }
+  }
+
+  /**
+   * 记录工具调用历史
+   */
+  recordToolCall(toolName, args, result) {
+    this.toolCallsHistory.push({
+      toolName,
+      args,
+      result,
+      timestamp: Date.now(),
+    });
   }
 }
 
@@ -488,6 +881,7 @@ export class GraphPlanner extends EventEmitter {
     const template = templates[options.template] || templates['code_review'];
 
     return template.map((t, index) => ({
+      id: t.id || t.name,
       name: t.name,
       description: t.description,
       dependencies: t.dependencies,
@@ -545,7 +939,8 @@ ${taskProfileSection}
 ## 输出格式
 严格输出 JSON 数组，每个元素:
 {
-  "name": "唯一任务ID(snake_case)",
+  "id": "语义化任务ID(snake_case)，例如 inspect_workspace / plan_solution / implement_changes / verify_result，禁止 task_1/task_2",
+  "name": "人类可读任务名称",
   "description": "中文任务描述（含建议使用的方法论工具）",
   "dependencies": ["依赖的任务ID", ...],
   "scope_files": ["该子任务涉及的 2-5 个关键文件路径或目录"]
@@ -564,7 +959,34 @@ ${taskProfileSection}
 4. 依赖关系必须形成 DAG，不能有环
 5. 不确定的需求，规划 ask_user / grill 步骤
 6. 跨模块变更，规划 zoom_out / architect 步骤
-7. 每个任务描述中明确建议使用哪个方法论工具`;
+7. 每个任务描述中明确建议使用哪个方法论工具
+
+## ⚠️ 【关键】任务 ID 规范
+**禁止**使用通用 task ID 如 task_1/task_2/task_N！
+
+**必须**使用以下语义化 ID（按优先级）：
+
+### 探索阶段 (exploration)
+- \`inspect_readme\` - 阅读项目说明（read_file）
+- \`inspect_workspace\` - 查看项目结构（list_dir, glob）
+- \`inspect_existing_code\` - 检查现有代码（read_file）
+- \`analyze_requirements\` - 分析需求（semantic_search）
+
+### 规划阶段 (planning)
+- \`plan_solution\` - 规划实现方案（context_assess）
+- \`design_changes\` - 设计改动方案（context_assess）
+
+### 实现阶段 (implementation)
+- \`implement_features\` - 实现功能（write_file, edit_file）
+- \`implement_changes\` - 实现代码改动（write_file, edit_file）
+- \`create_new_files\` - 创建新文件（write_file）
+- \`refactor_code\` - 重构代码（edit_file）
+
+### 验证阶段 (verification)
+- \`verify_result\` - 验证结果（shell, lsp_diagnostics）
+- \`run_tests\` - 运行测试（shell）
+- \`check_diagnostics\` - 检查诊断（lsp_diagnostics）
+- \`review_changes\` - 审查改动（read_file）`;
 
     const userPrompt = `请将以下任务分解为执行子任务：
 
@@ -596,11 +1018,80 @@ ${toolHint}
   }
 
   /**
-   * 解析 LLM 返回的子任务 JSON
+   * 规范化任务 ID，禁止 task_1/task_2，使用语义化 ID
+   * 遵循 TASK_TEMPLATE_REGISTRY 中的定义
+   */
+  static #normalizeTaskId(rawId, description = '', index = 0) {
+    const id = String(rawId || '').trim().toLowerCase();
+    const text = `${id} ${description}`.toLowerCase();
+
+    // 第 1 步：如果已经是模板中的有效 ID，直接返回
+    if (TASK_TEMPLATE_REGISTRY[id]) {
+      return id;
+    }
+
+    // 第 2 步：如果不是 task_N 格式，进行标准化处理
+    if (!/^task_\d+$/.test(id)) {
+      const normalized = id
+        .replace(/[^a-z0-9_]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '');
+      
+      // 检查是否匹配模板
+      if (TASK_TEMPLATE_REGISTRY[normalized]) {
+        return normalized;
+      }
+      
+      return normalized;
+    }
+
+    // 第 3 步：task_1/task_2 转换为语义化 ID
+    // 通过关键词匹配来选择最接近的语义化 ID
+    
+    // 探索阶段关键词 → 对应任务
+    if (/readme|说明|文档|description/.test(text)) return 'inspect_readme';
+    if (/dir|structure|目录|项目结构|查看|list/.test(text)) return 'inspect_workspace';
+    if (/exist|code|源代码|读取|existing/.test(text)) return 'inspect_existing_code';
+    if (/require|analysis|分析|需求|requirement/.test(text)) return 'analyze_requirements';
+
+    // 规划阶段关键词
+    if (/plan|design|方案|规划|设计|architecture/.test(text)) return 'plan_solution';
+    if (/design|改动|change/.test(text)) return 'design_changes';
+
+    // 实现阶段关键词
+    if (/implement|edit|write|fix|修改|实现|修复|coding|code/.test(text)) {
+      // 进一步细分
+      if (/create|new|创建/.test(text)) return 'create_new_files';
+      if (/refactor|重构/.test(text)) return 'refactor_code';
+      return 'implement_changes';
+    }
+
+    // 验证阶段关键词
+    if (/verify|test|lint|build|验证|测试|诊断|diagnostic/.test(text)) {
+      if (/test|测试/.test(text)) return 'run_tests';
+      if (/diagnostic|diagnostics|诊断/.test(text)) return 'check_diagnostics';
+      if (/review|审查|复查/.test(text)) return 'review_changes';
+      return 'verify_result';
+    }
+
+    // 兜底：按索引分配默认任务
+    const defaultSequence = [
+      'inspect_readme',
+      'inspect_workspace', 
+      'analyze_requirements',
+      'plan_solution',
+      'implement_changes',
+      'verify_result'
+    ];
+    
+    return defaultSequence[index % defaultSequence.length];
+  }
+
+  /**
+   * 解析 LLM 返回的子任务 JSON，并应用任务模板
    */
   #parseLLMSubtasks(text, fallbackDescription, options) {
     try {
-      // 尝试提取 JSON 数组
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) {
         throw new Error('未找到 JSON 数组');
@@ -612,34 +1103,41 @@ ${toolHint}
         throw new Error('解析结果不是有效数组');
       }
 
-      // 验证并规范化每个子任务
       const validTaskIds = new Set();
       const subtasks = parsed.map((item, index) => {
-        const id = item.name || item.id || `task_${index + 1}`;
+        const rawId = item.id || item.name || `task_${index + 1}`;
+        const id = GraphPlanner.#normalizeTaskId(rawId, item.description, index);
         validTaskIds.add(id);
 
-        // 自动推断生命周期阶段
         const phase = item.phase || GraphPlanner.#inferPhase(id, item.description || '');
 
+        // ✅ 第 2 阶段改进：应用任务模板
+        const template = TASK_TEMPLATE_REGISTRY[id];
+        
         return {
-          name: id,
-          description: item.description || `子任务 ${index + 1}`,
+          id,
+          name: template?.semanticName || (item.name && item.name !== rawId ? item.name : id),
+          description: item.description || template?.description || `子任务 ${index + 1}`,
           dependencies: (item.dependencies || []).filter((dep) => {
-            // 过滤不存在的依赖（稍后会验证）
             return true;
           }),
-          priority: options.priority || 0,
+          priority: template?.priority || options.priority || 0,
           scopeFiles: Array.isArray(item.scope_files) ? item.scope_files : [],
-          phase,
+          phase: template?.phase || phase,
+          
+          // ✅ 应用模板中的执行约束
+          allowedTools: template?.allowedTools || [],
+          requiredToolIntents: template?.requiredToolIntents || [],
+          completionPredicate: template?.completionPredicate || null,
+          requiresMutation: template?.requiresMutation || false,
+          methodologyHint: template?.methodologyHint || null,
         };
       });
 
-      // 验证依赖引用的任务 ID 存在
       for (const task of subtasks) {
         task.dependencies = task.dependencies.filter((dep) => validTaskIds.has(dep));
       }
 
-      // 如果没有验证步骤，自动附加一个
       const hasVerification = subtasks.some(
         (t) =>
           t.name.toLowerCase().includes('verify') ||
@@ -648,9 +1146,10 @@ ${toolHint}
           t.description.toLowerCase().includes('测试'),
       );
       if (!hasVerification) {
-        const lastId = subtasks[subtasks.length - 1]?.name;
+        const lastId = subtasks[subtasks.length - 1]?.id;
         subtasks.push({
-          name: 'verify_result',
+          id: 'verify_result',
+          name: '验证结果',
           description: '验证最终结果：运行测试 / lint / build 确认所有变更正确',
           dependencies: lastId ? [lastId] : [],
           priority: options.priority || 0,
@@ -659,7 +1158,6 @@ ${toolHint}
 
       return subtasks;
     } catch (parseErr) {
-      // 解析失败，回退到模板
       if (this.#config?.debug) {
         console.warn('[GraphPlanner] LLM 响应解析失败，回退到模板:', parseErr.message);
       }
@@ -999,6 +1497,296 @@ ${toolHint}
     }
 
     return lines.join('\n');
+  }
+}
+
+/**
+ * Plan 执行控制器
+ * 
+ * 核心职责：
+ * - 管理当前可执行的任务（runnable task）
+ * - 根据工具调用结果推进任务状态
+ * - 检测任务完成条件
+ * - 强制推进卡顿的任务
+ */
+export class PlanExecutor extends EventEmitter {
+  #plan = null;
+  #currentRunnableTaskId = null;
+  #taskStartTime = null;
+  #taskToolCallCount = 0;
+  #config = {};
+
+  constructor(plan, config = {}) {
+    super();
+    this.#plan = plan;
+    this.#config = {
+      taskTimeoutMs: config.taskTimeoutMs || 120000,
+      maxToolCallsPerTask: config.maxToolCallsPerTask || 20,
+      ...config,
+    };
+
+    // 初始化计划的第一个可运行任务
+    this.#selectNextRunnableTask();
+  }
+
+  /**
+   * 获取当前可执行任务
+   */
+  getCurrentRunnableTask() {
+    if (!this.#currentRunnableTaskId) {
+      return null;
+    }
+    return this.#plan.getTask(this.#currentRunnableTaskId);
+  }
+
+  /**
+   * 获取当前任务允许的工具列表
+   */
+  getCurrentAllowedTools() {
+    const task = this.getCurrentRunnableTask();
+    if (!task || task.allowedTools.length === 0) {
+      return null; // null 表示没有约束，使用全局工具选择逻辑
+    }
+    return task.allowedTools;
+  }
+
+  /**
+   * 执行任务 - 处理工具调用结果并更新任务状态
+   * ✅ 第 9 阶段增强：
+   * - 使用 validateCompletion() 进行多维度验证
+   * - 检测虚假完成（工具调用不满足完成谓词但被标记为完成）
+   * - 支持回滚错误完成的任务状态
+   */
+  async executeTask(taskId, toolCall, result) {
+    const task = this.#plan.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task ${taskId} not found in plan`);
+    }
+
+    // 记录工具调用
+    task.recordToolCall(toolCall.name, toolCall.args, result);
+    this.#taskToolCallCount++;
+
+    // ✅ 第 9 阶段：先计算验证结果（用于 stall 原因）
+    const validation = task.validateCompletion({ strictMode: true });
+
+    // 即使工具不被允许或谓词不匹配，也要检测是否卡顿
+    if (this.#taskToolCallCount >= this.#config.maxToolCallsPerTask) {
+      this.emit('task:stalled', {
+        taskId,
+        taskName: task.name,
+        toolCallCount: this.#taskToolCallCount,
+        maxToolCalls: this.#config.maxToolCallsPerTask,
+        missingRequirements: validation.missingRequirements,
+        reason: `Task stalled: ${validation.reason}`,
+      });
+    }
+
+    // 检查工具调用是否允许
+    if (!task.canBeAdvancedBy(toolCall.name, toolCall.args, result)) {
+      this.emit('task:tool-not-allowed', {
+        taskId,
+        toolName: toolCall.name,
+        allowedTools: task.allowedTools,
+        reason: 'tool_not_in_allowed_list_or_predicate_not_matched',
+      });
+      return false;
+    }
+
+    if (validation.completed) {
+      // 所有完成条件满足，正式标记为 COMPLETED
+      task.updateStatus(TaskStatus.COMPLETED, {
+        result,
+        validationReason: validation.reason,
+        validatedAt: Date.now(),
+      });
+      this.emit('task:completed', {
+        taskId,
+        taskName: task.name,
+        toolCallCount: this.#taskToolCallCount,
+        validationReason: validation.reason,
+      });
+
+      // 推进到下一个可执行任务
+      this.#selectNextRunnableTask();
+      return true;
+    }
+
+    // 完成条件不满足，继续运行该任务
+    if (task.status !== TaskStatus.RUNNING) {
+      task.updateStatus(TaskStatus.RUNNING);
+      this.#taskStartTime = Date.now();
+    }
+
+    return false; // 任务尚未完成
+  }
+
+  /**
+   * 工具是否匹配意图
+   */
+  #toolMatchesIntent(toolName, intent) {
+    const intentMap = {
+      read: ['read_file', 'list_dir', 'glob', 'semantic_search', 'grep_search'],
+      write: ['write_file', 'edit_file', 'apply_hashline_patch', 'create_file', 'create_directory'],
+      execute: ['shell', 'run_in_terminal'],
+      search: ['semantic_search', 'grep_search', 'file_search'],
+      inspect: ['lsp_diagnostics', 'lsp_hover', 'get_errors'],
+    };
+
+    const tools = intentMap[intent] || [];
+    return tools.includes(toolName);
+  }
+
+  /**
+   * 选择下一个可运行的任务
+   */
+  #selectNextRunnableTask() {
+    if (!this.#plan) {
+      this.#currentRunnableTaskId = null;
+      return;
+    }
+
+    // 获取所有就绪的任务
+    const readyTasks = this.#plan.getReadyTasks();
+    if (readyTasks.length === 0) {
+      // 检查是否所有任务都完成了
+      const allCompleted = Array.from(this.#plan.tasks.values()).every(
+        (t) => t.status === TaskStatus.COMPLETED || t.status === TaskStatus.SKIPPED
+      );
+
+      if (allCompleted) {
+        this.emit('plan:completed', {
+          planId: this.#plan.id,
+          taskCount: this.#plan.tasks.size,
+        });
+      }
+
+      this.#currentRunnableTaskId = null;
+      return;
+    }
+
+    // 按优先级和拓扑顺序选择第一个就绪任务
+    const selected = readyTasks.sort((a, b) => {
+      // 优先级高的优先
+      if (a.priority !== b.priority) {
+        return b.priority - a.priority;
+      }
+      // 优先级相同时，按添加顺序（ID）
+      return a.id.localeCompare(b.id);
+    })[0];
+
+    this.#currentRunnableTaskId = selected.id;
+    selected.updateStatus(TaskStatus.READY);
+
+    this.#taskToolCallCount = 0;
+    this.#taskStartTime = Date.now();
+
+    this.emit('task:selected', {
+      taskId: selected.id,
+      taskName: selected.name,
+      allowedTools: selected.allowedTools,
+    });
+  }
+
+  /**
+   * 检查当前任务是否超时
+   */
+  isCurrentTaskTimeout() {
+    if (!this.#taskStartTime) {
+      return false;
+    }
+    return Date.now() - this.#taskStartTime > this.#config.taskTimeoutMs;
+  }
+
+  /**
+   * 检查当前任务是否超过最大工具调用次数
+   */
+  hasExceededMaxToolCalls() {
+    return this.#taskToolCallCount >= this.#config.maxToolCallsPerTask;
+  }
+
+  /**
+   * 强制标记当前任务为完成（用于熔断）
+   */
+  forceCompleteCurrentTask(reason = 'forced') {
+    const task = this.getCurrentRunnableTask();
+    if (!task) {
+      return false;
+    }
+
+    task.updateStatus(TaskStatus.COMPLETED, {
+      result: { forced: true, reason },
+    });
+
+    this.emit('task:forced-complete', {
+      taskId: task.id,
+      taskName: task.name,
+      reason,
+    });
+
+    this.#selectNextRunnableTask();
+    return true;
+  }
+
+  /**
+   * 强制将当前任务标记为失败
+   */
+  forceFailCurrentTask(reason = 'forced failure') {
+    const task = this.getCurrentRunnableTask();
+    if (!task) {
+      return false;
+    }
+
+    task.updateStatus(TaskStatus.FAILED, {
+      error: reason,
+    });
+
+    this.emit('task:forced-failed', {
+      taskId: task.id,
+      taskName: task.name,
+      reason,
+    });
+
+    // 不继续，让 plan 停止
+    this.#currentRunnableTaskId = null;
+    return true;
+  }
+
+  /**
+   * 获取计划执行进度
+   */
+  getProgress() {
+    const completed = Array.from(this.#plan.tasks.values()).filter(
+      (t) => t.status === TaskStatus.COMPLETED
+    ).length;
+    const total = this.#plan.tasks.size;
+
+    return {
+      completed,
+      total,
+      percentage: total > 0 ? Math.round((completed / total) * 100) : 0,
+      currentTask: this.getCurrentRunnableTask(),
+    };
+  }
+
+  /**
+   * 获取计划状态快照
+   */
+  getStatusSnapshot() {
+    return {
+      planId: this.#plan.id,
+      planName: this.#plan.name,
+      currentTaskId: this.#currentRunnableTaskId,
+      tasks: Array.from(this.#plan.tasks.values()).map((t) => ({
+        id: t.id,
+        name: t.name,
+        status: t.status,
+        allowedTools: t.allowedTools,
+        phase: t.phase,
+        toolCallCount: t.toolCallsHistory.length,
+      })),
+      progress: this.getProgress(),
+    };
   }
 }
 
