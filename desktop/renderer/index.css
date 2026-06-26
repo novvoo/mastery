@@ -307,7 +307,7 @@ body {
   color: var(--text-color);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  line-height: 1.5;
+  line-height: 1.4;
   user-select: none;
 }
 
@@ -1041,7 +1041,7 @@ pre {
   overflow-x: auto;
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
-  line-height: 1.6;
+  line-height: 1.4;
   border: 1px solid var(--border-subtle);
   box-shadow: var(--glass-inner-hl);
 }
@@ -1056,7 +1056,7 @@ pre code {
 /* ================== Markdown 样式 ================== */
 .markdown {
   color: var(--text-color);
-  line-height: 1.2;
+  line-height: 0.8;
 }
 
 .markdown h1,

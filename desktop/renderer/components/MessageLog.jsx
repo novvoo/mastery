@@ -1293,7 +1293,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           color: var(--text-color);
           font-family: var(--font-mono);
           font-size: 12px;
-          line-height: 1.62;
+          line-height: 1.22;
         }
         .markdown .markup-block::before {
           content: attr(data-language);
@@ -1312,9 +1312,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           white-space: inherit;
         }
         .markdown p {
-          margin: 8px 0;
-          line-height: 1.65;
-          font-size: 13px;
+          margin: 6px 0;
+          line-height: 1.5;
+          font-size: 12px;
           color: var(--text-color);
           padding: 0;
         }
@@ -1333,35 +1333,35 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           margin-bottom: 0;
         }
         .markdown blockquote {
-          margin: 10px 0;
-          padding: 8px 14px;
+          margin: 8px 0;
+          padding: 4px 6px;
           border-left: 3px solid var(--primary-color);
           background-color: var(--surface-subtle);
           border-radius: 0 6px 6px 0;
           color: var(--text-muted);
-          font-size: 13px;
-          line-height: 1.6;
+          font-size: 12px;
+          line-height: 1.5;
         }
         .markdown h1, .markdown h2, .markdown h3, .markdown h4 {
-          margin: 16px 0 8px;
+          margin: 14px 0 8px;
           padding-bottom: 6px;
           border-bottom: 1px solid var(--border-subtle);
           font-weight: 600;
           color: var(--text-color);
         }
-        .markdown h1 { font-size: 18px; }
-        .markdown h2 { font-size: 16px; }
-        .markdown h3 { font-size: 14px; }
-        .markdown h4 { font-size: 13px; border-bottom: none; }
+        .markdown h1 { font-size: 14px; }
+        .markdown h2 { font-size: 12px; }
+        .markdown h3 { font-size: 10px; }
+        .markdown h4 { font-size: 8px; border-bottom: none; }
         .markdown ul, .markdown ol {
           margin: 10px 0;
           padding-left: 24px;
-          font-size: 13px;
-          line-height: 1.7;
+          font-size: 12px;
+          line-height: 1.5;
         }
         .markdown li {
           margin: 4px 0;
-          line-height: 1.65;
+          line-height: 1.5;
         }
         .markdown hr {
           border: none;
