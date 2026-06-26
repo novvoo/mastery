@@ -125,18 +125,30 @@ function stripActionBlocks(text = '', { toolRegistry } = {}) {
     .replace(/<action>[\s\S]*?<\/action>/gi, '')
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
     .replace(/<function_call>[\s\S]*?<\/function_call>/gi, '')
-    .replace(/<function>\s*[\s\S]*?\s*<\/function>/gi, '')
-    .replace(/<tool>\s*\/?[A-Za-z_][\w-]*\s*<\/tool>/gi, '')
+    // 处理带属性的工具标签，如 <function=list_dir>...</function>
+    .replace(/<function=[^>]+>[\s\S]*?<\/function>/gi, '')
+    .replace(/<function\b[^>]*>[\s\S]*?<\/function>/gi, '')
+    // 处理带属性的工具标签，如 <tool=list_dir>...</tool>
+    .replace(/<tool=[^>]+>[\s\S]*?<\/tool>/gi, '')
+    .replace(/<tool\b[^>]*>[\s\S]*?<\/tool>/gi, '')
     .replace(/<tool_code>[\s\S]*?<\/tool_code>/gi, '')
     .replace(/<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi, '')
+    // 处理 parameter 标签
+    .replace(/<parameter\b[^>]*>[\s\S]*?<\/parameter>/gi, '')
+    // 处理其他常见的工具相关标签
+    .replace(/<arguments>[\s\S]*?<\/arguments>/gi, '')
+    .replace(/<args\b[^>]*>[\s\S]*?<\/args>/gi, '')
     .replace(/```(?:json|tool)?\s*\n?\s*\{[\s\S]*?\}\s*```/gi, '');
 
   if (toolRegistry) {
     const tools = toolRegistry.getAll?.() || [];
     for (const tool of tools) {
       const escapedName = tool.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const tagRegex = new RegExp(`<${escapedName}>\\s*[\\s\\S]*?\\s*<\\/${escapedName}>`, 'gi');
-      out = out.replace(tagRegex, '');
+      // 处理两种格式：<toolName>...</toolName> 和 <function=toolName>...</function>
+      const tagRegex1 = new RegExp(`<${escapedName}>\\s*[\\s\\S]*?\\s*<\\/${escapedName}>`, 'gi');
+      const tagRegex2 = new RegExp(`<\\w*=${escapedName}\\b[^>]*>\\s*[\\s\\S]*?\\s*<\\/\\w*>`, 'gi');
+      out = out.replace(tagRegex1, '');
+      out = out.replace(tagRegex2, '');
     }
   }
 
@@ -165,8 +177,9 @@ function stripActionBlocks(text = '', { toolRegistry } = {}) {
 
 const PROTOCOL_FIELD_PATTERN =
   /"action"\s*:|"evaluation_previous_goal"\s*:|"next_goal"\s*:|"memory"\s*:/;
-const TOOL_XML_TAG_PATTERN = /<(tool|tool_call|function|function_call|invoke|tool_code)\b/i;
-const TOOL_XML_CLOSE_PATTERN = /<\/(tool|tool_call|function|function_call|invoke|tool_code)\s*>/i;
+// 更新：支持带属性的标签格式，如 <function=list_dir>
+const TOOL_XML_TAG_PATTERN = /<(tool|tool_call|function|function_call|invoke|tool_code|parameter|arguments|args)\b[^>]*>/i;
+const TOOL_XML_CLOSE_PATTERN = /<\/(tool|tool_call|function|function_call|invoke|tool_code|parameter|arguments|args)\s*>/i;
 const DSML_PIPE_OPEN_PATTERN = /<[|｜]+\s*DSML\s*[|｜]+[^>]*>/i;
 const DSML_PIPE_CLOSE_PATTERN = /<\/[|｜]+\s*DSML\s*[|｜]+[^>]*>/i;
 const FENCED_JSON_PROTOCOL_PATTERN = /```(?:json|tool)?\s*\{/i;
