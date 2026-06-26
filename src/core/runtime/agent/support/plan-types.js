@@ -365,8 +365,18 @@ export function scorePlanTypes(profile = {}, userInput = '') {
 
   const intent = profile?.intent;
   const mode = profile?.mode;
+  // 降低 QUICK 类型的分数，避免过于轻易胜过 STANDARD 类型
+  // 只有当任务明确是 trivial（如拼写错误、只改名等）且没有其他复杂信号时才选择 QUICK
   if (profile?.isLikelyTrivial && (profile?.isModificationTask || profile?.allowsMutation)) {
-    scores.set(PlanType.QUICK, (scores.get(PlanType.QUICK) || 0) + 9);
+    // 检查是否有复杂信号，如果有则不选择 QUICK
+    const hasComplexSignals =
+      profile?.isBugTask ||
+      profile?.riskScore >= 3 ||
+      profile?.requiresVerification ||
+      intent === 'diagnosis';
+    if (!hasComplexSignals) {
+      scores.set(PlanType.QUICK, (scores.get(PlanType.QUICK) || 0) + 5);
+    }
   }
   if (profile?.isBugTask || intent === 'diagnosis') {
     scores.set(PlanType.BUG_FIX, (scores.get(PlanType.BUG_FIX) || 0) + 5);
@@ -383,8 +393,9 @@ export function scorePlanTypes(profile = {}, userInput = '') {
   if (intent === 'test_or_verify' || mode === 'verify') {
     scores.set(PlanType.VERIFICATION, (scores.get(PlanType.VERIFICATION) || 0) + 5);
   }
+  // 增加 STANDARD 类型的分数，确保编码/修改任务优先使用完整流程
   if (profile?.isCodingTask || profile?.isModificationTask || profile?.allowsMutation) {
-    scores.set(PlanType.STANDARD, (scores.get(PlanType.STANDARD) || 0) + 2);
+    scores.set(PlanType.STANDARD, (scores.get(PlanType.STANDARD) || 0) + 4);
   }
   if (profile?.isInformationalQuery && !profile?.isCodingTask) {
     scores.set(PlanType.RESEARCH, (scores.get(PlanType.RESEARCH) || 0) + 2);
