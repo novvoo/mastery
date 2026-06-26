@@ -1312,8 +1312,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           white-space: inherit;
         }
         .markdown p {
-          margin: 4px 0;
-          line-height: 1.15;
+          margin: 1px 0;
+          line-height: 1.1;
           font-size: 12px;
           color: var(--text-color);
           padding: 0;
@@ -1340,7 +1340,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           border-radius: 0 6px 6px 0;
           color: var(--text-muted);
           font-size: 12px;
-          line-height: 1.15;
+          line-height: 1.1;
         }
         .markdown h1, .markdown h2, .markdown h3, .markdown h4 {
           margin: 14px 0 8px;
@@ -1354,14 +1354,14 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         .markdown h3 { font-size: 10px; }
         .markdown h4 { font-size: 8px; border-bottom: none; }
         .markdown ul, .markdown ol {
-          margin: 10px 0;
+          margin: 8px 0;
           padding-left: 24px;
           font-size: 12px;
-          line-height: 1.15;
+          line-height: 1.1;
         }
         .markdown li {
-          margin: 4px 0;
-          line-height: 1.15;
+          margin: 2px 0;
+          line-height: 1.1;
         }
         .markdown hr {
           border: none;
