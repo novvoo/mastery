@@ -1313,7 +1313,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         }
         .markdown p {
           margin: 1px 0;
-          line-height: 1.1;
+          line-height: 1.05;
           font-size: 12px;
           color: var(--text-color);
           padding: 0;
@@ -1354,14 +1354,14 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         .markdown h3 { font-size: 10px; }
         .markdown h4 { font-size: 8px; border-bottom: none; }
         .markdown ul, .markdown ol {
-          margin: 8px 0;
-          padding-left: 24px;
+          margin: 4px 0;
+          padding-left: 20px;
           font-size: 12px;
-          line-height: 1.1;
+          line-height: 1.05;
         }
         .markdown li {
-          margin: 2px 0;
-          line-height: 1.1;
+          margin: 1px 0;
+          line-height: 1.05;
         }
         .markdown hr {
           border: none;
