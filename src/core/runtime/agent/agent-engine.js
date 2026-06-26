@@ -118,14 +118,28 @@ function createEmptyToolRegistry() {
   };
 }
 
-function stripActionBlocks(text = '') {
+function stripActionBlocks(text = '', { toolRegistry } = {}) {
   if (typeof text !== 'string') return text;
 
   let out = text
     .replace(/<action>[\s\S]*?<\/action>/gi, '')
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
+    .replace(/<function_call>[\s\S]*?<\/function_call>/gi, '')
+    .replace(/<function>\s*[\s\S]*?\s*<\/function>/gi, '')
+    .replace(/<tool>\s*\/?[A-Za-z_][\w-]*\s*<\/tool>/gi, '')
+    .replace(/<tool_code>[\s\S]*?<\/tool_code>/gi, '')
+    .replace(/<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi, '')
     .replace(/```(?:json|tool)?\s*\{[\s\S]*?\}\s*```/gi, '');
 
-  // 裸 ReAct JSON：{"action": {...}} / {"evaluation_previous_goal": ...} 等
+  if (toolRegistry) {
+    const tools = toolRegistry.getAll?.() || [];
+    for (const tool of tools) {
+      const escapedName = tool.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const tagRegex = new RegExp(`<${escapedName}>\\s*[\\s\\S]*?\\s*<\\/${escapedName}>`, 'gi');
+      out = out.replace(tagRegex, '');
+    }
+  }
+
   const trimmed = out.trim();
   if (
     trimmed.startsWith('{') &&
@@ -151,7 +165,19 @@ function stripActionBlocks(text = '') {
 
 const PROTOCOL_FIELD_PATTERN =
   /"action"\s*:|"evaluation_previous_goal"\s*:|"next_goal"\s*:|"memory"\s*:/;
-const MAX_PROTO_BUFFER_SIZE = 2048; // 最多缓冲 2KB
+const TOOL_XML_TAG_PATTERN = /<(tool|tool_call|function|function_call|invoke|tool_code)\b/i;
+const MAX_PROTO_BUFFER_SIZE = 2048;
+
+function looksLikeToolXML(text) {
+  if (!text || typeof text !== 'string') return false;
+  const trimmed = text.trimStart();
+  if (!trimmed.startsWith('<')) return false;
+  if (TOOL_XML_TAG_PATTERN.test(trimmed)) return true;
+  if (/^<[A-Za-z_][\w-]*>/.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
 
 /**
  * 创建一个流式协议过滤器实例。
@@ -160,59 +186,81 @@ const MAX_PROTO_BUFFER_SIZE = 2048; // 最多缓冲 2KB
 function createProtocolStreamFilter() {
   let buffer = '';
   let isBuffering = false;
+  let bufferingType = null;
 
   function push(text) {
     if (!text || typeof text !== 'string') return { visibleText: '', protocolDetected: false };
 
     if (!isBuffering) {
-      // 普通状态：检查是否进入协议模式（以 { 开头）
       const trimmedLeading = text.trimStart();
-      if (!trimmedLeading.startsWith('{')) {
-        // 普通文本，直接放行
+      if (!trimmedLeading.startsWith('{') && !trimmedLeading.startsWith('<')) {
         return { visibleText: text, protocolDetected: false };
       }
 
-      // 以 { 开头，进入缓冲模式
       isBuffering = true;
       buffer = text;
+      bufferingType = trimmedLeading.startsWith('{') ? 'json' : 'xml';
     } else {
       buffer += text;
     }
 
-    // 缓冲中：检查是否已能判断是否为协议 JSON
     if (buffer.length > MAX_PROTO_BUFFER_SIZE) {
-      // 超过最大缓冲大小，当作普通文本 flush
       isBuffering = false;
       const out = buffer;
       buffer = '';
+      bufferingType = null;
       return { visibleText: out, protocolDetected: false };
     }
 
-    // 检查是否有协议特征字段
-    if (PROTOCOL_FIELD_PATTERN.test(buffer)) {
-      // 确认是协议 JSON → 抑制显示
-      const preview = buffer.length <= 200 ? buffer : buffer.slice(0, 200) + '...';
-      buffer = '';
-      isBuffering = false;
-      return { visibleText: '', protocolDetected: true, protocolPreview: preview };
-    }
-
-    // 如果已经闭合（有匹配的 }）且不含协议字段 → 不是协议 JSON，flush
-    // 用简单的括号计数判断闭合（不需要完美解析）
-    let depth = 0;
-    for (let i = 0; i < buffer.length; i++) {
-      if (buffer[i] === '{') depth++;
-      else if (buffer[i] === '}') depth--;
-      if (depth === 0 && i > 0) {
-        // 已闭合且不含协议字段 → 普通文本
-        isBuffering = false;
-        const out = buffer;
+    if (bufferingType === 'json') {
+      if (PROTOCOL_FIELD_PATTERN.test(buffer)) {
+        const preview = buffer.length <= 200 ? buffer : buffer.slice(0, 200) + '...';
         buffer = '';
-        return { visibleText: out, protocolDetected: false };
+        isBuffering = false;
+        bufferingType = null;
+        return { visibleText: '', protocolDetected: true, protocolPreview: preview };
+      }
+
+      let depth = 0;
+      for (let i = 0; i < buffer.length; i++) {
+        if (buffer[i] === '{') depth++;
+        else if (buffer[i] === '}') depth--;
+        if (depth === 0 && i > 0) {
+          isBuffering = false;
+          const out = buffer;
+          buffer = '';
+          bufferingType = null;
+          return { visibleText: out, protocolDetected: false };
+        }
+      }
+    } else if (bufferingType === 'xml') {
+      if (TOOL_XML_TAG_PATTERN.test(buffer)) {
+        const preview = buffer.length <= 200 ? buffer : buffer.slice(0, 200) + '...';
+        buffer = '';
+        isBuffering = false;
+        bufferingType = null;
+        return { visibleText: '', protocolDetected: true, protocolPreview: preview };
+      }
+
+      if (/<\/(tool|tool_call|function|function_call|invoke|tool_code)\b/i.test(buffer)) {
+        buffer = '';
+        isBuffering = false;
+        bufferingType = null;
+        return { visibleText: '', protocolDetected: true };
+      }
+
+      const tagMatch = buffer.match(/^<([A-Za-z_][\w-]*)>/i);
+      if (tagMatch) {
+        const closingTag = `</${tagMatch[1]}>`;
+        if (buffer.includes(closingTag)) {
+          buffer = '';
+          isBuffering = false;
+          bufferingType = null;
+          return { visibleText: '', protocolDetected: true };
+        }
       }
     }
 
-    // 还未闭合，继续缓冲（不输出可见文本）
     return { visibleText: '', protocolDetected: false };
   }
 
@@ -1837,7 +1885,7 @@ export class AgentEngine {
 
       // -------- 常规路径：执行工具调用 --------
       if (allToolCalls.length > 0) {
-        const visibleText = stripActionBlocks(response.text);
+        const visibleText = stripActionBlocks(response.text, { toolRegistry: this.#toolRegistry });
         if (visibleText) {
           this.#sessionManager.addAssistantMessage(visibleText);
         }
@@ -1875,6 +1923,9 @@ export class AgentEngine {
             sessionManager: this.#sessionManager,
             modelProvider: this.#modelProvider,
             debug: this.#config.debug || false,
+            activePlanManager: this.#executionPlanManager,
+            activePlan: this.#executionPlanManager.plan,
+            currentTask: this.#executionPlanManager.currentTask,
           },
           {
             resultMode: 'tool',
