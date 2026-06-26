@@ -1682,9 +1682,17 @@ async function applyWorkspaceEdit(
   let totalEdits = 0;
 
   const editsByPath = {};
+  const normalizedWorkingDir = resolve(workingDirectory).replace(/[\\/]+$/, '') + sep;
 
   const collectEdits = (uri, edits) => {
-    const filePath = uri.startsWith('file://') ? uri.slice(7) : uri;
+    let filePath = uri.startsWith('file://') ? uri.slice(7) : uri;
+    
+    const resolvedPath = resolve(filePath);
+    if (!resolvedPath.startsWith(normalizedWorkingDir)) {
+      filesFailed.push(`${filePath}: path escapes working directory`);
+      return;
+    }
+    
     if (!editsByPath[filePath]) {
       editsByPath[filePath] = { edits: [], originalContent: null };
     }
