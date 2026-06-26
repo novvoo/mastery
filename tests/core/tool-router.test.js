@@ -80,6 +80,15 @@ const ALL_TOOL_NAMES = [
   'mcp_status',
   'caveman',
   'handoff',
+  'change_plan',
+  'impact_map',
+  'risk_check',
+  'test_strategy',
+  'migration_plan',
+  'release_checklist',
+  'ui_acceptance',
+  'data_contract_check',
+  'security_review',
 ];
 
 const ALL_TOOLS = ALL_TOOL_NAMES.map(makeTool);
@@ -94,6 +103,21 @@ describe('selectToolsForRequest', () => {
     expect(names).toContain('write_file');
     expect(names).toContain('shell');
     expect(names).toContain('git_status');
+    expect(names).toContain('change_plan');
+    expect(names).toContain('impact_map');
+    expect(names).toContain('risk_check');
+    expect(names).toContain('test_strategy');
+  });
+
+  test('current task allowedTools still exposes change_plan for dynamic replanning', () => {
+    const selected = selectToolsForRequest(ALL_TOOLS, {
+      currentTask: { allowedTools: ['read_file'] },
+    });
+    const names = namesOf(selected);
+    expect(names).toContain('read_file');
+    expect(names).toContain('change_plan');
+    expect(names).toContain('risk_check');
+    expect(names).not.toContain('write_file');
   });
 
   test('coding task with EXPLORATION phase gets brainstorm and architect', () => {
@@ -104,6 +128,8 @@ describe('selectToolsForRequest', () => {
     const names = namesOf(selected);
     expect(names).toContain('brainstorm');
     expect(names).toContain('architect');
+    expect(names).toContain('impact_map');
+    expect(names).toContain('risk_check');
     // Should NOT have verify or review
     expect(names).not.toContain('verify');
     expect(names).not.toContain('review');
@@ -117,6 +143,7 @@ describe('selectToolsForRequest', () => {
     const names = namesOf(selected);
     expect(names).toContain('verify');
     expect(names).toContain('review');
+    expect(names).toContain('test_strategy');
     // Should NOT have brainstorm or architect
     expect(names).not.toContain('brainstorm');
     expect(names).not.toContain('architect');

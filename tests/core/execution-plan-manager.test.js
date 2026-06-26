@@ -376,7 +376,7 @@ describe('ExecutionPlanManager', () => {
 
   test('createIfNeeded returns null when profile does not require planning', async () => {
     const result = await manager.createIfNeeded('Fix the bug', {
-requiresAutomaticPlanning: false,
+      requiresAutomaticPlanning: false,
     });
     expect(result).toBeNull();
     expect(manager.plan).toBeNull();
@@ -405,8 +405,8 @@ requiresAutomaticPlanning: false,
       allowsMutation: true,
     });
     const plan = manager.plan;
+    expect(plan.context.planType).toBe('bug_fix');
     expect(plan.getTask('inspect_workspace')).toBeDefined();
-    expect(plan.getTask('plan_solution')).toBeDefined();
     expect(plan.getTask('implement_changes')).toBeDefined();
     expect(plan.getTask('inspect_changes')).toBeDefined();
     expect(plan.getTask('verify_result')).toBeDefined();
@@ -445,14 +445,22 @@ requiresAutomaticPlanning: false,
   });
 
   test('advance completes inspect_workspace on inspection tool', () => {
-    manager.createIfNeeded('Fix bug in app.js', { requiresPlan: true, mode: 'mutate', allowsMutation: true });
+    manager.createIfNeeded('Fix bug in app.js', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+    });
     const result = manager.advance('list_dir', {}, 'OK');
     // Should have progress change since inspect_workspace is the first running task
     expect(result).not.toBeNull();
   });
 
   test('advance progresses through plan stages', () => {
-    manager.createIfNeeded('Fix bug in app.js', { requiresPlan: true, mode: 'mutate', allowsMutation: true });
+    manager.createIfNeeded('Fix bug in app.js', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+    });
 
     // Step 1: inspect workspace
     const r1 = manager.advance('list_dir', {}, 'OK');
@@ -480,6 +488,7 @@ requiresAutomaticPlanning: false,
     const prompt = manager.buildPrompt();
     expect(prompt).toContain('Automatic task orchestration');
     expect(prompt).toContain('inspect_workspace');
+    expect(prompt).toContain('implement_changes');
     expect(prompt).toContain('verify_result');
   });
 
@@ -507,12 +516,82 @@ requiresAutomaticPlanning: false,
   });
 
   test('advance with mutation tool records file path', () => {
-    manager.createIfNeeded('Fix bug in app.js', { requiresPlan: true, mode: 'mutate', allowsMutation: true });
+    manager.createIfNeeded('Fix bug in app.js', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+    });
     // Complete inspection first
     manager.advance('list_dir', {}, 'OK');
     // Then use mutation tool
     manager.advance('write_file', { path: 'app.js' }, 'OK');
     // Should not throw
+  });
+
+  test('changePlan appends dynamic tasks to active plan', () => {
+    manager.createIfNeeded('Fix bug in app.js', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+    });
+
+    const result = manager.changePlan({
+      mode: 'append',
+      reason: 'verification needs an extra check',
+      tasks: [
+        {
+          id: 'run_extra_check',
+          name: 'Run extra check',
+          description: 'Run an additional verification command.',
+          phase: 'verification',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.insertedTasks).toEqual(['run_extra_check']);
+    expect(manager.plan.getTask('run_extra_check')).toBeDefined();
+    expect(manager.plan.getTask('run_extra_check').dependencies.has('verify_result')).toBe(true);
+  });
+
+  test('changePlan insertBefore rewires target dependencies', () => {
+    manager.createIfNeeded('Fix bug in app.js', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+    });
+
+    const result = manager.changePlan({
+      mode: 'insertBefore',
+      targetTaskId: 'verify_result',
+      reason: 'need to inspect generated files before verification',
+      tasks: [
+        {
+          id: 'inspect_generated_files',
+          name: 'Inspect generated files',
+          description: 'Read generated outputs before verification.',
+          phase: 'inspection',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(manager.plan.getTask('verify_result').dependencies.has('inspect_generated_files')).toBe(
+      true,
+    );
+  });
+
+  test('createIfNeeded uses specialized fallback plan descriptions for UI tasks', () => {
+    manager.createIfNeeded('调整 React 组件布局和 CSS', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+      planType: 'ui',
+    });
+
+    expect(manager.plan.context.planType).toBe('ui');
+    expect(manager.plan.getTask('inspect_workspace').description).toContain('components');
+    expect(manager.plan.getTask('implement_changes').description).toContain('UI components');
   });
 
   test('isWorkspaceInspectionTool handles shell with rg', () => {

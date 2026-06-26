@@ -38,6 +38,15 @@ export const METHODOLOGY_TOOLS = new Set([
   'to_prd',
   'to_issues',
   'setup',
+  'impact_map',
+  'project_profile',
+  'risk_check',
+  'test_strategy',
+  'migration_plan',
+  'release_checklist',
+  'ui_acceptance',
+  'data_contract_check',
+  'security_review',
 ]);
 export const MUTATION_TOOLS = new Set([
   'write_file',

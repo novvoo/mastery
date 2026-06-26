@@ -28,26 +28,25 @@ export const TaskStatus = {
 /**
  * 🎯 任务模板库 - 方法论级别的任务定义
  * 包含：语义化 ID、执行约束、工具限制、完成条件
- * 
+ *
  * 这些模板防止 LLM 生成 task_1/task_2，而是使用语义化 ID
  */
 export const TASK_TEMPLATE_REGISTRY = {
   // ===== 探索阶段 (inspection) 任务 =====
-  'inspect_readme': {
+  inspect_readme: {
     id: 'inspect_readme',
     semanticName: '阅读项目说明',
     phase: 'exploration',
     priority: 100,
     allowedTools: ['read_file', 'glob'],
     requiredToolIntents: ['read'],
-    completionPredicate: (toolCall, result) => 
-      toolCall.name === 'read_file' && 
-      (result.path || '').toLowerCase().includes('readme'),
+    completionPredicate: (toolCall, result) =>
+      toolCall.name === 'read_file' && (result.path || '').toLowerCase().includes('readme'),
     description: '通过 read_file 工具读取 README.md 理解项目',
-    methodologyHint: 'inspect'
+    methodologyHint: 'inspect',
   },
 
-  'inspect_workspace': {
+  inspect_workspace: {
     id: 'inspect_workspace',
     semanticName: '查看项目结构',
     phase: 'exploration',
@@ -57,10 +56,10 @@ export const TASK_TEMPLATE_REGISTRY = {
     completionPredicate: (toolCall, result) =>
       ['list_dir', 'glob', 'read_file'].includes(toolCall.name),
     description: '通过 list_dir/glob 工具查看项目目录结构',
-    methodologyHint: 'inspect'
+    methodologyHint: 'inspect',
   },
 
-  'inspect_existing_code': {
+  inspect_existing_code: {
     id: 'inspect_existing_code',
     semanticName: '检查现有代码',
     phase: 'exploration',
@@ -70,10 +69,10 @@ export const TASK_TEMPLATE_REGISTRY = {
     completionPredicate: (toolCall, result) =>
       ['read_file', 'glob', 'search'].includes(toolCall.name),
     description: '读取关键源文件，理解现有实现',
-    methodologyHint: 'inspect'
+    methodologyHint: 'inspect',
   },
 
-  'analyze_requirements': {
+  analyze_requirements: {
     id: 'analyze_requirements',
     semanticName: '分析需求',
     phase: 'planning',
@@ -83,38 +82,36 @@ export const TASK_TEMPLATE_REGISTRY = {
     completionPredicate: (toolCall, result) =>
       ['read_file', 'semantic_search', 'context_assess'].includes(toolCall.name),
     description: '基于代码现状分析需求和缺失功能',
-    methodologyHint: 'plan'
+    methodologyHint: 'plan',
   },
 
   // ===== 规划阶段 (planning) 任务 =====
-  'plan_solution': {
+  plan_solution: {
     id: 'plan_solution',
     semanticName: '规划实现方案',
     phase: 'planning',
     priority: 60,
     allowedTools: ['context_assess'],
     requiredToolIntents: [],
-    completionPredicate: (toolCall, result) =>
-      toolCall.name === 'context_assess',
+    completionPredicate: (toolCall, result) => toolCall.name === 'context_assess',
     description: '设计实现方案，分解为具体改动',
-    methodologyHint: 'plan'
+    methodologyHint: 'plan',
   },
 
-  'design_changes': {
+  design_changes: {
     id: 'design_changes',
     semanticName: '设计改动方案',
     phase: 'planning',
     priority: 55,
     allowedTools: ['context_assess'],
     requiredToolIntents: [],
-    completionPredicate: (toolCall, result) =>
-      toolCall.name === 'context_assess',
+    completionPredicate: (toolCall, result) => toolCall.name === 'context_assess',
     description: '确定具体修改文件和代码位置',
-    methodologyHint: 'plan'
+    methodologyHint: 'plan',
   },
 
   // ===== 实现阶段 (implementation) 任务 =====
-  'implement_features': {
+  implement_features: {
     id: 'implement_features',
     semanticName: '实现功能',
     phase: 'implementation',
@@ -126,10 +123,10 @@ export const TASK_TEMPLATE_REGISTRY = {
       result?.success === true,
     description: '通过 write_file/edit_file 修改源代码实现功能',
     methodologyHint: 'implement',
-    requiresMutation: true
+    requiresMutation: true,
   },
 
-  'implement_changes': {
+  implement_changes: {
     id: 'implement_changes',
     semanticName: '实现代码改动',
     phase: 'implementation',
@@ -141,10 +138,10 @@ export const TASK_TEMPLATE_REGISTRY = {
       result?.success === true,
     description: '执行实际代码修改',
     methodologyHint: 'implement',
-    requiresMutation: true
+    requiresMutation: true,
   },
 
-  'create_new_files': {
+  create_new_files: {
     id: 'create_new_files',
     semanticName: '创建新文件',
     phase: 'implementation',
@@ -152,14 +149,13 @@ export const TASK_TEMPLATE_REGISTRY = {
     allowedTools: ['write_file', 'apply_hashline_patch'],
     requiredToolIntents: ['write'],
     completionPredicate: (toolCall, result) =>
-      ['write_file', 'apply_hashline_patch'].includes(toolCall.name) &&
-      result?.success === true,
+      ['write_file', 'apply_hashline_patch'].includes(toolCall.name) && result?.success === true,
     description: '创建新的源代码文件',
     methodologyHint: 'implement',
-    requiresMutation: true
+    requiresMutation: true,
   },
 
-  'refactor_code': {
+  refactor_code: {
     id: 'refactor_code',
     semanticName: '重构代码',
     phase: 'implementation',
@@ -167,28 +163,26 @@ export const TASK_TEMPLATE_REGISTRY = {
     allowedTools: ['edit_file', 'apply_hashline_patch'],
     requiredToolIntents: ['write'],
     completionPredicate: (toolCall, result) =>
-      ['edit_file', 'apply_hashline_patch'].includes(toolCall.name) &&
-      result?.success === true,
+      ['edit_file', 'apply_hashline_patch'].includes(toolCall.name) && result?.success === true,
     description: '重构现有代码改进质量',
     methodologyHint: 'implement',
-    requiresMutation: true
+    requiresMutation: true,
   },
 
   // ===== 验证阶段 (verification) 任务 =====
-  'verify_result': {
+  verify_result: {
     id: 'verify_result',
     semanticName: '验证结果',
     phase: 'verification',
     priority: 30,
     allowedTools: ['shell', 'lsp_diagnostics', 'read_file'],
     requiredToolIntents: ['execute', 'read'],
-    completionPredicate: (toolCall, result) =>
-      ['shell', 'lsp_diagnostics'].includes(toolCall.name),
+    completionPredicate: (toolCall, result) => ['shell', 'lsp_diagnostics'].includes(toolCall.name),
     description: '运行测试、构建、linter 验证改动',
-    methodologyHint: 'verify'
+    methodologyHint: 'verify',
   },
 
-  'run_tests': {
+  run_tests: {
     id: 'run_tests',
     semanticName: '运行测试',
     phase: 'verification',
@@ -198,33 +192,31 @@ export const TASK_TEMPLATE_REGISTRY = {
     completionPredicate: (toolCall, result) =>
       toolCall.name === 'shell' && (result.command || '').includes('test'),
     description: '执行测试套件验证功能正确性',
-    methodologyHint: 'verify'
+    methodologyHint: 'verify',
   },
 
-  'check_diagnostics': {
+  check_diagnostics: {
     id: 'check_diagnostics',
     semanticName: '检查诊断结果',
     phase: 'verification',
     priority: 20,
     allowedTools: ['lsp_diagnostics', 'shell'],
     requiredToolIntents: ['read'],
-    completionPredicate: (toolCall, result) =>
-      ['lsp_diagnostics', 'shell'].includes(toolCall.name),
+    completionPredicate: (toolCall, result) => ['lsp_diagnostics', 'shell'].includes(toolCall.name),
     description: '检查 LSP 诊断信息，确保无错误',
-    methodologyHint: 'verify'
+    methodologyHint: 'verify',
   },
 
-  'review_changes': {
+  review_changes: {
     id: 'review_changes',
     semanticName: '审查改动',
     phase: 'verification',
     priority: 15,
     allowedTools: ['read_file', 'shell'],
     requiredToolIntents: ['read'],
-    completionPredicate: (toolCall, result) =>
-      ['read_file', 'shell'].includes(toolCall.name),
+    completionPredicate: (toolCall, result) => ['read_file', 'shell'].includes(toolCall.name),
     description: '检查修改的代码，确保符合标准',
-    methodologyHint: 'verify'
+    methodologyHint: 'verify',
   },
 };
 
@@ -354,9 +346,9 @@ export class Subtask {
     }
 
     if (typeof this.completionPredicate === 'string') {
-      return this.evaluatePredicateString(this.completionPredicate, { 
-        toolName, 
-        success: result?.success !== false && result?.error == null 
+      return this.evaluatePredicateString(this.completionPredicate, {
+        toolName,
+        success: result?.success !== false && result?.error == null,
       });
     }
 
@@ -828,6 +820,30 @@ export class GraphPlanner extends EventEmitter {
     diagnose: { phase: 'implementation', hint: '诊断遇到的 bug 或问题' },
     review: { phase: 'inspection', hint: '审查变更的代码文件' },
     verify: { phase: 'verification', hint: '运行时验证：执行测试/lint/build 确认正确性' },
+    impact_map: {
+      phase: 'exploration',
+      hint: '绘制影响面/爆炸半径，适合跨模块、迁移、安全、数据、UI 改动',
+    },
+    project_profile: {
+      phase: 'exploration',
+      hint: '识别已有项目的配置、包管理器、脚本、测试模块和验证入口',
+    },
+    risk_check: { phase: 'planning', hint: '显式风险检查，适合高风险或语义敏感改动的前后检查' },
+    test_strategy: {
+      phase: 'planning',
+      hint: '规划测试层级、用例、验证证据，适合 bug、测试、重构、发布',
+    },
+    migration_plan: { phase: 'planning', hint: '规划迁移/升级/兼容路径和回滚方案' },
+    release_checklist: { phase: 'verification', hint: '发布/部署/打包/CI readiness 检查' },
+    ui_acceptance: { phase: 'inspection', hint: '定义 UI 验收标准、响应式状态、预览检查' },
+    data_contract_check: {
+      phase: 'inspection',
+      hint: '验证数据契约、schema、query、迁移和下游兼容',
+    },
+    security_review: {
+      phase: 'inspection',
+      hint: '安全专项审查：auth、权限、secret、注入、输入边界',
+    },
   };
 
   /** 根据任务名和描述自动推断生命周期阶段 */
@@ -924,6 +940,9 @@ export class GraphPlanner extends EventEmitter {
     // ==== 任务分类结果 ====
     const taskProfile = options.taskProfile || null;
     const taskProfileSection = taskProfile ? this.#buildTaskProfilePrompt(taskProfile) : '';
+    const planTypeSection = options.planType
+      ? `\n## 推荐 Plan 类型\n- planType: ${options.planType}\n请围绕该 plan 类型设计子任务，不要退化成泛用编码流程。`
+      : '';
 
     const systemPrompt = `你是一个任务规划专家。你的职责是将用户的任务描述分解为结构化的有向无环图(DAG)子任务列表。
 
@@ -936,6 +955,7 @@ ${methodologyHints}
 - shell: 执行命令、构建、测试
 ${feedbackSection}
 ${taskProfileSection}
+${planTypeSection}
 ## 输出格式
 严格输出 JSON 数组，每个元素:
 {
@@ -1022,7 +1042,9 @@ ${toolHint}
    * 遵循 TASK_TEMPLATE_REGISTRY 中的定义
    */
   static #normalizeTaskId(rawId, description = '', index = 0) {
-    const id = String(rawId || '').trim().toLowerCase();
+    const id = String(rawId || '')
+      .trim()
+      .toLowerCase();
     const text = `${id} ${description}`.toLowerCase();
 
     // 第 1 步：如果已经是模板中的有效 ID，直接返回
@@ -1036,18 +1058,18 @@ ${toolHint}
         .replace(/[^a-z0-9_]/g, '_')
         .replace(/_+/g, '_')
         .replace(/^_|_$/g, '');
-      
+
       // 检查是否匹配模板
       if (TASK_TEMPLATE_REGISTRY[normalized]) {
         return normalized;
       }
-      
+
       return normalized;
     }
 
     // 第 3 步：task_1/task_2 转换为语义化 ID
     // 通过关键词匹配来选择最接近的语义化 ID
-    
+
     // 探索阶段关键词 → 对应任务
     if (/readme|说明|文档|description/.test(text)) return 'inspect_readme';
     if (/dir|structure|目录|项目结构|查看|list/.test(text)) return 'inspect_workspace';
@@ -1077,13 +1099,13 @@ ${toolHint}
     // 兜底：按索引分配默认任务
     const defaultSequence = [
       'inspect_readme',
-      'inspect_workspace', 
+      'inspect_workspace',
       'analyze_requirements',
       'plan_solution',
       'implement_changes',
-      'verify_result'
+      'verify_result',
     ];
-    
+
     return defaultSequence[index % defaultSequence.length];
   }
 
@@ -1113,7 +1135,7 @@ ${toolHint}
 
         // ✅ 第 2 阶段改进：应用任务模板
         const template = TASK_TEMPLATE_REGISTRY[id];
-        
+
         return {
           id,
           name: template?.semanticName || (item.name && item.name !== rawId ? item.name : id),
@@ -1124,7 +1146,7 @@ ${toolHint}
           priority: template?.priority || options.priority || 0,
           scopeFiles: Array.isArray(item.scope_files) ? item.scope_files : [],
           phase: template?.phase || phase,
-          
+
           // ✅ 应用模板中的执行约束
           allowedTools: template?.allowedTools || [],
           requiredToolIntents: template?.requiredToolIntents || [],
@@ -1240,6 +1262,27 @@ ${toolHint}
     if (taskProfile.requiresSemanticRiskReview) {
       lines.push('- 需要语义风险审查');
       lines.push('  → 建议在实现后添加 API/语义风险审查步骤');
+    }
+
+    if (taskProfile.planType) {
+      lines.push(`- 推荐 Plan 类型: ${taskProfile.planType}`);
+    }
+
+    if (taskProfile.planSelection?.ranked?.length) {
+      const top = taskProfile.planSelection.ranked
+        .slice(0, 3)
+        .map((item) => `${item.type}:${item.score}`)
+        .join(', ');
+      lines.push(`- Plan 类型候选评分: ${top}`);
+    }
+
+    if (taskProfile.taskSignals) {
+      const activeSignals = Object.entries(taskProfile.taskSignals)
+        .filter(([, enabled]) => enabled)
+        .map(([name]) => name);
+      if (activeSignals.length > 0) {
+        lines.push(`- 检测到任务信号: ${activeSignals.join(', ')}`);
+      }
     }
 
     if (taskProfile.semanticRiskDomains && taskProfile.semanticRiskDomains.length > 0) {
@@ -1502,7 +1545,7 @@ ${toolHint}
 
 /**
  * Plan 执行控制器
- * 
+ *
  * 核心职责：
  * - 管理当前可执行的任务（runnable task）
  * - 根据工具调用结果推进任务状态
@@ -1651,7 +1694,7 @@ export class PlanExecutor extends EventEmitter {
     if (readyTasks.length === 0) {
       // 检查是否所有任务都完成了
       const allCompleted = Array.from(this.#plan.tasks.values()).every(
-        (t) => t.status === TaskStatus.COMPLETED || t.status === TaskStatus.SKIPPED
+        (t) => t.status === TaskStatus.COMPLETED || t.status === TaskStatus.SKIPPED,
       );
 
       if (allCompleted) {
@@ -1757,7 +1800,7 @@ export class PlanExecutor extends EventEmitter {
    */
   getProgress() {
     const completed = Array.from(this.#plan.tasks.values()).filter(
-      (t) => t.status === TaskStatus.COMPLETED
+      (t) => t.status === TaskStatus.COMPLETED,
     ).length;
     const total = this.#plan.tasks.size;
 

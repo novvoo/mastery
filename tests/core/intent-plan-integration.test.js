@@ -38,6 +38,24 @@ describe('Intent Analysis and Plan Creation Integration', () => {
       const classifier = new IntentClassifier();
       const profile = classifier.classifyTask('编写 README 文档');
       expect(profile.isDocumentationTask).toBe(true);
+      expect(profile.planType).toBe('documentation');
+    });
+
+    test('supports explicit selectable plan type hints', () => {
+      const classifier = new IntentClassifier();
+      const profile = classifier.classifyTask('plan:quick 修改首页标题');
+      expect(profile.explicitPlanType).toBe('quick');
+      expect(profile.planType).toBe('quick');
+      expect(profile.availablePlanTypes.map((type) => type.id)).toContain('bug_fix');
+    });
+
+    test('adds task signals and ranked plan selection to profile', () => {
+      const classifier = new IntentClassifier();
+      const profile = classifier.classifyTask('重构 React 组件并补测试');
+      expect(profile.taskSignals.refactor).toBe(true);
+      expect(profile.taskSignals.ui).toBe(true);
+      expect(profile.taskSignals.tests).toBe(true);
+      expect(profile.planSelection.ranked[0].score).toBeGreaterThan(0);
     });
 
     test('classifies code review tasks correctly', () => {
@@ -268,6 +286,7 @@ describe('Intent Analysis and Plan Creation Integration', () => {
       const resultPlan = planner.createIfNeeded('修复用户登录的 bug', bugProfile);
 
       expect(resultPlan).not.toBeNull();
+      expect(resultPlan.context.planType).toBe('bug_fix');
       expect(resultPlan.getTask('inspect_workspace')).not.toBeNull();
       expect(resultPlan.getTask('verify_result')).not.toBeNull();
     });

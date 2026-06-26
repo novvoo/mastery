@@ -896,6 +896,8 @@ export class ReActAgent {
               activeRoutedToolNames: this.#activeRoutedToolNames,
               workspaceState: this.#workspaceState,
               currentTask: currentTaskForRouter,
+              activePlanManager: this.#planner,
+              activePlan: this.#planner.activePlan,
             });
             this.#recordToolEvent(toolResult, { durationMs: Date.now() - toolStart });
             this.#agentContext.recordToolCallForStagnation(toolResult, iteration, (name, r) =>
@@ -933,6 +935,8 @@ export class ReActAgent {
             activeRoutedToolNames: this.#activeRoutedToolNames,
             workspaceState: this.#workspaceState,
             currentTask: currentTaskForRouter,
+            activePlanManager: this.#planner,
+            activePlan: this.#planner.activePlan,
           });
           this.#recordToolEvent(toolResult, { durationMs: Date.now() - toolStart });
           this.#agentContext.recordToolCallForStagnation(toolResult, iteration, (name, r) =>

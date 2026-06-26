@@ -1,6 +1,7 @@
 import { createFileSystemTools } from './filesystem/filesystem-tools.js';
 import { createShellTool } from './system/shell.js';
 import { createPtyTools } from './system/pty.js';
+import { createPlanTools } from './system/plan-tools.js';
 import { createWorkspaceKnowledgeTools } from './system/workspace-knowledge.js';
 import { createStateCentricTools } from './harness/state-centric-tools.js';
 import { createStateGraphTools } from './harness/state-graph-tools.js';
@@ -32,6 +33,17 @@ import createHandoffTool from './skills/handoff.js';
 import createToPrdTool from './skills/to_prd.js';
 import createToIssuesTool from './skills/to_issues.js';
 import createSetupTool from './skills/setup.js';
+import {
+  createDataContractCheckTool,
+  createImpactMapTool,
+  createMigrationPlanTool,
+  createProjectProfileTool,
+  createReleaseChecklistTool,
+  createRiskCheckTool,
+  createSecurityReviewTool,
+  createTestStrategyTool,
+  createUiAcceptanceTool,
+} from './skills/methodology.js';
 
 export const SKILL_TOOL_CREATORS = [
   createBrainstormTool,
@@ -49,6 +61,15 @@ export const SKILL_TOOL_CREATORS = [
   createToPrdTool,
   createToIssuesTool,
   createSetupTool,
+  createImpactMapTool,
+  createProjectProfileTool,
+  createRiskCheckTool,
+  createTestStrategyTool,
+  createMigrationPlanTool,
+  createReleaseChecklistTool,
+  createUiAcceptanceTool,
+  createDataContractCheckTool,
+  createSecurityReviewTool,
 ];
 
 export function createCoreTools({
@@ -59,6 +80,7 @@ export function createCoreTools({
   const tools = [
     ...createFileSystemTools(),
     createShellTool(),
+    ...createPlanTools(),
     ...createWorkspaceKnowledgeTools(null),
     ...createContextExpansionTools(workingDirectory),
     ...createPtyTools(),

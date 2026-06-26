@@ -43,6 +43,7 @@ describe('agent-constants', () => {
     expect(METHODOLOGY_TOOLS.has('review')).toBe(true);
     expect(METHODOLOGY_TOOLS.has('verify')).toBe(true);
     expect(METHODOLOGY_TOOLS.has('brainstorm')).toBe(true);
+    expect(METHODOLOGY_TOOLS.has('project_profile')).toBe(true);
   });
 
   test('MUTATION_TOOLS is a Set with write operations', () => {

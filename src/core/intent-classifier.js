@@ -18,6 +18,13 @@ import {
 } from './risk-budget.js';
 import { SEMANTIC_RISK_DOMAINS } from '../utils/patterns.js';
 import { MAX_ITERATIONS_DEFAULT } from './agent-constants.js';
+import {
+  extractExplicitPlanType,
+  getPlanTypeSelection,
+  inferTaskSignals,
+  PLAN_TYPE_OPTIONS,
+  selectPlanType,
+} from './runtime/agent/support/plan-types.js';
 
 const DEFAULT_CONFIDENCE_THRESHOLD = 0.75;
 
@@ -431,7 +438,9 @@ export class IntentClassifier {
       }
     }
 
-    return {
+    const explicitPlanType = extractExplicitPlanType(userInput);
+    const taskSignals = inferTaskSignals(userInput);
+    const profile = {
       isCodingTask: risk.isCodingTask,
       isModificationTask: risk.isModificationTask,
       isBugTask: risk.isBugTask,
@@ -447,7 +456,13 @@ export class IntentClassifier {
       riskScore: risk.score,
       riskReasons: risk.reasons,
       input: String(userInput || ''),
+      taskSignals,
+      explicitPlanType,
+      availablePlanTypes: PLAN_TYPE_OPTIONS,
     };
+    profile.planType = selectPlanType(profile, userInput);
+    profile.planSelection = getPlanTypeSelection(profile, userInput);
+    return profile;
   }
 
   /** 基于任务 profile 计算自适应迭代预算 */

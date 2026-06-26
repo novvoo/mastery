@@ -469,6 +469,10 @@ export class ToolExecutor {
       ui: this.#ui,
       toolName: name,
       subAgent: context.subAgent,
+      activePlanManager: context.activePlanManager,
+      planner: context.planner,
+      activePlan: context.activePlan,
+      currentTask: context.currentTask,
       contentStore: this.#contentStore,
       fileAnalyzer: this.#fileAnalyzer,
       snapshotStore: this.#snapshotStore,
@@ -484,20 +488,20 @@ export class ToolExecutor {
       if (targetPath) {
         const absPath = path.resolve(executionContext.workingDirectory, targetPath);
         const fileExists = existsSync(absPath);
-        
+
         if (!fileExists) {
           const parentDir = path.dirname(targetPath);
           const parentAbs = path.resolve(executionContext.workingDirectory, parentDir);
-          
+
           let fallbackDir = parentDir;
           let fallbackAbs = parentAbs;
-          
+
           // 如果父目录也不存在，回退到工作区根目录
           if (!existsSync(parentAbs)) {
             fallbackDir = '.';
             fallbackAbs = executionContext.workingDirectory;
           }
-          
+
           if (existsSync(fallbackAbs)) {
             const dirTool = this.#toolRegistry.get('list_dir');
             if (dirTool) {
@@ -508,11 +512,11 @@ export class ToolExecutor {
                 options.emitObservation?.(id, name, observation, resultMode);
                 this.#recordEvent('list_dir', { path: fallbackDir }, true, dirResult);
                 this.#ui.toolResult?.('list_dir', dirResult, { path: fallbackDir });
-                return { 
-                  name, 
-                  result: `Error: File not found: ${targetPath}\n\nDirectory listing for ${fallbackDesc}:\n${dirResult}`, 
+                return {
+                  name,
+                  result: `Error: File not found: ${targetPath}\n\nDirectory listing for ${fallbackDesc}:\n${dirResult}`,
                   skipped: true,
-                  fallbackToDir: true 
+                  fallbackToDir: true,
                 };
               } catch (e) {
                 // 目录列表也失败，继续执行原始 read_file 返回错误

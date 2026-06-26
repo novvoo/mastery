@@ -226,6 +226,10 @@ export class AgentRouter {
         ui: this.#ui,
         toolName: name,
         subAgent: this.#config.subAgent,
+        activePlanManager: options.activePlanManager,
+        planner: options.planner,
+        activePlan: options.activePlan,
+        currentTask: options.currentTask,
         contentStore: this.#contentStore,
         fileAnalyzer: this.#fileAnalyzer,
       };

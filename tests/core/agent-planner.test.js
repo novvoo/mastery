@@ -47,6 +47,7 @@ describe('AgentPlanner', () => {
     const taskIds = Array.from(plan.tasks.keys());
     expect(taskIds).toEqual([
       'inspect_workspace',
+      'profile_project',
       'plan_solution',
       'implement_changes',
       'inspect_changes',
@@ -58,6 +59,88 @@ describe('AgentPlanner', () => {
 
     // inspect_workspace should be RUNNING
     expect(plan.getTask('inspect_workspace').status).toBe(TaskStatus.RUNNING);
+  });
+
+  test('createIfNeeded honors explicit quick plan type', () => {
+    const { planner } = createPlanner();
+    const plan = planner.createIfNeeded(
+      'plan:quick 修改 src/app.js 文案',
+      standardProfile({ planType: 'quick', isModificationTask: true }),
+    );
+
+    expect(plan.context.planType).toBe('quick');
+    expect(Array.from(plan.tasks.keys())).toEqual([
+      'implement_changes',
+      'inspect_changes',
+      'verify_result',
+    ]);
+    expect(plan.getTask('implement_changes').status).toBe(TaskStatus.RUNNING);
+  });
+
+  test('createIfNeeded selects documentation plan for documentation profile', () => {
+    const { planner } = createPlanner();
+    const plan = planner.createIfNeeded(
+      '编写 README 文档',
+      standardProfile({ isDocumentationTask: true, isModificationTask: true }),
+    );
+
+    expect(plan.context.planType).toBe('documentation');
+    expect(plan.getTask('implement_changes').name).toBe('Write documentation');
+  });
+
+  test('createIfNeeded creates read-only analysis plan without verification by default', () => {
+    const { planner } = createPlanner();
+    const plan = planner.createIfNeeded(
+      '分析 src/app.js',
+      standardProfile({
+        isCodingTask: false,
+        isModificationTask: false,
+        isAnalysisTask: true,
+        requiresAutomaticPlanning: true,
+      }),
+    );
+
+    expect(plan.context.planType).toBe('analysis');
+    expect(Array.from(plan.tasks.keys())).toEqual(['inspect_workspace', 'inspect_changes']);
+    expect(plan.getTask('verify_result')).toBeUndefined();
+  });
+
+  test('createIfNeeded selects refactor plan with behavior-preserving steps', () => {
+    const { planner } = createPlanner();
+    const plan = planner.createIfNeeded(
+      '重构 auth service',
+      standardProfile({ isCodingTask: true, isModificationTask: true, planType: 'refactor' }),
+    );
+
+    expect(plan.context.planType).toBe('refactor');
+    expect(plan.getTask('inspect_existing_code')).toBeDefined();
+    expect(plan.getTask('implement_changes').name).toBe('Refactor code');
+  });
+
+  test('createIfNeeded selects security plan with semantic review task', () => {
+    const { planner } = createPlanner();
+    const plan = planner.createIfNeeded(
+      '修复 auth token 权限绕过',
+      standardProfile({ isCodingTask: true, isModificationTask: true, planType: 'security' }),
+    );
+
+    expect(plan.context.planType).toBe('security');
+    expect(plan.getTask('semantic_risk_review')).toBeDefined();
+    expect(plan.getTask('semantic_risk_review').name).toBe('Security risk review');
+    expect(plan.getTask('semantic_risk_review').allowedTools).toContain('security_review');
+    expect(plan.getTask('plan_solution').allowedTools).toContain('risk_check');
+  });
+
+  test('createIfNeeded gives UI plans UI acceptance methodology', () => {
+    const { planner } = createPlanner();
+    const plan = planner.createIfNeeded(
+      '调整 React 组件布局',
+      standardProfile({ isCodingTask: true, isModificationTask: true, planType: 'ui' }),
+    );
+
+    expect(plan.context.planType).toBe('ui');
+    expect(plan.getTask('plan_solution').allowedTools).toContain('ui_acceptance');
+    expect(plan.getTask('inspect_changes').allowedTools).toContain('ui_acceptance');
   });
 
   test('createIfNeeded includes semantic_risk_review when required', () => {
@@ -183,8 +266,8 @@ describe('AgentPlanner', () => {
 
     // inspect_workspace should be completed
     expect(planner.activePlan.getTask('inspect_workspace').status).toBe(TaskStatus.COMPLETED);
-    // plan_solution should be started
-    expect(planner.activePlan.getTask('plan_solution').status).toBe(TaskStatus.RUNNING);
+    // profile_project should be started before planning
+    expect(planner.activePlan.getTask('profile_project').status).toBe(TaskStatus.RUNNING);
     // debugEvent should have been called
     expect(debugEvent).toHaveBeenCalled();
     expect(sessionManager.addUserMessage).toHaveBeenCalled();
@@ -199,11 +282,15 @@ describe('AgentPlanner', () => {
     planner.advance('list_dir', { path: '/src' }, 'file1.js\nfile2.js');
     expect(plan.getTask('inspect_workspace').status).toBe(TaskStatus.COMPLETED);
 
-    // Phase 2: plan_solution
+    // Phase 2: profile_project
+    planner.advance('project_profile', { task: 'edit app.js' }, 'project profile output');
+    expect(plan.getTask('profile_project').status).toBe(TaskStatus.COMPLETED);
+
+    // Phase 3: plan_solution
     planner.advance('brainstorm', {}, 'some plan output');
     expect(plan.getTask('plan_solution').status).toBe(TaskStatus.COMPLETED);
 
-    // Phase 3: implement_changes
+    // Phase 4: implement_changes
     planner.advance('write_file', { path: 'app.js' }, 'success: written');
     // implement_changes may still be running if requiredMutationPaths not met
     // With no file paths in input, it completes
@@ -216,6 +303,7 @@ describe('AgentPlanner', () => {
 
     // Simulate tool calls that complete each phase
     planner.advance('list_dir', { path: '/src' }, 'file1.js');
+    planner.advance('read_file', { path: 'package.json' }, '{"scripts":{"test":"bun test"}}');
     planner.advance('brainstorm', {}, 'plan output');
     planner.advance('write_file', { path: 'app.js' }, 'success: written');
     planner.advance('read_file', { path: 'app.js' }, 'file content');
@@ -241,7 +329,7 @@ describe('AgentPlanner', () => {
     // semantic_search 同时满足类型谓词和 completionPredicate → 完成
     planner.advance('semantic_search', { query: 'foo' }, ['result']);
     expect(inspectTask.status).toBe(TaskStatus.COMPLETED);
-    expect(planner.activePlan.getTask('plan_solution').status).toBe(TaskStatus.RUNNING);
+    expect(planner.activePlan.getTask('profile_project').status).toBe(TaskStatus.RUNNING);
   });
 
   test('changePlan replace preserves completed tasks and replaces unfinished work', () => {
@@ -280,6 +368,7 @@ describe('AgentPlanner', () => {
     const { planner } = createPlanner();
     const plan = planner.createIfNeeded('edit app.js', standardProfile());
     plan.getTask('inspect_workspace').updateStatus(TaskStatus.COMPLETED);
+    plan.getTask('profile_project').updateStatus(TaskStatus.COMPLETED);
     const planTask = plan.getTask('plan_solution');
     planTask.updateStatus(TaskStatus.RUNNING);
 
@@ -297,7 +386,7 @@ describe('AgentPlanner', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(plan.getTask('clarify_scope').dependencies.has('inspect_workspace')).toBe(true);
+    expect(plan.getTask('clarify_scope').dependencies.has('profile_project')).toBe(true);
     expect(plan.getTask('plan_solution').dependencies.has('clarify_scope')).toBe(true);
     expect(plan.getTask('plan_solution').status).toBe(TaskStatus.PENDING);
     expect(plan.getTask('clarify_scope').status).toBe(TaskStatus.RUNNING);
