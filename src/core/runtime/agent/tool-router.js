@@ -63,7 +63,29 @@ const DOC_PRODUCT_TOOLS = ['to_prd', 'to_issues', 'setup'];
 
 // See PHASE_CANDIDATE_TOOLS above for phase-driven tool selection.
 
-const GENERAL_METHODOLOGY_TOOLS = ['ask_user', 'review', 'verify', 'diagnose', 'brainstorm'];
+const GENERAL_METHODOLOGY_TOOLS = [
+  'ask_user',
+  'review',
+  'verify',
+  'diagnose',
+  'brainstorm',
+  'project_profile',
+  'risk_check',
+  'impact_map',
+  'test_strategy',
+];
+
+const ADVANCED_METHODOLOGY_TOOLS = [
+  'impact_map',
+  'project_profile',
+  'risk_check',
+  'test_strategy',
+  'migration_plan',
+  'release_checklist',
+  'ui_acceptance',
+  'data_contract_check',
+  'security_review',
+];
 
 const GIT_READ_TOOLS = ['git_status', 'git_diff', 'git_log', 'git_branch'];
 
@@ -125,6 +147,8 @@ const MCP_TOOLS = [
 
 const COMPRESS_TOOLS = ['caveman', 'handoff'];
 
+const PLAN_ORCHESTRATION_TOOLS = ['change_plan'];
+
 // =============================================================
 // Phase-aware methodology tool selection
 //
@@ -148,11 +172,56 @@ export const PHASE = {
 
 // 每个执行阶段适用的方法论工具候选集
 const PHASE_CANDIDATE_TOOLS = {
-  [PHASE.EXPLORATION]: ['ask_user', 'brainstorm', 'grill', 'zoom_out', 'architect'],
-  [PHASE.PLANNING]: ['ask_user', 'brainstorm', 'grill', 'zoom_out', 'architect', 'tdd'],
-  [PHASE.IMPLEMENTATION]: ['ask_user', 'diagnose'],
-  [PHASE.INSPECTION]: ['ask_user', 'review', 'diagnose'],
-  [PHASE.VERIFICATION]: ['ask_user', 'review', 'verify', 'diagnose', 'coverage_check'],
+  [PHASE.EXPLORATION]: [
+    'ask_user',
+    'brainstorm',
+    'grill',
+    'zoom_out',
+    'architect',
+    'impact_map',
+    'project_profile',
+    'risk_check',
+  ],
+  [PHASE.PLANNING]: [
+    'ask_user',
+    'brainstorm',
+    'grill',
+    'zoom_out',
+    'architect',
+    'tdd',
+    'impact_map',
+    'project_profile',
+    'risk_check',
+    'test_strategy',
+    'migration_plan',
+    'release_checklist',
+    'ui_acceptance',
+    'data_contract_check',
+    'security_review',
+  ],
+  [PHASE.IMPLEMENTATION]: ['ask_user', 'diagnose', 'risk_check'],
+  [PHASE.INSPECTION]: [
+    'ask_user',
+    'review',
+    'diagnose',
+    'impact_map',
+    'risk_check',
+    'security_review',
+    'data_contract_check',
+    'ui_acceptance',
+  ],
+  [PHASE.VERIFICATION]: [
+    'ask_user',
+    'review',
+    'verify',
+    'diagnose',
+    'coverage_check',
+    'test_strategy',
+    'release_checklist',
+    'security_review',
+    'data_contract_check',
+    'ui_acceptance',
+  ],
 };
 
 // 注意：风险等级不再限制方法论工具可见性。
@@ -163,12 +232,19 @@ const PHASE_CANDIDATE_TOOLS = {
  * Select the smallest useful set of tools for the current request.
  * This is deliberately local and cheap: it avoids a preflight LLM call on
  * obvious coding tasks, while still exposing broad capabilities when needed.
- * 
+ *
  * ✅ Enhanced: Now supports currentTask.allowedTools for strict task-based tool constraints
  */
 export function selectToolsForRequest(
   allTools,
-  { userInput = '', taskProfile = null, intent = null, currentPhase = null, currentTask = null, maxTools = 32 } = {},
+  {
+    userInput = '',
+    taskProfile = null,
+    intent = null,
+    currentPhase = null,
+    currentTask = null,
+    maxTools = 32,
+  } = {},
 ) {
   const byName = new Map(allTools.map((tool) => [tool.name, tool]));
   const selected = new Map();
@@ -187,6 +263,8 @@ export function selectToolsForRequest(
   // 如果有 currentTask 且定义了 allowedTools，就只选这些工具，忽略其他逻辑
   if (currentTask && currentTask.allowedTools && currentTask.allowedTools.length > 0) {
     add(currentTask.allowedTools);
+    add(PLAN_ORCHESTRATION_TOOLS);
+    add(ADVANCED_METHODOLOGY_TOOLS);
     const selectedTools = Array.from(selected.values());
     // 即使超过 maxTools，也要保留所有 allowedTools（这些是任务必需的）
     return selectedTools;
@@ -220,10 +298,17 @@ export function selectToolsForRequest(
     /压缩上下文|handoff|交接|暂停|稍后继续|记忆压缩|compress|continue later/,
   ].some((pattern) => pattern.test(input));
 
+  const asksForDocs = [
+    /prd|产品|需求文档|issue|工单|写文档|docs|specification|design doc/,
+    /\b(prd|issue|requirements|spec|design doc)\b/,
+  ].some((pattern) => pattern.test(input));
+
   // Tiered exposure for coding tasks based on execution phase.
   // All coding tasks get the same complete methodology flow;
   // phase determines which tools are visible at each step.
   if (taskProfile?.isCodingTask) {
+    add(PLAN_ORCHESTRATION_TOOLS);
+    add(ADVANCED_METHODOLOGY_TOOLS);
     add(CORE_READ_TOOLS);
     add(CORE_WRITE_TOOLS);
     // LSP + Hashline — dramatically reduces exploration rounds.
@@ -264,10 +349,6 @@ export function selectToolsForRequest(
     }
 
     // User explicitly asked for doc/product artifacts
-    const asksForDocs = [
-      /prd|产品|需求文档|issue|工单|写文档|docs|specification|design doc/,
-      /\b(prd|issue|requirements|spec|design doc)\b/,
-    ].some((pattern) => pattern.test(input));
     if (asksForDocs) {
       add(DOC_PRODUCT_TOOLS);
     }
@@ -282,6 +363,8 @@ export function selectToolsForRequest(
       add(['browser_open']);
     }
   } else if (asksForFreshData) {
+    add(PLAN_ORCHESTRATION_TOOLS);
+    add(ADVANCED_METHODOLOGY_TOOLS);
     add(WEB_TOOLS);
     add(['review', 'verify']);
     add(CORE_READ_TOOLS);
@@ -291,6 +374,8 @@ export function selectToolsForRequest(
       add(['browser_open']);
     }
   } else {
+    add(PLAN_ORCHESTRATION_TOOLS);
+    add(ADVANCED_METHODOLOGY_TOOLS);
     add(CORE_READ_TOOLS);
     add(CORE_WRITE_TOOLS);
     add(GENERAL_METHODOLOGY_TOOLS);
@@ -327,7 +412,43 @@ export function selectToolsForRequest(
     add(WEB_TOOLS);
   }
 
-  const selectedTools = Array.from(selected.values());
+  const priorityNames = [
+    ...PLAN_ORCHESTRATION_TOOLS,
+    ...(currentPhase ? PHASE_CANDIDATE_TOOLS[currentPhase] || [] : GENERAL_METHODOLOGY_TOOLS),
+    ...(taskProfile?.isBugTask ||
+    /bug|报错|错误|失败|崩溃|卡住|test failing|failing test/i.test(input)
+      ? ['coverage_check']
+      : []),
+    ...CORE_READ_TOOLS,
+    ...CORE_WRITE_TOOLS,
+    ...(asksForGit ? [...GIT_READ_TOOLS, ...GIT_MUTATION_TOOLS] : []),
+    ...(asksForMcp ? MCP_TOOLS : []),
+    ...(asksForScheduling ? [...TASK_TOOLS, ...SCHEDULE_TOOLS, ...SUBAGENT_TOOLS] : []),
+    ...(asksForCompression ? COMPRESS_TOOLS : []),
+    ...(asksForFreshData ? WEB_TOOLS : []),
+    ...(asksForBrowser ? ['browser_open'] : []),
+    ...(asksForDocs ? DOC_PRODUCT_TOOLS : []),
+    ...HASHLINE_TOOLS,
+    ...LSP_NAV_TOOLS,
+    ...LSP_EDIT_TOOLS,
+    ...TERMINAL_TOOLS,
+    ...GIT_READ_TOOLS,
+    ...HARNESS_STATE_TOOLS,
+    ...CONTEXT_EXPANSION_TOOLS,
+    ...ADVANCED_METHODOLOGY_TOOLS,
+  ];
+
+  const priority = new Map();
+  priorityNames.forEach((name, index) => {
+    if (!priority.has(name)) {
+      priority.set(name, index);
+    }
+  });
+  const selectedTools = Array.from(selected.values()).sort((a, b) => {
+    const ai = priority.has(a.name) ? priority.get(a.name) : Number.MAX_SAFE_INTEGER;
+    const bi = priority.has(b.name) ? priority.get(b.name) : Number.MAX_SAFE_INTEGER;
+    return ai - bi;
+  });
   if (selectedTools.length <= maxTools) {
     return selectedTools;
   }
