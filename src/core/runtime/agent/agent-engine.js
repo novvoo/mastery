@@ -1610,36 +1610,9 @@ export class AgentEngine {
         continue;
       }
 
-      // -------- 短路 2：ExecutionPlan 完成 + provider 说 stop --------
-      // 保护措施：只有在至少执行了一个工具调用后才允许此短路
-      // 否则即使是计划完成状态，也应该继续尝试执行工具
-      if (
-        allToolCalls.length === 0 &&
-        response.finishReason === 'stop' &&
-        response.text?.trim() &&
-        this.#executionPlanManager.isCompleted &&
-        iteration > 1
-      ) {
-        const answer = isTerminationResponse(response.text)
-          ? extractFinalAnswer(response.text)
-          : response.text.trim();
-        this.#ui.debugEvent?.('Final answer emitted', {
-          iteration,
-          totalDurationMs: Date.now() - runStartedAt,
-          reason: 'completed_plan_provider_stop_without_marker',
-          answerPreview: this.#preview(answer, 300),
-        });
-        this.#ui.finalAnswer?.(answer);
-        this.#sessionManager.addAssistantMessage(response.text);
-        return this.#completeRun({
-          success: true,
-          status: 'completed',
-          answer,
-          reason: 'completed_plan_provider_stop_without_marker',
-          iterations: iteration,
-          startedAt: runStartedAt,
-        });
-      }
+      // -------- 短路 2：移除（计划完成必须通过 FINAL_ANSWER 标记） --------
+      // 计划任务结束只有一个条件：所有阶段性任务已经结束，并且已经对完成的任务做了总结
+      // 因此移除这个直接结束的条件，确保必须通过 FINAL_ANSWER 标记才能结束
 
       // -------- 短路 3：工具使用纠正（LLM 说"我没有工具"） --------
       if (
@@ -1738,7 +1711,12 @@ export class AgentEngine {
       }
 
       // -------- 短路 5：FINAL_ANSWER 标记终止 --------
-      if (isTerminationResponse(response.text)) {
+      // 计划任务结束只有一个条件：所有阶段性任务已经结束，并且已经对完成的任务做了总结
+      // 如果计划正在执行中，即使有FINAL_ANSWER标记也不允许结束
+      if (
+        isTerminationResponse(response.text) &&
+        (!this.#executionPlanManager.isActive || this.#executionPlanManager.isCompleted)
+      ) {
         const answer = normalizeFinalAnswer(extractFinalAnswer(response.text));
         this.#ui.debugEvent?.('Final answer emitted', {
           iteration,
