@@ -466,8 +466,14 @@ export function createFileSystemTools() {
         },
         new_text: { type: 'string', description: 'The replacement text' },
         line: { type: 'number', description: 'Single line number (1-based) to replace' },
-        startLine: { type: 'number', description: 'Start line number (1-based, inclusive) for multi-line replace' },
-        endLine: { type: 'number', description: 'End line number (1-based, inclusive) for multi-line replace' },
+        startLine: {
+          type: 'number',
+          description: 'Start line number (1-based, inclusive) for multi-line replace',
+        },
+        endLine: {
+          type: 'number',
+          description: 'End line number (1-based, inclusive) for multi-line replace',
+        },
       },
       required: ['path', 'new_text'],
       handler: async ({ path, old_text, new_text, line, startLine, endLine }, ctx) => {
@@ -505,7 +511,11 @@ export function createFileSystemTools() {
             if (occurrences === 0) return null;
             if (occurrences > 1) return { multiple: true };
             const offset = content.indexOf(text);
-            return { offset, length: text.length, line: content.substring(0, offset).split('\n').length + 1 };
+            return {
+              offset,
+              length: text.length,
+              line: content.substring(0, offset).split('\n').length + 1,
+            };
           };
 
           const findFuzzyMatch = (text) => {
@@ -581,14 +591,20 @@ export function createFileSystemTools() {
           if (ctx.contentStore) {
             const storedAnchor = ctx.contentStore.getAnchor(anchorHash);
             if (storedAnchor) {
-              const knownSnippet = storedAnchor.text.slice(0, Math.min(storedAnchor.text.length, 50));
+              const knownSnippet = storedAnchor.text.slice(
+                0,
+                Math.min(storedAnchor.text.length, 50),
+              );
               if (!anchorContext.includes(knownSnippet)) {
                 return `Error: Anchor hash ${anchorHash.substring(0, 12)}... no longer matches file content. The file was modified underneath this edit. Re-read the file and try again.`;
               }
             }
           }
 
-          const newContent = content.substring(0, matchOffset) + new_text + content.substring(matchOffset + matchLength);
+          const newContent =
+            content.substring(0, matchOffset) +
+            new_text +
+            content.substring(matchOffset + matchLength);
           const afterHash = hashContent(newContent);
           const diff = generateUnifiedDiff(content, newContent, path);
 
@@ -599,7 +615,12 @@ export function createFileSystemTools() {
 
           if (ctx.contentStore) {
             try {
-              ctx.contentStore.storeAnchor(path, matchOffset, matchOffset + matchLength, old_text_content);
+              ctx.contentStore.storeAnchor(
+                path,
+                matchOffset,
+                matchOffset + matchLength,
+                old_text_content,
+              );
               const newBlobHash = ctx.contentStore.storeBlob(newContent);
               ctx.contentStore.setRef(`file:${path}`, newBlobHash);
               if (ctx.fileAnalyzer && typeof ctx.fileAnalyzer.analyzeFile === 'function') {
@@ -638,6 +659,8 @@ export function createFileSystemTools() {
       description: `Apply a multi-file, content-hash-anchored patch using the Hashline DSL.
 
 The patch format is compact and line-anchored, with each section bound to a content hash (tag) of the file. This enables safe, atomic, multi-file edits with stale-tag detection and automatic recovery.
+
+When an execution plan is active, use this tool as the implementation vehicle for the current plan task. The plan supplies intent, scope, and completion criteria; Hashline supplies fast atomic edits. Do not use Hashline to bypass required planning, inspection, review, or verification tasks.
 
 **Patch DSL syntax:**
 

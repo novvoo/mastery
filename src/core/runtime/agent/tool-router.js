@@ -264,7 +264,6 @@ export function selectToolsForRequest(
   if (currentTask && currentTask.allowedTools && currentTask.allowedTools.length > 0) {
     add(currentTask.allowedTools);
     add(PLAN_ORCHESTRATION_TOOLS);
-    add(ADVANCED_METHODOLOGY_TOOLS);
     const selectedTools = Array.from(selected.values());
     // 即使超过 maxTools，也要保留所有 allowedTools（这些是任务必需的）
     return selectedTools;

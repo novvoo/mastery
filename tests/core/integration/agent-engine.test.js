@@ -85,7 +85,9 @@ mock.module('../../../src/core/text-tool-parser.js', () => {
         return '';
       }
     },
-    _setParseResult: (result) => { parseResult = result; },
+    _setParseResult: (result) => {
+      parseResult = result;
+    },
   };
 });
 
@@ -385,8 +387,8 @@ mock.module('../../../src/core/risk-budget.js', () => ({
   computeIterationBudget: () => 10,
 }));
 
-mock.module('../../../src/core/execution-plan-manager.js', () => ({
-  ExecutionPlanManager: class ExecutionPlanManager {
+mock.module('../../../src/core/agent-planner.js', () => ({
+  AgentPlanner: class AgentPlanner {
     constructor() {}
   },
 }));

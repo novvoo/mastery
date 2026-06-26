@@ -43,9 +43,9 @@ export const RISK_LEVEL = {
 };
 
 export const ITERATION_RATIO = {
-  [RISK_LEVEL.LOW]: 0.5,
-  [RISK_LEVEL.MEDIUM]: 0.7,
-  [RISK_LEVEL.HIGH]: 0.9,
+  [RISK_LEVEL.LOW]: 1.0,
+  [RISK_LEVEL.MEDIUM]: 1.0,
+  [RISK_LEVEL.HIGH]: 1.0,
   [RISK_LEVEL.CRITICAL]: 1.0,
 };
 
@@ -360,11 +360,7 @@ export function computeIterationBudget(
   riskLevelOrProfile,
   maxIterationsDefault = MAX_ITERATIONS_DEFAULT,
 ) {
-  const level =
-    typeof riskLevelOrProfile === 'string' ? riskLevelOrProfile : riskLevelOrProfile?.riskLevel;
-
-  const ratio = ITERATION_RATIO[level] ?? ITERATION_RATIO[RISK_LEVEL.MEDIUM];
-  return Math.max(4, Math.round(maxIterationsDefault * ratio));
+  return Math.max(4, maxIterationsDefault || MAX_ITERATIONS_DEFAULT);
 }
 
 export function getCompletionGates(riskLevel, profile = {}) {

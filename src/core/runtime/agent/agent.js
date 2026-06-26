@@ -334,7 +334,7 @@ export class ReActAgent {
     this.#agentContext.reset();
 
     // Step 4: 执行计划
-    const executionPlan = this.#planner.createIfNeeded(userInput, taskProfile);
+    const executionPlan = await this.#planner.createIfNeeded(userInput, taskProfile);
     const maxIterations = this.#verifier.computeIterationBudget(
       taskProfile,
       this.#config.maxIterations,
@@ -657,6 +657,25 @@ export class ReActAgent {
 
         // ---- 各种退出/纠正判断 ----
 
+        // 工具语法纠正
+        // Must run before any provider-stop final shortcut so malformed plan-action
+        // protocol gets retried instead of being emitted as the final answer.
+        if (
+          allToolCalls.length === 0 &&
+          response.text?.trim() &&
+          toolUseCorrections < 2 &&
+          containsUnparsedSyntax(response.text)
+        ) {
+          toolUseCorrections++;
+          this.#debugEvent('Tool syntax correction requested', {
+            iteration,
+            correction: toolUseCorrections,
+          });
+          this.#sessionManager.addAssistantMessage(response.text);
+          this.#sessionManager.addUserMessage(buildToolSyntaxCorrectionPrompt(response.text));
+          continue;
+        }
+
         // Plan 完成 + provider stop + 无工具调用 → 先检查 completion gate
         if (
           allToolCalls.length === 0 &&
@@ -704,23 +723,6 @@ export class ReActAgent {
             iterations: iteration,
             startedAt: runStartedAt,
           });
-        }
-
-        // 工具语法纠正
-        if (
-          allToolCalls.length === 0 &&
-          response.text?.trim() &&
-          toolUseCorrections < 2 &&
-          containsUnparsedSyntax(response.text)
-        ) {
-          toolUseCorrections++;
-          this.#debugEvent('Tool syntax correction requested', {
-            iteration,
-            correction: toolUseCorrections,
-          });
-          this.#sessionManager.addAssistantMessage(response.text);
-          this.#sessionManager.addUserMessage(buildToolSyntaxCorrectionPrompt(response.text));
-          continue;
         }
 
         // 工具使用纠正（refusal correction）

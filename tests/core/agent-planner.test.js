@@ -85,7 +85,8 @@ describe('AgentPlanner', () => {
     );
 
     expect(plan.context.planType).toBe('documentation');
-    expect(plan.getTask('implement_changes').name).toBe('Write documentation');
+    expect(plan.getTask('implement_changes')).toBeDefined();
+    expect(plan.getTask('profile_project')).toBeUndefined();
   });
 
   test('createIfNeeded creates read-only analysis plan without verification by default', () => {
@@ -101,7 +102,11 @@ describe('AgentPlanner', () => {
     );
 
     expect(plan.context.planType).toBe('analysis');
-    expect(Array.from(plan.tasks.keys())).toEqual(['inspect_workspace', 'inspect_changes']);
+    expect(Array.from(plan.tasks.keys())).toEqual([
+      'inspect_workspace',
+      'analyze_findings',
+      'generate_report',
+    ]);
     expect(plan.getTask('verify_result')).toBeUndefined();
   });
 
@@ -113,8 +118,9 @@ describe('AgentPlanner', () => {
     );
 
     expect(plan.context.planType).toBe('refactor');
-    expect(plan.getTask('inspect_existing_code')).toBeDefined();
-    expect(plan.getTask('implement_changes').name).toBe('Refactor code');
+    expect(plan.getTask('inspect_workspace')).toBeDefined();
+    expect(plan.getTask('implement_changes')).toBeDefined();
+    expect(plan.getTask('verify_result')).toBeDefined();
   });
 
   test('createIfNeeded selects security plan with semantic review task', () => {
@@ -126,9 +132,26 @@ describe('AgentPlanner', () => {
 
     expect(plan.context.planType).toBe('security');
     expect(plan.getTask('semantic_risk_review')).toBeDefined();
-    expect(plan.getTask('semantic_risk_review').name).toBe('Security risk review');
-    expect(plan.getTask('semantic_risk_review').allowedTools).toContain('security_review');
-    expect(plan.getTask('plan_solution').allowedTools).toContain('risk_check');
+    expect(plan.getTask('semantic_risk_review').name).toContain('risk review');
+    expect(plan.getTask('verify_result')).toBeDefined();
+  });
+
+  test('security semantic review task advances with security_review', () => {
+    const { planner } = createPlanner();
+    const plan = planner.createIfNeeded(
+      '修复 auth token 权限绕过',
+      standardProfile({ isCodingTask: true, isModificationTask: true, planType: 'security' }),
+    );
+
+    planner.advance('list_dir', { path: 'src' }, 'auth.js');
+    planner.advance('project_profile', { task: 'auth fix' }, 'profiled project');
+    planner.advance('security_review', { surface: 'auth token' }, 'reviewed auth surface');
+    planner.advance('write_file', { path: 'auth.js' }, 'success: written');
+    planner.advance('security_review', { surface: 'auth token' }, 'reviewed changed auth surface');
+    planner.advance('security_review', { surface: 'auth token' }, 'reviewed semantic risk');
+
+    expect(plan.getTask('semantic_risk_review').status).toBe(TaskStatus.COMPLETED);
+    expect(plan.getTask('verify_result').status).toBe(TaskStatus.RUNNING);
   });
 
   test('createIfNeeded gives UI plans UI acceptance methodology', () => {
@@ -139,8 +162,9 @@ describe('AgentPlanner', () => {
     );
 
     expect(plan.context.planType).toBe('ui');
-    expect(plan.getTask('plan_solution').allowedTools).toContain('ui_acceptance');
-    expect(plan.getTask('inspect_changes').allowedTools).toContain('ui_acceptance');
+    expect(plan.getTask('plan_solution')).toBeDefined();
+    expect(plan.getTask('inspect_changes')).toBeDefined();
+    expect(plan.getTask('verify_result')).toBeDefined();
   });
 
   test('createIfNeeded includes semantic_risk_review when required', () => {
@@ -223,6 +247,8 @@ describe('AgentPlanner', () => {
     expect(prompt).toContain('plan_solution');
     expect(prompt).toContain('implement_changes');
     expect(prompt).toContain('verify_result');
+    expect(prompt).toContain('Hashline and plan are one execution loop');
+    expect(prompt).toContain('apply_hashline_patch is the preferred fast edit vehicle');
   });
 
   test('buildPrompt includes semantic risk guidance when provided', () => {

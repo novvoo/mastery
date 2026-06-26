@@ -17,6 +17,7 @@ import {
 } from './support/tool-semantics.js';
 import { shouldEnablePlan } from './support/task-profile.js';
 import { PlanType, selectPlanType } from './support/plan-types.js';
+import { HASHLINE_PLAN_COORDINATION_GUIDANCE } from './support/hashline-plan-policy.js';
 
 // ============== 工具谓词：统一委托给 tool-semantics 模块 ==============
 
@@ -211,8 +212,16 @@ export class ExecutionPlanManager {
   #mutationCallCount = 0; // 修改工具调用次数（用于无明确文件路径时的完成判断）
   #useLLMDecomposition = false; // 是否使用 LLM 智能分解（替代固定模板）
   #graphPlanner = null;
+  #debugEvent = null;
+  #sessionManager = null;
+  #onPlanAdvance = null;
+  #useExternalPlan = false;
 
-  constructor() {}
+  constructor({ debugEvent = null, sessionManager = null, onPlanAdvance = null } = {}) {
+    this.#debugEvent = typeof debugEvent === 'function' ? debugEvent : null;
+    this.#sessionManager = sessionManager || null;
+    this.#onPlanAdvance = typeof onPlanAdvance === 'function' ? onPlanAdvance : null;
+  }
 
   // ============== 生命周期阶段常量 ==============
   static PHASE = Object.freeze({
@@ -238,13 +247,26 @@ export class ExecutionPlanManager {
     const taskProfile = profile?.taskProfile || profile;
     this.#profile = taskProfile || null;
 
+    if (this.#useExternalPlan && this.#plan) {
+      this.#adjustExternalPlanByProfile(this.#plan, taskProfile);
+      this.#emitPlanProgress({ planCreated: false, decompositionMethod: 'external' });
+      return this.#plan;
+    }
+
     this.#requiredMutationPaths = this.#extractRequestedFilePaths(this.#userInput);
     this.#completedMutationPaths = new Set();
     this.#mutationCallCount = 0;
 
-    // 使用 shouldEnablePlan 判断是否启用计划（考虑上下文）
+    // 使用统一策略判断是否启用计划（考虑上下文）。
+    // 兼容旧 AgentPlanner：编码/修改/bug 任务和 requiresAutomaticPlanning 显式请求默认启用。
     const planContext = options.planContext || { complexityScore: 0, fileCount: 0 };
-    if (!shouldEnablePlan(taskProfile, planContext)) {
+    const shouldPlan =
+      shouldEnablePlan(taskProfile, planContext) ||
+      taskProfile?.requiresAutomaticPlanning === true ||
+      taskProfile?.isCodingTask ||
+      taskProfile?.isModificationTask ||
+      taskProfile?.isBugTask;
+    if (!shouldPlan) {
       this.#plan = null;
       this.#useLLMDecomposition = false;
       return null;
@@ -345,7 +367,7 @@ export class ExecutionPlanManager {
 
     // 语义风险审查（两种模式通用）
     if (
-      taskProfile.requiresSemanticRiskReview &&
+      (taskProfile.requiresSemanticRiskReview || planType === PlanType.SECURITY) &&
       !this.#useLLMDecomposition &&
       !plan.getTask('semantic_risk_review')
     ) {
@@ -382,6 +404,10 @@ export class ExecutionPlanManager {
     plan.getTask(firstTaskId)?.updateStatus(TaskStatus.RUNNING);
 
     this.#plan = plan;
+    this.#emitPlanProgress({
+      planCreated: true,
+      decompositionMethod: llmSubtasks ? 'llm' : 'auto',
+    });
     return plan;
   }
 
@@ -415,7 +441,7 @@ export class ExecutionPlanManager {
         taskType = 'modification';
       } else if (profile?.isDocumentationTask) {
         taskType = PlanType.DOCUMENTATION;
-      } else if (profile?.isCodingTask) {
+      } else if (profile?.isCodingTask || profile?.requiresAutomaticPlanning) {
         taskType = 'coding';
       } else {
         taskType = 'modification';
@@ -437,6 +463,8 @@ export class ExecutionPlanManager {
         taskType = PlanType.ANALYSIS;
       } else if (profile?.isResearchTask) {
         taskType = PlanType.RESEARCH;
+      } else if (profile?.requiresAutomaticPlanning) {
+        taskType = 'coding';
       } else {
         taskType = 'general';
       }
@@ -671,9 +699,6 @@ export class ExecutionPlanManager {
     if (!taskProfile || taskProfile.isLikelyTrivial) {
       return false;
     }
-    if (taskProfile.riskLevel === 'high' || taskProfile.riskLevel === 'critical') {
-      return true;
-    }
     if (taskProfile.isModificationTask || taskProfile.allowsMutation) {
       return true;
     }
@@ -694,7 +719,19 @@ export class ExecutionPlanManager {
     if ([PlanType.RESEARCH, PlanType.ANALYSIS, PlanType.CODE_REVIEW].includes(planType)) {
       return Boolean(taskProfile?.requiresVerification);
     }
+    if (
+      taskProfile?.requiresSemanticRiskReview ||
+      taskProfile?.requiresAutomaticPlanning ||
+      taskProfile?.isCodingTask ||
+      taskProfile?.isModificationTask ||
+      taskProfile?.isBugTask ||
+      taskProfile?.allowsMutation ||
+      taskProfile?.mode === 'mutate'
+    ) {
+      return true;
+    }
     return [
+      PlanType.QUICK,
       PlanType.TESTING,
       PlanType.REFACTOR,
       PlanType.MIGRATION,
@@ -755,9 +792,13 @@ export class ExecutionPlanManager {
 
   #shouldAddProjectProfile(planType, taskProfile) {
     if (
-      [PlanType.QUICK, PlanType.RESEARCH, PlanType.ANALYSIS, PlanType.VERIFICATION].includes(
-        planType,
-      )
+      [
+        PlanType.QUICK,
+        PlanType.RESEARCH,
+        PlanType.ANALYSIS,
+        PlanType.VERIFICATION,
+        PlanType.DOCUMENTATION,
+      ].includes(planType)
     ) {
       return false;
     }
@@ -775,6 +816,9 @@ export class ExecutionPlanManager {
   get plan() {
     return this.#plan;
   }
+  get activePlan() {
+    return this.#plan;
+  }
   get isActive() {
     return !!this.#plan && this.#plan.status === TaskStatus.RUNNING;
   }
@@ -790,6 +834,70 @@ export class ExecutionPlanManager {
         (task) => task.status === TaskStatus.RUNNING,
       ) || null
     );
+  }
+
+  reset({ preserveExternalPlan = false } = {}) {
+    if (preserveExternalPlan && this.#useExternalPlan && this.#plan) {
+      return;
+    }
+    this.#plan = null;
+    this.#profile = null;
+    this.#userInput = '';
+    this.#requiredMutationPaths = new Set();
+    this.#completedMutationPaths = new Set();
+    this.#mutationCallCount = 0;
+    this.#useLLMDecomposition = false;
+    this.#graphPlanner = null;
+    if (!preserveExternalPlan) {
+      this.#useExternalPlan = false;
+    }
+  }
+
+  setPlan(plan) {
+    if (!(plan instanceof ExecutionPlan)) {
+      throw new Error('Invalid plan - must be an instance of ExecutionPlan');
+    }
+    this.#plan = plan;
+    this.#useExternalPlan = true;
+    if (plan.status !== TaskStatus.RUNNING) {
+      plan.status = TaskStatus.RUNNING;
+      plan.startedAt = plan.startedAt || Date.now();
+    }
+    this.#startReadyTasks(plan);
+    this.#emitPlanProgress({ planCreated: true, decompositionMethod: 'external' });
+  }
+
+  deriveCurrentPhase() {
+    const current = this.currentTask;
+    if (current?.phase) {
+      return current.phase;
+    }
+    if (!this.#plan) {
+      return null;
+    }
+    const tasks = Array.from(this.#plan.tasks.values());
+    if (tasks.some((task) => task.status === TaskStatus.RUNNING)) {
+      return (
+        tasks.find((task) => task.status === TaskStatus.RUNNING && task.phase)?.phase ||
+        ExecutionPlanManager.PHASE.EXPLORATION
+      );
+    }
+    if (tasks.length > 0 && tasks.every((task) => task.status === TaskStatus.COMPLETED)) {
+      return ExecutionPlanManager.PHASE.VERIFICATION;
+    }
+    return null;
+  }
+
+  getCurrentRunnableTask() {
+    return this.currentTask;
+  }
+
+  getCurrentAllowedTools() {
+    const task = this.currentTask;
+    if (!task || !Array.isArray(task.allowedTools) || task.allowedTools.length === 0) {
+      return null;
+    }
+    return task.allowedTools;
   }
 
   /**
@@ -834,6 +942,12 @@ export class ExecutionPlanManager {
     plan.status = TaskStatus.RUNNING;
     plan.completedAt = null;
     this.#startReadyTasks(plan);
+    this.#emitPlanProgress({
+      planChanged: true,
+      decompositionMethod: 'dynamic',
+      reason,
+      change: { mode, targetTaskId, insertedTasks, reason },
+    });
 
     return {
       success: true,
@@ -873,9 +987,26 @@ export class ExecutionPlanManager {
     }
 
     const after = this.#summarizeProgress(plan);
-    return after !== before
-      ? { before, after, isCompleted: plan.status === TaskStatus.COMPLETED }
-      : null;
+    if (after === before) {
+      return null;
+    }
+
+    this.#debugEvent?.('Automatic task orchestration advanced', {
+      tool: toolName,
+      before,
+      after,
+    });
+    this.#sessionManager?.addUserMessage?.(
+      `Automatic task orchestration update:\n${after}\n\n` +
+        `${
+          plan.status === TaskStatus.COMPLETED
+            ? 'All orchestrated tasks are complete. You may now provide FINAL_ANSWER with the change and verification summary.'
+            : `Continue with the current ready task: ${this.#currentTaskLabel(plan)}.`
+        }`,
+    );
+    this.#emitPlanProgress({ tool: toolName });
+
+    return { before, after, isCompleted: plan.status === TaskStatus.COMPLETED };
   }
 
   /**
@@ -1075,6 +1206,7 @@ export class ExecutionPlanManager {
       decompositionNote +
       `${tasks}\n\n` +
       `The DAG task ids are status labels, not tool names. Use real available tools such as list_dir, read_file, write_file, shell, and methodology tools.\n` +
+      `${HASHLINE_PLAN_COORDINATION_GUIDANCE}\n` +
       `For existing code projects, complete profile_project by identifying package/config files, scripts, test modules, and verification commands before choosing implementation or tests.\n` +
       `When the current task offers methodology tools such as project_profile, impact_map, risk_check, test_strategy, security_review, data_contract_check, ui_acceptance, migration_plan, or release_checklist, prefer using the most relevant one before editing or finalizing.\n` +
       `If the plan becomes wrong during execution, call change_plan to append, replace, or insert tasks before continuing.\n` +
@@ -1338,7 +1470,7 @@ export class ExecutionPlanManager {
   }
 
   #recordMutationPath(toolName, args) {
-    if (!['write_file', 'edit_file'].includes(toolName)) {
+    if (!['write_file', 'edit_file', 'apply_hashline_patch'].includes(toolName)) {
       return;
     }
     this.#mutationCallCount += 1;
@@ -1614,6 +1746,77 @@ export class ExecutionPlanManager {
         .map((d) => `  - ${d.label}: ${d.checklist?.[0] || 'review API surface and invariants'}`)
         .join('\n')
     );
+  }
+
+  #currentTaskLabel(plan = this.#plan) {
+    const task =
+      Array.from(plan?.tasks?.values?.() || []).find((t) => t.status === TaskStatus.RUNNING) ||
+      Array.from(plan?.tasks?.values?.() || []).find((t) => t.status === TaskStatus.PENDING);
+    if (!task) {
+      return 'none';
+    }
+    return `${task.id} (${task.name})`;
+  }
+
+  #emitPlanProgress(extra = {}) {
+    if (!this.#onPlanAdvance || !this.#plan) {
+      return;
+    }
+    const tasks = this.#plan.toJSON().tasks.map((task) => ({
+      id: task.id,
+      name: task.name,
+      status: task.status,
+      description: task.description,
+      dependencies: [...(task.dependencies || [])],
+      scopeFiles: task.scopeFiles || [],
+    }));
+    this.#onPlanAdvance({
+      ...extra,
+      planId: this.#plan.id,
+      tasks,
+      total: tasks.length,
+      completed: tasks.filter((task) => task.status === TaskStatus.COMPLETED).length,
+      running: tasks.filter((task) => task.status === TaskStatus.RUNNING).length,
+      failed: tasks.filter((task) => task.status === TaskStatus.FAILED).length,
+      planStatus: this.#plan.status,
+      plan: {
+        id: this.#plan.id,
+        name: this.#plan.name,
+        description: this.#plan.description,
+        tasks,
+        status: this.#plan.status,
+        createdAt: this.#plan.createdAt,
+        completedAt: this.#plan.completedAt,
+        decompositionMethod:
+          extra.decompositionMethod || this.#plan.context?.decomposition || 'auto',
+        planType: this.#plan.context?.planType,
+      },
+    });
+  }
+
+  #adjustExternalPlanByProfile(plan, taskProfile) {
+    if (!plan || !taskProfile) {
+      return;
+    }
+    this.#profile = taskProfile;
+    plan.context = {
+      ...(plan.context || {}),
+      planType: plan.context?.planType || selectPlanType(taskProfile, plan.description),
+    };
+    this.#ensureProjectProfileTask(plan, plan.context.planType, taskProfile);
+    if (taskProfile.requiresSemanticRiskReview && !plan.getTask('semantic_risk_review')) {
+      const lastId = Array.from(plan.tasks.keys()).at(-1);
+      plan.addTask({
+        id: 'semantic_risk_review',
+        name: 'Semantic/API risk review',
+        description: `Review the changed code against semantic risk domains: ${(taskProfile.semanticRiskDomains || []).map((d) => d.label).join('; ')}.`,
+        dependencies: lastId ? [lastId] : [],
+        phase: ExecutionPlanManager.PHASE.INSPECTION,
+        allowedTools: ['review', 'read_file', 'security_review', 'data_contract_check'],
+      });
+    }
+    this.#rebuildGraph(plan);
+    this.#startReadyTasks(plan);
   }
 }
 

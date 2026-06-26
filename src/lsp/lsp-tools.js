@@ -14,7 +14,7 @@
  */
 
 import { readFile, writeFile } from 'fs/promises';
-import { resolve, dirname, relative, basename } from 'path';
+import { resolve, dirname, relative, basename, sep } from 'path';
 import { pathToFileURL } from 'url';
 import { ToolCategory } from '../core/types/index.js';
 import { computeTag } from '../core/harness/hashline.js';
@@ -1686,13 +1686,13 @@ async function applyWorkspaceEdit(
 
   const collectEdits = (uri, edits) => {
     let filePath = uri.startsWith('file://') ? uri.slice(7) : uri;
-    
+
     const resolvedPath = resolve(filePath);
     if (!resolvedPath.startsWith(normalizedWorkingDir)) {
       filesFailed.push(`${filePath}: path escapes working directory`);
       return;
     }
-    
+
     if (!editsByPath[filePath]) {
       editsByPath[filePath] = { edits: [], originalContent: null };
     }

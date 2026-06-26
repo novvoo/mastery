@@ -1,19 +1,65 @@
 /**
  * 第 9 阶段：完成条件验证 — 单元测试
- * 
+ *
  * 验证 Subtask.validateCompletion()、canBeAdvancedBy() 和 PlanExecutor.executeTask()
  * 的严格性，防止虚假完成（一个工具调用不应同时推进多个任务）
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
-import { TaskStatus, Subtask, PlanExecutor, ExecutionPlan } from '../../src/planner/graph-planner.js';
+import { describe, test, expect } from 'bun:test';
+import {
+  TaskStatus,
+  Subtask,
+  PlanExecutor,
+  ExecutionPlan,
+} from '../../src/planner/graph-planner.js';
+
+function createStrictValidationFixture() {
+  const plan = new ExecutionPlan({ name: 'Test Plan' });
+
+  plan.addTask({
+    id: 'inspect_readme',
+    name: 'Read README',
+    description: 'Read the README file',
+    dependencies: [],
+    phase: 'exploration',
+    allowedTools: ['read_file'],
+    requiredToolIntents: ['read'],
+    completionPredicate: (ctx) =>
+      ctx.toolName === 'read_file' && (ctx.args?.path || '').includes('README'),
+  });
+
+  plan.addTask({
+    id: 'implement_changes',
+    name: 'Implement Changes',
+    description: 'Make code changes',
+    dependencies: ['inspect_readme'],
+    phase: 'implementation',
+    allowedTools: ['write_file', 'edit_file'],
+    requiredToolIntents: ['write'],
+    completionPredicate: (ctx) =>
+      ['write_file', 'edit_file'].includes(ctx.toolName) && ctx?.result?.success === true,
+  });
+
+  plan.addTask({
+    id: 'verify_result',
+    name: 'Verify Result',
+    description: 'Verify the changes',
+    dependencies: ['implement_changes'],
+    phase: 'verification',
+    allowedTools: ['shell'],
+    requiredToolIntents: ['execute'],
+  });
+
+  return {
+    plan,
+    executor: new PlanExecutor(plan, { maxToolCallsPerTask: 10 }),
+  };
+}
 
 describe('Phase 9: Strict Completion Validation', () => {
-
   // ==================== Subtask.validateCompletion ====================
 
   describe('Subtask.validateCompletion()', () => {
-
     test('should reject task with no tool calls', () => {
       const task = new Subtask({
         id: 'test_task',
@@ -23,7 +69,7 @@ describe('Phase 9: Strict Completion Validation', () => {
       });
 
       const validation = task.validateCompletion({ strictMode: true });
-      
+
       expect(validation.completed).toBe(false);
       expect(validation.missingRequirements).toContain('tool_calls');
     });
@@ -38,11 +84,11 @@ describe('Phase 9: Strict Completion Validation', () => {
 
       // Only call read_file, missing write
       task.recordToolCall('read_file', { path: './README.md' }, { success: true });
-      
+
       const validation = task.validateCompletion({ strictMode: true });
-      
+
       expect(validation.completed).toBe(false);
-      expect(validation.missingRequirements.some(r => r.includes('missing_intents'))).toBe(true);
+      expect(validation.missingRequirements.some((r) => r.includes('missing_intents'))).toBe(true);
     });
 
     test('should pass when all requiredToolIntents are satisfied', () => {
@@ -54,9 +100,9 @@ describe('Phase 9: Strict Completion Validation', () => {
       });
 
       task.recordToolCall('write_file', { path: './src/index.js' }, { success: true });
-      
+
       const validation = task.validateCompletion({ strictMode: true });
-      
+
       expect(validation.completed).toBe(true);
       expect(validation.reason).toBe('Task completion validated');
     });
@@ -71,11 +117,13 @@ describe('Phase 9: Strict Completion Validation', () => {
       });
 
       task.recordToolCall('write_file', { path: './src/main.js' }, { success: true });
-      
+
       const validation = task.validateCompletion({ strictMode: true });
-      
+
       expect(validation.completed).toBe(false);
-      expect(validation.missingRequirements.some(r => r.includes('missing_mutations'))).toBe(true);
+      expect(validation.missingRequirements.some((r) => r.includes('missing_mutations'))).toBe(
+        true,
+      );
     });
 
     test('should pass when all mutation paths are covered', () => {
@@ -88,9 +136,9 @@ describe('Phase 9: Strict Completion Validation', () => {
       });
 
       task.recordToolCall('write_file', { path: './src/main.js' }, { success: true });
-      
+
       const validation = task.validateCompletion({ strictMode: true });
-      
+
       expect(validation.completed).toBe(true);
     });
 
@@ -103,19 +151,17 @@ describe('Phase 9: Strict Completion Validation', () => {
       });
 
       task.recordToolCall('read_file', { path: './README.md' }, { success: true });
-      
+
       // Non-strict mode doesn't check requiredToolIntents
       const validation = task.validateCompletion({ strictMode: false });
-      
+
       expect(validation.completed).toBe(true);
     });
-
   });
 
   // ==================== Subtask.canBeAdvancedBy ====================
 
   describe('Subtask.canBeAdvancedBy() with enhanced predicates', () => {
-
     test('should reject tool not in allowedTools', () => {
       const task = new Subtask({
         id: 'implement_changes',
@@ -141,7 +187,9 @@ describe('Phase 9: Strict Completion Validation', () => {
       });
 
       // Should fail when result indicates failure
-      expect(task.canBeAdvancedBy('write_file', {}, { success: false, error: 'EACCES' })).toBe(false);
+      expect(task.canBeAdvancedBy('write_file', {}, { success: false, error: 'EACCES' })).toBe(
+        false,
+      );
       expect(receivedContext).not.toBeNull();
       expect(receivedContext.toolName).toBe('write_file');
       expect(receivedContext.result.success).toBe(false);
@@ -180,58 +228,13 @@ describe('Phase 9: Strict Completion Validation', () => {
       expect(task.canBeAdvancedBy('write_file', {}, { success: false })).toBe(false);
       expect(task.canBeAdvancedBy('read_file', {})).toBe(false);
     });
-
   });
 
   // ==================== PlanExecutor.executeTask strict validation ====================
 
   describe('PlanExecutor.executeTask() with Phase 9 strict validation', () => {
-
-    let plan;
-    let executor;
-
-    beforeEach(() => {
-      plan = new ExecutionPlan({ name: 'Test Plan' });
-      
-      plan.addTask({
-        id: 'inspect_readme',
-        name: 'Read README',
-        description: 'Read the README file',
-        dependencies: [],
-        phase: 'exploration',
-        allowedTools: ['read_file'],
-        requiredToolIntents: ['read'],
-        completionPredicate: (ctx) => 
-          ctx.toolName === 'read_file' && (ctx.args?.path || '').includes('README'),
-      });
-
-      plan.addTask({
-        id: 'implement_changes',
-        name: 'Implement Changes',
-        description: 'Make code changes',
-        dependencies: ['inspect_readme'],
-        phase: 'implementation',
-        allowedTools: ['write_file', 'edit_file'],
-        requiredToolIntents: ['write'],
-        completionPredicate: (ctx) =>
-          ['write_file', 'edit_file'].includes(ctx.toolName) &&
-          ctx?.result?.success === true,
-      });
-
-      plan.addTask({
-        id: 'verify_result',
-        name: 'Verify Result',
-        description: 'Verify the changes',
-        dependencies: ['implement_changes'],
-        phase: 'verification',
-        allowedTools: ['shell'],
-        requiredToolIntents: ['execute'],
-      });
-
-      executor = new PlanExecutor(plan, { maxToolCallsPerTask: 10 });
-    });
-
     test('initial state should select first ready task', () => {
+      const { executor } = createStrictValidationFixture();
       const currentTask = executor.getCurrentRunnableTask();
       expect(currentTask).not.toBeNull();
       expect(currentTask.id).toBe('inspect_readme');
@@ -239,6 +242,7 @@ describe('Phase 9: Strict Completion Validation', () => {
     });
 
     test('should NOT complete task when predicate not matched', async () => {
+      const { executor } = createStrictValidationFixture();
       // Call read_file but on a different file - should NOT complete inspect_readme
       const result = await executor.executeTask(
         'inspect_readme',
@@ -254,6 +258,7 @@ describe('Phase 9: Strict Completion Validation', () => {
     });
 
     test('should complete task when predicate IS matched', async () => {
+      const { executor } = createStrictValidationFixture();
       // First call the right file
       const result = await executor.executeTask(
         'inspect_readme',
@@ -270,6 +275,7 @@ describe('Phase 9: Strict Completion Validation', () => {
     });
 
     test('implementation task requires successful write_file result', async () => {
+      const { executor } = createStrictValidationFixture();
       // Set up: first complete inspect_readme
       await executor.executeTask(
         'inspect_readme',
@@ -300,6 +306,7 @@ describe('Phase 9: Strict Completion Validation', () => {
     });
 
     test('tool outside allowedTools should be rejected', async () => {
+      const { executor } = createStrictValidationFixture();
       const result = await executor.executeTask(
         'inspect_readme',
         { name: 'write_file', args: { path: './test.js' } }, // Not in allowedTools for inspect_readme!
@@ -310,6 +317,7 @@ describe('Phase 9: Strict Completion Validation', () => {
     });
 
     test('progress tracking should reflect accurate state', async () => {
+      const { executor } = createStrictValidationFixture();
       // Complete all tasks sequentially
       await executor.executeTask(
         'inspect_readme',
@@ -335,6 +343,7 @@ describe('Phase 9: Strict Completion Validation', () => {
     });
 
     test('stalled event should fire after max tool calls without completion', async () => {
+      const { executor } = createStrictValidationFixture();
       let stallEventFired = false;
       let stallData = null;
       executor.on('task:stalled', (data) => {
@@ -357,16 +366,14 @@ describe('Phase 9: Strict Completion Validation', () => {
       expect(stallData.taskId).toBe('inspect_readme');
       expect(stallData.toolCallCount).toBeGreaterThanOrEqual(10);
     });
-
   });
 
   // ==================== False Completion Prevention ====================
 
   describe('False completion prevention', () => {
-
     test('one read_file should not complete multiple exploration tasks', () => {
       const plan = new ExecutionPlan({ name: 'Multi-exploration plan' });
-      
+
       plan.addTask({
         id: 'inspect_readme',
         name: 'Read README',
@@ -374,7 +381,7 @@ describe('Phase 9: Strict Completion Validation', () => {
         dependencies: [],
         phase: 'exploration',
         allowedTools: ['read_file'],
-        completionPredicate: (ctx) => 
+        completionPredicate: (ctx) =>
           ctx.toolName === 'read_file' && (ctx.args?.path || '').toLowerCase().includes('readme'),
       });
 
@@ -419,18 +426,16 @@ describe('Phase 9: Strict Completion Validation', () => {
 
       // Only modified one file
       task.recordToolCall('write_file', { path: './src/a.js' }, { success: true });
-      
+
       const validation = task.validateCompletion({ strictMode: true });
       expect(validation.completed).toBe(false);
       expect(validation.missingRequirements.length).toBeGreaterThan(0);
 
       // Modify second file
       task.recordToolCall('edit_file', { path: './src/b.js' }, { success: true });
-      
+
       const validation2 = task.validateCompletion({ strictMode: true });
       expect(validation2.completed).toBe(true);
     });
-
   });
-
 });

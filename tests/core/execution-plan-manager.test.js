@@ -1,119 +1,4 @@
-import { describe, test, expect, mock, beforeEach } from 'bun:test';
-
-// Mock the ExecutionPlan and TaskStatus from graph-planner
-const TaskStatus = {
-  PENDING: 'pending',
-  BLOCKED: 'blocked',
-  READY: 'ready',
-  RUNNING: 'running',
-  COMPLETED: 'completed',
-  FAILED: 'failed',
-  SKIPPED: 'skipped',
-  CANCELLED: 'cancelled',
-};
-
-// We need to mock the graph-planner module before importing
-mock.module('../../src/planner/graph-planner.js', () => {
-  return {
-    TaskStatus,
-    ExecutionPlan: class ExecutionPlan {
-      constructor(opts) {
-        this.name = opts?.name || '';
-        this.description = opts?.description || '';
-        this.context = opts?.context || {};
-        this.status = TaskStatus.PENDING;
-        this.startedAt = null;
-        this.completedAt = null;
-        this.tasks = new Map();
-      }
-
-      addTask(task) {
-        const deps = Array.isArray(task.dependencies) ? task.dependencies : [];
-        const t = {
-          id: task.id,
-          name: task.name,
-          description: task.description || '',
-          dependencies: new Set(deps),
-          dependents: new Set(),
-          status: TaskStatus.PENDING,
-          allowedTools: task.allowedTools || [],
-          completionPredicate: task.completionPredicate || null,
-          toolCallsHistory: [],
-          updateStatus(status, data) {
-            this.status = status;
-            if (data?.result) {
-              this.result = data.result;
-            }
-          },
-          checkDependencies(taskMap) {
-            if (this.dependencies.size === 0) {
-              return true;
-            }
-            for (const depId of this.dependencies) {
-              const dep = taskMap.get(depId);
-              if (!dep || dep.status !== TaskStatus.COMPLETED) {
-                return false;
-              }
-            }
-            return true;
-          },
-          recordToolCall(toolName, args, result) {
-            this.toolCallsHistory.push({ toolName, args, result, timestamp: Date.now() });
-          },
-          canBeAdvancedBy(toolName) {
-            if (this.allowedTools.length > 0 && !this.allowedTools.includes(toolName)) {
-              return false;
-            }
-            if (typeof this.completionPredicate === 'function') {
-              return this.completionPredicate({ toolName });
-            }
-            return true;
-          },
-          validateCompletion() {
-            return { completed: true, reason: 'mock-validation' };
-          },
-        };
-        this.tasks.set(task.id, t);
-      }
-
-      getTask(id) {
-        return this.tasks.get(id);
-      }
-
-      getReadyTasks() {
-        return Array.from(this.tasks.values()).filter(
-          (t) => t.status === TaskStatus.PENDING || t.status === TaskStatus.BLOCKED,
-        );
-      }
-
-      toJSON() {
-        return {
-          name: this.name,
-          description: this.description,
-          status: this.status,
-          tasks: Array.from(this.tasks.values()).map((t) => ({
-            id: t.id,
-            name: t.name,
-            description: t.description,
-            status: t.status,
-            dependencies: Array.from(t.dependencies || []),
-          })),
-        };
-      }
-    },
-    default: class GraphPlanner {
-      constructor() {
-        this._latestPlanId = null;
-      }
-      createPlan() {
-        this._latestPlanId = 'mock-plan';
-      }
-      decomposeTask() {
-        return [];
-      }
-    },
-  };
-});
+import { describe, test, expect, beforeEach } from 'bun:test';
 
 import {
   isWorkspaceInspectionTool,
@@ -412,6 +297,19 @@ describe('ExecutionPlanManager', () => {
     expect(plan.getTask('verify_result')).toBeDefined();
   });
 
+  test('documentation plan does not add code project profiling step', () => {
+    manager.createIfNeeded('编写 README 文档', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+      isDocumentationTask: true,
+      planType: 'documentation',
+    });
+
+    expect(manager.plan.context.planType).toBe('documentation');
+    expect(manager.plan.getTask('profile_project')).toBeUndefined();
+  });
+
   test('createIfNeeded includes semantic_risk_review when profile requires it', () => {
     manager.createIfNeeded('Fix app.js bug', {
       requiresPlan: true,
@@ -490,6 +388,8 @@ describe('ExecutionPlanManager', () => {
     expect(prompt).toContain('inspect_workspace');
     expect(prompt).toContain('implement_changes');
     expect(prompt).toContain('verify_result');
+    expect(prompt).toContain('Hashline and plan are one execution loop');
+    expect(prompt).toContain('apply_hashline_patch is the preferred fast edit vehicle');
   });
 
   test('buildPrompt includes semantic risk guidance when profile requires it', () => {

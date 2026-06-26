@@ -36,6 +36,52 @@ describe('TextToolParser: detectMalformedToolCall', () => {
     expect(p.detectMalformedToolCall(res)).toBeNull();
   });
 
+  it('parses fenced plan JSON with metadata and action object', () => {
+    const p = new TextToolParser(makeRegistry(['shell']));
+    const res = `我将创建项目结构。
+
+\`\`\`json
+{
+  "evaluation_previous_goal": "start",
+  "memory": "init",
+  "next_goal": "create folders",
+  "action": {
+    "shell": {
+      "command": "mkdir -p snake-game/src/{core,entities} snake-game/tests && cd snake-game && pwd"
+    }
+  }
+}
+\`\`\``;
+    const parsed = p.parse(res).filter((c) => c.source !== 'natural_language');
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].name).toBe('shell');
+    expect(parsed[0].arguments.command).toContain('mkdir -p snake-game');
+  });
+
+  it('recovers malformed fenced plan JSON shell action instead of dropping it', () => {
+    const p = new TextToolParser(makeRegistry(['shell']));
+    const res = `我将创建项目结构。
+
+\`\`\`json
+{
+  "evaluation_previous_goal": "start",
+  "memory": "init",
+  "next_goal": "create folders",
+  "action": {
+    "shell": {
+      "command": "mkdir -p snake-game/src/{core,entities} snake-game/tests && cd snake-game && pwd
+    }
+  }
+}
+\`\`\``;
+    const parsed = p.parse(res).filter((c) => c.source !== 'natural_language');
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].name).toBe('shell');
+    expect(parsed[0].arguments.command).toBe(
+      'mkdir -p snake-game/src/{core,entities} snake-game/tests && cd snake-game && pwd',
+    );
+  });
+
   it('detects <action>...</annotation> (mismatched close tag)', () => {
     const p = new TextToolParser(makeRegistry(['write_file']));
     const res = `<action>{"name": "write_file", "arguments": {"path": "x.js", "content": "hi"}}</annotation>`;

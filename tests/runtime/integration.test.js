@@ -4,6 +4,9 @@
  */
 
 import { describe, it, beforeEach, afterEach, expect } from 'bun:test';
+import { mkdtempSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import {
   createAgentEngine,
   RuntimeConfig,
@@ -33,7 +36,7 @@ describe('Runtime Layer Integration Tests', () => {
 
   beforeEach(() => {
     // 创建临时测试目录
-    testDir = `/tmp/runtime-test-${Date.now()}`;
+    testDir = mkdtempSync(join(tmpdir(), 'runtime-test-'));
 
     // 获取事件总线实例
     eventBus = getEventBus();

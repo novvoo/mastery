@@ -116,7 +116,7 @@ describe('selectToolsForRequest', () => {
     const names = namesOf(selected);
     expect(names).toContain('read_file');
     expect(names).toContain('change_plan');
-    expect(names).toContain('risk_check');
+    expect(names).not.toContain('risk_check');
     expect(names).not.toContain('write_file');
   });
 

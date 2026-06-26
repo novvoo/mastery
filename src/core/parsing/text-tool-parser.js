@@ -340,6 +340,7 @@ export class TextToolParser {
       findBalancedJSON,
       safeJSONParse: (s) => this.#safeJSONParse(s),
       toolCallsFromJSON: (j, s, i) => this.#toolCallsFromJSON(j, s, i),
+      parseLooseRawJSONAction: (t) => this.#parseLooseRawJSONAction(t),
     });
   }
 

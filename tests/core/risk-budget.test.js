@@ -140,8 +140,8 @@ describe('risk-budget', () => {
       expect(computeIterationBudget(RISK_LEVEL.CRITICAL, 120)).toBe(120);
     });
 
-    test('LOW gets reduced budget', () => {
-      expect(computeIterationBudget(RISK_LEVEL.LOW, 120)).toBeLessThan(120);
+    test('LOW also gets full budget because risk no longer restricts iteration budget', () => {
+      expect(computeIterationBudget(RISK_LEVEL.LOW, 120)).toBe(120);
     });
 
     test('accepts profile object', () => {

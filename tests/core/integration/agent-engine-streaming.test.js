@@ -113,8 +113,8 @@ mock.module('../../../src/core/token-scope.js', () => ({
   },
 }));
 
-mock.module('../../../src/core/execution-plan-manager.js', () => ({
-  ExecutionPlanManager: class ExecutionPlanManager {
+mock.module('../../../src/core/agent-planner.js', () => ({
+  AgentPlanner: class AgentPlanner {
     constructor() {}
     get plan() {
       return null;

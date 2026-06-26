@@ -6,7 +6,7 @@
  *
  * Runtime Layer (agent-engine.js)
  *   ├─ TaskClassifier        — 任务类型 / 语义风险 / 迭代预算
- *   ├─ ExecutionPlanManager  — 执行计划 (inspect→plan→implement→verify)
+ *   ├─ AgentPlanner          — plan facade → ExecutionPlanManager core
  *   ├─ ToolExecutor          — 工具规范化执行 / 安全策略 / 缓存
  *   ├─ ContextManager        — 上下文窗口裁剪 / 工作区摘要
  *   └─ StagnationDetector    — 停滞 nudge / 进度检查点
@@ -50,7 +50,7 @@ import { DependencyGraph } from '../../harness/dependency-graph.js';
 import { withRoutedToolContext } from '../../routed-tool-context.js';
 import { TokenScope } from './support/token-scope.js';
 import { quickAssess, computeIterationBudget } from './support/risk-budget.js';
-import { ExecutionPlanManager } from './execution-plan-manager.js';
+import { AgentPlanner } from './agent-planner.js';
 import { ExecutionFeedbackLoop } from './execution-feedback.js';
 import { ToolExecutor } from './tool-executor.js';
 import { ContextManager } from './context-manager.js';
@@ -129,7 +129,7 @@ function stripActionBlocks(text = '', { toolRegistry } = {}) {
     .replace(/<tool>\s*\/?[A-Za-z_][\w-]*\s*<\/tool>/gi, '')
     .replace(/<tool_code>[\s\S]*?<\/tool_code>/gi, '')
     .replace(/<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi, '')
-    .replace(/```(?:json|tool)?\s*\{[\s\S]*?\}\s*```/gi, '');
+    .replace(/```(?:json|tool)?\s*\n?\s*\{[\s\S]*?\}\s*```/gi, '');
 
   if (toolRegistry) {
     const tools = toolRegistry.getAll?.() || [];
@@ -159,31 +159,119 @@ function stripActionBlocks(text = '', { toolRegistry } = {}) {
 // 会通过 text_delta 直接进入 UI 聊天气泡，在 parser 识别为工具调用前
 // 就已经显示给用户了。
 //
-// 解决：在流式管道中增加 buffer，当检测到文本以 '{' 开始时先缓冲，
-// 判断是否为工具协议 JSON，如果是则抑制显示，否则 flush 到 UI。
+// 解决：在流式管道中扫描 JSON / XML / fenced JSON 候选片段，
+// 只抑制识别为工具协议的结构，普通 JSON / XML / 文本照常显示。
 // ============================================================
 
 const PROTOCOL_FIELD_PATTERN =
   /"action"\s*:|"evaluation_previous_goal"\s*:|"next_goal"\s*:|"memory"\s*:/;
 const TOOL_XML_TAG_PATTERN = /<(tool|tool_call|function|function_call|invoke|tool_code)\b/i;
-const MAX_PROTO_BUFFER_SIZE = 2048;
+const TOOL_XML_CLOSE_PATTERN = /<\/(tool|tool_call|function|function_call|invoke|tool_code)\s*>/i;
+const DSML_PIPE_OPEN_PATTERN = /<[|｜]+\s*DSML\s*[|｜]+[^>]*>/i;
+const DSML_PIPE_CLOSE_PATTERN = /<\/[|｜]+\s*DSML\s*[|｜]+[^>]*>/i;
+const FENCED_JSON_PROTOCOL_PATTERN = /```(?:json|tool)?\s*\{/i;
+const MAX_PROTO_BUFFER_SIZE = 8192;
 
-function looksLikeToolXML(text) {
-  if (!text || typeof text !== 'string') return false;
-  const trimmed = text.trimStart();
-  if (!trimmed.startsWith('<')) return false;
-  if (TOOL_XML_TAG_PATTERN.test(trimmed)) return true;
-  if (/^<[A-Za-z_][\w-]*>/.test(trimmed)) {
-    return true;
+function findProtocolCandidateIndex(text) {
+  const indexes = [
+    text.indexOf('{'),
+    text.indexOf('<'),
+    (() => {
+      const match = text.match(FENCED_JSON_PROTOCOL_PATTERN);
+      return match ? match.index : -1;
+    })(),
+  ].filter((index) => index >= 0);
+  return indexes.length ? Math.min(...indexes) : -1;
+}
+
+function jsonObjectEndIndex(text, startIndex = 0) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = startIndex; i < text.length; i++) {
+    const char = text[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\' && inString) {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (char === '{') {
+      depth++;
+    } else if (char === '}') {
+      depth--;
+      if (depth === 0) {
+        return i + 1;
+      }
+    }
   }
-  return false;
+
+  return -1;
+}
+
+function classifyProtocolBuffer(buffer, bufferingType) {
+  if (buffer.length > MAX_PROTO_BUFFER_SIZE) {
+    return { status: 'emit', length: buffer.length };
+  }
+
+  if (bufferingType === 'fenced_json') {
+    const closeIndex = buffer.indexOf('```', 3);
+    if (closeIndex === -1) {
+      return { status: 'pending' };
+    }
+    return PROTOCOL_FIELD_PATTERN.test(buffer)
+      ? { status: 'suppress', length: closeIndex + 3 }
+      : { status: 'emit', length: closeIndex + 3 };
+  }
+
+  if (bufferingType === 'json') {
+    const endIndex = jsonObjectEndIndex(buffer);
+    if (endIndex === -1) {
+      return { status: 'pending' };
+    }
+    return PROTOCOL_FIELD_PATTERN.test(buffer.slice(0, endIndex))
+      ? { status: 'suppress', length: endIndex }
+      : { status: 'emit', length: endIndex };
+  }
+
+  if (bufferingType === 'xml') {
+    const trimmed = buffer.trimStart();
+    if (!/^<[/A-Za-z_|｜]/.test(trimmed)) {
+      return { status: 'emit', length: buffer.length };
+    }
+    if (!TOOL_XML_TAG_PATTERN.test(trimmed) && !DSML_PIPE_OPEN_PATTERN.test(trimmed)) {
+      const tagEnd = buffer.indexOf('>');
+      return tagEnd === -1 ? { status: 'pending' } : { status: 'emit', length: tagEnd + 1 };
+    }
+    if (/^<[^>]+\/>/.test(trimmed)) {
+      return { status: 'suppress', length: buffer.indexOf('>') + 1 };
+    }
+    const closeMatch =
+      buffer.match(TOOL_XML_CLOSE_PATTERN) || buffer.match(DSML_PIPE_CLOSE_PATTERN);
+    if (!closeMatch) {
+      return { status: 'pending' };
+    }
+    return { status: 'suppress', length: closeMatch.index + closeMatch[0].length };
+  }
+
+  return { status: 'emit', length: buffer.length };
 }
 
 /**
  * 创建一个流式协议过滤器实例。
  * @returns {{ push: (text: string) => { visibleText: string, protocolDetected: boolean, protocolPreview?: string } }}
  */
-function createProtocolStreamFilter() {
+export function createProtocolStreamFilter() {
   let buffer = '';
   let isBuffering = false;
   let bufferingType = null;
@@ -191,82 +279,75 @@ function createProtocolStreamFilter() {
   function push(text) {
     if (!text || typeof text !== 'string') return { visibleText: '', protocolDetected: false };
 
-    if (!isBuffering) {
-      const trimmedLeading = text.trimStart();
-      if (!trimmedLeading.startsWith('{') && !trimmedLeading.startsWith('<')) {
-        return { visibleText: text, protocolDetected: false };
+    let input = text;
+    let visibleText = '';
+    let protocolDetected = false;
+    let protocolPreview = '';
+
+    while (input) {
+      if (!isBuffering) {
+        const candidateIndex = findProtocolCandidateIndex(input);
+        if (candidateIndex === -1) {
+          visibleText += input;
+          break;
+        }
+
+        visibleText += input.slice(0, candidateIndex);
+        buffer = input.slice(candidateIndex);
+        isBuffering = true;
+        bufferingType = FENCED_JSON_PROTOCOL_PATTERN.test(buffer)
+          ? 'fenced_json'
+          : buffer.trimStart().startsWith('{')
+            ? 'json'
+            : 'xml';
+        input = '';
+      } else {
+        buffer += input;
+        input = '';
       }
 
-      isBuffering = true;
-      buffer = text;
-      bufferingType = trimmedLeading.startsWith('{') ? 'json' : 'xml';
-    } else {
-      buffer += text;
-    }
+      const decision = classifyProtocolBuffer(buffer, bufferingType);
+      if (decision.status === 'pending') {
+        break;
+      }
 
-    if (buffer.length > MAX_PROTO_BUFFER_SIZE) {
-      isBuffering = false;
-      const out = buffer;
+      const consumed = buffer.slice(0, decision.length);
+      input = buffer.slice(decision.length);
+      if (decision.status === 'suppress') {
+        protocolDetected = true;
+        protocolPreview ||= consumed.length <= 200 ? consumed : consumed.slice(0, 200) + '...';
+      } else {
+        visibleText += consumed;
+      }
       buffer = '';
+      isBuffering = false;
       bufferingType = null;
-      return { visibleText: out, protocolDetected: false };
     }
 
-    if (bufferingType === 'json') {
-      if (PROTOCOL_FIELD_PATTERN.test(buffer)) {
-        const preview = buffer.length <= 200 ? buffer : buffer.slice(0, 200) + '...';
-        buffer = '';
-        isBuffering = false;
-        bufferingType = null;
-        return { visibleText: '', protocolDetected: true, protocolPreview: preview };
-      }
-
-      let depth = 0;
-      for (let i = 0; i < buffer.length; i++) {
-        if (buffer[i] === '{') depth++;
-        else if (buffer[i] === '}') depth--;
-        if (depth === 0 && i > 0) {
-          isBuffering = false;
-          const out = buffer;
-          buffer = '';
-          bufferingType = null;
-          return { visibleText: out, protocolDetected: false };
-        }
-      }
-    } else if (bufferingType === 'xml') {
-      if (TOOL_XML_TAG_PATTERN.test(buffer)) {
-        const preview = buffer.length <= 200 ? buffer : buffer.slice(0, 200) + '...';
-        buffer = '';
-        isBuffering = false;
-        bufferingType = null;
-        return { visibleText: '', protocolDetected: true, protocolPreview: preview };
-      }
-
-      if (/<\/(tool|tool_call|function|function_call|invoke|tool_code)\b/i.test(buffer)) {
-        buffer = '';
-        isBuffering = false;
-        bufferingType = null;
-        return { visibleText: '', protocolDetected: true };
-      }
-
-      const tagMatch = buffer.match(/^<([A-Za-z_][\w-]*)>/i);
-      if (tagMatch) {
-        const closingTag = `</${tagMatch[1]}>`;
-        if (buffer.includes(closingTag)) {
-          buffer = '';
-          isBuffering = false;
-          bufferingType = null;
-          return { visibleText: '', protocolDetected: true };
-        }
-      }
-    }
-
-    return { visibleText: '', protocolDetected: false };
+    return { visibleText, protocolDetected, protocolPreview: protocolPreview || undefined };
   }
 
-  return { push };
-}
+  function flush() {
+    if (!isBuffering || !buffer) {
+      return { visibleText: '', protocolDetected: false };
+    }
+    const decision = classifyProtocolBuffer(buffer, bufferingType);
+    if (decision.status === 'suppress') {
+      const preview = buffer.length <= 200 ? buffer : buffer.slice(0, 200) + '...';
+      buffer = '';
+      isBuffering = false;
+      bufferingType = null;
+      return { visibleText: '', protocolDetected: true, protocolPreview: preview };
+    }
+    const visibleText = buffer;
+    buffer = '';
+    isBuffering = false;
+    bufferingType = null;
+    return { visibleText, protocolDetected: false };
+  }
 
+  return { push, flush };
+}
 function normalizeModelResponse(response = {}) {
   const text =
     typeof response.text === 'string'
@@ -698,7 +779,15 @@ export class AgentEngine {
     this.#intentClassifier = this.#config.intentClassification
       ? new IntentClassifier(modelProvider, this.#toolRegistry, this.#config.intentClassifier || {})
       : null;
-    this.#executionPlanManager = new ExecutionPlanManager();
+    this.#executionPlanManager = new AgentPlanner({
+      debugEvent: (label, details) => this.#ui.debugEvent?.(label, details),
+      sessionManager: this.#sessionManager,
+      onPlanAdvance: (progress) => {
+        if (typeof this.#ui.planProgress === 'function') {
+          this.#ui.planProgress(progress);
+        }
+      },
+    });
     this.#feedbackLoop = new ExecutionFeedbackLoop({ learnFromHistory: true });
     this.#contextPruner = new DynamicContextPruning();
     this.#tokenScope =
@@ -1140,10 +1229,12 @@ export class AgentEngine {
       this.#expandContextOnDemand(iteration, maxIterations, executionPlan);
 
       // ========== Step 5：2 层路由 (intent → tool-router) ==========
+      const currentTask = this.#executionPlanManager.currentTask;
       const currentPhase =
-        this.#executionPlanManager.plan?.status === TaskStatus.RUNNING
+        currentTask?.phase ||
+        (this.#executionPlanManager.plan?.status === TaskStatus.RUNNING
           ? this.#phaseFromIteration(iteration, maxIterations)
-          : null;
+          : null);
 
       // 扁平化：统一使用 tool-router 做最终工具选择
       let routedTools = selectToolsForRequest(this.#toolRegistry.getAll(), {
@@ -1151,6 +1242,7 @@ export class AgentEngine {
         taskProfile,
         intent,
         currentPhase,
+        currentTask,
       });
 
       // ======== force-action 模式：禁止只读工具，强制 Agent 写代码 ========
@@ -1360,6 +1452,16 @@ export class AgentEngine {
                   }
                   // usage / finish 不转发 UI
                 }
+                const flushed = protoFilter.flush();
+                if (flushed.visibleText) {
+                  this.#ui.onTextDelta?.(flushed.visibleText);
+                }
+                if (flushed.protocolDetected) {
+                  this.#ui.debugEvent?.('Tool protocol text suppressed from stream', {
+                    reason: 'tool_call_text_protocol',
+                    preview: flushed.protocolPreview,
+                  });
+                }
                 // finalize() 返回 chat() 同结构的完整响应
                 return await streamResult.finalize();
               },
@@ -1485,7 +1587,30 @@ export class AgentEngine {
         });
       }
 
-      // -------- 短路 1：ExecutionPlan 完成 + provider 说 stop --------
+      // -------- 短路 1：工具语法纠正（LLM 返回不合法工具调用格式） --------
+      // This must run before any "provider stop => final answer" shortcut.
+      // Plan-action protocol can arrive inside plain text/fences, and if it is malformed
+      // we should ask for a valid tool call instead of leaking it as the final answer.
+      if (
+        allToolCalls.length === 0 &&
+        response.text?.trim() &&
+        toolUseCorrections < 2 &&
+        containsUnparsedSyntax(this.#textToolParser, response.text)
+      ) {
+        toolUseCorrections++;
+        this.#ui.debugEvent?.('Tool syntax correction requested', {
+          iteration,
+          correction: toolUseCorrections,
+          responsePreview: this.#preview(response.text, 300),
+        });
+        this.#sessionManager.addAssistantMessage(response.text);
+        this.#sessionManager.addUserMessage(
+          buildToolSyntaxCorrectionPrompt(this.#textToolParser, this.#toolRegistry, response.text),
+        );
+        continue;
+      }
+
+      // -------- 短路 2：ExecutionPlan 完成 + provider 说 stop --------
       if (
         allToolCalls.length === 0 &&
         response.finishReason === 'stop' &&
@@ -1511,26 +1636,6 @@ export class AgentEngine {
           iterations: iteration,
           startedAt: runStartedAt,
         });
-      }
-
-      // -------- 短路 2：工具语法纠正（LLM 返回不合法工具调用格式） --------
-      if (
-        allToolCalls.length === 0 &&
-        response.text?.trim() &&
-        toolUseCorrections < 2 &&
-        containsUnparsedSyntax(this.#textToolParser, response.text)
-      ) {
-        toolUseCorrections++;
-        this.#ui.debugEvent?.('Tool syntax correction requested', {
-          iteration,
-          correction: toolUseCorrections,
-          responsePreview: this.#preview(response.text, 300),
-        });
-        this.#sessionManager.addAssistantMessage(response.text);
-        this.#sessionManager.addUserMessage(
-          buildToolSyntaxCorrectionPrompt(this.#textToolParser, this.#toolRegistry, response.text),
-        );
-        continue;
       }
 
       // -------- 短路 3：工具使用纠正（LLM 说"我没有工具"） --------

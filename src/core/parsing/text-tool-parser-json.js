@@ -15,15 +15,24 @@
  * @param {function} deps.toolCallsFromJSON - Convert JSON to tool calls
  * @returns {Array<object>}
  */
-export function parseJSONBlockFormat(text, { findBalancedJSON, safeJSONParse, toolCallsFromJSON }) {
+export function parseJSONBlockFormat(
+  text,
+  { findBalancedJSON, safeJSONParse, toolCallsFromJSON, parseLooseRawJSONAction },
+) {
   const toolCalls = [];
-  const blockRegex = /```(?:tool)?\s*\n?\s*\{/g;
+  const blockRegex = /```(?:tool|json)?\s*\n?\s*\{/g;
   let match;
 
   while ((match = blockRegex.exec(text)) !== null) {
     const braceStart = match.index + match[0].length - 1;
     const found = findBalancedJSON(text, braceStart);
     if (!found) {
+      const fenceEnd = text.indexOf('```', braceStart);
+      if (fenceEnd !== -1 && typeof parseLooseRawJSONAction === 'function') {
+        const rawBlock = text.slice(braceStart, fenceEnd).trim();
+        toolCalls.push(...parseLooseRawJSONAction(rawBlock));
+        blockRegex.lastIndex = fenceEnd + 3;
+      }
       continue;
     }
 
@@ -36,9 +45,16 @@ export function parseJSONBlockFormat(text, { findBalancedJSON, safeJSONParse, to
 
     try {
       const json = safeJSONParse(found.content);
-      toolCalls.push(...toolCallsFromJSON(json, 'JSON_block', toolCalls.length));
+      const parsedCalls = toolCallsFromJSON(json, 'JSON_block', toolCalls.length);
+      if (parsedCalls.length > 0) {
+        toolCalls.push(...parsedCalls);
+      } else if (typeof parseLooseRawJSONAction === 'function') {
+        toolCalls.push(...parseLooseRawJSONAction(found.content));
+      }
     } catch (e) {
-      // 不是有效的工具调用 JSON
+      if (typeof parseLooseRawJSONAction === 'function') {
+        toolCalls.push(...parseLooseRawJSONAction(found.content));
+      }
     }
     blockRegex.lastIndex = found.endIdx;
   }
@@ -279,7 +295,11 @@ export function findLooseStringEnd(text, start) {
       return i;
     }
   }
-  return -1;
+  const structuralClose = text.slice(start + 1).search(/\r?\n\s*}\s*(?:\r?\n\s*}\s*)*$/);
+  if (structuralClose !== -1) {
+    return start + 1 + structuralClose;
+  }
+  return text.length;
 }
 
 /**
