@@ -1611,11 +1611,14 @@ export class AgentEngine {
       }
 
       // -------- 短路 2：ExecutionPlan 完成 + provider 说 stop --------
+      // 保护措施：只有在至少执行了一个工具调用后才允许此短路
+      // 否则即使是计划完成状态，也应该继续尝试执行工具
       if (
         allToolCalls.length === 0 &&
         response.finishReason === 'stop' &&
         response.text?.trim() &&
-        this.#executionPlanManager.isCompleted
+        this.#executionPlanManager.isCompleted &&
+        iteration > 1
       ) {
         const answer = isTerminationResponse(response.text)
           ? extractFinalAnswer(response.text)

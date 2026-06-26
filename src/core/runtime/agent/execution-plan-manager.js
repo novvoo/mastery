@@ -859,9 +859,11 @@ export class ExecutionPlanManager {
     }
     this.#plan = plan;
     this.#useExternalPlan = true;
-    if (plan.status !== TaskStatus.RUNNING) {
+    // 确保计划状态是 RUNNING，即使是 COMPLETED 的计划也应该被重置
+    if (plan.status === TaskStatus.COMPLETED || plan.status === TaskStatus.PENDING) {
       plan.status = TaskStatus.RUNNING;
       plan.startedAt = plan.startedAt || Date.now();
+      plan.completedAt = null;
     }
     this.#startReadyTasks(plan);
     this.#emitPlanProgress({ planCreated: true, decompositionMethod: 'external' });
