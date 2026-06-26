@@ -2031,6 +2031,8 @@ export class AgentEngine {
             activePlanManager: this.#executionPlanManager,
             activePlan: this.#executionPlanManager.plan,
             currentTask: this.#executionPlanManager.currentTask,
+            activeRoutedToolNames,
+            scopeFiles: this.#executionPlanManager.currentTask?.scopeFiles || [],
           },
           {
             resultMode: 'tool',

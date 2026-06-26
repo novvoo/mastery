@@ -68,6 +68,42 @@ describe('ToolExecutor', () => {
     expect(result.result).toContain('not registered');
   });
 
+  test('blocks tools outside the current routed plan task before emitting toolCall', async () => {
+    const browserHandler = mock(async () => 'opened');
+    const browserTool = makeTool('browser_open', { handler: browserHandler });
+    const writeTool = makeTool('write_file', { required: ['path', 'content'] });
+    const { executor, ui } = makeMockExecutor({ tools: [browserTool, writeTool] });
+
+    const result = await executor.execute(
+      { id: '1', name: 'browser_open', arguments: {} },
+      {
+        activeRoutedToolNames: new Set(['write_file', 'change_plan']),
+        currentTask: { id: 'write_step', allowedTools: ['write_file'] },
+      },
+    );
+
+    expect(result.routeBlocked).toBe(true);
+    expect(result.error).toContain('not available');
+    expect(result.error).toContain('write_file');
+    expect(browserHandler).not.toHaveBeenCalled();
+    expect(ui.toolCall).not.toHaveBeenCalled();
+  });
+
+  test('does not treat an empty routed tool set as a deny-all policy', async () => {
+    const customHandler = mock(async () => 'custom ok');
+    const customTool = makeTool('custom_tool', { handler: customHandler });
+    const { executor } = makeMockExecutor({ tools: [customTool] });
+
+    const result = await executor.execute(
+      { id: '1', name: 'custom_tool', arguments: {} },
+      { activeRoutedToolNames: new Set() },
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.result).toBe('custom ok');
+    expect(customHandler).toHaveBeenCalled();
+  });
+
   test('read-only tools are not skipped on duplicate calls', async () => {
     const tool = makeTool('read_file', { handler: async () => 'content' });
     const { executor } = makeMockExecutor({ tools: [tool] });

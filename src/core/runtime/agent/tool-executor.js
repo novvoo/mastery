@@ -60,6 +60,7 @@ function isPlanTaskPseudoTool(name) {
 // 以下工具的目标路径必须在 scopeFiles 范围内，否则直接拦截。
 
 const SCOPE_READ_TOOLS = new Set(['read_file', 'list_dir', 'tree']);
+const PLAN_CONTROL_TOOLS = new Set(['change_plan']);
 
 /**
  * 从工具参数中提取目标文件路径（用于作用域匹配）。
@@ -131,6 +132,31 @@ function isPathInScope(targetPath, scopeFiles, workingDir) {
   }
 
   return false;
+}
+
+function normalizeToolNameSet(value) {
+  if (!value) {
+    return null;
+  }
+  if (value instanceof Set) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return new Set(value);
+  }
+  return null;
+}
+
+function getAllowedToolSet(context = {}) {
+  const taskAllowed = context.currentTask?.allowedTools;
+  if (Array.isArray(taskAllowed) && taskAllowed.length > 0) {
+    const routed = normalizeToolNameSet(context.activeRoutedToolNames);
+    if (routed && routed.size > 0) {
+      return routed;
+    }
+    return new Set([...taskAllowed, ...PLAN_CONTROL_TOOLS]);
+  }
+  return null;
 }
 
 export class ToolExecutor {
@@ -233,6 +259,16 @@ export class ToolExecutor {
     const resultMode = options.resultMode || 'tool';
     const startedAt = Date.now();
     const callSignature = `${name}:${JSON.stringify(args)}`;
+
+    const allowedToolNames = getAllowedToolSet(context);
+    if (allowedToolNames && !allowedToolNames.has(name)) {
+      const availableToolNames = Array.from(allowedToolNames).join(', ') || '(none)';
+      const msg = `Tool "${name}" is registered but not available for the current plan task/phase. Available tools now: ${availableToolNames}.`;
+      options.emitObservation?.(id, name, msg, resultMode);
+      this.#recordEvent(name, args, false, msg);
+      this.#ui.toolError?.(name, msg);
+      return { name, result: msg, error: msg, routeBlocked: true };
+    }
 
     // ============ 去重：内存 + 持久化缓存（读工具使用文件 hash 智能跳过） ============
     await this.#loadResultCache();
