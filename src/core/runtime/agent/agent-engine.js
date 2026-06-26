@@ -1782,7 +1782,14 @@ export class AgentEngine {
       }
 
       // -------- 短路 6：无工具调用但 provider 说 stop → 视作最终回答 --------
-      if (allToolCalls.length === 0 && response.finishReason === 'stop' && response.text?.trim()) {
+      // 计划任务结束只有一个条件：所有阶段性任务已经结束，并且已经对完成的任务做了总结
+      // 如果计划正在执行中，即使 provider 说 stop 也不能直接结束
+      if (
+        allToolCalls.length === 0 &&
+        response.finishReason === 'stop' &&
+        response.text?.trim() &&
+        !this.#executionPlanManager.isActive
+      ) {
         const answer = normalizeFinalAnswer(response.text);
         this.#ui.debugEvent?.('Final answer emitted', {
           iteration,
@@ -1871,6 +1878,8 @@ export class AgentEngine {
         }
 
         // 连续 5+ 零工具调用回合：强打断
+        // 计划任务结束只有一个条件：所有阶段性任务已经结束，并且已经对完成的任务做了总结
+        // 如果计划正在执行中，不允许因为零工具调用而直接返回错误状态
         if (zeroToolCallStreak >= 5 && allToolCalls.length === 0) {
           this.#sessionManager.addAssistantMessage(response.text);
           this.#sessionManager.addUserMessage(
@@ -1880,7 +1889,7 @@ export class AgentEngine {
               'IMMEDIATELY call write_file or edit_file to make the code change, OR provide FINAL_ANSWER. ' +
               'No more analysis — ACT NOW.',
           );
-          if (zeroToolCallStreak >= 8) {
+          if (zeroToolCallStreak >= 8 && !this.#executionPlanManager.isActive) {
             return this.#completeRun({
               success: false,
               status: 'error',
@@ -1945,7 +1954,9 @@ export class AgentEngine {
         if (forceActionTriggered && explorationIterations > effectiveExplorationBudget) {
           forceActionIgnored++;
           const remaining = FORCE_ACTION_GRACE_TURNS - forceActionIgnored;
-          if (forceActionIgnored >= FORCE_ACTION_GRACE_TURNS) {
+          // 计划任务结束只有一个条件：所有阶段性任务已经结束，并且已经对完成的任务做了总结
+          // 如果计划正在执行中，不允许因为探索预算耗尽而直接返回错误状态
+          if (forceActionIgnored >= FORCE_ACTION_GRACE_TURNS && !this.#executionPlanManager.isActive) {
             return this.#completeRun({
               success: false,
               status: 'error',
