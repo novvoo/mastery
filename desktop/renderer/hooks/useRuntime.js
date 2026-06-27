@@ -12,22 +12,45 @@ import { useState, useCallback, useEffect, useRef } from 'react';
  *
  * 支持过滤：
  *   1. <action>...</action> 标签
- *   2. 代码块中的 JSON/tool 工具调用
- *   3. 裸 ReAct JSON：{"action": {...}} / {"evaluation_previous_goal": ...} / {"next_goal": ...}
+ *   2. XML/DSML 工具调用标签
+ *   3. 代码块中的 JSON/tool 工具调用
+ *   4. 裸 ReAct JSON：{"action": {...}} / {"evaluation_previous_goal": ...} / {"next_goal": ...}
  *
  * @param {string} text - 原始文本
  * @returns {string} 过滤后的文本
  */
-function stripActionBlocks(text = '') {
+export function stripActionBlocks(text = '') {
   if (typeof text !== 'string') return text;
 
   let out = text
     // 1) <action> 标签包裹的工具调用
     .replace(/<action>[\s\S]*?<\/action>/gi, '')
-    // 2) ```json / ```tool / ``` 代码块中的工具 JSON
+    // 2) XML / DSML 工具协议
+    .replace(
+      /<[|｜]+\s*DSML\s*[|｜]+tool_calls\b[^>]*>[\s\S]*?<[|｜]+\s*DSML\s*[|｜]+tool_calls\s*>/gi,
+      '',
+    )
+    .replace(/<[|｜]+\s*DSML\s*[|｜]+invoke\b[^>]*>[\s\S]*?<[|｜]+\s*DSML\s*[|｜]+invoke\s*>/gi, '')
+    .replace(
+      /<[|｜]+\s*DSML\s*[|｜]+parameter\b[^>]*>[\s\S]*?<[|｜]+\s*DSML\s*[|｜]+parameter\s*>/gi,
+      '',
+    )
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
+    .replace(/<function_call>[\s\S]*?<\/function_call>/gi, '')
+    .replace(/<function=[^>]+>[\s\S]*?<\/function>/gi, '')
+    .replace(/<function\b[^>]*>[\s\S]*?<\/function>/gi, '')
+    .replace(/<tool=[^>]+>[\s\S]*?<\/tool>/gi, '')
+    .replace(/<tool\b[^>]*>[\s\S]*?<\/tool>/gi, '')
+    .replace(/<tool_code>[\s\S]*?<\/tool_code>/gi, '')
+    .replace(/<output\b[^>]*>\s*<\/output>/gi, '')
+    .replace(/<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi, '')
+    .replace(/<parameter\b[^>]*>[\s\S]*?<\/parameter>/gi, '')
+    .replace(/<arguments>[\s\S]*?<\/arguments>/gi, '')
+    .replace(/<args\b[^>]*>[\s\S]*?<\/args>/gi, '')
+    // 3) ```json / ```tool / ``` 代码块中的工具 JSON
     .replace(/```(?:json|tool)?\s*\{[\s\S]*?\}\s*```/gi, '');
 
-  // 3) 裸 ReAct JSON（完整匹配）：{"action": ...} 或含 evaluation_previous_goal / next_goal / memory 的对象
+  // 4) 裸 ReAct JSON（完整匹配）：{"action": ...} 或含 evaluation_previous_goal / next_goal / memory 的对象
   const trimmed = out.trim();
   if (
     trimmed.startsWith('{') &&
@@ -73,17 +96,17 @@ export function useRuntime() {
     messageCount: 0,
     toolCalls: 0,
     startTime: null,
-    endTime: null
+    endTime: null,
   });
-  
+
   // 引用
   const messageBufferRef = useRef([]);
   const statsRef = useRef(stats);
   const lastAnswerRef = useRef('');
   const completedByEventRef = useRef(false);
-  const streamingMessageIdRef = useRef(null);     // 追踪当前流式文本消息
-  const streamingTextRef = useRef('');            // 同步记录当前 assistant 文本，避免最终结果重复入列
-  const streamingReasoningIdRef = useRef(null);  // 追踪当前 reasoning 消息
+  const streamingMessageIdRef = useRef(null); // 追踪当前流式文本消息
+  const streamingTextRef = useRef(''); // 同步记录当前 assistant 文本，避免最终结果重复入列
+  const streamingReasoningIdRef = useRef(null); // 追踪当前 reasoning 消息
   const recentRuntimeEventSignaturesRef = useRef(new Map());
   const pendingMessageDeltasRef = useRef(new Map());
   const pendingMessageDeltaTimerRef = useRef(null);
@@ -101,40 +124,45 @@ export function useRuntime() {
     const pending = pendingMessageDeltasRef.current;
     pendingMessageDeltasRef.current = new Map();
 
-    setMessages(prev => prev.map(msg => {
-      const delta = pending.get(msg.id);
-      if (!delta) return msg;
-      return {
-        ...msg,
-        type: delta.type || msg.type,
-        content: (msg.content || '') + delta.text,
-        ...(delta.toolName ? { toolName: delta.toolName } : {}),
-      };
-    }));
+    setMessages((prev) =>
+      prev.map((msg) => {
+        const delta = pending.get(msg.id);
+        if (!delta) return msg;
+        return {
+          ...msg,
+          type: delta.type || msg.type,
+          content: (msg.content || '') + delta.text,
+          ...(delta.toolName ? { toolName: delta.toolName } : {}),
+        };
+      }),
+    );
   }, []);
 
-  const queueMessageDelta = useCallback((messageId, textToAppend, updates = {}) => {
-    if (!messageId || !textToAppend) return;
+  const queueMessageDelta = useCallback(
+    (messageId, textToAppend, updates = {}) => {
+      if (!messageId || !textToAppend) return;
 
-    // 过滤掉内部控制 JSON 块
-    const filteredText = stripActionBlocks(textToAppend);
-    if (!filteredText) return;
+      // 过滤掉内部控制 JSON 块
+      const filteredText = stripActionBlocks(textToAppend);
+      if (!filteredText) return;
 
-    if (messageId === streamingMessageIdRef.current) {
-      streamingTextRef.current += filteredText;
-    }
+      if (messageId === streamingMessageIdRef.current) {
+        streamingTextRef.current += filteredText;
+      }
 
-    const existing = pendingMessageDeltasRef.current.get(messageId) || { text: '' };
-    pendingMessageDeltasRef.current.set(messageId, {
-      ...existing,
-      ...updates,
-      text: existing.text + filteredText,
-    });
+      const existing = pendingMessageDeltasRef.current.get(messageId) || { text: '' };
+      pendingMessageDeltasRef.current.set(messageId, {
+        ...existing,
+        ...updates,
+        text: existing.text + filteredText,
+      });
 
-    if (!pendingMessageDeltaTimerRef.current) {
-      pendingMessageDeltaTimerRef.current = setTimeout(flushMessageDeltas, 32);
-    }
-  }, [flushMessageDeltas]);
+      if (!pendingMessageDeltaTimerRef.current) {
+        pendingMessageDeltaTimerRef.current = setTimeout(flushMessageDeltas, 32);
+      }
+    },
+    [flushMessageDeltas],
+  );
 
   const isDuplicateRuntimeEvent = useCallback((eventName, payload = {}) => {
     if (!['tool:call', 'tool:result', 'tool:error'].includes(eventName)) {
@@ -164,30 +192,30 @@ export function useRuntime() {
     recent.set(signature, now);
     return false;
   }, []);
-  
+
   // 添加消息
   const addMessage = useCallback((message) => {
     const newMessage = {
       ...message,
       timestamp: message.timestamp || Date.now(),
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     };
-    
+
     // 更新消息缓冲
     messageBufferRef.current = [...messageBufferRef.current, newMessage];
-    
+
     // 更新状态
-    setMessages(prev => [...prev, newMessage]);
-    
+    setMessages((prev) => [...prev, newMessage]);
+
     // 更新统计
-    setStats(prev => ({
+    setStats((prev) => ({
       ...prev,
-      messageCount: prev.messageCount + 1
+      messageCount: prev.messageCount + 1,
     }));
-    
+
     return newMessage;
   }, []);
-  
+
   // 清空消息
   const clearMessages = useCallback(() => {
     pendingMessageDeltasRef.current = new Map();
@@ -198,9 +226,9 @@ export function useRuntime() {
     recentRuntimeEventSignaturesRef.current = new Map();
     messageBufferRef.current = [];
     setMessages([]);
-    setStats(prev => ({
+    setStats((prev) => ({
       ...prev,
-      messageCount: 0
+      messageCount: 0,
     }));
   }, []);
 
@@ -213,29 +241,31 @@ export function useRuntime() {
     recentRuntimeEventSignaturesRef.current = new Map();
     const restoredMessages = Array.isArray(nextMessages)
       ? nextMessages.map((message) => ({
-        ...message,
-        timestamp: message.timestamp || Date.now(),
-        id: message.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      }))
+          ...message,
+          timestamp: message.timestamp || Date.now(),
+          id: message.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        }))
       : [];
 
     messageBufferRef.current = restoredMessages;
     setMessages(restoredMessages);
     setStatus(restoredMessages.length > 0 ? 'completed' : 'idle');
-    setStats(prev => ({
+    setStats((prev) => ({
       ...prev,
       messageCount: restoredMessages.length,
-      endTime: restoredMessages.length > 0 ? Date.now() : prev.endTime
+      endTime: restoredMessages.length > 0 ? Date.now() : prev.endTime,
     }));
 
-    const lastResult = [...restoredMessages].reverse().find(message => ['result', 'success'].includes(message.type));
+    const lastResult = [...restoredMessages]
+      .reverse()
+      .find((message) => ['result', 'success'].includes(message.type));
     lastAnswerRef.current = lastResult?.content || '';
   }, []);
-  
+
   // 加载工具列表
   const loadTools = useCallback(async () => {
     setLoading(true);
-    
+
     try {
       // 通过 IPC 获取工具列表
       if (typeof window !== 'undefined' && window != null && window.electronAPI) {
@@ -249,211 +279,220 @@ export function useRuntime() {
       console.error('[useRuntime] 加载工具失败:', error);
       addMessage({
         type: 'error',
-        content: `加载工具失败: ${error.message}`
+        content: `加载工具失败: ${error.message}`,
       });
     } finally {
       setLoading(false);
     }
   }, [addMessage]);
-  
+
   // 刷新状态
   const refreshState = useCallback(async () => {
     try {
       if (typeof window !== 'undefined' && window != null && window.electronAPI) {
         const state = await window.electronAPI.getState();
         setStatus(state.status || 'idle');
-        setStats(prev => ({
+        setStats((prev) => ({
           ...prev,
-          ...state.stats
+          ...state.stats,
         }));
       }
     } catch (error) {
       console.error('[useRuntime] 刷新状态失败:', error);
     }
   }, []);
-  
+
   // 追加到指定消息内容（流式增量）
-  const appendToMessage = useCallback((messageId, textToAppend, newType) => {
-    if (!textToAppend) return;
-    queueMessageDelta(messageId, textToAppend, newType ? { type: newType } : {});
-  }, [queueMessageDelta]);
+  const appendToMessage = useCallback(
+    (messageId, textToAppend, newType) => {
+      if (!textToAppend) return;
+      queueMessageDelta(messageId, textToAppend, newType ? { type: newType } : {});
+    },
+    [queueMessageDelta],
+  );
 
   // 处理用户输入
-  const processInput = useCallback(async (input, options = {}) => {
-    if (!input) {
-      addMessage({
-        type: 'warning',
-        content: '请输入任务描述'
-      });
-      return;
-    }
-    
-    // 设置运行状态
-    setStatus('running');
-    setStats(prev => ({
-      ...prev,
-      startTime: Date.now(),
-      endTime: null
-    }));
-    
-    // 重置流式消息追踪
-    completedByEventRef.current = false;
-    recentRuntimeEventSignaturesRef.current = new Map();
-    streamingMessageIdRef.current = null;
-    streamingTextRef.current = '';
-    streamingReasoningIdRef.current = null;
-    
-    // 添加用户输入消息
-    lastAnswerRef.current = '';
-    addMessage({
-      type: 'user',
-      content: input
-    });
-    
-    try {
-      // 创建一个"占位"流式消息（收到第一个增量时会显示）
-      const now = Date.now();
-      const placeholderId = `msg_stream_${now}_${Math.random().toString(36).substr(2, 9)}`;
-      streamingMessageIdRef.current = placeholderId;
+  const processInput = useCallback(
+    async (input, options = {}) => {
+      if (!input) {
+        addMessage({
+          type: 'warning',
+          content: '请输入任务描述',
+        });
+        return;
+      }
+
+      // 设置运行状态
+      setStatus('running');
+      setStats((prev) => ({
+        ...prev,
+        startTime: Date.now(),
+        endTime: null,
+      }));
+
+      // 重置流式消息追踪
+      completedByEventRef.current = false;
+      recentRuntimeEventSignaturesRef.current = new Map();
+      streamingMessageIdRef.current = null;
       streamingTextRef.current = '';
-      setMessages(prev => [...prev, {
-        id: placeholderId,
-        type: 'assistant_stream',
-        content: '',
-        timestamp: now,
-        isStreaming: true,
-      }]);
-      
-      // 通过 IPC 发送输入
-      if (typeof window !== 'undefined' && window != null && window.electronAPI) {
-        const result = await window.electronAPI.processInput(input, options);
+      streamingReasoningIdRef.current = null;
 
-        // suspend/resume 模式：processInput 立即返回 { status: 'running', mode: 'async' }
-        // agent 在后台执行，通过 event bus (IPC 事件) 驱动 UI 更新
-        // agent:complete 事件由 useEffect 中的 IPC 订阅者处理
-        if (result && result.mode === 'async') {
+      // 添加用户输入消息
+      lastAnswerRef.current = '';
+      addMessage({
+        type: 'user',
+        content: input,
+      });
+
+      try {
+        // 创建一个"占位"流式消息（收到第一个增量时会显示）
+        const now = Date.now();
+        const placeholderId = `msg_stream_${now}_${Math.random().toString(36).substr(2, 9)}`;
+        streamingMessageIdRef.current = placeholderId;
+        streamingTextRef.current = '';
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: placeholderId,
+            type: 'assistant_stream',
+            content: '',
+            timestamp: now,
+            isStreaming: true,
+          },
+        ]);
+
+        // 通过 IPC 发送输入
+        if (typeof window !== 'undefined' && window != null && window.electronAPI) {
+          const result = await window.electronAPI.processInput(input, options);
+
+          // suspend/resume 模式：processInput 立即返回 { status: 'running', mode: 'async' }
+          // agent 在后台执行，通过 event bus (IPC 事件) 驱动 UI 更新
+          // agent:complete 事件由 useEffect 中的 IPC 订阅者处理
+          if (result && result.mode === 'async') {
+            return result;
+          }
+
+          // 兼容旧模式：同步返回完整结果（非编码任务、无 ask_user 等快速场景）
+          const answer = extractAgentAnswer(result);
+          const needsUserInput = result?.status === 'needs_user_input';
+          const shouldAddFinalAnswer = answer && answer !== lastAnswerRef.current;
+
+          // 收口流式消息：优先复用同一个气泡，避免"生成中 + 最终结果"重复出现
+          const streamMsgId = streamingMessageIdRef.current;
+          const eventAlreadyHandled = completedByEventRef.current;
+          const answerUnchanged = answer && answer === lastAnswerRef.current;
+
+          if (streamMsgId) {
+            flushMessageDeltas();
+            const streamedText = streamingTextRef.current.trim();
+            const finalText = answer || streamedText;
+            setMessages((prev) => {
+              if (!finalText) {
+                return prev.filter((msg) => msg.id !== streamMsgId);
+              }
+              return prev.map((msg) =>
+                msg.id === streamMsgId
+                  ? {
+                      ...msg,
+                      type: needsUserInput ? 'warning' : 'agent',
+                      content: finalText,
+                      isStreaming: false,
+                      streamComplete: true,
+                      ...(result && typeof result === 'object' ? { resultMeta: result } : {}),
+                    }
+                  : msg,
+              );
+            });
+            streamingMessageIdRef.current = null;
+            streamingTextRef.current = '';
+          }
+
+          if (answer) {
+            lastAnswerRef.current = answer;
+          }
+
+          if (!streamMsgId && !eventAlreadyHandled && shouldAddFinalAnswer) {
+            addMessage({
+              type: needsUserInput ? 'warning' : 'result',
+              content: answer,
+              ...result,
+            });
+          } else if (!answer && !streamMsgId && !eventAlreadyHandled) {
+            addMessage({
+              type: needsUserInput ? 'warning' : 'success',
+              content: needsUserInput ? '需要你补充信息后继续' : '执行完成',
+              ...result,
+            });
+          }
+
+          setStatus(needsUserInput ? 'needs_user_input' : 'completed');
+          setStats((prev) => ({
+            ...prev,
+            endTime: Date.now(),
+          }));
+
           return result;
+        } else {
+          // 模拟执行
+          await simulateExecution(input, addMessage, setStatus, setStats);
         }
+      } catch (error) {
+        console.error('[useRuntime] 执行失败:', error);
 
-        // 兼容旧模式：同步返回完整结果（非编码任务、无 ask_user 等快速场景）
-        const answer = extractAgentAnswer(result);
-        const needsUserInput = result?.status === 'needs_user_input';
-        const shouldAddFinalAnswer = answer && answer !== lastAnswerRef.current;
-        
-        // 收口流式消息：优先复用同一个气泡，避免"生成中 + 最终结果"重复出现
+        // 清理流式标记
         const streamMsgId = streamingMessageIdRef.current;
-        const eventAlreadyHandled = completedByEventRef.current;
-        const answerUnchanged = answer && answer === lastAnswerRef.current;
-
         if (streamMsgId) {
           flushMessageDeltas();
-          const streamedText = streamingTextRef.current.trim();
-          const finalText = answer || streamedText;
-          setMessages(prev => {
-            if (!finalText) {
-              return prev.filter(msg => msg.id !== streamMsgId);
-            }
-            return prev.map(msg =>
-              msg.id === streamMsgId
-                ? {
-                  ...msg,
-                  type: needsUserInput ? 'warning' : 'agent',
-                  content: finalText,
-                  isStreaming: false,
-                  streamComplete: true,
-                  ...(result && typeof result === 'object' ? { resultMeta: result } : {}),
-                }
-                : msg
-            );
-          });
+          setMessages((prev) =>
+            prev.map((msg) => (msg.id === streamMsgId ? { ...msg, isStreaming: false } : msg)),
+          );
           streamingMessageIdRef.current = null;
           streamingTextRef.current = '';
         }
 
-        if (answer) {
-          lastAnswerRef.current = answer;
-        }
+        addMessage({
+          type: 'error',
+          content: `执行失败: ${error.message}`,
+        });
 
-        if (!streamMsgId && !eventAlreadyHandled && shouldAddFinalAnswer) {
-          addMessage({
-            type: needsUserInput ? 'warning' : 'result',
-            content: answer,
-            ...result
-          });
-        } else if (!answer && !streamMsgId && !eventAlreadyHandled) {
-          addMessage({
-            type: needsUserInput ? 'warning' : 'success',
-            content: needsUserInput ? '需要你补充信息后继续' : '执行完成',
-            ...result
-          });
-        }
-        
-        setStatus(needsUserInput ? 'needs_user_input' : 'completed');
-        setStats(prev => ({
+        setStatus('error');
+        setStats((prev) => ({
           ...prev,
-          endTime: Date.now()
+          endTime: Date.now(),
         }));
-        
-        return result;
-      } else {
-        // 模拟执行
-        await simulateExecution(input, addMessage, setStatus, setStats);
+
+        throw error;
       }
-    } catch (error) {
-      console.error('[useRuntime] 执行失败:', error);
-      
-      // 清理流式标记
-      const streamMsgId = streamingMessageIdRef.current;
-      if (streamMsgId) {
-        flushMessageDeltas();
-        setMessages(prev => prev.map(msg =>
-          msg.id === streamMsgId ? { ...msg, isStreaming: false } : msg
-        ));
-        streamingMessageIdRef.current = null;
-        streamingTextRef.current = '';
-      }
-      
-      addMessage({
-        type: 'error',
-        content: `执行失败: ${error.message}`
-      });
-      
-      setStatus('error');
-      setStats(prev => ({
-        ...prev,
-        endTime: Date.now()
-      }));
-      
-      throw error;
-    }
-  }, [addMessage, appendToMessage, flushMessageDeltas]);
-  
+    },
+    [addMessage, appendToMessage, flushMessageDeltas],
+  );
+
   // 停止执行
   const stop = useCallback(async () => {
     try {
       if (typeof window !== 'undefined' && window != null && window.electronAPI) {
         await window.electronAPI.stop();
       }
-      
+
       setStatus('idle');
-      setStats(prev => ({
+      setStats((prev) => ({
         ...prev,
-        endTime: Date.now()
+        endTime: Date.now(),
       }));
-      
+
       addMessage({
         type: 'warning',
-        content: '执行已停止'
+        content: '执行已停止',
       });
     } catch (error) {
       console.error('[useRuntime] 停止失败:', error);
       addMessage({
         type: 'error',
-        content: `停止失败: ${error.message}`
+        content: `停止失败: ${error.message}`,
       });
     }
   }, [addMessage]);
-  
+
   // 订阅 IPC 事件
   useEffect(() => {
     if (!(typeof window !== 'undefined' && window != null && window.electronAPI)) return;
@@ -467,16 +506,18 @@ export function useRuntime() {
       if (pendingMessageDeltasRef.current.size > 0) {
         const pending = pendingMessageDeltasRef.current;
         pendingMessageDeltasRef.current = new Map();
-        setMessages(prev => prev.map(msg => {
-          const delta = pending.get(msg.id);
-          if (!delta) return msg;
-          return {
-            ...msg,
-            type: delta.type || msg.type,
-            content: (msg.content || '') + delta.text,
-            ...(delta.toolName ? { toolName: delta.toolName } : {}),
-          };
-        }));
+        setMessages((prev) =>
+          prev.map((msg) => {
+            const delta = pending.get(msg.id);
+            if (!delta) return msg;
+            return {
+              ...msg,
+              type: delta.type || msg.type,
+              content: (msg.content || '') + delta.text,
+              ...(delta.toolName ? { toolName: delta.toolName } : {}),
+            };
+          }),
+        );
       }
 
       const isTextStream = messageIdRef === streamingMessageIdRef;
@@ -485,17 +526,19 @@ export function useRuntime() {
 
       if (hasContent) {
         // 有内容：关闭 isStreaming 标记，并更新类型（如从 assistant_stream -> agent）
-        setMessages(prev => prev.map(msg => {
-          if (msg.id !== msgId) return msg;
-          return {
-            ...msg,
-            isStreaming: false,
-            ...(newType ? { type: newType } : {}),
-          };
-        }));
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id !== msgId) return msg;
+            return {
+              ...msg,
+              isStreaming: false,
+              ...(newType ? { type: newType } : {}),
+            };
+          }),
+        );
       } else {
         // 空内容：直接删除这条消息，避免出现空的 Agent 气泡
-        setMessages(prev => prev.filter(msg => msg.id !== msgId));
+        setMessages((prev) => prev.filter((msg) => msg.id !== msgId));
       }
 
       // 清空 ID，下一个 delta 将创建新消息
@@ -511,22 +554,24 @@ export function useRuntime() {
       }
       return { id: msgId, text: '', hasContent: false };
     };
-    
+
     // 订阅通用 IPC 事件
     const unsubIpcEvent = window.electronAPI.on('ipc:event', (data) => {
       // IPCMessage shape: { id, type, payload, timestamp, status, correlationId, metadata }
-      const eventName = data?.metadata?.eventName || data?.payload?.event || data?.payload?.name || 'ipc:event';
+      const eventName =
+        data?.metadata?.eventName || data?.payload?.event || data?.payload?.name || 'ipc:event';
       const payload = data?.payload ?? data;
 
       // ===== 1) 切断事件：在处理这些事件前先关闭当前流 =====
-      const isCutoffEvent = eventName === 'tool:call'
-        || eventName === 'tool:result'
-        || eventName === 'tool:error'
-        || eventName === 'agent:complete'
-        || eventName === 'agent:stop'
-        || eventName === 'agent:error'
-        || eventName === 'agent:thinking'
-        || eventName === 'agent:stream_reset';
+      const isCutoffEvent =
+        eventName === 'tool:call' ||
+        eventName === 'tool:result' ||
+        eventName === 'tool:error' ||
+        eventName === 'agent:complete' ||
+        eventName === 'agent:stop' ||
+        eventName === 'agent:error' ||
+        eventName === 'agent:thinking' ||
+        eventName === 'agent:stream_reset';
 
       let closedTextStream = null;
       if (isCutoffEvent) {
@@ -538,7 +583,7 @@ export function useRuntime() {
       if (eventName === 'agent:stream_reset' && streamingMessageIdRef.current) {
         const msgId = streamingMessageIdRef.current;
         flushMessageDeltas();
-        setMessages(prev => prev.filter(msg => msg.id !== msgId));
+        setMessages((prev) => prev.filter((msg) => msg.id !== msgId));
         streamingMessageIdRef.current = null;
         streamingTextRef.current = '';
         return;
@@ -547,6 +592,9 @@ export function useRuntime() {
       // ===== 2) 流式增量事件（打字机效果）=====
       if (eventName === 'agent:text_delta') {
         const msgId = streamingMessageIdRef.current;
+        if (completedByEventRef.current && !msgId) {
+          return;
+        }
         if (payload?.text) {
           // 过滤掉内部控制 JSON 块
           const filteredText = stripActionBlocks(payload.text);
@@ -558,13 +606,16 @@ export function useRuntime() {
             const newId = `msg_stream_${now}_${Math.random().toString(36).substr(2, 9)}`;
             streamingMessageIdRef.current = newId;
             streamingTextRef.current = filteredText;
-            setMessages(prev => [...prev, {
-              id: newId,
-              type: 'assistant_stream',
-              content: filteredText,
-              timestamp: now,
-              isStreaming: true,
-            }]);
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: newId,
+                type: 'assistant_stream',
+                content: filteredText,
+                timestamp: now,
+                isStreaming: true,
+              },
+            ]);
           } else {
             queueMessageDelta(msgId, filteredText, { type: 'assistant_stream' });
           }
@@ -578,13 +629,16 @@ export function useRuntime() {
             const now = Date.now();
             const newId = `msg_reason_${now}_${Math.random().toString(36).substr(2, 9)}`;
             streamingReasoningIdRef.current = newId;
-            setMessages(prev => [...prev, {
-              id: newId,
-              type: 'thinking',
-              content: payload.text,
-              timestamp: now,
-              isStreaming: true,
-            }]);
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: newId,
+                type: 'thinking',
+                content: payload.text,
+                timestamp: now,
+                isStreaming: true,
+              },
+            ]);
           } else {
             queueMessageDelta(reasonId, payload.text);
           }
@@ -602,9 +656,9 @@ export function useRuntime() {
         return;
       }
       if (normalized.stats?.toolCall) {
-        setStats(prev => ({
+        setStats((prev) => ({
           ...prev,
-          toolCalls: prev.toolCalls + 1
+          toolCalls: prev.toolCalls + 1,
         }));
       }
       if (normalized.message) {
@@ -627,32 +681,41 @@ export function useRuntime() {
 
         if (eventName === 'agent:complete') {
           const answer = extractAgentAnswer(payload);
-          const needsUserInput = payload?.result?.status === 'needs_user_input' || payload?.status === 'needs_user_input';
+          const needsUserInput =
+            payload?.result?.status === 'needs_user_input' ||
+            payload?.status === 'needs_user_input';
+          const completeStatus = needsUserInput ? 'needs_user_input' : 'completed';
+          const markComplete = () => {
+            completedByEventRef.current = true;
+            setStatus(completeStatus);
+            setStats((prev) => ({
+              ...prev,
+              endTime: Date.now(),
+            }));
+          };
           // 场景A：有流式消息 + 有答案 → 原地收口为 agent 消息（不额外添加 result 消息）
           if (answer && closedTextStream?.id) {
-            completedByEventRef.current = true;
             lastAnswerRef.current = answer;
-            setMessages(prev => prev.map(msg =>
-              msg.id === closedTextStream.id
-                ? {
-                  ...msg,
-                  type: 'agent',
-                  content: answer,
-                  isStreaming: false,
-                  streamComplete: true,
-                }
-                : msg
-            ));
-            setStatus(needsUserInput ? 'needs_user_input' : 'completed');
-            setStats(prev => ({
-              ...prev,
-              endTime: Date.now()
-            }));
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === closedTextStream.id
+                  ? {
+                      ...msg,
+                      type: 'agent',
+                      content: answer,
+                      isStreaming: false,
+                      streamComplete: true,
+                    }
+                  : msg,
+              ),
+            );
+            markComplete();
             return;
           }
           // 场景B：有流式消息 + 无答案 + 无内容 → 删除空的流式消息
           if (!answer && closedTextStream?.id && !closedTextStream.text?.trim()) {
-            setMessages(prev => prev.filter(msg => msg.id !== closedTextStream.id));
+            setMessages((prev) => prev.filter((msg) => msg.id !== closedTextStream.id));
+            markComplete();
             return;
           }
           // 场景C：重复答案 → 忽略
@@ -662,18 +725,15 @@ export function useRuntime() {
           // 场景D：无流式消息（通常已被 tool:call/tool:result 切断）
           // async/background 模式下 processInput 不会再返回最终结果，所以这里必须落一条主消息。
           if (answer) {
-            completedByEventRef.current = true;
             lastAnswerRef.current = answer;
             addMessage({
               type: needsUserInput ? 'warning' : 'result',
               content: answer,
               resultMeta: payload,
             });
-            setStatus(needsUserInput ? 'needs_user_input' : 'completed');
-            setStats(prev => ({
-              ...prev,
-              endTime: Date.now()
-            }));
+            markComplete();
+          } else {
+            markComplete();
           }
           return;
         }
@@ -683,17 +743,49 @@ export function useRuntime() {
           return;
         }
 
+        // plan 事件：同一 planId 的更新应该合并到现有消息，而不是创建新消息
+        if (eventName === 'plan:created' || eventName === 'plan:decomposed' || eventName === 'plan:updated') {
+          const planId = normalized.message?.plan?.id || payload?.planId || payload?.plan?.id;
+          if (planId) {
+            // 检查是否已存在同一 planId 的消息
+            setMessages((prev) => {
+              const existingIndex = prev.findIndex(
+                (msg) => msg.type === 'plan' && msg.plan?.id === planId,
+              );
+              if (existingIndex >= 0) {
+                // 更新现有 plan 消息
+                const existing = prev[existingIndex];
+                const updated = {
+                  ...existing,
+                  ...normalized.message,
+                  // 保留原有的 id 和 timestamp，更新任务列表和进度
+                  planTasks: normalized.message.planTasks,
+                  planProgress: normalized.message.planProgress,
+                  planSummary: normalized.message.planSummary,
+                  content: normalized.message.content,
+                };
+                const newList = [...prev];
+                newList[existingIndex] = updated;
+                return newList;
+              }
+              // 不存在则创建新消息
+              return [...prev, normalized.message];
+            });
+            return;
+          }
+        }
+
         addMessage(normalized.message);
       }
     });
-    
+
     // 清理订阅
     return () => {
       flushMessageDeltas();
       unsubIpcEvent?.();
     };
   }, [addMessage, flushMessageDeltas, isDuplicateRuntimeEvent, queueMessageDelta]);
-  
+
   return {
     // 状态
     status,
@@ -702,7 +794,7 @@ export function useRuntime() {
     loading,
     stats,
     askUserInfo,
-    
+
     // 方法
     addMessage,
     clearMessages,
@@ -710,7 +802,7 @@ export function useRuntime() {
     loadTools,
     refreshState,
     processInput,
-    stop
+    stop,
   };
 }
 
@@ -722,7 +814,7 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
     event: eventName,
     payload,
     payloadSummary,
-    eventMessage: true
+    eventMessage: true,
   };
 
   switch (eventName) {
@@ -736,11 +828,12 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
       };
     case 'agent:complete': {
       const answer = extractAgentAnswer(payload);
-      const needsUserInput = payload?.result?.status === 'needs_user_input' || payload?.status === 'needs_user_input';
+      const needsUserInput =
+        payload?.result?.status === 'needs_user_input' || payload?.status === 'needs_user_input';
       return {
         message: {
           ...base,
-          type: needsUserInput ? 'warning' : (answer ? 'result' : 'success'),
+          type: needsUserInput ? 'warning' : answer ? 'result' : 'success',
           runtimeDetail: true,
           content: answer || (needsUserInput ? '需要你补充信息后继续' : '任务执行完成'),
         },
@@ -770,7 +863,9 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
         message: {
           ...base,
           type: 'tool',
-          content: payload?.activity?.statusText || `调用工具: ${payload?.toolName || payload?.name || 'unknown'}`,
+          content:
+            payload?.activity?.statusText ||
+            `调用工具: ${payload?.toolName || payload?.name || 'unknown'}`,
           toolName: payload?.toolName || payload?.name,
           args: payload?.args,
           activity: payload?.activity,
@@ -781,7 +876,9 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
         message: {
           ...base,
           type: 'tool_result',
-          content: payload?.activity?.statusText || `工具结果: ${payload?.toolName || payload?.name || 'unknown'}`,
+          content:
+            payload?.activity?.statusText ||
+            `工具结果: ${payload?.toolName || payload?.name || 'unknown'}`,
           toolName: payload?.toolName || payload?.name,
           args: payload?.args,
           result: payload?.result,
@@ -793,7 +890,9 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
         message: {
           ...base,
           type: 'error',
-          content: payload?.activity?.statusText || `工具错误: ${payload?.toolName || payload?.name || 'unknown'} ${payload?.error || ''}`.trim(),
+          content:
+            payload?.activity?.statusText ||
+            `工具错误: ${payload?.toolName || payload?.name || 'unknown'} ${payload?.error || ''}`.trim(),
           toolName: payload?.toolName || payload?.name,
           args: payload?.args,
           activity: payload?.activity,
@@ -837,20 +936,21 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
     case 'plan:updated': {
       const plan = payload?.plan || payload;
       const tasks = normalizePlanTasks(plan?.tasks);
-      const completed = tasks.filter(task => task.status === 'completed').length;
-      const running = tasks.filter(task => task.status === 'running').length;
-      const failed = tasks.filter(task => task.status === 'failed').length;
+      const completed = tasks.filter((task) => task.status === 'completed').length;
+      const running = tasks.filter((task) => task.status === 'running').length;
+      const failed = tasks.filter((task) => task.status === 'failed').length;
       const total = tasks.length;
       const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
       return {
         message: {
           ...base,
           type: 'plan',
-          content: eventName === 'plan:created'
-          ? '执行计划已创建'
-          : eventName === 'plan:decomposed'
-            ? '计划已分解为子任务'
-            : '执行计划已更新',
+          content:
+            eventName === 'plan:created'
+              ? '执行计划已创建'
+              : eventName === 'plan:decomposed'
+                ? '计划已分解为子任务'
+                : '执行计划已更新',
           plan,
           planTasks: tasks,
           planSummary: payload?.summary || payload?.update?.after || '',
@@ -946,21 +1046,25 @@ export function safeStringify(value, { space = 0, maxChars = 20000 } = {}) {
       text = value;
     } else {
       const seen = new WeakSet();
-      text = JSON.stringify(value, (key, current) => {
-        if (typeof current === 'bigint') {
-          return current.toString();
-        }
-        if (typeof current === 'function') {
-          return `[Function ${current.name || 'anonymous'}]`;
-        }
-        if (current && typeof current === 'object') {
-          if (seen.has(current)) {
-            return '[Circular]';
+      text = JSON.stringify(
+        value,
+        (key, current) => {
+          if (typeof current === 'bigint') {
+            return current.toString();
           }
-          seen.add(current);
-        }
-        return current;
-      }, space);
+          if (typeof current === 'function') {
+            return `[Function ${current.name || 'anonymous'}]`;
+          }
+          if (current && typeof current === 'object') {
+            if (seen.has(current)) {
+              return '[Circular]';
+            }
+            seen.add(current);
+          }
+          return current;
+        },
+        space,
+      );
     }
   } catch (error) {
     text = String(value);
@@ -1018,11 +1122,17 @@ function extractAgentAnswer(data) {
     return stripActionBlocks(data.message.content);
   }
 
-  if (typeof data.choices?.[0]?.message?.content === 'string' && data.choices[0].message.content.trim()) {
+  if (
+    typeof data.choices?.[0]?.message?.content === 'string' &&
+    data.choices[0].message.content.trim()
+  ) {
     return stripActionBlocks(data.choices[0].message.content);
   }
 
-  if (typeof data.choices?.[0]?.delta?.content === 'string' && data.choices[0].delta.content.trim()) {
+  if (
+    typeof data.choices?.[0]?.delta?.content === 'string' &&
+    data.choices[0].delta.content.trim()
+  ) {
     return stripActionBlocks(data.choices[0].delta.content);
   }
 
@@ -1064,9 +1174,9 @@ function getMockTools() {
       description: '读取文件内容',
       category: 'filesystem',
       parameters: {
-        path: { type: 'string', description: '文件路径' }
+        path: { type: 'string', description: '文件路径' },
       },
-      required: ['path']
+      required: ['path'],
     },
     {
       name: 'write_file',
@@ -1074,35 +1184,35 @@ function getMockTools() {
       category: 'filesystem',
       parameters: {
         path: { type: 'string', description: '文件路径' },
-        content: { type: 'string', description: '文件内容' }
+        content: { type: 'string', description: '文件内容' },
       },
-      required: ['path', 'content']
+      required: ['path', 'content'],
     },
     {
       name: 'execute_shell',
       description: '执行 Shell 命令',
       category: 'shell',
       parameters: {
-        command: { type: 'string', description: 'Shell 命令' }
+        command: { type: 'string', description: 'Shell 命令' },
       },
-      required: ['command']
+      required: ['command'],
     },
     {
       name: 'brainstorm',
       description: '头脑风暴工具',
       category: 'skills',
       parameters: {
-        topic: { type: 'string', description: '主题' }
+        topic: { type: 'string', description: '主题' },
       },
-      required: ['topic']
+      required: ['topic'],
     },
     {
       name: 'git_status',
       description: '查看 Git 状态',
       category: 'git',
       parameters: {},
-      required: []
-    }
+      required: [],
+    },
   ];
 }
 
@@ -1117,38 +1227,38 @@ async function simulateExecution(input, addMessage, setStatus, setStats) {
   // 模拟思考过程
   addMessage({
     type: 'info',
-    content: '正在分析任务...'
+    content: '正在分析任务...',
   });
-  
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
+
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
   // 模拟工具调用
   addMessage({
     type: 'tool',
     content: '调用工具: read_file',
-    toolName: 'read_file'
+    toolName: 'read_file',
   });
-  
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
+
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
   addMessage({
     type: 'result',
     content: '工具结果: read_file',
     toolName: 'read_file',
-    result: '文件内容已读取'
+    result: '文件内容已读取',
   });
-  
+
   // 模拟完成
   addMessage({
     type: 'success',
-    content: '任务执行完成'
+    content: '任务执行完成',
   });
-  
+
   setStatus('completed');
-  setStats(prev => ({
+  setStats((prev) => ({
     ...prev,
     endTime: Date.now(),
-    toolCalls: prev.toolCalls + 1
+    toolCalls: prev.toolCalls + 1,
   }));
 }
 

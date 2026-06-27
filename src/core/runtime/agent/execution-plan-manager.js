@@ -19,6 +19,16 @@ import { shouldEnablePlan } from './support/task-profile.js';
 import { PlanType, selectPlanType } from './support/plan-types.js';
 import { HASHLINE_PLAN_COORDINATION_GUIDANCE } from './support/hashline-plan-policy.js';
 
+const CANONICAL_SINGLETON_TASK_IDS = new Set([
+  'inspect_workspace',
+  'profile_project',
+  'plan_solution',
+  'implement_changes',
+  'inspect_changes',
+  'semantic_risk_review',
+  'verify_result',
+]);
+
 // ============== 工具谓词：统一委托给 tool-semantics 模块 ==============
 
 export function isWorkspaceInspectionTool(toolName, args) {
@@ -126,31 +136,46 @@ export function isVerificationTool(toolName, args) {
   return false;
 }
 
-export function isProjectProfileTool(toolName, args) {
+export function isProjectProfileTool(toolName, args, result = null) {
   if (toolName === 'project_profile') {
     return true;
   }
   const path = String(args?.path || args?.file_path || args?.file || '').toLowerCase();
+  const query = String(
+    args?.query || args?.pattern || args?.glob || args?.text || '',
+  ).toLowerCase();
+  const resultText =
+    typeof result === 'string' ? result.toLowerCase() : JSON.stringify(result ?? '').toLowerCase();
+  const profilePathPattern =
+    /(package\.json|bun\.lock|pnpm-lock\.yaml|yarn\.lock|package-lock\.json|tsconfig|jsconfig|vite\.config|vitest\.config|jest\.config|playwright\.config|eslint|biome|prettier|makefile|dockerfile|docker-compose|\.github\/workflows|pyproject\.toml|requirements(?:-[\w.-]+)?\.txt|setup\.py|setup\.cfg|tox\.ini|pytest\.ini|poetry\.lock|pipfile|go\.mod|go\.sum|cargo\.toml|cargo\.lock|gemfile|composer\.json|pom\.xml|build\.gradle|gradle\.properties|tests?\/|__tests__|spec\.|readme|context\.md)/;
+  const profileIntentPattern =
+    /(package|config|script|test|lint|typecheck|build|runner|framework|workspace|dependency|entry point|ci|workflow|pytest|jest|vitest|playwright|cargo|go test|make|gradle|maven|配置|脚本|测试|构建|依赖|入口|框架)/;
+  if (toolName === 'read_file' && profilePathPattern.test(path)) {
+    return true;
+  }
   if (
-    toolName === 'read_file' &&
-    /(package\.json|bun\.lock|pnpm-lock\.yaml|yarn\.lock|package-lock\.json|tsconfig|jsconfig|vite\.config|vitest\.config|jest\.config|playwright\.config|eslint|biome|prettier|makefile|docker-compose|\.github\/workflows|tests?\/|__tests__|spec\.)/.test(
-      path,
-    )
+    ['glob', 'search', 'search_codebase', 'semantic_search', 'grep_search', 'file_search'].includes(
+      toolName,
+    ) &&
+    (profilePathPattern.test(query) || profileIntentPattern.test(query))
   ) {
     return true;
   }
   if (
-    toolName === 'glob' &&
-    /(package\.json|tsconfig|vite\.config|vitest|jest|playwright|eslint|biome|tests?|\*\*\/\*\.test|\*\*\/\*\.spec)/.test(
-      String(args?.pattern || args?.glob || '').toLowerCase(),
-    )
+    ['list_dir', 'tree', 'stat_file'].includes(toolName) &&
+    (profilePathPattern.test(path) || profilePathPattern.test(resultText))
   ) {
     return true;
   }
   if (toolName === 'shell') {
     const command = String(args?.command || args?.input || args?.text || '').toLowerCase();
-    return /\b(cat|sed|rg|find|ls|npm|pnpm|yarn|bun|npx)\b.*\b(package\.json|scripts?|test|lint|typecheck|build|vitest|jest|playwright|tsconfig|eslint|biome)\b/.test(
-      command,
+    return (
+      /\b(cat|sed|rg|find|ls|npm|pnpm|yarn|bun|npx|python|pytest|pip|poetry|go|cargo|make|mvn|gradle)\b/.test(
+        command,
+      ) &&
+      (profilePathPattern.test(command) ||
+        profileIntentPattern.test(command) ||
+        profilePathPattern.test(resultText))
     );
   }
   return false;
@@ -242,9 +267,9 @@ export class ExecutionPlanManager {
   async createIfNeeded(userInput, profile, options = {}) {
     this.#userInput = String(userInput || '');
 
-    // 兼容处理：profile 可能是 quickAssess 的完整返回值（包含 taskProfile 字段）
-    // 需要提取内部的结构化 taskProfile
-    const taskProfile = profile?.taskProfile || profile;
+    // 兼容处理：profile 可能是 quickAssess 的完整返回值（包含 taskProfile 字段）。
+    // 合并内外层，避免只取 taskProfile 时丢掉 isAnalysisTask/isResearchTask/risk 等旧字段。
+    const taskProfile = this.#normalizePlanProfile(profile);
     this.#profile = taskProfile || null;
 
     if (this.#useExternalPlan && this.#plan) {
@@ -258,14 +283,9 @@ export class ExecutionPlanManager {
     this.#mutationCallCount = 0;
 
     // 使用统一策略判断是否启用计划（考虑上下文）。
-    // 兼容旧 AgentPlanner：编码/修改/bug 任务和 requiresAutomaticPlanning 显式请求默认启用。
+    // 计划不再只服务编码任务：诊断、分析、验证、项目运行/配置等多步任务也使用轻量 plan。
     const planContext = options.planContext || { complexityScore: 0, fileCount: 0 };
-    const shouldPlan =
-      shouldEnablePlan(taskProfile, planContext) ||
-      taskProfile?.requiresAutomaticPlanning === true ||
-      taskProfile?.isCodingTask ||
-      taskProfile?.isModificationTask ||
-      taskProfile?.isBugTask;
+    const shouldPlan = this.#shouldCreatePlanForTask(taskProfile, this.#userInput, planContext);
     if (!shouldPlan) {
       this.#plan = null;
       this.#useLLMDecomposition = false;
@@ -333,7 +353,7 @@ export class ExecutionPlanManager {
       const seenIds = new Set();
       const idMap = new Map(); // originalId -> finalId
       for (const st of llmSubtasks) {
-        let taskId = String(st.name || '').trim();
+        let taskId = String(st.id || st.name || '').trim();
         if (!taskId) {
           taskId = `llm_task_${seenIds.size + 1}`;
         }
@@ -396,12 +416,13 @@ export class ExecutionPlanManager {
       }
     }
 
+    this.#enforcePhaseBarriers(plan);
+
     plan.status = TaskStatus.RUNNING;
     plan.startedAt = Date.now();
 
-    // 启动第一批任务（依赖已满足的）
-    const firstTaskId = plan.tasks.keys().next().value;
-    plan.getTask(firstTaskId)?.updateStatus(TaskStatus.RUNNING);
+    // 启动第一批任务（依赖已满足且未被阶段屏障阻挡的）
+    this.#startReadyTasks(plan);
 
     this.#plan = plan;
     this.#emitPlanProgress({
@@ -411,13 +432,109 @@ export class ExecutionPlanManager {
     return plan;
   }
 
+  #normalizePlanProfile(profile) {
+    if (!profile || typeof profile !== 'object') {
+      return null;
+    }
+    if (profile.taskProfile && typeof profile.taskProfile === 'object') {
+      return {
+        ...profile,
+        ...profile.taskProfile,
+        riskLevel: profile.riskLevel ?? profile.taskProfile.riskLevel,
+        riskScore: profile.score ?? profile.riskScore ?? profile.taskProfile.riskScore,
+        riskReasons: profile.reasons ?? profile.riskReasons ?? profile.taskProfile.riskReasons,
+        semanticRiskDomains:
+          profile.semanticRiskDomains ??
+          profile.semanticDomains ??
+          profile.taskProfile.semanticRiskDomains ??
+          [],
+        requiresAutomaticPlanning:
+          profile.requiresAutomaticPlanning ?? profile.taskProfile.requiresAutomaticPlanning,
+      };
+    }
+    return profile;
+  }
+
+  #shouldCreatePlanForTask(profile, userInput, planContext = {}) {
+    if (!profile) {
+      return false;
+    }
+
+    if (
+      shouldEnablePlan(profile, planContext) ||
+      profile.requiresAutomaticPlanning === true ||
+      profile.requiresPlan === true ||
+      profile.mode === 'mutate' ||
+      profile.allowsMutation ||
+      profile.isCodingTask ||
+      profile.isModificationTask ||
+      profile.isBugTask
+    ) {
+      return true;
+    }
+
+    const text = String(userInput || '');
+    const lower = text.toLowerCase();
+    const hasLocalEvidence =
+      /(?:^|\s|["'`])(?:\.{1,2}\/|\/|~\/)[^\s"'`]+/.test(text) ||
+      /\b[\w.-]+\.(?:js|ts|jsx|tsx|py|go|rs|java|json|yaml|yml|toml|md|html|css|sql|log)\b/i.test(
+        text,
+      ) ||
+      /\b(src|tests?|app|pages|components|package\.json|webpack|vite|next|jest|vitest|pytest|cargo|go\.mod)\b/i.test(
+        text,
+      );
+    const hasDiagnosticSignal =
+      profile.intent === 'diagnosis' ||
+      profile.mode === 'diagnose' ||
+      profile.isAnalysisTask ||
+      /\b(error|exception|failed|failing|broken|hang|stuck|crash|eaddrinuse|enoent|traceback|stack trace)\b/i.test(
+        text,
+      ) ||
+      /(报错|错误|失败|崩溃|卡住|没响应|原因|为什么|排查|诊断)/i.test(text);
+    const hasVerificationSignal =
+      profile.intent === 'test_or_verify' ||
+      profile.mode === 'verify' ||
+      /\b(test|verify|validate|check|lint|build|compile|run|start|dev server|preview)\b/i.test(
+        text,
+      ) ||
+      /(测试|验证|检查|构建|编译|运行|启动|预览)/i.test(text);
+    const hasAnalysisSignal =
+      profile.intent === 'read_only_analysis' ||
+      profile.mode === 'inspect' ||
+      profile.isResearchTask ||
+      /(分析|审查|审计|评估|调研|梳理|看下|找出|定位)/i.test(text) ||
+      /\b(analyze|review|audit|inspect|investigate|find out|locate)\b/i.test(text);
+    const hasProjectQuestion =
+      profile.intent === 'project_info' ||
+      profile.intent === 'how_to_run' ||
+      /(这个项目|当前项目|项目里|代码库|仓库|怎么运行|如何运行|怎么启动|如何启动)/i.test(text) ||
+      /\b(this project|current project|repo|repository|codebase|how to run|how to start)\b/i.test(
+        lower,
+      );
+    const hasMultipleSteps =
+      /(\n|然后|接着|并且|同时|顺便|全部|多个|所有|先.*再|step|steps|then|also|and)/i.test(text) ||
+      Number(planContext.complexityScore || 0) >= 2;
+
+    if (hasDiagnosticSignal || hasVerificationSignal) {
+      return true;
+    }
+    if ((hasAnalysisSignal || hasProjectQuestion) && (hasLocalEvidence || hasMultipleSteps)) {
+      return true;
+    }
+    if (profile.requiresPlan === 'optional' && (hasLocalEvidence || hasMultipleSteps)) {
+      return true;
+    }
+
+    return false;
+  }
+
   /** 模板模式：根据任务类型生成不同的 plan DAG
    *
    * 任务类型 → 计划模板映射：
    * - 查询/回答类 (research, general): 轻量 2 步 → explore → answer
-   * - 分析类 (analysis): 3 步 → explore → analyze → report
+   * - 分析类 (analysis): 3 步 → explore → analyze → summarize
    * - 修改类 (coding, modification, bug_fix, documentation): 完整流程
-   *   - bug_fix: implement → inspect（直接修复，无前置探索）
+   *   - bug_fix: inspect/reproduce → implement → inspect
    *   - 其他修改: explore → plan → implement → inspect
    */
   #buildTemplatePlan(plan, profile, selectedPlanType = null) {
@@ -507,14 +624,15 @@ export class ExecutionPlanManager {
         id: 'analyze_findings',
         name: 'Analyze findings',
         description:
-          'Analyze the gathered information and generate insights, findings, and recommendations.',
+          'Analyze the gathered information and identify concrete findings. This is a read-only analysis step, not an implementation step.',
         dependencies: ['inspect_workspace'],
-        phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
+        phase: ExecutionPlanManager.PHASE.INSPECTION,
       });
       plan.addTask({
         id: 'generate_report',
-        name: 'Generate report',
-        description: 'Compile the analysis into a structured report or summary.',
+        name: 'Summarize findings',
+        description:
+          'Summarize the analysis in the final response. Do not create PROJECT_REPORT.md, REPORT.md, or any report file unless the user explicitly asks for one.',
         dependencies: ['analyze_findings'],
         phase: ExecutionPlanManager.PHASE.VERIFICATION,
       });
@@ -667,28 +785,28 @@ export class ExecutionPlanManager {
 
     plan.addTask({
       id: 'inspect_workspace',
-      name: 'Explore context',
+      name: 'Inspect context',
       description: desc.inspect,
       dependencies: [],
       phase: ExecutionPlanManager.PHASE.EXPLORATION,
     });
     plan.addTask({
       id: 'plan_solution',
-      name: 'Plan approach',
+      name: 'Plan changes',
       description: desc.plan,
       dependencies: ['inspect_workspace'],
       phase: ExecutionPlanManager.PHASE.PLANNING,
     });
     plan.addTask({
       id: 'implement_changes',
-      name: 'Execute',
+      name: 'Apply changes',
       description: desc.implement,
       dependencies: ['plan_solution'],
       phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
     });
     plan.addTask({
       id: 'inspect_changes',
-      name: 'Review',
+      name: 'Inspect changes',
       description: desc.review,
       dependencies: ['implement_changes'],
       phase: ExecutionPlanManager.PHASE.INSPECTION,
@@ -771,11 +889,18 @@ export class ExecutionPlanManager {
         'read_file',
         'glob',
         'list_dir',
+        'tree',
+        'stat_file',
+        'search',
         'search_codebase',
+        'semantic_search',
+        'grep_search',
+        'file_search',
         'shell',
         'test_strategy',
       ],
-      completionPredicate: ({ toolName, args }) => isProjectProfileTool(toolName, args),
+      completionPredicate: ({ toolName, args, result }) =>
+        isProjectProfileTool(toolName, args, result),
     });
 
     for (const task of plan.tasks.values()) {
@@ -865,6 +990,7 @@ export class ExecutionPlanManager {
       plan.startedAt = plan.startedAt || Date.now();
       plan.completedAt = null;
     }
+    this.#enforcePhaseBarriers(plan);
     this.#startReadyTasks(plan);
     this.#emitPlanProgress({ planCreated: true, decompositionMethod: 'external' });
   }
@@ -936,6 +1062,8 @@ export class ExecutionPlanManager {
         this.#restorePlanSnapshot(plan, snapshot);
         return { success: false, error: 'Plan change would create a dependency cycle' };
       }
+
+      this.#enforcePhaseBarriers(plan);
     } catch (error) {
       this.#restorePlanSnapshot(plan, snapshot);
       return { success: false, error: error.message };
@@ -1113,13 +1241,13 @@ export class ExecutionPlanManager {
   }
 
   /** 模板模式：按固定 taskId 推进 */
-  #advanceTemplatePlan(plan, toolName, args) {
+  #advanceTemplatePlan(plan, toolName, args, result) {
     // 1) inspect_workspace
     this.#completeIf('inspect_workspace', () => isWorkspaceInspectionTool(toolName, args));
     this.#startReadyTasks(plan);
 
     // 2) profile_project — identify project config, scripts, and test surface
-    this.#completeIf('profile_project', () => isProjectProfileTool(toolName, args));
+    this.#completeIf('profile_project', () => isProjectProfileTool(toolName, args, result));
     this.#startReadyTasks(plan);
 
     // 3) plan_solution — 显式的计划工具 OR 直接开始修改
@@ -1163,7 +1291,8 @@ export class ExecutionPlanManager {
       .tasks.map((t) => {
         const scopeStr =
           t.scopeFiles && t.scopeFiles.length > 0 ? ` [📁: ${t.scopeFiles.join(', ')}]` : '';
-        return `- ${t.id}: ${t.name} [${t.status}]${scopeStr} - ${t.description}`;
+        const phase = this.#formatPhaseForPrompt(t.phase);
+        return `- ${t.id}: ${t.name} [${t.status}, ${phase}]${scopeStr} - ${t.description}`;
       })
       .join('\n');
 
@@ -1182,7 +1311,7 @@ export class ExecutionPlanManager {
     if (runningTask) {
       const firstTaskId = runningTask.id;
       if (this.#useLLMDecomposition) {
-        firstTaskPrompt = `▶ 当前子任务: ${firstTaskId} — ${runningTask.description}`;
+        firstTaskPrompt = `▶ 当前子任务: ${firstTaskId} (${this.#formatPhaseForPrompt(runningTask.phase)}) — ${runningTask.description}`;
         if (runningTask.scopeFiles?.length) {
           firstTaskScope = `\n📁 文件作用域: ${runningTask.scopeFiles.join(', ')}`;
         }
@@ -1191,21 +1320,14 @@ export class ExecutionPlanManager {
           ? ` 📁 当前子任务文件作用域: ${runningTask.scopeFiles.join(', ')}`
           : '';
 
-        if (firstTaskId === 'implement_changes') {
-          firstTaskPrompt = `Current task: implement_changes. Read the relevant code with read_file, identify the bug, then fix it with write_file or edit_file. Do NOT produce a diagnostic report — fix the bug.`;
-        } else if (firstTaskId === 'inspect_workspace') {
-          firstTaskPrompt = `Current task: inspect_workspace. Call list_dir or another filesystem discovery tool first, then continue through the plan.`;
-        } else if (firstTaskId === 'profile_project') {
-          firstTaskPrompt = `Current task: profile_project. Identify package/config files, scripts, test modules, and verification commands using project_profile or by reading config/test files.`;
-        } else {
-          firstTaskPrompt = `Current task: ${firstTaskId}. ${runningTask.description} Complete this task using the appropriate available tools.`;
-        }
+        firstTaskPrompt = this.#buildCurrentTaskPrompt(runningTask);
       }
     }
 
     return (
       `Automatic task orchestration is active for this request:\n${this.#userInput}\n\n` +
       decompositionNote +
+      `Phase meanings: exploration=understand existing context; planning=choose approach; implementation=make mutations; inspection=read/review changed or analyzed material; verification=run checks or summarize final evidence.\n` +
       `${tasks}\n\n` +
       `The DAG task ids are status labels, not tool names. Use real available tools such as list_dir, read_file, write_file, shell, and methodology tools.\n` +
       `${HASHLINE_PLAN_COORDINATION_GUIDANCE}\n` +
@@ -1216,6 +1338,71 @@ export class ExecutionPlanManager {
       firstTaskPrompt +
       firstTaskScope
     );
+  }
+
+  #buildCurrentTaskPrompt(task) {
+    const taskId = task?.id;
+    const phase = this.#formatPhaseForPrompt(task?.phase);
+    const description = task?.description || 'Complete this task using the appropriate tools.';
+    const prefix = `Current task: ${taskId} (${phase}).`;
+
+    if (taskId === 'inspect_workspace') {
+      return `${prefix} ${description} Use focused read/search/list tools to understand only the relevant context.`;
+    }
+
+    if (taskId === 'profile_project') {
+      return `${prefix} Identify package/config files, scripts, test modules, framework conventions, and the narrowest useful verification command. Use project_profile when available, or read/list/search config and test files.`;
+    }
+
+    if (taskId === 'plan_solution') {
+      return `${prefix} ${description} Decide the smallest concrete change before editing. Do not create a separate plan/report file unless explicitly requested.`;
+    }
+
+    if (taskId === 'implement_changes') {
+      const bugLike =
+        this.#profile?.isBugTask ||
+        this.#profile?.intent === 'diagnosis' ||
+        this.#plan?.context?.planType === PlanType.BUG_FIX;
+      const action = bugLike
+        ? 'Apply the smallest fix that addresses the diagnosed failure.'
+        : 'Apply the planned change with write_file, edit_file, apply_hashline_patch, or an appropriate filesystem/shell operation.';
+      return `${prefix} ${description} ${action}`;
+    }
+
+    if (taskId === 'inspect_changes') {
+      return `${prefix} ${description} Inspect the actual files or outputs affected by the previous mutation; this is not runtime verification.`;
+    }
+
+    if (taskId === 'verify_result') {
+      return `${prefix} ${description} Run the narrowest relevant test/lint/build/check, or explain why runtime verification is not applicable.`;
+    }
+
+    if (taskId === 'analyze_findings') {
+      return `${prefix} ${description} Keep this read-only unless the user asked for a fix.`;
+    }
+
+    if (taskId === 'generate_report') {
+      return `${prefix} ${description} Summarize in FINAL_ANSWER; do not write REPORT.md/PROJECT_REPORT.md unless explicitly requested.`;
+    }
+
+    return `${prefix} ${description} Complete this task using the appropriate available tools.`;
+  }
+
+  #formatPhaseForPrompt(phase) {
+    switch (phase) {
+      case ExecutionPlanManager.PHASE.EXPLORATION:
+        return 'exploration';
+      case ExecutionPlanManager.PHASE.PLANNING:
+        return 'planning';
+      case ExecutionPlanManager.PHASE.IMPLEMENTATION:
+        return 'implementation';
+      case ExecutionPlanManager.PHASE.INSPECTION:
+        return 'inspection';
+      case ExecutionPlanManager.PHASE.VERIFICATION:
+        return 'verification';
+      default:
+        return 'unphased';
+    }
   }
 
   /** 完成状态标记 */
@@ -1230,7 +1417,9 @@ export class ExecutionPlanManager {
    * 返回结构化的 plan 执行结果，包括各阶段耗时、冲突信息等。
    */
   generateExecutionSummary() {
-    if (!this.#plan) return null;
+    if (!this.#plan) {
+      return null;
+    }
 
     const tasks = Array.from(this.#plan.tasks.values());
     const completedTasks = tasks.filter((t) => t.status === TaskStatus.COMPLETED);
@@ -1284,10 +1473,14 @@ export class ExecutionPlanManager {
    * @returns {object|null} 新插入的子任务信息，或 null（无需 replan）
    */
   replan(conflictHints) {
-    if (!this.isActive || !this.#plan) return null;
+    if (!this.isActive || !this.#plan) {
+      return null;
+    }
 
     const { conflictType, affectedFiles, suggestedStrategies } = conflictHints || {};
-    if (!conflictType) return null;
+    if (!conflictType) {
+      return null;
+    }
 
     // 找到当前所有 IMPLEMENTATION 阶段未完成的任务
     const blockedTasks = Array.from(this.#plan.tasks.values()).filter(
@@ -1296,7 +1489,9 @@ export class ExecutionPlanManager {
         (t.status === TaskStatus.RUNNING || t.status === TaskStatus.PENDING),
     );
 
-    if (blockedTasks.length === 0) return null;
+    if (blockedTasks.length === 0) {
+      return null;
+    }
 
     // 为每个阻塞任务创建诊断+重试子任务
     const insertedTasks = [];
@@ -1345,6 +1540,8 @@ export class ExecutionPlanManager {
       insertedTasks.push(reVerifyId);
     }
 
+    this.#enforcePhaseBarriers(this.#plan);
+
     // 将新插入的第一个任务标记为 RUNNING
     const firstInserted = this.#plan.getTask(diagnoseId);
     if (firstInserted) {
@@ -1365,7 +1562,9 @@ export class ExecutionPlanManager {
    * 由 AgentEngine 在检测到冲突后调用，用于后续 generateExecutionSummary 统计。
    */
   recordConflictSignal(toolName, conflictType, recovered) {
-    if (!this.#plan) return;
+    if (!this.#plan) {
+      return;
+    }
     const runningTasks = Array.from(this.#plan.tasks.values()).filter(
       (t) => t.status === TaskStatus.RUNNING,
     );
@@ -1463,12 +1662,123 @@ export class ExecutionPlanManager {
   }
 
   #startReadyTasks(plan) {
+    this.#pauseBlockedRunningTasks(plan);
     for (const task of plan.getReadyTasks()) {
-      if (task.status === TaskStatus.PENDING || task.status === TaskStatus.BLOCKED) {
+      if (
+        (task.status === TaskStatus.PENDING || task.status === TaskStatus.BLOCKED) &&
+        this.#canStartTask(plan, task)
+      ) {
         task.updateStatus(TaskStatus.RUNNING);
-        return;
       }
     }
+  }
+
+  #enforcePhaseBarriers(plan) {
+    if (!plan?.tasks) {
+      return;
+    }
+
+    const phaseOrder = [
+      ExecutionPlanManager.PHASE.EXPLORATION,
+      ExecutionPlanManager.PHASE.PLANNING,
+      ExecutionPlanManager.PHASE.IMPLEMENTATION,
+      ExecutionPlanManager.PHASE.INSPECTION,
+      ExecutionPlanManager.PHASE.VERIFICATION,
+    ];
+    const phaseRank = new Map(phaseOrder.map((phase, index) => [phase, index]));
+    const phasedTasks = Array.from(plan.tasks.values()).filter((task) => phaseRank.has(task.phase));
+
+    for (const task of phasedTasks) {
+      const taskRank = phaseRank.get(task.phase);
+      for (const candidate of phasedTasks) {
+        if (candidate.id === task.id || phaseRank.get(candidate.phase) >= taskRank) {
+          continue;
+        }
+        if (this.#taskDependsOn(plan, task.id, candidate.id)) {
+          continue;
+        }
+        if (this.#taskDependsOn(plan, candidate.id, task.id)) {
+          continue;
+        }
+        task.dependencies.add(candidate.id);
+      }
+    }
+
+    this.#rebuildGraph(plan);
+    this.#pauseBlockedRunningTasks(plan);
+  }
+
+  #canStartTask(plan, task) {
+    return task.checkDependencies(plan.tasks) && !this.#hasIncompleteEarlierPhase(plan, task);
+  }
+
+  #pauseBlockedRunningTasks(plan) {
+    if (!plan?.tasks) {
+      return;
+    }
+    for (const task of plan.tasks.values()) {
+      if (task.status !== TaskStatus.RUNNING) {
+        continue;
+      }
+      if (!this.#canStartTask(plan, task)) {
+        task.updateStatus(TaskStatus.PENDING, {
+          result: {
+            pausedBy: 'phase-barrier',
+            reason: 'Waiting for dependencies or earlier phase tasks to complete.',
+          },
+        });
+      }
+    }
+  }
+
+  #hasIncompleteEarlierPhase(plan, task) {
+    const taskRank = this.#phaseRank(task.phase);
+    if (taskRank === null) {
+      return false;
+    }
+    return Array.from(plan.tasks.values()).some((candidate) => {
+      const candidateRank = this.#phaseRank(candidate.phase);
+      return (
+        candidate.id !== task.id &&
+        candidateRank !== null &&
+        candidateRank < taskRank &&
+        candidate.status !== TaskStatus.COMPLETED &&
+        candidate.status !== TaskStatus.SKIPPED
+      );
+    });
+  }
+
+  #phaseRank(phase) {
+    const phaseOrder = [
+      ExecutionPlanManager.PHASE.EXPLORATION,
+      ExecutionPlanManager.PHASE.PLANNING,
+      ExecutionPlanManager.PHASE.IMPLEMENTATION,
+      ExecutionPlanManager.PHASE.INSPECTION,
+      ExecutionPlanManager.PHASE.VERIFICATION,
+    ];
+    const index = phaseOrder.indexOf(phase);
+    return index === -1 ? null : index;
+  }
+
+  #taskDependsOn(plan, taskId, dependencyId, seen = new Set()) {
+    if (taskId === dependencyId) {
+      return true;
+    }
+    if (seen.has(taskId)) {
+      return false;
+    }
+    seen.add(taskId);
+
+    const task = plan.getTask(taskId);
+    if (!task) {
+      return false;
+    }
+    for (const depId of task.dependencies || []) {
+      if (depId === dependencyId || this.#taskDependsOn(plan, depId, dependencyId, seen)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   #recordMutationPath(toolName, args) {
@@ -1548,6 +1858,9 @@ export class ExecutionPlanManager {
 
     const originalDeps = Array.from(target.dependencies);
     const inserted = this.#addTaskChain(plan, taskDefs, { defaultFirstDependencies: originalDeps });
+    if (inserted.length === 0) {
+      return inserted;
+    }
     target.dependencies = new Set([inserted[inserted.length - 1]]);
     if (target.status === TaskStatus.RUNNING || target.status === TaskStatus.READY) {
       target.updateStatus(TaskStatus.PENDING);
@@ -1565,6 +1878,9 @@ export class ExecutionPlanManager {
     const inserted = this.#addTaskChain(plan, taskDefs, {
       defaultFirstDependencies: [targetTaskId],
     });
+    if (inserted.length === 0) {
+      return inserted;
+    }
     const lastInserted = inserted[inserted.length - 1];
     for (const task of plan.tasks.values()) {
       if (
@@ -1593,10 +1909,14 @@ export class ExecutionPlanManager {
     const inserted = [];
     let previousId = null;
     for (const raw of taskDefs) {
-      const id = this.#uniqueTaskId(
-        plan,
+      const preferredId = this.#canonicalTaskId(
         raw.id || raw.name || `dynamic_task_${inserted.length + 1}`,
       );
+      if (CANONICAL_SINGLETON_TASK_IDS.has(preferredId) && plan.tasks.has(preferredId)) {
+        previousId = preferredId;
+        continue;
+      }
+      const id = this.#uniqueTaskId(plan, preferredId);
       const hasExplicitDeps = Array.isArray(raw.dependencies);
       const dependencies = hasExplicitDeps
         ? raw.dependencies
@@ -1695,6 +2015,15 @@ export class ExecutionPlanManager {
       id = `${base}_${counter++}`;
     }
     return id;
+  }
+
+  #canonicalTaskId(value) {
+    return String(value || 'dynamic_task')
+      .trim()
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .replace(/[^a-zA-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .toLowerCase();
   }
 
   #snapshotPlan(plan) {
