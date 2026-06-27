@@ -219,11 +219,34 @@ export function isSuccessfulToolResult(result) {
     return true;
   }
 
+  if (result && typeof result === 'object') {
+    if (result.success === false || result.ok === false) {
+      return false;
+    }
+    const exitCode = result.exitCode ?? result.code ?? result.status;
+    if (typeof exitCode === 'number' && exitCode !== 0) {
+      return false;
+    }
+    const errorCount = result.errorCount ?? result.errors;
+    if (typeof errorCount === 'number' && errorCount > 0) {
+      return false;
+    }
+    const failedCount = result.failed ?? result.failures ?? result.failedTests;
+    if (typeof failedCount === 'number' && failedCount > 0) {
+      return false;
+    }
+    if (result.error) {
+      return false;
+    }
+  }
+
   const text = typeof result === 'string' ? result : JSON.stringify(result ?? '');
   if (!text.trim()) {
     return false;
   }
-  return !/^(Error|Command failed|BLOCKED):/i.test(text.trim());
+  return !/(^(Error|Command failed|BLOCKED):|\b(exit\s*code|status)\s*[:=]?\s*[1-9]\d*\b|\b(fail|failed|failing|failures?|tests?\s+failed|errorCount)\b)/i.test(
+    text.trim(),
+  );
 }
 
 // ============== 执行计划管理器 ==============
@@ -241,6 +264,7 @@ export class ExecutionPlanManager {
   #sessionManager = null;
   #onPlanAdvance = null;
   #useExternalPlan = false;
+  #verificationRepairCount = 0;
 
   constructor({ debugEvent = null, sessionManager = null, onPlanAdvance = null } = {}) {
     this.#debugEvent = typeof debugEvent === 'function' ? debugEvent : null;
@@ -412,6 +436,7 @@ export class ExecutionPlanManager {
           name: 'Verify result',
           description: 'Verify the final result: run tests / lint / build to confirm correctness.',
           dependencies: lastId ? [lastId] : [],
+          phase: ExecutionPlanManager.PHASE.VERIFICATION,
         });
       }
     }
@@ -973,6 +998,7 @@ export class ExecutionPlanManager {
     this.#mutationCallCount = 0;
     this.#useLLMDecomposition = false;
     this.#graphPlanner = null;
+    this.#verificationRepairCount = 0;
     if (!preserveExternalPlan) {
       this.#useExternalPlan = false;
     }
@@ -1100,12 +1126,32 @@ export class ExecutionPlanManager {
     if (!this.isActive) {
       return null;
     }
-    if (!isSuccessfulToolResult(result)) {
-      return null;
-    }
 
     const plan = this.#plan;
     const before = this.#summarizeProgress(plan);
+
+    if (!isSuccessfulToolResult(result)) {
+      const handled = this.#handleFailedToolResult(plan, toolName, args, result);
+      if (!handled) {
+        return null;
+      }
+      const after = this.#summarizeProgress(plan);
+      this.#debugEvent?.('Automatic task orchestration replanned after failed tool result', {
+        tool: toolName,
+        before,
+        after,
+      });
+      this.#sessionManager?.addUserMessage?.(
+        `Automatic task orchestration update:\n${after}\n\n` +
+          `Verification failed. Continue with the current repair task: ${this.#currentTaskLabel(plan)}.`,
+      );
+      this.#emitPlanProgress({
+        tool: toolName,
+        planChanged: true,
+        reason: 'verification_failed',
+      });
+      return { before, after, isCompleted: false, replanned: true };
+    }
 
     // ✅ 第 9 阶段：严格模式 — 使用 completionPredicate 验证
     this.#advanceWithStrictValidation(plan, toolName, args, result);
@@ -1137,6 +1183,105 @@ export class ExecutionPlanManager {
     this.#emitPlanProgress({ tool: toolName });
 
     return { before, after, isCompleted: plan.status === TaskStatus.COMPLETED };
+  }
+
+  #handleFailedToolResult(plan, toolName, args, result) {
+    if (!isVerificationTool(toolName, args)) {
+      return false;
+    }
+
+    const runningVerificationTask = Array.from(plan.tasks.values()).find(
+      (task) =>
+        task.status === TaskStatus.RUNNING &&
+        (task.phase === ExecutionPlanManager.PHASE.VERIFICATION ||
+          task.id === 'verify_result' ||
+          /verify|test|lint|build|check/i.test(task.id || task.name || '')),
+    );
+    if (!runningVerificationTask) {
+      return false;
+    }
+
+    runningVerificationTask.recordToolCall(toolName, args, result);
+
+    if (this.#verificationRepairCount >= 2) {
+      runningVerificationTask.updateStatus(TaskStatus.FAILED, {
+        error: {
+          failedBy: toolName,
+          args,
+          result,
+          reason: 'verification_failed_after_repair_budget',
+        },
+      });
+      plan.status = TaskStatus.FAILED;
+      plan.completedAt = Date.now();
+      return true;
+    }
+
+    this.#verificationRepairCount += 1;
+    const iteration = this.#verificationRepairCount;
+    const baseId = `repair_after_verification_failure_${iteration}`;
+    const failureSummary = this.#summarizeFailureResult(result);
+
+    runningVerificationTask.updateStatus(TaskStatus.COMPLETED, {
+      result: {
+        completedBy: 'failed-verification-observation',
+        verificationFailed: true,
+        displayStatus: 'needs_repair',
+        statusReason: 'Verification failed; repair tasks were added.',
+        toolName,
+        args,
+        failureSummary,
+        repairIteration: iteration,
+      },
+    });
+
+    this.#insertTasksAfter(plan, runningVerificationTask.id, [
+      {
+        id: `${baseId}_diagnose`,
+        name: 'Diagnose verification failure',
+        description: `Analyze the failed verification output and identify the root cause before editing. Failure evidence: ${failureSummary}`,
+        phase: ExecutionPlanManager.PHASE.INSPECTION,
+        allowedTools: ['read_file', 'list_dir', 'glob', 'search', 'shell', 'review'],
+        metadata: { source: 'verification-repair', repairIteration: iteration },
+      },
+      {
+        id: `${baseId}_fix`,
+        name: 'Repair failed verification',
+        description:
+          'Apply the smallest code or test change needed to resolve the verification failure.',
+        phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
+        allowedTools: ['write_file', 'edit_file', 'apply_hashline_patch', 'shell'],
+        metadata: { source: 'verification-repair', repairIteration: iteration },
+      },
+      {
+        id: `${baseId}_inspect`,
+        name: 'Inspect repair',
+        description: 'Read back the repaired files or diff and confirm the fix matches the failure.',
+        phase: ExecutionPlanManager.PHASE.INSPECTION,
+        allowedTools: ['read_file', 'list_dir', 'glob', 'search', 'shell', 'review'],
+        metadata: { source: 'verification-repair', repairIteration: iteration },
+      },
+      {
+        id: `${baseId}_reverify`,
+        name: 'Re-run verification',
+        description:
+          'Re-run the narrowest relevant failing test/lint/build command and confirm it passes.',
+        phase: ExecutionPlanManager.PHASE.VERIFICATION,
+        allowedTools: ['shell', 'verify', 'review', 'lsp_diagnostics'],
+        metadata: { source: 'verification-repair', repairIteration: iteration },
+      },
+    ]);
+
+    plan.status = TaskStatus.RUNNING;
+    plan.completedAt = null;
+    this.#enforcePhaseBarriers(plan);
+    this.#startReadyTasks(plan);
+    return true;
+  }
+
+  #summarizeFailureResult(result) {
+    const text = typeof result === 'string' ? result : JSON.stringify(result ?? '');
+    return text.replace(/\s+/g, ' ').trim().slice(0, 600) || 'verification command failed';
   }
 
   /**
@@ -1292,7 +1437,10 @@ export class ExecutionPlanManager {
         const scopeStr =
           t.scopeFiles && t.scopeFiles.length > 0 ? ` [📁: ${t.scopeFiles.join(', ')}]` : '';
         const phase = this.#formatPhaseForPrompt(t.phase);
-        return `- ${t.id}: ${t.name} [${t.status}, ${phase}]${scopeStr} - ${t.description}`;
+        const displayStatus = this.#taskDisplayStatus(t);
+        const cycleLabel = this.#taskCycleLabel(t);
+        const cycleStr = cycleLabel ? `, ${cycleLabel}` : '';
+        return `- ${t.id}: ${t.name} [${displayStatus}, ${phase}${cycleStr}]${scopeStr} - ${t.description}`;
       })
       .join('\n');
 
@@ -1374,7 +1522,11 @@ export class ExecutionPlanManager {
     }
 
     if (taskId === 'verify_result') {
-      return `${prefix} ${description} Run the narrowest relevant test/lint/build/check, or explain why runtime verification is not applicable.`;
+      return `${prefix} ${description} Run the narrowest relevant test/lint/build/check. If it fails, use the failure output as evidence, repair the issue, and re-run verification instead of finalizing.`;
+    }
+
+    if (taskId?.includes('repair_after_verification_failure')) {
+      return `${prefix} ${description} Use the captured failure output as the source of truth; fix the root cause, inspect the changed files, then re-run the failing check.`;
     }
 
     if (taskId === 'analyze_findings') {
@@ -1830,8 +1982,38 @@ export class ExecutionPlanManager {
   #summarizeProgress(plan) {
     return plan
       .toJSON()
-      .tasks.map((t) => `- ${t.id}: ${t.status}`)
+      .tasks.map((t) => {
+        const displayStatus = this.#taskDisplayStatus(t);
+        const cycleLabel = this.#taskCycleLabel(t);
+        return `- ${t.id}: ${displayStatus}${cycleLabel ? ` (${cycleLabel})` : ''}`;
+      })
       .join('\n');
+  }
+
+  #taskDisplayStatus(task) {
+    return (
+      task?.displayStatus ||
+      task?.result?.displayStatus ||
+      (task?.result?.verificationFailed ? 'needs_repair' : null) ||
+      task?.status ||
+      TaskStatus.PENDING
+    );
+  }
+
+  #taskStatusReason(task) {
+    return (
+      task?.statusReason ||
+      task?.result?.statusReason ||
+      (task?.result?.verificationFailed ? 'Verification failed; repair tasks were added.' : '')
+    );
+  }
+
+  #taskCycleLabel(task) {
+    const iteration = task?.metadata?.repairIteration || task?.result?.repairIteration;
+    if (!iteration) {
+      return '';
+    }
+    return `repair cycle ${iteration}`;
   }
 
   #replaceUnfinishedTasks(plan, taskDefs) {
@@ -2097,18 +2279,27 @@ export class ExecutionPlanManager {
       id: task.id,
       name: task.name,
       status: task.status,
+      displayStatus: this.#taskDisplayStatus(task),
+      statusReason: this.#taskStatusReason(task),
+      cycleLabel: this.#taskCycleLabel(task),
+      metadata: task.metadata || {},
       description: task.description,
       dependencies: [...(task.dependencies || [])],
       scopeFiles: task.scopeFiles || [],
     }));
+    const completed = tasks.filter((task) => task.displayStatus === TaskStatus.COMPLETED).length;
+    const running = tasks.filter((task) => task.displayStatus === TaskStatus.RUNNING).length;
+    const failed = tasks.filter((task) => task.displayStatus === TaskStatus.FAILED).length;
+    const needsRepair = tasks.filter((task) => task.displayStatus === 'needs_repair').length;
     this.#onPlanAdvance({
       ...extra,
       planId: this.#plan.id,
       tasks,
       total: tasks.length,
-      completed: tasks.filter((task) => task.status === TaskStatus.COMPLETED).length,
-      running: tasks.filter((task) => task.status === TaskStatus.RUNNING).length,
-      failed: tasks.filter((task) => task.status === TaskStatus.FAILED).length,
+      completed,
+      running,
+      failed,
+      needsRepair,
       planStatus: this.#plan.status,
       plan: {
         id: this.#plan.id,

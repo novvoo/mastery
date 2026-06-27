@@ -13,6 +13,8 @@ const desktopReleaseDir = process.argv[2] || join(rootDir, 'release', 'desktop')
 
 const requiredAsarEntries = [
   '/desktop/main.js',
+  '/desktop/main-app.js',
+  '/desktop/main-app/window-lifecycle.js',
   '/desktop/preload-entry/index.js',
   '/desktop/preload-entry/package.json',
   '/desktop/preload.cjs',
@@ -21,7 +23,7 @@ const requiredAsarEntries = [
   '/src/adapters/desktop/desktop-core.js',
   '/src/adapters/desktop/ipc-adapter.js',
   '/src/core/runtime-config.js',
-  '/src/models/openai-provider.js'
+  '/src/models/openai-provider.js',
 ];
 
 function normalizeAsarEntry(entry) {
@@ -65,7 +67,7 @@ let hasFailure = false;
 
 for (const appAsar of appAsars) {
   const entries = new Set(asar.listPackage(appAsar).map(normalizeAsarEntry));
-  const missing = requiredAsarEntries.filter(entry => !entries.has(entry));
+  const missing = requiredAsarEntries.filter((entry) => !entries.has(entry));
 
   if (missing.length > 0) {
     hasFailure = true;

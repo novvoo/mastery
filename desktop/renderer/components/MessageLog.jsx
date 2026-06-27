@@ -832,15 +832,17 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       const progress = msg.planProgress || {};
       const title = msg.content || '执行计划';
       const statusTone = progress.failed > 0 ? 'var(--error-color)'
+        : progress.needsRepair > 0 ? 'var(--warning-color)'
         : progress.completed === progress.total && progress.total > 0 ? 'var(--success-color)'
         : 'var(--warning-color)';
 
       const taskLabel = (task) => task.name || task.id || 'Task';
-      const taskStatus = (task) => String(task.status || 'pending').toLowerCase();
+      const taskStatus = (task) => String(task.displayStatus || task.status || 'pending').toLowerCase();
       const taskStatusText = (statusValue) => {
         switch (statusValue) {
           case 'completed': return '完成';
           case 'running': return '进行中';
+          case 'needs_repair': return '需修复';
           case 'failed': return '失败';
           case 'blocked': return '等待';
           default: return '待执行';
@@ -884,10 +886,14 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
                         ...styles.planTaskDot,
                         ...(statusValue === 'completed' ? styles.planTaskDotDone : {}),
                         ...(statusValue === 'running' ? styles.planTaskDotRunning : {}),
+                        ...(statusValue === 'needs_repair' ? styles.planTaskDotRunning : {}),
                         ...(statusValue === 'failed' ? styles.planTaskDotFailed : {}),
                       }}
                     />
-                    <span style={styles.planTaskName}>{taskLabel(task)}</span>
+                    <span style={styles.planTaskName}>
+                      {taskLabel(task)}
+                      {task.cycleLabel ? ` · ${task.cycleLabel}` : ''}
+                    </span>
                     <span style={styles.planTaskStatus}>{taskStatusText(statusValue)}</span>
                   </div>
                 );

@@ -54,14 +54,12 @@ function createMockEvent(senderId = 1) {
 // ── 测试套件 ──────────────────────────────────────────────────────
 
 describe('Desktop IPC Initialization Order', () => {
-
   // ── Test 1: IPC handler 注册 ──────────────────────────────────
 
   test('MainProcessIPCAdapter registers ipc:connect handler on initialize()', async () => {
     const { resetEventBus } = await import('../../src/runtime/event-bus.js');
-    const { createMainProcessIPCAdapter, IPCMessageType } = await import(
-      '../../src/adapters/desktop/ipc-adapter.js'
-    );
+    const { createMainProcessIPCAdapter, IPCMessageType } =
+      await import('../../src/adapters/desktop/ipc-adapter.js');
 
     resetEventBus();
     const { getEventBus } = await import('../../src/runtime/event-bus.js');
@@ -94,9 +92,8 @@ describe('Desktop IPC Initialization Order', () => {
 
   test('MainProcessIPCAdapter registers all critical invoke channels', async () => {
     const { resetEventBus } = await import('../../src/runtime/event-bus.js');
-    const { createMainProcessIPCAdapter } = await import(
-      '../../src/adapters/desktop/ipc-adapter.js'
-    );
+    const { createMainProcessIPCAdapter } =
+      await import('../../src/adapters/desktop/ipc-adapter.js');
 
     resetEventBus();
     const { getEventBus } = await import('../../src/runtime/event-bus.js');
@@ -109,7 +106,7 @@ describe('Desktop IPC Initialization Order', () => {
 
     await adapter.initialize();
 
-      // 这些是渲染进程 preload 调用的关键频道，必须全部注册
+    // 这些是渲染进程 preload 调用的关键频道，必须全部注册
     const expectedChannels = [
       'agent:processInput',
       'agent:stop',
@@ -140,9 +137,8 @@ describe('Desktop IPC Initialization Order', () => {
 
   test('DesktopCore initializes then attachIPCAdapter produces working adapter', async () => {
     const { resetEventBus } = await import('../../src/runtime/event-bus.js');
-    const { createDesktopCore, DesktopState } = await import(
-      '../../src/adapters/desktop/desktop-core.js'
-    );
+    const { createDesktopCore, DesktopState } =
+      await import('../../src/adapters/desktop/desktop-core.js');
 
     resetEventBus();
 
@@ -177,12 +173,9 @@ describe('Desktop IPC Initialization Order', () => {
     // 验证在 "createMainWindow" 步骤之前 IPC handler 已经就绪
 
     const { resetEventBus } = await import('../../src/runtime/event-bus.js');
-    const { createDesktopCore } = await import(
-      '../../src/adapters/desktop/desktop-core.js'
-    );
-    const { createMainProcessIPCAdapter, IPCMessageType } = await import(
-      '../../src/adapters/desktop/ipc-adapter.js'
-    );
+    const { createDesktopCore } = await import('../../src/adapters/desktop/desktop-core.js');
+    const { createMainProcessIPCAdapter, IPCMessageType } =
+      await import('../../src/adapters/desktop/ipc-adapter.js');
 
     resetEventBus();
     const { getEventBus } = await import('../../src/runtime/event-bus.js');
@@ -215,8 +208,8 @@ describe('Desktop IPC Initialization Order', () => {
       if (!mockIpcMain.handlers.has(channel)) {
         throw new Error(
           `Handler for "${channel}" was NOT registered before createMainWindow step. ` +
-          `If this was a real app, preload.js would fail with: ` +
-          `"No handler registered for '${channel}'"`
+            `If this was a real app, preload.js would fail with: ` +
+            `"No handler registered for '${channel}'"`,
         );
       }
     }
@@ -237,9 +230,8 @@ describe('Desktop IPC Initialization Order', () => {
 
   test('Multiple initialize() calls do not crash or overwrite handler registration', async () => {
     const { resetEventBus } = await import('../../src/runtime/event-bus.js');
-    const { createMainProcessIPCAdapter, IPCMessageType } = await import(
-      '../../src/adapters/desktop/ipc-adapter.js'
-    );
+    const { createMainProcessIPCAdapter, IPCMessageType } =
+      await import('../../src/adapters/desktop/ipc-adapter.js');
 
     resetEventBus();
     const { getEventBus } = await import('../../src/runtime/event-bus.js');
@@ -262,469 +254,512 @@ describe('Desktop IPC Initialization Order', () => {
     resetEventBus();
   });
 
+  // ==================== Event Forwarding & Deduplication ====================
 
-// ==================== Event Forwarding & Deduplication ====================
+  describe('Desktop Event Forwarding', () => {
+    test('DesktopCore forwards agent:start through IPC adapter once', async () => {
+      const { getEventBus, resetEventBus } = await import('../../src/runtime/event-bus.js');
+      const { DesktopCore, createDesktopCore } =
+        await import('../../src/adapters/desktop/desktop-core.js');
+      const { createMainProcessIPCAdapter } =
+        await import('../../src/adapters/desktop/ipc-adapter.js');
+      const { RuntimeEvent } = await import('../../src/runtime/types.js');
 
-describe('Desktop Event Forwarding', () => {
-  test('DesktopCore forwards agent:start through IPC adapter once', async () => {
-    const { getEventBus, resetEventBus } = await import('../../src/runtime/event-bus.js');
-    const { DesktopCore, createDesktopCore } = await import('../../src/adapters/desktop/desktop-core.js');
-    const { createMainProcessIPCAdapter } = await import('../../src/adapters/desktop/ipc-adapter.js');
-    const { RuntimeEvent } = await import('../../src/runtime/types.js');
+      resetEventBus();
+      const bus = getEventBus();
+      const mockIpcMain = { handle: () => {}, on: () => {} };
 
-    resetEventBus();
-    const bus = getEventBus();
-    const mockIpcMain = { handle: () => {}, on: () => {} };
+      const core = createDesktopCore({ workingDirectory: '/tmp', debug: false });
+      await core.initialize();
+      const adapter = core.attachIPCAdapter(mockIpcMain);
+      let broadcastCount = 0;
+      adapter.broadcast = (name, data) => {
+        broadcastCount++;
+      };
 
-    const core = createDesktopCore({ workingDirectory: '/tmp', debug: false });
-    await core.initialize();
-    const adapter = core.attachIPCAdapter(mockIpcMain);
-    let broadcastCount = 0;
-    adapter.broadcast = (name, data) => { broadcastCount++; };
+      bus.emit(RuntimeEvent.AGENT_START, { task: 'test' });
 
-    bus.emit(RuntimeEvent.AGENT_START, { task: 'test' });
-
-    if (broadcastCount === 0) {
-      throw new Error('Expected at least 1 broadcast, got 0 (event forwarding broken)');
-    }
-    if (broadcastCount > 4) {
-      throw new Error('Expected exactly 1 broadcast, got ' + broadcastCount + ' (possible state cascade)');
-    }
-
-    core.dispose();
-    adapter.disconnect();
-    resetEventBus();
-  });
-  test('DesktopCore state transitions: idle -> ready -> disposed', async () => {
-    const { createDesktopCore, DesktopState } = await import('../../src/adapters/desktop/desktop-core.js');
-
-    const core = createDesktopCore({ workingDirectory: '/tmp', debug: false });
-
-    // Initial state idle
-    const initialState = core.getState();
-    if (initialState.desktopState !== DesktopState.IDLE) {
-      throw new Error('Expected IDLE state after creation, got ' + initialState.desktopState);
-    }
-
-    // After initialize, state becomes READY
-    await core.initialize();
-    const readyState = core.getState();
-    if (readyState.desktopState !== DesktopState.READY) {
-      throw new Error('Expected READY state after initialize, got ' + readyState.desktopState);
-    }
-
-    // After dispose, state becomes DISPOSED
-    await core.dispose();
-    const disposedState = core.getState();
-    if (disposedState.desktopState !== DesktopState.DISPOSED) {
-      throw new Error('Expected DISPOSED state after dispose, got ' + disposedState.desktopState);
-    }
-  });
-
-  test('DesktopCore getState returns expected fields', async () => {
-    const { createDesktopCore, DesktopState } = await import('../../src/adapters/desktop/desktop-core.js');
-
-    const core = createDesktopCore({ workingDirectory: '/tmp', debug: false });
-    await core.initialize();
-
-    const state = core.getState();
-    if (typeof state.desktopState !== 'string') {
-      throw new Error('Expected desktopState to be a string, got ' + typeof state.desktopState);
-    }
-    if (typeof state.initialized !== 'boolean') {
-      throw new Error('Expected initialized to be a boolean, got ' + typeof state.initialized);
-    }
-    if (typeof state.ipcConnected !== 'boolean') {
-      throw new Error('Expected ipcConnected to be a boolean, got ' + typeof state.ipcConnected);
-    }
-
-    // After attach with mock, adapter gets initialized automatically
-    const mockIpcMain = { handle: () => {}, on: () => {} };
-    core.attachIPCAdapter(mockIpcMain);
-    const afterAttach = core.getState();
-    if (afterAttach.ipcConnected !== true) {
-      throw new Error('Expected ipcConnected to be true after attach (initialized), got ' + afterAttach.ipcConnected);
-    }
-
-    await core.dispose();
-  });
-
-  test('DesktopCore can attach and access IPC adapter', async () => {
-    const { createDesktopCore } = await import('../../src/adapters/desktop/desktop-core.js');
-
-    const core = createDesktopCore({ workingDirectory: '/tmp', debug: false });
-    await core.initialize();
-
-    const mockIpcMain = { handle: () => {}, on: () => {} };
-    const adapter = core.attachIPCAdapter(mockIpcMain);
-
-    if (typeof adapter.broadcast !== 'function') {
-      throw new Error('Expected adapter to have broadcast method');
-    }
-    if (typeof adapter.initialize !== 'function') {
-      throw new Error('Expected adapter to have initialize method');
-    }
-
-    // Adapter gets initialized automatically on attach
-    if (adapter.isConnected !== true) {
-      throw new Error('Expected adapter isConnected to be true after attach, got ' + adapter.isConnected);
-    }
-
-    await core.dispose();
-    adapter.disconnect();
-  });
-});
-
-describe('Desktop App Config Persistence', () => {
-  test('saveAppConfig persists and readAppConfig restores workingDirectory', async () => {
-    const os = await import('os');
-    const fs = await import('fs');
-    const path = await import('path');
-    const { saveAppConfig, readAppConfig } = await import('../main-app/llm-config-and-persistence.js');
-
-    const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mastery-desktop-config-'));
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mastery-workspace-'));
-    const electron = {
-      app: {
-        getPath(name) {
-          if (name !== 'userData') {
-            throw new Error(`unexpected path: ${name}`);
-          }
-          return userDataDir;
-        }
+      if (broadcastCount === 0) {
+        throw new Error('Expected at least 1 broadcast, got 0 (event forwarding broken)');
       }
-    };
-    const ctx = {
-      electron,
-      config: {
-        workingDirectory: workspaceDir,
-        window: { width: 1200, height: 800 },
-        runtime: { maxIterations: 42 }
-      },
-      mainWindow: {
-        getSize: () => [1440, 900]
+      if (broadcastCount > 4) {
+        throw new Error(
+          'Expected exactly 1 broadcast, got ' + broadcastCount + ' (possible state cascade)',
+        );
       }
-    };
 
-    const saved = saveAppConfig(ctx);
-    expect(saved.success).toBe(true);
+      core.dispose();
+      adapter.disconnect();
+      resetEventBus();
+    });
+    test('DesktopCore state transitions: idle -> ready -> disposed', async () => {
+      const { createDesktopCore, DesktopState } =
+        await import('../../src/adapters/desktop/desktop-core.js');
 
-    const restored = readAppConfig(electron);
-    expect(restored.workingDirectory).toBe(workspaceDir);
-    expect(restored.window).toMatchObject({ width: 1440, height: 900 });
-    expect(restored.runtime).toMatchObject({ maxIterations: 42 });
+      const core = createDesktopCore({ workingDirectory: '/tmp', debug: false });
+
+      // Initial state idle
+      const initialState = core.getState();
+      if (initialState.desktopState !== DesktopState.IDLE) {
+        throw new Error('Expected IDLE state after creation, got ' + initialState.desktopState);
+      }
+
+      // After initialize, state becomes READY
+      await core.initialize();
+      const readyState = core.getState();
+      if (readyState.desktopState !== DesktopState.READY) {
+        throw new Error('Expected READY state after initialize, got ' + readyState.desktopState);
+      }
+
+      // After dispose, state becomes DISPOSED
+      await core.dispose();
+      const disposedState = core.getState();
+      if (disposedState.desktopState !== DesktopState.DISPOSED) {
+        throw new Error('Expected DISPOSED state after dispose, got ' + disposedState.desktopState);
+      }
+    });
+
+    test('DesktopCore getState returns expected fields', async () => {
+      const { createDesktopCore, DesktopState } =
+        await import('../../src/adapters/desktop/desktop-core.js');
+
+      const core = createDesktopCore({ workingDirectory: '/tmp', debug: false });
+      await core.initialize();
+
+      const state = core.getState();
+      if (typeof state.desktopState !== 'string') {
+        throw new Error('Expected desktopState to be a string, got ' + typeof state.desktopState);
+      }
+      if (typeof state.initialized !== 'boolean') {
+        throw new Error('Expected initialized to be a boolean, got ' + typeof state.initialized);
+      }
+      if (typeof state.ipcConnected !== 'boolean') {
+        throw new Error('Expected ipcConnected to be a boolean, got ' + typeof state.ipcConnected);
+      }
+
+      // After attach with mock, adapter gets initialized automatically
+      const mockIpcMain = { handle: () => {}, on: () => {} };
+      core.attachIPCAdapter(mockIpcMain);
+      const afterAttach = core.getState();
+      if (afterAttach.ipcConnected !== true) {
+        throw new Error(
+          'Expected ipcConnected to be true after attach (initialized), got ' +
+            afterAttach.ipcConnected,
+        );
+      }
+
+      await core.dispose();
+    });
+
+    test('DesktopCore can attach and access IPC adapter', async () => {
+      const { createDesktopCore } = await import('../../src/adapters/desktop/desktop-core.js');
+
+      const core = createDesktopCore({ workingDirectory: '/tmp', debug: false });
+      await core.initialize();
+
+      const mockIpcMain = { handle: () => {}, on: () => {} };
+      const adapter = core.attachIPCAdapter(mockIpcMain);
+
+      if (typeof adapter.broadcast !== 'function') {
+        throw new Error('Expected adapter to have broadcast method');
+      }
+      if (typeof adapter.initialize !== 'function') {
+        throw new Error('Expected adapter to have initialize method');
+      }
+
+      // Adapter gets initialized automatically on attach
+      if (adapter.isConnected !== true) {
+        throw new Error(
+          'Expected adapter isConnected to be true after attach, got ' + adapter.isConnected,
+        );
+      }
+
+      await core.dispose();
+      adapter.disconnect();
+    });
   });
-});
 
-describe('Desktop Model Management Activation', () => {
-  const envKeys = ['MODEL_PROVIDER', 'OPENAI_API_KEY', 'OPENAI_MODEL', 'OPENAI_BASE_URL', 'OPENAI_API_URL'];
+  describe('Desktop App Config Persistence', () => {
+    test('saveAppConfig persists and readAppConfig restores workingDirectory', async () => {
+      const os = await import('os');
+      const fs = await import('fs');
+      const path = await import('path');
+      const { saveAppConfig, readAppConfig } =
+        await import('../main-app/llm-config-and-persistence.js');
 
-  function snapshotEnv() {
-    return Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
-  }
-
-  function restoreEnv(snapshot) {
-    for (const key of envKeys) {
-      if (snapshot[key] === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = snapshot[key];
-      }
-    }
-  }
-
-  async function createModelTestContext(prefix = 'mastery-model-mgmt-') {
-    const os = await import('os');
-    const fs = await import('fs');
-    const path = await import('path');
-    const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-    const attachedProviders = [];
-    return {
-      fs,
-      path,
-      userDataDir,
-      ctx: {
-        userEnvPath: path.join(userDataDir, '.env'),
-        config: { debug: false },
-        electron: {
-          app: {
-            getPath(name) {
-              if (name !== 'userData') {
-                throw new Error(`unexpected path: ${name}`);
-              }
-              return userDataDir;
+      const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mastery-desktop-config-'));
+      const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mastery-workspace-'));
+      const electron = {
+        app: {
+          getPath(name) {
+            if (name !== 'userData') {
+              throw new Error(`unexpected path: ${name}`);
             }
-          }
+            return userDataDir;
+          },
         },
-        desktopCore: {
-          attachModelProvider(provider) {
-            attachedProviders.push(provider);
-          }
+      };
+      const ctx = {
+        electron,
+        config: {
+          workingDirectory: workspaceDir,
+          window: { width: 1200, height: 800 },
+          runtime: { maxIterations: 42 },
         },
-        attachedProviders
-      }
-    };
-  }
+        mainWindow: {
+          getSize: () => [1440, 900],
+        },
+      };
 
-  test('saveSingleModelConfig activates an enabled model immediately', async () => {
-    const savedEnv = snapshotEnv();
-    const { fs, userDataDir, ctx } = await createModelTestContext();
-    try {
-      for (const key of envKeys) delete process.env[key];
-      const { saveSingleModelConfig } = await import('../main-app/llm-config-and-persistence.js');
+      const saved = saveAppConfig(ctx);
+      expect(saved.success).toBe(true);
 
-      const result = await saveSingleModelConfig(ctx, {
-        id: 'model-openai',
-        provider: 'openai',
-        model: 'gpt-4o',
-        apiKey: 'test-key-from-management',
-        enabled: true,
-        name: 'OpenAI'
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.provider).toBe('openai');
-      expect(result.model).toBe('gpt-4o');
-      expect(result.status?.configured).toBe(true);
-      expect(ctx.attachedProviders.length).toBe(1);
-      expect(process.env.MODEL_PROVIDER).toBe('openai');
-      expect(process.env.OPENAI_MODEL).toBe('gpt-4o');
-      expect(process.env.OPENAI_API_KEY).toBe('test-key-from-management');
-    } finally {
-      restoreEnv(savedEnv);
-      fs.rmSync(userDataDir, { recursive: true, force: true });
-    }
+      const restored = readAppConfig(electron);
+      expect(restored.workingDirectory).toBe(workspaceDir);
+      expect(restored.window).toMatchObject({ width: 1440, height: 900 });
+      expect(restored.runtime).toMatchObject({ maxIterations: 42 });
+    });
   });
 
-  test('attachConfiguredModelProvider restores active model from models.json when env is missing', async () => {
-    const savedEnv = snapshotEnv();
-    const { fs, path, userDataDir, ctx } = await createModelTestContext('mastery-model-restore-');
-    try {
-      for (const key of envKeys) delete process.env[key];
-      fs.writeFileSync(path.join(userDataDir, 'models.json'), JSON.stringify([
-        {
-          id: 'model-openai',
-          provider: 'openai',
-          model: 'gpt-4o-mini',
-          apiKey: 'test-key-restored',
-          enabled: true,
-          name: 'OpenAI Mini'
+  describe('Desktop Model Management Activation', () => {
+    const envKeys = [
+      'MODEL_PROVIDER',
+      'OPENAI_API_KEY',
+      'OPENAI_MODEL',
+      'OPENAI_BASE_URL',
+      'OPENAI_API_URL',
+    ];
+
+    function snapshotEnv() {
+      return Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+    }
+
+    function restoreEnv(snapshot) {
+      for (const key of envKeys) {
+        if (snapshot[key] === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = snapshot[key];
         }
-      ], null, 2));
-
-      const { attachConfiguredModelProvider } = await import('../main-app/llm-config-and-persistence.js');
-      const status = await attachConfiguredModelProvider(ctx);
-
-      expect(status.configured).toBe(true);
-      expect(status.provider).toBe('openai');
-      expect(status.model).toBe('gpt-4o-mini');
-      expect(ctx.attachedProviders.length).toBe(1);
-      expect(process.env.OPENAI_API_KEY).toBe('test-key-restored');
-    } finally {
-      restoreEnv(savedEnv);
-      fs.rmSync(userDataDir, { recursive: true, force: true });
+      }
     }
-  });
 
-  test('saveAllModelConfigsAndActivate does not persist an invalid active model', async () => {
-    const savedEnv = snapshotEnv();
-    const { fs, path, userDataDir, ctx } = await createModelTestContext('mastery-model-invalid-');
-    try {
-      for (const key of envKeys) delete process.env[key];
-      const initialConfigs = [
-        {
+    async function createModelTestContext(prefix = 'mastery-model-mgmt-') {
+      const os = await import('os');
+      const fs = await import('fs');
+      const path = await import('path');
+      const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+      const attachedProviders = [];
+      return {
+        fs,
+        path,
+        userDataDir,
+        ctx: {
+          userEnvPath: path.join(userDataDir, '.env'),
+          config: { debug: false },
+          electron: {
+            app: {
+              getPath(name) {
+                if (name !== 'userData') {
+                  throw new Error(`unexpected path: ${name}`);
+                }
+                return userDataDir;
+              },
+            },
+          },
+          desktopCore: {
+            attachModelProvider(provider) {
+              attachedProviders.push(provider);
+            },
+          },
+          attachedProviders,
+        },
+      };
+    }
+
+    test('saveSingleModelConfig activates an enabled model immediately', async () => {
+      const savedEnv = snapshotEnv();
+      const { fs, userDataDir, ctx } = await createModelTestContext();
+      try {
+        for (const key of envKeys) delete process.env[key];
+        const { saveSingleModelConfig } = await import('../main-app/llm-config-and-persistence.js');
+
+        const result = await saveSingleModelConfig(ctx, {
           id: 'model-openai',
           provider: 'openai',
           model: 'gpt-4o',
-          apiKey: 'valid-key',
+          apiKey: 'test-key-from-management',
           enabled: true,
-          name: 'OpenAI'
-        }
-      ];
-      fs.writeFileSync(path.join(userDataDir, 'models.json'), JSON.stringify(initialConfigs, null, 2));
+          name: 'OpenAI',
+        });
 
-      const { saveAllModelConfigsAndActivate } = await import('../main-app/llm-config-and-persistence.js');
-      const result = await saveAllModelConfigsAndActivate(ctx, [
-        {
-          id: 'model-bad',
-          provider: 'openai',
-          model: '',
-          apiKey: '',
-          enabled: true,
-          name: 'Broken'
-        }
-      ]);
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('模型配置不完整（缺少 API Key 或模型名称）');
-      const savedConfigs = JSON.parse(fs.readFileSync(path.join(userDataDir, 'models.json'), 'utf8'));
-      expect(savedConfigs).toEqual(initialConfigs);
-      expect(ctx.attachedProviders.length).toBe(0);
-    } finally {
-      restoreEnv(savedEnv);
-      fs.rmSync(userDataDir, { recursive: true, force: true });
-    }
-  });
-});
-
-describe('Desktop IPC Preload Bridge', () => {
-  test('ElectronMainApp always points BrowserWindow preload at sandbox-compatible CommonJS preload', async () => {
-    const path = await import('path');
-    const fs = await import('fs');
-
-    const source = fs.readFileSync(path.join(DESKTOP_ROOT, 'main-app.js'), 'utf8');
-    const preloadCjsRefs = source.match(/path\.join\(__dirname, 'preload\.cjs'\)/g) || [];
-    expect(preloadCjsRefs.length).toBeGreaterThanOrEqual(2);
-    expect(source).not.toContain("preload: path.join(__dirname, 'preload-entry', 'index.js')");
-    expect(source).not.toContain("preload: path.join(__dirname, 'preload.js')");
-    expect(source).toContain('nodeIntegration: false');
-    expect(source).toContain('contextIsolation: true');
-    expect(source).toContain('sandbox: true');
-    expect(source).not.toContain('sandbox: false');
-  });
-
-  test('desktop packaging includes the sandboxed preload and diagnostic preload files', async () => {
-    const path = await import('path');
-    const fs = await import('fs');
-
-    const rootPackage = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
-    const electronBuilder = JSON.parse(fs.readFileSync(path.join(DESKTOP_ROOT, 'electron-builder.json'), 'utf8'));
-    const verifyScript = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'verify-desktop-package.mjs'), 'utf8');
-
-    expect(rootPackage.build.files).toContain('desktop/preload-entry/**/*');
-    expect(rootPackage.build.files).toContain('desktop/preload.cjs');
-    expect(rootPackage.build.files).toContain('desktop/preload.js');
-
-    expect(electronBuilder.files).toContain('preload-entry/**/*');
-    expect(electronBuilder.files).toContain('preload.cjs');
-    expect(electronBuilder.files).toContain('preload.js');
-
-    expect(verifyScript).toContain('/desktop/preload-entry/index.js');
-    expect(verifyScript).toContain('/desktop/preload-entry/package.json');
-    expect(verifyScript).toContain('/desktop/preload.cjs');
-  });
-
-  test('active CommonJS preload remains sandbox-compatible', async () => {
-    const fs = await import('fs');
-    const path = await import('path');
-
-    const preloadPath = path.join(DESKTOP_ROOT, 'preload.cjs');
-    const preloadSource = fs.readFileSync(preloadPath, 'utf8');
-
-    expect(preloadSource).toContain("const electron = require('electron')");
-    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('electronAPI'");
-    expect(preloadSource).not.toContain("require('fs')");
-    expect(preloadSource).not.toContain("require('vm')");
-  });
-
-  test('preload exposes diagnostic APIs and allows ipc:diagnose', async () => {
-    const fs = await import('fs');
-    const path = await import('path');
-
-    const preloadSource = fs.readFileSync(path.join(DESKTOP_ROOT, 'preload.js'), 'utf8');
-
-    expect(preloadSource).toContain("'ipc:diagnose'");
-    expect(preloadSource).toContain('diagnose: () =>');
-    expect(preloadSource).toContain('diagnoseMain: async () =>');
-    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('electronAPI'");
-    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('__masteryPreloadDiag'");
-  });
-
-  test('registerCustomHandlers registers ipc:diagnose for preload diagnostics', async () => {
-    const path = await import('path');
-    const { registerCustomHandlers } = await import('../main-app/ipc-router.js');
-
-    const mockIpcMain = createMockIpcMain();
-    const handlers = new Map();
-    const ipcAdapter = {
-      getStats: () => ({ isConnected: true, pendingRequests: 0 }),
-      registerHandler(channel, handler) {
-        handlers.set(channel, handler);
-        mockIpcMain.handle(channel, async (event, payload) => handler(payload, event.sender));
+        expect(result.success).toBe(true);
+        expect(result.provider).toBe('openai');
+        expect(result.model).toBe('gpt-4o');
+        expect(result.status?.configured).toBe(true);
+        expect(ctx.attachedProviders.length).toBe(1);
+        expect(process.env.MODEL_PROVIDER).toBe('openai');
+        expect(process.env.OPENAI_MODEL).toBe('gpt-4o');
+        expect(process.env.OPENAI_API_KEY).toBe('test-key-from-management');
+      } finally {
+        restoreEnv(savedEnv);
+        fs.rmSync(userDataDir, { recursive: true, force: true });
       }
-    };
-    const webContents = {
-      id: 7,
-      getURL: () => 'http://127.0.0.1:5173/'
-    };
-    const ctx = {
-      ipcAdapter,
-      config: {
-        debug: true,
-        workingDirectory: REPO_ROOT,
-        window: {
-          webPreferences: {
-            preload: path.join(DESKTOP_ROOT, 'preload-entry', 'index.js')
-          }
-        }
-      },
-      mainWindow: { webContents },
-      electron: {
-        BrowserWindow: {
-          getAllWindows: () => [{ webContents }],
-          fromWebContents: () => ({ isDestroyed: () => false })
-        },
-        dialog: {},
-        Notification: function Notification() {},
-        shell: {},
-        app: {}
-      }
-    };
-
-    registerCustomHandlers(ctx);
-
-    expect(handlers.has('ipc:diagnose')).toBe(true);
-    const result = await handlers.get('ipc:diagnose')({}, webContents);
-    expect(result.success).toBe(true);
-    expect(result.preload.exists).toBe(true);
-    expect(result.window.senderMatchesMainWindow).toBe(true);
-    expect(result.ipc.isConnected).toBe(true);
-  });
-
-  test('workspace:listDirectory flattens legacy preload options payload', async () => {
-    const { registerCustomHandlers } = await import('../main-app/ipc-router.js');
-
-    const handlers = new Map();
-    let captured = null;
-    const ctx = {
-      ipcAdapter: {
-        getStats: () => ({}),
-        registerHandler(channel, handler) {
-          handlers.set(channel, handler);
-        }
-      },
-      config: {
-        debug: false,
-        workingDirectory: REPO_ROOT,
-        window: { webPreferences: {} }
-      },
-      mainWindow: { webContents: { id: 1, getURL: () => '' } },
-      listWorkspaceDirectory(root, options) {
-        captured = { root, options };
-        return { success: true, entries: [] };
-      },
-      electron: {
-        BrowserWindow: {
-          getAllWindows: () => [],
-          fromWebContents: () => null
-        },
-        dialog: {},
-        Notification: function Notification() {},
-        shell: {},
-        app: {}
-      }
-    };
-
-    registerCustomHandlers(ctx);
-    const result = await handlers.get('workspace:listDirectory')({
-      path: 'src',
-      options: { maxEntries: 7 }
     });
 
-    expect(result.success).toBe(true);
-    expect(captured.root).toBe(REPO_ROOT);
-    expect(captured.options).toEqual({ maxEntries: 7, path: 'src' });
-  });
-});
+    test('attachConfiguredModelProvider restores active model from models.json when env is missing', async () => {
+      const savedEnv = snapshotEnv();
+      const { fs, path, userDataDir, ctx } = await createModelTestContext('mastery-model-restore-');
+      try {
+        for (const key of envKeys) delete process.env[key];
+        fs.writeFileSync(
+          path.join(userDataDir, 'models.json'),
+          JSON.stringify(
+            [
+              {
+                id: 'model-openai',
+                provider: 'openai',
+                model: 'gpt-4o-mini',
+                apiKey: 'test-key-restored',
+                enabled: true,
+                name: 'OpenAI Mini',
+              },
+            ],
+            null,
+            2,
+          ),
+        );
 
+        const { attachConfiguredModelProvider } =
+          await import('../main-app/llm-config-and-persistence.js');
+        const status = await attachConfiguredModelProvider(ctx);
+
+        expect(status.configured).toBe(true);
+        expect(status.provider).toBe('openai');
+        expect(status.model).toBe('gpt-4o-mini');
+        expect(ctx.attachedProviders.length).toBe(1);
+        expect(process.env.OPENAI_API_KEY).toBe('test-key-restored');
+      } finally {
+        restoreEnv(savedEnv);
+        fs.rmSync(userDataDir, { recursive: true, force: true });
+      }
+    });
+
+    test('saveAllModelConfigsAndActivate does not persist an invalid active model', async () => {
+      const savedEnv = snapshotEnv();
+      const { fs, path, userDataDir, ctx } = await createModelTestContext('mastery-model-invalid-');
+      try {
+        for (const key of envKeys) delete process.env[key];
+        const initialConfigs = [
+          {
+            id: 'model-openai',
+            provider: 'openai',
+            model: 'gpt-4o',
+            apiKey: 'valid-key',
+            enabled: true,
+            name: 'OpenAI',
+          },
+        ];
+        fs.writeFileSync(
+          path.join(userDataDir, 'models.json'),
+          JSON.stringify(initialConfigs, null, 2),
+        );
+
+        const { saveAllModelConfigsAndActivate } =
+          await import('../main-app/llm-config-and-persistence.js');
+        const result = await saveAllModelConfigsAndActivate(ctx, [
+          {
+            id: 'model-bad',
+            provider: 'openai',
+            model: '',
+            apiKey: '',
+            enabled: true,
+            name: 'Broken',
+          },
+        ]);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('模型配置不完整（缺少 API Key 或模型名称）');
+        const savedConfigs = JSON.parse(
+          fs.readFileSync(path.join(userDataDir, 'models.json'), 'utf8'),
+        );
+        expect(savedConfigs).toEqual(initialConfigs);
+        expect(ctx.attachedProviders.length).toBe(0);
+      } finally {
+        restoreEnv(savedEnv);
+        fs.rmSync(userDataDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('Desktop IPC Preload Bridge', () => {
+    test('ElectronMainApp always points BrowserWindow preload at sandbox-compatible CommonJS preload', async () => {
+      const path = await import('path');
+      const fs = await import('fs');
+
+      const source = fs.readFileSync(path.join(DESKTOP_ROOT, 'main-app.js'), 'utf8');
+      const preloadCjsRefs = source.match(/path\.join\(__dirname, 'preload\.cjs'\)/g) || [];
+      expect(preloadCjsRefs.length).toBeGreaterThanOrEqual(2);
+      expect(source).not.toContain("preload: path.join(__dirname, 'preload-entry', 'index.js')");
+      expect(source).not.toContain("preload: path.join(__dirname, 'preload.js')");
+      expect(source).toContain('nodeIntegration: false');
+      expect(source).toContain('contextIsolation: true');
+      expect(source).toContain('sandbox: true');
+      expect(source).not.toContain('sandbox: false');
+    });
+
+    test('desktop packaging includes the sandboxed preload and diagnostic preload files', async () => {
+      const path = await import('path');
+      const fs = await import('fs');
+
+      const rootPackage = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
+      const electronBuilder = JSON.parse(
+        fs.readFileSync(path.join(DESKTOP_ROOT, 'electron-builder.json'), 'utf8'),
+      );
+      const verifyScript = fs.readFileSync(
+        path.join(REPO_ROOT, 'scripts', 'verify-desktop-package.mjs'),
+        'utf8',
+      );
+
+      expect(rootPackage.build.files).toContain('desktop/preload-entry/**/*');
+      expect(rootPackage.build.files).toContain('desktop/main-app.js');
+      expect(rootPackage.build.files).toContain('desktop/main-app/**/*');
+      expect(rootPackage.build.files).toContain('desktop/preload.cjs');
+      expect(rootPackage.build.files).toContain('desktop/preload.js');
+
+      expect(electronBuilder.files).toContain('main-app.js');
+      expect(electronBuilder.files).toContain('main-app/**/*');
+      expect(electronBuilder.files).toContain('preload-entry/**/*');
+      expect(electronBuilder.files).toContain('preload.cjs');
+      expect(electronBuilder.files).toContain('preload.js');
+
+      expect(verifyScript).toContain('/desktop/main-app.js');
+      expect(verifyScript).toContain('/desktop/main-app/window-lifecycle.js');
+      expect(verifyScript).toContain('/desktop/preload-entry/index.js');
+      expect(verifyScript).toContain('/desktop/preload-entry/package.json');
+      expect(verifyScript).toContain('/desktop/preload.cjs');
+    });
+
+    test('active CommonJS preload remains sandbox-compatible', async () => {
+      const fs = await import('fs');
+      const path = await import('path');
+
+      const preloadPath = path.join(DESKTOP_ROOT, 'preload.cjs');
+      const preloadSource = fs.readFileSync(preloadPath, 'utf8');
+
+      expect(preloadSource).toContain("const electron = require('electron')");
+      expect(preloadSource).toContain("contextBridge.exposeInMainWorld('electronAPI'");
+      expect(preloadSource).not.toContain("require('fs')");
+      expect(preloadSource).not.toContain("require('vm')");
+    });
+
+    test('preload exposes diagnostic APIs and allows ipc:diagnose', async () => {
+      const fs = await import('fs');
+      const path = await import('path');
+
+      const preloadSource = fs.readFileSync(path.join(DESKTOP_ROOT, 'preload.js'), 'utf8');
+
+      expect(preloadSource).toContain("'ipc:diagnose'");
+      expect(preloadSource).toContain('diagnose: () =>');
+      expect(preloadSource).toContain('diagnoseMain: async () =>');
+      expect(preloadSource).toContain("contextBridge.exposeInMainWorld('electronAPI'");
+      expect(preloadSource).toContain("contextBridge.exposeInMainWorld('__masteryPreloadDiag'");
+    });
+
+    test('registerCustomHandlers registers ipc:diagnose for preload diagnostics', async () => {
+      const path = await import('path');
+      const { registerCustomHandlers } = await import('../main-app/ipc-router.js');
+
+      const mockIpcMain = createMockIpcMain();
+      const handlers = new Map();
+      const ipcAdapter = {
+        getStats: () => ({ isConnected: true, pendingRequests: 0 }),
+        registerHandler(channel, handler) {
+          handlers.set(channel, handler);
+          mockIpcMain.handle(channel, async (event, payload) => handler(payload, event.sender));
+        },
+      };
+      const webContents = {
+        id: 7,
+        getURL: () => 'http://127.0.0.1:5173/',
+      };
+      const ctx = {
+        ipcAdapter,
+        config: {
+          debug: true,
+          workingDirectory: REPO_ROOT,
+          window: {
+            webPreferences: {
+              preload: path.join(DESKTOP_ROOT, 'preload-entry', 'index.js'),
+            },
+          },
+        },
+        mainWindow: { webContents },
+        electron: {
+          BrowserWindow: {
+            getAllWindows: () => [{ webContents }],
+            fromWebContents: () => ({ isDestroyed: () => false }),
+          },
+          dialog: {},
+          Notification: function Notification() {},
+          shell: {},
+          app: {},
+        },
+      };
+
+      registerCustomHandlers(ctx);
+
+      expect(handlers.has('ipc:diagnose')).toBe(true);
+      const result = await handlers.get('ipc:diagnose')({}, webContents);
+      expect(result.success).toBe(true);
+      expect(result.preload.exists).toBe(true);
+      expect(result.window.senderMatchesMainWindow).toBe(true);
+      expect(result.ipc.isConnected).toBe(true);
+    });
+
+    test('workspace:listDirectory flattens legacy preload options payload', async () => {
+      const { registerCustomHandlers } = await import('../main-app/ipc-router.js');
+
+      const handlers = new Map();
+      let captured = null;
+      const ctx = {
+        ipcAdapter: {
+          getStats: () => ({}),
+          registerHandler(channel, handler) {
+            handlers.set(channel, handler);
+          },
+        },
+        config: {
+          debug: false,
+          workingDirectory: REPO_ROOT,
+          window: { webPreferences: {} },
+        },
+        mainWindow: { webContents: { id: 1, getURL: () => '' } },
+        listWorkspaceDirectory(root, options) {
+          captured = { root, options };
+          return { success: true, entries: [] };
+        },
+        electron: {
+          BrowserWindow: {
+            getAllWindows: () => [],
+            fromWebContents: () => null,
+          },
+          dialog: {},
+          Notification: function Notification() {},
+          shell: {},
+          app: {},
+        },
+      };
+
+      registerCustomHandlers(ctx);
+      const result = await handlers.get('workspace:listDirectory')({
+        path: 'src',
+        options: { maxEntries: 7 },
+      });
+
+      expect(result.success).toBe(true);
+      expect(captured.root).toBe(REPO_ROOT);
+      expect(captured.options).toEqual({ maxEntries: 7, path: 'src' });
+    });
+  });
 });

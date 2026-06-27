@@ -9,6 +9,8 @@
   },
   "files": [
     "main.js",
+    "main-app.js",
+    "main-app/**/*",
     "preload-entry/**/*",
     "preload.cjs",
     "preload.js",
@@ -30,16 +32,12 @@
     {
       "from": "../src",
       "to": "src",
-      "filter": [
-        "**/*"
-      ]
+      "filter": ["**/*"]
     },
     {
       "from": "../node_modules",
       "to": "node_modules",
-      "filter": [
-        "**/*"
-      ]
+      "filter": ["**/*"]
     },
     {
       "from": "../package.json",
@@ -47,23 +45,16 @@
     }
   ],
   "asar": true,
-  "asarUnpack": [
-    "node_modules/**/*"
-  ],
+  "asarUnpack": ["node_modules/**/*"],
   "win": {
     "target": [
       {
         "target": "nsis",
-        "arch": [
-          "x64",
-          "ia32"
-        ]
+        "arch": ["x64", "ia32"]
       },
       {
         "target": "portable",
-        "arch": [
-          "x64"
-        ]
+        "arch": ["x64"]
       }
     ],
     "artifactName": "desktop-${productName}-${version}-${arch}-setup.${ext}"
@@ -77,10 +68,7 @@
     "shortcutName": "AI Agent Desktop",
     "deleteAppDataOnUninstall": false,
     "displayLanguageSelector": false,
-    "installerLanguages": [
-      "zh_CN",
-      "en_US"
-    ],
+    "installerLanguages": ["zh_CN", "en_US"],
     "language": "zh_CN",
     "runAfterFinish": true,
     "menuCategory": true
@@ -92,17 +80,11 @@
     "target": [
       {
         "target": "dmg",
-        "arch": [
-          "x64",
-          "arm64"
-        ]
+        "arch": ["x64", "arm64"]
       },
       {
         "target": "zip",
-        "arch": [
-          "x64",
-          "arm64"
-        ]
+        "arch": ["x64", "arm64"]
       }
     ],
     "category": "public.app-category.developer-tools",
@@ -142,36 +124,23 @@
     "target": [
       {
         "target": "AppImage",
-        "arch": [
-          "x64",
-          "arm64"
-        ]
+        "arch": ["x64", "arm64"]
       },
       {
         "target": "deb",
-        "arch": [
-          "x64",
-          "arm64"
-        ]
+        "arch": ["x64", "arm64"]
       },
       {
         "target": "rpm",
-        "arch": [
-          "x64"
-        ]
+        "arch": ["x64"]
       },
       {
         "target": "snap",
-        "arch": [
-          "x64"
-        ]
+        "arch": ["x64"]
       },
       {
         "target": "tar.gz",
-        "arch": [
-          "x64",
-          "arm64"
-        ]
+        "arch": ["x64", "arm64"]
       }
     ],
     "category": "Development",
@@ -197,13 +166,7 @@
   "deb": {
     "priority": "optional",
     "compression": "xz",
-    "depends": [
-      "libgtk-3-0",
-      "libnotify4",
-      "libnss3",
-      "libxss1",
-      "xtst6"
-    ]
+    "depends": ["libgtk-3-0", "libnotify4", "libnss3", "libxss1", "xtst6"]
   },
   "rpm": {
     "compression": "xz",
@@ -214,16 +177,8 @@
   "snap": {
     "confinement": "classic",
     "grade": "stable",
-    "channels": [
-      "stable",
-      "edge"
-    ],
-    "plugs": [
-      "default",
-      "home",
-      "network",
-      "network-bind"
-    ]
+    "channels": ["stable", "edge"],
+    "plugs": ["default", "home", "network", "network-bind"]
   },
   "tar.gz": {
     "compression": "gzip"

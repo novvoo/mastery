@@ -936,9 +936,10 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
     case 'plan:updated': {
       const plan = payload?.plan || payload;
       const tasks = normalizePlanTasks(plan?.tasks);
-      const completed = tasks.filter((task) => task.status === 'completed').length;
-      const running = tasks.filter((task) => task.status === 'running').length;
-      const failed = tasks.filter((task) => task.status === 'failed').length;
+      const completed = tasks.filter((task) => task.displayStatus === 'completed').length;
+      const running = tasks.filter((task) => task.displayStatus === 'running').length;
+      const failed = tasks.filter((task) => task.displayStatus === 'failed').length;
+      const needsRepair = tasks.filter((task) => task.displayStatus === 'needs_repair').length;
       const total = tasks.length;
       const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
       return {
@@ -955,7 +956,7 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
           planTasks: tasks,
           planSummary: payload?.summary || payload?.update?.after || '',
           planUpdate: payload?.update || null,
-          planProgress: { total, completed, running, failed, progress },
+          planProgress: { total, completed, running, failed, needsRepair, progress },
           toolName: payload?.toolName,
         },
       };
@@ -1028,15 +1029,31 @@ function normalizePlanTasks(tasks) {
     return [];
   }
   if (Array.isArray(tasks)) {
-    return tasks;
+    return tasks.map(normalizePlanTask);
   }
   if (tasks && typeof tasks === 'object') {
-    return Object.entries(tasks).map(([id, task]) => ({
-      id,
-      ...(task && typeof task === 'object' ? task : { name: String(task) }),
-    }));
+    return Object.entries(tasks).map(([id, task]) =>
+      normalizePlanTask({
+        id,
+        ...(task && typeof task === 'object' ? task : { name: String(task) }),
+      }),
+    );
   }
   return [];
+}
+
+function normalizePlanTask(task) {
+  const status = String(task?.status || 'pending').toLowerCase();
+  const displayStatus = String(
+    task?.displayStatus || task?.result?.displayStatus || status,
+  ).toLowerCase();
+  return {
+    ...task,
+    status,
+    displayStatus,
+    statusReason: task?.statusReason || task?.result?.statusReason || '',
+    cycleLabel: task?.cycleLabel || '',
+  };
 }
 
 export function safeStringify(value, { space = 0, maxChars = 20000 } = {}) {

@@ -713,6 +713,7 @@ export class ExecutionPlan {
         priority: t.priority,
         allowedTools: t.allowedTools,
         scopeFiles: t.scopeFiles || [],
+        metadata: t.metadata || {},
         result: t.result,
         error: t.error,
         startedAt: t.startedAt,

@@ -104,6 +104,32 @@ describe('SessionManager', () => {
     expect(hist[0].role).toBe('user');
   });
 
+  test('exportSnapshot and restoreSnapshot preserve messages and persistent layers', () => {
+    const sm = new SessionManager();
+    sm.setSystemPrompt('System');
+    sm.addLayer('persisted', 'Persistent context', { priority: SessionManager.LAYER.MEMORY });
+    sm.addLayer('transient', 'Temporary context', { transient: true });
+    sm.addUserMessage('Remember this task');
+    sm.addAssistantMessage('I will keep context');
+
+    const snapshot = sm.exportSnapshot();
+    expect(snapshot.systemPrompt).toContain('System');
+    expect(snapshot.layers.find((layer) => layer.id === 'persisted')).toBeDefined();
+    expect(snapshot.layers.find((layer) => layer.id === 'transient')).toBeUndefined();
+    expect(snapshot.messages.length).toBe(2);
+
+    const restored = new SessionManager();
+    expect(restored.restoreSnapshot(snapshot)).toBe(true);
+    expect(restored.getMessages()[0].content).toContain('System');
+    expect(restored.getMessages().some((message) => message.content === 'Persistent context')).toBe(
+      true,
+    );
+    expect(restored.getHistory().map((message) => message.content)).toEqual([
+      'Remember this task',
+      'I will keep context',
+    ]);
+  });
+
   test('trimToContextWindow respects max tokens', () => {
     const sm = new SessionManager();
     sm.setSystemPrompt('Short');

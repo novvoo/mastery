@@ -103,9 +103,10 @@ function getPlanEventFromDetail(detail) {
   const payload = detail.payload || {};
   const plan = detail.plan || payload.plan || payload;
   const tasks = normalizePlanTasks(plan?.tasks || detail.planTasks);
-  const completed = tasks.filter((task) => task.status === 'completed').length;
-  const running = tasks.filter((task) => task.status === 'running').length;
-  const failed = tasks.filter((task) => task.status === 'failed').length;
+  const completed = tasks.filter((task) => task.displayStatus === 'completed').length;
+  const running = tasks.filter((task) => task.displayStatus === 'running').length;
+  const failed = tasks.filter((task) => task.displayStatus === 'failed').length;
+  const needsRepair = tasks.filter((task) => task.displayStatus === 'needs_repair').length;
   const total = tasks.length;
 
   return {
@@ -121,6 +122,7 @@ function getPlanEventFromDetail(detail) {
       completed,
       running,
       failed,
+      needsRepair,
       progress: total > 0 ? Math.round((completed / total) * 100) : 0,
     },
     update: detail.planUpdate || payload.update || null,
@@ -141,11 +143,15 @@ function normalizePlanTasks(tasks) {
 
 function normalizePlanTask(task) {
   const status = String(task?.status || 'pending').toLowerCase();
+  const displayStatus = String(task?.displayStatus || task?.result?.displayStatus || status).toLowerCase();
   return {
     id: task?.id || task?.name || '',
     name: task?.name || task?.id || 'Task',
     description: task?.description || '',
     status,
+    displayStatus,
+    statusReason: task?.statusReason || task?.result?.statusReason || '',
+    cycleLabel: task?.cycleLabel || '',
   };
 }
 

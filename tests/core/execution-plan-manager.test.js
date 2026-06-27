@@ -232,8 +232,19 @@ describe('isSuccessfulToolResult', () => {
     expect(isSuccessfulToolResult('   ')).toBe(false);
   });
 
-  test('returns true for object result', () => {
+  test('returns true for successful object result', () => {
     expect(isSuccessfulToolResult({ success: true })).toBe(true);
+  });
+
+  test('returns false for failed object result', () => {
+    expect(isSuccessfulToolResult({ success: false })).toBe(false);
+    expect(isSuccessfulToolResult({ exitCode: 1, stdout: '1 test failed' })).toBe(false);
+    expect(isSuccessfulToolResult({ errorCount: 2 })).toBe(false);
+  });
+
+  test('returns false for common test failure output', () => {
+    expect(isSuccessfulToolResult('bun test v1.3.14\n1 fail\nexit code 1')).toBe(false);
+    expect(isSuccessfulToolResult('FAIL tests/app.test.js')).toBe(false);
   });
 
   test('returns true for null result - JSON.stringify produces truthy string', () => {
@@ -383,6 +394,40 @@ describe('ExecutionPlanManager', () => {
     manager.createIfNeeded('Fix bug', { requiresPlan: true, mode: 'mutate', allowsMutation: true });
     const result = manager.advance('list_dir', {}, 'Error: something failed');
     expect(result).toBeNull();
+  });
+
+  test('advance replans when verification fails', () => {
+    const planEvents = [];
+    manager = new ExecutionPlanManager({
+      onPlanAdvance: (event) => planEvents.push(event),
+    });
+    manager.createIfNeeded('Fix bug in app.js', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+    });
+
+    manager.advance('list_dir', {}, 'OK');
+    manager.advance('project_profile', {}, 'package.json scripts test');
+    manager.advance('write_file', { path: 'app.js' }, 'OK');
+    manager.advance('read_file', { path: 'app.js' }, 'OK');
+
+    const result = manager.advance('shell', { command: 'bun test' }, { exitCode: 1 });
+
+    expect(result?.replanned).toBe(true);
+    expect(manager.plan.status).toBe('running');
+    expect(manager.plan.getTask('verify_result').status).toBe('completed');
+    expect(manager.plan.getTask('repair_after_verification_failure_1_diagnose')).toBeDefined();
+    expect(manager.plan.getTask('repair_after_verification_failure_1_reverify')).toBeDefined();
+    expect(manager.buildPrompt()).toContain('repair_after_verification_failure_1_diagnose');
+
+    const latestEvent = planEvents.at(-1);
+    const verifyTask = latestEvent.tasks.find((task) => task.id === 'verify_result');
+    expect(verifyTask.status).toBe('completed');
+    expect(verifyTask.displayStatus).toBe('needs_repair');
+    expect(verifyTask.statusReason).toContain('Verification failed');
+    expect(latestEvent.completed).toBeLessThan(latestEvent.total);
+    expect(latestEvent.needsRepair).toBe(1);
   });
 
   test('advance completes inspect_workspace on inspection tool', () => {

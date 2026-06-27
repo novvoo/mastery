@@ -249,6 +249,47 @@ describe('runtime details helpers', () => {
     });
   });
 
+  test('plan summary uses displayStatus for repair-required verification tasks', () => {
+    const summary = buildActivitySummary([
+      {
+        event: 'plan:updated',
+        type: 'plan',
+        timestamp: 1,
+        payload: {
+          plan: {
+            tasks: [
+              {
+                id: 'verify_result',
+                name: '验证结果',
+                status: 'completed',
+                displayStatus: 'needs_repair',
+                statusReason: 'Verification failed; repair tasks were added.',
+              },
+              {
+                id: 'repair_after_verification_failure_1_diagnose',
+                name: '诊断验证失败',
+                status: 'running',
+                displayStatus: 'running',
+                cycleLabel: 'repair cycle 1',
+              },
+            ],
+          },
+        },
+      },
+    ]);
+
+    expect(summary.plan.tasks[0]).toMatchObject({
+      status: 'completed',
+      displayStatus: 'needs_repair',
+    });
+    expect(summary.plan.progress).toMatchObject({
+      completed: 0,
+      running: 1,
+      needsRepair: 1,
+      progress: 0,
+    });
+  });
+
   test('summarizes waiting-for-user interaction state', () => {
     const summary = buildActivitySummary([
       {

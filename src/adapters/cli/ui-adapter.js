@@ -314,9 +314,11 @@ export class CLIUIAdapter {
     const { theme } = enhancedUI;
 
     // 统计任务状态
-    const completed = tasks.filter((t) => t.status === 'completed').length;
-    const running = tasks.filter((t) => t.status === 'running').length;
-    const failed = tasks.filter((t) => t.status === 'failed').length;
+    const taskDisplayStatus = (task) => task.displayStatus || task.status;
+    const completed = tasks.filter((t) => taskDisplayStatus(t) === 'completed').length;
+    const running = tasks.filter((t) => taskDisplayStatus(t) === 'running').length;
+    const failed = tasks.filter((t) => taskDisplayStatus(t) === 'failed').length;
+    const needsRepair = tasks.filter((t) => taskDisplayStatus(t) === 'needs_repair').length;
     const total = tasks.length;
     const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
 
@@ -334,6 +336,7 @@ export class CLIUIAdapter {
         theme.dim('│ ') +
           `完成: ${completed}/${total}` +
           (running > 0 ? `  运行中: ${running}` : '') +
+          (needsRepair > 0 ? `  需修复: ${needsRepair}` : '') +
           (failed > 0 ? `  失败: ${failed}` : '') +
           theme.dim(' '.repeat(6) + '│'),
       );
@@ -342,19 +345,20 @@ export class CLIUIAdapter {
       // 显示最近的任务状态
       const recent = tasks.slice(-6);
       recent.forEach((task, i) => {
+        const displayStatus = taskDisplayStatus(task);
         const statusIcon =
-          task.status === 'completed'
+          displayStatus === 'completed'
             ? theme.success('✓')
-            : task.status === 'running'
+            : displayStatus === 'running' || displayStatus === 'needs_repair'
               ? theme.warning('⏳')
-              : task.status === 'failed'
+              : displayStatus === 'failed'
                 ? theme.error('✗')
                 : theme.dim('○');
         console.log(
           theme.dim('│  ') +
             statusIcon +
             ' ' +
-            theme.white(task.name || task.id) +
+            theme.white(`${task.name || task.id}${task.cycleLabel ? ` · ${task.cycleLabel}` : ''}`) +
             theme.dim(' '.repeat(Math.max(0, 52 - (task.name || task.id || '').length)) + '│'),
         );
       });

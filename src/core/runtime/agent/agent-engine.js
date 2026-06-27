@@ -42,6 +42,7 @@ import { ModuleResolver } from '../../harness/module-resolver.js';
 import { ImportGraph } from '../../harness/import-graph.js';
 import { BarrelManager } from '../../harness/barrel-manager.js';
 import { ConversationJournal } from '../../../memory/conversation-journal.js';
+import { SessionPersistence } from '../../session/session-persistence.js';
 import { ContextProjectionGenerator } from '../../harness/context-projection.js';
 import { StateGraph } from '../../harness/state-graph-core.js';
 import { OnDemandContextExpansion } from '../../harness/on-demand-context.js';
@@ -765,6 +766,7 @@ export class AgentEngine {
   #lastRunResult = null;
   #lastUserInput = null;
   #conversationJournal;
+  #sessionPersistence;
   #systemPromptInitialized = false;
 
   constructor({ modelProvider, toolRegistry, memoryManager, config, ui }) {
@@ -787,6 +789,11 @@ export class AgentEngine {
         }
       })();
     this.#conversationJournal = new ConversationJournal(cwd);
+    this.#sessionPersistence = new SessionPersistence(cwd, {
+      enabled: config?.sessionPersistence !== false,
+      maxMessages: config?.sessionPersistenceMaxMessages ?? 80,
+      filePath: config?.sessionPersistenceFile,
+    });
     this.#config = {
       maxIterations: config.maxIterations || MAX_ITERATIONS_DEFAULT,
       workingDirectory: config.workingDirectory || process.cwd(),
@@ -814,6 +821,14 @@ export class AgentEngine {
 
     // ============ 子系统初始化 ============
     this.#sessionManager = new SessionManager({ model: this.#config.session?.model });
+    const restoredSession = this.#sessionPersistence.restoreInto(this.#sessionManager);
+    this.#systemPromptInitialized = restoredSession && this.#sessionManager.getHistory().length > 0;
+    if (restoredSession) {
+      this.#ui.debugEvent?.('Session context restored', {
+        messages: this.#sessionManager.getHistory().length,
+        filePath: this.#sessionPersistence.filePath,
+      });
+    }
     this.#retryStrategy = new RetryStrategy();
     this.#textToolParser = new TextToolParser(this.#toolRegistry);
     this.#intentClassifier = this.#config.intentClassification
@@ -1110,6 +1125,11 @@ export class AgentEngine {
     this.#sessionManager.addSystemMessage(
       `[CURRENT TASK] You MUST complete this user request: ${userInput}`,
     );
+    this.#persistSessionContext({
+      phase: 'run_started',
+      runId,
+      lastUserInput: userInput,
+    });
     const routingPrompt = this.#intentClassifier?.buildRoutingPrompt?.(
       intent,
       classificationFeedback,
@@ -2352,6 +2372,7 @@ export class AgentEngine {
 
   /** 释放资源 */
   dispose() {
+    this.#persistSessionContext({ phase: 'dispose' });
     try {
       this.#modelProvider.dispose?.();
     } catch {}
@@ -3064,6 +3085,14 @@ export class AgentEngine {
       }
     }
 
+    this.#persistSessionContext({
+      phase: 'run_completed',
+      runId: result.runId,
+      status,
+      success,
+      reason,
+    });
+
     // ========== 反馈闭环 L1 & L3: Plan 执行结果 → Methodology 调优 + 跨 run 模式学习 ==========
     try {
       const planSummary = this.#executionPlanManager?.generateExecutionSummary?.();
@@ -3113,6 +3142,17 @@ export class AgentEngine {
     }
 
     return result;
+  }
+
+  #persistSessionContext(metadata = {}) {
+    try {
+      this.#sessionPersistence?.save?.(this.#sessionManager, {
+        workingDirectory: this.#config.workingDirectory,
+        ...metadata,
+      });
+    } catch {
+      /* context persistence must not block execution */
+    }
   }
 
   #preview(value, maxLength = 200) {

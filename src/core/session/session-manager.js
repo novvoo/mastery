@@ -247,6 +247,74 @@ export class SessionManager {
     return [...this.#messages];
   }
 
+  exportSnapshot(options = {}) {
+    const maxMessages = Math.max(0, options.maxMessages ?? 80);
+    const messages = maxMessages > 0 ? this.#messages.slice(-maxMessages) : [...this.#messages];
+    const layers = Array.from(this.#layers.entries())
+      .filter(([, layer]) => !layer.transient)
+      .map(([id, layer]) => ({
+        id,
+        content: layer.content,
+        priority: layer.priority,
+        tokenBudget: layer.tokenBudget,
+        transient: false,
+      }));
+
+    return {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      tokenizerModel: this.getTokenizerModel(),
+      systemPrompt: this.#systemPrompt,
+      layers,
+      messages: messages.map((message) => ({ ...message })),
+    };
+  }
+
+  restoreSnapshot(snapshot, options = {}) {
+    if (!snapshot || typeof snapshot !== 'object') {
+      return false;
+    }
+
+    const replace = options.replace !== false;
+    if (replace) {
+      this.#messages = [];
+      this.#layers.clear();
+      this.#systemPrompt = '';
+    }
+
+    if (typeof snapshot.systemPrompt === 'string') {
+      this.#systemPrompt = snapshot.systemPrompt;
+    }
+
+    if (Array.isArray(snapshot.layers)) {
+      for (const layer of snapshot.layers) {
+        if (!layer?.id || typeof layer.content !== 'string') {
+          continue;
+        }
+        this.#layers.set(layer.id, {
+          content: layer.content,
+          priority: layer.priority ?? 0,
+          tokenBudget: layer.tokenBudget ?? null,
+          transient: false,
+        });
+      }
+    }
+
+    if (Array.isArray(snapshot.messages)) {
+      this.#messages = snapshot.messages
+        .filter((message) => message?.role && typeof message.content === 'string')
+        .map((message) => ({
+          role: message.role,
+          content: message.content,
+          ...(message.toolCalls ? { toolCalls: message.toolCalls } : {}),
+          ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
+          priority: message.priority || SessionManager.PRIORITY.ORDINARY,
+        }));
+    }
+
+    return true;
+  }
+
   /** Token estimation with a CJK-aware fallback counter. */
   getTokenCount() {
     let total = 0;
