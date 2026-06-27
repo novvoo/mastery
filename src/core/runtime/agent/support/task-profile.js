@@ -13,23 +13,23 @@
  */
 
 export const TaskMode = {
-  ANSWER: 'answer',     // 回答型：解释、总结、运行说明
-  INSPECT: 'inspect',   // 观察型：读/搜/分析，只读
+  ANSWER: 'answer', // 回答型：解释、总结、运行说明
+  INSPECT: 'inspect', // 观察型：读/搜/分析，只读
   DIAGNOSE: 'diagnose', // 诊断型：定位原因，默认不改
-  MUTATE: 'mutate',     // 修改型：plan → edit → verify
-  VERIFY: 'verify',     // 验证型：测试、验证
+  MUTATE: 'mutate', // 修改型：plan → edit → verify
+  VERIFY: 'verify', // 验证型：测试、验证
 };
 
 export const TaskIntent = {
-  PROJECT_INFO: 'project_info',           // 项目信息查询
-  HOW_TO_RUN: 'how_to_run',               // 如何运行
+  PROJECT_INFO: 'project_info', // 项目信息查询
+  HOW_TO_RUN: 'how_to_run', // 如何运行
   READ_ONLY_ANALYSIS: 'read_only_analysis', // 只读分析
-  DIAGNOSIS: 'diagnosis',                 // Bug/问题诊断
+  DIAGNOSIS: 'diagnosis', // Bug/问题诊断
   CODE_MODIFICATION: 'code_modification', // 代码修改
   FEATURE_IMPLEMENTATION: 'feature_implementation', // 功能实现
-  TEST_OR_VERIFY: 'test_or_verify',       // 测试/验证
-  DOCUMENTATION: 'documentation',         // 文档修改
-  GENERAL_CHAT: 'general_chat',           // 通用对话
+  TEST_OR_VERIFY: 'test_or_verify', // 测试/验证
+  DOCUMENTATION: 'documentation', // 文档修改
+  GENERAL_CHAT: 'general_chat', // 通用对话
 };
 
 // ============== 强信号正则（确定性分类）==============
@@ -43,11 +43,21 @@ const EXPLICIT_MUTATION_PATTERNS = [
 
 const PROJECT_INFO_PATTERNS = [
   /(是什么|做什么|介绍|说明|解释|what is|what does|explain|introduce|describe)/i,
-  /(怎么运行|怎么用|如何运行|how to run|how to use|usage|start|launch)/i,
+  /(怎么运行|怎么用|如何运行|怎么启动|如何启动|how to run|how to use|usage|start|launch)/i,
 ];
 
 const DIAGNOSTIC_PATTERNS = [
   /(为什么|原因|报错|错误|失败|bug|error|why|root cause|fails?|failing|broken|hang|stuck|crash)/i,
+];
+
+const VERIFY_PATTERNS = [
+  /(验证|测试|跑测试|检查结果|确认|构建|编译|运行一下|启动一下|预览)/i,
+  /\b(verify|validate|run tests?|test|check result|confirm|build|compile|preview)\b/i,
+];
+
+const HOW_TO_RUN_PATTERNS = [
+  /(怎么运行|如何运行|怎么启动|如何启动|启动项目|运行项目)/i,
+  /\b(how to run|how to start|start this project|run this project)\b/i,
 ];
 
 const READ_ONLY_PATTERNS = [
@@ -71,12 +81,22 @@ const PLAN_TRIGGER_PATTERNS = [
  * @returns {object} TaskProfile
  */
 export function classifyTask(userInput, llmIntent = null) {
-  const text = String(userInput || '').toLowerCase().trim();
+  const text = String(userInput || '')
+    .toLowerCase()
+    .trim();
+
+  const hasExplicitMutationIntent = EXPLICIT_MUTATION_PATTERNS.some((p) => p.test(text));
+  const hasQuestionIntent = PROJECT_INFO_PATTERNS.some((p) => p.test(text));
+  const hasDiagnosticIntent = DIAGNOSTIC_PATTERNS.some((p) => p.test(text));
+  const hasVerifyIntent = VERIFY_PATTERNS.some((p) => p.test(text));
+  const hasHowToRunIntent = HOW_TO_RUN_PATTERNS.some((p) => p.test(text));
+  const hasReadOnlyIntent = READ_ONLY_PATTERNS.some((p) => p.test(text));
+  const hasPlanTrigger = PLAN_TRIGGER_PATTERNS.some((p) => p.test(text));
 
   // === 确定性规则校验 LLM 输出 ===
   if (llmIntent && typeof llmIntent === 'object') {
     // 如果确定性规则说这是纯信息查询，强制覆盖
-    if (hasQuestionIntent(text) && !hasExplicitMutation(text)) {
+    if (hasQuestionIntent && !hasExplicitMutationIntent) {
       return buildProfile(TaskIntent.PROJECT_INFO, TaskMode.ANSWER, {
         requiresRepoRead: true,
         allowsMutation: false,
@@ -87,15 +107,8 @@ export function classifyTask(userInput, llmIntent = null) {
     }
   }
 
-  // === 强信号分类 ===
-  const hasExplicitMutation = EXPLICIT_MUTATION_PATTERNS.some(p => p.test(text));
-  const hasQuestionIntent = PROJECT_INFO_PATTERNS.some(p => p.test(text));
-  const hasDiagnosticIntent = DIAGNOSTIC_PATTERNS.some(p => p.test(text));
-  const hasReadOnlyIntent = READ_ONLY_PATTERNS.some(p => p.test(text));
-  const hasPlanTrigger = PLAN_TRIGGER_PATTERNS.some(p => p.test(text));
-
   // 修改型任务（最高优先级）
-  if (hasExplicitMutation) {
+  if (hasExplicitMutationIntent) {
     if (hasDiagnosticIntent) {
       return buildProfile(TaskIntent.CODE_MODIFICATION, TaskMode.MUTATE, {
         requiresRepoRead: true,
@@ -122,22 +135,37 @@ export function classifyTask(userInput, llmIntent = null) {
     return buildProfile(TaskIntent.DIAGNOSIS, TaskMode.DIAGNOSE, {
       requiresRepoRead: true,
       allowsMutation: false,
-      requiresPlan: needsPlan,
-      requiresMethodology: needsPlan ? 'optional' : false,
+      requiresPlan: needsPlan ? true : 'optional',
+      requiresMethodology: 'optional',
       requiresVerification: false,
       expectedDeliverable: 'report',
     });
   }
 
-  // 项目信息型任务 - 不需要计划
-  if (hasQuestionIntent) {
-    return buildProfile(TaskIntent.PROJECT_INFO, TaskMode.ANSWER, {
+  if (hasVerifyIntent) {
+    return buildProfile(TaskIntent.TEST_OR_VERIFY, TaskMode.VERIFY, {
       requiresRepoRead: true,
       allowsMutation: false,
-      requiresPlan: false,
+      requiresPlan: 'optional',
       requiresMethodology: false,
-      expectedDeliverable: 'answer',
+      requiresVerification: true,
+      expectedDeliverable: 'verification',
     });
+  }
+
+  // 项目信息型任务 - 不需要计划
+  if (hasQuestionIntent) {
+    return buildProfile(
+      hasHowToRunIntent ? TaskIntent.HOW_TO_RUN : TaskIntent.PROJECT_INFO,
+      TaskMode.ANSWER,
+      {
+        requiresRepoRead: true,
+        allowsMutation: false,
+        requiresPlan: hasHowToRunIntent ? 'optional' : false,
+        requiresMethodology: false,
+        expectedDeliverable: 'answer',
+      },
+    );
   }
 
   // 只读分析型 - 有文件路径时需要计划
@@ -205,7 +233,7 @@ export function fromLegacyProfile(legacyProfile = {}) {
         requiresMethodology: true,
         requiresVerification: true,
         expectedDeliverable: 'patch',
-      }
+      },
     );
   }
 
@@ -263,8 +291,12 @@ export function fromLegacyProfile(legacyProfile = {}) {
  * @returns {boolean}
  */
 export function shouldCreatePlan(profile) {
-  if (!profile) return false;
-  if (!profile.requiresPlan) return false;
+  if (!profile) {
+    return false;
+  }
+  if (!profile.requiresPlan) {
+    return false;
+  }
 
   // 如果 requiresPlan 是字符串 'optional'，需要额外判断
   // 这里简单处理：返回 true，让调用方决定是否真的启用
@@ -279,8 +311,12 @@ export function shouldCreatePlan(profile) {
  * @returns {boolean}
  */
 export function shouldEnablePlan(profile, context = {}) {
-  if (!profile) return false;
-  if (!profile.requiresPlan) return false;
+  if (!profile) {
+    return false;
+  }
+  if (!profile.requiresPlan) {
+    return false;
+  }
 
   // MUTATE 模式强制启用
   if (profile.mode === TaskMode.MUTATE) {
@@ -295,7 +331,9 @@ export function shouldEnablePlan(profile, context = {}) {
  * 判断是否允许工具进行文件修改
  */
 export function allowsMutation(profile) {
-  if (!profile) return false;
+  if (!profile) {
+    return false;
+  }
   return profile.allowsMutation && profile.mode === TaskMode.MUTATE;
 }
 

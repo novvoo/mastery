@@ -10,6 +10,7 @@ import {
   isSuccessfulToolResult,
   ExecutionPlanManager,
 } from '../../src/core/execution-plan-manager.js';
+import { quickAssess } from '../../src/core/runtime/agent/support/risk-budget.js';
 
 describe('isWorkspaceInspectionTool', () => {
   test('returns true for list_dir', () => {
@@ -272,6 +273,48 @@ describe('ExecutionPlanManager', () => {
     expect(result).toBeNull();
   });
 
+  test('createIfNeeded creates a research plan for project run questions', () => {
+    const result = manager.createIfNeeded('这个项目怎么运行？', quickAssess('这个项目怎么运行？'));
+
+    expect(result).not.toBeNull();
+    expect(manager.plan.context.planType).toBe('research');
+    expect(manager.plan.getTask('inspect_workspace')).toBeDefined();
+    expect(manager.plan.getTask('answer_question')).toBeDefined();
+  });
+
+  test('createIfNeeded creates a read-only diagnosis plan for runtime errors', () => {
+    const result = manager.createIfNeeded(
+      'npm run dev 报错 EADDRINUSE 8080，帮我找出原因',
+      quickAssess('npm run dev 报错 EADDRINUSE 8080，帮我找出原因'),
+    );
+
+    expect(result).not.toBeNull();
+    expect(manager.plan.context.planType).toBe('analysis');
+    expect(manager.plan.getTask('analyze_findings')).toBeDefined();
+    expect(manager.plan.getTask('implement_changes')).toBeUndefined();
+  });
+
+  test('createIfNeeded creates a verification plan for run/check requests', () => {
+    const result = manager.createIfNeeded(
+      '运行测试并验证当前结果',
+      quickAssess('运行测试并验证当前结果'),
+    );
+
+    expect(result).not.toBeNull();
+    expect(manager.plan.context.planType).toBe('verification');
+    expect(manager.plan.getTask('verify_result')).toBeDefined();
+  });
+
+  test('createIfNeeded does not plan pure conceptual answers', async () => {
+    const result = await manager.createIfNeeded(
+      '解释一下闭包是什么',
+      quickAssess('解释一下闭包是什么'),
+    );
+
+    expect(result).toBeNull();
+    expect(manager.plan).toBeNull();
+  });
+
   test('createIfNeeded creates plan when profile requires planning', () => {
     const result = manager.createIfNeeded('Fix app.js bug', {
       requiresPlan: true,
@@ -388,8 +431,45 @@ describe('ExecutionPlanManager', () => {
     expect(prompt).toContain('inspect_workspace');
     expect(prompt).toContain('implement_changes');
     expect(prompt).toContain('verify_result');
+    expect(prompt).toContain('[running, exploration]');
+    expect(prompt).toContain('Phase meanings:');
     expect(prompt).toContain('Hashline and plan are one execution loop');
     expect(prompt).toContain('apply_hashline_patch is the preferred fast edit vehicle');
+  });
+
+  test('buildPrompt describes non-bug implementation tasks without bug-fix wording', () => {
+    manager.createIfNeeded('更新 webpack 配置文件名', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+      isModificationTask: true,
+      planType: 'modification',
+    });
+
+    manager.advance('list_dir', { path: '.' }, 'package.json\nwebpack.config.js');
+    manager.advance('project_profile', {}, 'profiled project');
+    manager.advance('architect', {}, 'planned rename');
+
+    const prompt = manager.buildPrompt();
+    expect(prompt).toContain('Current task: implement_changes (implementation).');
+    expect(prompt).toContain('Apply the planned change');
+    expect(prompt).not.toContain('identify the bug');
+    expect(prompt).not.toContain('fix the bug');
+  });
+
+  test('analysis plan uses inspection phase for analyze_findings, not implementation', () => {
+    manager.createIfNeeded('分析 src/app.js', {
+      requiresPlan: true,
+      mode: 'inspect',
+      allowsMutation: false,
+      isAnalysisTask: true,
+      planType: 'analysis',
+    });
+
+    expect(manager.plan.getTask('analyze_findings').phase).toBe('inspection');
+    const prompt = manager.buildPrompt();
+    expect(prompt).toContain('analyze_findings');
+    expect(prompt).toContain('read-only analysis step');
   });
 
   test('buildPrompt includes semantic risk guidance when profile requires it', () => {
@@ -504,5 +584,51 @@ describe('ExecutionPlanManager', () => {
 
   test('isVerificationTool handles shell with test runner', () => {
     expect(isVerificationTool('shell', { command: 'bun test' })).toBe(true);
+  });
+
+  test('profile_project completes from non-Node project profile files', () => {
+    manager.createIfNeeded('Fix parser bug', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+    });
+
+    manager.advance('list_dir', {}, 'OK');
+    const profileTask = manager.plan.getTask('profile_project');
+    expect(profileTask.status).toBe('running');
+
+    manager.advance('read_file', { path: 'pyproject.toml' }, '[tool.pytest.ini_options]');
+
+    expect(profileTask.status).toBe('completed');
+  });
+
+  test('profile_project completes from directory listing evidence', () => {
+    manager.createIfNeeded('Add validation tests', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+    });
+
+    manager.advance('list_dir', {}, 'OK');
+    const profileTask = manager.plan.getTask('profile_project');
+
+    manager.advance('list_dir', { path: '.' }, 'README.md\npyproject.toml\ntests\nsrc');
+
+    expect(profileTask.status).toBe('completed');
+  });
+
+  test('profile_project does not complete from unrelated source reads', () => {
+    manager.createIfNeeded('Fix app behavior', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+    });
+
+    manager.advance('list_dir', {}, 'OK');
+    const profileTask = manager.plan.getTask('profile_project');
+
+    manager.advance('read_file', { path: 'src/app.js' }, 'export function app() {}');
+
+    expect(profileTask.status).toBe('running');
   });
 });

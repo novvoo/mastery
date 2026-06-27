@@ -69,10 +69,14 @@ const PLAN_CONTROL_TOOLS = new Set(['change_plan']);
  * @returns {string|null}
  */
 function getScopeTargetPath(name, args) {
-  if (!args) return null;
+  if (!args) {
+    return null;
+  }
   switch (name) {
     case 'read_file':
-      return args.path || args.filePath || null;
+      return args.path || args.file_path || args.file || args.filePath || null;
+    case 'write_file':
+      return args.path || args.file_path || args.file || args.filePath || null;
     case 'list_dir':
       return args.path || null;
     case 'tree':
@@ -104,7 +108,9 @@ function isPathInScope(targetPath, scopeFiles, workingDir) {
     const abs = path.resolve(workingDir, p);
     // 转为相对于工作区根目录的相对路径，使用正斜杠
     let rel = path.relative(workingDir, abs);
-    if (!rel) return '';
+    if (!rel) {
+      return '';
+    }
     // 统一斜杠方向
     rel = rel.replace(/\\/g, '/');
     return rel;
@@ -145,6 +151,54 @@ function normalizeToolNameSet(value) {
     return new Set(value);
   }
   return null;
+}
+
+function normalizeToolArgumentAliases(name, args = {}) {
+  if (!args || typeof args !== 'object') {
+    return {};
+  }
+
+  const normalized = { ...args };
+
+  if (['read_file', 'write_file', 'edit_file', 'list_dir'].includes(name) && !normalized.path) {
+    normalized.path = normalized.file_path || normalized.file || normalized.filename;
+  }
+
+  if (name === 'write_file' && normalized.content === undefined) {
+    normalized.content =
+      normalized.new_content ??
+      normalized.newContent ??
+      normalized.text ??
+      normalized.contents ??
+      normalized.data;
+  }
+
+  if (name === 'edit_file') {
+    if (normalized.old_str === undefined) {
+      normalized.old_str = normalized.old_text ?? normalized.oldContent ?? normalized.old;
+    }
+    if (normalized.new_str === undefined) {
+      normalized.new_str =
+        normalized.new_text ?? normalized.new_content ?? normalized.newContent ?? normalized.new;
+    }
+  }
+
+  if (name === 'project_profile' && normalized.task === undefined) {
+    const taskParts = [
+      normalized.issue,
+      normalized.problem,
+      normalized.finding,
+      normalized.solution,
+      normalized.goal,
+      normalized.request,
+      normalized.description,
+    ].filter((part) => typeof part === 'string' && part.trim());
+    if (taskParts.length > 0) {
+      normalized.task = taskParts.join('\n');
+    }
+  }
+
+  return normalized;
 }
 
 function getAllowedToolSet(context = {}) {
@@ -254,7 +308,11 @@ export class ToolExecutor {
    */
   async execute(toolCall, context = {}, options = {}) {
     const normalized = this.#normalizeToolCall(toolCall);
-    const rewritten = this.#rewriteShellRuntimeToolCall(normalized) || normalized;
+    const normalizedArgsCall = {
+      ...normalized,
+      arguments: normalizeToolArgumentAliases(normalized?.name, normalized?.arguments),
+    };
+    const rewritten = this.#rewriteShellRuntimeToolCall(normalizedArgsCall) || normalizedArgsCall;
     const { id, name, arguments: args } = rewritten;
     const resultMode = options.resultMode || 'tool';
     const startedAt = Date.now();
@@ -544,13 +602,18 @@ export class ToolExecutor {
               try {
                 const dirResult = await dirTool.handler({ path: fallbackDir }, executionContext);
                 const fallbackDesc = fallbackDir === '.' ? 'workspace root' : `"${fallbackDir}"`;
-                const observation = `File not found: "${targetPath}". Here's the directory listing for ${fallbackDesc}:\n${dirResult}\n\nPlease check the correct file path.`;
+                const observation = `Error: File not found: "${targetPath}".\n\nDirectory listing for ${fallbackDesc}:\n${dirResult}\n\nPlease check the correct file path before retrying.`;
                 options.emitObservation?.(id, name, observation, resultMode);
                 this.#recordEvent('list_dir', { path: fallbackDir }, true, dirResult);
-                this.#ui.toolResult?.('list_dir', dirResult, { path: fallbackDir });
+                this.#ui.debugEvent?.('read_file fallback listed directory', {
+                  missingPath: targetPath,
+                  fallbackDir,
+                });
+                this.#ui.toolResult?.(name, observation, effectiveArgs);
                 return {
                   name,
-                  result: `Error: File not found: ${targetPath}\n\nDirectory listing for ${fallbackDesc}:\n${dirResult}`,
+                  result: observation,
+                  args: effectiveArgs,
                   skipped: true,
                   fallbackToDir: true,
                 };
@@ -649,13 +712,13 @@ export class ToolExecutor {
       }
       this.#ui.toolResult?.(name, finalResult, effectiveArgs);
       options.emitObservation?.(id, name, finalResult, resultMode);
-      return { name, result: finalResult, durationMs: Date.now() - startedAt };
+      return { name, result: finalResult, args: effectiveArgs, durationMs: Date.now() - startedAt };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       this.#recordEvent(name, effectiveArgs, false, `Error: ${errorMsg}`);
       this.#ui.toolError?.(name, errorMsg, effectiveArgs);
       options.emitObservation?.(id, name, `Error: ${errorMsg}`, resultMode);
-      return { name, result: `Error: ${errorMsg}`, error: errorMsg };
+      return { name, result: `Error: ${errorMsg}`, args: effectiveArgs, error: errorMsg };
     }
   }
 
@@ -799,13 +862,15 @@ export class ToolExecutor {
       return toolCall;
     }
     if (toolCall.name) {
-      return { ...toolCall, arguments: this.#parseArgs(toolCall.arguments) };
+      const args = this.#parseArgs(toolCall.arguments);
+      return { ...toolCall, arguments: normalizeToolArgumentAliases(toolCall.name, args) };
     }
     if (toolCall.function?.name) {
+      const args = this.#parseArgs(toolCall.function.arguments);
       return {
         id: toolCall.id,
         name: toolCall.function.name,
-        arguments: this.#parseArgs(toolCall.function.arguments),
+        arguments: normalizeToolArgumentAliases(toolCall.function.name, args),
         source: toolCall.type || 'native_tool_call',
         raw: toolCall,
       };

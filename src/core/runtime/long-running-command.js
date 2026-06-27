@@ -4,10 +4,52 @@ import { resolve } from 'path';
 const MAX_SNIPPET_CHARS = 5000;
 const CLASSIFIER_TIMEOUT_MS = 5000;
 
+const LONG_RUNNING_COMMAND_PATTERNS = [
+  {
+    pattern: /\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:dev|serve|start)(?:\b|:)/i,
+    reason: 'Starts a package script that is commonly a persistent dev server',
+  },
+  {
+    pattern:
+      /\b(?:vite|vite-preview|webpack-dev-server|webpack\s+serve|parcel|live-server|http-server)\b/i,
+    reason: 'Starts a local development server',
+  },
+  {
+    pattern: /\b(?:next|nuxt|astro)\s+dev\b/i,
+    reason: 'Starts a framework development server',
+  },
+  {
+    pattern: /\b(?:react-scripts|svelte-kit)\s+start\b/i,
+    reason: 'Starts a framework development server',
+  },
+  {
+    pattern: /\b(?:nodemon|tsx\s+watch|node\s+--watch|deno\s+task\s+dev)\b/i,
+    reason: 'Starts a watcher process',
+  },
+  {
+    pattern: /\b(?:jest|vitest|mocha|tsc|webpack|rollup|esbuild)\b[\s\S]*\s(?:--watch|-w)\b/i,
+    reason: 'Starts a watch-mode command',
+  },
+  {
+    pattern:
+      /\b(?:python3?|uvicorn|gunicorn|flask|fastapi|streamlit)\b[\s\S]*(?:--reload|runserver|streamlit\s+run)\b/i,
+    reason: 'Starts a Python server or reload watcher',
+  },
+  {
+    pattern: /\b(?:rails|bin\/rails)\s+(?:server|s)\b/i,
+    reason: 'Starts a Rails server',
+  },
+];
+
 export async function classifyLongRunningCommand(command, options = {}) {
   const normalized = String(command || '').trim();
   if (!normalized) {
     return { isLongRunning: false, confidence: 0, reason: 'Empty command' };
+  }
+
+  const deterministic = detectLongRunningCommand(normalized);
+  if (deterministic) {
+    return deterministic;
   }
 
   const modelProvider = options.modelProvider;
@@ -50,6 +92,53 @@ export async function classifyLongRunningCommand(command, options = {}) {
       reason: `Long-running classifier unavailable: ${error.message}`,
     };
   }
+}
+
+function detectLongRunningCommand(command) {
+  const segments = splitShellSegments(command);
+  const searchableSegments = segments.length ? segments : [command];
+
+  for (const segment of searchableSegments) {
+    const normalizedSegment = normalizeShellSegment(segment);
+    if (!normalizedSegment) {
+      continue;
+    }
+
+    const match = LONG_RUNNING_COMMAND_PATTERNS.find(({ pattern }) =>
+      pattern.test(normalizedSegment),
+    );
+    if (!match) {
+      continue;
+    }
+
+    const compoundWithLongRunning =
+      searchableSegments.filter((candidate) => normalizeShellSegment(candidate)).length > 1;
+
+    return {
+      isLongRunning: true,
+      confidence: 0.95,
+      reason: match.reason,
+      recommendedTool: 'pty_start',
+      longRunningSegment: normalizedSegment,
+      compoundWithLongRunning,
+    };
+  }
+
+  return null;
+}
+
+function splitShellSegments(command) {
+  return String(command || '')
+    .split(/(?:&&|\|\||;|\n+)/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function normalizeShellSegment(segment) {
+  return String(segment || '')
+    .replace(/^\s*(?:#.*\n\s*)+/g, '')
+    .replace(/\s+#.*$/g, '')
+    .trim();
 }
 
 function collectCommandContext(command, cwd) {

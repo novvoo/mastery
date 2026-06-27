@@ -15,15 +15,44 @@ describe('classifyLongRunningCommand', () => {
     expect(result.confidence).toBe(0);
   });
 
-  test('returns isLongRunning false when no modelProvider is provided', async () => {
-    const result = await classifyLongRunningCommand('npm start');
+  test('detects npm dev scripts without a modelProvider', async () => {
+    const result = await classifyLongRunningCommand('npm run dev');
+    expect(result.isLongRunning).toBe(true);
+    expect(result.confidence).toBeGreaterThanOrEqual(0.9);
+    expect(result.recommendedTool).toBe('pty_start');
+    expect(result.longRunningSegment).toBe('npm run dev');
+    expect(result.compoundWithLongRunning).toBe(false);
+  });
+
+  test('detects long-running segments inside compound commands', async () => {
+    const result = await classifyLongRunningCommand('npm install && npm run dev && npm test');
+    expect(result.isLongRunning).toBe(true);
+    expect(result.recommendedTool).toBe('pty_start');
+    expect(result.longRunningSegment).toBe('npm run dev');
+    expect(result.compoundWithLongRunning).toBe(true);
+  });
+
+  test('detects common server commands without a modelProvider', async () => {
+    const result = await classifyLongRunningCommand('npx http-server ./dist -p 8080');
+    expect(result.isLongRunning).toBe(true);
+    expect(result.reason).toContain('development server');
+  });
+
+  test('does not classify ordinary finite package commands as long-running', async () => {
+    const result = await classifyLongRunningCommand('npm test && npm run build');
     expect(result.isLongRunning).toBe(false);
     expect(result.confidence).toBe(0);
     expect(result.reason).toContain('No model provider');
   });
 
+  test('detects npm start scripts without a modelProvider', async () => {
+    const result = await classifyLongRunningCommand('npm start');
+    expect(result.isLongRunning).toBe(true);
+    expect(result.recommendedTool).toBe('pty_start');
+  });
+
   test('returns isLongRunning false when modelProvider has no chat method', async () => {
-    const result = await classifyLongRunningCommand('npm start', {
+    const result = await classifyLongRunningCommand('node script.js', {
       modelProvider: {},
     });
     expect(result.isLongRunning).toBe(false);
@@ -40,7 +69,7 @@ describe('classifyLongRunningCommand', () => {
       }),
     }));
 
-    const result = await classifyLongRunningCommand('npm start', {
+    const result = await classifyLongRunningCommand('node custom-entry.js', {
       modelProvider: { chat: chatMock },
     });
 
@@ -52,7 +81,7 @@ describe('classifyLongRunningCommand', () => {
     expect(callArgs[1].role).toBe('user');
   });
 
-  test('classifies npm start as long-running when model returns high confidence', async () => {
+  test('classifies unknown commands as long-running when model returns high confidence', async () => {
     const chatMock = mock(() => ({
       text: JSON.stringify({
         isLongRunning: true,
@@ -62,7 +91,7 @@ describe('classifyLongRunningCommand', () => {
       }),
     }));
 
-    const result = await classifyLongRunningCommand('npm start', {
+    const result = await classifyLongRunningCommand('node custom-entry.js', {
       modelProvider: { chat: chatMock },
     });
 
@@ -145,7 +174,7 @@ describe('classifyLongRunningCommand', () => {
       text: '```json\n{"isLongRunning": true, "confidence": 0.9, "reason": "Server"}\n```',
     }));
 
-    const result = await classifyLongRunningCommand('npm run dev', {
+    const result = await classifyLongRunningCommand('node custom-entry.js', {
       modelProvider: { chat: chatMock },
     });
 
@@ -156,7 +185,7 @@ describe('classifyLongRunningCommand', () => {
   test('handles model timeout gracefully', async () => {
     const chatMock = mock(() => new Promise(() => {})); // never resolves
 
-    const result = await classifyLongRunningCommand('npm start', {
+    const result = await classifyLongRunningCommand('node custom-entry.js', {
       modelProvider: { chat: chatMock },
       timeoutMs: 100, // short timeout
     });
@@ -171,7 +200,7 @@ describe('classifyLongRunningCommand', () => {
       throw new Error('Model error');
     });
 
-    const result = await classifyLongRunningCommand('npm start', {
+    const result = await classifyLongRunningCommand('node custom-entry.js', {
       modelProvider: { chat: chatMock },
     });
 
@@ -229,7 +258,7 @@ describe('classifyLongRunningCommand', () => {
   test('handles model returning null response text', async () => {
     const chatMock = mock(() => ({ text: null }));
 
-    const result = await classifyLongRunningCommand('npm start', {
+    const result = await classifyLongRunningCommand('node custom-entry.js', {
       modelProvider: { chat: chatMock },
     });
 

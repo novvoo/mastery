@@ -7,7 +7,7 @@ import { ToolCategory } from '../../core/types.js';
 import { classifyLongRunningCommand } from '../../core/long-running-command.js';
 import { createShellSandbox, shellSandboxConfigFromEnv } from '../../sandbox/shell-sandbox.js';
 import { startPtyCommand } from './pty.js';
-import { DANGEROUS_SHELL_PATTERNS, isDangerousCommand } from '../../utils/patterns.js';
+import { DANGEROUS_SHELL_PATTERNS } from '../../utils/patterns.js';
 
 const MAX_COMMAND_LENGTH = 8192;
 const HARD_TIMEOUT_MS = 120000;
@@ -119,6 +119,14 @@ export function createShellTool(options = {}) {
         modelProvider: ctx.modelProvider,
       });
       if (longRunning.isLongRunning && !foreground) {
+        if (longRunning.compoundWithLongRunning) {
+          return [
+            `BLOCKED: This shell command mixes a long-running command with other commands.`,
+            `Detected long-running segment: ${longRunning.longRunningSegment || cmd}`,
+            'Run setup, tests, and build commands separately with shell. Start the long-running dev server by itself with pty_start or a single shell command so it can be observed and stopped explicitly.',
+          ].join('\n');
+        }
+
         const sessionJson = await startPtyCommand(
           {
             command: cmd,

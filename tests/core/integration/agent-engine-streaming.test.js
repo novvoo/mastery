@@ -208,7 +208,7 @@ mock.module('../../../src/core/agent-constants.js', () => ({
   MAX_ITERATIONS_DEFAULT: 10,
 }));
 
-import { createAgentEngine } from '../../../src/core/agent-engine.js';
+import { createAgentEngine, createProtocolStreamFilter } from '../../../src/core/agent-engine.js';
 import { StreamEventType } from '../../../src/models/streaming-parser.js';
 
 describe('AgentEngine Streaming', () => {
@@ -228,6 +228,28 @@ describe('AgentEngine Streaming', () => {
       onReasoningDelta: (text) => uiEvents.push({ type: 'reasoning_delta', text }),
       onToolCallDelta: (delta) => uiEvents.push({ type: 'tool_call_delta', delta }),
     };
+  });
+
+  test('protocol stream filter suppresses DSML tool-call envelopes', () => {
+    const filter = createProtocolStreamFilter();
+    const chunks = [
+      'Before ',
+      '<||DSML||tool_calls>\n',
+      '<||DSML||invoke name="list_dir">\n',
+      '<||DSML||parameter name="path" string="true">/tmp<||DSML||parameter>\n',
+      '<||DSML||invoke>\n',
+      '<||DSML||tool_calls>',
+      ' After',
+    ];
+
+    const outputs = chunks.map((chunk) => filter.push(chunk));
+    const flushed = filter.flush();
+    const visible = [...outputs, flushed].map((item) => item.visibleText).join('');
+
+    expect(visible).toBe('Before  After');
+    expect(outputs.some((item) => item.protocolDetected)).toBe(true);
+    expect(visible).not.toContain('DSML');
+    expect(visible).not.toContain('list_dir');
   });
 
   test('chatStream 生成增量文本时触发 onTextDelta', async () => {

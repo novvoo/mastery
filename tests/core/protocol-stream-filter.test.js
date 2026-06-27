@@ -40,6 +40,17 @@ describe('createProtocolStreamFilter', () => {
     expect(result.events.length).toBe(1);
   });
 
+  test('suppresses repeated empty output protocol shells', () => {
+    const result = collectVisible(createProtocolStreamFilter(), [
+      '<output>\n',
+      '\n</output>',
+      '<output>\n\n</output>',
+    ]);
+
+    expect(result.text).toBe('');
+    expect(result.events.length).toBe(2);
+  });
+
   test('does not suppress ordinary JSON content', () => {
     const result = collectVisible(createProtocolStreamFilter(), [
       '配置示例：',

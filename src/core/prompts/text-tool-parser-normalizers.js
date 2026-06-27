@@ -118,6 +118,10 @@ export function mapToolCodeName(rawName, resolveToolName) {
 }
 
 export function normalizeToolArgumentAliases(toolName, args) {
+  if (!args || typeof args !== 'object') {
+    return args;
+  }
+
   if (
     (toolName === 'read_file' ||
       toolName === 'write_file' ||
@@ -127,6 +131,20 @@ export function normalizeToolArgumentAliases(toolName, args) {
     (args.file_path || args.file || args.filename)
   ) {
     return { ...args, path: args.file_path || args.file || args.filename };
+  }
+  if (toolName === 'project_profile' && args.task === undefined) {
+    const taskParts = [
+      args.issue,
+      args.problem,
+      args.finding,
+      args.solution,
+      args.goal,
+      args.request,
+      args.description,
+    ].filter((part) => typeof part === 'string' && part.trim());
+    if (taskParts.length > 0) {
+      return { ...args, task: taskParts.join('\n') };
+    }
   }
   return args;
 }

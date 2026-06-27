@@ -122,6 +122,15 @@ function stripActionBlocks(text = '', { toolRegistry } = {}) {
   if (typeof text !== 'string') return text;
 
   let out = text
+    .replace(
+      /<[|｜]+\s*DSML\s*[|｜]+tool_calls\b[^>]*>[\s\S]*?<[|｜]+\s*DSML\s*[|｜]+tool_calls\s*>/gi,
+      '',
+    )
+    .replace(/<[|｜]+\s*DSML\s*[|｜]+invoke\b[^>]*>[\s\S]*?<[|｜]+\s*DSML\s*[|｜]+invoke\s*>/gi, '')
+    .replace(
+      /<[|｜]+\s*DSML\s*[|｜]+parameter\b[^>]*>[\s\S]*?<[|｜]+\s*DSML\s*[|｜]+parameter\s*>/gi,
+      '',
+    )
     .replace(/<action>[\s\S]*?<\/action>/gi, '')
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
     .replace(/<function_call>[\s\S]*?<\/function_call>/gi, '')
@@ -132,6 +141,7 @@ function stripActionBlocks(text = '', { toolRegistry } = {}) {
     .replace(/<tool=[^>]+>[\s\S]*?<\/tool>/gi, '')
     .replace(/<tool\b[^>]*>[\s\S]*?<\/tool>/gi, '')
     .replace(/<tool_code>[\s\S]*?<\/tool_code>/gi, '')
+    .replace(/<output\b[^>]*>\s*<\/output>/gi, '')
     .replace(/<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi, '')
     // 处理 parameter 标签
     .replace(/<parameter\b[^>]*>[\s\S]*?<\/parameter>/gi, '')
@@ -146,7 +156,10 @@ function stripActionBlocks(text = '', { toolRegistry } = {}) {
       const escapedName = tool.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       // 处理两种格式：<toolName>...</toolName> 和 <function=toolName>...</function>
       const tagRegex1 = new RegExp(`<${escapedName}>\\s*[\\s\\S]*?\\s*<\\/${escapedName}>`, 'gi');
-      const tagRegex2 = new RegExp(`<\\w*=${escapedName}\\b[^>]*>\\s*[\\s\\S]*?\\s*<\\/\\w*>`, 'gi');
+      const tagRegex2 = new RegExp(
+        `<\\w*=${escapedName}\\b[^>]*>\\s*[\\s\\S]*?\\s*<\\/\\w*>`,
+        'gi',
+      );
       out = out.replace(tagRegex1, '');
       out = out.replace(tagRegex2, '');
     }
@@ -178,10 +191,13 @@ function stripActionBlocks(text = '', { toolRegistry } = {}) {
 const PROTOCOL_FIELD_PATTERN =
   /"action"\s*:|"evaluation_previous_goal"\s*:|"next_goal"\s*:|"memory"\s*:/;
 // 更新：支持带属性的标签格式，如 <function=list_dir>
-const TOOL_XML_TAG_PATTERN = /<(tool|tool_call|function|function_call|invoke|tool_code|parameter|arguments|args)\b[^>]*>/i;
-const TOOL_XML_CLOSE_PATTERN = /<\/(tool|tool_call|function|function_call|invoke|tool_code|parameter|arguments|args)\s*>/i;
+const TOOL_XML_TAG_PATTERN =
+  /<(tool|tool_call|function|function_call|invoke|tool_code|parameter|arguments|args|output)\b[^>]*>/i;
+const TOOL_XML_CLOSE_PATTERN =
+  /<\/(tool|tool_call|function|function_call|invoke|tool_code|parameter|arguments|args|output)\s*>/i;
 const DSML_PIPE_OPEN_PATTERN = /<[|｜]+\s*DSML\s*[|｜]+[^>]*>/i;
 const DSML_PIPE_CLOSE_PATTERN = /<\/[|｜]+\s*DSML\s*[|｜]+[^>]*>/i;
+const DSML_PIPE_TOOL_CALLS_END_PATTERN = /<[|｜]+\s*DSML\s*[|｜]+tool_calls\s*>/i;
 const FENCED_JSON_PROTOCOL_PATTERN = /```(?:json|tool)?\s*\{/i;
 const MAX_PROTO_BUFFER_SIZE = 8192;
 
@@ -269,6 +285,17 @@ function classifyProtocolBuffer(buffer, bufferingType) {
     if (/^<[^>]+\/>/.test(trimmed)) {
       return { status: 'suppress', length: buffer.indexOf('>') + 1 };
     }
+    const dsmlToolCallsEnvelope = trimmed.match(/^<[|｜]+\s*DSML\s*[|｜]+tool_calls\b[^>]*>/i);
+    const dsmlEnvelopeEnd = dsmlToolCallsEnvelope
+      ? buffer.slice(dsmlToolCallsEnvelope[0].length).match(DSML_PIPE_TOOL_CALLS_END_PATTERN)
+      : null;
+    if (dsmlEnvelopeEnd) {
+      return {
+        status: 'suppress',
+        length: dsmlToolCallsEnvelope[0].length + dsmlEnvelopeEnd.index + dsmlEnvelopeEnd[0].length,
+      };
+    }
+
     const closeMatch =
       buffer.match(TOOL_XML_CLOSE_PATTERN) || buffer.match(DSML_PIPE_CLOSE_PATTERN);
     if (!closeMatch) {
@@ -1969,7 +1996,10 @@ export class AgentEngine {
           const remaining = FORCE_ACTION_GRACE_TURNS - forceActionIgnored;
           // 计划任务结束只有一个条件：所有阶段性任务已经结束，并且已经对完成的任务做了总结
           // 如果计划正在执行中，不允许因为探索预算耗尽而直接返回错误状态
-          if (forceActionIgnored >= FORCE_ACTION_GRACE_TURNS && !this.#executionPlanManager.isActive) {
+          if (
+            forceActionIgnored >= FORCE_ACTION_GRACE_TURNS &&
+            !this.#executionPlanManager.isActive
+          ) {
             return this.#completeRun({
               success: false,
               status: 'error',
@@ -2090,7 +2120,7 @@ export class AgentEngine {
         // 记录到停滞检测
         this.#stagnationDetector.recordTool(
           execResult.name,
-          toolCall.arguments,
+          execResult.args || toolCall.arguments,
           iteration,
           (name, _args) => {
             const mutationNames = new Set([
@@ -2119,7 +2149,7 @@ export class AgentEngine {
         if (this.#executionPlanManager.plan) {
           const planUpdate = this.#executionPlanManager.advance(
             execResult.name,
-            toolCall.arguments,
+            execResult.args || toolCall.arguments,
             execResult.result,
           );
           if (planUpdate) {

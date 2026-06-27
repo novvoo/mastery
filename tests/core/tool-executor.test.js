@@ -1,4 +1,7 @@
 import { describe, test, expect, mock } from 'bun:test';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { ToolExecutor } from '../../src/core/tool-executor.js';
 import { Decision } from '../../src/core/security-policy.js';
 
@@ -30,6 +33,7 @@ function makeMockExecutor({ tools = [], securityPolicy = null, config = {} } = {
     toolError: mock(() => {}),
     warn: mock(() => {}),
     debug: mock(() => {}),
+    debugEvent: mock(() => {}),
   };
   const executor = new ToolExecutor({
     toolRegistry: registry,
@@ -189,6 +193,100 @@ describe('ToolExecutor', () => {
 
     expect(result.error).toContain('Missing required parameter');
     expect(result.error).toContain('content');
+  });
+
+  test('normalizes write_file new_content alias before required parameter validation', async () => {
+    const writeHandler = mock(async (args) => `wrote ${args.content}`);
+    const tool = makeTool('write_file', {
+      required: ['path', 'content'],
+      handler: writeHandler,
+    });
+    const { executor } = makeMockExecutor({ tools: [tool] });
+
+    const result = await executor.execute({
+      id: '1',
+      name: 'write_file',
+      arguments: { file_path: '/tmp/package.json', new_content: '{"ok":true}' },
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.args).toMatchObject({
+      path: '/tmp/package.json',
+      content: '{"ok":true}',
+    });
+    expect(writeHandler).toHaveBeenCalledWith(
+      expect.objectContaining({ path: '/tmp/package.json', content: '{"ok":true}' }),
+      expect.any(Object),
+    );
+  });
+
+  test('normalizes project_profile issue fields into task before required parameter validation', async () => {
+    const profileHandler = mock(async (args) => `profile ${args.task}`);
+    const tool = makeTool('project_profile', {
+      required: ['task'],
+      handler: profileHandler,
+    });
+    const { executor } = makeMockExecutor({ tools: [tool] });
+
+    const result = await executor.execute({
+      id: '1',
+      name: 'project_profile',
+      arguments: {
+        issue: 'Webpack export/import mismatch causing TypeError',
+        finding: 'ES6 classes are imported as named function exports',
+        solution: 'Use default imports and instantiate classes with new',
+      },
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.args.task).toContain('Webpack export/import mismatch');
+    expect(result.args.task).toContain('ES6 classes are imported');
+    expect(result.args.task).toContain('Use default imports');
+    expect(profileHandler).toHaveBeenCalledWith(
+      expect.objectContaining({ task: expect.stringContaining('Webpack export/import mismatch') }),
+      expect.any(Object),
+    );
+  });
+
+  test('read_file missing-file fallback emits read_file result, not list_dir result', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-read-fallback-'));
+    try {
+      const readTool = makeTool('read_file', {
+        required: ['path'],
+        handler: mock(async () => 'should not run'),
+      });
+      const listTool = makeTool('list_dir', {
+        handler: mock(async () => 'F webpack.config.cjs'),
+      });
+      const { executor, ui } = makeMockExecutor({
+        tools: [readTool, listTool],
+        config: { workingDirectory: root },
+      });
+
+      const result = await executor.execute({
+        id: '1',
+        name: 'read_file',
+        arguments: { path: 'webpack.config.js' },
+      });
+
+      expect(result.name).toBe('read_file');
+      expect(result.skipped).toBe(true);
+      expect(result.fallbackToDir).toBe(true);
+      expect(result.result).toContain('File not found');
+      expect(result.result).toContain('F webpack.config.cjs');
+      expect(ui.toolResult).toHaveBeenCalledWith(
+        'read_file',
+        expect.stringContaining('File not found'),
+        expect.objectContaining({ path: 'webpack.config.js' }),
+      );
+      expect(ui.toolResult).not.toHaveBeenCalledWith(
+        'list_dir',
+        expect.anything(),
+        expect.anything(),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test('normalizes OpenAI-style function tool calls', async () => {
