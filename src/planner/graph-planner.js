@@ -228,7 +228,7 @@ export class Subtask {
     this.id = data.id || randomUUID();
     this.name = data.name;
     this.description = data.description || '';
-    this.status = TaskStatus.PENDING;
+    this.status = data.status || TaskStatus.PENDING;
 
     // 依赖关系
     this.dependencies = new Set(data.dependencies || []); // 依赖的任务ID
@@ -241,10 +241,10 @@ export class Subtask {
     this.timeout = data.timeout || 30000;
 
     // 结果
-    this.result = null;
-    this.error = null;
-    this.startedAt = null;
-    this.completedAt = null;
+    this.result = data.result ?? null;
+    this.error = data.error ?? null;
+    this.startedAt = data.startedAt || null;
+    this.completedAt = data.completedAt || null;
 
     // 元数据
     this.metadata = data.metadata || {};
@@ -271,7 +271,7 @@ export class Subtask {
     this.requiredMutationPaths = new Set(data.requiredMutationPaths || []);
 
     // 追踪该任务进行的工具调用（用于完成条件检查）
-    this.toolCallsHistory = [];
+    this.toolCallsHistory = Array.isArray(data.toolCallsHistory) ? [...data.toolCallsHistory] : [];
   }
 
   /**
@@ -495,16 +495,16 @@ export class ExecutionPlan {
     this.id = data.id || randomUUID();
     this.name = data.name || 'Unnamed Plan';
     this.description = data.description || '';
-    this.status = TaskStatus.PENDING;
+    this.status = data.status || TaskStatus.PENDING;
 
     // 任务图
     this.tasks = new Map(); // taskId -> Subtask
     this.edges = new Map(); // taskId -> Set(dependentIds)
 
     // 执行状态
-    this.createdAt = Date.now();
-    this.startedAt = null;
-    this.completedAt = null;
+    this.createdAt = data.createdAt || Date.now();
+    this.startedAt = data.startedAt || null;
+    this.completedAt = data.completedAt || null;
 
     // 结果
     this.results = new Map();
@@ -712,12 +712,15 @@ export class ExecutionPlan {
         dependencies: Array.from(t.dependencies),
         priority: t.priority,
         allowedTools: t.allowedTools,
+        requiredToolIntents: t.requiredToolIntents,
+        requiredMutationPaths: Array.from(t.requiredMutationPaths || []),
         scopeFiles: t.scopeFiles || [],
         metadata: t.metadata || {},
         result: t.result,
         error: t.error,
         startedAt: t.startedAt,
         completedAt: t.completedAt,
+        toolCallsHistory: Array.isArray(t.toolCallsHistory) ? [...t.toolCallsHistory] : [],
       })),
       createdAt: this.createdAt,
       startedAt: this.startedAt,
@@ -735,6 +738,10 @@ export class ExecutionPlan {
       id: json.id,
       name: json.name,
       description: json.description,
+      status: json.status,
+      createdAt: json.createdAt,
+      startedAt: json.startedAt,
+      completedAt: json.completedAt,
       context: json.context,
       metadata: json.metadata,
     });
@@ -1689,6 +1696,18 @@ export class PlanExecutor extends EventEmitter {
   #selectNextRunnableTask() {
     if (!this.#plan) {
       this.#currentRunnableTaskId = null;
+      return;
+    }
+
+    const activeTask = Array.from(this.#plan.tasks.values()).find(
+      (task) =>
+        (task.status === TaskStatus.RUNNING || task.status === TaskStatus.READY) &&
+        task.checkDependencies(this.#plan.tasks),
+    );
+    if (activeTask) {
+      this.#currentRunnableTaskId = activeTask.id;
+      this.#taskToolCallCount = activeTask.toolCallsHistory.length;
+      this.#taskStartTime = activeTask.startedAt || Date.now();
       return;
     }
 

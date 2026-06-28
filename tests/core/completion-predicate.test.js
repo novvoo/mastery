@@ -157,6 +157,40 @@ describe('Phase 9: Strict Completion Validation', () => {
 
       expect(validation.completed).toBe(true);
     });
+
+    test('ExecutionPlan JSON round-trip preserves task execution constraints and progress', () => {
+      const plan = new ExecutionPlan({
+        name: 'Round Trip Plan',
+        status: TaskStatus.RUNNING,
+        startedAt: 123,
+        context: { source: 'test' },
+      });
+
+      const task = plan.addTask({
+        id: 'implement_feature',
+        name: 'Implement Feature',
+        status: TaskStatus.RUNNING,
+        phase: 'implementation',
+        allowedTools: ['write_file'],
+        requiredToolIntents: ['write'],
+        requiredMutationPaths: ['./src/main.js'],
+        startedAt: 456,
+      });
+      task.recordToolCall('write_file', { path: './src/main.js' }, { success: true });
+
+      const restored = ExecutionPlan.fromJSON(plan.toJSON());
+      const restoredTask = restored.getTask('implement_feature');
+
+      expect(restored.status).toBe(TaskStatus.RUNNING);
+      expect(restored.startedAt).toBe(123);
+      expect(restored.context).toEqual({ source: 'test' });
+      expect(restoredTask.status).toBe(TaskStatus.RUNNING);
+      expect(restoredTask.startedAt).toBe(456);
+      expect(restoredTask.requiredToolIntents).toEqual(['write']);
+      expect(Array.from(restoredTask.requiredMutationPaths)).toEqual(['./src/main.js']);
+      expect(restoredTask.toolCallsHistory.length).toBe(1);
+      expect(restoredTask.validateCompletion({ strictMode: true }).completed).toBe(true);
+    });
   });
 
   // ==================== Subtask.canBeAdvancedBy ====================
@@ -239,6 +273,29 @@ describe('Phase 9: Strict Completion Validation', () => {
       expect(currentTask).not.toBeNull();
       expect(currentTask.id).toBe('inspect_readme');
       expect(currentTask.status).toBe(TaskStatus.READY);
+    });
+
+    test('restored executor keeps existing running task as current runnable task', () => {
+      const plan = new ExecutionPlan({ name: 'Restored Plan', status: TaskStatus.RUNNING });
+      const task = plan.addTask({
+        id: 'implement_changes',
+        name: 'Implement Changes',
+        status: TaskStatus.RUNNING,
+        phase: 'implementation',
+        allowedTools: ['write_file'],
+        requiredToolIntents: ['write'],
+        completionPredicate: (ctx) => ctx.toolName === 'write_file',
+      });
+      task.recordToolCall('read_file', { path: './src/main.js' }, { success: true });
+
+      const restored = ExecutionPlan.fromJSON(plan.toJSON());
+      const executor = new PlanExecutor(restored, { maxToolCallsPerTask: 2 });
+      const currentTask = executor.getCurrentRunnableTask();
+
+      expect(currentTask).not.toBeNull();
+      expect(currentTask.id).toBe('implement_changes');
+      expect(currentTask.status).toBe(TaskStatus.RUNNING);
+      expect(executor.hasExceededMaxToolCalls()).toBe(false);
     });
 
     test('should NOT complete task when predicate not matched', async () => {
