@@ -200,6 +200,59 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     return messages.filter(messageIsVisible);
   }, [messages, filter, searchQuery]);
 
+  // 判断消息是否是 AI 助手消息（需要自动折叠的类型）
+  const isAssistantMessage = (msg) => {
+    return msg.type === 'agent' || msg.type === 'assistant' || msg.type === 'assistant_stream' || msg.type === 'result' || msg.type === 'success';
+  };
+
+  // 跟踪用户手动展开的消息，避免自动折叠覆盖用户操作
+  const userUncollapsedRef = useRef(new Set());
+
+  // 跟踪已经处理过的消息 ID，避免重复处理
+  const processedAssistantMessagesRef = useRef(new Set());
+
+  // 自动折叠逻辑：除了最后一条 assistant 消息外，其余默认折叠
+  useEffect(() => {
+    const assistantIndices = [];
+    filteredMessages.forEach((msg, index) => {
+      if (isAssistantMessage(msg)) {
+        assistantIndices.push(index);
+      }
+    });
+
+    // 如果只有一个或零个 assistant 消息，不需要处理
+    if (assistantIndices.length <= 1) {
+      return;
+    }
+
+    const lastAssistantIndex = assistantIndices[assistantIndices.length - 1];
+
+    // 使用函数式更新，避免依赖 collapsedMessages
+    setCollapsedMessages(prev => {
+      const newCollapsed = new Set(prev);
+
+      assistantIndices.forEach((index) => {
+        const msg = filteredMessages[index];
+        const msgId = getStableMessageId(msg, `${index}`);
+
+        if (index !== lastAssistantIndex) {
+          // 不是最后一条 assistant 消息，应该折叠
+          // 如果用户手动展开了这条消息，则不自动折叠
+          if (!userUncollapsedRef.current.has(msgId)) {
+            newCollapsed.add(msgId);
+          }
+        } else {
+          // 最后一条 assistant 消息保持展开
+          newCollapsed.delete(msgId);
+          // 同时记录用户手动展开（避免后续被自动折叠）
+          userUncollapsedRef.current.add(msgId);
+        }
+      });
+
+      return newCollapsed;
+    });
+  }, [filteredMessages]);
+
   const runtimeDetailMessages = useMemo(() => (
     messages.filter(msg => isRuntimeDetailMessage(msg) && messageMatchesSearch(msg))
   ), [messages, searchQuery]);
@@ -394,8 +447,12 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       const newSet = new Set(prev);
       if (newSet.has(msgId)) {
         newSet.delete(msgId);
+        // 用户手动展开了消息，记录到 userUncollapsedRef
+        userUncollapsedRef.current.add(msgId);
       } else {
         newSet.add(msgId);
+        // 用户手动折叠了消息，从 userUncollapsedRef 移除
+        userUncollapsedRef.current.delete(msgId);
         setShowDetails(detailsPrev => {
           if (!detailsPrev.has(msgId)) return detailsPrev;
           const nextDetails = new Set(detailsPrev);
@@ -698,7 +755,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       const hasContent = Boolean(displayText.trim());
 
       return (
-        <div style={{ ...styles.actionCard, borderColor: 'var(--success-color)' }}>
+        <div style={{ ...styles.actionCard, borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--success-color)' }}>
           <div style={styles.actionCardHeader}>
             <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxResult }}>✓</div>
             <div style={styles.actionTitleWrap}>
@@ -732,7 +789,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       const displayMsg = safeStringify(errorMsg, '操作失败');
 
       return (
-        <div style={{ ...styles.actionCard, borderColor: 'var(--error-border)' }}>
+        <div style={{ ...styles.actionCard, borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--error-border)' }}>
           <div style={styles.actionCardHeader}>
             <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxError }}>!</div>
             <div style={styles.actionTitleWrap}>
@@ -1504,6 +1561,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
               ...(autoScroll ? styles.buttonActive : {}),
               ...(!autoScroll ? {
                 color: 'var(--warning-color)',
+                borderWidth: '1px',
+                borderStyle: 'solid',
                 borderColor: 'var(--warning-color)',
                 fontWeight: '500',
               } : {})

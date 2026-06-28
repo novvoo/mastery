@@ -430,13 +430,16 @@ export class ExecutionPlanManager {
           idMap.set(originalId, taskId);
         }
 
+        // 如果没有 phase，尝试从任务名/描述推断
+        const inferredPhase = st.phase || this.#inferTaskPhase(taskId, st.description || '');
+
         plan.addTask({
           id: taskId,
           name: st.description?.substring(0, 80) || st.name,
           description: st.description || '',
           dependencies: (st.dependencies || []).map((dep) => idMap.get(dep) || dep),
           scopeFiles: st.scopeFiles || [],
-          phase: st.phase || null,
+          phase: inferredPhase,
           metadata: { source: 'llm-decomposition', originalId },
         });
       }
@@ -2203,12 +2206,31 @@ export class ExecutionPlanManager {
 
   #startReadyTasks(plan) {
     this.#pauseBlockedRunningTasks(plan);
+
+    // 统计当前正在运行的任务数量
+    const runningTasks = Array.from(plan.tasks.values()).filter(
+      (t) => t.status === TaskStatus.RUNNING
+    );
+    const runningCount = runningTasks.length;
+
+    // 最多允许 3 个并行任务
+    const MAX_CONCURRENT_TASKS = 3;
+
+    // 如果已经达到最大并发数，则不启动新任务
+    if (runningCount >= MAX_CONCURRENT_TASKS) {
+      return;
+    }
+
+    // 启动可以运行的任务，但不超过最大并发数
+    let startedCount = 0;
     for (const task of plan.getReadyTasks()) {
       if (
         (task.status === TaskStatus.PENDING || task.status === TaskStatus.BLOCKED) &&
-        this.#canStartTask(plan, task)
+        this.#canStartTask(plan, task) &&
+        startedCount < (MAX_CONCURRENT_TASKS - runningCount)
       ) {
         task.updateStatus(TaskStatus.RUNNING);
+        startedCount++;
       }
     }
   }
@@ -2764,6 +2786,42 @@ export class ExecutionPlanManager {
     }
     this.#rebuildGraph(plan);
     this.#startReadyTasks(plan);
+  }
+
+  /**
+   * 根据任务名和描述推断生命周期阶段
+   * 用于 LLM 分解时没有设置 phase 的任务
+   */
+  #inferTaskPhase(taskName, description) {
+    const lower = (taskName + ' ' + description).toLowerCase();
+    // 验证阶段：verify, test, validate, confirm, lint, build_check, 验证, 测试
+    if (/\b(verify|test|validate|confirm|lint|build_check|check_diagnostics|run_tests|review_changes)\b/.test(lower) || /验证|测试/.test(lower)) {
+      return ExecutionPlanManager.PHASE.VERIFICATION;
+    }
+    // 审查阶段：inspect, review, check, audit, read_back, 审查, 复查
+    if (/\b(inspect_changes|review|audit|read_back|security_review|ui_acceptance|data_contract_check)\b/.test(lower) || /审[核查]|复查/.test(lower)) {
+      return ExecutionPlanManager.PHASE.INSPECTION;
+    }
+    // 实现阶段：implement, create, edit, write, fix, add, update, refactor, build, code
+    if (
+      /\b(implement|create|edit|write|fix|add|update|refactor|build|code|implement_features|implement_changes|create_new_files|refactor_code)\b/.test(lower) ||
+      /修改|实现|创建|編写|修复|重构/.test(lower)
+    ) {
+      return ExecutionPlanManager.PHASE.IMPLEMENTATION;
+    }
+    // 规划阶段：plan, design, architect, brainstorm, grill, zoom_out, approach
+    if (/\b(plan|design|architect|brainstorm|grill|zoom_out|approach|plan_solution|design_changes|risk_check|test_strategy|migration_plan)\b/.test(lower) || /方案|设计|规划/.test(lower)) {
+      return ExecutionPlanManager.PHASE.PLANNING;
+    }
+    // 探索阶段：inspect, explore, discover, read, gather, analyze
+    if (
+      /\b(inspect|explore|discover|read|gather|analyze|inspect_readme|inspect_workspace|inspect_existing_code|analyze_requirements|inspect_verification_target)\b/.test(lower) ||
+      /了解|探索|检查|分析|读取|发现/.test(lower)
+    ) {
+      return ExecutionPlanManager.PHASE.EXPLORATION;
+    }
+    // 默认：null（阶段屏障不会对这些任务生效）
+    return null;
   }
 }
 

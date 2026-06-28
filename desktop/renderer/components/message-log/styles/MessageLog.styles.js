@@ -26,7 +26,9 @@ export const styles = {
     minHeight: '28px',
     padding: '0 2px',
     borderRadius: '999px',
-    border: '1px solid transparent',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'transparent',
     backgroundColor: 'transparent',
     boxShadow: 'none',
     fontSize: '12px',
@@ -49,7 +51,9 @@ export const styles = {
     minHeight: '30px',
     padding: '2px',
     borderRadius: '999px',
-    border: '1px solid var(--glass-border)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--glass-border)',
     backgroundColor: 'var(--glass-control-bg)',
     boxShadow: 'var(--glass-inner-hl)'
   },
@@ -67,7 +71,9 @@ export const styles = {
     height: '28px',
     padding: '0 9px',
     borderRadius: '999px',
-    border: '1px solid var(--glass-border)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--glass-border)',
     backgroundColor: 'var(--glass-bg)',
     color: 'var(--text-color)',
     fontSize: '12px',
@@ -82,7 +88,9 @@ export const styles = {
     height: '28px',
     padding: '0 9px',
     borderRadius: '999px',
-    border: '1px solid var(--glass-border)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--glass-border)',
     backgroundColor: 'var(--glass-bg-light)',
     color: 'var(--text-color)',
     cursor: 'pointer',
@@ -105,7 +113,9 @@ export const styles = {
     padding: '2px',
     borderRadius: '999px',
     backgroundColor: 'var(--glass-control-bg)',
-    border: '1px solid var(--glass-border)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--glass-border)',
     flex: '0 0 auto'
   },
   
@@ -142,7 +152,9 @@ export const styles = {
   runtimeDetailsPanel: {
     marginBottom: '12px',
     borderRadius: '10px',
-    border: '1px solid var(--glass-border)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--glass-border)',
     backgroundColor: 'var(--glass-bg)',
     backdropFilter: 'blur(12px) saturate(150%)',
     WebkitBackdropFilter: 'blur(12px) saturate(150%)',
@@ -191,7 +203,9 @@ export const styles = {
   },
 
   runtimeDetailsToggle: {
-    border: '1px solid var(--glass-border)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--glass-border)',
     backgroundColor: 'var(--glass-bg-light)',
     color: 'var(--text-muted)',
     borderRadius: '6px',
@@ -299,7 +313,9 @@ export const styles = {
 
   planCard: {
     borderRadius: '8px',
-    border: '1px solid var(--glass-border)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--glass-border)',
     backgroundColor: 'var(--surface-subtle)',
     padding: '10px',
     color: 'var(--text-color)'
@@ -478,7 +494,9 @@ export const styles = {
     padding: '0 8px',
     borderRadius: '6px',
     backgroundColor: 'var(--glass-bg-light)',
-    border: '1px solid var(--glass-border)'
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--glass-border)'
   },
 
   fileStatusPath: {
@@ -513,7 +531,9 @@ export const styles = {
     padding: '6px 8px',
     borderRadius: '6px',
     backgroundColor: 'var(--glass-bg-light)',
-    border: '1px solid var(--glass-border)'
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--glass-border)'
   },
 
   activityItemCompleted: {
@@ -568,7 +588,9 @@ export const styles = {
     height: '24px',
     padding: '0 8px',
     borderRadius: '5px',
-    border: '1px solid var(--border-subtle)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--border-subtle)',
     backgroundColor: 'var(--border-subtle)',
     color: 'var(--text-color)',
     cursor: 'pointer',
@@ -598,7 +620,9 @@ export const styles = {
     height: '10px',
     borderRadius: '50%',
     backgroundColor: 'var(--primary-color)',
-    border: '2px solid var(--surface-color)',
+    borderWidth: '2px',
+    borderStyle: 'solid',
+    borderColor: 'var(--surface-color)',
     transition: 'all 0.2s'
   },
   
@@ -633,7 +657,9 @@ export const styles = {
     borderRadius: '16px',
     padding: '9px 12px',
     backgroundColor: 'var(--message-agent-bg)',
-    border: '1px solid var(--message-agent-border)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--message-agent-border)',
     boxShadow: 'var(--message-shadow)',
     color: 'var(--text-color)',
     maxWidth: '85%',
@@ -741,7 +767,9 @@ export const styles = {
   thinkingPanel: {
     margin: '0 0 10px 0',
     borderRadius: '8px',
-    border: '1px solid var(--info-border)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--info-border)',
     backgroundColor: 'var(--info-faint)',
     overflow: 'visible'
   },
@@ -825,7 +853,9 @@ export const styles = {
     padding: '8px',
     borderRadius: '6px',
     backgroundColor: 'var(--surface-subtle)',
-    border: '1px solid var(--border-divider)'
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--border-divider)'
   },
 
   thinkingStepHeader: {
@@ -920,7 +950,9 @@ export const styles = {
     padding: '12px',
     backgroundColor: 'var(--surface-card)',
     borderRadius: '6px',
-    border: '1px solid var(--border-subtle)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--border-subtle)',
     fontSize: '12px',
     maxHeight: '300px',
     overflowY: 'auto'
@@ -991,7 +1023,9 @@ export const styles = {
   spinner: {
     width: '14px',
     height: '14px',
-    border: '2px solid var(--border-color)',
+    borderWidth: '2px',
+    borderStyle: 'solid',
+    borderColor: 'var(--border-color)',
     borderTopColor: 'var(--warning-color)',
     borderRadius: '50%',
     animation: 'spin 1s linear infinite'
@@ -1073,7 +1107,9 @@ export const styles = {
     padding: '12px 14px',
     borderRadius: '16px',
     backgroundColor: 'var(--message-tool-bg)',
-    border: '1px solid var(--message-tool-border)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--message-tool-border)',
     boxShadow: 'var(--message-shadow)',
     overflow: 'hidden',
     maxWidth: '85%'
@@ -1137,7 +1173,9 @@ export const styles = {
     fontSize: '11px',
     color: 'var(--text-muted)',
     backgroundColor: 'var(--glass-bg-light)',
-    border: '1px solid var(--glass-border)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--glass-border)',
     padding: '3px 8px',
     borderRadius: '999px',
     fontWeight: 500,
@@ -1193,7 +1231,9 @@ export const styles = {
     lineHeight: 1.6,
     padding: '8px 10px',
     backgroundColor: 'var(--message-result-bg)',
-    border: '1px solid var(--message-result-border)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--message-result-border)',
     borderRadius: '12px'
   },
 
@@ -1216,7 +1256,9 @@ export const styles = {
     padding: '12px 14px',
     borderRadius: '16px',
     backgroundColor: 'var(--info-faint)',
-    border: '1px solid var(--info-border)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--info-border)',
     fontSize: '13px',
     color: 'var(--text-dark)',
     lineHeight: 1.7
@@ -1235,7 +1277,9 @@ export const styles = {
   enhancedMessageBubble: {
     padding: '12px 14px',
     borderRadius: '16px',
-    border: '1px solid var(--message-agent-border)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--message-agent-border)',
     backgroundColor: 'var(--message-agent-bg)',
     boxShadow: 'var(--message-shadow)',
     fontSize: '14px',
@@ -1287,7 +1331,9 @@ export const styles = {
     minWidth: '220px',
     padding: '11px 13px',
     borderRadius: '16px',
-    border: '1px solid var(--message-agent-border)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--message-agent-border)',
     backgroundColor: 'var(--message-agent-bg)',
     boxShadow: 'var(--message-shadow)',
     fontSize: '14px',
