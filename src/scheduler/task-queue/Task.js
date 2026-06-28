@@ -51,32 +51,32 @@ export class Task {
   constructor(data) {
     const now = Date.now();
 
-    this.id = data.id || this.#generateId();
+    this.id = data.id ?? this.#generateId();
     this.type = data.type;
-    this.status = data.status || TaskStatus.PENDING;
+    this.status = data.status ?? TaskStatus.PENDING;
     this.priority = data.priority !== undefined ? data.priority : TaskPriority.NORMAL;
-    this.payload = data.payload || {};
+    this.payload = data.payload ?? {};
     this.result = data.result !== undefined ? data.result : null;
-    this.error = data.error || null;
+    this.error = data.error ?? null;
 
     // 时间戳
-    this.createdAt = data.createdAt || now;
-    this.updatedAt = data.updatedAt || now;
-    this.startedAt = data.startedAt || null;
-    this.completedAt = data.completedAt || null;
+    this.createdAt = data.createdAt ?? now;
+    this.updatedAt = data.updatedAt ?? now;
+    this.startedAt = data.startedAt ?? null;
+    this.completedAt = data.completedAt ?? null;
 
     // 重试相关
-    this.retryCount = data.retryCount || 0;
+    this.retryCount = data.retryCount ?? 0;
     this.maxRetries = data.maxRetries !== undefined ? data.maxRetries : 3;
 
     // 关联关系
-    this.parentId = data.parentId || null;
-    this.scheduleId = data.scheduleId || null;
+    this.parentId = data.parentId ?? null;
+    this.scheduleId = data.scheduleId ?? null;
 
     // 依赖关系（新增）
-    this.dependsOn = data.dependsOn || [];
-    this.completedDependencies = new Set(data.completedDependencies || []);
-    this.onDependenciesMet = data.onDependenciesMet || null;
+    this.dependsOn = data.dependsOn ?? [];
+    this.completedDependencies = new Set(data.completedDependencies ?? []);
+    this.onDependenciesMet = data.onDependenciesMet ?? null;
   }
 
   /**

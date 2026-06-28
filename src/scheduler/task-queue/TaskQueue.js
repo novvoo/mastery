@@ -250,7 +250,7 @@ export class TaskQueue {
     const previousStatus = task.status;
 
     // 应用更新
-    if (updates.status) {
+    if (updates.status !== undefined) {
       const metadata = {};
       if (updates.result !== undefined) {
         metadata.result = updates.result;
@@ -419,7 +419,7 @@ export class TaskQueue {
     tasks.sort((a, b) => b.createdAt - a.createdAt);
 
     // 限制数量
-    if (options.limit && options.limit > 0) {
+    if (Number.isInteger(options.limit) && options.limit >= 0) {
       tasks = tasks.slice(0, options.limit);
     }
 

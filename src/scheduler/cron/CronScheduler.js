@@ -29,18 +29,18 @@ export class Schedule {
   constructor(data) {
     const now = Date.now();
 
-    this.id = data.id || this.#generateId();
+    this.id = data.id ?? this.#generateId();
     this.name = data.name;
     this.cron = data.cron;
     this.taskType = data.taskType;
-    this.taskPayload = data.taskPayload || {};
+    this.taskPayload = data.taskPayload ?? {};
     this.enabled = data.enabled !== undefined ? data.enabled : true;
     this.maxRuns = data.maxRuns !== undefined ? data.maxRuns : null;
-    this.runCount = data.runCount || 0;
-    this.lastRunAt = data.lastRunAt || null;
-    this.nextRunAt = data.nextRunAt || null;
-    this.createdAt = data.createdAt || now;
-    this.updatedAt = data.updatedAt || now;
+    this.runCount = data.runCount ?? 0;
+    this.lastRunAt = data.lastRunAt ?? null;
+    this.nextRunAt = data.nextRunAt ?? null;
+    this.createdAt = data.createdAt ?? now;
+    this.updatedAt = data.updatedAt ?? now;
 
     // 初始化cron表达式解析器
     this.#cronExpression = new CronExpression(this.cron);
@@ -265,6 +265,10 @@ export class CronScheduler {
       schedule.maxRuns = updates.maxRuns;
     }
 
+    if (updates.enabled !== undefined) {
+      schedule.enabled = Boolean(updates.enabled);
+    }
+
     schedule.updatedAt = Date.now();
 
     // 重新计算下次执行时间
@@ -363,7 +367,7 @@ export class CronScheduler {
     });
 
     // 限制数量
-    if (options.limit && options.limit > 0) {
+    if (Number.isInteger(options.limit) && options.limit >= 0) {
       schedules = schedules.slice(0, options.limit);
     }
 

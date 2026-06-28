@@ -17,7 +17,7 @@ export async function handleIsGitRepo({ engine }) {
 }
 
 export function resolveWorkspacePath(filePath, { engine }) {
-  const requestedPath = String(filePath || '').trim();
+  const requestedPath = String(filePath ?? '').trim();
   if (!requestedPath) {
     throw new Error('Missing file path.');
   }
@@ -39,7 +39,7 @@ export function resolveWorkspacePath(filePath, { engine }) {
 
 export async function handleReadWorkspaceFile(payload = {}, { engine }) {
   try {
-    const { absolutePath, relativePath } = resolveWorkspacePath(payload?.path || payload?.target, {
+    const { absolutePath, relativePath } = resolveWorkspacePath(payload?.path ?? payload?.target, {
       engine,
     });
     const stat = fs.statSync(absolutePath);
@@ -47,7 +47,7 @@ export async function handleReadWorkspaceFile(payload = {}, { engine }) {
       return { success: false, error: 'Selected path is not a file.', path: relativePath };
     }
 
-    const maxBytes = Number(payload?.maxBytes || 2 * 1024 * 1024);
+    const maxBytes = Number(payload?.maxBytes ?? 2 * 1024 * 1024);
     if (stat.size > maxBytes) {
       return {
         success: false,
@@ -74,14 +74,14 @@ export async function handleReadWorkspaceFile(payload = {}, { engine }) {
 export async function handleWriteWorkspaceFile(payload = {}, { engine, broadcast }) {
   try {
     const { absolutePath, relativePath, workingDirectory } = resolveWorkspacePath(
-      payload?.path || payload?.target,
+      payload?.path ?? payload?.target,
       { engine },
     );
     const content = String(payload?.content ?? '');
     fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
     fs.writeFileSync(absolutePath, content, 'utf8');
     const stat = fs.statSync(absolutePath);
-    broadcast('workspace:changed', {
+    broadcast?.('workspace:changed', {
       path: relativePath,
       workingDirectory,
       action: 'write',
@@ -98,7 +98,7 @@ export async function handleWriteWorkspaceFile(payload = {}, { engine, broadcast
 }
 
 export async function handleFileDiff(payload = {}, { engine }) {
-  const filePath = String(payload?.path || payload?.target || '').trim();
+  const filePath = String(payload?.path ?? payload?.target ?? '').trim();
   if (!filePath) {
     return { success: false, error: 'Missing file path.' };
   }
@@ -124,10 +124,14 @@ export async function handleFileDiff(payload = {}, { engine }) {
     try {
       const absPath = path.isAbsolute(filePath) ? filePath : path.join(workingDirectory, filePath);
       const newContent = fs.readFileSync(absPath, 'utf8');
+      const relativeSnapshot = engine?.workspaceState?.getFileSnapshot(filePath)?.content;
+      const absoluteSnapshot = engine?.workspaceState?.getFileSnapshot(absPath)?.content;
       const oldContent =
-        engine?.workspaceState?.getFileSnapshot(filePath)?.content ||
-        engine?.workspaceState?.getFileSnapshot(absPath)?.content ||
-        '';
+        typeof relativeSnapshot === 'string'
+          ? relativeSnapshot
+          : typeof absoluteSnapshot === 'string'
+            ? absoluteSnapshot
+            : '';
 
       const diff = computeDiff({ path: filePath, oldContent, newContent });
       const hasDiff = !isNoop(diff);

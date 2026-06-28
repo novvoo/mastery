@@ -14,7 +14,7 @@ export class MessageBus {
    * @param {number} [options.maxHistory=1000] - 最大历史消息数量
    */
   constructor(options = {}) {
-    this.maxHistory = options.maxHistory || 1000;
+    this.maxHistory = options.maxHistory ?? 1000;
     this.#handlers = new Map();
     this.#history = [];
   }
@@ -48,7 +48,9 @@ export class MessageBus {
     };
 
     // 保存到历史
-    this.#history.push(fullMessage);
+    if (this.maxHistory > 0) {
+      this.#history.push(fullMessage);
+    }
 
     // 限制历史数量
     if (this.#history.length > this.maxHistory) {
@@ -126,7 +128,7 @@ export class MessageBus {
     messages.sort((a, b) => b.timestamp - a.timestamp);
 
     // 限制数量
-    if (options.limit && options.limit > 0) {
+    if (Number.isInteger(options.limit) && options.limit >= 0) {
       messages = messages.slice(0, options.limit);
     }
 
