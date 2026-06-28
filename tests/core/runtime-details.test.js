@@ -24,7 +24,9 @@ describe('runtime-details (src/core)', () => {
     expect(isRuntimeDetailMessage([])).toBe(false);
     expect(isRuntimeDetailMessage({ type: 'user' })).toBe(false);
     expect(isRuntimeDetailMessage({ type: 'assistant', content: 'Hello user' })).toBe(false);
-    expect(isRuntimeDetailMessage({ type: 'assistant', content: 'This is a normal response' })).toBe(false);
+    expect(
+      isRuntimeDetailMessage({ type: 'assistant', content: 'This is a normal response' }),
+    ).toBe(false);
 
     expect(isRuntimeDetailMessage({ event: 'tool:call' })).toBe(true);
     expect(isRuntimeDetailMessage({ event: 'tool:result' })).toBe(true);
@@ -52,7 +54,9 @@ describe('runtime-details (src/core)', () => {
 
     expect(isRuntimeDetailMessage({ role: 'system', content: 'You are a tool...' })).toBe(true);
     expect(isRuntimeDetailMessage({ role: 'system', content: 'System prompt' })).toBe(true);
-    expect(isRuntimeDetailMessage({ role: 'developer', content: 'Developer instruction' })).toBe(true);
+    expect(isRuntimeDetailMessage({ role: 'developer', content: 'Developer instruction' })).toBe(
+      true,
+    );
 
     expect(isRuntimeDetailMessage({ source: 'tool_instruction' })).toBe(true);
     expect(isRuntimeDetailMessage({ source: 'system_instruction' })).toBe(true);
@@ -73,11 +77,24 @@ describe('runtime-details (src/core)', () => {
 
     expect(isRuntimeDetailMessage({ type: 'assistant', content: 'You are a tool...' })).toBe(true);
     expect(isRuntimeDetailMessage({ type: 'assistant', content: 'You are a skill...' })).toBe(true);
-    expect(isRuntimeDetailMessage({ type: 'assistant', content: '[SYSTEM] Internal message' })).toBe(true);
-    expect(isRuntimeDetailMessage({ type: 'assistant', content: '[INTERNAL] Tool instruction' })).toBe(true);
-    expect(isRuntimeDetailMessage({ type: 'assistant', content: '[DEVELOPER] Instruction' })).toBe(true);
-    expect(isRuntimeDetailMessage({ type: 'assistant', content: '<!-- workspace-context: files=foo.js -->' })).toBe(true);
-    expect(isRuntimeDetailMessage({ type: 'assistant', content: '/* Internal comment */' })).toBe(true);
+    expect(
+      isRuntimeDetailMessage({ type: 'assistant', content: '[SYSTEM] Internal message' }),
+    ).toBe(true);
+    expect(
+      isRuntimeDetailMessage({ type: 'assistant', content: '[INTERNAL] Tool instruction' }),
+    ).toBe(true);
+    expect(isRuntimeDetailMessage({ type: 'assistant', content: '[DEVELOPER] Instruction' })).toBe(
+      true,
+    );
+    expect(
+      isRuntimeDetailMessage({
+        type: 'assistant',
+        content: '<!-- workspace-context: files=foo.js -->',
+      }),
+    ).toBe(true);
+    expect(isRuntimeDetailMessage({ type: 'assistant', content: '/* Internal comment */' })).toBe(
+      true,
+    );
 
     expect(isRuntimeDetailMessage({ text: 'You are a tool...' })).toBe(true);
     expect(isRuntimeDetailMessage({ text: '[SYSTEM] Internal' })).toBe(true);
@@ -99,31 +116,55 @@ describe('runtime-details (src/core)', () => {
     expect(isPrimaryMessage(undefined)).toBe(false);
     expect(isPrimaryMessage({ type: 'user', content: 'hi' })).toBe(true);
     expect(isPrimaryMessage({ type: 'assistant', content: 'hello' })).toBe(true);
-    expect(isPrimaryMessage({ type: 'assistant', content: 'This is a normal response to user' })).toBe(true);
+    expect(
+      isPrimaryMessage({ type: 'assistant', content: 'This is a normal response to user' }),
+    ).toBe(true);
     expect(isPrimaryMessage({ type: 'result', content: 'Task completed successfully' })).toBe(true);
 
     expect(isPrimaryMessage({ event: 'tool:call' })).toBe(false);
     expect(isPrimaryMessage({ event: 'agent:complete', type: 'success' })).toBe(false);
     expect(isPrimaryMessage({ event: 'agent:complete', type: 'tool' })).toBe(false);
 
-    expect(isPrimaryMessage({ internal: true, type: 'assistant', content: 'You are a tool...' })).toBe(false);
-    expect(isPrimaryMessage({ hidden: true, type: 'assistant', content: 'Hidden message' })).toBe(false);
-    expect(isPrimaryMessage({ runtimeDetail: true, type: 'assistant', content: 'Internal message' })).toBe(false);
+    expect(
+      isPrimaryMessage({ internal: true, type: 'assistant', content: 'You are a tool...' }),
+    ).toBe(false);
+    expect(isPrimaryMessage({ hidden: true, type: 'assistant', content: 'Hidden message' })).toBe(
+      false,
+    );
+    expect(
+      isPrimaryMessage({ runtimeDetail: true, type: 'assistant', content: 'Internal message' }),
+    ).toBe(false);
 
     expect(isPrimaryMessage({ role: 'system', content: 'System instruction' })).toBe(false);
     expect(isPrimaryMessage({ role: 'developer', content: 'Developer instruction' })).toBe(false);
 
-    expect(isPrimaryMessage({ source: 'tool_instruction', type: 'assistant', content: 'You are a tool...' })).toBe(false);
-    expect(isPrimaryMessage({ source: 'system_instruction', type: 'assistant', content: 'System instruction' })).toBe(false);
+    expect(
+      isPrimaryMessage({
+        source: 'tool_instruction',
+        type: 'assistant',
+        content: 'You are a tool...',
+      }),
+    ).toBe(false);
+    expect(
+      isPrimaryMessage({
+        source: 'system_instruction',
+        type: 'assistant',
+        content: 'System instruction',
+      }),
+    ).toBe(false);
 
     expect(isPrimaryMessage({ type: 'assistant', content: 'You are a tool...' })).toBe(false);
     expect(isPrimaryMessage({ type: 'assistant', content: 'You are a skill...' })).toBe(false);
     expect(isPrimaryMessage({ type: 'assistant', content: '[SYSTEM] Internal' })).toBe(false);
-    expect(isPrimaryMessage({ type: 'assistant', content: '<!-- workspace-context -->' })).toBe(false);
+    expect(isPrimaryMessage({ type: 'assistant', content: '<!-- workspace-context -->' })).toBe(
+      false,
+    );
 
     expect(isPrimaryMessage({ toolName: 'read_file', type: 'assistant' })).toBe(false);
     expect(isPrimaryMessage({ args: {}, type: 'assistant' })).toBe(false);
-    expect(isPrimaryMessage({ activity: { kind: 'tool_activity' }, type: 'assistant' })).toBe(false);
+    expect(isPrimaryMessage({ activity: { kind: 'tool_activity' }, type: 'assistant' })).toBe(
+      false,
+    );
   });
 
   test('formatRuntimeDetailValue handles various types', () => {

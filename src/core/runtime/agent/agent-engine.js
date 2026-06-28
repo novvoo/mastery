@@ -120,7 +120,7 @@ function createEmptyToolRegistry() {
   };
 }
 
-function stripActionBlocks(text = '', { toolRegistry } = {}) {
+export function stripActionBlocks(text = '', { toolRegistry } = {}) {
   if (typeof text !== 'string') return text;
 
   let out = text

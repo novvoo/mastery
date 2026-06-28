@@ -106,7 +106,9 @@ describe('AgentRouter', () => {
     const router = new AgentRouter(deps);
 
     const call = { name: 'test', arguments: { path: 'foo.txt' } };
-    const result1 = await router.executeToolCall(call, { currentTask: { id: 'inspect_workspace' } });
+    const result1 = await router.executeToolCall(call, {
+      currentTask: { id: 'inspect_workspace' },
+    });
     expect(result1.cached).not.toBe(true);
     expect(callCount.value).toBe(1);
 

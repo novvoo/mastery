@@ -155,9 +155,13 @@ const PLAN_ORCHESTRATION_TOOLS = ['change_plan'];
 // workspace before choosing the next plan change or action.
 const PLAN_TASK_CONTEXT_TOOLS = [
   'read_file',
+  'read_files',
   'list_dir',
+  'tree',
   'write_file',
   'edit_file',
+  'verify',
+  'apply_hashline_patch',
   'shell',
   'setup',
   'search',
@@ -171,9 +175,15 @@ const PLAN_TASK_CONTEXT_TOOLS = [
   'lsp_hover',
   'lsp_type_definition',
   'lsp_implementation',
+  'lsp_rename',
+  'lsp_format',
   'context_assess',
   'context_expand',
   'context_range',
+  'git_status',
+  'git_log',
+  'git_diff',
+  'git_show',
 ];
 
 // =============================================================
@@ -294,6 +304,16 @@ export function selectToolsForRequest(
     add(currentTask.allowedTools);
     add(PLAN_TASK_CONTEXT_TOOLS);
     add(PLAN_ORCHESTRATION_TOOLS);
+
+    if (currentPhase) {
+      const phaseCandidates = PHASE_CANDIDATE_TOOLS[currentPhase] || [];
+      add(phaseCandidates);
+    }
+
+    if (taskProfile?.isBugTask || /bug|报错|错误|失败|崩溃|卡住|test failing|failing test/i.test(input)) {
+      add(['coverage_check']);
+    }
+
     const selectedTools = Array.from(selected.values());
     // Keep the full constrained set even if it exceeds maxTools; these tools
     // are the active task contract plus safe context expansion.

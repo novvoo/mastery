@@ -276,6 +276,24 @@ export class DesktopCore {
           });
         }
       },
+      planProgress(progress) {
+        eventBus.emit(RuntimeEvent.EXECUTION_PLAN_UPDATED, {
+          plan: {
+            tasks: (progress.tasks || []).map((t) => ({
+              id: t.id,
+              name: t.name,
+              status: t.displayStatus || t.status,
+              description: t.description,
+            })),
+            status: progress.planStatus,
+          },
+          summary: `进度: ${progress.completed}/${progress.total}`,
+          timestamp: Date.now(),
+        });
+        if (isDebug) {
+          console.log('[UiAdapter] plan:progress', progress.completed, '/', progress.total);
+        }
+      },
       onTextDelta(text) {
         eventBus.emit(RuntimeEvent.AGENT_TEXT_DELTA, { text, timestamp: Date.now() });
       },

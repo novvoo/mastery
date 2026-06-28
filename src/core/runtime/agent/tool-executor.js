@@ -233,7 +233,7 @@ function getAllowedToolSet(context = {}) {
   if (Array.isArray(taskAllowed) && taskAllowed.length > 0) {
     const routed = normalizeToolNameSet(context.activeRoutedToolNames);
     if (routed && routed.size > 0) {
-      return routed;
+      return new Set([...routed, ...taskAllowed, ...PLAN_CONTROL_TOOLS]);
     }
     return new Set([...taskAllowed, ...PLAN_CONTROL_TOOLS]);
   }

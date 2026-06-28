@@ -117,7 +117,8 @@ describe('selectToolsForRequest', () => {
     expect(names).toContain('read_file');
     expect(names).toContain('change_plan');
     expect(names).not.toContain('risk_check');
-    expect(names).not.toContain('write_file');
+    expect(names).toContain('write_file');
+    expect(names).toContain('shell');
   });
 
   test('current task allowedTools preserves safe context tools for plan execution', () => {
@@ -130,8 +131,8 @@ describe('selectToolsForRequest', () => {
     expect(names).toContain('list_dir');
     expect(names).toContain('read_file');
     expect(names).toContain('search');
-    expect(names).not.toContain('write_file');
-    expect(names).not.toContain('shell');
+    expect(names).toContain('write_file');
+    expect(names).toContain('shell');
     expect(names).not.toContain('git_commit');
   });
 

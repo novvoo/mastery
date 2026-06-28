@@ -45,6 +45,7 @@ import { AgentPlanner } from './agent-planner.js';
 import { AgentVerifier } from './agent-verifier.js';
 import { AgentRouter } from './agent-router.js';
 import { AgentContext } from './agent-context.js';
+import { stripActionBlocks } from './agent-engine.js';
 
 export class ReActAgent {
   #modelProvider;
@@ -895,7 +896,12 @@ export class ReActAgent {
 
         // ---- 工具执行 ----
         if (nativeToolCalls.length > 0) {
-          this.#sessionManager.addAssistantMessage(response.text, nativeToolCalls);
+          const visibleText = stripActionBlocks(response.text, { toolRegistry: this.#toolRegistry });
+          if (visibleText) {
+            this.#sessionManager.addAssistantMessage(visibleText, nativeToolCalls);
+          } else {
+            this.#sessionManager.addAssistantMessage(response.text, nativeToolCalls);
+          }
           for (const toolCall of nativeToolCalls) {
             const toolStart = Date.now();
             const currentTaskForRouter = this.#planner.getCurrentRunnableTask();

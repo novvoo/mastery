@@ -911,18 +911,25 @@ export class GraphPlanner extends EventEmitter {
   /** 根据任务名和描述自动推断生命周期阶段 */
   static #inferPhase(taskName, description) {
     const lower = (taskName + ' ' + description).toLowerCase();
-    if (/\b(verify|test|validate|confirm|lint|build_check)\b/.test(lower)) return 'verification';
-    if (/\b(inspect|review|check|audit|read_back|审[核查]|复查)\b/.test(lower)) return 'inspection';
+    // 验证阶段：verify, test, validate, confirm, lint, build_check, 验证, 测试
+    if (/\b(verify|test|validate|confirm|lint|build_check|check_diagnostics|run_tests|review_changes)\b/.test(lower) || /验证|测试/.test(lower)) return 'verification';
+    // 审查阶段：inspect, review, check, audit, read_back, 审查, 复查
+    if (/\b(inspect_changes|review|audit|read_back|security_review|ui_acceptance|data_contract_check)\b/.test(lower) || /审[核查]|复查/.test(lower)) return 'inspection';
+    // 实现阶段：implement, create, edit, write, fix, add, update, refactor, build, code, 修改, 实现, 创建, 编写, 修复, 重构
     if (
-      /\b(implement|create|edit|write|fix|add|update|refactor|build|code|修改|实现|创建|編写|修复|重构)\b/.test(
+      /\b(implement|create|edit|write|fix|add|update|refactor|build|code|implement_features|implement_changes|create_new_files|refactor_code)\b/.test(
         lower,
-      )
+      ) ||
+      /修改|实现|创建|編写|修复|重构/.test(lower)
     )
       return 'implementation';
-    if (/\b(plan|design|architect|brainstorm|grill|zoom_out|approach|方案|设计|规划)\b/.test(lower))
+    // 规划阶段：plan, design, architect, brainstorm, grill, zoom_out, approach, 方案, 设计, 规划
+    if (/\b(plan|design|architect|brainstorm|grill|zoom_out|approach|plan_solution|design_changes|risk_check|test_strategy|migration_plan)\b/.test(lower) || /方案|设计|规划/.test(lower))
       return 'planning';
+    // 探索阶段：inspect, explore, discover, read, gather, analyze, 了解, 探索, 检查, 分析, 读取, 发现
     if (
-      /\b(inspect|explore|discover|read|gather|analyze|了解|探索|检查|分析|读取|发现)\b/.test(lower)
+      /\b(inspect|explore|discover|read|gather|analyze|inspect_readme|inspect_workspace|inspect_existing_code|analyze_requirements|inspect_verification_target)\b/.test(lower) ||
+      /了解|探索|检查|分析|读取|发现/.test(lower)
     )
       return 'exploration';
     // 默认按任务顺序：第一个 → exploration，中间 → implementation，最后一个 → verification
@@ -1237,6 +1244,7 @@ ${toolHint}
           description: '验证最终结果：运行测试 / lint / build 确认所有变更正确',
           dependencies: lastId ? [lastId] : [],
           priority: options.priority || 0,
+          phase: 'verification',
         });
       }
 

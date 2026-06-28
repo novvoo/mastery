@@ -439,7 +439,7 @@ export function createDefaultUIFacade(ctx) {
           tasks: (progress.tasks || []).map((t) => ({
             id: t.id,
             name: t.name,
-            status: t.status,
+            status: t.displayStatus || t.status,
             description: t.description,
           })),
           status: progress.planStatus,

@@ -169,11 +169,14 @@ export class AgentRouter {
 
     // 路由检查
     if (options.activeRoutedToolNames && !options.activeRoutedToolNames.has(name)) {
-      const availableToolNames = Array.from(options.activeRoutedToolNames).join(', ') || '(none)';
-      const errorMsg = `Tool "${name}" is registered but not available in the current request phase. Available tools now: ${availableToolNames}.`;
-      this.#debugEvent('Tool call blocked by routing', { tool: name, arguments: args });
-      this.#ui.toolError(name, errorMsg);
-      return { name, result: errorMsg, error: errorMsg };
+      const taskAllowed = options.currentTask?.allowedTools;
+      if (!taskAllowed || !taskAllowed.includes(name)) {
+        const availableToolNames = Array.from(options.activeRoutedToolNames).join(', ') || '(none)';
+        const errorMsg = `Tool "${name}" is registered but not available in the current request phase. Available tools now: ${availableToolNames}.`;
+        this.#debugEvent('Tool call blocked by routing', { tool: name, arguments: args });
+        this.#ui.toolError(name, errorMsg);
+        return { name, result: errorMsg, error: errorMsg };
+      }
     }
 
     // 参数校验
