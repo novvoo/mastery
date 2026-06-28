@@ -208,11 +208,17 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   // 跟踪用户手动展开的消息，避免自动折叠覆盖用户操作
   const userUncollapsedRef = useRef(new Set());
 
-  // 跟踪已经处理过的消息 ID，避免重复处理
-  const processedAssistantMessagesRef = useRef(new Set());
+  // 跟踪上一次的 filteredMessages 长度，避免不必要的更新
+  const prevFilteredMessagesLengthRef = useRef(0);
 
   // 自动折叠逻辑：除了最后一条 assistant 消息外，其余默认折叠
   useEffect(() => {
+    // 只有当 filteredMessages 数量变化时才重新计算（避免每次都触发）
+    if (filteredMessages.length === prevFilteredMessagesLengthRef.current) {
+      return;
+    }
+    prevFilteredMessagesLengthRef.current = filteredMessages.length;
+
     const assistantIndices = [];
     filteredMessages.forEach((msg, index) => {
       if (isAssistantMessage(msg)) {
@@ -909,11 +915,11 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       const getTaskSortPriority = (statusValue) => {
         switch (statusValue) {
           case 'running': return 0;
-          case 'needs_repair': return 1;
-          case 'blocked': return 2;
-          case 'pending': return 3;
-          case 'completed': return 4;
-          case 'failed': return 5;
+          case 'failed': return 1;
+          case 'needs_repair': return 2;
+          case 'blocked': return 3;
+          case 'pending': return 4;
+          case 'completed': return 5;
           default: return 6;
         }
       };
