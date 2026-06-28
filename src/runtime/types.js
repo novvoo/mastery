@@ -81,13 +81,13 @@ export class RuntimeConfig {
     this.debug = opts.debug || false;
     this.modelProvider = opts.modelProvider;
     this.autoDownloadModels = opts.autoDownloadModels !== false;
-    this.maxIterations = opts.maxIterations || MAX_ITERATIONS_DEFAULT;
+    this.maxIterations = normalizePositiveInteger(opts.maxIterations, MAX_ITERATIONS_DEFAULT);
 
     // 新增配置项
     this.pluginConfig = opts.pluginConfig || {};
     this.enableMiddleware = opts.enableMiddleware !== false;
     this.enableToolGroups = opts.enableToolGroups !== false;
-    this.hookTimeout = opts.hookTimeout || 5000;
+    this.hookTimeout = normalizeNonNegativeNumber(opts.hookTimeout, 5000);
 
     // Budget & Cache 控制
     this.tokenBudget = opts.tokenBudget ?? null;
@@ -100,11 +100,25 @@ export class RuntimeConfig {
    */
   update(key, value) {
     if (typeof key === 'object') {
-      Object.assign(this, key);
+      for (const [entryKey, entryValue] of Object.entries(key)) {
+        this.#assignConfigValue(entryKey, entryValue);
+      }
     } else {
-      this[key] = value;
+      this.#assignConfigValue(key, value);
     }
     return this;
+  }
+
+  #assignConfigValue(key, value) {
+    if (key === 'maxIterations') {
+      this.maxIterations = normalizePositiveInteger(value, MAX_ITERATIONS_DEFAULT);
+      return;
+    }
+    if (key === 'hookTimeout') {
+      this.hookTimeout = normalizeNonNegativeNumber(value, 5000);
+      return;
+    }
+    this[key] = value;
   }
 
   /**
@@ -120,6 +134,16 @@ export class RuntimeConfig {
   clone() {
     return new RuntimeConfig({ ...this });
   }
+}
+
+function normalizePositiveInteger(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
+}
+
+function normalizeNonNegativeNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : fallback;
 }
 
 /**

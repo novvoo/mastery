@@ -510,6 +510,15 @@ describe('Runtime Layer Integration Tests', () => {
       expect(config.pluginConfig.timeout).toBe(1000);
     });
 
+    it('应该归一化无效的数值配置', () => {
+      expect(new RuntimeConfig({ maxIterations: 0 }).maxIterations).toBe(120);
+      expect(new RuntimeConfig({ maxIterations: -1 }).maxIterations).toBe(120);
+      expect(new RuntimeConfig({ maxIterations: 'invalid' }).maxIterations).toBe(120);
+      expect(new RuntimeConfig({ maxIterations: 3.9 }).maxIterations).toBe(3);
+      expect(new RuntimeConfig({ hookTimeout: 0 }).hookTimeout).toBe(0);
+      expect(new RuntimeConfig({ hookTimeout: 'invalid' }).hookTimeout).toBe(5000);
+    });
+
     it('应该更新配置', () => {
       const config = new RuntimeConfig();
 
@@ -519,6 +528,10 @@ describe('Runtime Layer Integration Tests', () => {
       config.update({ maxIterations: 50, hookTimeout: 2000 });
       expect(config.maxIterations).toBe(50);
       expect(config.hookTimeout).toBe(2000);
+
+      config.update({ maxIterations: 'invalid', hookTimeout: 'invalid' });
+      expect(config.maxIterations).toBe(120);
+      expect(config.hookTimeout).toBe(5000);
     });
 
     it('应该获取配置值', () => {

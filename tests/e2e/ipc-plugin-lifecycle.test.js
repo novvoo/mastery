@@ -47,6 +47,15 @@ describe('IPC MessageQueue e2e', () => {
     expect(q.size()).toBe(0);
   });
 
+  test('invalid maxSize falls back to default bounded queue', () => {
+    const q = new MessageQueue(Number.NaN);
+    for (let i = 0; i < 150; i++) {
+      q.enqueue(new IPCMessage(IPCMessageType.REQUEST, { i }));
+    }
+    expect(q.size()).toBe(100);
+    expect(q.peek().payload.i).toBe(50);
+  });
+
   test('dequeue on empty queue returns undefined', () => {
     const q = new MessageQueue(10);
     expect(q.dequeue()).toBeUndefined();
@@ -112,6 +121,28 @@ describe('IPCMessage serialization e2e', () => {
     const restored = IPCMessage.fromJSON(str);
     expect(restored.type).toBe(IPCMessageType.EVENT);
     expect(restored.payload.data).toBe(123);
+  });
+
+  test('fromJSON preserves explicit falsy serialized fields', () => {
+    const restored = IPCMessage.fromJSON({
+      id: '',
+      type: IPCMessageType.EVENT,
+      payload: null,
+      timestamp: 0,
+      status: '',
+      correlationId: '',
+      metadata: null,
+      source: '',
+      target: '',
+    });
+
+    expect(restored.id).toBe('');
+    expect(restored.timestamp).toBe(0);
+    expect(restored.status).toBe('');
+    expect(restored.correlationId).toBe('');
+    expect(restored.metadata).toEqual({});
+    expect(restored.source).toBe('');
+    expect(restored.target).toBe('');
   });
 });
 

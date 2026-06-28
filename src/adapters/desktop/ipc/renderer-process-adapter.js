@@ -113,7 +113,7 @@ export class RendererProcessIPCAdapter extends IPCAdapterBase {
       const timer = setTimeout(() => {
         this.handleTimeout(requestId);
         reject(new Error(`请求超时: ${channel}`));
-      }, options.timeout || this.config.requestTimeout);
+      }, options.timeout ?? this.config.requestTimeout);
 
       // 存储待处理请求
       this.pendingRequests.set(requestId, { resolve, reject, timer });

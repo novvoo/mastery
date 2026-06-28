@@ -68,15 +68,15 @@ export function parsePreviewArgs(text = '') {
  */
 export class IPCMessage {
   constructor(type, payload, options = {}) {
-    this.id = options.id || this.#generateId();
+    this.id = options.id ?? this.#generateId();
     this.type = type;
     this.payload = payload;
-    this.timestamp = Date.now();
-    this.status = IPCMessageStatus.PENDING;
-    this.correlationId = options.correlationId || null;
-    this.metadata = options.metadata || {};
-    this.source = options.source || 'unknown';
-    this.target = options.target || 'unknown';
+    this.timestamp = options.timestamp ?? Date.now();
+    this.status = options.status ?? IPCMessageStatus.PENDING;
+    this.correlationId = options.correlationId ?? null;
+    this.metadata = options.metadata ?? {};
+    this.source = options.source ?? 'unknown';
+    this.target = options.target ?? 'unknown';
   }
 
   /**
@@ -114,9 +114,9 @@ export class IPCMessage {
       metadata: data.metadata,
       source: data.source,
       target: data.target,
+      timestamp: data.timestamp,
+      status: data.status,
     });
-    msg.timestamp = data.timestamp;
-    msg.status = data.status;
     return msg;
   }
 }
@@ -131,7 +131,7 @@ export class IPCMessage {
 export class MessageQueue {
   constructor(maxSize = 100) {
     this.queue = [];
-    this.maxSize = maxSize;
+    this.maxSize = Number.isFinite(maxSize) ? Math.max(0, Math.floor(maxSize)) : 100;
   }
 
   /**

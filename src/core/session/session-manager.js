@@ -129,7 +129,7 @@ export class SessionManager {
       role,
       content,
       ...(toolCalls ? { toolCalls } : {}),
-      priority: priority || SessionManager.PRIORITY.ORDINARY,
+      priority: priority ?? SessionManager.PRIORITY.ORDINARY,
     });
   }
 
@@ -154,7 +154,7 @@ export class SessionManager {
       role: 'tool',
       content: result,
       toolCallId,
-      priority: priority || SessionManager.PRIORITY.EVIDENCE,
+      priority: priority ?? SessionManager.PRIORITY.EVIDENCE,
     });
   }
 
@@ -249,7 +249,7 @@ export class SessionManager {
 
   exportSnapshot(options = {}) {
     const maxMessages = Math.max(0, options.maxMessages ?? 80);
-    const messages = maxMessages > 0 ? this.#messages.slice(-maxMessages) : [...this.#messages];
+    const messages = maxMessages === 0 ? [] : this.#messages.slice(-maxMessages);
     const layers = Array.from(this.#layers.entries())
       .filter(([, layer]) => !layer.transient)
       .map(([id, layer]) => ({
@@ -301,15 +301,16 @@ export class SessionManager {
     }
 
     if (Array.isArray(snapshot.messages)) {
-      this.#messages = snapshot.messages
+      const restoredMessages = snapshot.messages
         .filter((message) => message?.role && typeof message.content === 'string')
         .map((message) => ({
           role: message.role,
           content: message.content,
           ...(message.toolCalls ? { toolCalls: message.toolCalls } : {}),
           ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
-          priority: message.priority || SessionManager.PRIORITY.ORDINARY,
+          priority: message.priority ?? SessionManager.PRIORITY.ORDINARY,
         }));
+      this.#messages = replace ? restoredMessages : [...this.#messages, ...restoredMessages];
     }
 
     return true;

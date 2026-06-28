@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 import { ExperienceMemory } from '../../src/core/experience-memory.js';
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -102,6 +102,26 @@ describe('ExperienceMemory', () => {
     expect(mem.getStats().total).toBeLessThanOrEqual(5);
   });
 
+  test('respects zero maxExperiences limit', () => {
+    const mem = new ExperienceMemory({ maxExperiences: 0 });
+    mem.record({ task: 'task0' });
+    expect(mem.getStats().total).toBe(0);
+  });
+
+  test('recall respects zero maxResults', () => {
+    const mem = new ExperienceMemory();
+    mem.recordSuccess('write python code', 'write_file', 'use type hints');
+    expect(mem.recall('python code', { maxResults: 0 })).toEqual([]);
+  });
+
+  test('normalizes scalar tags before recall', () => {
+    const mem = new ExperienceMemory();
+    mem.record({ task: 'debug timeout', tags: 'retry', lesson: 'cap retry attempts' });
+    const results = mem.recall('retry timeout');
+    expect(results.length).toBe(1);
+    expect(results[0].tags).toEqual(['retry']);
+  });
+
   test('persists to file', () => {
     const tmpDir = mkdtempSync(join(tmpdir(), 'exp-test-'));
     const filePath = join(tmpDir, 'experiences.json');
@@ -112,6 +132,50 @@ describe('ExperienceMemory', () => {
     expect(mem2.getStats().total).toBe(1);
 
     rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('loads only valid persisted experience arrays', () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'exp-test-invalid-'));
+    const filePath = join(tmpDir, 'experiences.json');
+    try {
+      writeFileSync(filePath, JSON.stringify({ invalid: true }), 'utf-8');
+      const mem = new ExperienceMemory({ filePath });
+      expect(mem.getStats().total).toBe(0);
+      expect(mem.recall('anything')).toEqual([]);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test('normalizes loaded legacy experience entries', () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'exp-test-legacy-'));
+    const filePath = join(tmpDir, 'experiences.json');
+    try {
+      writeFileSync(
+        filePath,
+        JSON.stringify([
+          {
+            id: 'legacy',
+            timestamp: Date.now(),
+            task: 'fix restart context',
+            tool: 'shell',
+            lesson: 'verify session restore',
+            tags: 'restart',
+          },
+          null,
+          'bad',
+        ]),
+        'utf-8',
+      );
+
+      const mem = new ExperienceMemory({ filePath });
+      const results = mem.recall('restart context');
+      expect(mem.getStats().total).toBe(1);
+      expect(results[0].id).toBe('legacy');
+      expect(results[0].tags).toEqual(['restart']);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
   test('getAll returns copy', () => {

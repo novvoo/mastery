@@ -130,6 +130,47 @@ describe('SessionManager', () => {
     ]);
   });
 
+  test('exportSnapshot respects maxMessages zero', () => {
+    const sm = new SessionManager();
+    sm.addUserMessage('Old message');
+    sm.addAssistantMessage('New message');
+
+    const snapshot = sm.exportSnapshot({ maxMessages: 0 });
+
+    expect(snapshot.messages).toEqual([]);
+  });
+
+  test('restoreSnapshot with replace false appends restored messages', () => {
+    const sm = new SessionManager();
+    sm.addUserMessage('Existing message');
+
+    expect(
+      sm.restoreSnapshot(
+        {
+          messages: [{ role: 'assistant', content: 'Restored message' }],
+        },
+        { replace: false },
+      ),
+    ).toBe(true);
+
+    expect(sm.getHistory().map((message) => message.content)).toEqual([
+      'Existing message',
+      'Restored message',
+    ]);
+  });
+
+  test('restoreSnapshot preserves explicit zero priority', () => {
+    const sm = new SessionManager();
+
+    expect(
+      sm.restoreSnapshot({
+        messages: [{ role: 'user', content: 'Pinned low priority', priority: 0 }],
+      }),
+    ).toBe(true);
+
+    expect(sm.getHistory()[0].priority).toBe(0);
+  });
+
   test('trimToContextWindow respects max tokens', () => {
     const sm = new SessionManager();
     sm.setSystemPrompt('Short');

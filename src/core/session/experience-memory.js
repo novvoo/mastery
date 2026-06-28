@@ -13,6 +13,33 @@ import { ExperienceOutcome } from '../types/index.js';
 const DEFAULT_MAX_EXPERIENCES = 500;
 const DEFAULT_MAX_RELEVANT = 10;
 
+function normalizeTags(tags) {
+  if (tags === null || tags === undefined) {
+    return [];
+  }
+  return Array.isArray(tags) ? tags.map(String) : [String(tags)];
+}
+
+function normalizeExperience(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  return {
+    id: raw.id || `exp_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+    timestamp: Number.isFinite(raw.timestamp) ? raw.timestamp : Date.now(),
+    task: String(raw.task ?? ''),
+    tool: String(raw.tool ?? ''),
+    outcome: raw.outcome || ExperienceOutcome.PARTIAL,
+    lesson: String(raw.lesson ?? ''),
+    context: String(raw.context ?? ''),
+    tags: normalizeTags(raw.tags),
+    usageCount: Number.isFinite(raw.usageCount) ? raw.usageCount : 0,
+    successCount: Number.isFinite(raw.successCount) ? raw.successCount : 0,
+    failureCount: Number.isFinite(raw.failureCount) ? raw.failureCount : 0,
+  };
+}
+
 export class ExperienceMemory {
   #experiences;
   #maxExperiences;
@@ -20,7 +47,7 @@ export class ExperienceMemory {
   #dirty;
 
   constructor(options = {}) {
-    this.#maxExperiences = options.maxExperiences || DEFAULT_MAX_EXPERIENCES;
+    this.#maxExperiences = Math.max(0, options.maxExperiences ?? DEFAULT_MAX_EXPERIENCES);
     this.#filePath = options.filePath || null;
     this.#dirty = false;
     this.#experiences = [];
@@ -38,12 +65,12 @@ export class ExperienceMemory {
     const entry = {
       id: `exp_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
       timestamp: Date.now(),
-      task: experience.task || '',
-      tool: experience.tool || '',
+      task: String(experience.task ?? ''),
+      tool: String(experience.tool ?? ''),
       outcome: experience.outcome || ExperienceOutcome.PARTIAL,
-      lesson: experience.lesson || '',
-      context: experience.context || '',
-      tags: experience.tags || [],
+      lesson: String(experience.lesson ?? ''),
+      context: String(experience.context ?? ''),
+      tags: normalizeTags(experience.tags),
       usageCount: 0,
       successCount: 0,
       failureCount: 0,
@@ -101,7 +128,11 @@ export class ExperienceMemory {
       return [];
     }
 
-    const maxResults = options.maxResults || DEFAULT_MAX_RELEVANT;
+    const maxResults = Math.max(0, options.maxResults ?? DEFAULT_MAX_RELEVANT);
+    if (maxResults === 0) {
+      return [];
+    }
+
     const keywords = task
       .toLowerCase()
       .split(/\s+/)
@@ -112,7 +143,7 @@ export class ExperienceMemory {
       let score = 0;
       const taskLower = task.toLowerCase();
       const expText =
-        `${exp.task} ${exp.lesson} ${exp.context} ${exp.tags.join(' ')}`.toLowerCase();
+        `${exp.task} ${exp.lesson} ${exp.context} ${normalizeTags(exp.tags).join(' ')}`.toLowerCase();
 
       // 关键词匹配
       for (const kw of keywords) {
@@ -232,7 +263,10 @@ export class ExperienceMemory {
     try {
       if (this.#filePath && existsSync(this.#filePath)) {
         const data = readFileSync(this.#filePath, 'utf-8');
-        this.#experiences = JSON.parse(data);
+        const loaded = JSON.parse(data);
+        this.#experiences = Array.isArray(loaded)
+          ? loaded.map(normalizeExperience).filter(Boolean).slice(0, this.#maxExperiences)
+          : [];
       }
     } catch (error) {
       console.error(`Failed to load experience memory: ${error.message}`);
