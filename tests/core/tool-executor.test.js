@@ -1,5 +1,5 @@
 import { describe, test, expect, mock } from 'bun:test';
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ToolExecutor } from '../../src/core/tool-executor.js';
@@ -24,7 +24,12 @@ function makeMockRegistry(tools = []) {
   };
 }
 
-function makeMockExecutor({ tools = [], securityPolicy = null, config = {} } = {}) {
+function makeMockExecutor({
+  tools = [],
+  securityPolicy = null,
+  config = {},
+  snapshotStore = null,
+} = {}) {
   const registry = makeMockRegistry(tools);
   const textToolParser = { parse: mock(() => []) };
   const ui = {
@@ -41,6 +46,7 @@ function makeMockExecutor({ tools = [], securityPolicy = null, config = {} } = {
     textToolParser,
     ui,
     config: { toolResultCacheEnabled: false, ...config },
+    snapshotStore,
   });
   return { executor, registry, textToolParser, ui };
 }
@@ -121,6 +127,62 @@ describe('ToolExecutor', () => {
     expect(result2.result).toBe('content');
   });
 
+  test('read-only cache returns empty string results', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-empty-cache-'));
+    try {
+      writeFileSync(join(root, 'empty.txt'), '', 'utf-8');
+      const readHandler = mock(async () => '');
+      const tool = makeTool('read_file', { handler: readHandler });
+      const snapshotStore = { head: mock(() => 'tag-empty') };
+      const { executor } = makeMockExecutor({
+        tools: [tool],
+        snapshotStore,
+        config: { workingDirectory: root, toolResultCacheEnabled: true },
+      });
+
+      const call = { name: 'read_file', arguments: { path: 'empty.txt' } };
+      const result1 = await executor.execute({ id: '1', ...call });
+      const result2 = await executor.execute({ id: '2', ...call });
+
+      expect(result1.result).toBe('');
+      expect(result2.cached).toBe(true);
+      expect(result2.result).toBe('');
+      expect(readHandler).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('read_file range cache honors explicit zero limit from snapshot', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-range-cache-'));
+    try {
+      writeFileSync(join(root, 'a.txt'), 'alpha\nbeta', 'utf-8');
+      const readHandler = mock(async () => 'should not run');
+      const tool = makeTool('read_file', { handler: readHandler });
+      const snapshotStore = {
+        head: mock(() => 'tag-a'),
+        byHash: mock(() => ({ content: 'alpha\nbeta' })),
+      };
+      const { executor } = makeMockExecutor({
+        tools: [tool],
+        snapshotStore,
+        config: { workingDirectory: root, toolResultCacheEnabled: true },
+      });
+
+      const result = await executor.execute({
+        id: '1',
+        name: 'read_file',
+        arguments: { path: 'a.txt', offset: 1, limit: 0 },
+      });
+
+      expect(result.cached).toBe(true);
+      expect(result.result).toBe('');
+      expect(readHandler).not.toHaveBeenCalled();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('mutation tools are blocked on duplicate calls', async () => {
     const tool = makeTool('write_file', { handler: async () => 'written' });
     const { executor } = makeMockExecutor({ tools: [tool] });
@@ -132,6 +194,29 @@ describe('ToolExecutor', () => {
     expect(result1.skipped).toBeUndefined();
     expect(result2.skipped).toBe(true);
     expect(result2.duplicateMutation).toBe(true);
+  });
+
+  test('duplicate mutation preserves empty previous result', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-empty-mutation-'));
+    try {
+      const tool = makeTool('write_file', { handler: async () => '' });
+      const { executor } = makeMockExecutor({
+        tools: [tool],
+        config: { workingDirectory: root, toolResultCacheEnabled: true },
+      });
+
+      const callArgs = { path: '/a.txt', content: '' };
+      const result1 = await executor.execute({ id: '1', name: 'write_file', arguments: callArgs });
+      const result2 = await executor.execute({ id: '2', name: 'write_file', arguments: callArgs });
+
+      expect(result1.result).toBe('');
+      expect(result2.skipped).toBe(true);
+      expect(result2.cached).toBe(true);
+      expect(result2.result.previousResult).toBe('');
+      expect(result2.result.message).toContain('Previous result');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test('blocks tool call when security policy denies', async () => {

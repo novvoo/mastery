@@ -64,6 +64,31 @@ describe('startPreview - static mode', () => {
     expect(result.mode).toBe('static');
   });
 
+  test('treats zero-like preview port as auto allocation', async () => {
+    const result = await startPreview({
+      workingDirectory: testDir,
+      kind: 'static',
+      port: '0',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.port).toBeGreaterThanOrEqual(PREVIEW_PORT_START);
+    expect(result.url).toContain(`:${result.port}/`);
+    expect(result.url).not.toContain(':0/');
+  });
+
+  test('ignores invalid preview port values and auto allocates', async () => {
+    const result = await startPreview({
+      workingDirectory: testDir,
+      kind: 'static',
+      port: 'not-a-port',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.port).toBeGreaterThanOrEqual(PREVIEW_PORT_START);
+    expect(result.url).toContain(`:${result.port}/`);
+  });
+
   test('throws when target does not exist', async () => {
     try {
       await startPreview({ workingDirectory: testDir, target: 'nonexistent.html', kind: 'static' });

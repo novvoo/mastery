@@ -22,6 +22,10 @@ const DEFAULT_IGNORED_WATCH_DIRECTORIES = new Set([
   '.agent-data',
 ]);
 
+function normalizeNonNegativeInteger(value, fallback) {
+  return Number.isInteger(value) && value >= 0 ? value : fallback;
+}
+
 /**
  * 列出工作目录下的文件和子目录
  * @param {string} workingDirectory - 工作目录绝对路径
@@ -43,7 +47,7 @@ export function listWorkspaceDirectory(workingDirectory, options = {}) {
     return { success: false, error: '目录不存在' };
   }
 
-  const maxEntries = Number.isInteger(options?.maxEntries) ? options.maxEntries : 500;
+  const maxEntries = normalizeNonNegativeInteger(options?.maxEntries, 500);
   let stats;
   let dirEntries;
   try {
@@ -108,12 +112,10 @@ export function listWorkspaceDirectory(workingDirectory, options = {}) {
  */
 export function createWorkspaceWatcher(workingDirectory, onChange, options = {}) {
   const root = path.resolve(workingDirectory);
-  const debounceMs = Number.isInteger(options.debounceMs) ? options.debounceMs : 80;
-  const pollIntervalMs = Number.isInteger(options.pollIntervalMs) ? options.pollIntervalMs : 1000;
+  const debounceMs = normalizeNonNegativeInteger(options.debounceMs, 80);
+  const pollIntervalMs = normalizeNonNegativeInteger(options.pollIntervalMs, 1000);
   const enableNativeWatch = options.enableNativeWatch !== false;
-  const maxWatchedDirectories = Number.isInteger(options.maxWatchedDirectories)
-    ? options.maxWatchedDirectories
-    : 2000;
+  const maxWatchedDirectories = normalizeNonNegativeInteger(options.maxWatchedDirectories, 2000);
   const ignoredDirectories = new Set([
     ...DEFAULT_IGNORED_WATCH_DIRECTORIES,
     ...(Array.isArray(options.ignoredDirectories) ? options.ignoredDirectories : []),

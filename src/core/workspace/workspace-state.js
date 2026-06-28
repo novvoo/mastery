@@ -15,6 +15,17 @@ const MAX_SNAPSHOT_FILES = 30; // 最多缓存多少个文件的内容
 const MAX_SNAPSHOT_BYTES_PER_FILE = 64 * 1024; // 每个文件的缓存上限
 const MAX_AGGREGATE_CHARS = 4000; // 聚合摘要时的字符上限
 
+function extractTextResult(result) {
+  if (typeof result === 'string') {
+    return result;
+  }
+  if (!result || typeof result !== 'object') {
+    return null;
+  }
+  const text = result.text ?? result.content ?? result.data ?? null;
+  return typeof text === 'string' ? text : null;
+}
+
 export class WorkspaceState {
   constructor() {
     // 目录结构追踪: path -> { exists, entries: Set, timestamp }
@@ -49,9 +60,13 @@ export class WorkspaceState {
   recordDirectoryListing(dirPath, entries, source = 'list_dir') {
     const normalized = this._normalizePath(dirPath);
 
+    const normalizedEntries = entries
+      .slice(0, MAX_DIRECTORY_ENTRIES)
+      .map((e) => this._normalizePath(e));
+
     this._directories.set(normalized, {
       exists: true,
-      entries: new Set(entries.map((e) => this._normalizePath(e))),
+      entries: new Set(normalizedEntries),
       timestamp: Date.now(),
       source,
     });
@@ -144,8 +159,8 @@ export class WorkspaceState {
       });
 
       // 可选地缓存文件内容（如果结果里带 text/content 字段）
-      const text = result?.text ?? result?.content ?? result?.data ?? null;
-      if (typeof text === 'string' && text.length > 0) {
+      const text = extractTextResult(result);
+      if (text !== null) {
         this._cacheFileContent(normalized, text, 'read_file');
       }
     } else {
@@ -171,7 +186,7 @@ export class WorkspaceState {
           oldestKey = k;
         }
       }
-      if (oldestKey != null) {
+      if (oldestKey !== null) {
         this._fileSnapshots.delete(oldestKey);
       }
     }
@@ -260,6 +275,12 @@ export class WorkspaceState {
       reason: reason || 'Not found',
       timestamp: Date.now(),
     });
+    if (this._failedPaths.size > MAX_FAILED_PATHS) {
+      const oldestKey = this._failedPaths.keys().next().value;
+      if (oldestKey !== undefined) {
+        this._failedPaths.delete(oldestKey);
+      }
+    }
 
     this._addFact({
       type: 'path_not_found',
@@ -351,29 +372,31 @@ export class WorkspaceState {
     if (filePath && typeof filePath === 'string') {
       try {
         this.recordReference(filePath, toolName);
-      } catch (_) {}
+      } catch {
+        // Best-effort reference tracking should not interrupt tool result recording.
+      }
     }
 
     if (toolName === 'read_file' || toolName === 'file_read' || toolName === 'cat_file') {
       if (filePath) {
         try {
-          if (result && typeof result === 'object') {
-            const text = result.text ?? result.content ?? result.data ?? null;
-            if (typeof text === 'string' && text.length > 0) {
-              this.setFileSnapshot(filePath, text, toolName);
-            }
-          } else if (typeof result === 'string') {
-            this.setFileSnapshot(filePath, result, toolName);
+          const text = extractTextResult(result);
+          if (text !== null) {
+            this.setFileSnapshot(filePath, text, toolName);
           }
-        } catch (_) {}
+        } catch {
+          // Cache updates are opportunistic; keep the durable fact below.
+        }
       }
     } else if (toolName === 'write_file' || toolName === 'file_write') {
       if (filePath) {
         const content = args?.content ?? args?.text ?? null;
-        if (typeof content === 'string' && content.length > 0) {
+        if (typeof content === 'string') {
           try {
             this.setFileSnapshot(filePath, content, toolName);
-          } catch (_) {}
+          } catch {
+            // Cache updates are opportunistic; keep the durable fact below.
+          }
         }
       }
     } else if (toolName === 'list_dir' || toolName === 'glob_search' || toolName === 'glob') {
@@ -388,7 +411,9 @@ export class WorkspaceState {
         if (filePath) {
           this.recordDirectoryListing(filePath, entries.map(String), toolName);
         }
-      } catch (_) {}
+      } catch {
+        // Directory inference is opportunistic; keep the durable fact below.
+      }
     }
 
     this._addFact({
@@ -423,9 +448,13 @@ export class WorkspaceState {
     if (typeof result === 'string') {
       return result.length > 200 ? result.slice(0, 200) + '...' : result;
     }
-    if (typeof result === 'object') {
-      const str = JSON.stringify(result);
-      return str.length > 500 ? str.slice(0, 500) + '...' : str;
+    if (result && typeof result === 'object') {
+      try {
+        const str = JSON.stringify(result);
+        return str.length > 500 ? str.slice(0, 500) + '...' : str;
+      } catch {
+        return '[unserializable result]';
+      }
     }
     return String(result);
   }
@@ -541,7 +570,7 @@ export class WorkspaceState {
         }
         // 检查是否有缓存的内容快照：如果有，直接返回精简版避免重复读大文件
         const snap = this.getFileSnapshot(path);
-        if (snap && snap.content && snap.content.length > 0) {
+        if (snap && typeof snap.content === 'string') {
           const maxReturnChars = 3000; // 最多返回 3000 字符，防止超大文件撑爆上下文
           const truncated =
             snap.content.length > maxReturnChars

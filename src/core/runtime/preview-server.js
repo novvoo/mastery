@@ -570,9 +570,10 @@ function getShellCommand(command) {
 }
 
 async function findAvailablePort(preferredPort) {
-  if (preferredPort) {
-    await assertPortAvailable(Number(preferredPort));
-    return Number(preferredPort);
+  const requestedPort = Number(preferredPort);
+  if (Number.isInteger(requestedPort) && requestedPort > 0 && requestedPort <= 65535) {
+    await assertPortAvailable(requestedPort);
+    return requestedPort;
   }
 
   for (let port = PREVIEW_PORT_START; port <= PREVIEW_PORT_END; port += 1) {

@@ -53,6 +53,26 @@ const MUTATION_TOOLS = new Set([
   'apply_hashline_patch',
 ]);
 
+function hasRangeArg(args) {
+  return (
+    (args && Object.prototype.hasOwnProperty.call(args, 'offset')) ||
+    Object.prototype.hasOwnProperty.call(args || {}, 'limit')
+  );
+}
+
+function getSnapshotText(snapshot) {
+  if (!snapshot) {
+    return null;
+  }
+  if (typeof snapshot.content === 'string') {
+    return snapshot.content;
+  }
+  if (typeof snapshot.data?.text === 'string') {
+    return snapshot.data.text;
+  }
+  return null;
+}
+
 function isPlanTaskPseudoTool(name) {
   return /^task_\d+$/i.test(String(name || ''));
 }
@@ -363,10 +383,10 @@ export class ToolExecutor {
           if (cachedData.fileTag === currentTag) {
             cacheHit = true;
           }
-        } else if (currentTag && name === 'read_file' && (args.offset || args.limit)) {
+        } else if (currentTag && name === 'read_file' && hasRangeArg(args)) {
           if (this.#snapshotStore && typeof this.#snapshotStore.byHash === 'function') {
             const snapshot = this.#snapshotStore.byHash(targetPath, currentTag);
-            if (snapshot && (snapshot.content || snapshot.data?.text)) {
+            if (getSnapshotText(snapshot) !== null) {
               cacheHit = true;
             }
           }
@@ -389,16 +409,16 @@ export class ToolExecutor {
 
       if (cachedEntry) {
         cachedResult = typeof cachedEntry === 'string' ? cachedEntry : cachedEntry.result;
-      } else if (name === 'read_file' && (args.offset || args.limit)) {
+      } else if (name === 'read_file' && hasRangeArg(args)) {
         const targetPath = getScopeTargetPath(name, args);
         const currentTag = this.#snapshotStore?.head(targetPath);
         if (currentTag && this.#snapshotStore?.byHash) {
           const snapshot = this.#snapshotStore.byHash(targetPath, currentTag);
-          if (snapshot && (snapshot.content || snapshot.data?.text)) {
-            const content = snapshot.content || snapshot.data.text;
+          const content = getSnapshotText(snapshot);
+          if (content !== null) {
             const lines = content.split('\n');
-            const start = (args.offset || 1) - 1;
-            const end = start + (args.limit || lines.length);
+            const start = (args.offset ?? 1) - 1;
+            const end = start + (args.limit ?? lines.length);
             const sliced = lines.slice(start, end);
             cachedResult = sliced.map((line, i) => `${start + i + 1}: ${line}`).join('\n');
           }
@@ -407,7 +427,7 @@ export class ToolExecutor {
         cachedResult = dirCached.result;
       }
 
-      if (isReadOnly && cachedResult) {
+      if (isReadOnly && cachedResult !== null && cachedResult !== undefined) {
         this.#ui.debug?.(`Read-only tool cache hit: ${name}`);
         const observation = `Cached result for ${name}:\n${cachedResult}\n\nUse this result; do not repeat the same call unless inputs changed.`;
         options.emitObservation?.(id, name, observation, resultMode);
@@ -421,13 +441,19 @@ export class ToolExecutor {
       }
 
       if (isMutation) {
+        const hasCachedMutationResult = this.#resultCache.has(callSignature);
         const cachedMutationResult = this.#resultCache.get(callSignature);
-        const observation = cachedMutationResult
+        const observation = hasCachedMutationResult
           ? `Duplicate mutation ${name} blocked. Previous result:\n${cachedMutationResult}`
           : `Duplicate mutation ${name} blocked. Use previous observation or change arguments.`;
 
         options.emitObservation?.(id, name, observation, resultMode);
-        this.#recordEvent(name, args, !!cachedMutationResult, cachedMutationResult || observation);
+        this.#recordEvent(
+          name,
+          args,
+          hasCachedMutationResult,
+          hasCachedMutationResult ? cachedMutationResult : observation,
+        );
 
         return {
           name,
@@ -435,12 +461,12 @@ export class ToolExecutor {
             duplicate: true,
             skipped: true,
             message: observation,
-            previousResult: cachedMutationResult || null,
+            previousResult: hasCachedMutationResult ? cachedMutationResult : null,
             suggestedNextAction: 'Use prior result or change arguments before retrying.',
           },
           skipped: true,
           duplicateMutation: true,
-          cached: !!cachedMutationResult,
+          cached: hasCachedMutationResult,
         };
       }
     }
@@ -683,7 +709,7 @@ export class ToolExecutor {
               let content = effectiveArgs.content || effectiveArgs.text;
 
               // 如果参数中没有内容，从磁盘读取
-              if (!content) {
+              if (content === undefined || content === null) {
                 try {
                   content = await readFile(
                     path.resolve(executionContext.workingDirectory, targetPath),
@@ -694,7 +720,7 @@ export class ToolExecutor {
                 }
               }
 
-              if (content) {
+              if (content !== undefined && content !== null) {
                 // 预填充带行号的结果缓存（模拟 read_file 的输出格式）
                 const lines = content.split('\n');
                 const numberedResult = lines.map((line, i) => `${i + 1}: ${line}`).join('\n');

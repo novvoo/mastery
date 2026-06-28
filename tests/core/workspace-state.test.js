@@ -23,6 +23,15 @@ describe('WorkspaceState', () => {
     expect(ws.checkPathExists('/src/app.js')).toBe('exists');
   });
 
+  test('recordFileRead caches string and empty content snapshots', () => {
+    const ws = new WorkspaceState();
+    ws.recordFileRead('/src/app.js', true, 'content');
+    ws.recordFileRead('/src/empty.js', true, '');
+
+    expect(ws.getFileSnapshot('/src/app.js').content).toBe('content');
+    expect(ws.getFileSnapshot('/src/empty.js').content).toBe('');
+  });
+
   test('recordFileRead failure marks not_found', () => {
     const ws = new WorkspaceState();
     ws.recordFileRead('/src/missing.js', false, { error: 'not found' });
@@ -88,10 +97,38 @@ describe('WorkspaceState', () => {
 
   test('predictToolResult predicts success for existing path', () => {
     const ws = new WorkspaceState();
-    ws.recordFileRead('/src/app.js', true, 'content');
+    ws.recordFileWrite('/src/app.js');
     const pred = ws.predictToolResult('read_file', { path: '/src/app.js' });
     expect(pred.type).toBe('will_succeed');
     expect(pred.canSkip).toBe(false);
+  });
+
+  test('predictToolResult returns cached empty file snapshots', () => {
+    const ws = new WorkspaceState();
+    ws.recordFileRead('/src/empty.js', true, '');
+
+    const pred = ws.predictToolResult('read_file', { path: '/src/empty.js' });
+
+    expect(pred.canSkip).toBe(true);
+    expect(pred.type).toBe('cached');
+    expect(pred.predicted.text).toBe('');
+  });
+
+  test('recordToolResult caches empty read and write content', () => {
+    const ws = new WorkspaceState();
+    ws.recordToolResult('read_file', { path: '/src/read-empty.js' }, { content: '' }, true);
+    ws.recordToolResult('write_file', { path: '/src/write-empty.js', content: '' }, '', true);
+
+    expect(ws.getFileSnapshot('/src/read-empty.js').content).toBe('');
+    expect(ws.getFileSnapshot('/src/write-empty.js').content).toBe('');
+  });
+
+  test('recordToolResult tolerates circular object results', () => {
+    const ws = new WorkspaceState();
+    const result = { ok: true };
+    result.self = result;
+
+    expect(() => ws.recordToolResult('custom_tool', {}, result, true)).not.toThrow();
   });
 
   test('predictToolResult for shell with not_found path', () => {

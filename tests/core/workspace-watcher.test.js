@@ -51,6 +51,20 @@ describe('workspace-watcher', () => {
     expect(result.entries.length).toBeLessThanOrEqual(2);
   });
 
+  test('listWorkspaceDirectory ignores negative maxEntries', () => {
+    const result = listWorkspaceDirectory(tempDir, { maxEntries: -1 });
+    expect(result.success).toBe(true);
+    expect(result.entries.length).toBe(result.total);
+    expect(result.truncated).toBe(false);
+  });
+
+  test('listWorkspaceDirectory allows zero maxEntries', () => {
+    const result = listWorkspaceDirectory(tempDir, { maxEntries: 0 });
+    expect(result.success).toBe(true);
+    expect(result.entries.length).toBe(0);
+    expect(result.truncated).toBe(true);
+  });
+
   test('listWorkspaceDirectory fails for non-existent directory', () => {
     const result = listWorkspaceDirectory('/non/existent/path');
     expect(result.success).toBe(false);
