@@ -149,6 +149,29 @@ const COMPRESS_TOOLS = ['caveman', 'handoff'];
 
 const PLAN_ORCHESTRATION_TOOLS = ['change_plan'];
 
+// Safe read/navigation tools that plan-constrained tasks may always use.
+// Planner-authored allowedTools describe the task's primary actions; these
+// context tools keep the agent from getting stuck when it needs to inspect the
+// workspace before choosing the next plan change or action.
+const PLAN_TASK_CONTEXT_TOOLS = [
+  'read_file',
+  'list_dir',
+  'search',
+  'glob',
+  'semantic_search',
+  'lsp_diagnostics',
+  'lsp_definition',
+  'lsp_references',
+  'lsp_call_hierarchy',
+  'lsp_symbols',
+  'lsp_hover',
+  'lsp_type_definition',
+  'lsp_implementation',
+  'context_assess',
+  'context_expand',
+  'context_range',
+];
+
 // =============================================================
 // Phase-aware methodology tool selection
 //
@@ -259,13 +282,17 @@ export function selectToolsForRequest(
     }
   };
 
-  // ✅ 新增：currentTask 约束是最高优先级
-  // 如果有 currentTask 且定义了 allowedTools，就只选这些工具，忽略其他逻辑
+  // currentTask constraints have the highest priority for mutating actions,
+  // but read-only context/navigation tools must remain available. Otherwise a
+  // plan step like "ask_user" can deadlock when the agent needs list_dir or
+  // diagnostics to understand what to ask or how to replan.
   if (currentTask && currentTask.allowedTools && currentTask.allowedTools.length > 0) {
     add(currentTask.allowedTools);
+    add(PLAN_TASK_CONTEXT_TOOLS);
     add(PLAN_ORCHESTRATION_TOOLS);
     const selectedTools = Array.from(selected.values());
-    // 即使超过 maxTools，也要保留所有 allowedTools（这些是任务必需的）
+    // Keep the full constrained set even if it exceeds maxTools; these tools
+    // are the active task contract plus safe context expansion.
     return selectedTools;
   }
 

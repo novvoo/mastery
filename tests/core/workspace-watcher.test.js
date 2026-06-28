@@ -95,7 +95,7 @@ describe('workspace-watcher', () => {
       (change) => {
         changes.push(change);
       },
-      { debounceMs: 30, pollIntervalMs: 0 },
+      { debounceMs: 30, enableNativeWatch: false, pollIntervalMs: 20 },
     );
 
     // Create a new file

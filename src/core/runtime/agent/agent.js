@@ -478,17 +478,23 @@ export class ReActAgent {
           currentTask, // ✅ 传递 currentTask 给工具路由
         });
         this.#activeRoutedToolNames = new Set(routedTools.map((tool) => tool.name));
+        const effectiveAllowedTools = allowedTools ? routedTools.map((tool) => tool.name) : null;
         const functions = this.#toolRegistry.toFunctionDefinitions(routedTools);
 
-        // ✅ 新增：注入任务约束指令
+        // Inject task constraints using the same effective tool set that the
+        // executor will enforce, so the model is not told to avoid safe context
+        // tools that the plan router intentionally exposes.
         if (currentTask && allowedTools) {
-          const taskConstraintPrompt = buildTaskConstraintPrompt(currentTask, allowedTools);
+          const taskConstraintPrompt = buildTaskConstraintPrompt(
+            currentTask,
+            effectiveAllowedTools,
+          );
           if (taskConstraintPrompt) {
             this.#sessionManager.addSystemMessage(taskConstraintPrompt);
             this.#debugEvent('Task constraint prompt injected', {
               taskId: currentTask.id,
               taskName: currentTask.name,
-              allowedTools,
+              allowedTools: effectiveAllowedTools,
             });
           }
         }

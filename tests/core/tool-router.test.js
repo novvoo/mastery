@@ -120,6 +120,21 @@ describe('selectToolsForRequest', () => {
     expect(names).not.toContain('write_file');
   });
 
+  test('current task allowedTools preserves safe context tools for plan execution', () => {
+    const selected = selectToolsForRequest(ALL_TOOLS, {
+      currentTask: { allowedTools: ['ask_user'] },
+    });
+    const names = namesOf(selected);
+    expect(names).toContain('ask_user');
+    expect(names).toContain('change_plan');
+    expect(names).toContain('list_dir');
+    expect(names).toContain('read_file');
+    expect(names).toContain('search');
+    expect(names).not.toContain('write_file');
+    expect(names).not.toContain('shell');
+    expect(names).not.toContain('git_commit');
+  });
+
   test('coding task with EXPLORATION phase gets brainstorm and architect', () => {
     const selected = selectToolsForRequest(ALL_TOOLS, {
       taskProfile: { isCodingTask: true },

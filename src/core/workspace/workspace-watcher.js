@@ -162,12 +162,26 @@ export function createWorkspaceWatcher(workingDirectory, onChange, options = {})
 
     entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
     for (const entry of entries) {
+      const entryPath = path.join(directory, entry.name);
+      const relativeEntryPath = path.relative(root, entryPath).split(path.sep).join('/');
+
+      if (!entry.isDirectory()) {
+        try {
+          const entryStats = fs.lstatSync(entryPath);
+          const entryType = entry.isSymbolicLink() ? 'symlink' : 'file';
+          result.signatureParts.push(
+            `${relativeEntryPath}:${entryType}:${entryStats.mtimeMs}:${entryStats.size}`,
+          );
+        } catch {
+          result.signatureParts.push(`${relativeEntryPath}:missing`);
+        }
+        continue;
+      }
+
       if (!shouldWatchDirectoryEntry(entry)) {
         continue;
       }
 
-      const entryPath = path.join(directory, entry.name);
-      const relativeEntryPath = path.relative(root, entryPath).split(path.sep).join('/');
       let entryStats = null;
       try {
         entryStats = fs.statSync(entryPath);
