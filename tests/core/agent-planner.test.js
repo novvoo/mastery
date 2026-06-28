@@ -356,12 +356,35 @@ describe('AgentPlanner', () => {
     // list_dir 满足类型谓词但不满足 completionPredicate → 不完成
     planner.advance('list_dir', { path: '/src' }, 'file1.js\nfile2.js');
     expect(inspectTask.status).toBe(TaskStatus.RUNNING);
-    expect(inspectTask.toolCallsHistory.length).toBeGreaterThan(0);
+    expect(inspectTask.toolCallsHistory.some((call) => call.toolName === 'list_dir')).toBe(false);
 
     // semantic_search 同时满足类型谓词和 completionPredicate → 完成
     planner.advance('semantic_search', { query: 'foo' }, ['result']);
     expect(inspectTask.status).toBe(TaskStatus.COMPLETED);
+    expect(inspectTask.toolCallsHistory.some((call) => call.toolName === 'semantic_search')).toBe(
+      true,
+    );
     expect(planner.activePlan.getTask('profile_project').status).toBe(TaskStatus.RUNNING);
+  });
+
+  test('advance records tool history only on the matched running task', () => {
+    const { planner } = createPlanner();
+    const plan = planner.createIfNeeded('edit app.js', standardProfile());
+
+    planner.advance('list_dir', { path: '/src' }, 'file1.js');
+    planner.advance('project_profile', { task: 'edit app.js' }, 'package.json scripts test');
+
+    const tddTask = plan.getTask('tdd_reproduce');
+    const planTask = plan.getTask('plan_solution');
+    expect(tddTask.status).toBe(TaskStatus.RUNNING);
+    expect(planTask.status).toBe(TaskStatus.RUNNING);
+
+    planner.advance('architect', {}, 'planned change');
+
+    expect(planTask.status).toBe(TaskStatus.COMPLETED);
+    expect(tddTask.status).toBe(TaskStatus.RUNNING);
+    expect(tddTask.toolCallsHistory.some((call) => call.toolName === 'architect')).toBe(false);
+    expect(planTask.toolCallsHistory.some((call) => call.toolName === 'architect')).toBe(true);
   });
 
   test('changePlan replace preserves completed tasks and replaces unfinished work', () => {

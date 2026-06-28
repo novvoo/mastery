@@ -1717,61 +1717,49 @@ export class ExecutionPlanManager {
    * 4. 记录工具调用历史，使谓词可以基于历史判断
    */
   #advanceWithStrictValidation(plan, toolName, args, result) {
-    // 找到当前 RUNNING 的任务
     const runningTasks = Array.from(plan.tasks.values()).filter(
       (t) => t.status === TaskStatus.RUNNING,
     );
 
     if (runningTasks.length === 0) {
-      // 没有 RUNNING 任务，检查是否有 READY 任务可以启动
       this.#startReadyTasks(plan);
       return;
     }
 
-    // 尝试将此工具调用匹配到一个 RUNNING 任务
     let matchedTask = null;
     let matchedByPredicate = false;
 
     for (const task of runningTasks) {
-      // 记录工具调用历史
-      task.recordToolCall(toolName, args, result);
-
-      // 检查任务是否可以被此工具推进
       if (task.canBeAdvancedBy(toolName, args, result)) {
         matchedTask = task;
-        // 如果有 completionPredicate 且满足，标记为谓词匹配
         if (task.completionPredicate) {
           const validation = task.validateCompletion({ strictMode: false });
           if (validation.completed) {
             matchedByPredicate = true;
           }
         }
-        break; // 一个工具调用只能推进一个任务
+        break;
       }
     }
 
     if (!matchedTask) {
-      // 没有任何 RUNNING 任务接受这个工具调用
-      // 可能是任务还未启动或工具不在允许列表中
       this.#startReadyTasks(plan);
       return;
     }
 
-    // ✅ 第 9 阶段关键：使用 validateCompletion 进行多维度验证
+    matchedTask.recordToolCall(toolName, args, result);
+
     const validation = matchedTask.validateCompletion({ strictMode: true });
 
     if (validation.completed || matchedByPredicate) {
-      // 完成条件满足，标记为 COMPLETED
       matchedTask.updateStatus(TaskStatus.COMPLETED, {
         result: { completedBy: 'strict-validation', toolName, args },
         validatedAt: Date.now(),
         validationReason: validation.reason,
       });
 
-      // 启动依赖已满足的后继任务
       this.#startReadyTasks(plan);
     }
-    // 否则：任务继续 RUNNING 状态，等待更多工具调用
   }
 
   /** LLM 分解模式：按阶段匹配完成当前 RUNNING 子任务（保留作为 fallback） */
