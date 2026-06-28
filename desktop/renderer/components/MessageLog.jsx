@@ -211,7 +211,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   // 跟踪上一次的 filteredMessages 长度，避免不必要的更新
   const prevFilteredMessagesLengthRef = useRef(0);
 
-  // 自动折叠逻辑：除了最后一条 assistant 消息外，其余默认折叠
+  // 自动折叠逻辑：所有 assistant 消息默认折叠，最后一条总结消息展开
   useEffect(() => {
     // 只有当 filteredMessages 数量变化时才重新计算（避免每次都触发）
     if (filteredMessages.length === prevFilteredMessagesLengthRef.current) {
@@ -226,16 +226,10 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       }
     });
 
-    // 如果只有一个或零个 assistant 消息，不需要处理
-    if (assistantIndices.length <= 1) {
-      return;
-    }
-
-    const lastAssistantIndex = assistantIndices[assistantIndices.length - 1];
-
     // 使用函数式更新，避免依赖 collapsedMessages
     setCollapsedMessages(prev => {
       const newCollapsed = new Set(prev);
+      const lastAssistantIndex = assistantIndices.length > 0 ? assistantIndices[assistantIndices.length - 1] : -1;
 
       assistantIndices.forEach((index) => {
         const msg = filteredMessages[index];
@@ -248,7 +242,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             newCollapsed.add(msgId);
           }
         } else {
-          // 最后一条 assistant 消息保持展开
+          // 最后一条 assistant 消息（总结）保持展开
           newCollapsed.delete(msgId);
           // 同时记录用户手动展开（避免后续被自动折叠）
           userUncollapsedRef.current.add(msgId);
