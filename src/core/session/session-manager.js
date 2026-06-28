@@ -82,8 +82,12 @@ export class SessionManager {
     if (this.#layers.has(layerId)) {
       const existing = this.#layers.get(layerId);
       existing.content = content;
-      if (options.priority !== undefined) existing.priority = options.priority;
-      if (options.transient !== undefined) existing.transient = options.transient;
+      if (options.priority !== undefined) {
+        existing.priority = options.priority;
+      }
+      if (options.transient !== undefined) {
+        existing.transient = options.transient;
+      }
     } else {
       this.addLayer(layerId, content, options);
     }
@@ -101,7 +105,9 @@ export class SessionManager {
    */
   clearTransientLayers() {
     for (const [id, layer] of this.#layers) {
-      if (layer.transient) this.#layers.delete(id);
+      if (layer.transient) {
+        this.#layers.delete(id);
+      }
     }
   }
 
@@ -128,7 +134,7 @@ export class SessionManager {
     this.#messages.push({
       role,
       content,
-      ...(toolCalls ? { toolCalls } : {}),
+      ...(toolCalls !== undefined ? { toolCalls } : {}),
       priority: priority ?? SessionManager.PRIORITY.ORDINARY,
     });
   }
@@ -220,10 +226,10 @@ export class SessionManager {
       ([, a], [, b]) => a.priority - b.priority,
     );
 
-    for (const [layerId, layer] of sortedLayers) {
+    for (const [, layer] of sortedLayers) {
       let content = layer.content;
       // Token budget：如果设置了上限，截断内容
-      if (layer.tokenBudget != null && content.length > 0) {
+      if (layer.tokenBudget !== null && content.length > 0) {
         const estimatedTokens = Math.ceil(content.length * 0.25);
         if (estimatedTokens > layer.tokenBudget) {
           const maxChars = Math.floor(layer.tokenBudget * 4);
@@ -306,8 +312,8 @@ export class SessionManager {
         .map((message) => ({
           role: message.role,
           content: message.content,
-          ...(message.toolCalls ? { toolCalls: message.toolCalls } : {}),
-          ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
+          ...(message.toolCalls !== undefined ? { toolCalls: message.toolCalls } : {}),
+          ...(message.toolCallId !== undefined ? { toolCallId: message.toolCallId } : {}),
           priority: message.priority ?? SessionManager.PRIORITY.ORDINARY,
         }));
       this.#messages = replace ? restoredMessages : [...this.#messages, ...restoredMessages];
@@ -342,11 +348,11 @@ export class SessionManager {
     const systemTokens = this.#countTokens(this.#systemPrompt);
     const targetTokens = maxTokens * 0.4;
     const availableTokens = Math.max(0, targetTokens - systemTokens);
-    const minRecentMessages = Math.max(0, options.minRecentMessages || 0);
-    const minPriority = options.minPriority || SessionManager.PRIORITY.EVIDENCE; // 默认保留 evidence 及以上
+    const minRecentMessages = Math.max(0, options.minRecentMessages ?? 0);
+    const minPriority = options.minPriority ?? SessionManager.PRIORITY.EVIDENCE; // 默认保留 evidence 及以上
 
     // Step 1: 先收集所有高 priority 消息（决策 + 证据），它们必须被保留
-    const highPriorityMessages = this.#messages.filter((m) => (m.priority || 1) >= minPriority);
+    const highPriorityMessages = this.#messages.filter((m) => (m.priority ?? 1) >= minPriority);
     let usedTokens = highPriorityMessages.reduce((sum, m) => sum + this.#countTokens(m.content), 0);
 
     /** @type {Array} */
@@ -401,7 +407,7 @@ export class SessionManager {
     const keptMessages = messages.filter((message) => message.role !== 'system');
     const minRecentMessages = Math.max(
       0,
-      options.minRecentMessages || options.preserveRecentMessages || 0,
+      options.minRecentMessages ?? options.preserveRecentMessages ?? 0,
     );
 
     if (minRecentMessages > 0) {
@@ -453,7 +459,7 @@ export class SessionManager {
     }
 
     // 保留最近消息
-    const preserveRecent = options.preserveRecentMessages || 4;
+    const preserveRecent = options.preserveRecentMessages ?? 4;
     const originalMessages = [...this.#messages];
     const recentOriginal = originalMessages.slice(-preserveRecent);
 
@@ -491,6 +497,6 @@ export class SessionManager {
   }
 
   #countTokens(content) {
-    return this.#tokenCounter(String(content || ''));
+    return this.#tokenCounter(String(content ?? ''));
   }
 }

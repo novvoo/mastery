@@ -18,7 +18,7 @@ export function createAgentSessionId() {
  * 获取会话标题
  */
 export function getAgentSessionTitle(input, messages = []) {
-  const fromInput = String(input || '').trim();
+  const fromInput = String(input ?? '').trim();
   if (fromInput) {
     return fromInput.slice(0, 80);
   }
@@ -50,8 +50,8 @@ export function upsertAgentSession(sessions, session) {
   const existingSession = sessions.find((item) => item?.id === session.id);
   const nextSession = {
     ...session,
-    updatedAt: session.updatedAt || now,
-    createdAt: session.createdAt || existingSession?.createdAt || now,
+    updatedAt: session.updatedAt ?? now,
+    createdAt: session.createdAt ?? existingSession?.createdAt ?? now,
     messages: Array.isArray(session.messages) ? session.messages : [],
   };
   return [nextSession, ...sessions.filter((item) => item?.id !== nextSession.id)].slice(
@@ -64,7 +64,7 @@ export function upsertAgentSession(sessions, session) {
  * 保存输入历史
  */
 export function saveAgentInputHistory(history, input, sessionId) {
-  const normalizedInput = String(input || '').trim();
+  const normalizedInput = String(input ?? '').trim();
   if (!normalizedInput) {
     return history;
   }
@@ -118,7 +118,7 @@ export function mergeRagDocuments(currentDocs = [], nextDocs = []) {
  * 获取文档显示名称
  */
 export function getDocumentDisplayName(pathOrTitle = '') {
-  const text = String(pathOrTitle || '').trim();
+  const text = String(pathOrTitle ?? '').trim();
   if (!text) {
     return '未命名文档';
   }
@@ -129,7 +129,7 @@ export function getDocumentDisplayName(pathOrTitle = '') {
  * 构建错误提示词
  */
 export function createAgentErrorPrompt(message) {
-  const content = String(message?.content || message?.message || message?.details || '').trim();
+  const content = String(message?.content ?? message?.message ?? message?.details ?? '').trim();
   const payload = message?.payload || message?.raw;
   const payloadText = payload
     ? `\n\n附加上下文:\n${typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2)}`

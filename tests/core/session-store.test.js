@@ -29,6 +29,7 @@ describe('session-store (src/core)', () => {
     expect(getAgentSessionTitle('Fix the bug')).toBe('Fix the bug');
     expect(getAgentSessionTitle('A'.repeat(100))).toBe('A'.repeat(80));
     expect(getAgentSessionTitle('')).toBe('未命名会话');
+    expect(getAgentSessionTitle(0)).toBe('0');
     expect(getAgentSessionTitle(null, [{ content: '用户输入: Hello' }])).toBe('Hello');
   });
 
@@ -75,6 +76,18 @@ describe('session-store (src/core)', () => {
     expect(updated[0].messages[0].content).toBe('new');
   });
 
+  test('upsertAgentSession preserves explicit zero timestamps', () => {
+    const updated = upsertAgentSession([], {
+      id: 's-zero',
+      createdAt: 0,
+      updatedAt: 0,
+      messages: [],
+    });
+
+    expect(updated[0].createdAt).toBe(0);
+    expect(updated[0].updatedAt).toBe(0);
+  });
+
   test('upsertAgentSession respects MAX_AGENT_SESSIONS', () => {
     const sessions = Array.from({ length: MAX_AGENT_SESSIONS }, (_, i) => ({
       id: `s${i}`,
@@ -90,6 +103,12 @@ describe('session-store (src/core)', () => {
     const updated = saveAgentInputHistory(history, 'hello', 's1');
     expect(updated.length).toBe(1);
     expect(updated[0].timestamp).toBeGreaterThan(0);
+  });
+
+  test('saveAgentInputHistory preserves numeric zero input', () => {
+    const updated = saveAgentInputHistory([], 0, 's1');
+    expect(updated.length).toBe(1);
+    expect(updated[0].input).toBe('0');
   });
 
   test('saveAgentInputHistory respects MAX_AGENT_HISTORY_ITEMS', () => {

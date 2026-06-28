@@ -34,4 +34,41 @@ describe('SessionPersistence', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test('restores falsy message metadata and empty tool results', () => {
+    const original = new SessionManager();
+    original.addAssistantMessage('', []);
+    original.addToolResult('', 'empty_tool', '', 0);
+
+    const snapshot = original.exportSnapshot();
+    const restored = new SessionManager();
+
+    expect(restored.restoreSnapshot(snapshot)).toBe(true);
+    expect(restored.getHistory()).toEqual([
+      {
+        role: 'assistant',
+        content: '',
+        toolCalls: [],
+        priority: SessionManager.PRIORITY.EVIDENCE,
+      },
+      {
+        role: 'tool',
+        content: '',
+        toolCallId: '',
+        priority: 0,
+      },
+    ]);
+  });
+
+  test('trimToContextWindow respects explicit zero priority', () => {
+    const session = new SessionManager({ tokenCounter: (text) => text.length });
+    session.addToolResult('low', 'tool', 'x'.repeat(100), 0);
+    session.addUserMessage('y'.repeat(100));
+
+    session.trimToContextWindow(1, { minPriority: 1, minRecentMessages: 0 });
+
+    expect(session.getHistory().map((message) => message.toolCallId ?? message.role)).toEqual([
+      'user',
+    ]);
+  });
 });
