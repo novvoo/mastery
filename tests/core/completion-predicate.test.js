@@ -11,6 +11,7 @@ import {
   Subtask,
   PlanExecutor,
   ExecutionPlan,
+  GraphPlanner,
 } from '../../src/planner/graph-planner.js';
 
 function createStrictValidationFixture() {
@@ -171,12 +172,18 @@ describe('Phase 9: Strict Completion Validation', () => {
         name: 'Implement Feature',
         status: TaskStatus.RUNNING,
         phase: 'implementation',
+        action: { command: 'write_file', args: { path: './src/main.js' } },
+        retryCount: 2,
+        maxRetries: 0,
+        timeout: 0,
         allowedTools: ['write_file'],
         requiredToolIntents: ['write'],
         requiredMutationPaths: ['./src/main.js'],
         startedAt: 456,
       });
       task.recordToolCall('write_file', { path: './src/main.js' }, { success: true });
+      plan.results.set('implement_feature', { success: true });
+      plan.errors.set('previous_failure', new Error('previous failure'));
 
       const restored = ExecutionPlan.fromJSON(plan.toJSON());
       const restoredTask = restored.getTask('implement_feature');
@@ -186,10 +193,19 @@ describe('Phase 9: Strict Completion Validation', () => {
       expect(restored.context).toEqual({ source: 'test' });
       expect(restoredTask.status).toBe(TaskStatus.RUNNING);
       expect(restoredTask.startedAt).toBe(456);
+      expect(restoredTask.action).toEqual({
+        command: 'write_file',
+        args: { path: './src/main.js' },
+      });
+      expect(restoredTask.retryCount).toBe(2);
+      expect(restoredTask.maxRetries).toBe(0);
+      expect(restoredTask.timeout).toBe(0);
       expect(restoredTask.requiredToolIntents).toEqual(['write']);
       expect(Array.from(restoredTask.requiredMutationPaths)).toEqual(['./src/main.js']);
       expect(restoredTask.toolCallsHistory.length).toBe(1);
       expect(restoredTask.validateCompletion({ strictMode: true }).completed).toBe(true);
+      expect(restored.results.get('implement_feature')).toEqual({ success: true });
+      expect(restored.errors.get('previous_failure').message).toBe('previous failure');
     });
   });
 
@@ -312,6 +328,22 @@ describe('Phase 9: Strict Completion Validation', () => {
       const currentTask = executor.getCurrentRunnableTask();
       expect(currentTask).not.toBeNull();
       expect(currentTask.id).toBe('inspect_readme'); // Still on same task
+    });
+
+    test('should reject executing a non-current task even if its tool predicate matches', async () => {
+      const { plan, executor } = createStrictValidationFixture();
+
+      const result = await executor.executeTask(
+        'implement_changes',
+        { name: 'write_file', args: { path: './src/main.js' } },
+        { success: true },
+      );
+
+      expect(result).toBe(false);
+      expect(plan.getTask('inspect_readme').status).toBe(TaskStatus.READY);
+      expect(plan.getTask('implement_changes').status).toBe(TaskStatus.PENDING);
+      expect(plan.getTask('implement_changes').toolCallsHistory.length).toBe(0);
+      expect(executor.getCurrentRunnableTask().id).toBe('inspect_readme');
     });
 
     test('should complete task when predicate IS matched', async () => {
@@ -493,6 +525,39 @@ describe('Phase 9: Strict Completion Validation', () => {
 
       const validation2 = task.validateCompletion({ strictMode: true });
       expect(validation2.completed).toBe(true);
+    });
+  });
+
+  describe('GraphPlanner dependency graph integrity', () => {
+    test('dynamic task cycle rollback cleans task edges and dependents', async () => {
+      const planner = new GraphPlanner();
+      const plan = planner.createPlan('Cycle rollback', 'Verify dynamic task rollback');
+
+      plan.addTask({
+        id: 'a',
+        name: 'Task A',
+        dependencies: [],
+      });
+      plan.addTask({
+        id: 'b',
+        name: 'Task B',
+        dependencies: ['a', 'c'],
+      });
+
+      await expect(
+        planner.addTaskDynamically(plan.id, {
+          id: 'c',
+          name: 'Task C',
+          dependencies: ['b'],
+        }),
+      ).rejects.toThrow('Adding this task would create a cycle');
+
+      expect(plan.tasks.has('c')).toBe(false);
+      expect(plan.edges.has('c')).toBe(false);
+      expect(plan.edges.get('b')?.has('c')).toBe(false);
+      expect(plan.getTask('b').dependents.has('c')).toBe(false);
+      expect(plan.getTask('b').dependencies.has('c')).toBe(false);
+      expect(plan.detectCycle()).toBe(false);
     });
   });
 });

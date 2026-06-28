@@ -236,9 +236,9 @@ export class Subtask {
 
     // 执行配置
     this.action = data.action; // 执行函数或配置
-    this.retryCount = 0;
-    this.maxRetries = data.maxRetries || 3;
-    this.timeout = data.timeout || 30000;
+    this.retryCount = Number.isFinite(data.retryCount) ? data.retryCount : 0;
+    this.maxRetries = data.maxRetries ?? 3;
+    this.timeout = data.timeout ?? 30000;
 
     // 结果
     this.result = data.result ?? null;
@@ -507,8 +507,8 @@ export class ExecutionPlan {
     this.completedAt = data.completedAt || null;
 
     // 结果
-    this.results = new Map();
-    this.errors = new Map();
+    this.results = new Map(Array.isArray(data.results) ? data.results : []);
+    this.errors = new Map(Array.isArray(data.errors) ? data.errors : []);
 
     // 上下文
     this.context = data.context || {};
@@ -542,6 +542,31 @@ export class ExecutionPlan {
     }
 
     return task;
+  }
+
+  /**
+   * 移除子任务并清理依赖图中的反向引用。
+   */
+  removeTask(taskId) {
+    const task = this.tasks.get(taskId);
+    if (!task) {
+      return false;
+    }
+
+    this.tasks.delete(taskId);
+    this.edges.delete(taskId);
+    this.results.delete(taskId);
+    this.errors.delete(taskId);
+
+    for (const dependents of this.edges.values()) {
+      dependents.delete(taskId);
+    }
+    for (const candidate of this.tasks.values()) {
+      candidate.dependencies.delete(taskId);
+      candidate.dependents.delete(taskId);
+    }
+
+    return true;
   }
 
   /**
@@ -710,6 +735,10 @@ export class ExecutionPlan {
         status: t.status,
         phase: t.phase,
         dependencies: Array.from(t.dependencies),
+        action: typeof t.action === 'function' ? null : (t.action ?? null),
+        retryCount: t.retryCount,
+        maxRetries: t.maxRetries,
+        timeout: t.timeout,
         priority: t.priority,
         allowedTools: t.allowedTools,
         requiredToolIntents: t.requiredToolIntents,
@@ -727,6 +756,13 @@ export class ExecutionPlan {
       completedAt: this.completedAt,
       context: this.context,
       metadata: this.metadata,
+      results: Array.from(this.results.entries()),
+      errors: Array.from(this.errors.entries()).map(([id, error]) => [
+        id,
+        error instanceof Error
+          ? { name: error.name, message: error.message, stack: error.stack }
+          : error,
+      ]),
     };
   }
 
@@ -744,6 +780,8 @@ export class ExecutionPlan {
       completedAt: json.completedAt,
       context: json.context,
       metadata: json.metadata,
+      results: json.results,
+      errors: json.errors,
     });
 
     for (const taskData of json.tasks) {
@@ -1464,7 +1502,7 @@ ${toolHint}
 
     // 检查循环依赖
     if (plan.detectCycle()) {
-      plan.tasks.delete(task.id);
+      plan.removeTask(task.id);
       throw new Error('Adding this task would create a cycle');
     }
 
@@ -1614,6 +1652,16 @@ export class PlanExecutor extends EventEmitter {
     const task = this.#plan.getTask(taskId);
     if (!task) {
       throw new Error(`Task ${taskId} not found in plan`);
+    }
+
+    const currentTask = this.getCurrentRunnableTask();
+    if (!currentTask || currentTask.id !== taskId || !task.checkDependencies(this.#plan.tasks)) {
+      this.emit('task:not-current', {
+        taskId,
+        currentTaskId: currentTask?.id || null,
+        reason: 'task_not_current_or_dependencies_unmet',
+      });
+      return false;
     }
 
     // 记录工具调用
