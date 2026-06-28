@@ -748,6 +748,54 @@ export class ExecutionPlanManager {
       return;
     }
 
+    // ===== 新项目创建任务：工程化脚手架流程 =====
+    if (intent === 'new_project') {
+      plan.addTask({
+        id: 'inspect_workspace',
+        name: 'Inspect workspace',
+        description: 'Check if workspace is empty or has existing files. Identify the project type (JS/TS/Python/etc.) and requirements.',
+        dependencies: [],
+        phase: ExecutionPlanManager.PHASE.EXPLORATION,
+        allowedTools: ['list_dir', 'project_profile', 'read_file', 'shell'],
+      });
+      plan.addTask({
+        id: 'setup_project_structure',
+        name: 'Setup project structure',
+        description: 'Create project directory structure with src/, tests/, configuration files (package.json, vite.config, eslint, etc.).',
+        dependencies: ['inspect_workspace'],
+        phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
+        allowedTools: ['write_file', 'mkdir', 'shell'],
+        scopeFiles: ['package.json', 'src/', 'tests/', 'vite.config.js', 'eslint.config.js', 'README.md'],
+      });
+      plan.addTask({
+        id: 'implement_core',
+        name: 'Implement core functionality',
+        description: 'Create core source files in src/ directory with proper ES module structure. Separate logic, components, and styles.',
+        dependencies: ['setup_project_structure'],
+        phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
+        allowedTools: ['write_file', 'edit_file'],
+        scopeFiles: ['src/'],
+      });
+      plan.addTask({
+        id: 'add_tests',
+        name: 'Add tests',
+        description: 'Create unit tests in tests/ directory for core logic. Verify test coverage.',
+        dependencies: ['implement_core'],
+        phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
+        allowedTools: ['write_file', 'edit_file'],
+        scopeFiles: ['tests/'],
+      });
+      plan.addTask({
+        id: 'verify_build',
+        name: 'Verify build and tests',
+        description: 'Run npm install, npm run build, and npm test to verify the project builds correctly and tests pass.',
+        dependencies: ['add_tests'],
+        phase: ExecutionPlanManager.PHASE.VERIFICATION,
+        allowedTools: ['shell', 'verify'],
+      });
+      return;
+    }
+
     if (taskType === PlanType.BUG_FIX) {
       plan.addTask({
         id: 'inspect_workspace',
@@ -820,10 +868,10 @@ export class ExecutionPlanManager {
         review: 'Review migrated references and compatibility paths.',
       },
       [PlanType.SETUP]: {
-        inspect: 'Inspect environment, package files, configs, and setup instructions.',
-        plan: 'Plan the setup or configuration sequence.',
-        implement: 'Apply setup/configuration changes.',
-        review: 'Review setup result and changed config.',
+        inspect: 'Inspect environment, check if workspace is empty, and identify existing package files or configs.',
+        plan: 'Plan the project structure (src/, tests/, config files) and setup sequence.',
+        implement: 'Create project structure and apply setup/configuration changes.',
+        review: 'Review setup result, verify file structure and build configuration.',
       },
       [PlanType.RELEASE]: {
         inspect: 'Inspect release state, version files, package config, and CI scripts.',

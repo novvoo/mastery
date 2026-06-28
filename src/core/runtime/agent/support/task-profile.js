@@ -21,15 +21,16 @@ export const TaskMode = {
 };
 
 export const TaskIntent = {
-  PROJECT_INFO: 'project_info', // 项目信息查询
-  HOW_TO_RUN: 'how_to_run', // 如何运行
-  READ_ONLY_ANALYSIS: 'read_only_analysis', // 只读分析
-  DIAGNOSIS: 'diagnosis', // Bug/问题诊断
-  CODE_MODIFICATION: 'code_modification', // 代码修改
-  FEATURE_IMPLEMENTATION: 'feature_implementation', // 功能实现
-  TEST_OR_VERIFY: 'test_or_verify', // 测试/验证
-  DOCUMENTATION: 'documentation', // 文档修改
-  GENERAL_CHAT: 'general_chat', // 通用对话
+  PROJECT_INFO: 'project_info',
+  HOW_TO_RUN: 'how_to_run',
+  READ_ONLY_ANALYSIS: 'read_only_analysis',
+  DIAGNOSIS: 'diagnosis',
+  CODE_MODIFICATION: 'code_modification',
+  FEATURE_IMPLEMENTATION: 'feature_implementation',
+  TEST_OR_VERIFY: 'test_or_verify',
+  DOCUMENTATION: 'documentation',
+  GENERAL_CHAT: 'general_chat',
+  NEW_PROJECT: 'new_project',
 };
 
 // ============== 强信号正则（确定性分类）==============
@@ -63,6 +64,13 @@ const HOW_TO_RUN_PATTERNS = [
 const READ_ONLY_PATTERNS = [
   /(查看|检查|看下|分析|阅读|统计|列出|浏览)/,
   /\b(inspect|check|view|read|list|show|analyze|review)\b/,
+];
+
+const NEW_PROJECT_PATTERNS = [
+  /(创建项目|新建项目|初始化项目|搭建项目|工程化)/i,
+  /(创建.*游戏|开发.*游戏|制作.*游戏)/i,
+  /\b(create project|new project|init project|setup project|build project)\b/i,
+  /\b(engineering|project structure|src\/|package\.json)\b/i,
 ];
 
 const PLAN_TRIGGER_PATTERNS = [
@@ -109,6 +117,17 @@ export function classifyTask(userInput, llmIntent = null) {
 
   // 修改型任务（最高优先级）
   if (hasExplicitMutationIntent) {
+    const hasNewProjectIntent = NEW_PROJECT_PATTERNS.some((p) => p.test(text));
+    if (hasNewProjectIntent) {
+      return buildProfile(TaskIntent.NEW_PROJECT, TaskMode.MUTATE, {
+        requiresRepoRead: true,
+        allowsMutation: true,
+        requiresPlan: true,
+        requiresMethodology: true,
+        requiresVerification: true,
+        expectedDeliverable: 'project_structure',
+      });
+    }
     if (hasDiagnosticIntent) {
       return buildProfile(TaskIntent.CODE_MODIFICATION, TaskMode.MUTATE, {
         requiresRepoRead: true,
