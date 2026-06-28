@@ -681,6 +681,40 @@ describe('ExecutionPlanManager', () => {
     expect(repairTasks[0].scopeFiles).toEqual(['app.js']);
   });
 
+  test('hashline conflict replan inserts fallback repair before blocked implementation', () => {
+    manager.createIfNeeded('Fix bug in app.js', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+    });
+
+    manager.advance('list_dir', {}, 'package.json\napp.js');
+    manager.advance('project_profile', {}, 'package.json scripts test');
+    manager.advance('test_strategy', {}, 'targeted app.js regression');
+    manager.advance('architect', {}, 'small fix in app.js');
+
+    const implementTask = manager.plan.getTask('implement_changes');
+    expect(implementTask.status).toBe('running');
+
+    const result = manager.replan({
+      conflictType: 'tag_mismatch',
+      affectedFiles: ['app.js'],
+      suggestedStrategies: ['re-read current file', 'retry patch'],
+    });
+
+    expect(result.insertedTasks.length).toBe(2);
+    const [diagnoseId, retryId] = result.insertedTasks;
+    const diagnoseTask = manager.plan.getTask(diagnoseId);
+    const retryTask = manager.plan.getTask(retryId);
+
+    expect(diagnoseTask.status).toBe('running');
+    expect(retryTask.dependencies.has(diagnoseId)).toBe(true);
+    expect(implementTask.status).toBe('pending');
+    expect(implementTask.dependencies.has(retryId)).toBe(true);
+    expect(implementTask.dependencies.has(diagnoseId)).toBe(false);
+    expect(manager.plan.detectCycle()).toBe(false);
+  });
+
   test('changePlan appends dynamic tasks to active plan', () => {
     manager.createIfNeeded('Fix bug in app.js', {
       requiresPlan: true,

@@ -2060,60 +2060,33 @@ export class ExecutionPlanManager {
       return null;
     }
 
-    // 为每个阻塞任务创建诊断+重试子任务
-    const insertedTasks = [];
+    const blockedTask = blockedTasks[0];
     const replanId = `replan_${conflictType}_${Date.now()}`;
 
-    // 1) 诊断任务
     const diagnoseId = `${replanId}_diagnose`;
-    this.#plan.addTask({
-      id: diagnoseId,
-      name: `Diagnose: ${conflictType}`,
-      description: `Hashline 冲突检测: ${conflictType}。涉及文件: ${(affectedFiles || []).join(', ') || 'unknown'}。建议策略: ${(suggestedStrategies || ['re-read + retry']).join('; ')}`,
-      dependencies: blockedTasks.map((t) => t.id),
-      phase: ExecutionPlanManager.PHASE.INSPECTION,
-      scopeFiles: affectedFiles || [],
-      metadata: { source: 'replan-diagnose', conflictType },
-    });
-    insertedTasks.push(diagnoseId);
-
-    // 2) 重试任务（依赖诊断任务）
     const retryId = `${replanId}_retry`;
-    this.#plan.addTask({
-      id: retryId,
-      name: `Retry after ${conflictType}`,
-      description: `在诊断 hash 冲突后，用正确的上下文重新执行编辑。涉及文件: ${(affectedFiles || []).join(', ') || 'unknown'}`,
-      dependencies: [diagnoseId],
-      phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
-      scopeFiles: affectedFiles || [],
-      metadata: { source: 'replan-retry', conflictType },
-    });
-    insertedTasks.push(retryId);
 
-    // 3) 重跑验证（如果原本有验证步骤）
-    const verifyTasks = Array.from(this.#plan.tasks.values()).filter(
-      (t) => t.phase === ExecutionPlanManager.PHASE.VERIFICATION,
-    );
-    if (verifyTasks.length > 0) {
-      const reVerifyId = `${replanId}_reverify`;
-      this.#plan.addTask({
-        id: reVerifyId,
-        name: `Re-verify after conflict recovery`,
-        description: `重新验证修复后的变更：运行 test/lint/build 确认正确性`,
-        dependencies: [retryId, ...verifyTasks.map((t) => t.id)],
-        phase: ExecutionPlanManager.PHASE.VERIFICATION,
-        metadata: { source: 'replan-reverify', conflictType },
-      });
-      insertedTasks.push(reVerifyId);
-    }
+    const insertedTasks = this.#insertTasksBefore(this.#plan, blockedTask.id, [
+      {
+        id: diagnoseId,
+        name: `Diagnose: ${conflictType}`,
+        description: `Hashline 冲突检测: ${conflictType}。涉及文件: ${(affectedFiles || []).join(', ') || 'unknown'}。建议策略: ${(suggestedStrategies || ['re-read + retry']).join('; ')}`,
+        phase: ExecutionPlanManager.PHASE.INSPECTION,
+        scopeFiles: affectedFiles || [],
+        metadata: { source: 'replan-diagnose', conflictType },
+      },
+      {
+        id: retryId,
+        name: `Retry after ${conflictType}`,
+        description: `在诊断 hash 冲突后，用正确的上下文重新执行编辑。涉及文件: ${(affectedFiles || []).join(', ') || 'unknown'}`,
+        phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
+        scopeFiles: affectedFiles || [],
+        metadata: { source: 'replan-retry', conflictType },
+      },
+    ]);
 
     this.#enforcePhaseBarriers(this.#plan);
-
-    // 将新插入的第一个任务标记为 RUNNING
-    const firstInserted = this.#plan.getTask(diagnoseId);
-    if (firstInserted) {
-      firstInserted.updateStatus(TaskStatus.RUNNING);
-    }
+    this.#startReadyTasks(this.#plan);
 
     return {
       replanId,
