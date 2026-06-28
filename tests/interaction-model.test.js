@@ -4,6 +4,7 @@ import {
   createRunNarrative,
   createComposerInteractionState,
   deriveInteractionStages,
+  getComposerSubmitTransition,
   getComposerAssistText,
   getShortcutHints,
   getToolActivitySummary,
@@ -21,6 +22,42 @@ describe('desktop interaction model', () => {
 
     expect(result.action).toBe('submit');
     expect(result.state.historyIndex).toBe(-1);
+  });
+
+  test('accepted composer submissions clear immediately and keep a restore value', () => {
+    const transition = getComposerSubmitTransition({
+      value: '  build the dashboard  ',
+      status: 'idle',
+    });
+
+    expect(transition.accepted).toBe(true);
+    expect(transition.input).toBe('build the dashboard');
+    expect(transition.nextValue).toBe('');
+    expect(transition.restoreValue).toBe('build the dashboard');
+    expect(transition.showSuggestions).toBe(false);
+  });
+
+  test('composer submission can keep drafts for continuation inputs', () => {
+    const transition = getComposerSubmitTransition({
+      value: 'answer the follow-up',
+      status: 'needs_user_input',
+      clearInput: false,
+    });
+
+    expect(transition.accepted).toBe(true);
+    expect(transition.nextValue).toBe('answer the follow-up');
+  });
+
+  test('composer submission while running preserves the draft', () => {
+    const transition = getComposerSubmitTransition({
+      value: '/doc search auth',
+      status: 'running',
+    });
+
+    expect(transition.accepted).toBe(false);
+    expect(transition.nextValue).toBe('/doc search auth');
+    expect(transition.focus).toBe(true);
+    expect(transition.showSuggestions).toBe(true);
   });
 
   test('high-risk prompts require a second Ctrl+Enter confirmation', () => {

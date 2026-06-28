@@ -1256,7 +1256,8 @@ export class ExecutionPlanManager {
       {
         id: `${baseId}_inspect`,
         name: 'Inspect repair',
-        description: 'Read back the repaired files or diff and confirm the fix matches the failure.',
+        description:
+          'Read back the repaired files or diff and confirm the fix matches the failure.',
         phase: ExecutionPlanManager.PHASE.INSPECTION,
         allowedTools: ['read_file', 'list_dir', 'glob', 'search', 'shell', 'review'],
         metadata: { source: 'verification-repair', repairIteration: iteration },

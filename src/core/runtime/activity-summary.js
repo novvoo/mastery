@@ -143,7 +143,9 @@ function normalizePlanTasks(tasks) {
 
 function normalizePlanTask(task) {
   const status = String(task?.status || 'pending').toLowerCase();
-  const displayStatus = String(task?.displayStatus || task?.result?.displayStatus || status).toLowerCase();
+  const displayStatus = String(
+    task?.displayStatus || task?.result?.displayStatus || status,
+  ).toLowerCase();
   return {
     id: task?.id || task?.name || '',
     name: task?.name || task?.id || 'Task',

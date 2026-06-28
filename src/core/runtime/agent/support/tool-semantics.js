@@ -173,39 +173,72 @@ export function isMeaningfulProgress(toolName, args = {}, context = {}) {
 // ============================================================
 
 const EXPLICIT_MUTATION_TOOLS = new Set([
-  'write_file', 'edit_file', 'delete_file', 'rename_file', 'mkdir',
+  'write_file',
+  'edit_file',
+  'delete_file',
+  'rename_file',
+  'mkdir',
 ]);
 
 const HARNESS_MUTATION_TOOLS = new Set([
-  'apply_hashline_patch', 'harness_replace', 'harness_insert',
-  'harness_delete', 'harness_rollback',
+  'apply_hashline_patch',
+  'harness_replace',
+  'harness_insert',
+  'harness_delete',
+  'harness_rollback',
 ]);
 
-const LSP_EDIT_TOOLS = new Set([
-  'lsp_rename', 'lsp_workspace_edit', 'lsp_code_action',
-]);
+const LSP_EDIT_TOOLS = new Set(['lsp_rename', 'lsp_workspace_edit', 'lsp_code_action']);
 
 const GIT_MUTATION_TOOLS = new Set([
-  'git_apply_patch', 'git_commit', 'git_add', 'git_push',
-  'git_pull', 'git_stash', 'git_reset',
+  'git_apply_patch',
+  'git_commit',
+  'git_add',
+  'git_push',
+  'git_pull',
+  'git_stash',
+  'git_reset',
 ]);
 
 const METHOD_TOOLS = new Set(['verify', 'review']);
 
 const INSPECTION_TOOLS = new Set([
-  'read_file', 'list_dir', 'glob', 'search', 'semantic_search',
-  'check_file', 'lsp_symbols', 'lsp_diagnostics', 'lsp_references',
-  'lsp_definition', 'lsp_type_definition', 'lsp_hover',
-  'lsp_document_symbol', 'lsp_workspace_symbol',
-  'web_fetch', 'web_search',
+  'read_file',
+  'list_dir',
+  'glob',
+  'search',
+  'semantic_search',
+  'check_file',
+  'lsp_symbols',
+  'lsp_diagnostics',
+  'lsp_references',
+  'lsp_definition',
+  'lsp_type_definition',
+  'lsp_hover',
+  'lsp_document_symbol',
+  'lsp_workspace_symbol',
+  'web_fetch',
+  'web_search',
 ]);
 
-function isExplicitMutationTool(name) { return EXPLICIT_MUTATION_TOOLS.has(name); }
-function isHarnessMutationTool(name) { return HARNESS_MUTATION_TOOLS.has(name); }
-function isLspEditTool(name) { return LSP_EDIT_TOOLS.has(name); }
-function isGitMutationTool(name) { return GIT_MUTATION_TOOLS.has(name); }
-function isMethodologyTool(name) { return METHOD_TOOLS.has(name); }
-function isInspectionTool(name) { return INSPECTION_TOOLS.has(name); }
+function isExplicitMutationTool(name) {
+  return EXPLICIT_MUTATION_TOOLS.has(name);
+}
+function isHarnessMutationTool(name) {
+  return HARNESS_MUTATION_TOOLS.has(name);
+}
+function isLspEditTool(name) {
+  return LSP_EDIT_TOOLS.has(name);
+}
+function isGitMutationTool(name) {
+  return GIT_MUTATION_TOOLS.has(name);
+}
+function isMethodologyTool(name) {
+  return METHOD_TOOLS.has(name);
+}
+function isInspectionTool(name) {
+  return INSPECTION_TOOLS.has(name);
+}
 
 // ============================================================
 // 内部：Shell 命令分类
@@ -219,9 +252,7 @@ function isInspectionTool(name) { return INSPECTION_TOOLS.has(name); }
  * - unknown: 其他 → NO_PROGRESS
  */
 function classifyShellCommand(args) {
-  const cmd = String(
-    args?.command || args?.input || args?.text || args?.cmd || '',
-  ).toLowerCase();
+  const cmd = String(args?.command || args?.input || args?.text || args?.cmd || '').toLowerCase();
 
   if (!cmd) return ToolEffect.NO_PROGRESS;
 
@@ -257,11 +288,7 @@ function classifyShellCommand(args) {
   }
 
   // 只读命令 → inspection
-  if (
-    /\b(ls|cat|grep|rg|find|pwd|tree|stat|head|tail|wc|which|whereis|echo|print)\b/.test(
-      cmd,
-    )
-  ) {
+  if (/\b(ls|cat|grep|rg|find|pwd|tree|stat|head|tail|wc|which|whereis|echo|print)\b/.test(cmd)) {
     return ToolEffect.TARGETED_INSPECTION;
   }
 
@@ -274,7 +301,9 @@ function classifyShellCommand(args) {
   }
 
   // git 只读子命令 → inspection
-  if (/^git\s+(log|status|diff|show|branch|tag|rev-parse|config\s+--list|remote\s+-v)\b/.test(cmd)) {
+  if (
+    /^git\s+(log|status|diff|show|branch|tag|rev-parse|config\s+--list|remote\s+-v)\b/.test(cmd)
+  ) {
     return ToolEffect.TARGETED_INSPECTION;
   }
   // git 其他子命令 → mutation

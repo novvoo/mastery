@@ -47,10 +47,11 @@ export function upsertAgentSession(sessions, session) {
     return sessions;
   }
   const now = Date.now();
+  const existingSession = sessions.find((item) => item?.id === session.id);
   const nextSession = {
     ...session,
     updatedAt: session.updatedAt || now,
-    createdAt: session.createdAt || now,
+    createdAt: session.createdAt || existingSession?.createdAt || now,
     messages: Array.isArray(session.messages) ? session.messages : [],
   };
   return [nextSession, ...sessions.filter((item) => item?.id !== nextSession.id)].slice(

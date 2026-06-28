@@ -1,6 +1,6 @@
 /**
  * AI Agent Desktop - 主应用组件
- * 
+ *
  * 基于 OpenAI Codex 2026 设计理念重新设计:
  * - Chat-centric 布局: 主区域是对话框
  * - 顶部菜单栏: 完整的菜单系统
@@ -54,17 +54,22 @@ import {
 } from './app/session/session-storage.js';
 import {
   createComposerInteractionState,
+  getComposerSubmitTransition,
   handleComposerKey,
 } from './app/interaction/interaction-model.js';
 import { styles } from './app/styles.js';
-import { WorkbenchControls, TERMINAL_PANEL_STORAGE_KEY, readTerminalPanelLayout, clampTerminalHeight } from './components/workbench/controls/WorkbenchControls.jsx';
+import {
+  WorkbenchControls,
+  TERMINAL_PANEL_STORAGE_KEY,
+  readTerminalPanelLayout,
+  clampTerminalHeight,
+} from './components/workbench/controls/WorkbenchControls.jsx';
 import { getI18n, t as i18nT } from './i18n.js';
 import './index.css';
 
 // Codex 2026 风格布局常量
 // 样式定义
 // Codex 风格的菜单定义
-
 
 // 技能包定义 (Codex 2026 Style)
 /**
@@ -75,7 +80,8 @@ const DESKTOP_THEME_STORAGE_KEY = 'ai-agent-desktop-theme';
 function App() {
   // 状态管理
   const [theme, setTheme] = useState(() => {
-    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(DESKTOP_THEME_STORAGE_KEY) : null;
+    const stored =
+      typeof localStorage !== 'undefined' ? localStorage.getItem(DESKTOP_THEME_STORAGE_KEY) : null;
     return stored || 'light';
   });
   const [language, setLanguage] = useState(() => getI18n().getLanguage());
@@ -91,7 +97,7 @@ function App() {
     provider: 'openai',
     apiKey: '',
     model: LLM_PROVIDER_OPTIONS.openai.defaultModel,
-    baseUrl: LLM_PROVIDER_OPTIONS.openai.defaultBaseUrl
+    baseUrl: LLM_PROVIDER_OPTIONS.openai.defaultBaseUrl,
   });
   const [llmSetupError, setLLMSetupError] = useState('');
   const [llmSetupSaving, setLLMSetupSaving] = useState(false);
@@ -102,7 +108,7 @@ function App() {
   const [platformInfo, setPlatformInfo] = useState(null);
   const [windowState, setWindowState] = useState({
     isFullScreen: false,
-    isMaximized: false
+    isMaximized: false,
   });
   const [ipcDiagnostic, setIpcDiagnostic] = useState(null);
 
@@ -116,12 +122,22 @@ function App() {
     return stored === undefined ? false : Boolean(stored);
   });
   const [activeInspectorTab, setActiveInspectorTab] = useState(readStoredInspectorTab);
-  const [inspectorPanelWidth, setInspectorPanelWidth] = useState(() => clampInspectorWidth(readDesktopLayout().inspectorPanelWidth));
-  const [inspectorExpanded, setInspectorExpanded] = useState(() => Boolean(readDesktopLayout().inspectorExpanded));
-  const [terminalClosed, setTerminalClosed] = useState(() => Boolean(readTerminalPanelLayout().closed));
+  const [inspectorPanelWidth, setInspectorPanelWidth] = useState(() =>
+    clampInspectorWidth(readDesktopLayout().inspectorPanelWidth),
+  );
+  const [inspectorExpanded, setInspectorExpanded] = useState(() =>
+    Boolean(readDesktopLayout().inspectorExpanded),
+  );
+  const [terminalClosed, setTerminalClosed] = useState(() =>
+    Boolean(readTerminalPanelLayout().closed),
+  );
   const [terminalOpen, setTerminalOpen] = useState(() => readTerminalPanelLayout().open !== false);
-  const [terminalPanelHeight, setTerminalPanelHeight] = useState(() => clampTerminalHeight(readTerminalPanelLayout().height));
-  const [activeTerminalTab, setActiveTerminalTab] = useState(() => readTerminalPanelLayout().activeTab || 'terminal');
+  const [terminalPanelHeight, setTerminalPanelHeight] = useState(() =>
+    clampTerminalHeight(readTerminalPanelLayout().height),
+  );
+  const [activeTerminalTab, setActiveTerminalTab] = useState(
+    () => readTerminalPanelLayout().activeTab || 'terminal',
+  );
   const [chatInput, setChatInput] = useState('');
   const [inputNotice, setInputNotice] = useState(null);
   const [inputFocused, setInputFocused] = useState(false);
@@ -129,13 +145,13 @@ function App() {
   const [agentOptions, setAgentOptions] = useState({
     debug: false,
     maxIterations: 60,
-    autoSave: true
+    autoSave: true,
   });
-  const [activeAgentSessionId, setActiveAgentSessionId] = useState(() => (
-    localStorage.getItem(ACTIVE_AGENT_SESSION_STORAGE_KEY) || createAgentSessionId()
-  ));
+  const [activeAgentSessionId, setActiveAgentSessionId] = useState(
+    () => localStorage.getItem(ACTIVE_AGENT_SESSION_STORAGE_KEY) || createAgentSessionId(),
+  );
   const [sessions, setSessions] = useState([]);
-  
+
   // RAG (Retrieval-Augmented Generation) 面板状态
   const [ragDocs, setRagDocs] = useState([]); // { name, path }
   const [ragStatus, setRagStatus] = useState('idle'); // idle | indexing | ready | error
@@ -153,14 +169,14 @@ function App() {
     const storedUrl = readStoredPreviewUrl();
     return storedUrl ? formatPreviewUrlInput(storedUrl) : '';
   });
-  
+
   // 文件编辑状态
   const [openFile, setOpenFile] = useState(null);
   const [fileDraft, setFileDraft] = useState('');
   const [fileMode, setFileMode] = useState('preview');
   const [fileStatus, setFileStatus] = useState('idle');
   const [fileError, setFileError] = useState('');
-  
+
   // 使用自定义 Hooks
   const runtime = useRuntime();
   const runtimeStatusMeta = getRuntimeStatusMeta(runtime.status);
@@ -177,22 +193,34 @@ function App() {
   }, [directoryChildren]);
 
   useEffect(() => {
-    localStorage.setItem(DESKTOP_LAYOUT_STORAGE_KEY, JSON.stringify({
-      sidebarCollapsed,
-      summaryPanelVisible,
-      activeInspectorTab,
-      inspectorPanelWidth,
-      inspectorExpanded
-    }));
-  }, [activeInspectorTab, inspectorExpanded, inspectorPanelWidth, sidebarCollapsed, summaryPanelVisible]);
+    localStorage.setItem(
+      DESKTOP_LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        sidebarCollapsed,
+        summaryPanelVisible,
+        activeInspectorTab,
+        inspectorPanelWidth,
+        inspectorExpanded,
+      }),
+    );
+  }, [
+    activeInspectorTab,
+    inspectorExpanded,
+    inspectorPanelWidth,
+    sidebarCollapsed,
+    summaryPanelVisible,
+  ]);
 
   useEffect(() => {
-    localStorage.setItem(TERMINAL_PANEL_STORAGE_KEY, JSON.stringify({
-      activeTab: activeTerminalTab,
-      closed: terminalClosed,
-      height: terminalPanelHeight,
-      open: terminalOpen
-    }));
+    localStorage.setItem(
+      TERMINAL_PANEL_STORAGE_KEY,
+      JSON.stringify({
+        activeTab: activeTerminalTab,
+        closed: terminalClosed,
+        height: terminalPanelHeight,
+        open: terminalOpen,
+      }),
+    );
   }, [activeTerminalTab, terminalClosed, terminalOpen, terminalPanelHeight]);
 
   useEffect(() => {
@@ -203,7 +231,7 @@ function App() {
   }, [theme]);
 
   const toggleTheme = useCallback(() => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
   }, []);
 
   const handleTerminalOpenChange = useCallback((open) => {
@@ -216,7 +244,7 @@ function App() {
 
   const toggleTerminalPanel = useCallback(() => {
     setTerminalClosed(false);
-    setTerminalOpen(prev => !prev);
+    setTerminalOpen((prev) => !prev);
     setActiveTerminalTab('terminal');
   }, []);
 
@@ -233,7 +261,7 @@ function App() {
       }
       event.preventDefault();
       setTerminalClosed(false);
-      setTerminalOpen(prev => !prev);
+      setTerminalOpen((prev) => !prev);
       setActiveTerminalTab('terminal');
     };
 
@@ -260,8 +288,11 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!activePreviewUrl) return;
-    localStorage.setItem(PREVIEW_URL_STORAGE_KEY, activePreviewUrl);
+    if (activePreviewUrl) {
+      localStorage.setItem(PREVIEW_URL_STORAGE_KEY, activePreviewUrl);
+      return;
+    }
+    localStorage.removeItem(PREVIEW_URL_STORAGE_KEY);
   }, [activePreviewUrl]);
 
   useEffect(() => {
@@ -324,16 +355,19 @@ function App() {
       return;
     }
 
-    const firstInput = runtime.messages.find(message => (
-      typeof message?.content === 'string' && message.content.startsWith('用户输入:')
-    ))?.content?.replace(/^用户输入:\s*/, '');
+    const firstInput = runtime.messages
+      .find(
+        (message) =>
+          typeof message?.content === 'string' && message.content.startsWith('用户输入:'),
+      )
+      ?.content?.replace(/^用户输入:\s*/, '');
 
     upsertAgentSession({
       id: activeAgentSessionId,
       title: getAgentSessionTitle(firstInput, runtime.messages),
       workingDirectory,
       messages: runtime.messages,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
     });
     window.dispatchEvent(new CustomEvent(AGENT_SESSIONS_UPDATED_EVENT));
   }, [activeAgentSessionId, runtime.messages, workingDirectory]);
@@ -345,7 +379,9 @@ function App() {
 
     try {
       const result = await ipc.processInput('/doc list');
-      const persistedDocs = normalizeRagDocuments(result?.data?.documents || result?.documents || []);
+      const persistedDocs = normalizeRagDocuments(
+        result?.data?.documents || result?.documents || [],
+      );
       setRagDocs(persistedDocs);
       setRagStatus(persistedDocs.length > 0 ? 'ready' : 'idle');
       setRagIndexProgress(persistedDocs.length > 0 ? 100 : 0);
@@ -356,7 +392,7 @@ function App() {
       return null;
     }
   }, [ipc.isConnected, ipc.processInput]);
-  
+
   // 初始化
   useEffect(() => {
     let isMounted = true;
@@ -372,11 +408,14 @@ function App() {
       }
 
       setWorkingDirectory(nextDirectory);
-      ipc.getAppInfo().then(info => {
-        if (isMounted && info?.fileServerUrl) {
-          setFileServerUrl(info.fileServerUrl);
-        }
-      }).catch(() => {});
+      ipc
+        .getAppInfo()
+        .then((info) => {
+          if (isMounted && info?.fileServerUrl) {
+            setFileServerUrl(info.fileServerUrl);
+          }
+        })
+        .catch(() => {});
       setDirectoryChildren({});
       setExpandedDirectories(new Set(['']));
       setProjectTreeError('');
@@ -388,142 +427,168 @@ function App() {
     };
 
     // 连接到主进程
-    ipc.connect().then((connection) => {
-      if (!isMounted) {
-        return;
-      }
-
-      if (!connection) {
-        // electronAPI 不可用 — 记录诊断信息供 UI 渲染降级横幅
-        try {
-          const diag = typeof ipc.diagnose === 'function'
-            ? ipc.diagnose()
-            : { hasElectronAPI: false, url: typeof window !== 'undefined' ? window.location?.href : null };
-          console.warn('[App] IPC 诊断:', diag);
-          setIpcDiagnostic(diag);
-        } catch (_) {
-          setIpcDiagnostic({ hasElectronAPI: false, reason: 'preload 未暴露 electronAPI' });
-        }
-        return;
-      }
-
-      console.log('[App] 已连接到主进程');
-      setPlatformInfo(ipc.getPlatform());
-
-      ipc.getWindowState().then(state => {
-        if (!isMounted || !state) {
-          return;
-        }
-        setWindowState(state);
-      }).catch(error => {
-        console.error('[App] 获取窗口状态失败:', error);
-      });
-
-      unsubscribeWindowState = ipc.onWindowStateChange(state => {
-        if (!isMounted || !state) {
-          return;
-        }
-        setWindowState(state);
-      });
-
-      unsubscribeProjectCreated = ipc.subscribe('app:projectCreated', syncWorkingDirectoryFromEvent);
-      unsubscribeProjectOpened = ipc.subscribe('app:projectOpened', syncWorkingDirectoryFromEvent);
-      
-      // 监听菜单动作事件（来自 Electron 主进程的 app:menuAction）
-      unsubscribeMenuAction = ipc.subscribe('app:menuAction', ({ command, ...payload }) => {
-        if (!isMounted) return;
-        switch (command) {
-          case 'stopAgent':
-            runtime.stop();
-            break;
-          case 'focusInput':
-            chatInputRef.current?.focus();
-            break;
-          case 'newTask':
-            setChatInput('');
-            chatInputRef.current?.focus();
-            break;
-          case 'clearConversation':
-            runtime.clearMessages();
-            break;
-          case 'insertDocSearch':
-            setChatInput('/doc search ');
-            chatInputRef.current?.focus();
-            break;
-          case 'openModelConfig':
-            setShowLLMSetup(true);
-            break;
-          case 'toggleSidebar':
-            setSidebarCollapsed(prev => !prev);
-            break;
-          case 'toggleSummary':
-            setSummaryPanelVisible(prev => !prev);
-            break;
-          case 'showAgent':
-            setActiveTab('agent');
-            setSidebarCollapsed(false);
-            break;
-          case 'showTools':
-            setActiveTab('tools');
-            setSidebarCollapsed(false);
-            break;
-          case 'insertCommand':
-            if (payload?.value) {
-              setChatInput(payload.value);
-              chatInputRef.current?.focus();
-            }
-            break;
-          default:
-            console.log('[App] Unhandled menu action:', command);
-        }
-      });
-      
-      // 获取应用信息
-      ipc.getAppInfo().then(info => {
+    ipc
+      .connect()
+      .then((connection) => {
         if (!isMounted) {
           return;
         }
-        console.log('[App] 应用信息:', info);
-        setWorkingDirectory(info.workingDirectory);
-        if (info.fileServerUrl) {
-          setFileServerUrl(info.fileServerUrl);
-        }
-      });
 
-      ipc.getLLMConfigStatus().then(status => {
-        if (!isMounted || !status) {
+        if (!connection) {
+          // electronAPI 不可用 — 记录诊断信息供 UI 渲染降级横幅
+          try {
+            const diag =
+              typeof ipc.diagnose === 'function'
+                ? ipc.diagnose()
+                : {
+                    hasElectronAPI: false,
+                    url: typeof window !== 'undefined' ? window.location?.href : null,
+                  };
+            console.warn('[App] IPC 诊断:', diag);
+            setIpcDiagnostic(diag);
+          } catch (_) {
+            setIpcDiagnostic({ hasElectronAPI: false, reason: 'preload 未暴露 electronAPI' });
+          }
           return;
         }
-        setLLMConfigStatus(status);
-        setLLMForm(prev => ({
-          ...prev,
-          provider: status.provider || prev.provider,
-          model: status.model || LLM_PROVIDER_OPTIONS[status.provider]?.defaultModel || prev.model,
-          baseUrl: status.baseUrl || LLM_PROVIDER_OPTIONS[status.provider]?.defaultBaseUrl || prev.baseUrl
-        }));
-        if (!status.configured) {
-          setShowLLMSetup(true);
-        }
-      }).catch(error => {
-        console.error('[App] 获取 LLM 配置状态失败:', error);
+
+        console.log('[App] 已连接到主进程');
+        setPlatformInfo(ipc.getPlatform());
+
+        ipc
+          .getWindowState()
+          .then((state) => {
+            if (!isMounted || !state) {
+              return;
+            }
+            setWindowState(state);
+          })
+          .catch((error) => {
+            console.error('[App] 获取窗口状态失败:', error);
+          });
+
+        unsubscribeWindowState = ipc.onWindowStateChange((state) => {
+          if (!isMounted || !state) {
+            return;
+          }
+          setWindowState(state);
+        });
+
+        unsubscribeProjectCreated = ipc.subscribe(
+          'app:projectCreated',
+          syncWorkingDirectoryFromEvent,
+        );
+        unsubscribeProjectOpened = ipc.subscribe(
+          'app:projectOpened',
+          syncWorkingDirectoryFromEvent,
+        );
+
+        // 监听菜单动作事件（来自 Electron 主进程的 app:menuAction）
+        unsubscribeMenuAction = ipc.subscribe('app:menuAction', ({ command, ...payload }) => {
+          if (!isMounted) return;
+          switch (command) {
+            case 'stopAgent':
+              runtime.stop();
+              break;
+            case 'focusInput':
+              chatInputRef.current?.focus();
+              break;
+            case 'newTask':
+              setChatInput('');
+              chatInputRef.current?.focus();
+              break;
+            case 'clearConversation':
+              runtime.clearMessages();
+              break;
+            case 'insertDocSearch':
+              setChatInput('/doc search ');
+              chatInputRef.current?.focus();
+              break;
+            case 'openModelConfig':
+              setShowLLMSetup(true);
+              break;
+            case 'toggleSidebar':
+              setSidebarCollapsed((prev) => !prev);
+              break;
+            case 'toggleSummary':
+              setSummaryPanelVisible((prev) => !prev);
+              break;
+            case 'showAgent':
+              setActiveTab('agent');
+              setSidebarCollapsed(false);
+              break;
+            case 'showTools':
+              setActiveTab('tools');
+              setSidebarCollapsed(false);
+              break;
+            case 'insertCommand':
+              if (payload?.value) {
+                setChatInput(payload.value);
+                chatInputRef.current?.focus();
+              }
+              break;
+            default:
+              console.log('[App] Unhandled menu action:', command);
+          }
+        });
+
+        // 获取应用信息
+        ipc.getAppInfo().then((info) => {
+          if (!isMounted) {
+            return;
+          }
+          console.log('[App] 应用信息:', info);
+          setWorkingDirectory(info.workingDirectory);
+          if (info.fileServerUrl) {
+            setFileServerUrl(info.fileServerUrl);
+          }
+        });
+
+        ipc
+          .getLLMConfigStatus()
+          .then((status) => {
+            if (!isMounted || !status) {
+              return;
+            }
+            setLLMConfigStatus(status);
+            setLLMForm((prev) => ({
+              ...prev,
+              provider: status.provider || prev.provider,
+              model:
+                status.model || LLM_PROVIDER_OPTIONS[status.provider]?.defaultModel || prev.model,
+              baseUrl:
+                status.baseUrl ||
+                LLM_PROVIDER_OPTIONS[status.provider]?.defaultBaseUrl ||
+                prev.baseUrl,
+            }));
+            if (!status.configured) {
+              setShowLLMSetup(true);
+            }
+          })
+          .catch((error) => {
+            console.error('[App] 获取 LLM 配置状态失败:', error);
+          });
+
+        // 加载多模型配置
+        ipc
+          .invoke('llm:list-models')
+          .then((configs) => {
+            if (isMounted && Array.isArray(configs) && configs.length > 0) {
+              setModelConfigs(configs);
+            }
+          })
+          .catch(() => {});
+
+        // 获取工具列表
+        runtime.loadTools();
+
+        // 获取初始状态
+        runtime.refreshState();
+      })
+      .catch((error) => {
+        console.error('[App] 连接失败:', error);
       });
 
-      // 加载多模型配置
-      ipc.invoke('llm:list-models').then(configs => {
-        if (isMounted && Array.isArray(configs) && configs.length > 0) {
-          setModelConfigs(configs);
-        }
-      }).catch(() => {});
-      
-      // 获取工具列表
-      runtime.loadTools();
-      
-      // 获取初始状态
-      runtime.refreshState();
-    }).catch(error => {
-      console.error('[App] 连接失败:', error);
-    });
-    
     // 清理
     return () => {
       isMounted = false;
@@ -549,13 +614,13 @@ function App() {
       ipc.invoke('llm:save-all-models', modelConfigs).catch(() => {});
     }
   }, [modelConfigs, ipc.isConnected]);
-  
+
   // 处理工作目录变更
   const handleWorkingDirectoryChange = useCallback(async () => {
     const result = await ipc.openDirectoryDialog({
-      title: '选择工作目录'
+      title: '选择工作目录',
     });
-    
+
     if (!result.canceled && result.filePaths.length > 0) {
       const newDir = result.filePaths[0];
       const workspaceResult = await ipc.setWorkingDirectory(newDir);
@@ -570,7 +635,7 @@ function App() {
       setRagDocs([]);
       setRagStatus('idle');
       setRagIndexProgress(0);
-      
+
       // 重新加载工具
       runtime.loadTools();
     }
@@ -596,8 +661,9 @@ function App() {
     setExpandedDirectories(new Set(['']));
     setLoadingDirectories(new Set(['']));
 
-    ipc.listDirectory('')
-      .then(result => {
+    ipc
+      .listDirectory('')
+      .then((result) => {
         if (cancelled) return;
         if (!result?.success) {
           setProjectTreeStatus('error');
@@ -607,7 +673,7 @@ function App() {
         setDirectoryChildren({ '': result.entries || [] });
         setProjectTreeStatus('ready');
       })
-      .catch(error => {
+      .catch((error) => {
         if (cancelled) return;
         setProjectTreeStatus('error');
         setProjectTreeError(error.message || '无法读取工作目录');
@@ -622,55 +688,61 @@ function App() {
     };
   }, [workingDirectory, ipc.isConnected]);
 
-  const loadProjectDirectory = useCallback(async (directoryPath = '') => {
-    if (!ipc.listDirectory) {
-      return null;
-    }
-
-    setLoadingDirectories(prev => new Set(prev).add(directoryPath));
-    setProjectTreeError('');
-
-    try {
-      const result = await ipc.listDirectory(directoryPath);
-      if (!result?.success) {
-        setProjectTreeError(result?.error || '无法读取目录');
+  const loadProjectDirectory = useCallback(
+    async (directoryPath = '') => {
+      if (!ipc.listDirectory) {
         return null;
       }
 
-      setDirectoryChildren(prev => ({
-        ...prev,
-        [directoryPath]: result.entries || []
-      }));
-      setProjectTreeStatus('ready');
-      return result;
-    } catch (error) {
-      setProjectTreeError(error.message || '无法读取目录');
-      return null;
-    } finally {
-      setLoadingDirectories(prev => {
-        const next = new Set(prev);
-        next.delete(directoryPath);
-        return next;
-      });
-    }
-  }, [ipc]);
+      setLoadingDirectories((prev) => new Set(prev).add(directoryPath));
+      setProjectTreeError('');
 
-  const handleProjectDirectoryToggle = useCallback(async (directoryPath) => {
-    const isExpanded = expandedDirectories.has(directoryPath);
-    if (isExpanded) {
-      setExpandedDirectories(prev => {
-        const next = new Set(prev);
-        next.delete(directoryPath);
-        return next;
-      });
-      return;
-    }
+      try {
+        const result = await ipc.listDirectory(directoryPath);
+        if (!result?.success) {
+          setProjectTreeError(result?.error || '无法读取目录');
+          return null;
+        }
 
-    setExpandedDirectories(prev => new Set(prev).add(directoryPath));
-    if (!directoryChildren[directoryPath]) {
-      await loadProjectDirectory(directoryPath);
-    }
-  }, [directoryChildren, expandedDirectories, loadProjectDirectory]);
+        setDirectoryChildren((prev) => ({
+          ...prev,
+          [directoryPath]: result.entries || [],
+        }));
+        setProjectTreeStatus('ready');
+        return result;
+      } catch (error) {
+        setProjectTreeError(error.message || '无法读取目录');
+        return null;
+      } finally {
+        setLoadingDirectories((prev) => {
+          const next = new Set(prev);
+          next.delete(directoryPath);
+          return next;
+        });
+      }
+    },
+    [ipc],
+  );
+
+  const handleProjectDirectoryToggle = useCallback(
+    async (directoryPath) => {
+      const isExpanded = expandedDirectories.has(directoryPath);
+      if (isExpanded) {
+        setExpandedDirectories((prev) => {
+          const next = new Set(prev);
+          next.delete(directoryPath);
+          return next;
+        });
+        return;
+      }
+
+      setExpandedDirectories((prev) => new Set(prev).add(directoryPath));
+      if (!directoryChildren[directoryPath]) {
+        await loadProjectDirectory(directoryPath);
+      }
+    },
+    [directoryChildren, expandedDirectories, loadProjectDirectory],
+  );
 
   const handleProjectTreeRefresh = useCallback(async () => {
     setDirectoryChildren({});
@@ -686,32 +758,35 @@ function App() {
     setPreviewUrlDraft(formatPreviewUrlInput(normalizedUrl));
   }, []);
 
-  const handleStartPreview = useCallback(async (target = '.') => {
-    if (!ipc.startPreview) {
-      return null;
-    }
+  const handleStartPreview = useCallback(
+    async (target = '.') => {
+      if (!ipc.startPreview) {
+        return null;
+      }
 
-    setPreviewStatus('starting');
-    setSummaryPanelVisible(true);
-    setActiveInspectorTab('preview');
-    try {
-      const preview = await ipc.startPreview({ target, kind: 'auto' });
-      setPreviewSession(preview);
-      followPreviewUrl(preview.url);
-      setPreviewStatus('ready');
+      setPreviewStatus('starting');
       setSummaryPanelVisible(true);
       setActiveInspectorTab('preview');
-      setPreviewFrameKey(prev => prev + 1);
-      return preview;
-    } catch (error) {
-      setPreviewStatus('error');
-      runtime.addMessage?.({
-        type: 'error',
-        content: `预览启动失败: ${error.message}`
-      });
-      return null;
-    }
-  }, [followPreviewUrl, ipc, runtime]);
+      try {
+        const preview = await ipc.startPreview({ target, kind: 'auto' });
+        setPreviewSession(preview);
+        followPreviewUrl(preview.url);
+        setPreviewStatus('ready');
+        setSummaryPanelVisible(true);
+        setActiveInspectorTab('preview');
+        setPreviewFrameKey((prev) => prev + 1);
+        return preview;
+      } catch (error) {
+        setPreviewStatus('error');
+        runtime.addMessage?.({
+          type: 'error',
+          content: `预览启动失败: ${error.message}`,
+        });
+        return null;
+      }
+    },
+    [followPreviewUrl, ipc, runtime],
+  );
 
   const handleStopPreview = useCallback(async () => {
     if (!previewSession?.session_id || !ipc.stopPreview) {
@@ -720,21 +795,26 @@ function App() {
 
     await ipc.stopPreview(previewSession.session_id);
     setPreviewSession(null);
+    setActivePreviewUrl(null);
+    setPreviewUrlDraft('');
     setPreviewStatus('idle');
   }, [ipc, previewSession]);
 
-  const handlePreviewUrlSubmit = useCallback((event) => {
-    event.preventDefault();
-    const normalizedUrl = normalizePreviewUrlInput(previewUrlDraft);
-    if (!normalizedUrl) {
-      setPreviewStatus('error');
-      return;
-    }
-    setPreviewStatus('ready');
-    setActivePreviewUrl(normalizedUrl);
-    setPreviewUrlDraft(formatPreviewUrlInput(normalizedUrl));
-    setPreviewFrameKey(prev => prev + 1);
-  }, [previewUrlDraft]);
+  const handlePreviewUrlSubmit = useCallback(
+    (event) => {
+      event.preventDefault();
+      const normalizedUrl = normalizePreviewUrlInput(previewUrlDraft);
+      if (!normalizedUrl) {
+        setPreviewStatus('error');
+        return;
+      }
+      setPreviewStatus('ready');
+      setActivePreviewUrl(normalizedUrl);
+      setPreviewUrlDraft(formatPreviewUrlInput(normalizedUrl));
+      setPreviewFrameKey((prev) => prev + 1);
+    },
+    [previewUrlDraft],
+  );
 
   const refreshLoadedProjectDirectories = useCallback(async () => {
     if (!ipc.listDirectory) {
@@ -747,12 +827,18 @@ function App() {
 
     try {
       const results = [];
-      for (let index = 0; index < pathsToRefresh.length; index += PROJECT_TREE_REFRESH_CONCURRENCY) {
+      for (
+        let index = 0;
+        index < pathsToRefresh.length;
+        index += PROJECT_TREE_REFRESH_CONCURRENCY
+      ) {
         const batch = pathsToRefresh.slice(index, index + PROJECT_TREE_REFRESH_CONCURRENCY);
-        const batchResults = await Promise.all(batch.map(async (directoryPath) => {
-          const result = await ipc.listDirectory(directoryPath);
-          return { directoryPath, result };
-        }));
+        const batchResults = await Promise.all(
+          batch.map(async (directoryPath) => {
+            const result = await ipc.listDirectory(directoryPath);
+            return { directoryPath, result };
+          }),
+        );
         results.push(...batchResults);
       }
 
@@ -770,10 +856,10 @@ function App() {
         }
       }
 
-      setDirectoryChildren(prev => {
+      setDirectoryChildren((prev) => {
         const next = {
           ...prev,
-          ...nextChildren
+          ...nextChildren,
         };
         for (const missingPath of missingDirectories) {
           if (missingPath !== '') {
@@ -783,7 +869,7 @@ function App() {
         return next;
       });
       if (missingDirectories.size > 0) {
-        setExpandedDirectories(prev => {
+        setExpandedDirectories((prev) => {
           const next = new Set(prev);
           for (const missingPath of missingDirectories) {
             if (missingPath !== '') {
@@ -831,32 +917,37 @@ function App() {
     let unsubscribeStarted = null;
     let unsubscribeStopped = null;
 
-    ipc.listPreviews?.().then(result => {
-      const previews = result?.previews || [];
-      if (previews.length > 0) {
-        setPreviewSession(previews[0]);
-        followPreviewUrl(previews[0].url);
-        setSummaryPanelVisible(true);
-        setActiveInspectorTab('preview');
-        setPreviewStatus('ready');
-      }
-    }).catch(() => {});
+    ipc
+      .listPreviews?.()
+      .then((result) => {
+        const previews = result?.previews || [];
+        if (previews.length > 0) {
+          setPreviewSession(previews[0]);
+          followPreviewUrl(previews[0].url);
+          setSummaryPanelVisible(true);
+          setActiveInspectorTab('preview');
+          setPreviewStatus('ready');
+        }
+      })
+      .catch(() => {});
 
     if (ipc.onPreviewStarted) {
-      unsubscribeStarted = ipc.onPreviewStarted(preview => {
+      unsubscribeStarted = ipc.onPreviewStarted((preview) => {
         setPreviewSession(preview);
         followPreviewUrl(preview.url);
         setSummaryPanelVisible(true);
         setActiveInspectorTab('preview');
         setPreviewStatus('ready');
-        setPreviewFrameKey(prev => prev + 1);
+        setPreviewFrameKey((prev) => prev + 1);
       });
     }
 
     if (ipc.onPreviewStopped) {
-      unsubscribeStopped = ipc.onPreviewStopped(result => {
+      unsubscribeStopped = ipc.onPreviewStopped((result) => {
         if (result?.stopped === previewSession?.session_id) {
           setPreviewSession(null);
+          setActivePreviewUrl(null);
+          setPreviewUrlDraft('');
           setPreviewStatus('idle');
         }
       });
@@ -866,8 +957,15 @@ function App() {
       unsubscribeStarted?.();
       unsubscribeStopped?.();
     };
-  }, [followPreviewUrl, ipc.isConnected, ipc.listPreviews, ipc.onPreviewStarted, ipc.onPreviewStopped, previewSession?.session_id]);
-  
+  }, [
+    followPreviewUrl,
+    ipc.isConnected,
+    ipc.listPreviews,
+    ipc.onPreviewStarted,
+    ipc.onPreviewStopped,
+    previewSession?.session_id,
+  ]);
+
   // 处理新建任务
   const handleNewTask = useCallback(() => {
     setActiveAgentSessionId(createAgentSessionId());
@@ -875,41 +973,44 @@ function App() {
     setChatInput('');
   }, [runtime]);
 
-  const handleOpenWorkspaceFile = useCallback(async (entry) => {
-    if (!entry?.path || entry.type === 'directory') {
-      return;
-    }
-    setOpenFile({
-      path: entry.path,
-      name: entry.name,
-      content: '',
-      size: 0,
-    });
-    setFileDraft('');
-    setFileMode('preview');
-    setFileStatus('loading');
-    setFileError('');
-    try {
-      const result = await ipc.readWorkspaceFile(entry.path);
-      if (!result?.success) {
-        setFileStatus('error');
-        setFileError(result?.error || '\u65e0\u6cd5\u8bfb\u53d6\u6587\u4ef6');
+  const handleOpenWorkspaceFile = useCallback(
+    async (entry) => {
+      if (!entry?.path || entry.type === 'directory') {
         return;
       }
       setOpenFile({
-        path: result.path || entry.path,
-        name: result.name || entry.name,
-        content: result.content || '',
-        size: result.size || 0,
-        mtimeMs: result.mtimeMs,
+        path: entry.path,
+        name: entry.name,
+        content: '',
+        size: 0,
       });
-      setFileDraft(result.content || '');
-      setFileStatus('ready');
-    } catch (error) {
-      setFileStatus('error');
-      setFileError(error.message || '\u65e0\u6cd5\u8bfb\u53d6\u6587\u4ef6');
-    }
-  }, [ipc]);
+      setFileDraft('');
+      setFileMode('preview');
+      setFileStatus('loading');
+      setFileError('');
+      try {
+        const result = await ipc.readWorkspaceFile(entry.path);
+        if (!result?.success) {
+          setFileStatus('error');
+          setFileError(result?.error || '\u65e0\u6cd5\u8bfb\u53d6\u6587\u4ef6');
+          return;
+        }
+        setOpenFile({
+          path: result.path || entry.path,
+          name: result.name || entry.name,
+          content: result.content || '',
+          size: result.size || 0,
+          mtimeMs: result.mtimeMs,
+        });
+        setFileDraft(result.content || '');
+        setFileStatus('ready');
+      } catch (error) {
+        setFileStatus('error');
+        setFileError(error.message || '\u65e0\u6cd5\u8bfb\u53d6\u6587\u4ef6');
+      }
+    },
+    [ipc],
+  );
 
   const handleSaveWorkspaceFile = useCallback(async () => {
     if (!openFile?.path) {
@@ -924,7 +1025,7 @@ function App() {
         setFileError(result?.error || '\u4fdd\u5b58\u5931\u8d25');
         return;
       }
-      setOpenFile(prev => ({
+      setOpenFile((prev) => ({
         ...prev,
         content: fileDraft,
         size: result.size || fileDraft.length,
@@ -948,9 +1049,8 @@ function App() {
   }, []);
 
   const handleFileModeToggle = useCallback(() => {
-    setFileMode(prev => prev === 'edit' ? 'preview' : 'edit');
+    setFileMode((prev) => (prev === 'edit' ? 'preview' : 'edit'));
   }, []);
-
 
   const handleClearAgentHistory = useCallback(() => {
     localStorage.removeItem(AGENT_HISTORY_STORAGE_KEY);
@@ -958,26 +1058,33 @@ function App() {
     localStorage.removeItem(ACTIVE_AGENT_SESSION_STORAGE_KEY);
     skipNextSessionPersistRef.current = true;
     setActiveAgentSessionId(createAgentSessionId());
-    window.dispatchEvent(new CustomEvent(AGENT_HISTORY_UPDATED_EVENT, {
-      detail: []
-    }));
-  }, []);
-
-
+    runtime.clearMessages();
+    setSessions([]);
+    setChatInput('');
+    setShowSuggestions(false);
+    setInputNotice(null);
+    composerInteractionRef.current = createComposerInteractionState();
+    window.dispatchEvent(
+      new CustomEvent(AGENT_HISTORY_UPDATED_EVENT, {
+        detail: [],
+      }),
+    );
+    window.dispatchEvent(new CustomEvent(AGENT_SESSIONS_UPDATED_EVENT));
+  }, [runtime]);
 
   // 处理窗口控制
   const handleMinimize = useCallback(() => {
     ipc.minimizeWindow();
   }, [ipc]);
-  
+
   const handleMaximize = useCallback(() => {
     ipc.maximizeWindow();
   }, [ipc]);
-  
+
   const handleClose = useCallback(() => {
     ipc.closeWindow();
   }, [ipc]);
-  
+
   // 处理导出
   const handleExport = useCallback(() => {
     const lines = [
@@ -986,12 +1093,14 @@ function App() {
       `- Exported: ${new Date().toISOString()}`,
       `- Working directory: ${workingDirectory || '未设置'}`,
       '',
-      ...runtime.messages.map((message, index) => [
-        `## ${index + 1}. ${message.type || 'message'}`,
-        '',
-        String(message.content || message.result || message.details || '').trim() || '(empty)',
-        ''
-      ].join('\n'))
+      ...runtime.messages.map((message, index) =>
+        [
+          `## ${index + 1}. ${message.type || 'message'}`,
+          '',
+          String(message.content || message.result || message.details || '').trim() || '(empty)',
+          '',
+        ].join('\n'),
+      ),
     ];
     const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -1004,61 +1113,85 @@ function App() {
     URL.revokeObjectURL(url);
   }, [runtime.messages, workingDirectory]);
 
-  const handleSubmitAgentInput = useCallback(async (rawInput, options = {}) => {
-    const input = String(rawInput || '').trim();
-    if (!input || runtime.status === 'running') {
-      if (input && options.keepWhenBusy !== false) {
-        setChatInput(input);
-        chatInputRef.current?.focus();
-      }
-      return;
-    }
-    
-    try {
-      let sessionId = activeAgentSessionId;
-      if (!sessionId) {
-        sessionId = createAgentSessionId();
-        setActiveAgentSessionId(sessionId);
+  const handleSubmitAgentInput = useCallback(
+    async (rawInput, options = {}) => {
+      const transition = getComposerSubmitTransition({
+        value: rawInput,
+        status: runtime.status,
+        clearInput: options.clearInput !== false,
+        keepWhenBusy: options.keepWhenBusy !== false,
+      });
+      const { input } = transition;
+
+      if (!transition.accepted) {
+        if (input && transition.focus && options.updateComposer !== false) {
+          setChatInput(transition.nextValue);
+          setShowSuggestions(transition.showSuggestions);
+          chatInputRef.current?.focus();
+        }
+        return;
       }
 
-      saveAgentInputHistory(input, sessionId);
-      const result = await runtime.processInput(input, agentOptions);
-      if (result?.command === '/debug' && typeof result.debug === 'boolean') {
-        setAgentOptions(prev => ({
-          ...prev,
-          debug: result.debug
-        }));
+      if (options.updateComposer !== false) {
+        setChatInput(transition.nextValue);
+        setShowSuggestions(transition.showSuggestions);
       }
-      if (result?.command === '/preview' && result.url) {
-        setPreviewSession(result);
-        followPreviewUrl(result.url);
-        setSummaryPanelVisible(true);
-        setActiveInspectorTab('preview');
-        setPreviewStatus('ready');
-        setPreviewFrameKey(prev => prev + 1);
+
+      try {
+        let sessionId = activeAgentSessionId;
+        if (!sessionId) {
+          sessionId = createAgentSessionId();
+          setActiveAgentSessionId(sessionId);
+        }
+
+        saveAgentInputHistory(input, sessionId);
+        const result = await runtime.processInput(input, agentOptions);
+        if (result?.command === '/debug' && typeof result.debug === 'boolean') {
+          setAgentOptions((prev) => ({
+            ...prev,
+            debug: result.debug,
+          }));
+        }
+        if (result?.command === '/preview' && result.url) {
+          setPreviewSession(result);
+          followPreviewUrl(result.url);
+          setSummaryPanelVisible(true);
+          setActiveInspectorTab('preview');
+          setPreviewStatus('ready');
+          setPreviewFrameKey((prev) => prev + 1);
+        }
+        setInputNotice(null);
+        composerInteractionRef.current = createComposerInteractionState();
+      } catch (error) {
+        console.error('[App] 发送消息失败:', error);
+        if (options.updateComposer !== false) {
+          setChatInput(transition.restoreValue);
+          setShowSuggestions(transition.restoreValue.trimStart().startsWith('/'));
+          chatInputRef.current?.focus();
+        }
       }
-      if (options.clearInput !== false) {
-        setChatInput('');
-      }
-      setInputNotice(null);
-      composerInteractionRef.current = createComposerInteractionState();
-    } catch (error) {
-      console.error('[App] 发送消息失败:', error);
-    }
-  }, [activeAgentSessionId, agentOptions, followPreviewUrl, runtime]);
+    },
+    [activeAgentSessionId, agentOptions, followPreviewUrl, runtime],
+  );
 
   const handleSendMessage = useCallback(async () => {
     await handleSubmitAgentInput(chatInput);
   }, [chatInput, handleSubmitAgentInput]);
 
-  const handleContinueAgentInput = useCallback(async (input) => {
-    await handleSubmitAgentInput(input, { clearInput: false });
-  }, [handleSubmitAgentInput]);
+  const handleContinueAgentInput = useCallback(
+    async (input) => {
+      await handleSubmitAgentInput(input, { clearInput: false, updateComposer: false });
+    },
+    [handleSubmitAgentInput],
+  );
 
-  const handleAskAgentFromMessage = useCallback(async (message) => {
-    const prompt = createAgentErrorPrompt(message);
-    await handleSubmitAgentInput(prompt);
-  }, [handleSubmitAgentInput]);
+  const handleAskAgentFromMessage = useCallback(
+    async (message) => {
+      const prompt = createAgentErrorPrompt(message);
+      await handleSubmitAgentInput(prompt);
+    },
+    [handleSubmitAgentInput],
+  );
 
   const handleChatInputChange = useCallback((value) => {
     setChatInput(value);
@@ -1066,11 +1199,10 @@ function App() {
     composerInteractionRef.current = {
       ...composerInteractionRef.current,
       historyIndex: -1,
-      notice: null
+      notice: null,
     };
     setShowSuggestions(value.trimStart().startsWith('/'));
   }, []);
-
 
   const handleCommandSelect = useCallback((command) => {
     setChatInput(command);
@@ -1082,85 +1214,95 @@ function App() {
     setShowSuggestions(false);
   }, []);
 
-  const handleChatKeyDown = useCallback((e) => {
-    const interaction = handleComposerKey(e, composerInteractionRef.current, {
-      value: chatInput,
-      status: runtime.status,
-      history: readAgentHistory(),
-      now: Date.now()
-    });
+  const handleChatKeyDown = useCallback(
+    (e) => {
+      const interaction = handleComposerKey(e, composerInteractionRef.current, {
+        value: chatInput,
+        status: runtime.status,
+        history: readAgentHistory(),
+        now: Date.now(),
+      });
 
-    composerInteractionRef.current = interaction.state;
-    setInputNotice(interaction.state.notice);
+      composerInteractionRef.current = interaction.state;
+      setInputNotice(interaction.state.notice);
 
-    if (interaction.action === 'submit') {
-      e.preventDefault();
-      handleSendMessage();
-      return;
-    }
+      if (interaction.action === 'submit') {
+        e.preventDefault();
+        handleSendMessage();
+        return;
+      }
 
-    if (interaction.action === 'clear') {
-      e.preventDefault();
-      setChatInput('');
-      setShowSuggestions(false);
-      return;
-    }
+      if (interaction.action === 'clear') {
+        e.preventDefault();
+        setChatInput('');
+        setShowSuggestions(false);
+        return;
+      }
 
-    if (interaction.action === 'replace_input') {
-      e.preventDefault();
-      setChatInput(interaction.value || '');
-      setShowSuggestions(String(interaction.value || '').trimStart().startsWith('/'));
-      return;
-    }
+      if (interaction.action === 'replace_input') {
+        e.preventDefault();
+        setChatInput(interaction.value || '');
+        setShowSuggestions(
+          String(interaction.value || '')
+            .trimStart()
+            .startsWith('/'),
+        );
+        return;
+      }
 
-    if (interaction.action === 'notice') {
-      e.preventDefault();
-      return;
-    }
+      if (interaction.action === 'notice') {
+        e.preventDefault();
+        return;
+      }
 
-    // 隐藏命令提示当按下 Escape 或 Enter(非 Ctrl)
-    if (e.key === 'Escape' || (e.key === 'Enter' && !e.ctrlKey && !showSuggestions)) {
-      setShowSuggestions(false);
-    }
-  }, [chatInput, handleSendMessage, runtime.status, showSuggestions]);
+      // 隐藏命令提示当按下 Escape 或 Enter(非 Ctrl)
+      if (e.key === 'Escape' || (e.key === 'Enter' && !e.ctrlKey && !showSuggestions)) {
+        setShowSuggestions(false);
+      }
+    },
+    [chatInput, handleSendMessage, runtime.status, showSuggestions],
+  );
 
-  const handleInspectorResizeStart = useCallback((event) => {
-    event.preventDefault();
-    inspectorResizeRef.current = {
-      startX: event.clientX,
-      startWidth: inspectorPanelWidth
-    };
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  }, [inspectorPanelWidth]);
+  const handleInspectorResizeStart = useCallback(
+    (event) => {
+      event.preventDefault();
+      inspectorResizeRef.current = {
+        startX: event.clientX,
+        startWidth: inspectorPanelWidth,
+      };
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    },
+    [inspectorPanelWidth],
+  );
 
   const handleInspectorExpandToggle = useCallback(() => {
-    setInspectorPanelWidth(prev => {
+    setInspectorPanelWidth((prev) => {
       if (inspectorExpanded) {
         return clampInspectorWidth(LAYOUT.inspectorPanelWidth);
       }
       return clampInspectorWidth(Math.max(prev, LAYOUT.inspectorExpandedWidth));
     });
-    setInspectorExpanded(prev => !prev);
+    setInspectorExpanded((prev) => !prev);
     setSummaryPanelVisible(true);
   }, [inspectorExpanded]);
 
   const handleLLMProviderChange = useCallback((provider) => {
     const option = LLM_PROVIDER_OPTIONS[provider] || LLM_PROVIDER_OPTIONS.openai;
     setLLMSetupError('');
-    setLLMForm(prev => ({
+    setLLMForm((prev) => ({
       ...prev,
       provider,
       model: option.defaultModel,
-      baseUrl: option.defaultBaseUrl
+      baseUrl: option.defaultBaseUrl,
     }));
   }, []);
 
   const handleLLMFormChange = useCallback((key, value) => {
     setLLMSetupError('');
-    setLLMForm(prev => ({
+    setLLMForm((prev) => ({
       ...prev,
-      [key]: value
+      [key]: value,
     }));
   }, []);
 
@@ -1191,7 +1333,7 @@ function App() {
 
       setLLMConfigStatus(result.status);
       setShowLLMSetup(false);
-      setLLMForm(prev => ({ ...prev, apiKey: '' }));
+      setLLMForm((prev) => ({ ...prev, apiKey: '' }));
     } catch (error) {
       setLLMSetupError(error.message || '保存 LLM 配置失败');
     } finally {
@@ -1201,86 +1343,91 @@ function App() {
 
   // ===== 模型管理 Handlers =====
   const handleAddModel = useCallback((config) => {
-    setModelConfigs(prev => [...prev, config]);
+    setModelConfigs((prev) => [...prev, config]);
   }, []);
 
   const handleUpdateModel = useCallback((id, updated) => {
-    setModelConfigs(prev => prev.map(c => c.id === id ? { ...c, ...updated } : c));
+    setModelConfigs((prev) => prev.map((c) => (c.id === id ? { ...c, ...updated } : c)));
   }, []);
 
   const handleDeleteModel = useCallback((id) => {
-    setModelConfigs(prev => prev.filter(c => c.id !== id));
+    setModelConfigs((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
-  const handleToggleModel = useCallback(async (id) => {
-    try {
-      setToggleModelError(null);
-      setToggleModelSuccess(null);
-      const config = modelConfigs.find(c => c.id === id);
-      if (!config) return;
+  const handleToggleModel = useCallback(
+    async (id) => {
+      try {
+        setToggleModelError(null);
+        setToggleModelSuccess(null);
+        const config = modelConfigs.find((c) => c.id === id);
+        if (!config) return;
 
-      const previousConfigs = modelConfigs;
-      const newEnabled = !config.enabled;
-      
-      // 如果要启用某个模型，先禁用所有其他模型
-      if (newEnabled) {
-        setModelConfigs(prev => prev.map(c => ({
-          ...c,
-          enabled: c.id === id ? true : false
-        })));
-      } else {
-        // 如果要禁用当前激活的模型，不允许
-        if (config.enabled) {
-          setToggleModelError('不能禁用当前激活的模型，请先启用其他模型');
-          return;
-        }
-        setModelConfigs(prev => prev.map(c =>
-          c.id === id ? { ...c, enabled: false } : c
-        ));
-      }
+        const previousConfigs = modelConfigs;
+        const newEnabled = !config.enabled;
 
-      // 调用后端保存
-      const result = await ipc.toggleModel(id, newEnabled);
-      
-      if (!result.success) {
-        setToggleModelError(result.error || '操作失败');
-        setModelConfigs(previousConfigs);
-      } else {
-        if (Array.isArray(result.configs)) {
-          setModelConfigs(result.configs);
+        // 如果要启用某个模型，先禁用所有其他模型
+        if (newEnabled) {
+          setModelConfigs((prev) =>
+            prev.map((c) => ({
+              ...c,
+              enabled: c.id === id ? true : false,
+            })),
+          );
+        } else {
+          // 如果要禁用当前激活的模型，不允许
+          if (config.enabled) {
+            setToggleModelError('不能禁用当前激活的模型，请先启用其他模型');
+            return;
+          }
+          setModelConfigs((prev) => prev.map((c) => (c.id === id ? { ...c, enabled: false } : c)));
         }
-        // 显示成功信息
-        if (result.provider && result.model) {
-          setToggleModelSuccess(`✅ 已切换到 ${result.provider}:${result.model}，配置已同步到 .env`);
-          // 3秒后清除成功提示
-          setTimeout(() => setToggleModelSuccess(null), 3000);
+
+        // 调用后端保存
+        const result = await ipc.toggleModel(id, newEnabled);
+
+        if (!result.success) {
+          setToggleModelError(result.error || '操作失败');
+          setModelConfigs(previousConfigs);
+        } else {
+          if (Array.isArray(result.configs)) {
+            setModelConfigs(result.configs);
+          }
+          // 显示成功信息
+          if (result.provider && result.model) {
+            setToggleModelSuccess(
+              `✅ 已切换到 ${result.provider}:${result.model}，配置已同步到 .env`,
+            );
+            // 3秒后清除成功提示
+            setTimeout(() => setToggleModelSuccess(null), 3000);
+          }
         }
+      } catch (error) {
+        setToggleModelError(error.message);
+        setModelConfigs(modelConfigs);
       }
-    } catch (error) {
-      setToggleModelError(error.message);
-      setModelConfigs(modelConfigs);
-    }
-  }, [modelConfigs]);
+    },
+    [modelConfigs],
+  );
 
   // ===== MCP 管理 Handlers =====
   const handleAddMcpServer = useCallback((server) => {
-    setMcpServers(prev => [...prev, server]);
+    setMcpServers((prev) => [...prev, server]);
   }, []);
 
   const handleDeleteMcpServer = useCallback((id) => {
-    setMcpServers(prev => prev.filter(s => s.id !== id));
+    setMcpServers((prev) => prev.filter((s) => s.id !== id));
   }, []);
 
   const handleToggleMcpServer = useCallback((id) => {
-    setMcpServers(prev => prev.map(s =>
-      s.id === id ? { ...s, status: s.status === 'connected' ? 'disconnected' : 'connected' } : s
-    ));
+    setMcpServers((prev) =>
+      prev.map((s) =>
+        s.id === id ? { ...s, status: s.status === 'connected' ? 'disconnected' : 'connected' } : s,
+      ),
+    );
   }, []);
 
   const handleConnectMcpServer = useCallback((id) => {
-    setMcpServers(prev => prev.map(s =>
-      s.id === id ? { ...s, status: 'connecting' } : s
-    ));
+    setMcpServers((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'connecting' } : s)));
   }, []);
 
   const handleInsertText = useCallback((text) => {
@@ -1289,32 +1436,35 @@ function App() {
     chatInputRef.current?.focus();
   }, []);
 
-  const handleRestoreHistory = useCallback((item) => {
-    const session = findAgentSession(item?.sessionId);
-    if (!session?.messages?.length) {
-      handleInsertText(item?.input || '');
-      return;
-    }
+  const handleRestoreHistory = useCallback(
+    (item) => {
+      const session = findAgentSession(item?.sessionId);
+      if (!session?.messages?.length) {
+        handleInsertText(item?.input || '');
+        return;
+      }
 
-    setActiveAgentSessionId(session.id);
-    runtime.restoreMessages(session.messages);
-    setSidebarCollapsed(false);
-    setActiveTab('agent');
-    setChatInput('');
-    setShowSuggestions(false);
-  }, [handleInsertText, runtime]);
+      setActiveAgentSessionId(session.id);
+      runtime.restoreMessages(session.messages);
+      setSidebarCollapsed(false);
+      setActiveTab('agent');
+      setChatInput('');
+      setShowSuggestions(false);
+    },
+    [handleInsertText, runtime],
+  );
 
   const handleAddRagDocuments = useCallback(async () => {
     try {
       if (!ipc.hasElectronAPI()) return;
       const result = await ipc.openFileDialog({ properties: ['openFile', 'multiSelections'] });
       const paths = result?.filePaths || result || [];
-      const files = (paths || []).map(path => ({
+      const files = (paths || []).map((path) => ({
         name: getDocumentDisplayName(path),
         path,
         indexed: false,
       }));
-      setRagDocs(prev => mergeRagDocuments(prev, files));
+      setRagDocs((prev) => mergeRagDocuments(prev, files));
     } catch (error) {
       console.error('选择文件失败', error);
     }
@@ -1325,12 +1475,12 @@ function App() {
     setRagStatus('indexing');
     setRagIndexProgress(0);
     try {
-      const paths = ragDocs.map(doc => doc.path);
+      const paths = ragDocs.map((doc) => doc.path);
       if (ipc.processInput) {
         const result = await ipc.processInput('init_rag', { docs: paths });
         const indexedDocs = normalizeRagDocuments(result?.documents || []);
         if (indexedDocs.length > 0) {
-          setRagDocs(prev => mergeRagDocuments(prev, indexedDocs));
+          setRagDocs((prev) => mergeRagDocuments(prev, indexedDocs));
         }
         await refreshRagDocuments();
       }
@@ -1342,14 +1492,17 @@ function App() {
     }
   }, [ipc, ragDocs, refreshRagDocuments]);
 
-  const handleRemoveRagDocument = useCallback(async (doc, index) => {
-    if (doc.indexed && doc.id && ipc.processInput) {
-      await ipc.processInput(`/doc clear ${doc.id}`);
-      await refreshRagDocuments();
-      return;
-    }
-    setRagDocs(prev => prev.filter((_, itemIndex) => itemIndex !== index));
-  }, [ipc, refreshRagDocuments]);
+  const handleRemoveRagDocument = useCallback(
+    async (doc, index) => {
+      if (doc.indexed && doc.id && ipc.processInput) {
+        await ipc.processInput(`/doc clear ${doc.id}`);
+        await refreshRagDocuments();
+        return;
+      }
+      setRagDocs((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+    },
+    [ipc, refreshRagDocuments],
+  );
 
   const handleInsertDocSearch = useCallback(() => {
     setChatInput('/doc search ');
@@ -1370,16 +1523,18 @@ function App() {
     }
   }, [ipc]);
 
-  const handleOpenExternal = useCallback((url) => {
-    if (url) {
-      ipc.openExternal?.(url);
-    }
-  }, [ipc]);
+  const handleOpenExternal = useCallback(
+    (url) => {
+      if (url) {
+        ipc.openExternal?.(url);
+      }
+    },
+    [ipc],
+  );
 
   const handleRefreshPreviewFrame = useCallback(() => {
-    setPreviewFrameKey(prev => prev + 1);
+    setPreviewFrameKey((prev) => prev + 1);
   }, []);
-
 
   return (
     <div style={styles.container}>
@@ -1397,10 +1552,7 @@ function App() {
         onClose={handleClose}
       />
 
-      <IpcDiagnosticBanner
-        diagnostic={ipcDiagnostic}
-        onDismiss={() => setIpcDiagnostic(null)}
-      />
+      <IpcDiagnosticBanner diagnostic={ipcDiagnostic} onDismiss={() => setIpcDiagnostic(null)} />
 
       <WorkbenchControls
         sidebarCollapsed={sidebarCollapsed}
@@ -1411,26 +1563,26 @@ function App() {
           setSummaryPanelVisible(true);
           setActiveInspectorTab('preview');
         }}
-        onToggleSidebar={() => setSidebarCollapsed(prev => !prev)}
+        onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
         onToggleTerminal={toggleTerminalPanel}
-        onToggleInspector={() => setSummaryPanelVisible(prev => !prev)}
+        onToggleInspector={() => setSummaryPanelVisible((prev) => !prev)}
         onClearMessages={runtime.clearMessages}
       />
 
       <div style={styles.mainContentWrapper}>
         <ActivityRail
-        activeTab={activeTab}
-        sidebarCollapsed={sidebarCollapsed}
-        onShowAgent={() => {
-          setActiveTab('agent');
-          setSidebarCollapsed(false);
-        }}
-        onShowTools={() => {
-          setActiveTab('tools');
-          setSidebarCollapsed(false);
-        }}
-        onToggleSettings={() => setShowManagement(prev => !prev)}
-      />
+          activeTab={activeTab}
+          sidebarCollapsed={sidebarCollapsed}
+          onShowAgent={() => {
+            setActiveTab('agent');
+            setSidebarCollapsed(false);
+          }}
+          onShowTools={() => {
+            setActiveTab('tools');
+            setSidebarCollapsed(false);
+          }}
+          onToggleSettings={() => setShowManagement((prev) => !prev)}
+        />
 
         {!sidebarCollapsed && (
           <SidebarPanel
@@ -1456,7 +1608,7 @@ function App() {
               status: projectTreeStatus,
               error: projectTreeError,
               onToggleDirectory: handleProjectDirectoryToggle,
-              onRefresh: handleProjectTreeRefresh
+              onRefresh: handleProjectTreeRefresh,
             }}
           />
         )}

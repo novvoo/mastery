@@ -358,7 +358,9 @@ export class CLIUIAdapter {
           theme.dim('│  ') +
             statusIcon +
             ' ' +
-            theme.white(`${task.name || task.id}${task.cycleLabel ? ` · ${task.cycleLabel}` : ''}`) +
+            theme.white(
+              `${task.name || task.id}${task.cycleLabel ? ` · ${task.cycleLabel}` : ''}`,
+            ) +
             theme.dim(' '.repeat(Math.max(0, 52 - (task.name || task.id || '').length)) + '│'),
         );
       });

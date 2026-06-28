@@ -54,6 +54,27 @@ describe('session-store (src/core)', () => {
     expect(updated2[0].messages.length).toBe(1);
   });
 
+  test('upsertAgentSession preserves createdAt when updating an existing session', () => {
+    const sessions = [
+      {
+        id: 's1',
+        createdAt: 100,
+        updatedAt: 150,
+        messages: [{ content: 'old' }],
+      },
+    ];
+
+    const updated = upsertAgentSession(sessions, {
+      id: 's1',
+      updatedAt: 300,
+      messages: [{ content: 'new' }],
+    });
+
+    expect(updated[0].createdAt).toBe(100);
+    expect(updated[0].updatedAt).toBe(300);
+    expect(updated[0].messages[0].content).toBe('new');
+  });
+
   test('upsertAgentSession respects MAX_AGENT_SESSIONS', () => {
     const sessions = Array.from({ length: MAX_AGENT_SESSIONS }, (_, i) => ({
       id: `s${i}`,

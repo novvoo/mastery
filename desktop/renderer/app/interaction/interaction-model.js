@@ -18,10 +18,12 @@ function hasModifier(event) {
 function normalizeHistory(history = []) {
   const seen = new Set();
   return history
-    .map(item => (typeof item === 'string' ? item : item?.input || item?.content || item?.title || ''))
-    .map(item => item.trim())
+    .map((item) =>
+      typeof item === 'string' ? item : item?.input || item?.content || item?.title || '',
+    )
+    .map((item) => item.trim())
     .filter(Boolean)
-    .filter(item => {
+    .filter((item) => {
       if (seen.has(item)) return false;
       seen.add(item);
       return true;
@@ -38,7 +40,8 @@ export function handleComposerKey(event, state, context = {}) {
   if (event.key === 'Enter' && hasModifier(event)) {
     const risk = assessPromptRisk(value);
     const requiresConfirmation = risk.level === 'high';
-    const isConfirmed = requiresConfirmation &&
+    const isConfirmed =
+      requiresConfirmation &&
       state.lastRiskConfirmValue === value &&
       now - (state.lastRiskConfirmAt || 0) <= DOUBLE_PRESS_WINDOW_MS;
 
@@ -76,19 +79,20 @@ export function handleComposerKey(event, state, context = {}) {
   }
 
   if (event.key === 'Escape' && value.trim()) {
-    const isSecondPress = state.lastEscapeAt > 0 && now - state.lastEscapeAt <= DOUBLE_PRESS_WINDOW_MS;
+    const isSecondPress =
+      state.lastEscapeAt > 0 && now - state.lastEscapeAt <= DOUBLE_PRESS_WINDOW_MS;
     if (isSecondPress) {
-    return {
-      state: {
-        ...nextState,
-        lastEscapeAt: 0,
-        lastRiskConfirmAt: 0,
-        lastRiskConfirmValue: '',
-        historyIndex: -1,
-        draftBeforeHistory: '',
-      },
-      action: 'clear',
-    };
+      return {
+        state: {
+          ...nextState,
+          lastEscapeAt: 0,
+          lastRiskConfirmAt: 0,
+          lastRiskConfirmValue: '',
+          historyIndex: -1,
+          draftBeforeHistory: '',
+        },
+        action: 'clear',
+      };
     }
     return {
       state: {
@@ -111,7 +115,8 @@ export function handleComposerKey(event, state, context = {}) {
   }
 
   if (event.key === 'ArrowUp' && !value.trim() && history.length > 0) {
-    const nextIndex = state.historyIndex < 0 ? 0 : Math.min(state.historyIndex + 1, history.length - 1);
+    const nextIndex =
+      state.historyIndex < 0 ? 0 : Math.min(state.historyIndex + 1, history.length - 1);
     return {
       state: {
         ...nextState,
@@ -136,6 +141,52 @@ export function handleComposerKey(event, state, context = {}) {
   }
 
   return { state: nextState, action: 'noop' };
+}
+
+export function getComposerSubmitTransition({
+  value,
+  status = 'idle',
+  clearInput = true,
+  keepWhenBusy = true,
+} = {}) {
+  const input = String(value || '').trim();
+  if (!input) {
+    return {
+      accepted: false,
+      input: '',
+      nextValue: String(value || ''),
+      restoreValue: String(value || ''),
+      focus: false,
+      showSuggestions: String(value || '')
+        .trimStart()
+        .startsWith('/'),
+    };
+  }
+
+  if (status === 'running') {
+    const nextValue = keepWhenBusy ? input : String(value || '');
+    return {
+      accepted: false,
+      input,
+      nextValue,
+      restoreValue: nextValue,
+      focus: keepWhenBusy,
+      showSuggestions: nextValue.trimStart().startsWith('/'),
+    };
+  }
+
+  return {
+    accepted: true,
+    input,
+    nextValue: clearInput ? '' : String(value || ''),
+    restoreValue: input,
+    focus: false,
+    showSuggestions: clearInput
+      ? false
+      : String(value || '')
+          .trimStart()
+          .startsWith('/'),
+  };
 }
 
 const HIGH_RISK_PATTERNS = [
@@ -170,9 +221,9 @@ export function assessPromptRisk(input = '') {
     };
   }
 
-  const highReasons = HIGH_RISK_PATTERNS
-    .filter(pattern => pattern.test(text))
-    .map(pattern => pattern.source);
+  const highReasons = HIGH_RISK_PATTERNS.filter((pattern) => pattern.test(text)).map(
+    (pattern) => pattern.source,
+  );
   if (highReasons.length > 0) {
     return {
       level: 'high',
@@ -181,9 +232,9 @@ export function assessPromptRisk(input = '') {
     };
   }
 
-  const mediumReasons = MEDIUM_RISK_PATTERNS
-    .filter(pattern => pattern.test(text))
-    .map(pattern => pattern.source);
+  const mediumReasons = MEDIUM_RISK_PATTERNS.filter((pattern) => pattern.test(text)).map(
+    (pattern) => pattern.source,
+  );
   if (mediumReasons.length > 0) {
     return {
       level: 'medium',
@@ -213,18 +264,27 @@ export function getShortcutHints({ hasHistory = false, status = 'idle' } = {}) {
 export function getComposerAssistText({ status, value, notice }) {
   if (notice?.text) return notice.text;
   if (status === 'running') return 'Agent is running. Use the stop button to interrupt safely.';
-  if (String(value || '').trimStart().startsWith('/')) return 'Command palette is open. Pick a command or keep typing.';
+  if (
+    String(value || '')
+      .trimStart()
+      .startsWith('/')
+  )
+    return 'Command palette is open. Pick a command or keep typing.';
   return 'Ctrl+Enter sends. Shift+Enter adds a line. Esc twice clears. Up recalls history.';
 }
 
 export function deriveInteractionStages({ status = 'idle', messages = [] } = {}) {
-  const hasUserInput = messages.some(message => message.type === 'user');
-  const hasThinking = messages.some(message => message.type === 'thinking' || message.type === 'assistant_stream');
-  const hasTool = messages.some(message => ['tool', 'tool_result', 'event'].includes(message.type));
-  const hasAnswer = messages.some(message => ['result', 'success'].includes(message.type));
+  const hasUserInput = messages.some((message) => message.type === 'user');
+  const hasThinking = messages.some(
+    (message) => message.type === 'thinking' || message.type === 'assistant_stream',
+  );
+  const hasTool = messages.some((message) =>
+    ['tool', 'tool_result', 'event'].includes(message.type),
+  );
+  const hasAnswer = messages.some((message) => ['result', 'success'].includes(message.type));
   const isRunning = status === 'running';
   const needsInput = status === 'needs_user_input';
-  const hasError = status === 'error' || messages.some(message => message.type === 'error');
+  const hasError = status === 'error' || messages.some((message) => message.type === 'error');
 
   return [
     {
@@ -248,22 +308,43 @@ export function deriveInteractionStages({ status = 'idle', messages = [] } = {})
     {
       key: 'answer',
       label: needsInput ? 'Input Needed' : hasError ? 'Review' : 'Answer',
-      state: needsInput ? 'attention' : hasError ? 'error' : hasAnswer ? 'done' : isRunning ? 'active' : 'idle',
-      detail: needsInput ? 'waiting for you' : hasError ? 'needs attention' : hasAnswer ? 'ready' : 'forming',
+      state: needsInput
+        ? 'attention'
+        : hasError
+          ? 'error'
+          : hasAnswer
+            ? 'done'
+            : isRunning
+              ? 'active'
+              : 'idle',
+      detail: needsInput
+        ? 'waiting for you'
+        : hasError
+          ? 'needs attention'
+          : hasAnswer
+            ? 'ready'
+            : 'forming',
     },
   ];
 }
 
 export function getToolActivitySummary(messages = []) {
-  const toolMessages = messages.filter(message => (
-    message.type === 'tool' ||
-    message.type === 'tool_result' ||
-    message.event?.startsWith?.('tool:') ||
-    message.activity?.toolName
-  ));
-  const running = toolMessages.filter(message => message.activity?.phase === 'running' || message.type === 'tool').length;
-  const completed = toolMessages.filter(message => message.activity?.phase === 'completed' || message.type === 'tool_result').length;
-  const errored = toolMessages.filter(message => message.type === 'error' && message.toolName).length;
+  const toolMessages = messages.filter(
+    (message) =>
+      message.type === 'tool' ||
+      message.type === 'tool_result' ||
+      message.event?.startsWith?.('tool:') ||
+      message.activity?.toolName,
+  );
+  const running = toolMessages.filter(
+    (message) => message.activity?.phase === 'running' || message.type === 'tool',
+  ).length;
+  const completed = toolMessages.filter(
+    (message) => message.activity?.phase === 'completed' || message.type === 'tool_result',
+  ).length;
+  const errored = toolMessages.filter(
+    (message) => message.type === 'error' && message.toolName,
+  ).length;
   const latest = toolMessages.at(-1);
   const latestTool = latest?.toolName || latest?.activity?.toolName || 'none';
 

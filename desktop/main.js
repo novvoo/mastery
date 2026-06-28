@@ -12,13 +12,69 @@ async function loadMainApp() {
 }
 
 class ElectronMainApp {
+  #args;
+  #impl = null;
+  #implPromise = null;
+
   constructor(...args) {
-    return loadMainApp().then(({ ElectronMainApp: MainApp }) => new MainApp(...args));
+    this.#args = args;
   }
 
   static async create(...args) {
     const { ElectronMainApp: MainApp } = await loadMainApp();
     return new MainApp(...args);
+  }
+
+  async #getImpl() {
+    if (!this.#implPromise) {
+      this.#implPromise = loadMainApp().then(({ ElectronMainApp: MainApp }) => {
+        this.#impl = new MainApp(...this.#args);
+        return this.#impl;
+      });
+    }
+    return this.#implPromise;
+  }
+
+  async initialize() {
+    const impl = await this.#getImpl();
+    return impl.initialize();
+  }
+
+  async attachModelProvider(modelProvider) {
+    const impl = await this.#getImpl();
+    return impl.attachModelProvider(modelProvider);
+  }
+
+  getDesktopCore() {
+    return this.#impl?.getDesktopCore?.() ?? null;
+  }
+
+  getIPCAdapter() {
+    return this.#impl?.getIPCAdapter?.() ?? null;
+  }
+
+  getMainWindow() {
+    return this.#impl?.getMainWindow?.() ?? null;
+  }
+
+  getState() {
+    return (
+      this.#impl?.getState?.() ?? {
+        desktopState: null,
+        ipcStats: null,
+        windowVisible: false,
+        windowCount: 0,
+        workingDirectory: this.#args[0]?.workingDirectory ?? null,
+      }
+    );
+  }
+
+  async dispose() {
+    if (!this.#impl && !this.#implPromise) {
+      return undefined;
+    }
+    const impl = await this.#getImpl();
+    return impl.dispose();
   }
 }
 

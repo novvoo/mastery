@@ -6,7 +6,8 @@ const STATE_FILENAME = 'session-state.json';
 
 export class SessionPersistence {
   constructor(workingDirectory, options = {}) {
-    this.filePath = options.filePath || join(workingDirectory || process.cwd(), STATE_DIRNAME, STATE_FILENAME);
+    this.filePath =
+      options.filePath || join(workingDirectory || process.cwd(), STATE_DIRNAME, STATE_FILENAME);
     this.maxMessages = options.maxMessages ?? 80;
     this.enabled = options.enabled !== false;
   }

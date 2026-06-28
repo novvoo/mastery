@@ -99,8 +99,8 @@ function isDebugThinkingEvent(msg) {
   const hasDebugPayload = Boolean(payload?.eventName || payload?.data);
   const hasThinkingText = Boolean(
     (typeof msg?.thinkingText === 'string' && msg.thinkingText.trim()) ||
-      (typeof payload?.text === 'string' && payload.text.trim()) ||
-      (typeof payload?.reasoning === 'string' && payload.reasoning.trim()),
+    (typeof payload?.text === 'string' && payload.text.trim()) ||
+    (typeof payload?.reasoning === 'string' && payload.reasoning.trim()),
   );
 
   return isThinkingMessage(msg) && hasDebugPayload && !hasThinkingText;

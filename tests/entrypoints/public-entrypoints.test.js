@@ -55,4 +55,32 @@ describe('public entrypoints', () => {
     expect(lowerStderr).not.toContain('error');
     expect(lowerStderr).not.toContain('trace');
   });
+
+  test('desktop main entrypoint exposes a synchronous lazy app facade', () => {
+    const result = spawnSync(
+      'node',
+      [
+        '--input-type=module',
+        '-e',
+        [
+          "const { ElectronMainApp } = await import('./desktop/main.js');",
+          "const app = new ElectronMainApp({ workingDirectory: '/tmp/project' });",
+          'console.log(app instanceof Promise, typeof app.initialize, app.getState().workingDirectory);',
+        ].join(' '),
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        timeout: 5000,
+        env: {
+          ...process.env,
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1',
+        },
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('false function /tmp/project');
+    expect(result.stderr.trim()).toBe('');
+  });
 });

@@ -34,8 +34,12 @@ export function ChatWorkspace({
     if (!value) {
       return;
     }
-    await onContinue?.(value);
     setContinuationInput('');
+    try {
+      await onContinue?.(value);
+    } catch {
+      setContinuationInput(value);
+    }
   };
   return (
     <div style={styles.chatArea}>
@@ -49,7 +53,13 @@ export function ChatWorkspace({
         </div>
       </div>
 
-      <div style={styles.messageContainer} role="log" aria-label={t('ui.root')} aria-live="polite" tabIndex={0}>
+      <div
+        style={styles.messageContainer}
+        role="log"
+        aria-label={t('ui.root')}
+        aria-live="polite"
+        tabIndex={0}
+      >
         <MessageLog
           messages={runtime.messages}
           status={runtime.status}
@@ -62,12 +72,14 @@ export function ChatWorkspace({
 
       <div style={styles.inputArea}>
         {needsUserInput && (
-          <div style={{
-            ...styles.userInputRequestPanel,
-            borderColor: 'var(--warning-color)',
-            borderWidth: '2px',
-            boxShadow: '0 2px 12px rgba(255, 152, 0, 0.15)',
-          }}>
+          <div
+            style={{
+              ...styles.userInputRequestPanel,
+              borderColor: 'var(--warning-color)',
+              borderWidth: '2px',
+              boxShadow: '0 2px 12px rgba(255, 152, 0, 0.15)',
+            }}
+          >
             <div style={styles.userInputRequestHeader}>
               <span style={{ fontWeight: 600, fontSize: '14px', color: 'var(--warning-color)' }}>
                 {t('chat.waiting_input')}
@@ -79,42 +91,50 @@ export function ChatWorkspace({
               </span>
             </div>
             {askInfo?.reason && (
-              <div style={{
-                fontSize: '12px',
-                color: 'var(--text-secondary)',
-                padding: '6px 0',
-                borderBottom: '1px solid var(--border-color)',
-                marginBottom: '8px',
-              }}>
+              <div
+                style={{
+                  fontSize: '12px',
+                  color: 'var(--text-secondary)',
+                  padding: '6px 0',
+                  borderBottom: '1px solid var(--border-color)',
+                  marginBottom: '8px',
+                }}
+              >
                 原因：{askInfo.reason}
               </div>
             )}
             {askInfo?.questions && askInfo.questions.length > 0 && (
-              <div style={{
-                fontSize: '13px',
-                color: 'var(--text-primary)',
-                marginBottom: '10px',
-                padding: '8px 12px',
-                background: 'var(--bg-secondary)',
-                borderRadius: '6px',
-              }}>
+              <div
+                style={{
+                  fontSize: '13px',
+                  color: 'var(--text-primary)',
+                  marginBottom: '10px',
+                  padding: '8px 12px',
+                  background: 'var(--bg-secondary)',
+                  borderRadius: '6px',
+                }}
+              >
                 {askInfo.questions.map((q, i) => (
                   <div key={i} style={{ padding: '2px 0' }}>
-                    <span style={{ color: 'var(--warning-color)', fontWeight: 600 }}>{i + 1}. </span>
+                    <span style={{ color: 'var(--warning-color)', fontWeight: 600 }}>
+                      {i + 1}.{' '}
+                    </span>
                     {q}
                   </div>
                 ))}
               </div>
             )}
             {askInfo?.suggestions && askInfo.suggestions.length > 0 && (
-              <div style={{
-                fontSize: '12px',
-                color: 'var(--text-tertiary)',
-                marginBottom: '10px',
-                padding: '6px 10px',
-                background: 'var(--bg-tertiary)',
-                borderRadius: '4px',
-              }}>
+              <div
+                style={{
+                  fontSize: '12px',
+                  color: 'var(--text-tertiary)',
+                  marginBottom: '10px',
+                  padding: '6px 10px',
+                  background: 'var(--bg-tertiary)',
+                  borderRadius: '4px',
+                }}
+              >
                 可选参考：{askInfo.suggestions.join(' / ')}
               </div>
             )}
@@ -129,15 +149,15 @@ export function ChatWorkspace({
                     handleContinue();
                   }
                 }}
-                placeholder={askInfo?.questions?.length
-                  ? '请逐一回答以上问题...'
-                  : t('chat.supplementary')}
+                placeholder={
+                  askInfo?.questions?.length ? '请逐一回答以上问题...' : t('chat.supplementary')
+                }
               />
               <button
                 type="button"
                 style={{
                   ...styles.userInputRequestButton,
-                  ...(!continuationInput.trim() ? styles.userInputRequestButtonDisabled : {})
+                  ...(!continuationInput.trim() ? styles.userInputRequestButtonDisabled : {}),
                 }}
                 onClick={handleContinue}
                 disabled={!continuationInput.trim()}
@@ -168,7 +188,7 @@ export function ChatWorkspace({
             ref={chatInputRef}
             style={{
               ...styles.inputTextarea,
-              ...(inputFocused ? styles.inputTextareaFocused : {})
+              ...(inputFocused ? styles.inputTextareaFocused : {}),
             }}
             value={chatInput}
             onChange={(event) => onChatInputChange(event.target.value)}
@@ -186,7 +206,7 @@ export function ChatWorkspace({
                 ? { backgroundColor: 'var(--warning-color)', color: 'var(--text-on-primary)' }
                 : !chatInput.trim()
                   ? styles.sendButtonDisabled
-                  : {})
+                  : {}),
             }}
             onClick={runtime.status === 'running' ? () => runtime.stop() : onSendMessage}
             disabled={runtime.status !== 'running' && !chatInput.trim()}

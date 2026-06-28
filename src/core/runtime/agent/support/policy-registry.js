@@ -30,7 +30,8 @@ export const ToolClass = {
 
 const POLICIES = {
   [TaskIntent.PROJECT_INFO]: {
-    prompt: 'Answer from repository evidence. Read necessary files (README, package.json, docs) to provide accurate information. Do not modify files.',
+    prompt:
+      'Answer from repository evidence. Read necessary files (README, package.json, docs) to provide accurate information. Do not modify files.',
     allowedToolClasses: [ToolClass.READ, ToolClass.SEARCH],
     forbiddenToolClasses: [ToolClass.EDIT, ToolClass.MUTATION],
     plan: false,
@@ -40,7 +41,8 @@ const POLICIES = {
   },
 
   [TaskIntent.HOW_TO_RUN]: {
-    prompt: 'Answer how to run the project from configuration evidence (package.json scripts, README, Makefile, docker-compose, etc.). Do not execute commands unless user explicitly asks to run.',
+    prompt:
+      'Answer how to run the project from configuration evidence (package.json scripts, README, Makefile, docker-compose, etc.). Do not execute commands unless user explicitly asks to run.',
     allowedToolClasses: [ToolClass.READ, ToolClass.SEARCH, ToolClass.SHELL_READONLY],
     forbiddenToolClasses: [ToolClass.EDIT, ToolClass.MUTATION],
     plan: false,
@@ -50,7 +52,8 @@ const POLICIES = {
   },
 
   [TaskIntent.READ_ONLY_ANALYSIS]: {
-    prompt: 'Inspect and analyze code/repository. Provide insights, architecture understanding, or code review. Do not modify unless explicitly asked.',
+    prompt:
+      'Inspect and analyze code/repository. Provide insights, architecture understanding, or code review. Do not modify unless explicitly asked.',
     allowedToolClasses: [ToolClass.READ, ToolClass.SEARCH, ToolClass.SHELL_READONLY],
     forbiddenToolClasses: [ToolClass.EDIT, ToolClass.MUTATION],
     plan: 'optional', // 复杂分析任务可能需要计划
@@ -60,7 +63,8 @@ const POLICIES = {
   },
 
   [TaskIntent.DIAGNOSIS]: {
-    prompt: 'Find root cause with evidence. Read logs, diagnostics, and relevant code. Do not modify unless explicitly asked to fix.',
+    prompt:
+      'Find root cause with evidence. Read logs, diagnostics, and relevant code. Do not modify unless explicitly asked to fix.',
     allowedToolClasses: [ToolClass.READ, ToolClass.SEARCH, ToolClass.SHELL_READONLY],
     forbiddenToolClasses: [ToolClass.EDIT, ToolClass.MUTATION],
     plan: 'optional', // 复杂诊断任务可能需要计划
@@ -70,8 +74,15 @@ const POLICIES = {
   },
 
   [TaskIntent.CODE_MODIFICATION]: {
-    prompt: 'Follow the methodology flow: Inspect → Plan → Implement → Verify. Make focused code changes. Always verify the fix with tests or runtime evidence before finishing.',
-    allowedToolClasses: [ToolClass.READ, ToolClass.SEARCH, ToolClass.EDIT, ToolClass.SHELL, ToolClass.GIT],
+    prompt:
+      'Follow the methodology flow: Inspect → Plan → Implement → Verify. Make focused code changes. Always verify the fix with tests or runtime evidence before finishing.',
+    allowedToolClasses: [
+      ToolClass.READ,
+      ToolClass.SEARCH,
+      ToolClass.EDIT,
+      ToolClass.SHELL,
+      ToolClass.GIT,
+    ],
     forbiddenToolClasses: [],
     plan: true,
     methodology: true,
@@ -80,8 +91,15 @@ const POLICIES = {
   },
 
   [TaskIntent.FEATURE_IMPLEMENTATION]: {
-    prompt: 'Follow the methodology flow: Inspect → Plan → Implement → Verify. Create or modify code to implement features. Always verify with tests or runtime evidence before finishing.',
-    allowedToolClasses: [ToolClass.READ, ToolClass.SEARCH, ToolClass.EDIT, ToolClass.SHELL, ToolClass.GIT],
+    prompt:
+      'Follow the methodology flow: Inspect → Plan → Implement → Verify. Create or modify code to implement features. Always verify with tests or runtime evidence before finishing.',
+    allowedToolClasses: [
+      ToolClass.READ,
+      ToolClass.SEARCH,
+      ToolClass.EDIT,
+      ToolClass.SHELL,
+      ToolClass.GIT,
+    ],
     forbiddenToolClasses: [],
     plan: true,
     methodology: true,
@@ -90,7 +108,8 @@ const POLICIES = {
   },
 
   [TaskIntent.TEST_OR_VERIFY]: {
-    prompt: 'Run tests, builds, or verification commands. Report results accurately. Do not modify code unless explicitly asked.',
+    prompt:
+      'Run tests, builds, or verification commands. Report results accurately. Do not modify code unless explicitly asked.',
     allowedToolClasses: [ToolClass.READ, ToolClass.SEARCH, ToolClass.SHELL],
     forbiddenToolClasses: [ToolClass.EDIT, ToolClass.MUTATION],
     plan: false,
@@ -112,7 +131,14 @@ const POLICIES = {
   [TaskIntent.GENERAL_CHAT]: {
     prompt: 'Respond to general conversation. No file operations required.',
     allowedToolClasses: [],
-    forbiddenToolClasses: [ToolClass.READ, ToolClass.SEARCH, ToolClass.EDIT, ToolClass.SHELL, ToolClass.GIT, ToolClass.MUTATION],
+    forbiddenToolClasses: [
+      ToolClass.READ,
+      ToolClass.SEARCH,
+      ToolClass.EDIT,
+      ToolClass.SHELL,
+      ToolClass.GIT,
+      ToolClass.MUTATION,
+    ],
     plan: false,
     methodology: false,
     forceAction: false,

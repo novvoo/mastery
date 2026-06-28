@@ -123,6 +123,11 @@ function detectNodeCommand(projectRoot, explicitCommand, port) {
     return null;
   }
 
+  const directScriptCommand = createDirectScriptCommand(scripts, scriptName, port);
+  if (directScriptCommand) {
+    return directScriptCommand;
+  }
+
   const manager = choosePackageManager(projectRoot);
   const passthroughArgs =
     ['dev', 'preview', 'serve'].includes(scriptName) && !hasExplicitPort(scripts[scriptName])
@@ -139,6 +144,22 @@ function detectNodeCommand(projectRoot, explicitCommand, port) {
     return `yarn ${scriptName}${passthroughArgs}`;
   }
   return `npm run ${scriptName}${passthroughArgs}`;
+}
+
+function createDirectScriptCommand(scripts = {}, scriptName, port) {
+  const command = scripts[scriptName];
+  if (!command || !isDirectNodeScript(command)) {
+    return null;
+  }
+  const passthroughArgs =
+    ['dev', 'preview', 'serve'].includes(scriptName) && !hasExplicitPort(command)
+      ? ` --host ${PREVIEW_HOST} --port ${port}`
+      : '';
+  return `${command}${passthroughArgs}`;
+}
+
+function isDirectNodeScript(command = '') {
+  return /^(?:node|node\.exe|bun|bun\.exe)\s+/i.test(String(command).trim());
 }
 
 function createPackageManagerCommand(projectRoot, action) {
@@ -321,7 +342,14 @@ function findAnyStaticRoot(projectRoot) {
  */
 function isCommandAvailable(command) {
   try {
-    const probe = process.platform === 'win32' ? `where ${command}` : `command -v ${command}`;
+    const names =
+      process.platform === 'win32' && !/\.(?:exe|cmd|bat)$/i.test(command)
+        ? [command, `${command}.exe`, `${command}.cmd`, `${command}.bat`]
+        : [command];
+    const probe =
+      process.platform === 'win32'
+        ? names.map((name) => `where ${name}`).join(' || ')
+        : `command -v ${command}`;
     const out = execSync(probe, { stdio: ['ignore', 'pipe', 'pipe'], timeout: 2000 });
     return out && out.toString().trim().length > 0;
   } catch {
@@ -477,7 +505,8 @@ async function preparePackagePreview(projectRoot, { scripts, explicitCommand, pi
   const hasRunnableServer = explicitCommand || findWebPreviewScriptName(scripts);
   const buildScriptName = findBuildScriptName(scripts);
   if (!hasRunnableServer && buildScriptName) {
-    if (!eco.node || !eco.manager) {
+    const directBuildCommand = createDirectScriptCommand(scripts, buildScriptName);
+    if (!eco.node || (!eco.manager && !directBuildCommand)) {
       result.buildOk = false;
       result.note =
         (result.note ? result.note + ' ' : '') +
@@ -492,7 +521,8 @@ async function preparePackagePreview(projectRoot, { scripts, explicitCommand, pi
         output: `Package manager '${eco.managerName}' is not available. Skipping build.`,
       });
     } else {
-      const command = createPackageManagerCommand(projectRoot, buildScriptName);
+      const command =
+        directBuildCommand || createPackageManagerCommand(projectRoot, buildScriptName);
       try {
         const stage = await runCommandStage({
           projectRoot,
@@ -797,12 +827,12 @@ async function startNodePreview({ workingDirectory, target, command, port }) {
   }
 
   const eco = nodeEcosystemAvailable(projectRoot);
-  const tryExternally = !command || (eco.node && eco.manager);
+  const nodeCommand = detectNodeCommand(projectRoot, command, previewPort);
+  const tryExternally = Boolean(command) || Boolean(nodeCommand) || (eco.node && eco.manager);
 
   // --- Phase 2: try to start a live Node dev server (when tools are available
   //     and the user didn't force a static path).
   if (tryExternally && !nodeServerError) {
-    const nodeCommand = detectNodeCommand(projectRoot, command, previewPort);
     if (nodeCommand) {
       try {
         const shellCommand = getShellCommand(nodeCommand);
