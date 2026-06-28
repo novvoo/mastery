@@ -156,6 +156,10 @@ const PLAN_ORCHESTRATION_TOOLS = ['change_plan'];
 const PLAN_TASK_CONTEXT_TOOLS = [
   'read_file',
   'list_dir',
+  'write_file',
+  'edit_file',
+  'shell',
+  'setup',
   'search',
   'glob',
   'semantic_search',
