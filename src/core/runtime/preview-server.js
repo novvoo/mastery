@@ -560,9 +560,12 @@ function getShellCommand(command) {
       args: ['/d', '/s', '/c', command],
     };
   }
+  const executable = process.env.SHELL || '/bin/sh';
+  const shellName = basename(executable).toLowerCase();
+  const args = ['sh', 'dash'].includes(shellName) ? ['-c', command] : ['-lc', command];
   return {
-    executable: process.env.SHELL || '/bin/sh',
-    args: ['-lc', command],
+    executable,
+    args,
   };
 }
 

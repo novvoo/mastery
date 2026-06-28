@@ -80,6 +80,7 @@ import {
   FORCE_ACTION_GRACE_TURNS,
 } from '../../agent-constants.js';
 import { getToolEffect, isMeaningfulProgress, ToolEffect } from './support/tool-semantics.js';
+import { analyzeHashlinePatchResult } from './support/hashline-plan-policy.js';
 import { loadRuntimeEnv } from '../../runtime-config.js';
 import { createConfiguredModelProvider } from '../../../cli/model-provider-factory.js';
 
@@ -2899,36 +2900,45 @@ export class AgentEngine {
         : error.message || JSON.stringify(error)
       : '';
 
-    if (
-      resultText.includes('rollback') ||
-      resultText.includes('ROLLBACK') ||
-      resultText.includes('recovery failed') ||
-      errorText.includes('rollback') ||
-      errorText.includes('recovery failed')
-    ) {
-      conflictType = 'recovery_failed';
-    } else if (
-      resultText.includes('tag mismatch') ||
-      resultText.includes('TAG_MISMATCH') ||
-      errorText.includes('tag mismatch')
-    ) {
-      conflictType = 'tag_mismatch';
-      recovered = resultText.includes('recovered') || resultText.includes('retry succeeded');
-    } else if (
-      resultText.includes('patch rejected') ||
-      resultText.includes('PATCH_REJECTED') ||
-      errorText.includes('patch rejected')
-    ) {
-      conflictType = 'patch_rejected';
-      recovered = resultText.includes('recovered') || resultText.includes('retry succeeded');
-    } else if (
-      resultText.includes('diagnostics') &&
-      (resultText.includes('new error') ||
-        resultText.includes('新错误') ||
-        resultText.includes('introduced'))
-    ) {
-      conflictType = 'diag_new_errors';
-      recovered = resultText.includes('auto-repaired') || resultText.includes('自动修复');
+    const hashline = analyzeHashlinePatchResult(toolName, execResult?.args || {}, result, error);
+    if (hashline.isHashline) {
+      conflictType = hashline.conflictType;
+      recovered = hashline.recovered;
+      affectedFile = hashline.affectedFiles[0] || '';
+    }
+
+    if (!conflictType) {
+      if (
+        resultText.includes('rollback') ||
+        resultText.includes('ROLLBACK') ||
+        resultText.includes('recovery failed') ||
+        errorText.includes('rollback') ||
+        errorText.includes('recovery failed')
+      ) {
+        conflictType = 'recovery_failed';
+      } else if (
+        resultText.includes('tag mismatch') ||
+        resultText.includes('TAG_MISMATCH') ||
+        errorText.includes('tag mismatch')
+      ) {
+        conflictType = 'tag_mismatch';
+        recovered = resultText.includes('recovered') || resultText.includes('retry succeeded');
+      } else if (
+        resultText.includes('patch rejected') ||
+        resultText.includes('PATCH_REJECTED') ||
+        errorText.includes('patch rejected')
+      ) {
+        conflictType = 'patch_rejected';
+        recovered = resultText.includes('recovered') || resultText.includes('retry succeeded');
+      } else if (
+        resultText.includes('diagnostics') &&
+        (resultText.includes('new error') ||
+          resultText.includes('新错误') ||
+          resultText.includes('introduced'))
+      ) {
+        conflictType = 'diag_new_errors';
+        recovered = resultText.includes('auto-repaired') || resultText.includes('自动修复');
+      }
     }
 
     if (!conflictType) return; // 无冲突信号
@@ -2937,7 +2947,7 @@ export class AgentEngine {
     const fileMatch = resultText.match(
       /["'`]?([\w.\-/]+\.(?:js|ts|tsx|jsx|json|css|html|py|md))["'`]?/,
     );
-    affectedFile = fileMatch ? fileMatch[1] : '';
+    affectedFile = affectedFile || (fileMatch ? fileMatch[1] : '');
 
     // 记录到反馈循环
     this.#feedbackLoop?.recordConflict?.(conflictType, recovered, repairTimeMs, affectedFile);
@@ -2945,7 +2955,20 @@ export class AgentEngine {
     // 记录到当前计划任务
     this.#executionPlanManager.recordConflictSignal?.(toolName, conflictType, recovered);
 
+    const planAlreadyOwnsHashlineRepair = Array.from(
+      this.#executionPlanManager.plan?.tasks?.values?.() || [],
+    ).some(
+      (task) =>
+        ['pending', 'running', 'ready', 'blocked'].includes(task.status) &&
+        task.metadata?.source === 'hashline-repair',
+    );
+
     // 如果冲突未恢复，触发动态重规划
+    // apply_hashline_patch 失败时，ExecutionPlanManager 会优先插入可恢复任务链；
+    // 这里保留旧的反馈循环作为兜底，避免重复插入两套修复任务。
+    if (planAlreadyOwnsHashlineRepair) {
+      return;
+    }
     if (!recovered) {
       const replanHints = this.#feedbackLoop?.generateReplanHints?.(conflictType);
       if (replanHints) {

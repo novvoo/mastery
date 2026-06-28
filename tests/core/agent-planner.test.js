@@ -43,11 +43,11 @@ describe('AgentPlanner', () => {
     expect(plan).toBeInstanceOf(ExecutionPlan);
     expect(planner.activePlan).toBe(plan);
 
-    // Should have 5 tasks (no semantic_risk_review)
     const taskIds = Array.from(plan.tasks.keys());
     expect(taskIds).toEqual([
       'inspect_workspace',
       'profile_project',
+      'tdd_reproduce',
       'plan_solution',
       'implement_changes',
       'inspect_changes',
@@ -145,6 +145,7 @@ describe('AgentPlanner', () => {
 
     planner.advance('list_dir', { path: 'src' }, 'auth.js');
     planner.advance('project_profile', { task: 'auth fix' }, 'profiled project');
+    planner.advance('test_strategy', {}, 'targeted auth permission regression');
     planner.advance('security_review', { surface: 'auth token' }, 'reviewed auth surface');
     planner.advance('write_file', { path: 'auth.js' }, 'success: written');
     planner.advance('security_review', { surface: 'auth token' }, 'reviewed changed auth surface');
@@ -312,11 +313,15 @@ describe('AgentPlanner', () => {
     planner.advance('project_profile', { task: 'edit app.js' }, 'project profile output');
     expect(plan.getTask('profile_project').status).toBe(TaskStatus.COMPLETED);
 
-    // Phase 3: plan_solution
+    // Phase 3: tdd_reproduce
+    planner.advance('test_strategy', {}, 'targeted check');
+    expect(plan.getTask('tdd_reproduce').status).toBe(TaskStatus.COMPLETED);
+
+    // Phase 4: plan_solution
     planner.advance('brainstorm', {}, 'some plan output');
     expect(plan.getTask('plan_solution').status).toBe(TaskStatus.COMPLETED);
 
-    // Phase 4: implement_changes
+    // Phase 5: implement_changes
     planner.advance('write_file', { path: 'app.js' }, 'success: written');
     // implement_changes may still be running if requiredMutationPaths not met
     // With no file paths in input, it completes
@@ -330,6 +335,7 @@ describe('AgentPlanner', () => {
     // Simulate tool calls that complete each phase
     planner.advance('list_dir', { path: '/src' }, 'file1.js');
     planner.advance('read_file', { path: 'package.json' }, '{"scripts":{"test":"bun test"}}');
+    planner.advance('test_strategy', {}, 'targeted check');
     planner.advance('brainstorm', {}, 'plan output');
     planner.advance('write_file', { path: 'app.js' }, 'success: written');
     planner.advance('read_file', { path: 'app.js' }, 'file content');

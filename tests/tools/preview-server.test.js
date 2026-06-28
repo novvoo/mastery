@@ -97,6 +97,51 @@ describe('preview server', () => {
     }
   });
 
+  test('starts a Node preview command when SHELL is unset', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'preview-node-no-shell-'));
+    const previousShell = process.env.SHELL;
+    try {
+      delete process.env.SHELL;
+      writeFileSync(
+        join(root, 'server.js'),
+        `
+        import http from 'http';
+        const host = process.env.HOST || '127.0.0.1';
+        const port = Number(process.env.PORT);
+        http.createServer((req, res) => {
+          res.end('Node Preview Without SHELL OK');
+        }).listen(port, host);
+      `,
+      );
+      writeFileSync(
+        join(root, 'package.json'),
+        JSON.stringify({
+          type: 'module',
+          scripts: { dev: 'node server.js' },
+        }),
+      );
+
+      const preview = await startPreview({
+        workingDirectory: root,
+        target: '.',
+        kind: 'node',
+        command: 'node server.js',
+      });
+
+      expect(preview.success).toBe(true);
+      expect(preview.mode).toBe('node');
+      const text = await fetch(preview.url).then((response) => response.text());
+      expect(text).toBe('Node Preview Without SHELL OK');
+    } finally {
+      if (previousShell === undefined) {
+        delete process.env.SHELL;
+      } else {
+        process.env.SHELL = previousShell;
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('does not pass preview host and port flags to compile-only dev scripts', async () => {
     const root = mkdtempSync(join(tmpdir(), 'preview-tsc-only-'));
     try {

@@ -13,11 +13,17 @@
 import { ExecutionPlan, TaskStatus, GraphPlanner } from '../../../planner/graph-planner.js';
 import {
   isMutation as isSemanticsMutation,
+  isStrictMutation as isSemanticsStrictMutation,
   isInspection as isSemanticsInspection,
 } from './support/tool-semantics.js';
 import { shouldEnablePlan } from './support/task-profile.js';
 import { PlanType, selectPlanType } from './support/plan-types.js';
-import { HASHLINE_PLAN_COORDINATION_GUIDANCE } from './support/hashline-plan-policy.js';
+import {
+  HASHLINE_PLAN_COORDINATION_GUIDANCE,
+  analyzeHashlinePatchResult,
+  extractHashlinePatchPaths,
+  isHashlinePatchTool,
+} from './support/hashline-plan-policy.js';
 
 const CANONICAL_SINGLETON_TASK_IDS = new Set([
   'inspect_workspace',
@@ -84,6 +90,10 @@ export function isMutationTool(toolName, args) {
   return isSemanticsMutation(toolName, args);
 }
 
+export function isStrictMutationTool(toolName, args) {
+  return isSemanticsStrictMutation(toolName, args);
+}
+
 export function isChangeInspectionTool(toolName, args) {
   if (
     [
@@ -136,6 +146,25 @@ export function isVerificationTool(toolName, args) {
   return false;
 }
 
+export function isTddEvidenceTool(toolName, args, result = null) {
+  if (['tdd', 'test_strategy'].includes(toolName)) {
+    return true;
+  }
+  if (toolName === 'shell') {
+    const command = String(args?.command || args?.input || args?.text || '').toLowerCase();
+    return /\b(test|jest|vitest|pytest|bun\s+test|npm\s+(run\s+)?test|pnpm\s+test|yarn\s+test|go\s+test|cargo\s+test)\b/.test(
+      command,
+    );
+  }
+  if (['read_file', 'glob', 'search'].includes(toolName)) {
+    const text = String(
+      args?.path || args?.pattern || args?.query || args?.glob || result || '',
+    ).toLowerCase();
+    return /\b(test|tests|spec|__tests__|fixture|fixtures)\b/.test(text);
+  }
+  return false;
+}
+
 export function isProjectProfileTool(toolName, args, result = null) {
   if (toolName === 'project_profile') {
     return true;
@@ -182,12 +211,15 @@ export function isProjectProfileTool(toolName, args, result = null) {
 }
 
 export function isSemanticRiskReviewTool(toolName, args, profile) {
-  if (!profile?.requiresSemanticRiskReview) {
+  if (!profile?.requiresSemanticRiskReview && profile?.planType !== PlanType.SECURITY) {
     return false;
   }
   const focusText = String(
     args?.focus_areas ||
       args?.criteria ||
+      args?.surface ||
+      args?.area ||
+      args?.target ||
       args?.claim ||
       args?.evidence ||
       args?.command ||
@@ -199,7 +231,10 @@ export function isSemanticRiskReviewTool(toolName, args, profile) {
     /semantic|api|unit|timing|time|fps|frame|state|behavior|behaviour|invariant|boundary|语义|单位|时间|速度|状态|行为|边界/.test(
       focusText,
     );
-  if (toolName === 'review' || toolName === 'security_review') {
+  if (toolName === 'security_review') {
+    return true;
+  }
+  if (toolName === 'review') {
     return mentionsSemanticReview || !focusText;
   }
   if (toolName === 'verify') {
@@ -242,6 +277,10 @@ export function isSuccessfulToolResult(result) {
 
   const text = typeof result === 'string' ? result : JSON.stringify(result ?? '');
   if (!text.trim()) {
+    return false;
+  }
+  const hashline = analyzeHashlinePatchResult('apply_hashline_patch', {}, result);
+  if (hashline.isHashline && hashline.ok === false) {
     return false;
   }
   return !/(^(Error|Command failed|BLOCKED):|\b(exit\s*code|status)\s*[:=]?\s*[1-9]\d*\b|\b(fail|failed|failing|failures?|tests?\s+failed|errorCount)\b)/i.test(
@@ -408,6 +447,7 @@ export class ExecutionPlanManager {
     }
 
     this.#ensureProjectProfileTask(plan, planType, taskProfile);
+    this.#ensureTddGate(plan, planType, taskProfile);
 
     // 语义风险审查（两种模式通用）
     if (
@@ -441,6 +481,7 @@ export class ExecutionPlanManager {
       }
     }
 
+    this.#normalizeTaskExecutionConstraints(plan);
     this.#enforcePhaseBarriers(plan);
 
     plan.status = TaskStatus.RUNNING;
@@ -963,6 +1004,228 @@ export class ExecutionPlanManager {
     );
   }
 
+  #ensureTddGate(plan, planType, taskProfile) {
+    if (!this.#shouldRequireTddGate(planType, taskProfile) || plan.getTask('tdd_reproduce')) {
+      return;
+    }
+
+    const implementationTasks = Array.from(plan.tasks.values()).filter(
+      (task) => task.phase === ExecutionPlanManager.PHASE.IMPLEMENTATION,
+    );
+    if (implementationTasks.length === 0) {
+      return;
+    }
+
+    const anchor =
+      plan.getTask('profile_project') ||
+      plan.getTask('plan_solution') ||
+      plan.getTask('inspect_workspace') ||
+      Array.from(plan.tasks.values()).find(
+        (task) => task.phase === ExecutionPlanManager.PHASE.PLANNING,
+      );
+    const anchorDeps = anchor ? [anchor.id] : [];
+
+    plan.addTask({
+      id: 'tdd_reproduce',
+      name: 'Reproduce or define failing check',
+      description:
+        'Before editing, identify the narrowest failing test/check or define the test strategy that will prove the fix. A failing targeted test is valid evidence here.',
+      dependencies: anchorDeps,
+      phase: ExecutionPlanManager.PHASE.PLANNING,
+      allowedTools: ['tdd', 'test_strategy', 'shell', 'read_file', 'glob', 'search'],
+      completionPredicate: ({ toolName, args, result }) =>
+        isTddEvidenceTool(toolName, args, result),
+      metadata: {
+        source: 'methodology-tdd-gate',
+        expectedFailureEvidence: true,
+      },
+    });
+
+    for (const task of implementationTasks) {
+      task.dependencies.add('tdd_reproduce');
+    }
+    if (anchor?.id) {
+      this.#reorderTasks(plan, {
+        after: anchor.id,
+        ids: ['tdd_reproduce'],
+      });
+    }
+  }
+
+  #normalizeTaskExecutionConstraints(plan) {
+    for (const task of plan.tasks.values()) {
+      if (task.id === 'semantic_risk_review') {
+        task.phase = task.phase || ExecutionPlanManager.PHASE.INSPECTION;
+        task.allowedTools = [
+          'ask_user',
+          'review',
+          'verify',
+          'shell',
+          'security_review',
+          'risk_check',
+          'data_contract_check',
+          'ui_acceptance',
+        ];
+        task.completionPredicate = ({ toolName, args }) =>
+          isSemanticRiskReviewTool(toolName, args, this.#profile);
+        continue;
+      }
+      if (task.id === 'profile_project' || task.id === 'tdd_reproduce') {
+        if (Array.isArray(task.allowedTools) && !task.allowedTools.includes('ask_user')) {
+          task.allowedTools.push('ask_user');
+        }
+        continue;
+      }
+
+      if (task.phase === ExecutionPlanManager.PHASE.EXPLORATION) {
+        if (!task.allowedTools?.length) {
+          task.allowedTools = [
+            'ask_user',
+            'list_dir',
+            'read_file',
+            'glob',
+            'search',
+            'semantic_search',
+            'search_codebase',
+            'grep_search',
+            'file_search',
+            'tree',
+            'stat_file',
+            'shell',
+          ];
+        }
+        if (!task.completionPredicate) {
+          task.completionPredicate = ({ toolName, args }) =>
+            isWorkspaceInspectionTool(toolName, args);
+        }
+      } else if (task.phase === ExecutionPlanManager.PHASE.PLANNING) {
+        if (!task.allowedTools?.length) {
+          task.allowedTools = [
+            'ask_user',
+            'brainstorm',
+            'grill',
+            'zoom_out',
+            'architect',
+            'impact_map',
+            'risk_check',
+            'test_strategy',
+            'migration_plan',
+            'security_review',
+            'data_contract_check',
+            'ui_acceptance',
+            'project_profile',
+          ];
+        }
+        if (!task.completionPredicate) {
+          task.completionPredicate = ({ toolName }) => isPlanningTool(toolName);
+        }
+      } else if (task.phase === ExecutionPlanManager.PHASE.IMPLEMENTATION) {
+        if (!task.allowedTools?.length) {
+          task.allowedTools = [
+            'ask_user',
+            'write_file',
+            'edit_file',
+            'delete_file',
+            'rename_file',
+            'mkdir',
+            'apply_hashline_patch',
+            'lsp_rename',
+            'lsp_workspace_edit',
+            'lsp_code_action',
+            'git_apply_patch',
+            'shell',
+          ];
+        }
+        if (!task.completionPredicate) {
+          task.completionPredicate = ({ toolName, args, result }) =>
+            isStrictMutationTool(toolName, args) &&
+            isSuccessfulToolResult(result) &&
+            (!isHashlinePatchTool(toolName) ||
+              analyzeHashlinePatchResult(toolName, args, result).ok === true);
+        }
+      } else if (task.phase === ExecutionPlanManager.PHASE.INSPECTION) {
+        if (!task.allowedTools?.length) {
+          task.allowedTools = [
+            'ask_user',
+            'read_file',
+            'list_dir',
+            'glob',
+            'search',
+            'shell',
+            'review',
+            'risk_check',
+            'impact_map',
+            'project_profile',
+            'security_review',
+            'data_contract_check',
+            'ui_acceptance',
+          ];
+        }
+        if (!task.completionPredicate) {
+          task.completionPredicate = ({ toolName, args }) => isChangeInspectionTool(toolName, args);
+        }
+      } else if (task.phase === ExecutionPlanManager.PHASE.VERIFICATION) {
+        if (!task.allowedTools?.length) {
+          task.allowedTools = [
+            'ask_user',
+            'shell',
+            'verify',
+            'review',
+            'preview',
+            'project_profile',
+            'test_strategy',
+            'release_checklist',
+            'security_review',
+            'data_contract_check',
+            'ui_acceptance',
+            'risk_check',
+          ];
+        }
+        if (!task.completionPredicate) {
+          task.completionPredicate = ({ toolName, args }) => isVerificationTool(toolName, args);
+        }
+      }
+      if (Array.isArray(task.allowedTools) && !task.allowedTools.includes('ask_user')) {
+        task.allowedTools.push('ask_user');
+      }
+    }
+  }
+
+  #shouldRequireTddGate(planType, taskProfile) {
+    if (
+      [
+        PlanType.QUICK,
+        PlanType.RESEARCH,
+        PlanType.ANALYSIS,
+        PlanType.CODE_REVIEW,
+        PlanType.DOCUMENTATION,
+        PlanType.VERIFICATION,
+      ].includes(planType)
+    ) {
+      return false;
+    }
+    return Boolean(
+      taskProfile?.isBugTask ||
+      taskProfile?.isTestingTask ||
+      taskProfile?.isCodingTask ||
+      taskProfile?.isModificationTask ||
+      taskProfile?.allowsMutation ||
+      taskProfile?.mode === 'mutate' ||
+      taskProfile?.requiresAutomaticPlanning ||
+      [
+        PlanType.BUG_FIX,
+        PlanType.TESTING,
+        PlanType.REFACTOR,
+        PlanType.MIGRATION,
+        PlanType.SETUP,
+        PlanType.RELEASE,
+        PlanType.SECURITY,
+        PlanType.DATA,
+        PlanType.UI,
+      ].includes(planType),
+    );
+  }
+
   get plan() {
     return this.#plan;
   }
@@ -1002,6 +1265,80 @@ export class ExecutionPlanManager {
     if (!preserveExternalPlan) {
       this.#useExternalPlan = false;
     }
+  }
+
+  exportSnapshot() {
+    if (!this.#plan) {
+      return null;
+    }
+    return {
+      version: 1,
+      userInput: this.#userInput,
+      profile: this.#profile,
+      useExternalPlan: this.#useExternalPlan,
+      useLLMDecomposition: this.#useLLMDecomposition,
+      verificationRepairCount: this.#verificationRepairCount,
+      requiredMutationPaths: Array.from(this.#requiredMutationPaths),
+      completedMutationPaths: Array.from(this.#completedMutationPaths),
+      mutationCallCount: this.#mutationCallCount,
+      plan: {
+        ...this.#plan.toJSON(),
+        tasks: this.#plan.toJSON().tasks.map((task) => ({
+          ...task,
+          toolCallsHistory: this.#plan.getTask(task.id)?.toolCallsHistory || [],
+        })),
+      },
+    };
+  }
+
+  restoreSnapshot(snapshot) {
+    if (!snapshot?.plan?.tasks || !Array.isArray(snapshot.plan.tasks)) {
+      return false;
+    }
+
+    const plan = ExecutionPlan.fromJSON(snapshot.plan);
+    plan.status = snapshot.plan.status || TaskStatus.RUNNING;
+    plan.createdAt = snapshot.plan.createdAt || plan.createdAt;
+    plan.startedAt = snapshot.plan.startedAt || null;
+    plan.completedAt = snapshot.plan.completedAt || null;
+
+    for (const taskData of snapshot.plan.tasks) {
+      const task = plan.getTask(taskData.id);
+      if (!task) {
+        continue;
+      }
+      task.status = taskData.status || TaskStatus.PENDING;
+      task.startedAt = taskData.startedAt || null;
+      task.completedAt = taskData.completedAt || null;
+      task.result = taskData.result || null;
+      task.error = taskData.error || null;
+      task.metadata = taskData.metadata || {};
+      task.scopeFiles = Array.isArray(taskData.scopeFiles) ? taskData.scopeFiles : [];
+      task.allowedTools = Array.isArray(taskData.allowedTools) ? taskData.allowedTools : [];
+      task.toolCallsHistory = Array.isArray(taskData.toolCallsHistory)
+        ? taskData.toolCallsHistory
+        : [];
+      this.#rehydrateTaskCompletionPredicate(task);
+    }
+
+    this.#plan = plan;
+    this.#profile = snapshot.profile || null;
+    this.#userInput = String(snapshot.userInput || plan.description || '');
+    this.#useExternalPlan = Boolean(snapshot.useExternalPlan);
+    this.#useLLMDecomposition = Boolean(snapshot.useLLMDecomposition);
+    this.#verificationRepairCount = Number(snapshot.verificationRepairCount || 0);
+    this.#requiredMutationPaths = new Set(snapshot.requiredMutationPaths || []);
+    this.#completedMutationPaths = new Set(snapshot.completedMutationPaths || []);
+    this.#mutationCallCount = Number(snapshot.mutationCallCount || 0);
+    this.#normalizeTaskExecutionConstraints(plan);
+    this.#rebuildGraph(plan);
+    this.#enforcePhaseBarriers(plan);
+    this.#startReadyTasks(plan);
+    this.#emitPlanProgress({
+      planRestored: true,
+      decompositionMethod: plan.context?.decomposition,
+    });
+    return true;
   }
 
   setPlan(plan) {
@@ -1130,8 +1467,23 @@ export class ExecutionPlanManager {
     const plan = this.#plan;
     const before = this.#summarizeProgress(plan);
 
+    if (
+      !isSuccessfulToolResult(result) &&
+      this.#canCurrentTaskAcceptFailedEvidence(plan, toolName, args, result)
+    ) {
+      this.#advanceWithStrictValidation(plan, toolName, args, result);
+      const after = this.#summarizeProgress(plan);
+      if (after === before) {
+        return null;
+      }
+      this.#emitPlanProgress({ tool: toolName, expectedFailureEvidence: true });
+      return { before, after, isCompleted: false };
+    }
+
     if (!isSuccessfulToolResult(result)) {
-      const handled = this.#handleFailedToolResult(plan, toolName, args, result);
+      const handled =
+        this.#handleFailedHashlineResult(plan, toolName, args, result) ||
+        this.#handleFailedToolResult(plan, toolName, args, result);
       if (!handled) {
         return null;
       }
@@ -1148,7 +1500,7 @@ export class ExecutionPlanManager {
       this.#emitPlanProgress({
         tool: toolName,
         planChanged: true,
-        reason: 'verification_failed',
+        reason: isHashlinePatchTool(toolName) ? 'hashline_failed' : 'verification_failed',
       });
       return { before, after, isCompleted: false, replanned: true };
     }
@@ -1183,6 +1535,77 @@ export class ExecutionPlanManager {
     this.#emitPlanProgress({ tool: toolName });
 
     return { before, after, isCompleted: plan.status === TaskStatus.COMPLETED };
+  }
+
+  #handleFailedHashlineResult(plan, toolName, args, result) {
+    const hashline = analyzeHashlinePatchResult(toolName, args, result);
+    if (!hashline.isHashline || hashline.ok !== false) {
+      return false;
+    }
+
+    const runningImplementationTask = Array.from(plan.tasks.values()).find(
+      (task) =>
+        task.status === TaskStatus.RUNNING &&
+        (task.phase === ExecutionPlanManager.PHASE.IMPLEMENTATION ||
+          /implement|repair|retry|edit|change/i.test(task.id || task.name || '')),
+    );
+    if (!runningImplementationTask) {
+      return false;
+    }
+
+    runningImplementationTask.recordToolCall(toolName, args, result);
+    runningImplementationTask.updateStatus(TaskStatus.PENDING);
+    runningImplementationTask.completedAt = null;
+    runningImplementationTask.result = {
+      completedBy: 'failed-hashline-observation',
+      displayStatus: 'needs_repair',
+      statusReason: 'Hashline edit failed; recovery tasks were added.',
+      hashline,
+      failureSummary: this.#summarizeFailureResult(result),
+    };
+
+    const conflictType = hashline.conflictType || 'hashline_failed';
+    const failureSummary = this.#summarizeFailureResult(result);
+    const baseId = `repair_after_hashline_failure_${Date.now().toString(36)}`;
+    this.#insertTasksBefore(plan, runningImplementationTask.id, [
+      {
+        id: `${baseId}_diagnose`,
+        name: 'Diagnose Hashline edit failure',
+        description:
+          `Inspect current file tags, stale anchors, and diagnostics before retrying. ` +
+          `Conflict: ${conflictType}. Failure evidence: ${failureSummary}`,
+        phase: ExecutionPlanManager.PHASE.INSPECTION,
+        scopeFiles: hashline.affectedFiles,
+        allowedTools: ['read_file', 'glob', 'search', 'shell', 'review'],
+        metadata: { source: 'hashline-repair', conflictType, hashline },
+      },
+      {
+        id: `${baseId}_retry`,
+        name: 'Retry Hashline edit',
+        description:
+          'Rebuild the patch from the current file content and apply the smallest valid Hashline edit.',
+        phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
+        scopeFiles: hashline.affectedFiles,
+        allowedTools: ['read_file', 'apply_hashline_patch', 'edit_file', 'write_file'],
+        metadata: { source: 'hashline-repair', conflictType, hashline },
+      },
+      {
+        id: `${baseId}_inspect`,
+        name: 'Inspect Hashline edit result',
+        description:
+          'Read back the edited files or diff and confirm the retry matches the plan intent.',
+        phase: ExecutionPlanManager.PHASE.INSPECTION,
+        scopeFiles: hashline.affectedFiles,
+        allowedTools: ['read_file', 'glob', 'search', 'shell', 'review'],
+        metadata: { source: 'hashline-repair', conflictType, hashline },
+      },
+    ]);
+
+    plan.status = TaskStatus.RUNNING;
+    plan.completedAt = null;
+    this.#enforcePhaseBarriers(plan);
+    this.#startReadyTasks(plan);
+    return true;
   }
 
   #handleFailedToolResult(plan, toolName, args, result) {
@@ -1222,20 +1645,20 @@ export class ExecutionPlanManager {
     const baseId = `repair_after_verification_failure_${iteration}`;
     const failureSummary = this.#summarizeFailureResult(result);
 
-    runningVerificationTask.updateStatus(TaskStatus.COMPLETED, {
-      result: {
-        completedBy: 'failed-verification-observation',
-        verificationFailed: true,
-        displayStatus: 'needs_repair',
-        statusReason: 'Verification failed; repair tasks were added.',
-        toolName,
-        args,
-        failureSummary,
-        repairIteration: iteration,
-      },
-    });
+    runningVerificationTask.updateStatus(TaskStatus.PENDING);
+    runningVerificationTask.completedAt = null;
+    runningVerificationTask.result = {
+      completedBy: 'failed-verification-observation',
+      verificationFailed: true,
+      displayStatus: 'needs_repair',
+      statusReason: 'Verification failed; repair tasks were added.',
+      toolName,
+      args,
+      failureSummary,
+      repairIteration: iteration,
+    };
 
-    this.#insertTasksAfter(plan, runningVerificationTask.id, [
+    this.#insertTasksBefore(plan, runningVerificationTask.id, [
       {
         id: `${baseId}_diagnose`,
         name: 'Diagnose verification failure',
@@ -1262,15 +1685,6 @@ export class ExecutionPlanManager {
         allowedTools: ['read_file', 'list_dir', 'glob', 'search', 'shell', 'review'],
         metadata: { source: 'verification-repair', repairIteration: iteration },
       },
-      {
-        id: `${baseId}_reverify`,
-        name: 'Re-run verification',
-        description:
-          'Re-run the narrowest relevant failing test/lint/build command and confirm it passes.',
-        phase: ExecutionPlanManager.PHASE.VERIFICATION,
-        allowedTools: ['shell', 'verify', 'review', 'lsp_diagnostics'],
-        metadata: { source: 'verification-repair', repairIteration: iteration },
-      },
     ]);
 
     plan.status = TaskStatus.RUNNING;
@@ -1283,6 +1697,14 @@ export class ExecutionPlanManager {
   #summarizeFailureResult(result) {
     const text = typeof result === 'string' ? result : JSON.stringify(result ?? '');
     return text.replace(/\s+/g, ' ').trim().slice(0, 600) || 'verification command failed';
+  }
+
+  #canCurrentTaskAcceptFailedEvidence(plan, toolName, args, result) {
+    const task = Array.from(plan.tasks.values()).find((t) => t.status === TaskStatus.RUNNING);
+    if (!task?.metadata?.expectedFailureEvidence) {
+      return false;
+    }
+    return task.canBeAdvancedBy(toolName, args, result);
   }
 
   /**
@@ -1505,6 +1927,10 @@ export class ExecutionPlanManager {
 
     if (taskId === 'plan_solution') {
       return `${prefix} ${description} Decide the smallest concrete change before editing. Do not create a separate plan/report file unless explicitly requested.`;
+    }
+
+    if (taskId === 'tdd_reproduce') {
+      return `${prefix} ${description} Prefer test_strategy or run the narrowest existing test first; an expected failing test is progress here, not a reason to skip into implementation.`;
     }
 
     if (taskId === 'implement_changes') {
@@ -1895,6 +2321,7 @@ export class ExecutionPlanManager {
         candidate.id !== task.id &&
         candidateRank !== null &&
         candidateRank < taskRank &&
+        !this.#taskDependsOn(plan, candidate.id, task.id) &&
         candidate.status !== TaskStatus.COMPLETED &&
         candidate.status !== TaskStatus.SKIPPED
       );
@@ -1939,6 +2366,16 @@ export class ExecutionPlanManager {
       return;
     }
     this.#mutationCallCount += 1;
+    if (isHashlinePatchTool(toolName)) {
+      const paths = extractHashlinePatchPaths(args);
+      for (const path of paths) {
+        this.#completedMutationPaths.add(String(path));
+      }
+      if (paths.length > 1) {
+        this.#mutationCallCount += paths.length - 1;
+      }
+      return;
+    }
     const path = args?.path || args?.file_path || args?.file;
     if (path) {
       this.#completedMutationPaths.add(String(path));
@@ -2120,6 +2557,7 @@ export class ExecutionPlanManager {
       inserted.push(id);
       previousId = id;
     }
+    this.#normalizeTaskExecutionConstraints(plan);
     this.#rebuildGraph(plan);
     return inserted;
   }
@@ -2249,6 +2687,29 @@ export class ExecutionPlanManager {
     }
   }
 
+  #rehydrateTaskCompletionPredicate(task) {
+    if (!task) {
+      return;
+    }
+    if (task.id === 'profile_project') {
+      task.completionPredicate = ({ toolName, args, result }) =>
+        isProjectProfileTool(toolName, args, result);
+      return;
+    }
+    if (task.id === 'tdd_reproduce') {
+      task.completionPredicate = ({ toolName, args, result }) =>
+        isTddEvidenceTool(toolName, args, result);
+      task.metadata = {
+        ...(task.metadata || {}),
+        expectedFailureEvidence: true,
+      };
+      return;
+    }
+    if (task.id === 'verify_result' || /verify|test|lint|build|check/i.test(task.id)) {
+      task.completionPredicate = ({ toolName, args }) => isVerificationTool(toolName, args);
+    }
+  }
+
   #buildSemanticRiskGuidance() {
     const domains = this.#profile?.semanticRiskDomains || [];
     if (domains.length === 0) {
@@ -2327,6 +2788,8 @@ export class ExecutionPlanManager {
       planType: plan.context?.planType || selectPlanType(taskProfile, plan.description),
     };
     this.#ensureProjectProfileTask(plan, plan.context.planType, taskProfile);
+    this.#ensureTddGate(plan, plan.context.planType, taskProfile);
+    this.#normalizeTaskExecutionConstraints(plan);
     if (taskProfile.requiresSemanticRiskReview && !plan.getTask('semantic_risk_review')) {
       const lastId = Array.from(plan.tasks.keys()).at(-1);
       plan.addTask({

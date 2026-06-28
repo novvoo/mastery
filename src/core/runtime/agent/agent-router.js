@@ -14,6 +14,8 @@ import { withTimeout } from '../../../errors/error-handler.js';
 import { existsSync } from 'fs';
 import { readFile, appendFile, mkdir } from 'fs/promises';
 
+const NON_CACHEABLE_TOOLS = new Set(['ask_user', 'request_user_input']);
+
 export class AgentRouter {
   #debugEvent;
   #toolRegistry;
@@ -97,8 +99,14 @@ export class AgentRouter {
 
     // 去重 - Phase 6 优化：使用增强签名，降低跨任务/同参数不同上下文的误伤
     const callSignature = this.#computeCallSignature(name, args, options);
-    await this.#loadToolResultCache();
-    if (this.#toolCallHistory.includes(callSignature) || this.#toolResultCache.has(callSignature)) {
+    const canUseCache = !NON_CACHEABLE_TOOLS.has(name);
+    if (canUseCache) {
+      await this.#loadToolResultCache();
+    }
+    if (
+      canUseCache &&
+      (this.#toolCallHistory.includes(callSignature) || this.#toolResultCache.has(callSignature))
+    ) {
       const cachedResult = this.#toolResultCache.get(callSignature);
       if (cachedResult) {
         this.#ui.info?.(`Duplicate tool call: ${name}. Reusing cached result.`);
@@ -120,9 +128,11 @@ export class AgentRouter {
         duplicate: true,
       };
     }
-    this.#toolCallHistory.push(callSignature);
-    if (this.#toolCallHistory.length > 50) {
-      this.#toolCallHistory = this.#toolCallHistory.slice(-25);
+    if (canUseCache) {
+      this.#toolCallHistory.push(callSignature);
+      if (this.#toolCallHistory.length > 50) {
+        this.#toolCallHistory = this.#toolCallHistory.slice(-25);
+      }
     }
 
     // 工作区状态预测
@@ -276,11 +286,13 @@ export class AgentRouter {
         ),
       });
       this.#ui.toolResult(name, finalResult);
-      this.#toolResultCache.set(
-        callSignature,
-        typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult),
-      );
-      this.#flushToolResultCacheEntry(callSignature, this.#toolResultCache.get(callSignature));
+      if (canUseCache) {
+        this.#toolResultCache.set(
+          callSignature,
+          typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult),
+        );
+        this.#flushToolResultCacheEntry(callSignature, this.#toolResultCache.get(callSignature));
+      }
 
       return { name, result: finalResult };
     } catch (error) {

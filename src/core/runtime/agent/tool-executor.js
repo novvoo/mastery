@@ -24,6 +24,7 @@ import { Decision } from './support/security-policy.js';
 const TOOL_RESULT_CACHE_MAX = 500;
 const TOOL_RESULT_CACHE_TTL_MS = 5 * 60 * 1000;
 const DIR_TOOL_CACHE_TTL_MS = 30 * 1000;
+const NON_CACHEABLE_TOOLS = new Set(['ask_user', 'request_user_input']);
 const READ_ONLY_TOOLS = new Set([
   'list_dir',
   'read_file',
@@ -49,6 +50,7 @@ const MUTATION_TOOLS = new Set([
   'lsp_workspace_edit',
   'lsp_code_action',
   'hashline_apply',
+  'apply_hashline_patch',
 ]);
 
 function isPlanTaskPseudoTool(name) {
@@ -81,6 +83,11 @@ function getScopeTargetPath(name, args) {
       return args.path || null;
     case 'tree':
       return args.path || null;
+    case 'apply_hashline_patch': {
+      const patch = typeof args.patch === 'string' ? args.patch : '';
+      const match = patch.match(/^\[([^#\]\r\n]+)#[^\]\r\n]+\]/m);
+      return match?.[1]?.trim() || null;
+    }
     default:
       return null;
   }
@@ -329,12 +336,15 @@ export class ToolExecutor {
     }
 
     // ============ 去重：内存 + 持久化缓存（读工具使用文件 hash 智能跳过） ============
-    await this.#loadResultCache();
+    const canUseCache = !NON_CACHEABLE_TOOLS.has(name);
+    if (canUseCache) {
+      await this.#loadResultCache();
+    }
     const isReadOnly = READ_ONLY_TOOLS.has(name);
     const isMutation = !isReadOnly;
 
-    const persistentCacheHit = isMutation && this.#resultCache.has(callSignature);
-    let inRunDuplicate = this.#callHistory.has(callSignature);
+    const persistentCacheHit = canUseCache && isMutation && this.#resultCache.has(callSignature);
+    let inRunDuplicate = canUseCache && this.#callHistory.has(callSignature);
 
     let cacheHit = false;
 
@@ -641,13 +651,15 @@ export class ToolExecutor {
       }
 
       // 仅成功执行的调用才加入历史，避免失败后无法重试
-      this.#callHistory.add(callSignature);
-      if (this.#callHistory.size > 50) {
-        const oldest = this.#callHistory.values().next().value;
-        this.#callHistory.delete(oldest);
+      if (canUseCache) {
+        this.#callHistory.add(callSignature);
+        if (this.#callHistory.size > 50) {
+          const oldest = this.#callHistory.values().next().value;
+          this.#callHistory.delete(oldest);
+        }
       }
       // 写工具写持久化缓存，读工具写内存缓存（通过 snapshotStore.head 比对文件 hash）
-      if (!isReadOnly) {
+      if (canUseCache && !isReadOnly) {
         const cachedValue =
           typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult);
         this.#resultCache.set(callSignature, cachedValue);
@@ -660,6 +672,7 @@ export class ToolExecutor {
           'edit_file',
           'update_file',
           'rename_file',
+          'apply_hashline_patch',
         ];
         if (writeTools.includes(name)) {
           const targetPath = getScopeTargetPath(name, effectiveArgs);
@@ -672,7 +685,10 @@ export class ToolExecutor {
               // 如果参数中没有内容，从磁盘读取
               if (!content) {
                 try {
-                  content = await readFile(targetPath, 'utf-8');
+                  content = await readFile(
+                    path.resolve(executionContext.workingDirectory, targetPath),
+                    'utf-8',
+                  );
                 } catch (e) {
                   // 文件可能还未创建或无法读取
                 }
@@ -688,7 +704,7 @@ export class ToolExecutor {
             }
           }
         }
-      } else {
+      } else if (canUseCache) {
         // 读工具：存储结果和当前文件 tag 到内存缓存，供后续 hash 比对
         const targetPath = getScopeTargetPath(name, effectiveArgs);
         const fileTag =

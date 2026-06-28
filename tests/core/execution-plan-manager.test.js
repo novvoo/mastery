@@ -6,11 +6,16 @@ import {
   isMutationTool,
   isChangeInspectionTool,
   isVerificationTool,
+  isTddEvidenceTool,
   isSemanticRiskReviewTool,
   isSuccessfulToolResult,
   ExecutionPlanManager,
 } from '../../src/core/execution-plan-manager.js';
 import { quickAssess } from '../../src/core/runtime/agent/support/risk-budget.js';
+import {
+  analyzeHashlinePatchResult,
+  extractHashlinePatchPaths,
+} from '../../src/core/runtime/agent/support/hashline-plan-policy.js';
 
 describe('isWorkspaceInspectionTool', () => {
   test('returns true for list_dir', () => {
@@ -175,6 +180,39 @@ describe('isVerificationTool', () => {
 
   test('returns false for write_file', () => {
     expect(isVerificationTool('write_file', {})).toBe(false);
+  });
+});
+
+describe('isTddEvidenceTool', () => {
+  test('returns true for methodology TDD tools and test commands', () => {
+    expect(isTddEvidenceTool('tdd', {})).toBe(true);
+    expect(isTddEvidenceTool('test_strategy', {})).toBe(true);
+    expect(isTddEvidenceTool('shell', { command: 'bun test tests/app.test.js' })).toBe(true);
+  });
+
+  test('returns false for unrelated shell commands', () => {
+    expect(isTddEvidenceTool('shell', { command: 'ls -la' })).toBe(false);
+  });
+});
+
+describe('hashline plan policy', () => {
+  test('extracts section paths from Hashline patch text', () => {
+    const paths = extractHashlinePatchPaths({
+      patch: `[src/a.js#abc]\nSWAP 1.=1:\n+one\n[src/b.ts#def]\nDEL 2.=2`,
+    });
+    expect(paths).toEqual(['src/a.js', 'src/b.ts']);
+  });
+
+  test('classifies failed Hashline results for plan repair', () => {
+    const result = analyzeHashlinePatchResult(
+      'apply_hashline_patch',
+      { patch: `[src/a.js#abc]\nDEL 1.=1` },
+      'Hashline patch preflight FAILED:\n  ✗ src/a.js: tag mismatch',
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.conflictType).toBe('tag_mismatch');
+    expect(result.affectedFiles).toEqual(['src/a.js']);
   });
 });
 
@@ -346,9 +384,11 @@ describe('ExecutionPlanManager', () => {
     const plan = manager.plan;
     expect(plan.context.planType).toBe('bug_fix');
     expect(plan.getTask('inspect_workspace')).toBeDefined();
+    expect(plan.getTask('tdd_reproduce')).toBeDefined();
     expect(plan.getTask('implement_changes')).toBeDefined();
     expect(plan.getTask('inspect_changes')).toBeDefined();
     expect(plan.getTask('verify_result')).toBeDefined();
+    expect(plan.getTask('implement_changes').dependencies.has('tdd_reproduce')).toBe(true);
   });
 
   test('documentation plan does not add code project profiling step', () => {
@@ -409,6 +449,7 @@ describe('ExecutionPlanManager', () => {
 
     manager.advance('list_dir', {}, 'OK');
     manager.advance('project_profile', {}, 'package.json scripts test');
+    manager.advance('test_strategy', {}, 'targeted failing test identified');
     manager.advance('write_file', { path: 'app.js' }, 'OK');
     manager.advance('read_file', { path: 'app.js' }, 'OK');
 
@@ -416,18 +457,42 @@ describe('ExecutionPlanManager', () => {
 
     expect(result?.replanned).toBe(true);
     expect(manager.plan.status).toBe('running');
-    expect(manager.plan.getTask('verify_result').status).toBe('completed');
+    expect(manager.plan.getTask('verify_result').status).toBe('pending');
+    expect(manager.plan.getTask('verify_result').result.displayStatus).toBe('needs_repair');
     expect(manager.plan.getTask('repair_after_verification_failure_1_diagnose')).toBeDefined();
-    expect(manager.plan.getTask('repair_after_verification_failure_1_reverify')).toBeDefined();
+    expect(manager.plan.getTask('repair_after_verification_failure_1_inspect')).toBeDefined();
     expect(manager.buildPrompt()).toContain('repair_after_verification_failure_1_diagnose');
 
     const latestEvent = planEvents.at(-1);
     const verifyTask = latestEvent.tasks.find((task) => task.id === 'verify_result');
-    expect(verifyTask.status).toBe('completed');
+    expect(verifyTask.status).toBe('pending');
     expect(verifyTask.displayStatus).toBe('needs_repair');
     expect(verifyTask.statusReason).toContain('Verification failed');
     expect(latestEvent.completed).toBeLessThan(latestEvent.total);
     expect(latestEvent.needsRepair).toBe(1);
+  });
+
+  test('failing targeted test can complete the TDD reproduce gate before implementation', () => {
+    manager.createIfNeeded('Fix bug in app.js', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+    });
+
+    manager.advance('list_dir', {}, 'OK');
+    manager.advance('project_profile', {}, 'package.json scripts test');
+    const tddTask = manager.plan.getTask('tdd_reproduce');
+    expect(tddTask.status).toBe('running');
+
+    const result = manager.advance(
+      'shell',
+      { command: 'bun test tests/app.test.js' },
+      { exitCode: 1, stdout: '1 failing test' },
+    );
+
+    expect(result).not.toBeNull();
+    expect(tddTask.status).toBe('completed');
+    expect(manager.plan.getTask('implement_changes').status).toBe('running');
   });
 
   test('advance completes inspect_workspace on inspection tool', () => {
@@ -451,6 +516,8 @@ describe('ExecutionPlanManager', () => {
     // Step 1: inspect workspace
     const r1 = manager.advance('list_dir', {}, 'OK');
     expect(r1).not.toBeNull();
+    manager.advance('project_profile', {}, 'package.json scripts test');
+    manager.advance('test_strategy', {}, 'targeted check');
     // Step 2: plan solution (use a planning tool)
     manager.advance('architect', {}, 'OK');
     // Step 3: implement changes
@@ -493,6 +560,7 @@ describe('ExecutionPlanManager', () => {
 
     manager.advance('list_dir', { path: '.' }, 'package.json\nwebpack.config.js');
     manager.advance('project_profile', {}, 'profiled project');
+    manager.advance('test_strategy', {}, 'targeted check');
     manager.advance('architect', {}, 'planned rename');
 
     const prompt = manager.buildPrompt();
@@ -551,6 +619,66 @@ describe('ExecutionPlanManager', () => {
     // Then use mutation tool
     manager.advance('write_file', { path: 'app.js' }, 'OK');
     // Should not throw
+  });
+
+  test('hashline patch paths satisfy implementation mutation requirements', () => {
+    manager.createIfNeeded('Fix bug in app.js', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+    });
+
+    manager.advance('list_dir', {}, 'package.json\napp.js');
+    manager.advance('project_profile', {}, 'package.json scripts test');
+    manager.advance('test_strategy', {}, 'targeted app.js regression');
+    manager.advance('architect', {}, 'small fix in app.js');
+
+    const implementTask = manager.plan.getTask('implement_changes');
+    expect(implementTask.status).toBe('running');
+
+    manager.advance(
+      'apply_hashline_patch',
+      { patch: `[app.js#abc]\nSWAP 1.=1:\n+fixed();` },
+      'Hashline patch applied successfully through EditOrchestrator.\nFiles changed: app.js\nTotal edits: 1\nDiagnostics gate: PASSED (no new errors introduced)',
+    );
+
+    expect(implementTask.status).toBe('completed');
+    expect(manager.plan.getTask('inspect_changes').status).toBe('running');
+  });
+
+  test('failed hashline patch inserts repair tasks before retrying implementation', () => {
+    manager.createIfNeeded('Fix bug in app.js', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+    });
+
+    manager.advance('list_dir', {}, 'package.json\napp.js');
+    manager.advance('project_profile', {}, 'package.json scripts test');
+    manager.advance('test_strategy', {}, 'targeted app.js regression');
+    manager.advance('architect', {}, 'small fix in app.js');
+
+    const implementTask = manager.plan.getTask('implement_changes');
+    const update = manager.advance(
+      'apply_hashline_patch',
+      { patch: `[app.js#abc]\nDEL 1.=1` },
+      'Hashline patch preflight FAILED:\n  ✗ app.js: tag mismatch\n\nPatch NOT applied.',
+    );
+
+    expect(update.replanned).toBe(true);
+    expect(implementTask.status).toBe('pending');
+    expect(implementTask.result.displayStatus).toBe('needs_repair');
+
+    const repairTasks = Array.from(manager.plan.tasks.values()).filter(
+      (task) => task.metadata?.source === 'hashline-repair',
+    );
+    expect(repairTasks.map((task) => task.phase)).toEqual([
+      'inspection',
+      'implementation',
+      'inspection',
+    ]);
+    expect(repairTasks[0].status).toBe('running');
+    expect(repairTasks[0].scopeFiles).toEqual(['app.js']);
   });
 
   test('changePlan appends dynamic tasks to active plan', () => {
@@ -675,5 +803,28 @@ describe('ExecutionPlanManager', () => {
     manager.advance('read_file', { path: 'src/app.js' }, 'export function app() {}');
 
     expect(profileTask.status).toBe('running');
+  });
+
+  test('exportSnapshot and restoreSnapshot preserve repair state after restart', () => {
+    manager.createIfNeeded('Fix bug in app.js', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+    });
+
+    manager.advance('list_dir', {}, 'OK');
+    manager.advance('project_profile', {}, 'package.json scripts test');
+    manager.advance('test_strategy', {}, 'targeted check');
+    manager.advance('write_file', { path: 'app.js' }, 'OK');
+    manager.advance('read_file', { path: 'app.js' }, 'OK');
+    manager.advance('shell', { command: 'bun test' }, { exitCode: 1 });
+
+    const snapshot = manager.exportSnapshot();
+    const restored = new ExecutionPlanManager();
+    expect(restored.restoreSnapshot(snapshot)).toBe(true);
+
+    expect(restored.plan.getTask('verify_result').result.displayStatus).toBe('needs_repair');
+    expect(restored.plan.getTask('repair_after_verification_failure_1_diagnose')).toBeDefined();
+    expect(restored.buildPrompt()).toContain('repair_after_verification_failure_1_diagnose');
   });
 });

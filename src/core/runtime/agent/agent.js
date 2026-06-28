@@ -1514,17 +1514,18 @@ export class ReActAgent {
    * 通过 Promise 机制，不退出循环，不丢失任何内部状态
    */
   async #suspendForUserInput(askResult) {
-    const reason = askResult.reason || '需要用户补充信息';
-    const questions = Array.isArray(askResult.questions) ? askResult.questions : [];
-    const answer = askResult.answer || this.#formatAskUserPrompt({ reason, questions });
+    const normalizedAskResult = this.#normalizeAskUserResult(askResult);
+    const reason = normalizedAskResult.reason || '需要用户补充信息';
+    const questions = normalizedAskResult.questions;
+    const answer = normalizedAskResult.answer || this.#formatAskUserPrompt({ reason, questions });
 
     // 存储待处理的用户输入请求，供外部（如 session-state）获取
     this.#pendingUserInputRequest = {
       requiresUserInput: true,
       reason,
       questions,
-      blockingFacts: askResult.blockingFacts || [],
-      suggestions: askResult.suggestions || [],
+      blockingFacts: normalizedAskResult.blockingFacts || [],
+      suggestions: normalizedAskResult.suggestions || [],
       answer,
     };
 
@@ -1537,9 +1538,9 @@ export class ReActAgent {
     if (typeof this.#ui.waitingForUserInput === 'function') {
       this.#ui.waitingForUserInput({
         reason,
-        questions: askResult.questions || [],
-        blockingFacts: askResult.blockingFacts || [],
-        suggestions: askResult.suggestions || [],
+        questions,
+        blockingFacts: normalizedAskResult.blockingFacts || [],
+        suggestions: normalizedAskResult.suggestions || [],
         answer,
       });
     }
@@ -1557,17 +1558,19 @@ export class ReActAgent {
     // 清除挂起状态
     this.#pendingUserInputRequest = null;
 
-    return { userInput, askResult };
+    return { userInput, askResult: normalizedAskResult };
   }
 
   /**
    * 完成用户输入请求，返回 needs_user_input 状态供外部处理
    */
   #completeUserInputRequest(askResult, { iteration, startedAt }) {
-    const answer = askResult.answer || this.#formatUserInputRequestAnswer(askResult);
+    const normalizedAskResult = this.#normalizeAskUserResult(askResult);
+    const answer =
+      normalizedAskResult.answer || this.#formatUserInputRequestAnswer(normalizedAskResult);
     this.#debugEvent('User input requested', {
-      reason: askResult.reason,
-      questions: askResult.questions || [],
+      reason: normalizedAskResult.reason,
+      questions: normalizedAskResult.questions || [],
     });
     this.#ui.finalAnswer(answer);
     this.#sessionManager.addAssistantMessage(`FINAL_ANSWER: ${answer}`);
@@ -1575,24 +1578,47 @@ export class ReActAgent {
       success: true,
       status: 'needs_user_input',
       answer,
-      reason: askResult.reason,
+      reason: normalizedAskResult.reason,
       iterations: iteration,
       startedAt,
-      userInputRequest: askResult,
+      userInputRequest: normalizedAskResult,
     });
   }
 
   #formatUserInputRequestAnswer(result) {
-    const questions = Array.isArray(result.questions) ? result.questions : [];
+    const normalized = this.#normalizeAskUserResult(result);
+    const questions = normalized.questions;
     return [
       '需要你补充一点信息后我才能继续。',
-      result.reason ? `原因：${result.reason}` : '',
+      normalized.reason ? `原因：${normalized.reason}` : '',
       questions.length > 0
         ? `请回答：\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}`
         : '',
     ]
       .filter(Boolean)
       .join('\n\n');
+  }
+
+  #normalizeAskUserResult(result) {
+    let value = result;
+    if (typeof value === 'string') {
+      try {
+        value = JSON.parse(value);
+      } catch {
+        value = { reason: value };
+      }
+    }
+    if (!value || typeof value !== 'object') {
+      value = {};
+    }
+    return {
+      ...value,
+      questions: Array.isArray(value.questions)
+        ? value.questions.map((question) => String(question || '').trim()).filter(Boolean)
+        : [],
+      blockingFacts: value.blockingFacts || value.blocking_facts || [],
+      suggestions: value.suggestions || [],
+    };
   }
 
   /** 将用户回答作为 Observation 注入到会话中，LLM 在下一轮迭代自然继续 */
