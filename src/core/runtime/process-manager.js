@@ -46,10 +46,10 @@ export class ProcessManager extends EventEmitter {
     this.#portLocks = new Map();
     this.#portAllocationQueue = Promise.resolve();
     this.#config = {
-      healthCheckInterval: options.healthCheckInterval || 30000, // 30秒
-      maxRestartAttempts: options.maxRestartAttempts || 3,
-      restartDelay: options.restartDelay || 5000, // 5秒
-      defaultTimeout: options.defaultTimeout || 60000, // 1分钟
+      healthCheckInterval: options.healthCheckInterval ?? 30000, // 30秒
+      maxRestartAttempts: options.maxRestartAttempts ?? 3,
+      restartDelay: options.restartDelay ?? 5000, // 5秒
+      defaultTimeout: options.defaultTimeout ?? 60000, // 1分钟
       ...options,
     };
 
@@ -137,7 +137,7 @@ export class ProcessManager extends EventEmitter {
    */
   async execute(command, options = {}) {
     const adapted = this.adaptCommand(command);
-    const timeout = options.timeout || this.#config.defaultTimeout;
+    const timeout = options.timeout ?? this.#config.defaultTimeout;
     const cwd = options.cwd || process.cwd();
     const env = { ...process.env, ...options.env };
 
@@ -263,26 +263,22 @@ export class ProcessManager extends EventEmitter {
    * 重试执行
    */
   async #retryExecution(command, options, originalProcessId) {
-    const processInfo = this.#activeProcesses.get(originalProcessId);
-    if (!processInfo) {
-      return;
-    }
+    const restartCount = Number.isFinite(options.__restartCount) ? options.__restartCount : 0;
 
-    if (processInfo.restartCount >= this.#config.maxRestartAttempts) {
+    if (restartCount >= this.#config.maxRestartAttempts) {
       throw new Error(`Max retry attempts (${this.#config.maxRestartAttempts}) exceeded`);
     }
 
-    processInfo.restartCount++;
+    const nextAttempt = restartCount + 1;
     this.emit('process:retry', {
       processId: originalProcessId,
-      attempt: processInfo.restartCount,
+      attempt: nextAttempt,
     });
 
     // 延迟后重试
-    await this.delay(this.#config.restartDelay * processInfo.restartCount);
+    await this.delay(this.#config.restartDelay * nextAttempt);
 
-    // 递归调用，但设置 retry: false 防止无限递归
-    return this.execute(command, { ...options, retry: false });
+    return this.execute(command, { ...options, __restartCount: nextAttempt });
   }
 
   /**

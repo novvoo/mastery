@@ -61,6 +61,42 @@ describe('Phase 9: Strict Completion Validation', () => {
   // ==================== Subtask.validateCompletion ====================
 
   describe('Subtask.validateCompletion()', () => {
+    test('constructor accepts empty data and preserves scalar dependency fields', () => {
+      const empty = new Subtask();
+      expect(empty.id).toBeDefined();
+      expect(empty.status).toBe(TaskStatus.PENDING);
+
+      const task = new Subtask({
+        id: 'single_dep',
+        name: 'Single dependency',
+        dependencies: 'inspect_workspace',
+        requiredMutationPaths: './src/main.js',
+      });
+
+      expect(Array.from(task.dependencies)).toEqual(['inspect_workspace']);
+      expect(Array.from(task.requiredMutationPaths)).toEqual(['./src/main.js']);
+    });
+
+    test('updateStatus keeps original start time and treats cancelled as terminal', () => {
+      const task = new Subtask({
+        id: 'cancel_me',
+        name: 'Cancel Me',
+        startedAt: 0,
+      });
+
+      task.updateStatus(TaskStatus.RUNNING);
+      expect(task.startedAt).toBe(0);
+
+      task.updateStatus(TaskStatus.CANCELLED, {
+        result: { cancelled: true },
+        error: 'user_cancelled',
+      });
+
+      expect(task.completedAt).toBeNumber();
+      expect(task.result).toEqual({ cancelled: true });
+      expect(task.error).toBe('user_cancelled');
+    });
+
     test('should reject task with no tool calls', () => {
       const task = new Subtask({
         id: 'test_task',
@@ -163,7 +199,9 @@ describe('Phase 9: Strict Completion Validation', () => {
       const plan = new ExecutionPlan({
         name: 'Round Trip Plan',
         status: TaskStatus.RUNNING,
+        createdAt: 0,
         startedAt: 123,
+        completedAt: 0,
         context: { source: 'test' },
       });
 
@@ -189,7 +227,9 @@ describe('Phase 9: Strict Completion Validation', () => {
       const restoredTask = restored.getTask('implement_feature');
 
       expect(restored.status).toBe(TaskStatus.RUNNING);
+      expect(restored.createdAt).toBe(0);
       expect(restored.startedAt).toBe(123);
+      expect(restored.completedAt).toBe(0);
       expect(restored.context).toEqual({ source: 'test' });
       expect(restoredTask.status).toBe(TaskStatus.RUNNING);
       expect(restoredTask.startedAt).toBe(456);
@@ -206,6 +246,22 @@ describe('Phase 9: Strict Completion Validation', () => {
       expect(restoredTask.validateCompletion({ strictMode: true }).completed).toBe(true);
       expect(restored.results.get('implement_feature')).toEqual({ success: true });
       expect(restored.errors.get('previous_failure').message).toBe('previous failure');
+    });
+
+    test('ExecutionPlan.fromJSON tolerates minimal restart snapshots', () => {
+      const restored = ExecutionPlan.fromJSON({
+        id: 'minimal_plan',
+        name: 'Minimal Plan',
+        createdAt: 0,
+        startedAt: 0,
+        completedAt: 0,
+      });
+
+      expect(restored.id).toBe('minimal_plan');
+      expect(restored.createdAt).toBe(0);
+      expect(restored.startedAt).toBe(0);
+      expect(restored.completedAt).toBe(0);
+      expect(restored.tasks.size).toBe(0);
     });
   });
 
@@ -312,6 +368,26 @@ describe('Phase 9: Strict Completion Validation', () => {
       expect(currentTask.id).toBe('implement_changes');
       expect(currentTask.status).toBe(TaskStatus.RUNNING);
       expect(executor.hasExceededMaxToolCalls()).toBe(false);
+    });
+
+    test('executor honors zero max tool-call config after restore', () => {
+      const plan = new ExecutionPlan({ name: 'Zero config plan' });
+      const task = plan.addTask({
+        id: 'inspect_workspace',
+        name: 'Inspect Workspace',
+        status: TaskStatus.RUNNING,
+        startedAt: 0,
+        allowedTools: ['read_file'],
+      });
+      task.recordToolCall('read_file', { path: './package.json' }, { success: true });
+
+      const executor = new PlanExecutor(ExecutionPlan.fromJSON(plan.toJSON()), {
+        maxToolCallsPerTask: 0,
+        taskTimeoutMs: 0,
+      });
+
+      expect(executor.getCurrentRunnableTask().id).toBe('inspect_workspace');
+      expect(executor.hasExceededMaxToolCalls()).toBe(true);
     });
 
     test('should NOT complete task when predicate not matched', async () => {

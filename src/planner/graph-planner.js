@@ -25,6 +25,16 @@ export const TaskStatus = {
   CANCELLED: 'cancelled',
 };
 
+function normalizeList(value) {
+  if (value == null) {
+    return [];
+  }
+  if (value instanceof Set) {
+    return Array.from(value);
+  }
+  return Array.isArray(value) ? value : [value];
+}
+
 /**
  * 🎯 任务模板库 - 方法论级别的任务定义
  * 包含：语义化 ID、执行约束、工具限制、完成条件
@@ -224,14 +234,14 @@ export const TASK_TEMPLATE_REGISTRY = {
  * 子任务节点
  */
 export class Subtask {
-  constructor(data) {
+  constructor(data = {}) {
     this.id = data.id || randomUUID();
     this.name = data.name;
     this.description = data.description || '';
     this.status = data.status || TaskStatus.PENDING;
 
     // 依赖关系
-    this.dependencies = new Set(data.dependencies || []); // 依赖的任务ID
+    this.dependencies = new Set(normalizeList(data.dependencies)); // 依赖的任务ID
     this.dependents = new Set(); // 依赖此任务的任务ID
 
     // 执行配置
@@ -243,8 +253,8 @@ export class Subtask {
     // 结果
     this.result = data.result ?? null;
     this.error = data.error ?? null;
-    this.startedAt = data.startedAt || null;
-    this.completedAt = data.completedAt || null;
+    this.startedAt = data.startedAt ?? null;
+    this.completedAt = data.completedAt ?? null;
 
     // 元数据
     this.metadata = data.metadata || {};
@@ -268,7 +278,7 @@ export class Subtask {
     this.completionPredicate = data.completionPredicate || null;
 
     // requiredMutationPaths: 该 task 需要修改的文件路径
-    this.requiredMutationPaths = new Set(data.requiredMutationPaths || []);
+    this.requiredMutationPaths = new Set(normalizeList(data.requiredMutationPaths));
 
     // 追踪该任务进行的工具调用（用于完成条件检查）
     this.toolCallsHistory = Array.isArray(data.toolCallsHistory) ? [...data.toolCallsHistory] : [];
@@ -299,10 +309,14 @@ export class Subtask {
     this.status = newStatus;
 
     if (newStatus === TaskStatus.RUNNING) {
-      this.startedAt = Date.now();
+      this.startedAt ??= Date.now();
     }
 
-    if ([TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.SKIPPED].includes(newStatus)) {
+    if (
+      [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.SKIPPED, TaskStatus.CANCELLED].includes(
+        newStatus,
+      )
+    ) {
       this.completedAt = Date.now();
       if (data.result !== undefined) {
         this.result = data.result;
@@ -502,9 +516,9 @@ export class ExecutionPlan {
     this.edges = new Map(); // taskId -> Set(dependentIds)
 
     // 执行状态
-    this.createdAt = data.createdAt || Date.now();
-    this.startedAt = data.startedAt || null;
-    this.completedAt = data.completedAt || null;
+    this.createdAt = data.createdAt ?? Date.now();
+    this.startedAt = data.startedAt ?? null;
+    this.completedAt = data.completedAt ?? null;
 
     // 结果
     this.results = new Map(Array.isArray(data.results) ? data.results : []);
@@ -784,7 +798,7 @@ export class ExecutionPlan {
       errors: json.errors,
     });
 
-    for (const taskData of json.tasks) {
+    for (const taskData of json.tasks || []) {
       plan.addTask(taskData);
     }
 
@@ -803,7 +817,7 @@ export class GraphPlanner extends EventEmitter {
   constructor(config = {}) {
     super();
     this.#config = {
-      maxConcurrency: config.maxConcurrency || 5,
+      maxConcurrency: config.maxConcurrency ?? 5,
       enableRetry: config.enableRetry ?? true,
       enableDynamicPlanning: config.enableDynamicPlanning ?? true,
       ...config,
@@ -1611,8 +1625,8 @@ export class PlanExecutor extends EventEmitter {
     super();
     this.#plan = plan;
     this.#config = {
-      taskTimeoutMs: config.taskTimeoutMs || 120000,
-      maxToolCallsPerTask: config.maxToolCallsPerTask || 20,
+      taskTimeoutMs: config.taskTimeoutMs ?? 120000,
+      maxToolCallsPerTask: config.maxToolCallsPerTask ?? 20,
       ...config,
     };
 
@@ -1755,7 +1769,7 @@ export class PlanExecutor extends EventEmitter {
     if (activeTask) {
       this.#currentRunnableTaskId = activeTask.id;
       this.#taskToolCallCount = activeTask.toolCallsHistory.length;
-      this.#taskStartTime = activeTask.startedAt || Date.now();
+      this.#taskStartTime = activeTask.startedAt ?? Date.now();
       return;
     }
 

@@ -94,6 +94,42 @@ describe('ProcessManager', () => {
     }
   });
 
+  test('execute rejects after retryable failures instead of resolving empty', async () => {
+    const retrying = new ProcessManager({
+      healthCheckInterval: 60000,
+      maxRestartAttempts: 1,
+      restartDelay: 0,
+    });
+    const retryEvents = [];
+    retrying.on('process:retry', (event) => retryEvents.push(event));
+
+    try {
+      await expect(retrying.execute('exit 1', { timeout: 1000 })).rejects.toThrow(
+        'Max retry attempts',
+      );
+      expect(retryEvents.length).toBe(1);
+      expect(retryEvents[0].attempt).toBe(1);
+    } finally {
+      await retrying.dispose();
+    }
+  });
+
+  test('execute respects zero restart attempts for retryable failures', async () => {
+    const noRetry = new ProcessManager({
+      healthCheckInterval: 60000,
+      maxRestartAttempts: 0,
+      restartDelay: 0,
+    });
+
+    try {
+      await expect(noRetry.execute('exit 1', { timeout: 1000 })).rejects.toThrow(
+        'Max retry attempts (0) exceeded',
+      );
+    } finally {
+      await noRetry.dispose();
+    }
+  });
+
   test('execute respects timeout option', async () => {
     try {
       await pm.execute('sleep 10', { timeout: 500, retry: false });
