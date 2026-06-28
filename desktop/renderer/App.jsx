@@ -53,8 +53,10 @@ import {
   upsertAgentSession,
 } from './app/session/session-storage.js';
 import {
+  canEditComposerDraft,
   createComposerInteractionState,
   getComposerSubmitTransition,
+  hasUnsavedFileDraft,
   handleComposerKey,
 } from './app/interaction/interaction-model.js';
 import { styles } from './app/styles.js';
@@ -978,6 +980,12 @@ function App() {
       if (!entry?.path || entry.type === 'directory') {
         return;
       }
+      if (
+        hasUnsavedFileDraft(openFile, fileDraft) &&
+        !window.confirm('当前文件有未保存修改，确定要切换文件吗？')
+      ) {
+        return;
+      }
       setOpenFile({
         path: entry.path,
         name: entry.name,
@@ -1009,7 +1017,7 @@ function App() {
         setFileError(error.message || '\u65e0\u6cd5\u8bfb\u53d6\u6587\u4ef6');
       }
     },
-    [ipc],
+    [fileDraft, ipc, openFile],
   );
 
   const handleSaveWorkspaceFile = useCallback(async () => {
@@ -1041,18 +1049,27 @@ function App() {
   }, [fileDraft, ipc, openFile?.path]);
 
   const handleCloseFileWorkbench = useCallback(() => {
+    if (
+      hasUnsavedFileDraft(openFile, fileDraft) &&
+      !window.confirm('当前文件有未保存修改，确定要关闭吗？')
+    ) {
+      return;
+    }
     setOpenFile(null);
     setFileDraft('');
     setFileMode('preview');
     setFileStatus('idle');
     setFileError('');
-  }, []);
+  }, [fileDraft, openFile]);
 
   const handleFileModeToggle = useCallback(() => {
     setFileMode((prev) => (prev === 'edit' ? 'preview' : 'edit'));
   }, []);
 
   const handleClearAgentHistory = useCallback(() => {
+    if (!window.confirm('确定要清空所有会话和历史记录吗？此操作无法撤销。')) {
+      return;
+    }
     localStorage.removeItem(AGENT_HISTORY_STORAGE_KEY);
     localStorage.removeItem(AGENT_SESSIONS_STORAGE_KEY);
     localStorage.removeItem(ACTIVE_AGENT_SESSION_STORAGE_KEY);
@@ -1634,6 +1651,7 @@ function App() {
             chatInputRef={chatInputRef}
             inputNotice={inputNotice}
             inputFocused={inputFocused}
+            inputEditable={canEditComposerDraft(runtime.status)}
             showSuggestions={showSuggestions}
             onAskAgentFromMessage={handleAskAgentFromMessage}
             onChatInputChange={handleChatInputChange}

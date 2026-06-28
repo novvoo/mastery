@@ -189,6 +189,17 @@ export function getComposerSubmitTransition({
   };
 }
 
+export function canEditComposerDraft() {
+  return true;
+}
+
+export function hasUnsavedFileDraft(openFile, fileDraft) {
+  if (!openFile) {
+    return false;
+  }
+  return String(fileDraft ?? '') !== String(openFile.content ?? '');
+}
+
 const HIGH_RISK_PATTERNS = [
   /\brm\s+-rf\b/i,
   /\bsudo\b/i,

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   assessPromptRisk,
+  canEditComposerDraft,
   createRunNarrative,
   createComposerInteractionState,
   deriveInteractionStages,
@@ -8,6 +9,7 @@ import {
   getComposerAssistText,
   getShortcutHints,
   getToolActivitySummary,
+  hasUnsavedFileDraft,
   handleComposerKey,
 } from '../desktop/renderer/app/interaction/interaction-model.js';
 
@@ -58,6 +60,17 @@ describe('desktop interaction model', () => {
     expect(transition.nextValue).toBe('/doc search auth');
     expect(transition.focus).toBe(true);
     expect(transition.showSuggestions).toBe(true);
+  });
+
+  test('composer remains editable while the agent is running', () => {
+    expect(canEditComposerDraft('running')).toBe(true);
+    expect(canEditComposerDraft('idle')).toBe(true);
+  });
+
+  test('unsaved file draft detection compares against the opened file content', () => {
+    expect(hasUnsavedFileDraft(null, 'draft')).toBe(false);
+    expect(hasUnsavedFileDraft({ content: 'same' }, 'same')).toBe(false);
+    expect(hasUnsavedFileDraft({ content: 'old' }, 'new')).toBe(true);
   });
 
   test('high-risk prompts require a second Ctrl+Enter confirmation', () => {

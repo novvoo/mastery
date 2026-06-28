@@ -11,6 +11,7 @@ export function ChatWorkspace({
   chatInput,
   chatInputRef,
   inputNotice,
+  inputEditable = true,
   inputFocused,
   showSuggestions,
   onAskAgentFromMessage,
@@ -196,7 +197,7 @@ export function ChatWorkspace({
             onFocus={onFocus}
             onBlur={onBlur}
             placeholder={t('chat.placeholder')}
-            disabled={runtime.status === 'running'}
+            disabled={!inputEditable}
           />
           <button
             className={getSendButtonMotionClass(runtime.status, chatInput)}
