@@ -906,6 +906,24 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         }
       };
 
+      const getTaskSortPriority = (statusValue) => {
+        switch (statusValue) {
+          case 'running': return 0;
+          case 'needs_repair': return 1;
+          case 'blocked': return 2;
+          case 'pending': return 3;
+          case 'completed': return 4;
+          case 'failed': return 5;
+          default: return 6;
+        }
+      };
+
+      const sortedTasks = [...tasks].sort((a, b) => {
+        const aStatus = taskStatus(a);
+        const bStatus = taskStatus(b);
+        return getTaskSortPriority(aStatus) - getTaskSortPriority(bStatus);
+      });
+
       return (
         <div style={styles.planCard}>
           <div style={styles.planCardHeader}>
@@ -932,9 +950,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             />
           </div>
 
-          {!isCollapsed && tasks.length > 0 && (
+          {!isCollapsed && sortedTasks.length > 0 && (
             <div style={styles.planTaskList}>
-              {tasks.map((task, taskIndex) => {
+              {sortedTasks.map((task, taskIndex) => {
                 const statusValue = taskStatus(task);
                 return (
                   <div key={task.id || taskIndex} style={styles.planTaskRow}>
