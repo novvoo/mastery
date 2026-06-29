@@ -167,10 +167,25 @@ export class AgentRouter {
       return { name, result: errorMsg, error: errorMsg };
     }
 
-    // 路由检查
+    // 路由检查：当 currentTask 存在时，由任务的 allowedTools 和安全策略决定，不做 phase 限制
     if (options.activeRoutedToolNames && !options.activeRoutedToolNames.has(name)) {
       const taskAllowed = options.currentTask?.allowedTools;
-      if (!taskAllowed || !taskAllowed.includes(name)) {
+      if (taskAllowed && taskAllowed.includes(name)) {
+        // 当前任务允许该工具，放行（由安全策略和 scopeFiles 做最终守卫）
+      } else if (taskAllowed && !taskAllowed.includes(name)) {
+        // 当前任务存在但未明确允许该工具，检查安全策略
+        const securityPolicy = options.securityPolicy;
+        if (securityPolicy && typeof securityPolicy.isToolAllowed === 'function') {
+          if (!securityPolicy.isToolAllowed(name)) {
+            const errorMsg = `Tool "${name}" is blocked by security policy.`;
+            this.#debugEvent('Tool call blocked by security policy', { tool: name, arguments: args });
+            this.#ui.toolError(name, errorMsg);
+            return { name, result: errorMsg, error: errorMsg };
+          }
+        }
+        // 安全策略允许，则放行
+      } else {
+        // 没有 currentTask，严格路由检查
         const availableToolNames = Array.from(options.activeRoutedToolNames).join(', ') || '(none)';
         const errorMsg = `Tool "${name}" is registered but not available in the current request phase. Available tools now: ${availableToolNames}.`;
         this.#debugEvent('Tool call blocked by routing', { tool: name, arguments: args });

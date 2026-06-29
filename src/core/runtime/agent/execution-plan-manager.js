@@ -756,7 +756,7 @@ export class ExecutionPlanManager {
         description: 'Check if workspace is empty or has existing files. Identify the project type (JS/TS/Python/etc.) and requirements.',
         dependencies: [],
         phase: ExecutionPlanManager.PHASE.EXPLORATION,
-        allowedTools: ['list_dir', 'project_profile', 'read_file', 'shell'],
+        allowedTools: ['list_dir', 'project_profile', 'read_file', 'shell', 'glob', 'search', 'preview_dir', 'preview_file'],
       });
       plan.addTask({
         id: 'setup_project_structure',
@@ -764,7 +764,7 @@ export class ExecutionPlanManager {
         description: 'Create project directory structure with src/, tests/, configuration files (package.json, vite.config, eslint, etc.).',
         dependencies: ['inspect_workspace'],
         phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
-        allowedTools: ['write_file', 'mkdir', 'shell'],
+        allowedTools: ['write_file', 'mkdir', 'shell', 'edit_file', 'apply_hashline_patch', 'lsp_workspace_edit', 'lsp_code_action', 'pty_exec', 'harness_insert', 'harness_replace'],
         scopeFiles: ['package.json', 'src/', 'tests/', 'vite.config.js', 'eslint.config.js', 'README.md'],
       });
       plan.addTask({
@@ -773,7 +773,7 @@ export class ExecutionPlanManager {
         description: 'Create core source files in src/ directory with proper ES module structure. Separate logic, components, and styles.',
         dependencies: ['setup_project_structure'],
         phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
-        allowedTools: ['write_file', 'edit_file'],
+        allowedTools: ['write_file', 'edit_file', 'apply_hashline_patch', 'lsp_workspace_edit', 'lsp_code_action', 'lsp_rename', 'shell', 'read_file', 'preview_file', 'harness_insert', 'harness_replace', 'harness_delete'],
         scopeFiles: ['src/'],
       });
       plan.addTask({
@@ -782,7 +782,7 @@ export class ExecutionPlanManager {
         description: 'Create unit tests in tests/ directory for core logic. Verify test coverage.',
         dependencies: ['implement_core'],
         phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
-        allowedTools: ['write_file', 'edit_file'],
+        allowedTools: ['write_file', 'edit_file', 'apply_hashline_patch', 'shell', 'read_file', 'preview_file', 'test_strategy', 'tdd'],
         scopeFiles: ['tests/'],
       });
       plan.addTask({
@@ -791,7 +791,7 @@ export class ExecutionPlanManager {
         description: 'Run npm install, npm run build, and npm test to verify the project builds correctly and tests pass.',
         dependencies: ['add_tests'],
         phase: ExecutionPlanManager.PHASE.VERIFICATION,
-        allowedTools: ['shell', 'verify'],
+        allowedTools: ['shell', 'verify', 'read_file', 'preview_file', 'pty_exec', 'git_add', 'git_commit', 'git_push'],
       });
       return;
     }
@@ -1083,7 +1083,7 @@ export class ExecutionPlanManager {
         'Before editing, identify the narrowest failing test/check or define the test strategy that will prove the fix. A failing targeted test is valid evidence here.',
       dependencies: anchorDeps,
       phase: ExecutionPlanManager.PHASE.PLANNING,
-      allowedTools: ['tdd', 'test_strategy', 'shell', 'read_file', 'glob', 'search'],
+      allowedTools: ['tdd', 'test_strategy', 'shell', 'read_file', 'glob', 'search', 'preview_file', 'lsp_diagnostics', 'coverage_check'],
       completionPredicate: ({ toolName, args, result }) =>
         isTddEvidenceTool(toolName, args, result),
       metadata: {
@@ -1627,7 +1627,7 @@ export class ExecutionPlanManager {
           `Conflict: ${conflictType}. Failure evidence: ${failureSummary}`,
         phase: ExecutionPlanManager.PHASE.INSPECTION,
         scopeFiles: hashline.affectedFiles,
-        allowedTools: ['read_file', 'glob', 'search', 'shell', 'review'],
+        allowedTools: ['read_file', 'glob', 'search', 'shell', 'review', 'preview_file', 'lsp_diagnostics', 'lsp_definition', 'lsp_references'],
         metadata: { source: 'hashline-repair', conflictType, hashline },
       },
       {
@@ -1637,7 +1637,7 @@ export class ExecutionPlanManager {
           'Rebuild the patch from the current file content and apply the smallest valid Hashline edit.',
         phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
         scopeFiles: hashline.affectedFiles,
-        allowedTools: ['read_file', 'apply_hashline_patch', 'edit_file', 'write_file'],
+        allowedTools: ['read_file', 'apply_hashline_patch', 'edit_file', 'write_file', 'lsp_workspace_edit', 'lsp_code_action', 'lsp_rename', 'preview_file'],
         metadata: { source: 'hashline-repair', conflictType, hashline },
       },
       {
@@ -1647,7 +1647,7 @@ export class ExecutionPlanManager {
           'Read back the edited files or diff and confirm the retry matches the plan intent.',
         phase: ExecutionPlanManager.PHASE.INSPECTION,
         scopeFiles: hashline.affectedFiles,
-        allowedTools: ['read_file', 'glob', 'search', 'shell', 'review'],
+        allowedTools: ['read_file', 'glob', 'search', 'shell', 'review', 'preview_file', 'lsp_diagnostics', 'lsp_definition', 'lsp_references'],
         metadata: { source: 'hashline-repair', conflictType, hashline },
       },
     ]);
@@ -1715,7 +1715,7 @@ export class ExecutionPlanManager {
         name: 'Diagnose verification failure',
         description: `Analyze the failed verification output and identify the root cause before editing. Failure evidence: ${failureSummary}`,
         phase: ExecutionPlanManager.PHASE.INSPECTION,
-        allowedTools: ['read_file', 'list_dir', 'glob', 'search', 'shell', 'review'],
+        allowedTools: ['read_file', 'list_dir', 'glob', 'search', 'shell', 'review', 'preview_file', 'lsp_diagnostics', 'lsp_definition', 'lsp_references'],
         metadata: { source: 'verification-repair', repairIteration: iteration },
       },
       {
@@ -1724,7 +1724,7 @@ export class ExecutionPlanManager {
         description:
           'Apply the smallest code or test change needed to resolve the verification failure.',
         phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
-        allowedTools: ['write_file', 'edit_file', 'apply_hashline_patch', 'shell'],
+        allowedTools: ['write_file', 'edit_file', 'apply_hashline_patch', 'shell', 'lsp_workspace_edit', 'lsp_code_action', 'lsp_rename', 'preview_file', 'harness_insert', 'harness_replace', 'harness_delete'],
         metadata: { source: 'verification-repair', repairIteration: iteration },
       },
       {
@@ -1733,7 +1733,7 @@ export class ExecutionPlanManager {
         description:
           'Read back the repaired files or diff and confirm the fix matches the failure.',
         phase: ExecutionPlanManager.PHASE.INSPECTION,
-        allowedTools: ['read_file', 'list_dir', 'glob', 'search', 'shell', 'review'],
+        allowedTools: ['read_file', 'list_dir', 'glob', 'search', 'shell', 'review', 'preview_file', 'lsp_diagnostics', 'lsp_definition', 'lsp_references'],
         metadata: { source: 'verification-repair', repairIteration: iteration },
       },
     ]);
@@ -2829,7 +2829,7 @@ export class ExecutionPlanManager {
         description: `Review the changed code against semantic risk domains: ${(taskProfile.semanticRiskDomains || []).map((d) => d.label).join('; ')}.`,
         dependencies: lastId ? [lastId] : [],
         phase: ExecutionPlanManager.PHASE.INSPECTION,
-        allowedTools: ['review', 'read_file', 'security_review', 'data_contract_check'],
+        allowedTools: ['review', 'read_file', 'security_review', 'data_contract_check', 'preview_file', 'lsp_definition', 'lsp_references', 'search'],
       });
     }
     this.#rebuildGraph(plan);

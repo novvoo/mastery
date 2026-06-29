@@ -231,11 +231,18 @@ function normalizeToolArgumentAliases(name, args = {}) {
 function getAllowedToolSet(context = {}) {
   const taskAllowed = context.currentTask?.allowedTools;
   if (Array.isArray(taskAllowed) && taskAllowed.length > 0) {
+    const allRegisteredToolNames = Array.from(context.toolRegistry?.getAll()?.map(t => t.name) || []);
     const routed = normalizeToolNameSet(context.activeRoutedToolNames);
+    
+    const baseTools = new Set([...allRegisteredToolNames, ...PLAN_CONTROL_TOOLS]);
+    
     if (routed && routed.size > 0) {
-      return new Set([...routed, ...taskAllowed, ...PLAN_CONTROL_TOOLS]);
+      routed.forEach(toolName => baseTools.add(toolName));
     }
-    return new Set([...taskAllowed, ...PLAN_CONTROL_TOOLS]);
+    
+    taskAllowed.forEach(toolName => baseTools.add(toolName));
+    
+    return baseTools;
   }
   return null;
 }

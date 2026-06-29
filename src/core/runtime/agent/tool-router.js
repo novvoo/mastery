@@ -149,41 +149,28 @@ const COMPRESS_TOOLS = ['caveman', 'handoff'];
 
 const PLAN_ORCHESTRATION_TOOLS = ['change_plan'];
 
-// Safe read/navigation tools that plan-constrained tasks may always use.
-// Planner-authored allowedTools describe the task's primary actions; these
-// context tools keep the agent from getting stuck when it needs to inspect the
-// workspace before choosing the next plan change or action.
-const PLAN_TASK_CONTEXT_TOOLS = [
-  'read_file',
+// Plan execution is not a pure planning document: the agent often needs to
+// inspect, edit, run, preview, review, and replan inside the same task loop.
+// Planner-authored allowedTools are therefore treated as the task's primary
+// intent, not as a narrow deny-list for the execution substrate.
+const PLAN_TASK_EXECUTION_TOOLS = [
+  ...CORE_READ_TOOLS,
+  ...CORE_WRITE_TOOLS,
+  ...HASHLINE_TOOLS,
+  ...LSP_NAV_TOOLS,
+  ...LSP_EDIT_TOOLS,
+  ...TERMINAL_TOOLS,
+  ...WEB_TOOLS,
+  ...GIT_READ_TOOLS,
+  ...HARNESS_STATE_TOOLS,
+  ...CONTEXT_EXPANSION_TOOLS,
+  ...GENERAL_METHODOLOGY_TOOLS,
+  ...ADVANCED_METHODOLOGY_TOOLS,
+  ...DOC_PRODUCT_TOOLS,
+  'coverage_check',
   'read_files',
-  'list_dir',
   'tree',
-  'write_file',
-  'edit_file',
-  'verify',
-  'apply_hashline_patch',
-  'shell',
-  'setup',
-  'search',
-  'glob',
-  'browser_open',
-  'semantic_search',
-  'lsp_diagnostics',
-  'lsp_definition',
-  'lsp_references',
-  'lsp_call_hierarchy',
-  'lsp_symbols',
-  'lsp_hover',
-  'lsp_type_definition',
-  'lsp_implementation',
-  'lsp_rename',
   'lsp_format',
-  'context_assess',
-  'context_expand',
-  'context_range',
-  'git_status',
-  'git_log',
-  'git_diff',
   'git_show',
 ];
 
@@ -297,35 +284,6 @@ export function selectToolsForRequest(
     }
   };
 
-  // currentTask constraints have the highest priority for mutating actions,
-  // but read-only context/navigation tools must remain available. Otherwise a
-  // plan step like "ask_user" can deadlock when the agent needs list_dir or
-  // diagnostics to understand what to ask or how to replan.
-  if (currentTask && currentTask.allowedTools && currentTask.allowedTools.length > 0) {
-    add(currentTask.allowedTools);
-    add(PLAN_TASK_CONTEXT_TOOLS);
-    add(PLAN_ORCHESTRATION_TOOLS);
-
-    if (currentPhase) {
-      const phaseCandidates = PHASE_CANDIDATE_TOOLS[currentPhase] || [];
-      add(phaseCandidates);
-    }
-
-    if (
-      taskProfile?.isBugTask ||
-      /bug|报错|错误|失败|崩溃|卡住|test failing|failing test/i.test(input)
-    ) {
-      add(['coverage_check']);
-    }
-
-    const selectedTools = Array.from(selected.values());
-    // Keep the full constrained set even if it exceeds maxTools; these tools
-    // are the active task contract plus safe context expansion.
-    return selectedTools;
-  }
-
-  // 以下为原有逻辑（当没有 currentTask 约束时使用）
-
   const asksForFreshData =
     Boolean(intent?.requiresFreshData) ||
     [
@@ -357,6 +315,43 @@ export function selectToolsForRequest(
     /\b(prd|issue|requirements|spec|design doc)\b/,
   ].some((pattern) => pattern.test(input));
 
+  if (currentTask && currentTask.allowedTools && currentTask.allowedTools.length > 0) {
+    add(PLAN_ORCHESTRATION_TOOLS);
+    add(PLAN_TASK_EXECUTION_TOOLS);
+    add(CORE_READ_TOOLS);
+    add(CORE_WRITE_TOOLS);
+    add(LSP_NAV_TOOLS);
+    add(LSP_EDIT_TOOLS);
+    add(HASHLINE_TOOLS);
+    add(TERMINAL_TOOLS);
+    add(GIT_READ_TOOLS);
+    add(HARNESS_STATE_TOOLS);
+    add(CONTEXT_EXPANSION_TOOLS);
+    add(currentTask.allowedTools);
+
+    if (currentPhase) {
+      const phaseCandidates = PHASE_CANDIDATE_TOOLS[currentPhase] || [];
+      add(phaseCandidates);
+    }
+
+    if (asksForGit) {
+      add(GIT_MUTATION_TOOLS);
+    }
+    if (asksForMcp) {
+      add(MCP_TOOLS);
+    }
+    if (asksForScheduling) {
+      add(TASK_TOOLS);
+      add(SCHEDULE_TOOLS);
+      add(SUBAGENT_TOOLS);
+    }
+    if (asksForCompression) {
+      add(COMPRESS_TOOLS);
+    }
+
+    return Array.from(selected.values());
+  }
+
   // Tiered exposure for coding tasks based on execution phase.
   // All coding tasks get the same complete methodology flow;
   // phase determines which tools are visible at each step.
@@ -384,13 +379,22 @@ export function selectToolsForRequest(
 
     // Phase-aware methodology tool selection:
     // 工具可见性完全由执行阶段决定。
-    // - 有 currentPhase → 按阶段动态暴露（所有编码任务都有阶段）
-    // - 无 currentPhase → 退化为基础方法论集（非编码任务）
-    if (currentPhase) {
+    // - 有 currentTask → phase 只做额外偏置，不做硬限制（完整执行底座）
+    // - 无 currentTask → 按阶段动态暴露
+    if (currentTask) {
+      // 计划态：完整执行底座 + phase 额外偏置
+      // 所有方法论工具始终可用，phase 只添加阶段特定工具
+      add(GENERAL_METHODOLOGY_TOOLS);
+      if (currentPhase) {
+        const phaseCandidates = PHASE_CANDIDATE_TOOLS[currentPhase] || [];
+        add(phaseCandidates);
+      }
+    } else if (currentPhase) {
+      // 非计划态：按阶段动态暴露
       const phaseCandidates = PHASE_CANDIDATE_TOOLS[currentPhase] || [];
       add(phaseCandidates);
     } else {
-      // 非编码任务或无 ExecutionPlan 的降级路径：暴露基础方法论
+      // 无 ExecutionPlan 的降级路径：暴露基础方法论
       add(GENERAL_METHODOLOGY_TOOLS);
     }
 

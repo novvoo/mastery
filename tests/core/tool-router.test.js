@@ -116,9 +116,11 @@ describe('selectToolsForRequest', () => {
     const names = namesOf(selected);
     expect(names).toContain('read_file');
     expect(names).toContain('change_plan');
-    expect(names).not.toContain('risk_check');
     expect(names).toContain('write_file');
     expect(names).toContain('shell');
+    expect(names).toContain('risk_check');
+    expect(names).toContain('verify');
+    expect(names).toContain('review');
   });
 
   test('current task allowedTools preserves safe context tools for plan execution', () => {
