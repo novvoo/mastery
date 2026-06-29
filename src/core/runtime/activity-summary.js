@@ -160,13 +160,49 @@ function normalizePlanTask(task) {
 function buildPlanSummary(planEvents) {
   const events = planEvents.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
   const latest = events.at(-1) || null;
+  const tasksById = new Map();
+
+  for (const event of events) {
+    for (const task of event.tasks || []) {
+      const key = task.id || task.name;
+      if (!key) {
+        continue;
+      }
+      const previous = tasksById.get(key) || {};
+      tasksById.set(key, {
+        ...previous,
+        ...task,
+      });
+    }
+  }
+
+  const tasks = Array.from(tasksById.values());
+  const progress = computePlanProgress(tasks);
+
   return {
     events,
-    latest,
-    tasks: latest?.tasks || [],
-    progress: latest?.progress || { total: 0, completed: 0, running: 0, failed: 0, progress: 0 },
+    latest: latest ? { ...latest, tasks, progress } : null,
+    tasks,
+    progress,
     created: events.some((event) => event.type === 'created'),
     updateCount: events.filter((event) => event.type === 'updated').length,
+  };
+}
+
+function computePlanProgress(tasks) {
+  const completed = tasks.filter((task) => task.displayStatus === 'completed').length;
+  const running = tasks.filter((task) => task.displayStatus === 'running').length;
+  const failed = tasks.filter((task) => task.displayStatus === 'failed').length;
+  const needsRepair = tasks.filter((task) => task.displayStatus === 'needs_repair').length;
+  const total = tasks.length;
+
+  return {
+    total,
+    completed,
+    running,
+    failed,
+    needsRepair,
+    progress: total > 0 ? Math.round((completed / total) * 100) : 0,
   };
 }
 

@@ -141,6 +141,60 @@ describe('activity-summary (src/core)', () => {
     expect(summary.waitingForUser).toBe(true);
   });
 
+  test('buildActivitySummary preserves completed plan tasks across partial updates', () => {
+    const summary = buildActivitySummary([
+      {
+        event: 'plan:created',
+        type: 'plan',
+        timestamp: 1,
+        payload: {
+          plan: {
+            tasks: [
+              { id: 'inspect', name: '检查上下文', status: 'running' },
+              { id: 'edit', name: '修改代码', status: 'pending' },
+              { id: 'verify', name: '验证结果', status: 'pending' },
+            ],
+          },
+        },
+      },
+      {
+        event: 'plan:updated',
+        type: 'plan',
+        timestamp: 2,
+        payload: {
+          plan: {
+            tasks: [
+              { id: 'inspect', name: '检查上下文', status: 'completed' },
+              { id: 'edit', name: '修改代码', status: 'running' },
+            ],
+          },
+        },
+      },
+      {
+        event: 'plan:updated',
+        type: 'plan',
+        timestamp: 3,
+        payload: {
+          plan: {
+            tasks: [{ id: 'verify', name: '验证结果', status: 'running' }],
+          },
+        },
+      },
+    ]);
+
+    expect(summary.plan.tasks.map((task) => [task.id, task.status])).toEqual([
+      ['inspect', 'completed'],
+      ['edit', 'running'],
+      ['verify', 'running'],
+    ]);
+    expect(summary.plan.progress).toMatchObject({
+      total: 3,
+      completed: 1,
+      running: 2,
+      progress: 33,
+    });
+  });
+
   test('getActivityTone returns correct tone', () => {
     expect(getActivityTone({ phase: 'completed' })).toBe('completed');
     expect(getActivityTone({ phase: 'failed' })).toBe('failed');

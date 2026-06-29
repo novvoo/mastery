@@ -156,9 +156,34 @@ describe('runtime-details (src/core)', () => {
     expect(isPrimaryMessage({ type: 'assistant', content: 'You are a tool...' })).toBe(false);
     expect(isPrimaryMessage({ type: 'assistant', content: 'You are a skill...' })).toBe(false);
     expect(isPrimaryMessage({ type: 'assistant', content: '[SYSTEM] Internal' })).toBe(false);
+    expect(
+      isPrimaryMessage({
+        type: 'assistant',
+        content: 'You are an AI Engineering Mastery Agent — a coding assistant.',
+      }),
+    ).toBe(false);
+    expect(
+      isPrimaryMessage({
+        type: 'assistant',
+        content: '**ANTI-PROCRASTINATION:** After describing what you will do...',
+      }),
+    ).toBe(false);
     expect(isPrimaryMessage({ type: 'assistant', content: '<!-- workspace-context -->' })).toBe(
       false,
     );
+    expect(
+      isPrimaryMessage({
+        type: 'assistant',
+        content:
+          '## 📋 Current Execution Task (STRICT CONSTRAINTS)\n\n### ⚡ STRICT RULES FOR THIS TASK\n\n**Allowed Tools (ONLY use these):**',
+      }),
+    ).toBe(false);
+    expect(
+      isPrimaryMessage({
+        type: 'assistant',
+        content: '  **Allowed Tools (ONLY use these):**\n- read_file\n- list_dir',
+      }),
+    ).toBe(false);
 
     expect(isPrimaryMessage({ toolName: 'read_file', type: 'assistant' })).toBe(false);
     expect(isPrimaryMessage({ args: {}, type: 'assistant' })).toBe(false);

@@ -19,14 +19,33 @@ const TOOL_RELATED_FIELDS = [
 ];
 
 const INTERNAL_CONTENT_PATTERNS = [
+  /^You are an AI Engineering Mastery Agent/i,
   /^You are a tool/i,
   /^You are a skill/i,
   /^\[SYSTEM\]/i,
   /^\[INTERNAL\]/i,
   /^\[DEVELOPER\]/i,
+  /^Action:\s*CALL\s+\w+/i,
+  /^\*\*ANTI-PROCRASTINATION:/i,
+  /^\*\*ANTI-HALLUCINATION:/i,
+  /^##\s*(?:📋\s*)?Current Execution Task/i,
+  /^###\s*(?:⚡\s*)?STRICT RULES FOR THIS TASK/i,
+  /^\*\*Allowed Tools \(ONLY use these\):\*\*/i,
+  /^❌\s*Do NOT call tools outside this list/i,
+  /^\*\*Task ID Convention:\*\*/i,
+  /^Task ID:\s*/i,
+  /^Task Name:\s*/i,
   /^<!--.*-->/,
   /^\/\*.*\*\//,
 ];
+
+function isInternalContent(text) {
+  if (typeof text !== 'string') {
+    return false;
+  }
+  const clean = text.trim();
+  return INTERNAL_CONTENT_PATTERNS.some((pattern) => pattern.test(clean));
+}
 
 export function isRuntimeDetailMessage(msg) {
   if (!msg || typeof msg !== 'object') {
@@ -63,16 +82,12 @@ export function isRuntimeDetailMessage(msg) {
     }
   }
 
-  if (typeof msg.content === 'string') {
-    if (INTERNAL_CONTENT_PATTERNS.some((pattern) => pattern.test(msg.content))) {
-      return true;
-    }
+  if (isInternalContent(msg.content)) {
+    return true;
   }
 
-  if (typeof msg.text === 'string') {
-    if (INTERNAL_CONTENT_PATTERNS.some((pattern) => pattern.test(msg.text))) {
-      return true;
-    }
+  if (isInternalContent(msg.text)) {
+    return true;
   }
 
   for (const field of TOOL_RELATED_FIELDS) {

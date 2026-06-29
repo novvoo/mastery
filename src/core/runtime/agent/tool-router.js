@@ -166,6 +166,7 @@ const PLAN_TASK_CONTEXT_TOOLS = [
   'setup',
   'search',
   'glob',
+  'browser_open',
   'semantic_search',
   'lsp_diagnostics',
   'lsp_definition',
@@ -310,7 +311,10 @@ export function selectToolsForRequest(
       add(phaseCandidates);
     }
 
-    if (taskProfile?.isBugTask || /bug|报错|错误|失败|崩溃|卡住|test failing|failing test/i.test(input)) {
+    if (
+      taskProfile?.isBugTask ||
+      /bug|报错|错误|失败|崩溃|卡住|test failing|failing test/i.test(input)
+    ) {
       add(['coverage_check']);
     }
 
