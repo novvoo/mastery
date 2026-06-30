@@ -18,9 +18,15 @@ import { commandCatalog } from '../../src/core/command-catalog.js';
 import { metricsSink } from '../../src/core/metrics-sink.js';
 import { getMissingRequiredConfig } from '../../src/core/runtime-config.js';
 import { createConfiguredModelProvider } from '../../src/cli/model-provider-factory.js';
+import {
+  handleCreateWorkspaceDirectory,
+  handleCreateWorkspaceFile,
+  handleDeleteWorkspaceItem,
+  handleRenameWorkspaceItem,
+} from '../../src/adapters/desktop/ipc/main-process/workspace-handlers.js';
 import fs from 'fs';
 import { exec } from 'child_process';
-import { resolve, dirname, extname, basename, normalize } from 'path';
+import { resolve, extname } from 'path';
 
 async function fileExists(filePath) {
   try {
@@ -28,6 +34,19 @@ async function fileExists(filePath) {
   } catch (_) {
     return false;
   }
+}
+
+function createWorkspaceHandlerContext(ctx) {
+  return {
+    engine: {
+      getConfig: () => ({ workingDirectory: ctx.config.workingDirectory }),
+    },
+    broadcast: (eventName, data) => {
+      if (typeof ctx.ipcAdapter?.broadcast === 'function') {
+        ctx.ipcAdapter.broadcast(eventName, data);
+      }
+    },
+  };
 }
 
 export async function initializeIPCAdapter(ctx) {
@@ -219,6 +238,23 @@ export function registerCustomHandlers(ctx) {
       : { success: false, error: 'listWorkspaceDirectory 未实现' };
   });
 
+  // 文件操作
+  ipc.registerHandler('workspace:createFile', async ({ path, content = '' }) => {
+    return handleCreateWorkspaceFile({ path, content }, createWorkspaceHandlerContext(ctx));
+  });
+
+  ipc.registerHandler('workspace:createDirectory', async ({ path }) => {
+    return handleCreateWorkspaceDirectory({ path }, createWorkspaceHandlerContext(ctx));
+  });
+
+  ipc.registerHandler('workspace:deleteFile', async ({ path }) => {
+    return handleDeleteWorkspaceItem({ path }, createWorkspaceHandlerContext(ctx));
+  });
+
+  ipc.registerHandler('workspace:rename', async ({ path, newPath }) => {
+    return handleRenameWorkspaceItem({ path, newPath }, createWorkspaceHandlerContext(ctx));
+  });
+
   // 终端命令执行
   ipc.registerHandler('terminal:execute', async ({ command, cwd }) => {
     return new Promise((resolve) => {
@@ -332,6 +368,9 @@ export function registerCustomHandlers(ctx) {
 
   // 多模型管理
   ipc.registerHandler('llm:list-models', async () => {
+    if (typeof ctx.readAllModelConfigsForRenderer === 'function') {
+      return ctx.readAllModelConfigsForRenderer();
+    }
     return typeof ctx.readAllModelConfigs ? ctx.readAllModelConfigs() : [];
   });
 
@@ -418,18 +457,49 @@ export function registerCustomHandlers(ctx) {
 }
 
 async function getCommandCompletions(prefix) {
-  return new Promise((resolve) => {
-    exec(`compgen -c ${prefix} 2>/dev/null || ls /usr/local/bin /usr/bin /bin 2>/dev/null | grep "^${prefix}"`, (error, stdout) => {
-      const commands = new Set();
-      if (stdout) {
-        stdout.trim().split('\n').forEach(line => {
-          const cmd = line.trim();
-          if (cmd) commands.add(cmd);
-        });
+  const query = String(prefix || '').trim().slice(0, 128);
+  if (query.includes('/') || query.includes('\\') || query.includes('\0')) {
+    return [];
+  }
+
+  const commands = new Set();
+  const pathDirs = String(process.env.PATH || '')
+    .split(process.platform === 'win32' ? ';' : ':')
+    .filter(Boolean);
+
+  await Promise.all(pathDirs.map(async (dirPath) => {
+    try {
+      const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.name.startsWith(query)) continue;
+        if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+        if (await isExecutableFile(resolve(dirPath, entry.name))) {
+          commands.add(entry.name);
+        }
       }
-      resolve(Array.from(commands).sort());
-    });
-  });
+    } catch (_) {
+      // PATH can contain directories that are not readable in sandboxed shells.
+    }
+  }));
+
+  return Array.from(commands).sort().slice(0, 200);
+}
+
+async function isExecutableFile(filePath) {
+  try {
+    const stats = await fs.promises.stat(filePath);
+    if (!stats.isFile()) return false;
+    if (process.platform === 'win32') {
+      const ext = extname(filePath).toLowerCase();
+      const pathext = String(process.env.PATHEXT || '.EXE;.CMD;.BAT;.COM;.PS1')
+        .toLowerCase()
+        .split(';');
+      return pathext.includes(ext);
+    }
+    return Boolean(stats.mode & 0o111);
+  } catch (_) {
+    return false;
+  }
 }
 
 async function listDirectoryEntries(dirPath) {

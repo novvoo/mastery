@@ -28,6 +28,7 @@ const MUTATION_TOOL_NAMES = new Set([
 
 const METHODOLOGY_TOOL_NAMES = new Set([
   'coverage_check',
+  'auto_research',
   'ask_user',
   'brainstorm',
   'grill',

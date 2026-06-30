@@ -9,6 +9,9 @@
  *   - React Hook (useIPC) 仅做状态同步 & 生命周期管理，不重复实现逻辑
  */
 
+import { createLogger } from '../utils/logger.js';
+const logger = createLogger('useIPC');
+
 function getWindowObject() {
   return (typeof window !== 'undefined' && window != null) ? window : null;
 }
@@ -61,40 +64,40 @@ export async function connectElectronAPI(ctx = {}) {
   let api = null;
 
   if (!hasElectronAPI()) {
-    console.log('[useIPC] window.electronAPI 暂不可用，轮询等待 3000ms...');
+    logger.debug('window.electronAPI 暂不可用，轮询等待 3000ms...');
     try {
-      console.log('[IPC-DIAG][renderer] before wait:', diagnoseIPC());
+      logger.debug('IPC-DIAG[renderer] before wait:', diagnoseIPC());
     } catch (_) {}
     const apiAvailable = await waitForElectronAPI(3000);
     if (!apiAvailable) {
-      console.warn('[useIPC] electronAPI 不可用，可能不在 Electron 环境中');
+      logger.warn('electronAPI 不可用，可能不在 Electron 环境中');
       try {
-        console.log('[IPC-DIAG][renderer] after wait timeout:', diagnoseIPC());
+        logger.debug('IPC-DIAG[renderer] after wait timeout:', diagnoseIPC());
       } catch (_) {}
       if (isConnectedRef) isConnectedRef.current = false;
       return null;
     }
-    console.log('[useIPC] window.electronAPI 轮询成功，可以连接');
+    logger.debug('window.electronAPI 轮询成功，可以连接');
   }
 
   api = getElectronAPI();
   if (!api) {
-    console.warn('[useIPC] electronAPI 不可用，可能不在 Electron 环境中');
+    logger.warn('electronAPI 不可用，可能不在 Electron 环境中');
     if (isConnectedRef) isConnectedRef.current = false;
     return null;
   }
 
   try {
-    console.log('[useIPC] 调用 electronAPI.connect() ...');
+    logger.debug('调用 electronAPI.connect() ...');
     const result = await api.connect();
     if (isConnectedRef) isConnectedRef.current = true;
     if (connectionInfoRef) connectionInfoRef.current = result;
     if (typeof onConnected === 'function') onConnected(result);
 
-    console.log('[useIPC] 已连接到主进程:', result);
+    logger.debug('已连接到主进程:', result);
     return result;
   } catch (err) {
-    console.error('[useIPC] 连接失败:', err);
+    logger.error('连接失败:', err);
     if (isConnectedRef) isConnectedRef.current = false;
     return null;
   }
@@ -139,7 +142,7 @@ export function diagnoseIPC() {
     isElectronUA: /Electron/i.test(win?.navigator?.userAgent || ''),
     timestamp: new Date().toISOString()
   };
-  console.log('[useIPC] IPC 诊断:', result);
+  logger.debug('IPC 诊断:', result);
   return result;
 }
 
@@ -159,7 +162,7 @@ export async function invokeElectronAPI(channel, ...args) {
   try {
     return await api.invoke(channel, ...args);
   } catch (err) {
-    console.error(`[useIPC] invoke ${channel} 失败:`, err);
+    logger.error(`invoke ${channel} 失败:`, err);
     throw err;
   }
 }
@@ -209,9 +212,9 @@ export function useIPC() {
       isConnectedRef.current = false;
       setIsConnected(false);
       setConnectionInfo(null);
-      console.log('[useIPC] 已断开连接');
+      logger.debug('已断开连接');
     } catch (err) {
-      console.error('[useIPC] 断开连接失败:', err);
+      logger.error('断开连接失败:', err);
     }
   }, []);
 
@@ -222,20 +225,20 @@ export function useIPC() {
   const send = useCallback((channel, data) => {
     const api = getElectronAPI();
     if (!api) {
-      console.warn('[useIPC] electronAPI 不可用');
+      logger.warn('electronAPI 不可用');
       return;
     }
     try {
       api.send(channel, data);
     } catch (err) {
-      console.error(`[useIPC] send ${channel} 失败:`, err);
+      logger.error(`send ${channel} 失败:`, err);
     }
   }, []);
 
   const subscribe = useCallback((channel, callback) => {
     const api = getElectronAPI();
     if (!api) {
-      console.warn('[useIPC] electronAPI 不可用');
+      logger.warn('electronAPI 不可用');
       return () => {};
     }
     try {
@@ -243,7 +246,7 @@ export function useIPC() {
       subscriptionsRef.current.push(unsub);
       return unsub;
     } catch (err) {
-      console.error(`[useIPC] subscribe ${channel} 失败:`, err);
+      logger.error(`subscribe ${channel} 失败:`, err);
       return () => {};
     }
   }, []);
@@ -251,7 +254,7 @@ export function useIPC() {
   const once = useCallback((channel, callback) => {
     const api = getElectronAPI();
     if (!api) {
-      console.warn('[useIPC] electronAPI 不可用');
+      logger.warn('electronAPI 不可用');
       return Promise.resolve(null);
     }
     return api.once(channel, callback);
@@ -343,6 +346,23 @@ export function useIPC() {
 
   const writeWorkspaceFile = useCallback(async (path, content, options = {}) => {
     return invoke('workspace:writeFile', { path, content, ...options });
+  }, [invoke]);
+
+  // 文件 CRUD
+  const createWorkspaceFile = useCallback(async (path, content = '') => {
+    return invoke('workspace:createFile', { path, content });
+  }, [invoke]);
+
+  const createWorkspaceDirectory = useCallback(async (path) => {
+    return invoke('workspace:createDirectory', { path });
+  }, [invoke]);
+
+  const deleteWorkspaceFile = useCallback(async (path) => {
+    return invoke('workspace:deleteFile', { path });
+  }, [invoke]);
+
+  const renameWorkspaceItem = useCallback(async (path, newPath) => {
+    return invoke('workspace:rename', { path, newPath });
   }, [invoke]);
 
   const startPreview = useCallback(async (options = {}) => {
@@ -520,6 +540,11 @@ export function useIPC() {
     listDirectory,
     readWorkspaceFile,
     writeWorkspaceFile,
+    // 文件 CRUD
+    createWorkspaceFile,
+    createWorkspaceDirectory,
+    deleteWorkspaceFile,
+    renameWorkspaceItem,
     startPreview,
     listPreviews,
     stopPreview,

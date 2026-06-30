@@ -30,7 +30,8 @@ export function SettingsMenu({
       border: '1px solid var(--glass-border)',
       borderRadius: '12px',
       boxShadow: 'var(--glass-shadow-lg)', zIndex: 1000,
-      padding: '10px', fontSize: '12px', color: 'var(--text-color)'
+      padding: '10px', fontSize: '12px', color: 'var(--text-color)',
+      userSelect: 'text',
     }}>
       <div style={{padding:'4px 8px 8px',borderBottom:'none',marginBottom:'6px',fontWeight:'700',fontSize:'11px',color:'var(--text-muted)',textTransform:'uppercase'}}>
         {t('ui.root')}

@@ -18,9 +18,13 @@ import {
 } from './main-process/agent-command-handlers.js';
 import { DIRECT_INVOKE_CHANNELS } from './main-process/channels.js';
 import {
+  handleCreateWorkspaceDirectory,
+  handleCreateWorkspaceFile,
+  handleDeleteWorkspaceItem,
   handleFileDiff,
   handleIsGitRepo,
   handleReadWorkspaceFile,
+  handleRenameWorkspaceItem,
   handleWriteWorkspaceFile,
 } from './main-process/workspace-handlers.js';
 
@@ -236,6 +240,30 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
           return this.createResponse(
             message,
             await handleWriteWorkspaceFile(message.payload, this.#createHandlerContext()),
+          );
+
+        case 'workspace:createFile':
+          return this.createResponse(
+            message,
+            await handleCreateWorkspaceFile(message.payload, this.#createHandlerContext()),
+          );
+
+        case 'workspace:createDirectory':
+          return this.createResponse(
+            message,
+            await handleCreateWorkspaceDirectory(message.payload, this.#createHandlerContext()),
+          );
+
+        case 'workspace:deleteFile':
+          return this.createResponse(
+            message,
+            await handleDeleteWorkspaceItem(message.payload, this.#createHandlerContext()),
+          );
+
+        case 'workspace:rename':
+          return this.createResponse(
+            message,
+            await handleRenameWorkspaceItem(message.payload, this.#createHandlerContext()),
           );
 
         case 'workspace:isGitRepo':

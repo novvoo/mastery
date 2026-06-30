@@ -507,6 +507,48 @@ describe('Desktop IPC Initialization Order', () => {
       }
     });
 
+    test('saveSingleModelConfig encrypts model API keys when safeStorage is available', async () => {
+      const savedEnv = snapshotEnv();
+      const { fs, path, userDataDir, ctx } = await createModelTestContext('mastery-model-secure-');
+      try {
+        for (const key of envKeys) delete process.env[key];
+        ctx.electron.safeStorage = {
+          isEncryptionAvailable: () => true,
+          encryptString(value) {
+            return Buffer.from(`secure:${Buffer.from(value).toString('base64')}`);
+          },
+          decryptString(buffer) {
+            const encoded = buffer.toString().replace(/^secure:/, '');
+            return Buffer.from(encoded, 'base64').toString();
+          },
+        };
+
+        const { readAllModelConfigsForRenderer, saveSingleModelConfig } =
+          await import('../main-app/llm-config-and-persistence.js');
+        const result = await saveSingleModelConfig(ctx, {
+          id: 'model-openai',
+          provider: 'openai',
+          model: 'gpt-4o',
+          apiKey: 'test-key-secure',
+          enabled: true,
+          name: 'OpenAI',
+        });
+
+        expect(result.success).toBe(true);
+        const rawModels = fs.readFileSync(path.join(userDataDir, 'models.json'), 'utf8');
+        expect(rawModels).not.toContain('test-key-secure');
+        expect(rawModels).toContain('apiKeyEncrypted');
+
+        const rendererConfigs = readAllModelConfigsForRenderer(ctx);
+        expect(rendererConfigs[0].apiKey).toBe('');
+        expect(rendererConfigs[0].hasApiKey).toBe(true);
+        expect(rendererConfigs[0].apiKeyPreview).toBe('••••cure');
+      } finally {
+        restoreEnv(savedEnv);
+        fs.rmSync(userDataDir, { recursive: true, force: true });
+      }
+    });
+
     test('attachConfiguredModelProvider restores active model from models.json when env is missing', async () => {
       const savedEnv = snapshotEnv();
       const { fs, path, userDataDir, ctx } = await createModelTestContext('mastery-model-restore-');
@@ -760,6 +802,54 @@ describe('Desktop IPC Initialization Order', () => {
       expect(result.success).toBe(true);
       expect(captured.root).toBe(REPO_ROOT);
       expect(captured.options).toEqual({ maxEntries: 7, path: 'src' });
+    });
+
+    test('terminal command completion does not execute the typed prefix', async () => {
+      const fs = await import('fs');
+      const os = await import('os');
+      const path = await import('path');
+      const { registerCustomHandlers } = await import('../main-app/ipc-router.js');
+
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mastery-complete-'));
+      const injectedPath = path.join(tempDir, 'injected');
+      const handlers = new Map();
+      const ctx = {
+        ipcAdapter: {
+          getStats: () => ({}),
+          registerHandler(channel, handler) {
+            handlers.set(channel, handler);
+          },
+        },
+        config: {
+          debug: false,
+          workingDirectory: tempDir,
+          window: { webPreferences: {} },
+        },
+        mainWindow: { webContents: { id: 1, getURL: () => '' } },
+        electron: {
+          BrowserWindow: {
+            getAllWindows: () => [],
+            fromWebContents: () => null,
+          },
+          dialog: {},
+          Notification: function Notification() {},
+          shell: {},
+          app: {},
+        },
+      };
+
+      try {
+        registerCustomHandlers(ctx);
+        const result = await handlers.get('terminal:complete')({
+          command: `zzzz;touch ${injectedPath}`,
+          cwd: tempDir,
+        });
+
+        expect(result.success).toBe(true);
+        expect(fs.existsSync(injectedPath)).toBe(false);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 });

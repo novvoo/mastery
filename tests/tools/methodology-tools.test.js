@@ -44,6 +44,7 @@ describe('expanded methodology tools', () => {
     const names = SKILL_TOOL_CREATORS.map((creator) => creator()?.name).filter(Boolean);
     expect(names).toContain('impact_map');
     expect(names).toContain('project_profile');
+    expect(names).toContain('auto_research');
     expect(names).toContain('security_review');
     expect(names).toContain('data_contract_check');
   });

@@ -4,7 +4,7 @@
  * 按提供商分组展示模型配置，支持添加/编辑/删除/启用切换。
  * 每个提供商可配置多个模型实例。
  */
-import React, { useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Switch from '../ui/Switch.jsx';
 import { LLM_PROVIDER_OPTIONS } from '../../app/config/index.js';
 import { t } from '../../i18n.js';
@@ -217,10 +217,20 @@ function ModelConfigCard({
 }) {
   const [form, setForm] = useState({
     name: config.name,
-    apiKey: config.apiKey,
+    apiKey: '',
     model: config.model,
     baseUrl: config.baseUrl,
   });
+
+  useEffect(() => {
+    if (!isEditing) return;
+    setForm({
+      name: config.name || '',
+      apiKey: '',
+      model: config.model || '',
+      baseUrl: config.baseUrl || '',
+    });
+  }, [config.baseUrl, config.model, config.name, isEditing]);
 
   const handleChange = (key, value) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -230,7 +240,11 @@ function ModelConfigCard({
     onSave(form);
   };
 
-  const isConfigured = config.apiKey && config.model;
+  const hasSavedApiKey = Boolean(config.hasApiKey || config.apiKey);
+  const isConfigured = hasSavedApiKey && config.model;
+  const apiKeyPlaceholder = hasSavedApiKey
+    ? `${config.apiKeyPreview || '已保存'}，留空则保留当前密钥`
+    : t('llm.api_key_placeholder');
 
   return (
     <div style={{
@@ -334,7 +348,8 @@ function ModelConfigCard({
               type="password"
               value={form.apiKey}
               onChange={(e) => handleChange('apiKey', e.target.value)}
-              placeholder={t('llm.api_key_placeholder')}
+              placeholder={apiKeyPlaceholder}
+              autoComplete="off"
             />
           </div>
           <div style={styles.formRow}>

@@ -19,12 +19,22 @@ import { RuntimeDetailsPanel } from './message-log/RuntimeDetailsPanel.jsx';
 import { Icon } from './ui/index.js';
 import { t } from '../i18n.js';
 import {
+  buildThinkingSummary,
   buildRuntimeDetailsExportData,
   createConversationGroups,
   isPrimaryMessage,
   isRuntimeDetailMessage,
 } from './message-log/utils/runtime-details.js';
 import { getMessageDisplayText, getMessageSerializableText, getStableMessageId, safeStringify } from './message-log/utils/message-utils.js';
+import {
+  PLAN_ARCHITECTURE_LABELS,
+  PLAN_PHASE_LABELS,
+  formatPlanStrategyValue,
+  getPlanModeLabel,
+  getPlanPhaseLabel,
+  getPlanShapeLabel,
+  groupPlanTasksByPhase,
+} from './message-log/utils/plan-display.js';
 
 // 样式定义
 /**
@@ -584,33 +594,33 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   const getTypeDisplay = (type) => {
     switch (type) {
       case 'info':
-        return { icon: 'ℹ️', text: '信息' };
+        return { iconName: 'info', text: t('msg.info') };
       case 'success':
-        return { icon: '✅', text: '成功' };
+        return { iconName: 'success', text: t('msg.success') };
       case 'error':
-        return { icon: '❌', text: '错误' };
+        return { iconName: 'error', text: t('msg.error') };
       case 'warning':
-        return { icon: '⚠️', text: '警告' };
+        return { iconName: 'warning', text: t('msg.warning') };
       case 'debug':
-        return { icon: '🔍', text: '调试' };
+        return { iconName: 'debug', text: t('msg.debug') };
       case 'tool':
-        return { icon: '🔧', text: '工具' };
+        return { iconName: 'tool', text: t('msg.tool') };
       case 'tool_result':
-        return { icon: '📦', text: '工具结果' };
+        return { iconName: 'tool_result', text: t('msg.tool_result') };
       case 'event':
-        return { icon: '✨', text: '事件' };
+        return { iconName: 'event', text: t('msg.event') };
       case 'result':
-        return { icon: '📊', text: '结果' };
+        return { iconName: 'result', text: t('msg.result') };
       case 'user':
-        return { icon: '👤', text: '用户' };
+        return { iconName: 'user', text: t('msg.user') };
       case 'agent':
-        return { icon: 'AI', text: t('msg.assistant') };
+        return { iconName: 'assistant', text: t('msg.assistant') };
       case 'thinking':
-        return { icon: '思', text: '思考' };
+        return { iconName: 'thinking', text: t('msg.thinking') };
       case 'plan':
-        return { icon: '▦', text: '计划' };
+        return { iconName: 'plan', text: t('msg.plan') };
       default:
-        return { icon: '📄', text: '消息' };
+        return { iconName: 'message', text: t('msg.message') };
     }
   };
   
@@ -673,15 +683,15 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
 
     // ── 工具调用卡片渲染 ───────────────────────────
     const renderToolCard = () => {
-      const toolName = msg.toolName || msg.name || (msg.content && msg.content.length < 80 ? msg.content : '未知工具');
-      const toolIcon = msg.toolName?.includes('write') ? '✍️'
-        : msg.toolName?.includes('subagent') ? '◫'
-        : msg.toolName?.includes('read') || msg.toolName?.includes('cat') ? '📄'
-        : msg.toolName?.includes('shell') || msg.toolName?.includes('exec') || msg.toolName?.includes('bash') ? '💻'
-        : msg.toolName?.includes('search') || msg.toolName?.includes('find') || msg.toolName?.includes('glob') ? '🔎'
-        : msg.toolName?.includes('ask_human') || msg.toolName?.includes('human') ? '🙋'
-        : msg.toolName?.includes('file') ? '📁'
-        : '🔧';
+      const toolName = msg.toolName || msg.name || (msg.content && msg.content.length < 80 ? msg.content : t('tool.unknown'));
+      const toolIconName = msg.toolName?.includes('write') ? 'write'
+        : msg.toolName?.includes('subagent') ? 'subagent'
+        : msg.toolName?.includes('read') || msg.toolName?.includes('cat') ? 'read'
+        : msg.toolName?.includes('shell') || msg.toolName?.includes('exec') || msg.toolName?.includes('bash') ? 'shell'
+        : msg.toolName?.includes('search') || msg.toolName?.includes('find') || msg.toolName?.includes('glob') ? 'search'
+        : msg.toolName?.includes('ask_human') || msg.toolName?.includes('human') ? 'user'
+        : msg.toolName?.includes('file') ? 'preview'
+        : 'tool';
 
       let args = null;
       if (msg.args && typeof msg.args === 'object' && Object.keys(msg.args).length > 0) {
@@ -696,11 +706,13 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       return (
         <div style={styles.actionCard}>
           <div style={styles.actionCardHeader}>
-            <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxTool }}>{toolIcon}</div>
+            <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxTool }}>
+              <Icon name={toolIconName} size={16} />
+            </div>
             <div style={styles.actionTitleWrap}>
               <div style={styles.actionName}>{toolName}</div>
               <div style={styles.actionSubtitle}>
-                {toolName.includes('subagent') ? '子代理任务' : '执行工具调用'}
+                {toolName.includes('subagent') ? t('tool.subagent_task') : t('tool.execute')}
               </div>
             </div>
             {msg.duration && (
@@ -750,17 +762,19 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         return renderAssistantBubble();
       }
 
-      const summary = msg.content ?? msg.message ?? msg.result ?? msg.payload ?? '执行成功';
-      const displayText = safeStringify(summary, '执行成功');
+      const summary = msg.content ?? msg.message ?? msg.result ?? msg.payload ?? t('tool.success');
+      const displayText = safeStringify(summary, t('tool.success'));
       const hasContent = Boolean(displayText.trim());
 
       return (
         <div style={{ ...styles.actionCard, borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--success-color)' }}>
           <div style={styles.actionCardHeader}>
-            <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxResult }}>✓</div>
+            <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxResult }}>
+              <Icon name="success" size={16} />
+            </div>
             <div style={styles.actionTitleWrap}>
-              <div style={styles.actionName}>工具执行完成</div>
-              <div style={styles.actionSubtitle}>{msg.toolName || '操作结果'}</div>
+              <div style={styles.actionName}>{t('tool.success')}</div>
+              <div style={styles.actionSubtitle}>{msg.toolName || t('tool.result')}</div>
             </div>
             {msg.duration && (
               <span style={styles.actionDurationBadge}>{msg.duration}ms</span>
@@ -785,18 +799,20 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
 
     // ── 错误卡片渲染 ───────────────────────────
     const renderErrorCard = () => {
-      const errorMsg = msg.content ?? msg.message ?? msg.error ?? msg.payload ?? '操作失败';
-      const displayMsg = safeStringify(errorMsg, '操作失败');
+      const errorMsg = msg.content ?? msg.message ?? msg.error ?? msg.payload ?? t('tool.failed');
+      const displayMsg = safeStringify(errorMsg, t('tool.failed'));
 
       return (
         <div style={{ ...styles.actionCard, borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--error-border)' }}>
           <div style={styles.actionCardHeader}>
-            <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxError }}>!</div>
+            <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxError }}>
+              <Icon name="error" size={16} />
+            </div>
             <div style={styles.actionTitleWrap}>
               <div style={{ ...styles.actionName, color: 'var(--error-color)' }}>
-                {msg.event === 'tool:error' ? '工具执行失败' : '错误'}
+                {msg.event === 'tool:error' ? t('tool.error') : t('msg.error')}
               </div>
-              <div style={styles.actionSubtitle}>可将此错误交由助手分析处理</div>
+              <div style={styles.actionSubtitle}>{t('msg.hand_to_agent_hint')}</div>
             </div>
           </div>
 
@@ -855,7 +871,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         }}>
           <div style={styles.streamingStatus}>
             <span style={styles.streamingStatusDot} />
-            <span>{content ? '正在生成回复' : '正在组织回复'}</span>
+            <span>{content ? t('status.generating') : t('status.organizing')}</span>
             <span style={styles.streamingDots} aria-hidden="true">
               <span style={styles.streamingDot} />
               <span style={styles.streamingDot} />
@@ -887,7 +903,21 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     const renderPlanCard = () => {
       const tasks = Array.isArray(msg.planTasks) ? msg.planTasks : [];
       const progress = msg.planProgress || {};
-      const title = msg.content || '执行计划';
+      const plan = msg.plan || {};
+      const strategy = plan.strategy || plan.context?.strategy || {};
+      const title = msg.content || t('plan.title');
+      const modeLabel = getPlanModeLabel(plan);
+      const shapeLabel = getPlanShapeLabel(plan, tasks);
+      const decomposition = String(strategy.decomposition || plan?.context?.decomposition || '').toLowerCase();
+      const architectureId = strategy.planningArchitecture || strategy.architecture;
+      const architecture = strategy.planningArchitectureLabel || PLAN_ARCHITECTURE_LABELS[architectureId] || formatPlanStrategyValue(architectureId);
+      const strategyFacts = [
+        [t('plan.strategy.mode'), architecture],
+        [t('plan.strategy.verification'), formatPlanStrategyValue(strategy.verificationStrength)],
+        [t('plan.strategy.parallel'), formatPlanStrategyValue(strategy.parallelPotential)],
+        [t('plan.strategy.phase'), strategy.phaseCount ? `${strategy.phaseCount} ${t('plan.strategy.units')}` : null],
+      ].filter(([, value]) => value);
+      const phaseGroups = groupPlanTasksByPhase(tasks);
       const statusTone = progress.failed > 0 ? 'var(--error-color)'
         : progress.needsRepair > 0 ? 'var(--warning-color)'
         : progress.completed === progress.total && progress.total > 0 ? 'var(--success-color)'
@@ -897,41 +927,25 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       const taskStatus = (task) => String(task.displayStatus || task.status || 'pending').toLowerCase();
       const taskStatusText = (statusValue) => {
         switch (statusValue) {
-          case 'completed': return '完成';
-          case 'running': return '进行中';
-          case 'needs_repair': return '需修复';
-          case 'failed': return '失败';
-          case 'blocked': return '等待';
-          default: return '待执行';
+          case 'completed': return t('plan.status.completed');
+          case 'running': return t('plan.status.running');
+          case 'needs_repair': return t('plan.status.needs_repair');
+          case 'failed': return t('plan.status.failed');
+          case 'blocked': return t('plan.status.waiting');
+          default: return t('plan.status.pending');
         }
       };
-
-      const getTaskSortPriority = (statusValue) => {
-        switch (statusValue) {
-          case 'running': return 0;
-          case 'failed': return 1;
-          case 'needs_repair': return 2;
-          case 'blocked': return 3;
-          case 'pending': return 4;
-          case 'completed': return 5;
-          default: return 6;
-        }
-      };
-
-      const sortedTasks = [...tasks].sort((a, b) => {
-        const aStatus = taskStatus(a);
-        const bStatus = taskStatus(b);
-        return getTaskSortPriority(aStatus) - getTaskSortPriority(bStatus);
-      });
 
       return (
         <div style={styles.planCard}>
           <div style={styles.planCardHeader}>
-            <div style={{ ...styles.actionIconBox, ...styles.planIconBox }}>▦</div>
+            <div style={{ ...styles.actionIconBox, ...styles.planIconBox }}>
+              <Icon name="plan" size={16} />
+            </div>
             <div style={styles.actionTitleWrap}>
               <div style={styles.actionName}>{title}</div>
               <div style={styles.actionSubtitle}>
-                {progress.completed || 0}/{progress.total || tasks.length} 完成
+                {modeLabel} · {architecture || shapeLabel}
                 {msg.toolName ? ` · 由 ${msg.toolName} 推进` : ''}
               </div>
             </div>
@@ -939,6 +953,43 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
               {progress.progress ?? 0}%
             </span>
           </div>
+
+          <div style={styles.planMetaRow}>
+            <span style={styles.planMetaPill}>{progress.completed || 0}/{progress.total || tasks.length} {t('plan.status.completed')}</span>
+            {decomposition && <span style={styles.planMetaPill}>{decomposition === 'llm' ? t('plan.decomposition_llm') : t('plan.decomposition_template')}</span>}
+            {(msg.planUpdate || strategy.dynamicReplanning) && <span style={styles.planMetaPill}>{t('plan.dynamic_replanning')}</span>}
+            {progress.running > 0 && <span style={styles.planMetaPill}>{t('plan.running_count', { count: progress.running })}</span>}
+            {progress.needsRepair > 0 && <span style={styles.planMetaPillWarning}>{t('plan.needs_repair_count', { count: progress.needsRepair })}</span>}
+          </div>
+
+          {!isCollapsed && (
+            <div style={styles.planStrategyGrid}>
+              {strategyFacts.map(([label, value]) => (
+                <div key={label} style={styles.planStrategyItem}>
+                  <span style={styles.planStrategyLabel}>{label}</span>
+                  <span style={styles.planStrategyValue}>{value}</span>
+                </div>
+              ))}
+              {strategy.recommendedReview ? (
+                <div style={styles.planStrategyItemWide}>
+                  <span style={styles.planStrategyLabel}>推荐方法论</span>
+                  <span style={styles.planStrategyValue}>{strategy.recommendedReview}</span>
+                </div>
+              ) : null}
+              {strategy.architectureDescription ? (
+                <div style={styles.planStrategyItemWide}>
+                  <span style={styles.planStrategyLabel}>模式说明</span>
+                  <span style={styles.planStrategyValue}>{strategy.architectureDescription}</span>
+                </div>
+              ) : null}
+              {strategy.intent ? (
+                <div style={styles.planStrategyItemWide}>
+                  <span style={styles.planStrategyLabel}>策略意图</span>
+                  <span style={styles.planStrategyValue}>{strategy.intent}</span>
+                </div>
+              ) : null}
+            </div>
+          )}
 
           <div style={styles.planProgressTrack}>
             <div
@@ -950,9 +1001,47 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             />
           </div>
 
-          {!isCollapsed && sortedTasks.length > 0 && (
+          {!isCollapsed && phaseGroups.length > 0 && (
             <div style={styles.planTaskList}>
-              {sortedTasks.map((task, taskIndex) => {
+              {phaseGroups.map(([phase, phaseTasks]) => (
+                <div key={phase} style={styles.planPhaseGroup}>
+                  <div style={styles.planPhaseHeader}>
+                    <span>{getPlanPhaseLabel(phase) || phase}</span>
+                    <span>{phaseTasks.filter((task) => taskStatus(task) === 'completed').length}/{phaseTasks.length}</span>
+                  </div>
+                  {phaseTasks.map((task, taskIndex) => {
+                    const statusValue = taskStatus(task);
+                    const dependencies = Array.isArray(task.dependencies) ? task.dependencies : [];
+                    return (
+                      <div key={task.id || `${phase}-${taskIndex}`} style={styles.planTaskRow}>
+                        <span
+                          style={{
+                            ...styles.planTaskDot,
+                            ...(statusValue === 'completed' ? styles.planTaskDotDone : {}),
+                            ...(statusValue === 'running' ? styles.planTaskDotRunning : {}),
+                            ...(statusValue === 'needs_repair' ? styles.planTaskDotRunning : {}),
+                            ...(statusValue === 'failed' ? styles.planTaskDotFailed : {}),
+                          }}
+                        />
+                        <span style={styles.planTaskName} title={task.description || taskLabel(task)}>
+                          {taskLabel(task)}
+                          {task.cycleLabel ? ` · ${task.cycleLabel}` : ''}
+                          {dependencies.length > 0 ? (
+                            <span style={styles.planTaskDependency}>依赖 {dependencies.length}</span>
+                          ) : null}
+                        </span>
+                        <span style={styles.planTaskStatus}>{taskStatusText(statusValue)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!isCollapsed && phaseGroups.length === 0 && tasks.length > 0 && (
+            <div style={styles.planTaskList}>
+              {tasks.map((task, taskIndex) => {
                 const statusValue = taskStatus(task);
                 return (
                   <div key={task.id || taskIndex} style={styles.planTaskRow}>
@@ -1066,7 +1155,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           onClick={() => handleToggleCollapse(msgId)}
         >
           <span style={getTypeStyle(msg.type)}>
-            <span>{typeDisplay.icon}</span>
+            <Icon name={typeDisplay.iconName} size={14} style={{ marginRight: '4px' }} />
             <span>{typeDisplay.text}</span>
           </span>
           
@@ -1075,7 +1164,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
               {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
             </span>
             <span style={{ fontSize: '10px', cursor: 'pointer' }}>
-              {isCollapsed ? '▶ 展开' : '▼ 折叠'}
+              {isCollapsed ? t('plan.expand') : t('plan.collapse')}
             </span>
           </div>
         </div>
@@ -1586,10 +1675,10 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
               } : {})
             }}
             onClick={handleAutoScrollChange}
-            title={autoScroll ? '跟随新内容 (点击锁定当前位置)' : '已锁定 — 点击恢复跟随滚动'}
+            title={autoScroll ? t('status.follow_new') : t('status.locked')}
           >
             <Icon name={autoScroll ? 'pin' : 'lock'} size={14} />
-            {autoScroll ? '跟随' : '已锁定'}
+            {autoScroll ? t('status.follow') : t('status.locked_position')}
           </button>
           
           {/* 清空按钮 */}

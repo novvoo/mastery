@@ -18,6 +18,11 @@ import {
   getFileTypeIcon,
   formatDuration,
 } from './utils/activity-summary.js';
+import {
+  PLAN_PHASE_LABELS,
+  formatPlanStrategyValue,
+  groupPlanTasksByPhase,
+} from './utils/plan-display.js';
 
 // ===== Tab 定义（1 个 Tab：活动）=====
 const TABS = [{ id: 'activity', key: 'exec.activity_log', icon: '⚡' }];
@@ -48,13 +53,17 @@ function phaseLabel(phase) {
       pending: '未开始',
       queued: '开始',
       running: '进行中',
-      completed: '完成',
+      completed: '成功',
       needs_repair: '需修复',
       failed: '失败',
       waiting: '等待',
       skipped: '跳过',
     }[String(phase || 'pending').toLowerCase()] || phase
   );
+}
+
+function readablePlanStrategyValue(value) {
+  return formatPlanStrategyValue(value);
 }
 
 function planTaskTone(task) {
@@ -126,14 +135,14 @@ export function RuntimeDetailsPanel({
   const thinkingSummary = buildThinkingSummary(runtimeDetails);
   const activitySummary = buildActivitySummary(runtimeDetails);
   const isRunningGroup = status === 'running' && isActiveGroup;
-  // 状态文本：只有 status 真正变为 completed/idle 时才显示"执行完成"
+  // 状态文本：只有 status 真正变为 completed/idle 时才显示"执行成功"
   // 否则如果有 latestStatusUpdate 就显示其文本，否则显示"运行中"
   const statusText = isRunningGroup
     ? latestStatusUpdate
       ? getStatusUpdateText(latestStatusUpdate)
       : '运行中'
     : status === 'completed' || status === 'idle'
-      ? '执行完成'
+      ? '执行成功'
       : latestStatusUpdate
         ? getStatusUpdateText(latestStatusUpdate)
         : '运行中';
@@ -291,50 +300,86 @@ export function RuntimeDetailsPanel({
     }
 
     const progress = activitySummary.plan?.progress || {};
+    const strategy = activitySummary.plan?.strategy || {};
+    const phaseGroups = groupPlanTasksByPhase(planTasks);
+    const strategyItems = [
+      strategy.planningArchitectureLabel || readablePlanStrategyValue(strategy.planningArchitecture),
+      strategy.verificationStrength ? `验证 ${readablePlanStrategyValue(strategy.verificationStrength)}` : null,
+      strategy.parallelPotential ? `并行 ${readablePlanStrategyValue(strategy.parallelPotential)}` : null,
+      strategy.recommendedReview || null,
+    ].filter(Boolean);
     return (
       <section style={localStyles.planTaskSection}>
         <div style={localStyles.planTaskHeader}>
-          <span style={localStyles.planTaskTitle}>执行计划</span>
+          <span style={localStyles.planTaskTitle}>
+            {strategy.label ? `执行计划 · ${strategy.label}` : '执行计划'}
+          </span>
           <span style={localStyles.planTaskProgress}>
-            {Number(progress.completed || 0)}/{Number(progress.total || planTasks.length)} 完成
+            {Number(progress.completed || 0)}/{Number(progress.total || planTasks.length)} 成功
           </span>
         </div>
+        {strategyItems.length > 0 && (
+          <div style={localStyles.planStrategyRow}>
+            {strategyItems.map((item) => (
+              <span key={item} style={localStyles.planStrategyChip}>
+                {item}
+              </span>
+            ))}
+          </div>
+        )}
         <div style={localStyles.planTaskList}>
-          {planTasks.map((task, index) => {
-            const status = task.displayStatus || task.status || 'pending';
-            const tone = planTaskTone(task);
-            return (
-              <div
-                key={task.id || `${task.name}_${index}`}
-                style={{
-                  ...localStyles.planTaskItem,
-                  ...(tone === 'completed' ? localStyles.planTaskItemCompleted : {}),
-                  ...(tone === 'failed' ? localStyles.planTaskItemFailed : {}),
-                  ...(tone === 'running' ? localStyles.planTaskItemRunning : {}),
-                }}
-                title={task.statusReason || task.description || task.name}
-              >
-                <span
-                  style={{
-                    ...localStyles.planTaskMark,
-                    ...(tone === 'completed' ? localStyles.planTaskMarkCompleted : {}),
-                    ...(tone === 'failed' ? localStyles.planTaskMarkFailed : {}),
-                    ...(tone === 'running' ? localStyles.planTaskMarkRunning : {}),
-                  }}
-                >
-                  {tone === 'completed'
-                    ? '✓'
-                    : tone === 'failed'
-                      ? '!'
-                      : tone === 'running'
-                        ? '…'
-                        : '·'}
+          {phaseGroups.map(([phase, tasks]) => (
+            <div key={phase} style={localStyles.planPhaseGroup}>
+              <div style={localStyles.planPhaseHeader}>
+                <span>{PLAN_PHASE_LABELS[phase] || phase}</span>
+                <span>
+                  {tasks.filter((task) => planTaskTone(task) === 'completed').length}/{tasks.length}
                 </span>
-                <span style={localStyles.planTaskName}>{task.name || task.id || '任务'}</span>
-                <span style={localStyles.planTaskStatus}>{phaseLabel(status)}</span>
               </div>
-            );
-          })}
+              {tasks.map((task, index) => {
+                const status = task.displayStatus || task.status || 'pending';
+                const tone = planTaskTone(task);
+                return (
+                  <div
+                    key={task.id || `${task.name}_${index}`}
+                    style={{
+                      ...localStyles.planTaskItem,
+                      ...(tone === 'completed' ? localStyles.planTaskItemCompleted : {}),
+                      ...(tone === 'failed' ? localStyles.planTaskItemFailed : {}),
+                      ...(tone === 'running' ? localStyles.planTaskItemRunning : {}),
+                    }}
+                    title={task.statusReason || task.description || task.name}
+                  >
+                    <span
+                      style={{
+                        ...localStyles.planTaskMark,
+                        ...(tone === 'completed' ? localStyles.planTaskMarkCompleted : {}),
+                        ...(tone === 'failed' ? localStyles.planTaskMarkFailed : {}),
+                        ...(tone === 'running' ? localStyles.planTaskMarkRunning : {}),
+                      }}
+                    >
+                      {tone === 'completed'
+                        ? '✓'
+                        : tone === 'failed'
+                          ? '!'
+                          : tone === 'running'
+                            ? '…'
+                            : '·'}
+                    </span>
+                    <span style={localStyles.planTaskName}>
+                      {task.name || task.id || '任务'}
+                      {Array.isArray(task.dependencies) && task.dependencies.length > 0 ? (
+                        <span style={localStyles.planTaskDependency}>
+                          依赖 {task.dependencies.length}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span style={localStyles.planTaskStatus}>{phaseLabel(status)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </section>
     );
@@ -634,7 +679,7 @@ export function RuntimeDetailsPanel({
                 setShowAllActivities(true);
               }}
             >
-              {filteredActivities.length}
+              查看全部 {filteredActivities.length} 项
             </button>
           )}
           {showAllActivities && hasMoreActivities && (
@@ -651,7 +696,7 @@ export function RuntimeDetailsPanel({
           )}
           {filteredActivities.length === 0 && (activitySummary.plan?.tasks || []).length === 0 && (
             <div style={localStyles.emptyTab}>
-              {activitySearch ? t('status.not_set') : t('status.not_set')}
+              {activitySearch ? '没有匹配的活动' : '暂无活动'}
             </div>
           )}
         </>
@@ -877,7 +922,7 @@ export function RuntimeDetailsPanel({
       runtimeDurationMs > 0 ? `耗时 ${formatDuration(runtimeDurationMs)}` : null,
       planProgress?.total > 0 ? `计划 ${planProgress.completed}/${planProgress.total}` : null,
       changedFileCount > 0 ? `改动 ${changedFileCount} 个文件` : null,
-      changedFileCount === 0 && totalActivityCount > 0 ? `完成 ${totalActivityCount} 项操作` : null,
+      changedFileCount === 0 && totalActivityCount > 0 ? `成功 ${totalActivityCount} 项操作` : null,
       failedActivityCount > 0 ? `${failedActivityCount} 项失败` : null,
     ].filter(Boolean);
 

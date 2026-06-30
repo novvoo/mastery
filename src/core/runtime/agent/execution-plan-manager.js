@@ -19,11 +19,16 @@ import {
 import { shouldEnablePlan } from './support/task-profile.js';
 import { PlanType, selectPlanType } from './support/plan-types.js';
 import {
+  describePlanningArchitecture,
+  selectPlanningArchitecture,
+} from './support/plan-architectures.js';
+import {
   HASHLINE_PLAN_COORDINATION_GUIDANCE,
   analyzeHashlinePatchResult,
   extractHashlinePatchPaths,
   isHashlinePatchTool,
 } from './support/hashline-plan-policy.js';
+import { classifyToolObservation, ObservationErrorCode } from './support/observation-state.js';
 
 const CANONICAL_SINGLETON_TASK_IDS = new Set([
   'inspect_workspace',
@@ -34,6 +39,57 @@ const CANONICAL_SINGLETON_TASK_IDS = new Set([
   'semantic_risk_review',
   'verify_result',
 ]);
+
+const WORKSPACE_METADATA_ENTRY_PATTERN =
+  /^(?:\.agent-data|\.agent-logs|\.agent-memory|\.git|test)$/i;
+
+function isCreateFromScratchTask(profile, userInput = '') {
+  const text = String(userInput || '').toLowerCase();
+  return Boolean(
+    profile?.intent === 'new_project' ||
+    profile?.expectedDeliverable === 'project_structure' ||
+    (profile?.allowsMutation &&
+      /(从零|新建|创建|搭建|初始化|工程化|贪吃蛇|创建.*游戏|开发.*游戏|制作.*游戏|\bfrom scratch\b|\bnew project\b|\bcreate .*game\b|\bbuild .*game\b)/i.test(
+        text,
+      )),
+  );
+}
+
+function isWorkspaceRootPath(pathValue) {
+  const pathText = String(pathValue ?? '.').trim();
+  return pathText === '' || pathText === '.' || pathText === './';
+}
+
+function extractWorkspaceEntryNames(result) {
+  if (Array.isArray(result?.entries)) {
+    return result.entries.map((entry) => String(entry?.name || entry?.path || '').trim());
+  }
+
+  const text = typeof result === 'string' ? result : JSON.stringify(result ?? '');
+  return text
+    .split(/\r?\n/)
+    .map((line) =>
+      line
+        .replace(/^[\s\-*•]+/, '')
+        .replace(/^[DF]\s+/i, '')
+        .trim(),
+    )
+    .map((line) => line.split(/\s+/)[0] || '')
+    .filter(Boolean);
+}
+
+function isEffectivelyEmptyWorkspaceListing(result) {
+  const names = extractWorkspaceEntryNames(result).filter(Boolean);
+  if (names.length === 0) {
+    return true;
+  }
+  return names.every((name) => WORKSPACE_METADATA_ENTRY_PATTERN.test(name));
+}
+
+function isMissingFileObservation(result) {
+  const text = typeof result === 'string' ? result : JSON.stringify(result ?? '');
+  return /file not found|no such file|enoent|文件不存在|目录不存在/i.test(text);
+}
 
 // ============== 工具谓词：统一委托给 tool-semantics 模块 ==============
 
@@ -72,6 +128,7 @@ export function isPlanningTool(toolName) {
     'to_prd',
     'to_issues',
     'architect',
+    'auto_research',
     'setup',
     'impact_map',
     'project_profile',
@@ -139,7 +196,8 @@ export function isVerificationTool(toolName, args) {
   }
   if (toolName === 'shell') {
     const command = String(args?.command || args?.input || args?.text || '').toLowerCase();
-    return /\b(test|lint|check|verify|build|typecheck|tsc|jest|vitest|pytest|bun|node|npm|pnpm|yarn)\b/.test(
+    // 验证命令包括：测试/lint/构建/类型检查/安装依赖
+    return /\b(test|lint|check|verify|build|typecheck|tsc|jest|vitest|pytest|bun|node|npm|pnpm|yarn|install)\b/.test(
       command,
     );
   }
@@ -283,7 +341,7 @@ export function isSuccessfulToolResult(result) {
   if (hashline.isHashline && hashline.ok === false) {
     return false;
   }
-  return !/(^(Error|Command failed|BLOCKED):|\b(exit\s*code|status)\s*[:=]?\s*[1-9]\d*\b|\b(fail|failed|failing|failures?|tests?\s+failed|errorCount)\b)/i.test(
+  return !/(^(Error|Command failed|BLOCKED):|\b(exit\s*code|status)\s*[:=]?\s*[1-9]\d*\b|\b(fail|failed|failing|failures?|tests?\s+failed|errorCount)\b|\b(cannot|can't|can not)\s+(proceed|continue|do|modify|run|access)\b|\b(no|without)\s+(file\s*system|filesystem|shell|command\s*line|terminal)\s+access\b|\bcritical limitation\b)/i.test(
     text.trim(),
   );
 }
@@ -358,6 +416,7 @@ export class ExecutionPlanManager {
     // 确认是否是修改型任务
     const isMutationTask = taskProfile?.mode === 'mutate' || taskProfile?.allowsMutation;
     const planType = selectPlanType(taskProfile, this.#userInput);
+    const createFromScratch = isCreateFromScratchTask(taskProfile, this.#userInput);
 
     const { modelProvider, intent, availableTools, feedbackContext } = options;
 
@@ -404,6 +463,7 @@ export class ExecutionPlanManager {
         generatedAt: new Date().toISOString(),
         decomposition: llmSubtasks ? 'llm' : 'template',
         planType,
+        createFromScratch,
         ...(llmSubtasks ? { intentAnalysis: true } : {}),
       },
     });
@@ -449,8 +509,10 @@ export class ExecutionPlanManager {
       this.#buildTemplatePlan(plan, taskProfile, planType);
     }
 
-    this.#ensureProjectProfileTask(plan, planType, taskProfile);
-    this.#ensureTddGate(plan, planType, taskProfile);
+    if (!createFromScratch) {
+      this.#ensureProjectProfileTask(plan, planType, taskProfile);
+      this.#ensureTddGate(plan, planType, taskProfile);
+    }
 
     // 语义风险审查（两种模式通用）
     if (
@@ -477,7 +539,8 @@ export class ExecutionPlanManager {
         plan.addTask({
           id: 'verify_result',
           name: 'Verify result',
-          description: 'Verify the final result: run tests / lint / build to confirm correctness.',
+          description:
+            'Verify the final result: first install dependencies (npm install, etc.) if needed, then run tests / lint / build to confirm correctness.',
           dependencies: lastId ? [lastId] : [],
           phase: ExecutionPlanManager.PHASE.VERIFICATION,
         });
@@ -486,6 +549,9 @@ export class ExecutionPlanManager {
 
     this.#normalizeTaskExecutionConstraints(plan);
     this.#enforcePhaseBarriers(plan);
+    plan.context.strategy = this.#buildPlanStrategy(plan, planType, taskProfile, {
+      decomposition: llmSubtasks ? 'llm' : 'template',
+    });
 
     plan.status = TaskStatus.RUNNING;
     plan.startedAt = Date.now();
@@ -723,7 +789,8 @@ export class ExecutionPlanManager {
       plan.addTask({
         id: 'verify_result',
         name: 'Run verification',
-        description: 'Run an appropriate verification command or tool and summarize the result.',
+        description:
+          'Run an appropriate verification: first install dependencies (npm install, etc.) if needed, then execute test/build/lint command and summarize the result.',
         dependencies: ['inspect_workspace'],
         phase: ExecutionPlanManager.PHASE.VERIFICATION,
       });
@@ -749,31 +816,65 @@ export class ExecutionPlanManager {
     }
 
     // ===== 新项目创建任务：工程化脚手架流程 =====
-    if (intent === 'new_project') {
+    if (intent === 'new_project' || isCreateFromScratchTask(profile, this.#userInput)) {
       plan.addTask({
         id: 'inspect_workspace',
         name: 'Inspect workspace',
-        description: 'Check if workspace is empty or has existing files. Identify the project type (JS/TS/Python/etc.) and requirements.',
+        description:
+          'Check whether the workspace is empty. For an empty workspace, do not read guessed files; proceed to create the project skeleton.',
         dependencies: [],
         phase: ExecutionPlanManager.PHASE.EXPLORATION,
-        allowedTools: ['list_dir', 'project_profile', 'read_file', 'shell', 'glob', 'search', 'preview_dir', 'preview_file'],
+        allowedTools: ['list_dir', 'project_profile', 'shell', 'glob', 'preview_dir'],
       });
       plan.addTask({
         id: 'setup_project_structure',
         name: 'Setup project structure',
-        description: 'Create project directory structure with src/, tests/, configuration files (package.json, vite.config, eslint, etc.).',
+        description:
+          'Create project directory structure with src/, tests/, configuration files (package.json, vite.config, eslint, etc.).',
         dependencies: ['inspect_workspace'],
         phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
-        allowedTools: ['write_file', 'mkdir', 'shell', 'edit_file', 'apply_hashline_patch', 'lsp_workspace_edit', 'lsp_code_action', 'pty_exec', 'harness_insert', 'harness_replace'],
-        scopeFiles: ['package.json', 'src/', 'tests/', 'vite.config.js', 'eslint.config.js', 'README.md'],
+        allowedTools: [
+          'write_file',
+          'mkdir',
+          'shell',
+          'edit_file',
+          'apply_hashline_patch',
+          'lsp_workspace_edit',
+          'lsp_code_action',
+          'pty_exec',
+          'harness_insert',
+          'harness_replace',
+        ],
+        scopeFiles: [
+          'package.json',
+          'src/',
+          'tests/',
+          'vite.config.js',
+          'eslint.config.js',
+          'README.md',
+        ],
       });
       plan.addTask({
         id: 'implement_core',
         name: 'Implement core functionality',
-        description: 'Create core source files in src/ directory with proper ES module structure. Separate logic, components, and styles.',
+        description:
+          'Create core source files in src/ directory with proper ES module structure. Separate logic, components, and styles.',
         dependencies: ['setup_project_structure'],
         phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
-        allowedTools: ['write_file', 'edit_file', 'apply_hashline_patch', 'lsp_workspace_edit', 'lsp_code_action', 'lsp_rename', 'shell', 'read_file', 'preview_file', 'harness_insert', 'harness_replace', 'harness_delete'],
+        allowedTools: [
+          'write_file',
+          'edit_file',
+          'apply_hashline_patch',
+          'lsp_workspace_edit',
+          'lsp_code_action',
+          'lsp_rename',
+          'shell',
+          'read_file',
+          'preview_file',
+          'harness_insert',
+          'harness_replace',
+          'harness_delete',
+        ],
         scopeFiles: ['src/'],
       });
       plan.addTask({
@@ -782,16 +883,35 @@ export class ExecutionPlanManager {
         description: 'Create unit tests in tests/ directory for core logic. Verify test coverage.',
         dependencies: ['implement_core'],
         phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
-        allowedTools: ['write_file', 'edit_file', 'apply_hashline_patch', 'shell', 'read_file', 'preview_file', 'test_strategy', 'tdd'],
+        allowedTools: [
+          'write_file',
+          'edit_file',
+          'apply_hashline_patch',
+          'shell',
+          'read_file',
+          'preview_file',
+          'test_strategy',
+          'tdd',
+        ],
         scopeFiles: ['tests/'],
       });
       plan.addTask({
         id: 'verify_build',
         name: 'Verify build and tests',
-        description: 'Run npm install, npm run build, and npm test to verify the project builds correctly and tests pass.',
+        description:
+          'Run npm install, npm run build, and npm test to verify the project builds correctly and tests pass.',
         dependencies: ['add_tests'],
         phase: ExecutionPlanManager.PHASE.VERIFICATION,
-        allowedTools: ['shell', 'verify', 'read_file', 'preview_file', 'pty_exec', 'git_add', 'git_commit', 'git_push'],
+        allowedTools: [
+          'shell',
+          'verify',
+          'read_file',
+          'preview_file',
+          'pty_exec',
+          'git_add',
+          'git_commit',
+          'git_push',
+        ],
       });
       return;
     }
@@ -868,7 +988,8 @@ export class ExecutionPlanManager {
         review: 'Review migrated references and compatibility paths.',
       },
       [PlanType.SETUP]: {
-        inspect: 'Inspect environment, check if workspace is empty, and identify existing package files or configs.',
+        inspect:
+          'Inspect environment, check if workspace is empty, and identify existing package files or configs.',
         plan: 'Plan the project structure (src/, tests/, config files) and setup sequence.',
         implement: 'Create project structure and apply setup/configuration changes.',
         review: 'Review setup result, verify file structure and build configuration.',
@@ -932,6 +1053,9 @@ export class ExecutionPlanManager {
 
   #shouldUseLLMDecomposition(taskProfile, planType) {
     if (!taskProfile || taskProfile.isLikelyTrivial) {
+      return false;
+    }
+    if (isCreateFromScratchTask(taskProfile, this.#userInput)) {
       return false;
     }
     if (taskProfile.isModificationTask || taskProfile.allowsMutation) {
@@ -1083,7 +1207,17 @@ export class ExecutionPlanManager {
         'Before editing, identify the narrowest failing test/check or define the test strategy that will prove the fix. A failing targeted test is valid evidence here.',
       dependencies: anchorDeps,
       phase: ExecutionPlanManager.PHASE.PLANNING,
-      allowedTools: ['tdd', 'test_strategy', 'shell', 'read_file', 'glob', 'search', 'preview_file', 'lsp_diagnostics', 'coverage_check'],
+      allowedTools: [
+        'tdd',
+        'test_strategy',
+        'shell',
+        'read_file',
+        'glob',
+        'search',
+        'preview_file',
+        'lsp_diagnostics',
+        'coverage_check',
+      ],
       completionPredicate: ({ toolName, args, result }) =>
         isTddEvidenceTool(toolName, args, result),
       metadata: {
@@ -1483,6 +1617,28 @@ export class ExecutionPlanManager {
       return { success: false, error: error.message };
     }
 
+    plan.context.strategy = {
+      ...(plan.context.strategy ||
+        this.#buildPlanStrategy(plan, plan.context?.planType, this.#profile)),
+      dynamicReplanning: true,
+      lastChange: { mode, targetTaskId, reason, insertedTasks },
+      shape: this.#inferPlanShape(plan),
+      phaseCount: this.#countPlanPhases(plan),
+      parallelPotential: this.#inferParallelPotential(plan),
+    };
+    const architecture = selectPlanningArchitecture({
+      planType: plan.context?.planType,
+      decomposition: plan.context?.strategy?.decomposition || plan.context?.decomposition,
+      shape: plan.context.strategy.shape,
+      taskProfile: this.#profile,
+      dynamicReplanning: true,
+      verificationRepairCount: this.#verificationRepairCount,
+    });
+    const architectureInfo = describePlanningArchitecture(architecture);
+    plan.context.strategy.planningArchitecture = architecture;
+    plan.context.strategy.planningArchitectureLabel = architectureInfo.label;
+    plan.context.strategy.architectureDescription = architectureInfo.description;
+    plan.context.strategy.architecture = architecture;
     plan.status = TaskStatus.RUNNING;
     plan.completedAt = null;
     this.#startReadyTasks(plan);
@@ -1510,13 +1666,32 @@ export class ExecutionPlanManager {
    * - 双重验证：工具谓词 + completionPredicate
    * - 防止虚假完成（一个 read_file 不应同时完成多个 exploration 任务）
    */
-  advance(toolName, args, result) {
+  advance(toolName, args, result, executionResult = null) {
     if (!this.isActive) {
       return null;
     }
 
     const plan = this.#plan;
     const before = this.#summarizeProgress(plan);
+    const observation = classifyToolObservation(toolName, args, result, {
+      error: executionResult?.error,
+      errorCode: executionResult?.errorCode,
+      routeBlocked: executionResult?.routeBlocked,
+      scopeBlocked: executionResult?.scopeBlocked,
+      duplicateMutation: executionResult?.duplicateMutation,
+    });
+
+    if (this.#recoverFromCreateFromScratchSignals(plan, toolName, args, result, observation)) {
+      const after = this.#summarizeProgress(plan);
+      if (after !== before) {
+        this.#emitPlanProgress({
+          tool: toolName,
+          planChanged: true,
+          reason: 'create_from_scratch_recovery',
+        });
+        return { before, after, isCompleted: false, replanned: true };
+      }
+    }
 
     if (
       !isSuccessfulToolResult(result) &&
@@ -1627,7 +1802,17 @@ export class ExecutionPlanManager {
           `Conflict: ${conflictType}. Failure evidence: ${failureSummary}`,
         phase: ExecutionPlanManager.PHASE.INSPECTION,
         scopeFiles: hashline.affectedFiles,
-        allowedTools: ['read_file', 'glob', 'search', 'shell', 'review', 'preview_file', 'lsp_diagnostics', 'lsp_definition', 'lsp_references'],
+        allowedTools: [
+          'read_file',
+          'glob',
+          'search',
+          'shell',
+          'review',
+          'preview_file',
+          'lsp_diagnostics',
+          'lsp_definition',
+          'lsp_references',
+        ],
         metadata: { source: 'hashline-repair', conflictType, hashline },
       },
       {
@@ -1637,7 +1822,16 @@ export class ExecutionPlanManager {
           'Rebuild the patch from the current file content and apply the smallest valid Hashline edit.',
         phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
         scopeFiles: hashline.affectedFiles,
-        allowedTools: ['read_file', 'apply_hashline_patch', 'edit_file', 'write_file', 'lsp_workspace_edit', 'lsp_code_action', 'lsp_rename', 'preview_file'],
+        allowedTools: [
+          'read_file',
+          'apply_hashline_patch',
+          'edit_file',
+          'write_file',
+          'lsp_workspace_edit',
+          'lsp_code_action',
+          'lsp_rename',
+          'preview_file',
+        ],
         metadata: { source: 'hashline-repair', conflictType, hashline },
       },
       {
@@ -1647,7 +1841,17 @@ export class ExecutionPlanManager {
           'Read back the edited files or diff and confirm the retry matches the plan intent.',
         phase: ExecutionPlanManager.PHASE.INSPECTION,
         scopeFiles: hashline.affectedFiles,
-        allowedTools: ['read_file', 'glob', 'search', 'shell', 'review', 'preview_file', 'lsp_diagnostics', 'lsp_definition', 'lsp_references'],
+        allowedTools: [
+          'read_file',
+          'glob',
+          'search',
+          'shell',
+          'review',
+          'preview_file',
+          'lsp_diagnostics',
+          'lsp_definition',
+          'lsp_references',
+        ],
         metadata: { source: 'hashline-repair', conflictType, hashline },
       },
     ]);
@@ -1715,7 +1919,18 @@ export class ExecutionPlanManager {
         name: 'Diagnose verification failure',
         description: `Analyze the failed verification output and identify the root cause before editing. Failure evidence: ${failureSummary}`,
         phase: ExecutionPlanManager.PHASE.INSPECTION,
-        allowedTools: ['read_file', 'list_dir', 'glob', 'search', 'shell', 'review', 'preview_file', 'lsp_diagnostics', 'lsp_definition', 'lsp_references'],
+        allowedTools: [
+          'read_file',
+          'list_dir',
+          'glob',
+          'search',
+          'shell',
+          'review',
+          'preview_file',
+          'lsp_diagnostics',
+          'lsp_definition',
+          'lsp_references',
+        ],
         metadata: { source: 'verification-repair', repairIteration: iteration },
       },
       {
@@ -1724,7 +1939,19 @@ export class ExecutionPlanManager {
         description:
           'Apply the smallest code or test change needed to resolve the verification failure.',
         phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
-        allowedTools: ['write_file', 'edit_file', 'apply_hashline_patch', 'shell', 'lsp_workspace_edit', 'lsp_code_action', 'lsp_rename', 'preview_file', 'harness_insert', 'harness_replace', 'harness_delete'],
+        allowedTools: [
+          'write_file',
+          'edit_file',
+          'apply_hashline_patch',
+          'shell',
+          'lsp_workspace_edit',
+          'lsp_code_action',
+          'lsp_rename',
+          'preview_file',
+          'harness_insert',
+          'harness_replace',
+          'harness_delete',
+        ],
         metadata: { source: 'verification-repair', repairIteration: iteration },
       },
       {
@@ -1733,7 +1960,18 @@ export class ExecutionPlanManager {
         description:
           'Read back the repaired files or diff and confirm the fix matches the failure.',
         phase: ExecutionPlanManager.PHASE.INSPECTION,
-        allowedTools: ['read_file', 'list_dir', 'glob', 'search', 'shell', 'review', 'preview_file', 'lsp_diagnostics', 'lsp_definition', 'lsp_references'],
+        allowedTools: [
+          'read_file',
+          'list_dir',
+          'glob',
+          'search',
+          'shell',
+          'review',
+          'preview_file',
+          'lsp_diagnostics',
+          'lsp_definition',
+          'lsp_references',
+        ],
         metadata: { source: 'verification-repair', repairIteration: iteration },
       },
     ]);
@@ -1743,6 +1981,81 @@ export class ExecutionPlanManager {
     this.#enforcePhaseBarriers(plan);
     this.#startReadyTasks(plan);
     return true;
+  }
+
+  #recoverFromCreateFromScratchSignals(plan, toolName, args, result, observation = null) {
+    if (!plan?.context?.createFromScratch) {
+      return false;
+    }
+
+    const observed = observation || classifyToolObservation(toolName, args, result);
+    let changed = false;
+    if (observed.emptyWorkspace || observed.errorCode === ObservationErrorCode.EMPTY_WORKSPACE) {
+      plan.context.workspaceMode = 'empty_create_from_scratch';
+      for (const taskId of ['profile_project', 'tdd_reproduce']) {
+        const task = plan.getTask(taskId);
+        if (task && task.status !== TaskStatus.COMPLETED) {
+          task.updateStatus(TaskStatus.COMPLETED, {
+            result: {
+              completedBy: 'empty-workspace-recovery',
+              skippedAsNotApplicable: true,
+              reason:
+                'Workspace contains no project files, so existing-project profiling is not applicable.',
+            },
+          });
+          changed = true;
+        }
+      }
+      this.#sessionManager?.addSystemMessage?.(
+        '[CREATE-FROM-SCRATCH MODE] The workspace appears empty except for agent metadata. ' +
+          'Do not read guessed files such as package.json, src/*, tests/*, or README.md. ' +
+          'Proceed by creating the project skeleton with write_file/mkdir/shell, then verify it.',
+      );
+    }
+
+    if (
+      toolName === 'read_file' &&
+      (observed.errorCode === ObservationErrorCode.MISSING_FILE ||
+        observed.errorCode === ObservationErrorCode.FACT_CONTRADICTION ||
+        isMissingFileObservation(result))
+    ) {
+      const runningExploration = Array.from(plan.tasks.values()).find(
+        (task) =>
+          task.status === TaskStatus.RUNNING &&
+          task.phase === ExecutionPlanManager.PHASE.EXPLORATION,
+      );
+      if (runningExploration) {
+        runningExploration.recordToolCall(toolName, args, result);
+        runningExploration.metadata.missingFileAttempts =
+          (runningExploration.metadata.missingFileAttempts || 0) + 1;
+        const shouldSkip =
+          runningExploration.id === 'profile_project' ||
+          runningExploration.id === 'inspect_readme' ||
+          observed.errorCode === ObservationErrorCode.FACT_CONTRADICTION ||
+          runningExploration.metadata.missingFileAttempts >= 2;
+        if (shouldSkip) {
+          runningExploration.updateStatus(TaskStatus.COMPLETED, {
+            result: {
+              completedBy: 'missing-file-recovery',
+              skippedAsNotApplicable: true,
+              missingFileAttempts: runningExploration.metadata.missingFileAttempts,
+              reason:
+                'Read attempts targeted files that do not exist in a create-from-scratch workspace.',
+            },
+          });
+          this.#sessionManager?.addSystemMessage?.(
+            '[RECOVERY] The requested file does not exist in this create-from-scratch task. ' +
+              'Stop probing guessed paths. Use write_file to create the missing project files now.',
+          );
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      this.#startReadyTasks(plan);
+    }
+    return changed;
   }
 
   #summarizeFailureResult(result) {
@@ -2257,7 +2570,7 @@ export class ExecutionPlanManager {
 
     // 统计当前正在运行的任务数量
     const runningTasks = Array.from(plan.tasks.values()).filter(
-      (t) => t.status === TaskStatus.RUNNING
+      (t) => t.status === TaskStatus.RUNNING,
     );
     const runningCount = runningTasks.length;
 
@@ -2275,7 +2588,7 @@ export class ExecutionPlanManager {
       if (
         (task.status === TaskStatus.PENDING || task.status === TaskStatus.BLOCKED) &&
         this.#canStartTask(plan, task) &&
-        startedCount < (MAX_CONCURRENT_TASKS - runningCount)
+        startedCount < MAX_CONCURRENT_TASKS - runningCount
       ) {
         task.updateStatus(TaskStatus.RUNNING);
         startedCount++;
@@ -2764,6 +3077,202 @@ export class ExecutionPlanManager {
     return `${task.id} (${task.name})`;
   }
 
+  #buildPlanStrategy(plan, planType = null, taskProfile = null, options = {}) {
+    const normalizedPlanType = planType || plan?.context?.planType || PlanType.STANDARD;
+    const decomposition = options.decomposition || plan?.context?.decomposition || 'template';
+    const isMutationPlan = Boolean(
+      taskProfile?.allowsMutation ||
+      taskProfile?.isModificationTask ||
+      taskProfile?.isCodingTask ||
+      taskProfile?.mode === 'mutate',
+    );
+    const strategyByType = {
+      [PlanType.QUICK]: {
+        label: 'Quick edit',
+        family: 'linear',
+        intent: 'low-risk focused edit',
+        verificationStrength: 'light',
+      },
+      [PlanType.BUG_FIX]: {
+        label: 'Debug repair',
+        family: 'diagnose-act-verify',
+        intent: 'reproduce, repair, and verify failure',
+        verificationStrength: 'strong',
+      },
+      [PlanType.REFACTOR]: {
+        label: 'Behavior-preserving refactor',
+        family: 'slice-and-verify',
+        intent: 'preserve behavior while changing structure',
+        verificationStrength: 'strong',
+      },
+      [PlanType.TESTING]: {
+        label: 'Test design',
+        family: 'coverage-driven',
+        intent: 'add or repair targeted checks',
+        verificationStrength: 'strong',
+      },
+      [PlanType.CODE_REVIEW]: {
+        label: 'Risk review',
+        family: 'read-only audit',
+        intent: 'produce evidence-backed findings',
+        verificationStrength: 'evidence',
+      },
+      [PlanType.MIGRATION]: {
+        label: 'Migration',
+        family: 'inventory-plan-rollout',
+        intent: 'move usage safely across compatibility boundaries',
+        verificationStrength: 'strong',
+      },
+      [PlanType.SETUP]: {
+        label: 'Setup',
+        family: 'bootstrap-validate',
+        intent: 'configure a runnable project or environment',
+        verificationStrength: 'standard',
+      },
+      [PlanType.RELEASE]: {
+        label: 'Release',
+        family: 'checklist-gated',
+        intent: 'prepare packaging, versioning, or deployment',
+        verificationStrength: 'strong',
+      },
+      [PlanType.SECURITY]: {
+        label: 'Security',
+        family: 'threat-aware',
+        intent: 'change sensitive behavior with abuse-case review',
+        verificationStrength: 'strict',
+      },
+      [PlanType.DATA]: {
+        label: 'Data',
+        family: 'contract-validation',
+        intent: 'change data shape, query, schema, or transformation safely',
+        verificationStrength: 'strong',
+      },
+      [PlanType.UI]: {
+        label: 'UI acceptance',
+        family: 'preview-and-acceptance',
+        intent: 'change interaction or visual behavior with acceptance checks',
+        verificationStrength: 'visual',
+      },
+      [PlanType.DOCUMENTATION]: {
+        label: 'Documentation',
+        family: 'outline-draft-review',
+        intent: 'produce clear written project guidance',
+        verificationStrength: 'review',
+      },
+      [PlanType.ANALYSIS]: {
+        label: 'Analysis',
+        family: 'evidence-synthesis',
+        intent: 'inspect and summarize without mutation',
+        verificationStrength: 'evidence',
+      },
+      [PlanType.RESEARCH]: {
+        label: 'Research',
+        family: 'context-synthesis',
+        intent: 'gather enough context for an accurate answer',
+        verificationStrength: 'evidence',
+      },
+      [PlanType.VERIFICATION]: {
+        label: 'Verification',
+        family: 'check-and-report',
+        intent: 'run or inspect checks and report result',
+        verificationStrength: 'standard',
+      },
+      [PlanType.STANDARD]: {
+        label: 'Standard coding',
+        family: 'plan-execute-verify',
+        intent: 'inspect, plan, implement, inspect, and verify',
+        verificationStrength: isMutationPlan ? 'standard' : 'evidence',
+      },
+    };
+    const base = strategyByType[normalizedPlanType] || strategyByType[PlanType.STANDARD];
+    const shape = this.#inferPlanShape(plan);
+    const planningArchitecture = selectPlanningArchitecture({
+      planType: normalizedPlanType,
+      decomposition,
+      shape,
+      taskProfile,
+      dynamicReplanning: false,
+      verificationRepairCount: this.#verificationRepairCount,
+    });
+    const architectureInfo = describePlanningArchitecture(planningArchitecture);
+
+    return {
+      version: 1,
+      type: normalizedPlanType,
+      label: base.label,
+      family: base.family,
+      planningArchitecture,
+      planningArchitectureLabel: architectureInfo.label,
+      architectureDescription: architectureInfo.description,
+      architecture: planningArchitecture,
+      intent: base.intent,
+      shape,
+      decomposition,
+      verificationStrength: base.verificationStrength,
+      riskLevel: taskProfile?.riskLevel || taskProfile?.riskScore || null,
+      dynamicReplanning: false,
+      mutation: isMutationPlan,
+      phaseCount: this.#countPlanPhases(plan),
+      parallelPotential: this.#inferParallelPotential(plan),
+      recommendedReview:
+        normalizedPlanType === PlanType.SECURITY
+          ? 'security_review'
+          : normalizedPlanType === PlanType.UI
+            ? 'ui_acceptance'
+            : normalizedPlanType === PlanType.DATA
+              ? 'data_contract_check'
+              : normalizedPlanType === PlanType.MIGRATION
+                ? 'migration_plan'
+                : normalizedPlanType === PlanType.RELEASE
+                  ? 'release_checklist'
+                  : null,
+    };
+  }
+
+  #inferPlanShape(plan) {
+    const tasks = Array.from(plan?.tasks?.values?.() || []);
+    if (tasks.length <= 1) {
+      return 'single-step';
+    }
+    const dependencyFanOut = new Map();
+    for (const task of tasks) {
+      for (const dep of task.dependencies || []) {
+        dependencyFanOut.set(dep, (dependencyFanOut.get(dep) || 0) + 1);
+      }
+    }
+    const hasFanOut = Array.from(dependencyFanOut.values()).some((count) => count > 1);
+    const hasFanIn = tasks.some((task) => (task.dependencies?.size || 0) > 1);
+    return hasFanOut || hasFanIn ? 'dag' : 'linear';
+  }
+
+  #countPlanPhases(plan) {
+    return new Set(
+      Array.from(plan?.tasks?.values?.() || [])
+        .map((task) => task.phase)
+        .filter(Boolean),
+    ).size;
+  }
+
+  #inferParallelPotential(plan) {
+    const tasks = Array.from(plan?.tasks?.values?.() || []);
+    if (tasks.length <= 1) {
+      return 'none';
+    }
+    const phaseBuckets = new Map();
+    for (const task of tasks) {
+      const phase = task.phase || 'unphased';
+      phaseBuckets.set(phase, (phaseBuckets.get(phase) || 0) + 1);
+    }
+    const maxPhaseWidth = Math.max(...phaseBuckets.values());
+    if (maxPhaseWidth >= 3) {
+      return 'high';
+    }
+    if (maxPhaseWidth === 2 || this.#inferPlanShape(plan) === 'dag') {
+      return 'medium';
+    }
+    return 'low';
+  }
+
   #emitPlanProgress(extra = {}) {
     if (!this.#onPlanAdvance || !this.#plan) {
       return;
@@ -2800,6 +3309,11 @@ export class ExecutionPlanManager {
         description: this.#plan.description,
         tasks,
         status: this.#plan.status,
+        context: this.#plan.context || {},
+        metadata: this.#plan.metadata || {},
+        strategy:
+          this.#plan.context?.strategy ||
+          this.#buildPlanStrategy(this.#plan, this.#plan.context?.planType, this.#profile),
         createdAt: this.#plan.createdAt,
         completedAt: this.#plan.completedAt,
         decompositionMethod:
@@ -2829,7 +3343,16 @@ export class ExecutionPlanManager {
         description: `Review the changed code against semantic risk domains: ${(taskProfile.semanticRiskDomains || []).map((d) => d.label).join('; ')}.`,
         dependencies: lastId ? [lastId] : [],
         phase: ExecutionPlanManager.PHASE.INSPECTION,
-        allowedTools: ['review', 'read_file', 'security_review', 'data_contract_check', 'preview_file', 'lsp_definition', 'lsp_references', 'search'],
+        allowedTools: [
+          'review',
+          'read_file',
+          'security_review',
+          'data_contract_check',
+          'preview_file',
+          'lsp_definition',
+          'lsp_references',
+          'search',
+        ],
       });
     }
     this.#rebuildGraph(plan);
@@ -2843,27 +3366,46 @@ export class ExecutionPlanManager {
   #inferTaskPhase(taskName, description) {
     const lower = (taskName + ' ' + description).toLowerCase();
     // 验证阶段：verify, test, validate, confirm, lint, build_check, 验证, 测试
-    if (/\b(verify|test|validate|confirm|lint|build_check|check_diagnostics|run_tests|review_changes)\b/.test(lower) || /验证|测试/.test(lower)) {
+    if (
+      /\b(verify|test|validate|confirm|lint|build_check|check_diagnostics|run_tests|review_changes)\b/.test(
+        lower,
+      ) ||
+      /验证|测试/.test(lower)
+    ) {
       return ExecutionPlanManager.PHASE.VERIFICATION;
     }
     // 审查阶段：inspect, review, check, audit, read_back, 审查, 复查
-    if (/\b(inspect_changes|review|audit|read_back|security_review|ui_acceptance|data_contract_check)\b/.test(lower) || /审[核查]|复查/.test(lower)) {
+    if (
+      /\b(inspect_changes|review|audit|read_back|security_review|ui_acceptance|data_contract_check)\b/.test(
+        lower,
+      ) ||
+      /审[核查]|复查/.test(lower)
+    ) {
       return ExecutionPlanManager.PHASE.INSPECTION;
     }
     // 实现阶段：implement, create, edit, write, fix, add, update, refactor, build, code
     if (
-      /\b(implement|create|edit|write|fix|add|update|refactor|build|code|implement_features|implement_changes|create_new_files|refactor_code)\b/.test(lower) ||
+      /\b(implement|create|edit|write|fix|add|update|refactor|build|code|implement_features|implement_changes|create_new_files|refactor_code)\b/.test(
+        lower,
+      ) ||
       /修改|实现|创建|編写|修复|重构/.test(lower)
     ) {
       return ExecutionPlanManager.PHASE.IMPLEMENTATION;
     }
-    // 规划阶段：plan, design, architect, brainstorm, grill, zoom_out, approach
-    if (/\b(plan|design|architect|brainstorm|grill|zoom_out|approach|plan_solution|design_changes|risk_check|test_strategy|migration_plan)\b/.test(lower) || /方案|设计|规划/.test(lower)) {
+    // 规划阶段：plan, design, architect, auto_research, brainstorm, grill, zoom_out, approach
+    if (
+      /\b(plan|design|architect|auto_research|brainstorm|grill|zoom_out|approach|plan_solution|design_changes|risk_check|test_strategy|migration_plan)\b/.test(
+        lower,
+      ) ||
+      /方案|设计|规划|研究计划/.test(lower)
+    ) {
       return ExecutionPlanManager.PHASE.PLANNING;
     }
     // 探索阶段：inspect, explore, discover, read, gather, analyze
     if (
-      /\b(inspect|explore|discover|read|gather|analyze|inspect_readme|inspect_workspace|inspect_existing_code|analyze_requirements|inspect_verification_target)\b/.test(lower) ||
+      /\b(inspect|explore|discover|read|gather|analyze|inspect_readme|inspect_workspace|inspect_existing_code|analyze_requirements|inspect_verification_target)\b/.test(
+        lower,
+      ) ||
       /了解|探索|检查|分析|读取|发现/.test(lower)
     ) {
       return ExecutionPlanManager.PHASE.EXPLORATION;

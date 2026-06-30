@@ -4,6 +4,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { ToolExecutor } from '../../src/core/tool-executor.js';
 import { Decision } from '../../src/core/security-policy.js';
+import { WorkspaceState } from '../../src/core/workspace-state.js';
+import { ObservationErrorCode } from '../../src/core/runtime/agent/support/observation-state.js';
 
 function makeTool(name, extra = {}) {
   return {
@@ -359,6 +361,7 @@ describe('ToolExecutor', () => {
       expect(result.fallbackToDir).toBe(true);
       expect(result.result).toContain('File not found');
       expect(result.result).toContain('F webpack.config.cjs');
+      expect(result.result).toContain('switch to write_file');
       expect(ui.toolResult).toHaveBeenCalledWith(
         'read_file',
         expect.stringContaining('File not found'),
@@ -372,6 +375,42 @@ describe('ToolExecutor', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test('blocks guessed reads that contradict empty-workspace facts in create-from-scratch plans', async () => {
+    const workspaceState = new WorkspaceState();
+    workspaceState.recordToolResult(
+      'list_dir',
+      { path: '.' },
+      '.agent-data\n.agent-logs\n.agent-memory\ntest',
+      true,
+    );
+    const readTool = makeTool('read_file', {
+      required: ['path'],
+      handler: mock(async () => 'should not run'),
+    });
+    const { executor } = makeMockExecutor({
+      tools: [readTool],
+      config: { workspaceState },
+    });
+
+    const result = await executor.execute(
+      {
+        id: '1',
+        name: 'read_file',
+        arguments: { path: 'package.json' },
+      },
+      {
+        workspaceState,
+        activePlan: { context: { createFromScratch: true } },
+        currentTask: { id: 'profile_project', phase: 'exploration', allowedTools: ['read_file'] },
+      },
+    );
+
+    expect(result.skipped).toBe(true);
+    expect(result.errorCode).toBe(ObservationErrorCode.FACT_CONTRADICTION);
+    expect(result.result).toContain('FACT_BLOCKED');
+    expect(readTool.handler).not.toHaveBeenCalled();
   });
 
   test('normalizes OpenAI-style function tool calls', async () => {

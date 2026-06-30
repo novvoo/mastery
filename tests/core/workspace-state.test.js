@@ -123,6 +123,39 @@ describe('WorkspaceState', () => {
     expect(ws.getFileSnapshot('/src/write-empty.js').content).toBe('');
   });
 
+  test('recordToolResult parses string directory listings into workspace facts', () => {
+    const ws = new WorkspaceState();
+
+    ws.recordToolResult(
+      'list_dir',
+      { path: '.' },
+      '.agent-data\n.agent-logs\n.agent-memory\ntest',
+      true,
+    );
+
+    expect(ws.getWorkspaceRootEntries()).toEqual([
+      '.agent-data',
+      '.agent-logs',
+      '.agent-memory',
+      'test',
+    ]);
+    expect(ws.isWorkspaceEmpty()).toBe(true);
+  });
+
+  test('recordToolResult missing read marks path not found without caching error text', () => {
+    const ws = new WorkspaceState();
+
+    ws.recordToolResult(
+      'read_file',
+      { path: 'package.json' },
+      'Error: File not found: "package.json"',
+      false,
+    );
+
+    expect(ws.checkPathExists('package.json')).toBe('not_found');
+    expect(ws.getFileSnapshot('package.json')).toBe(null);
+  });
+
   test('recordToolResult tolerates circular object results', () => {
     const ws = new WorkspaceState();
     const result = { ok: true };

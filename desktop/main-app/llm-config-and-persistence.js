@@ -321,16 +321,162 @@ function getModelConfigsPath(ctx) {
   return path.join(app.getPath('userData'), 'models.json');
 }
 
+function getSafeStorage(ctx) {
+  const safeStorage = ctx?.electron?.safeStorage;
+  if (!safeStorage || typeof safeStorage.isEncryptionAvailable !== 'function') {
+    return null;
+  }
+  try {
+    return safeStorage.isEncryptionAvailable() ? safeStorage : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function getApiKeyPreview(apiKey = '') {
+  const value = String(apiKey || '');
+  if (!value) return '';
+  return value.length <= 4 ? '••••' : `••••${value.slice(-4)}`;
+}
+
+function decryptModelConfig(ctx, config = {}) {
+  const apiKey = String(config.apiKey || '');
+  if (apiKey) {
+    return {
+      ...config,
+      apiKey,
+      hasApiKey: true,
+      apiKeyPreview: config.apiKeyPreview || getApiKeyPreview(apiKey),
+    };
+  }
+
+  if (!config.apiKeyEncrypted) {
+    return {
+      ...config,
+      apiKey: '',
+      hasApiKey: false,
+      apiKeyPreview: '',
+    };
+  }
+
+  const safeStorage = getSafeStorage(ctx);
+  if (!safeStorage || typeof safeStorage.decryptString !== 'function') {
+    return {
+      ...config,
+      apiKey: '',
+      hasApiKey: true,
+      apiKeyPreview: config.apiKeyPreview || '已保存',
+      apiKeyUnavailable: true,
+    };
+  }
+
+  try {
+    const decrypted = safeStorage.decryptString(Buffer.from(config.apiKeyEncrypted, 'base64'));
+    return {
+      ...config,
+      apiKey: decrypted,
+      hasApiKey: Boolean(decrypted),
+      apiKeyPreview: config.apiKeyPreview || getApiKeyPreview(decrypted),
+      apiKeyUnavailable: false,
+    };
+  } catch (err) {
+    console.warn('解密模型 API Key 失败:', err.message);
+    return {
+      ...config,
+      apiKey: '',
+      hasApiKey: true,
+      apiKeyPreview: config.apiKeyPreview || '已保存',
+      apiKeyUnavailable: true,
+    };
+  }
+}
+
+function serializeModelConfig(ctx, config = {}) {
+  const base = { ...config };
+  const apiKey = String(base.apiKey || '').trim();
+  delete base.apiKey;
+  delete base.apiKeyEncrypted;
+  delete base.apiKeyStorage;
+  delete base.apiKeyUnavailable;
+
+  if (!apiKey) {
+    return {
+      ...base,
+      hasApiKey: false,
+      apiKeyPreview: '',
+    };
+  }
+
+  const safeStorage = getSafeStorage(ctx);
+  if (safeStorage && typeof safeStorage.encryptString === 'function') {
+    try {
+      return {
+        ...base,
+        apiKeyEncrypted: safeStorage.encryptString(apiKey).toString('base64'),
+        apiKeyStorage: 'safeStorage',
+        hasApiKey: true,
+        apiKeyPreview: getApiKeyPreview(apiKey),
+      };
+    } catch (err) {
+      console.warn('加密模型 API Key 失败，回退到明文兼容模式:', err.message);
+    }
+  }
+
+  return {
+    ...base,
+    apiKey,
+    apiKeyStorage: 'plain',
+    hasApiKey: true,
+    apiKeyPreview: getApiKeyPreview(apiKey),
+  };
+}
+
+function sanitizeModelConfigForRenderer(config = {}) {
+  const { apiKey, apiKeyEncrypted, ...safeConfig } = config;
+  const hasApiKey = Boolean(config.hasApiKey || apiKey || apiKeyEncrypted);
+  return {
+    ...safeConfig,
+    apiKey: '',
+    hasApiKey,
+    apiKeyPreview: config.apiKeyPreview || getApiKeyPreview(apiKey),
+  };
+}
+
+function preserveExistingApiKey(previousConfigs, incomingConfig = {}) {
+  const apiKey = String(incomingConfig.apiKey || '').trim();
+  if (apiKey) return { ...incomingConfig, apiKey };
+
+  const existing = previousConfigs.find(c => c.id === incomingConfig.id);
+  if (existing?.apiKey) {
+    return {
+      ...incomingConfig,
+      apiKey: existing.apiKey,
+      hasApiKey: true,
+      apiKeyPreview: existing.apiKeyPreview || getApiKeyPreview(existing.apiKey),
+    };
+  }
+  return {
+    ...incomingConfig,
+    apiKey: '',
+    hasApiKey: Boolean(incomingConfig.hasApiKey),
+  };
+}
+
 export function readAllModelConfigs(ctx) {
   try {
     const configPath = getModelConfigsPath(ctx);
     if (!fs.existsSync(configPath)) return [];
     const raw = fs.readFileSync(configPath, 'utf8');
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(config => decryptModelConfig(ctx, config)) : [];
   } catch (err) {
     console.warn('读取模型配置失败:', err.message);
     return [];
   }
+}
+
+export function readAllModelConfigsForRenderer(ctx) {
+  return readAllModelConfigs(ctx).map(sanitizeModelConfigForRenderer);
 }
 
 export function saveAllModelConfigs(ctx, configs) {
@@ -338,7 +484,10 @@ export function saveAllModelConfigs(ctx, configs) {
     const configPath = getModelConfigsPath(ctx);
     const dir = path.dirname(configPath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(configPath, JSON.stringify(configs, null, 2));
+    const serialized = Array.isArray(configs)
+      ? configs.map(config => serializeModelConfig(ctx, config))
+      : [];
+    fs.writeFileSync(configPath, JSON.stringify(serialized, null, 2));
     return { success: true };
   } catch (err) {
     console.error('保存模型配置失败:', err.message);
@@ -348,7 +497,10 @@ export function saveAllModelConfigs(ctx, configs) {
 
 export async function saveAllModelConfigsAndActivate(ctx, configs) {
   const previousConfigs = readAllModelConfigs(ctx);
-  const activeConfig = Array.isArray(configs) ? configs.find(c => c.enabled) : null;
+  const mergedConfigs = Array.isArray(configs)
+    ? configs.map(config => preserveExistingApiKey(previousConfigs, config))
+    : [];
+  const activeConfig = mergedConfigs.find(c => c.enabled) || null;
   if (activeConfig) {
     const validation = validateActiveModelConfig(activeConfig);
     if (!validation.success) {
@@ -356,7 +508,7 @@ export async function saveAllModelConfigsAndActivate(ctx, configs) {
     }
   }
 
-  const saveResult = saveAllModelConfigs(ctx, configs);
+  const saveResult = saveAllModelConfigs(ctx, mergedConfigs);
   if (!saveResult.success) {
     return saveResult;
   }
@@ -375,31 +527,32 @@ export async function saveAllModelConfigsAndActivate(ctx, configs) {
 export async function saveSingleModelConfig(ctx, config) {
   const previousConfigs = readAllModelConfigs(ctx);
   const configs = previousConfigs.map(c => ({ ...c }));
-  if (config.enabled) {
-    const validation = validateActiveModelConfig(config);
+  const mergedConfig = preserveExistingApiKey(previousConfigs, config);
+  if (mergedConfig.enabled) {
+    const validation = validateActiveModelConfig(mergedConfig);
     if (!validation.success) {
       return validation;
     }
   }
 
-  const idx = configs.findIndex(c => c.id === config.id);
+  const idx = configs.findIndex(c => c.id === mergedConfig.id);
   
   if (idx >= 0) {
     // 如果启用了某个模型，先禁用所有其他模型
-    if (config.enabled) {
+    if (mergedConfig.enabled) {
       configs.forEach((c, i) => {
-        configs[i].enabled = c.id === config.id ? true : false;
+        configs[i].enabled = c.id === mergedConfig.id ? true : false;
       });
     }
-    configs[idx] = { ...configs[idx], ...config };
+    configs[idx] = { ...configs[idx], ...mergedConfig };
   } else {
     // 新添加的模型如果启用，先禁用所有其他模型
-    if (config.enabled) {
+    if (mergedConfig.enabled) {
       configs.forEach((c, i) => {
         configs[i].enabled = false;
       });
     }
-    configs.push(config);
+    configs.push(mergedConfig);
   }
   
   const result = saveAllModelConfigs(ctx, configs);
@@ -408,8 +561,8 @@ export async function saveSingleModelConfig(ctx, config) {
   }
   
   // 如果保存的模型是启用的，同步到 .env 并立即附加到运行时
-  if (config.enabled) {
-    const activeConfig = configs.find(c => c.id === config.id);
+  if (mergedConfig.enabled) {
+    const activeConfig = configs.find(c => c.id === mergedConfig.id);
     if (activeConfig) {
       const activateResult = await activateModelConfig(ctx, activeConfig);
       if (!activateResult.success) {
@@ -449,7 +602,7 @@ export async function toggleModelConfig(ctx, id, enabled) {
     if (!validation.success) {
       return {
         success: false,
-        configs,
+        configs: configs.map(sanitizeModelConfigForRenderer),
         error: validation.error,
         envPath: ctx.userEnvPath
       };
@@ -469,7 +622,7 @@ export async function toggleModelConfig(ctx, id, enabled) {
     
     return { 
       success: syncResult.success, 
-      configs: updated,
+      configs: updated.map(sanitizeModelConfigForRenderer),
       provider: syncResult.provider,
       model: syncResult.model,
       error: syncResult.error,

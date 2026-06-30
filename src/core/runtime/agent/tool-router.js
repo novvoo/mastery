@@ -73,6 +73,7 @@ const GENERAL_METHODOLOGY_TOOLS = [
   'risk_check',
   'impact_map',
   'test_strategy',
+  'auto_research',
 ];
 
 const ADVANCED_METHODOLOGY_TOOLS = [
@@ -85,6 +86,7 @@ const ADVANCED_METHODOLOGY_TOOLS = [
   'ui_acceptance',
   'data_contract_check',
   'security_review',
+  'auto_research',
 ];
 
 const GIT_READ_TOOLS = ['git_status', 'git_diff', 'git_log', 'git_branch'];
@@ -203,6 +205,7 @@ const PHASE_CANDIDATE_TOOLS = {
     'grill',
     'zoom_out',
     'architect',
+    'auto_research',
     'impact_map',
     'project_profile',
     'risk_check',
@@ -214,6 +217,7 @@ const PHASE_CANDIDATE_TOOLS = {
     'zoom_out',
     'architect',
     'tdd',
+    'auto_research',
     'impact_map',
     'project_profile',
     'risk_check',
@@ -241,6 +245,7 @@ const PHASE_CANDIDATE_TOOLS = {
     'verify',
     'diagnose',
     'coverage_check',
+    'auto_research',
     'test_strategy',
     'release_checklist',
     'security_review',
@@ -271,9 +276,25 @@ export function selectToolsForRequest(
     maxTools = 32,
   } = {},
 ) {
+  console.log(
+    `[tool-router] selectToolsForRequest: currentPhase=${currentPhase}, currentTask=${currentTask?.id || 'none'}, allToolsCount=${allTools.length}`,
+  );
   const byName = new Map(allTools.map((tool) => [tool.name, tool]));
   const selected = new Map();
   const input = String(userInput || '').toLowerCase();
+
+  // 诊断：检查核心工具是否存在于 allTools 中
+  const criticalTools = ['write_file', 'edit_file', 'shell', 'read_file', 'list_dir'];
+  const allToolNames = allTools.map((t) => t.name);
+  const missingCriticalTools = criticalTools.filter((name) => !byName.has(name));
+  if (missingCriticalTools.length > 0) {
+    console.warn(
+      `[tool-router] ⚠️ 关键工具未注册: ${missingCriticalTools.join(', ')}. ` +
+        `allTools 数量: ${allTools.length}, 已注册工具名: ${allToolNames.slice(0, 20).join(', ')}${allToolNames.length > 20 ? '...' : ''}`,
+    );
+  } else {
+    console.log(`[tool-router] ✓ 核心工具检查通过. allTools 数量: ${allTools.length}`);
+  }
 
   const add = (names) => {
     for (const name of names) {

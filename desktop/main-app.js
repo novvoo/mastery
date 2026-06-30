@@ -69,6 +69,7 @@ import {
   handleSaveConfig,
   readAppConfig,
   readAllModelConfigs,
+  readAllModelConfigsForRenderer,
   saveAllModelConfigsAndActivate,
   saveSingleModelConfig,
   deleteModelConfig,
@@ -185,6 +186,7 @@ class ElectronMainApp {
     ctx.getLLMConfigStatus = () => getLLMConfigStatus(ctx);
     ctx.saveLLMConfig = (cfg) => saveLLMConfig(ctx, cfg);
     ctx.readAllModelConfigs = () => readAllModelConfigs(ctx);
+    ctx.readAllModelConfigsForRenderer = () => readAllModelConfigsForRenderer(ctx);
     ctx.saveAllModelConfigs = (configs) => saveAllModelConfigsAndActivate(ctx, configs);
     ctx.saveSingleModelConfig = (config) => saveSingleModelConfig(ctx, config);
     ctx.deleteModelConfig = (id) => deleteModelConfig(ctx, id);

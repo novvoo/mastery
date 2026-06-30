@@ -88,6 +88,22 @@ export class ToolRegistry {
     const props = schema.properties || {};
     const required = schema.required || [];
 
+    // 参数别名映射 (兼容 LLM 生成的不同参数名)
+    const paramAliases = {
+      write_file: { file_path: 'path', file_content: 'content' },
+      read_file: { file_path: 'path' },
+      edit_file: { file_path: 'path' },
+    };
+
+    // 处理参数别名
+    const toolAliases = paramAliases[toolName] || {};
+    for (const [alias, canonical] of Object.entries(toolAliases)) {
+      if (coerced[alias] !== undefined && coerced[canonical] === undefined) {
+        coerced[canonical] = coerced[alias];
+        delete coerced[alias];
+      }
+    }
+
     // 1) required 检查
     for (const key of required) {
       if (coerced[key] === undefined || coerced[key] === null || coerced[key] === '') {
@@ -165,6 +181,9 @@ export class ToolRegistry {
       valid: errors.length === 0,
       errors,
       coercedArgs: coerced,
+      // 返回 schema 信息供错误消息使用
+      schema: { properties: props, required },
+      originalArgs: args,
     };
   }
 

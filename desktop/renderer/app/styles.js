@@ -754,7 +754,6 @@ export const styles = {
   },
 
   interactionShortcut: {
-    display: 'none',
     flex: '0 0 auto',
     display: 'inline-flex',
     alignItems: 'center',

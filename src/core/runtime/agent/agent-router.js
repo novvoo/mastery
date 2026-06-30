@@ -199,7 +199,35 @@ export class AgentRouter {
     if (typeof this.#toolRegistry.validateAndCoerceArgs === 'function') {
       const v = this.#toolRegistry.validateAndCoerceArgs(name, args);
       if (!v.valid) {
-        this.#ui.warn(`[Tool args] ${name}: ${v.errors.join('; ')}`);
+        // 参数校验失败 —— 返回错误让 LLM 修正后重新调用
+        const schemaInfo = v.schema || {};
+        const requiredParams = schemaInfo.required || [];
+        const paramDefs = schemaInfo.properties || {};
+        const paramDesc = Object.entries(paramDefs)
+          .map(([k, def]) => {
+            const type = def.type || 'any';
+            const desc = def.description || '';
+            const req = requiredParams.includes(k) ? '（必填）' : '（可选）';
+            return `${k}: ${type}${req}${desc ? ` - ${desc}` : ''}`;
+          })
+          .join('\n');
+
+        const errorMsg = `工具 "${name}" 参数校验失败，请修正后重新调用：
+
+错误详情：
+${v.errors.map((e) => `  - ${e}`).join('\n')}
+
+传入的参数：
+${JSON.stringify(v.originalArgs || args, null, 2)}
+
+期望的参数定义：
+${paramDesc || '无参数定义'}
+
+请检查参数类型和必填项，修正后重新发起工具调用。`;
+
+        this.#ui.warn?.(`[Tool args blocked] ${name}: ${v.errors.join('; ')}`);
+        this.#debugEvent('Tool call blocked by param validation', { tool: name, errors: v.errors });
+        return { name, result: errorMsg, error: errorMsg };
       }
       effectiveArgs = v.coercedArgs;
     }

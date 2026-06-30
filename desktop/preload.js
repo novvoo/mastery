@@ -137,6 +137,10 @@ try {
       'workspace:listDirectory',
       'workspace:readFile',
       'workspace:writeFile',
+      'workspace:createFile',
+      'workspace:createDirectory',
+      'workspace:deleteFile',
+      'workspace:rename',
       'workspace:getFileDiff',
       'workspace:isGitRepo',
       'terminal:execute',
@@ -676,6 +680,42 @@ try {
         return await ipcRenderer.invoke('workspace:writeFile', { path, content, ...options });
       } catch (error) {
         console.error('[Preload] writeWorkspaceFile 失败:', error);
+        throw error;
+      }
+    },
+
+    createWorkspaceFile: async (path, content = '') => {
+      try {
+        return await ipcRenderer.invoke('workspace:createFile', { path, content });
+      } catch (error) {
+        console.error('[Preload] createWorkspaceFile 失败:', error);
+        throw error;
+      }
+    },
+
+    createWorkspaceDirectory: async (path) => {
+      try {
+        return await ipcRenderer.invoke('workspace:createDirectory', { path });
+      } catch (error) {
+        console.error('[Preload] createWorkspaceDirectory 失败:', error);
+        throw error;
+      }
+    },
+
+    deleteWorkspaceFile: async (path) => {
+      try {
+        return await ipcRenderer.invoke('workspace:deleteFile', { path });
+      } catch (error) {
+        console.error('[Preload] deleteWorkspaceFile 失败:', error);
+        throw error;
+      }
+    },
+
+    renameWorkspaceItem: async (path, newPath) => {
+      try {
+        return await ipcRenderer.invoke('workspace:rename', { path, newPath });
+      } catch (error) {
+        console.error('[Preload] renameWorkspaceItem 失败:', error);
         throw error;
       }
     },

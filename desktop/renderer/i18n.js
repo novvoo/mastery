@@ -65,6 +65,7 @@ const TRANSLATIONS = {
     'msg.user': 'User',
     'msg.assistant': 'Assistant',
     'msg.thinking': 'Thinking',
+    'msg.plan': 'Plan',
     'msg.message': 'Message',
     'msg.tool_name': 'Tool: {name}',
     'msg.args': 'Args: {args}',
@@ -148,6 +149,26 @@ const TRANSLATIONS = {
     'status.tool_calls': 'Tool Calls: {count}',
     'status.ipc': 'IPC: {state}',
 
+    // ===== Plan phases =====
+    'plan.phase.exploration': 'Exploration',
+    'plan.phase.planning': 'Planning',
+    'plan.phase.implementation': 'Implementation',
+    'plan.phase.inspection': 'Inspection',
+    'plan.phase.verification': 'Verification',
+    'plan.status.pending': 'Pending',
+    'plan.status.queued': 'Queued',
+    'plan.status.running': 'Running',
+    'plan.status.completed': 'Success',
+    'plan.status.needs_repair': 'Needs Repair',
+    'plan.status.failed': 'Failed',
+    'plan.status.waiting': 'Waiting',
+    'plan.status.skipped': 'Skipped',
+    'plan.strategy.mode': 'Mode',
+    'plan.strategy.verification': 'Verification',
+    'plan.strategy.parallel': 'Parallel',
+    'plan.strategy.phase': 'Phases',
+    'plan.strategy.units': 'units',
+
     // ===== 窗口控制 =====
     'window.expand_sidebar': 'Expand Sidebar',
     'window.collapse_sidebar': 'Collapse Sidebar',
@@ -219,35 +240,8 @@ const TRANSLATIONS = {
     'common.browser': 'Browser',
     'common.start': 'Start',
     'common.export': 'Export',
-	    'common.undo': 'Undo',
-	    'common.edit': 'Edit',
-	
-	    // ===== Agent =====
-	    'agent.thinking': 'Thinking...',
-	    'agent.reasoning': 'Reasoning...',
-	    'agent.executing': 'Executing...',
-	    'agent.completed': 'Completed',
-	    'agent.failed': 'Failed',
-	    'agent.waiting': 'Waiting...',
-	    'agent.tool_call': 'Calling tool: {tool}',
-	    'agent.tool_result': 'Tool result received',
-	    'agent.final_answer': 'Final Answer',
-	    'agent.max_iterations': 'Maximum iterations reached',
-	    'agent.timeout': 'Operation timed out',
-	
-	    // ===== 通用 =====
-	    'common.ok': 'OK',
-	    'common.cancel': 'Cancel',
-    'common.confirm': 'Confirm',
-    'common.error': 'Error',
-    'common.warning': 'Warning',
-    'common.success': 'Success',
-    'common.loading': 'Loading...',
-    'common.done': 'Done',
-    'common.failed': 'Failed',
-    'common.retry': 'Retry',
-    'common.close': 'Close',
-    'common.save': 'Save',
+    'common.undo': 'Undo',
+    'common.edit': 'Edit',
 
 	    // ===== 语言 =====
 	    'ui.language': 'Language',
@@ -287,9 +281,58 @@ const TRANSLATIONS = {
 	    'management.mcp_connect': 'Connect',
 	    'management.mcp_disconnect': 'Disconnect',
 	    'management.mcp_tools_count': '{count} tools',
-	  },
 
-	  'zh-CN': {
+    // ===== Chat =====
+    'chat.questions_pending': '{count} questions pending',
+    'chat.reason': 'Reason',
+    'chat.suggestions': 'Suggestions',
+
+    // ===== App confirm dialogs =====
+    'app.switch_file_confirm_title': 'Switch File',
+    'app.switch_file_confirm_message': 'Current file has unsaved changes. Are you sure you want to switch?',
+    'app.close_file_confirm_title': 'Close File',
+    'app.close_file_confirm_message': 'Current file has unsaved changes. Are you sure you want to close?',
+    'app.clear_history_confirm_title': 'Clear History',
+    'app.clear_history_confirm_message': 'Are you sure you want to clear all sessions and history? This cannot be undone.',
+
+    // ===== Tool execution =====
+    'tool.unknown': 'Unknown Tool',
+    'tool.subagent_task': 'Subagent Task',
+    'tool.execute': 'Execute Tool Call',
+    'tool.result': 'Tool Result',
+    'tool.success': 'Execution Success',
+    'tool.failed': 'Execution Failed',
+    'tool.error': 'Tool Execution Failed',
+
+    // ===== Plan card =====
+    'plan.title': 'Execution Plan',
+    'plan.decomposition_llm': 'LLM Decomposition',
+    'plan.decomposition_template': 'Template Plan',
+    'plan.progress_completed': '{completed}/{total} Success',
+    'plan.dynamic_replanning': 'Dynamic Replanning',
+    'plan.running_count': '{count} Running',
+    'plan.needs_repair_count': '{count} Needs Repair',
+    'plan.expand': '▶ Expand',
+    'plan.collapse': '▼ Collapse',
+    'plan.advanced_by': 'Advanced by {toolName}',
+    'plan.task_status': 'Task Status',
+
+    // ===== Buttons =====
+    'btn.copy': 'Copy',
+    'btn.details': 'Details',
+    'btn.hide_details': 'Hide Details',
+
+    // ===== Status =====
+    'status.generating': 'Generating Reply',
+    'status.organizing': 'Organizing Reply',
+    'status.follow_new': 'Follow New Content',
+    'status.locked': 'Locked',
+    'status.follow': 'Follow',
+    'status.locked_position': 'Locked at Current Position',
+    'status.resume_follow': 'Resume Follow Scroll',
+  },
+
+  'zh-CN': {
     // ===== UI 组件 =====
     'ui.root': '根',
     'ui.settings': '设置',
@@ -338,6 +381,7 @@ const TRANSLATIONS = {
     'msg.user': '用户',
     'msg.assistant': '助手',
     'msg.thinking': '思考',
+    'msg.plan': '计划',
     'msg.message': '消息',
     'msg.tool_name': '工具: {name}',
     'msg.args': '参数: {args}',
@@ -420,6 +464,26 @@ const TRANSLATIONS = {
     'status.message_count': '消息: {count}',
     'status.tool_calls': '工具调用: {count}',
     'status.ipc': 'IPC: {state}',
+
+    // ===== Plan 阶段 =====
+    'plan.phase.exploration': '探索',
+    'plan.phase.planning': '规划',
+    'plan.phase.implementation': '执行',
+    'plan.phase.inspection': '检查',
+    'plan.phase.verification': '验证',
+    'plan.status.pending': '未开始',
+    'plan.status.queued': '开始',
+    'plan.status.running': '进行中',
+    'plan.status.completed': '成功',
+    'plan.status.needs_repair': '需修复',
+    'plan.status.failed': '失败',
+    'plan.status.waiting': '等待',
+    'plan.status.skipped': '跳过',
+    'plan.strategy.mode': '模式',
+    'plan.strategy.verification': '验证',
+    'plan.strategy.parallel': '并行',
+    'plan.strategy.phase': '阶段',
+    'plan.strategy.units': '个',
 
     // ===== 窗口控制 =====
     'window.expand_sidebar': '展开侧边栏',
@@ -533,9 +597,58 @@ const TRANSLATIONS = {
 	    'management.mcp_connect': '连接',
 	    'management.mcp_disconnect': '断开',
 	    'management.mcp_tools_count': '{count} 个工具',
-	  },
 
-	  'zh-TW': {
+    // ===== 聊天 =====
+    'chat.questions_pending': '{count} 个问题待回答',
+    'chat.reason': '原因',
+    'chat.suggestions': '可选参考',
+
+    // ===== App 确认对话框 =====
+    'app.switch_file_confirm_title': '切换文件',
+    'app.switch_file_confirm_message': '当前文件有未保存修改，确定要切换文件吗？',
+    'app.close_file_confirm_title': '关闭文件',
+    'app.close_file_confirm_message': '当前文件有未保存修改，确定要关闭吗？',
+    'app.clear_history_confirm_title': '清空历史记录',
+    'app.clear_history_confirm_message': '确定要清空所有会话和历史记录吗？此操作无法撤销。',
+
+    // ===== Tool execution =====
+    'tool.unknown': '未知工具',
+    'tool.subagent_task': '子代理任务',
+    'tool.execute': '执行工具调用',
+    'tool.result': '操作结果',
+    'tool.success': '执行成功',
+    'tool.failed': '操作失败',
+    'tool.error': '工具执行失败',
+
+    // ===== Plan card =====
+    'plan.title': '执行计划',
+    'plan.decomposition_llm': '智能分解',
+    'plan.decomposition_template': '模板计划',
+    'plan.progress_completed': '{completed}/{total} 成功',
+    'plan.dynamic_replanning': '动态重规划',
+    'plan.running_count': '{count} 个进行中',
+    'plan.needs_repair_count': '{count} 个需修复',
+    'plan.expand': '▶ 展开',
+    'plan.collapse': '▼ 折叠',
+    'plan.advanced_by': '由 {toolName} 推进',
+    'plan.task_status': '任务状态',
+
+    // ===== Buttons =====
+    'btn.copy': '复制',
+    'btn.details': '详情',
+    'btn.hide_details': '隐藏详情',
+
+    // ===== Status =====
+    'status.generating': '正在生成回复',
+    'status.organizing': '正在组织回复',
+    'status.follow_new': '跟随新内容 (点击锁定当前位置)',
+    'status.locked': '已锁定 — 点击恢复跟随滚动',
+    'status.follow': '跟随',
+    'status.locked_position': '已锁定',
+    'status.resume_follow': '恢复跟随',
+  },
+
+  'zh-TW': {
     // ===== UI 组件 =====
     'ui.root': '根',
     'ui.settings': '設定',
@@ -584,6 +697,7 @@ const TRANSLATIONS = {
     'msg.user': '使用者',
     'msg.assistant': '助手',
     'msg.thinking': '思考',
+    'msg.plan': '計劃',
     'msg.message': '訊息',
     'msg.tool_name': '工具: {name}',
     'msg.args': '參數: {args}',

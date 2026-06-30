@@ -308,12 +308,12 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.4;
-  user-select: none;
+  user-select: text;
 }
 
-button, input, textarea, select {
-  letter-spacing: 0;
-  user-select: text;
+/* 需要禁止选中的交互元素 */
+.no-select {
+  user-select: none;
 }
 
 /* ================== 毛玻璃通用类 ================== */

@@ -178,7 +178,7 @@ export const styles = {
 
   runtimeDetailsHeaderInteractive: {
     cursor: 'pointer',
-    userSelect: 'none'
+    userSelect: 'text'
   },
 
   runtimeDetailsTitle: {
@@ -340,6 +340,88 @@ export const styles = {
     fontVariantNumeric: 'tabular-nums'
   },
 
+  planMetaRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    flexWrap: 'wrap',
+    marginBottom: '8px'
+  },
+
+  planMetaPill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    minHeight: '20px',
+    padding: '0 7px',
+    borderRadius: '999px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--glass-bg-light)',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 650
+  },
+
+  planMetaPillWarning: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    minHeight: '20px',
+    padding: '0 7px',
+    borderRadius: '999px',
+    border: '1px solid var(--warning-soft)',
+    backgroundColor: 'var(--warning-soft)',
+    color: 'var(--warning-color)',
+    fontSize: '11px',
+    fontWeight: 700
+  },
+
+  planStrategyGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: '6px',
+    marginBottom: '8px'
+  },
+
+  planStrategyItem: {
+    minWidth: 0,
+    padding: '7px 8px',
+    borderRadius: '7px',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--glass-bg-light)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px'
+  },
+
+  planStrategyItemWide: {
+    minWidth: 0,
+    gridColumn: 'span 2',
+    padding: '7px 8px',
+    borderRadius: '7px',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-color)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px'
+  },
+
+  planStrategyLabel: {
+    color: 'var(--text-dark)',
+    fontSize: '10px',
+    fontWeight: 750,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em'
+  },
+
+  planStrategyValue: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: 'var(--text-color)',
+    fontSize: '11px',
+    fontWeight: 650
+  },
+
   planProgressTrack: {
     height: '5px',
     borderRadius: '999px',
@@ -358,6 +440,26 @@ export const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '6px'
+  },
+
+  planPhaseGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+    paddingTop: '4px',
+    borderTop: '1px solid var(--border-subtle)'
+  },
+
+  planPhaseHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '8px',
+    color: 'var(--text-dark)',
+    fontSize: '11px',
+    fontWeight: 750,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em'
   },
 
   planTaskRow: {
@@ -396,6 +498,13 @@ export const styles = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     color: 'var(--text-color)'
+  },
+
+  planTaskDependency: {
+    marginLeft: '6px',
+    color: 'var(--text-dark)',
+    fontSize: '11px',
+    fontWeight: 600
   },
 
   planTaskStatus: {

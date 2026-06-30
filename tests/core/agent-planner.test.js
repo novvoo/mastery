@@ -168,6 +168,28 @@ describe('AgentPlanner', () => {
     expect(plan.getTask('verify_result')).toBeDefined();
   });
 
+  test('createIfNeeded attaches professional plan strategy metadata', () => {
+    const { planner } = createPlanner();
+    const plan = planner.createIfNeeded(
+      '调整 React 组件布局',
+      standardProfile({ isCodingTask: true, isModificationTask: true, planType: 'ui' }),
+    );
+
+    expect(plan.context.strategy).toMatchObject({
+      version: 1,
+      type: 'ui',
+      label: 'UI acceptance',
+      planningArchitecture: 'dag',
+      planningArchitectureLabel: 'DAG orchestration',
+      architecture: 'dag',
+      verificationStrength: 'visual',
+      recommendedReview: 'ui_acceptance',
+      mutation: true,
+    });
+    expect(plan.context.strategy.phaseCount).toBeGreaterThanOrEqual(4);
+    expect(['medium', 'high']).toContain(plan.context.strategy.parallelPotential);
+  });
+
   test('createIfNeeded includes semantic_risk_review when required', () => {
     const { planner } = createPlanner();
     const profile = standardProfile({
@@ -495,6 +517,11 @@ describe('AgentPlanner', () => {
     expect(payload.planChanged).toBe(true);
     expect(payload.change.insertedTasks).toEqual(['manual_verify']);
     expect(payload.plan.tasks.map((task) => task.id)).toContain('manual_verify');
+    expect(payload.plan.strategy).toMatchObject({
+      planningArchitecture: 'reflexion',
+      planningArchitectureLabel: 'Reflective repair',
+      dynamicReplanning: true,
+    });
   });
 
   test('changePlan failure leaves existing plan unchanged', () => {

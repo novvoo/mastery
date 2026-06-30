@@ -8,6 +8,11 @@
  * - 在上下文裁剪时保留关键信息
  */
 
+import {
+  classifyToolObservation,
+  parseDirectoryEntries,
+} from '../runtime/agent/support/observation-state.js';
+
 const MAX_DIRECTORY_ENTRIES = 500;
 const MAX_FACTS = 200;
 const MAX_FAILED_PATHS = 100;
@@ -368,6 +373,7 @@ export class WorkspaceState {
     }
 
     const filePath = args?.path || args?.file_path || args?.file || args?.target || null;
+    const observation = classifyToolObservation(toolName, args, result, { error: !success });
 
     if (filePath && typeof filePath === 'string') {
       try {
@@ -379,17 +385,24 @@ export class WorkspaceState {
 
     if (toolName === 'read_file' || toolName === 'file_read' || toolName === 'cat_file') {
       if (filePath) {
-        try {
-          const text = extractTextResult(result);
-          if (text !== null) {
-            this.setFileSnapshot(filePath, text, toolName);
+        if (!observation.ok) {
+          if (observation.errorCode === 'MISSING_FILE') {
+            this.recordPathNotFound(filePath, observation.text || 'File not found');
           }
-        } catch {
-          // Cache updates are opportunistic; keep the durable fact below.
+        } else {
+          try {
+            const text = extractTextResult(result);
+            if (text !== null) {
+              this.setFileSnapshot(filePath, text, toolName);
+            }
+          } catch {
+            // Cache updates are opportunistic; keep the durable fact below.
+          }
         }
       }
     } else if (toolName === 'write_file' || toolName === 'file_write') {
       if (filePath) {
+        this.recordFileWrite(filePath);
         const content = args?.content ?? args?.text ?? null;
         if (typeof content === 'string') {
           try {
@@ -401,13 +414,7 @@ export class WorkspaceState {
       }
     } else if (toolName === 'list_dir' || toolName === 'glob_search' || toolName === 'glob') {
       try {
-        const entries = Array.isArray(result?.entries)
-          ? result.entries
-          : Array.isArray(result?.files)
-            ? result.files
-            : Array.isArray(result)
-              ? result
-              : [];
+        const entries = parseDirectoryEntries(result);
         if (filePath) {
           this.recordDirectoryListing(filePath, entries.map(String), toolName);
         }
@@ -423,10 +430,27 @@ export class WorkspaceState {
         args: this._normalizeToolArgs(args),
         result: this._truncateResult(result),
         success,
+        observation: {
+          errorCode: observation.errorCode,
+          emptyWorkspace: observation.emptyWorkspace,
+          targetPath: observation.targetPath,
+        },
       },
       source: toolName,
       priority: success ? 'medium' : 'high',
     });
+  }
+
+  onToolEvent(event) {
+    if (!event || typeof event !== 'object') {
+      return;
+    }
+    const success =
+      !event.error &&
+      !event.skipped &&
+      !String(event.result ?? '').startsWith('Error:') &&
+      !String(event.result ?? '').startsWith('FACT_BLOCKED:');
+    this.recordToolResult(event.name, event.args || {}, event.result, success);
   }
 
   _normalizeToolArgs(args) {
@@ -515,6 +539,56 @@ export class WorkspaceState {
     const normalized = this._normalizePath(path);
     const failed = this._failedPaths.get(normalized);
     return failed ? failed.reason : null;
+  }
+
+  /**
+   * 判断工作区是否为空（已列举根目录且无实际项目文件）
+   * 用于在计划生成阶段决定是否走 new_project 模板而非 LLM 分解。
+   * @returns {boolean|null} null 表示尚未列举根目录，无法判断
+   */
+  isWorkspaceEmpty() {
+    const rootVariants = ['.', './', ''];
+    let rootDir = null;
+    for (const v of rootVariants) {
+      const normalized = this._normalizePath(v);
+      if (this._directories.has(normalized)) {
+        rootDir = this._directories.get(normalized);
+        break;
+      }
+    }
+    if (!rootDir) {
+      return null;
+    }
+    const entries = Array.from(rootDir.entries);
+    if (entries.length === 0) {
+      return true;
+    }
+    // 过滤掉 agent 内部目录和隐藏文件，检查是否还有实际项目文件
+    const agentOnlyPattern = /^(?:\.agent-(data|logs|memory)|test)(\/|$)/i;
+    const realEntries = entries.filter((e) => {
+      const name = e.replace(/^\.?\//, '');
+      if (!name) return false;
+      if (agentOnlyPattern.test(name)) return false;
+      if (name.startsWith('.')) return false; // 隐藏文件/目录
+      return true;
+    });
+    return realEntries.length === 0;
+  }
+
+  /**
+   * 获取工作区根目录的条目列表（如果已列举过）
+   * @returns {string[]|null}
+   */
+  getWorkspaceRootEntries() {
+    const rootVariants = ['.', './', ''];
+    for (const v of rootVariants) {
+      const normalized = this._normalizePath(v);
+      const dir = this._directories.get(normalized);
+      if (dir) {
+        return Array.from(dir.entries);
+      }
+    }
+    return null;
   }
 
   /**

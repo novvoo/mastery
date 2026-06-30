@@ -30,6 +30,23 @@ export function safeStringify(value, fallback = '') {
   }
 }
 
+function stripVisibleToolProtocol(text) {
+  if (typeof text !== 'string') {
+    return text;
+  }
+
+  return text
+    .replace(/<action>[\s\S]*?<\/action>/gi, '')
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
+    .replace(/<function_call>[\s\S]*?<\/function_call>/gi, '')
+    .replace(/<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi, '')
+    .replace(/```(?:json|tool)?\s*\{[\s\S]*?\}\s*```/gi, '')
+    .split('\n')
+    .filter((line) => !/^\s*CALL\s+[A-Za-z_][\w.-]*\s*\(/.test(line))
+    .join('\n')
+    .trim();
+}
+
 export function getMessageDisplayText(msg = {}) {
   const candidates = [
     msg.content,
@@ -59,7 +76,7 @@ export function getMessageDisplayText(msg = {}) {
 
   for (const value of candidates) {
     if (typeof value === 'string' && value.trim()) {
-      return value;
+      return stripVisibleToolProtocol(value);
     }
   }
 

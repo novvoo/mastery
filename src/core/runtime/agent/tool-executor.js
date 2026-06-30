@@ -20,6 +20,7 @@ import path from 'path';
 import { withTimeout } from '../../../errors/error-handler.js';
 import { TextToolParser } from '../../text-tool-parser.js';
 import { Decision } from './support/security-policy.js';
+import { ObservationErrorCode } from './support/observation-state.js';
 
 const TOOL_RESULT_CACHE_MAX = 500;
 const TOOL_RESULT_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -231,20 +232,60 @@ function normalizeToolArgumentAliases(name, args = {}) {
 function getAllowedToolSet(context = {}) {
   const taskAllowed = context.currentTask?.allowedTools;
   if (Array.isArray(taskAllowed) && taskAllowed.length > 0) {
-    const allRegisteredToolNames = Array.from(context.toolRegistry?.getAll()?.map(t => t.name) || []);
+    const allRegisteredToolNames = Array.from(
+      context.toolRegistry?.getAll()?.map((t) => t.name) || [],
+    );
     const routed = normalizeToolNameSet(context.activeRoutedToolNames);
-    
+
     const baseTools = new Set([...allRegisteredToolNames, ...PLAN_CONTROL_TOOLS]);
-    
+
     if (routed && routed.size > 0) {
-      routed.forEach(toolName => baseTools.add(toolName));
+      routed.forEach((toolName) => baseTools.add(toolName));
     }
-    
-    taskAllowed.forEach(toolName => baseTools.add(toolName));
-    
+
+    taskAllowed.forEach((toolName) => baseTools.add(toolName));
+
     return baseTools;
   }
   return null;
+}
+
+function isCreateOrImplementationTask(task, activePlan) {
+  const text = String(
+    `${task?.id || ''} ${task?.name || ''} ${task?.description || ''}`,
+  ).toLowerCase();
+  return Boolean(
+    activePlan?.context?.createFromScratch ||
+    task?.phase === 'implementation' ||
+    /\b(create|new|setup|implement|write|skeleton|scaffold|from scratch)\b|创建|新建|搭建|实现|工程化/.test(
+      text,
+    ),
+  );
+}
+
+function shouldBlockContradictingRead(name, args, context = {}) {
+  if (name !== 'read_file') {
+    return null;
+  }
+  const workspaceState = context.workspaceState;
+  if (!workspaceState || typeof workspaceState.isWorkspaceEmpty !== 'function') {
+    return null;
+  }
+  if (workspaceState.isWorkspaceEmpty() !== true) {
+    return null;
+  }
+  if (!isCreateOrImplementationTask(context.currentTask, context.activePlan)) {
+    return null;
+  }
+  const targetPath = getScopeTargetPath(name, args);
+  if (!targetPath) {
+    return null;
+  }
+  return (
+    `FACT_BLOCKED: Workspace root is already known to be empty for this create-from-scratch task. ` +
+    `Reading guessed path "${targetPath}" contradicts observed workspace facts. ` +
+    `Use write_file, mkdir, shell, edit_file, or apply_hashline_patch to create the project skeleton instead.`
+  );
 }
 
 export class ToolExecutor {
@@ -498,6 +539,25 @@ export class ToolExecutor {
       }
     }
 
+    const factBlocked = shouldBlockContradictingRead(name, args, {
+      ...context,
+      workspaceState: context.workspaceState || this.#config.workspaceState,
+    });
+    if (factBlocked) {
+      options.emitObservation?.(id, name, factBlocked, resultMode);
+      this.#recordEvent(name, args, false, factBlocked);
+      this.#ui.warn?.(`Fact blocked: ${name}`);
+      return {
+        name,
+        result: factBlocked,
+        args,
+        error: factBlocked,
+        skipped: true,
+        factBlocked: true,
+        errorCode: ObservationErrorCode.FACT_CONTRADICTION,
+      };
+    }
+
     this.#ui.toolCall?.(name, args);
 
     const tool = this.#toolRegistry.get(name);
@@ -519,7 +579,40 @@ export class ToolExecutor {
     if (typeof this.#toolRegistry.validateAndCoerceArgs === 'function') {
       const v = this.#toolRegistry.validateAndCoerceArgs(name, args);
       if (!v.valid) {
-        this.#ui.warn?.(`[Tool args] ${name}: ${(v.errors || []).join('; ')}`);
+        // 参数校验失败 —— 返回错误让 LLM 修正后重新调用
+        const schemaInfo = v.schema || {};
+        const requiredParams = schemaInfo.required || [];
+        const paramDefs = schemaInfo.properties || {};
+        const paramDesc = Object.entries(paramDefs)
+          .map(([k, def]) => {
+            const type = def.type || 'any';
+            const desc = def.description || '';
+            const req = requiredParams.includes(k) ? '（必填）' : '（可选）';
+            return `${k}: ${type}${req}${desc ? ` - ${desc}` : ''}`;
+          })
+          .join('\n');
+
+        const errorMsg = `工具 "${name}" 参数校验失败，请修正后重新调用：
+
+错误详情：
+${v.errors.map((e) => `  - ${e}`).join('\n')}
+
+传入的参数：
+${JSON.stringify(v.originalArgs || args, null, 2)}
+
+期望的参数定义：
+${paramDesc || '无参数定义'}
+
+请检查参数类型和必填项，修正后重新发起工具调用。`;
+
+        this.#ui.warn?.(`[Tool args blocked] ${name}: ${v.errors.join('; ')}`);
+        this.#recordEvent(name, args, false, errorMsg);
+        return {
+          name,
+          result: errorMsg,
+          error: errorMsg,
+          errorCode: ObservationErrorCode.SCHEMA_VALIDATION_FAILED,
+        };
       }
       effectiveArgs = v.coercedArgs;
     }
@@ -645,7 +738,21 @@ export class ToolExecutor {
               try {
                 const dirResult = await dirTool.handler({ path: fallbackDir }, executionContext);
                 const fallbackDesc = fallbackDir === '.' ? 'workspace root' : `"${fallbackDir}"`;
-                const observation = `Error: File not found: "${targetPath}".\n\nDirectory listing for ${fallbackDesc}:\n${dirResult}\n\nPlease check the correct file path before retrying.`;
+                const currentPhase = String(
+                  executionContext.currentTask?.phase || '',
+                ).toLowerCase();
+                const currentTaskText = String(
+                  `${executionContext.currentTask?.id || ''} ${executionContext.currentTask?.name || ''} ${executionContext.currentTask?.description || ''}`,
+                ).toLowerCase();
+                const shouldCreateInstead =
+                  currentPhase === 'implementation' ||
+                  /\b(create|new|setup|implement|write|skeleton|scaffold|from scratch)\b|创建|新建|搭建|实现|工程化/.test(
+                    currentTaskText,
+                  );
+                const correctionHint = shouldCreateInstead
+                  ? `\n\nCorrection: this task is in implementation/create mode. Do not retry guessed reads for "${targetPath}". If this file is needed, create it with write_file (or mkdir/shell for directories) and continue building the project.`
+                  : `\n\nCorrection: use the directory listing above to choose an existing path before retrying. If the user asked you to create this file from scratch, switch to write_file instead of read_file.`;
+                const observation = `Error: File not found: "${targetPath}".\n\nDirectory listing for ${fallbackDesc}:\n${dirResult}${correctionHint}`;
                 options.emitObservation?.(id, name, observation, resultMode);
                 this.#recordEvent('list_dir', { path: fallbackDir }, true, dirResult);
                 this.#ui.debugEvent?.('read_file fallback listed directory', {
@@ -659,6 +766,7 @@ export class ToolExecutor {
                   args: effectiveArgs,
                   skipped: true,
                   fallbackToDir: true,
+                  errorCode: ObservationErrorCode.MISSING_FILE,
                 };
               } catch (e) {
                 // 目录列表也失败，继续执行原始 read_file 返回错误

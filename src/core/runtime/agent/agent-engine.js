@@ -1804,16 +1804,24 @@ export class AgentEngine {
         response.text?.trim() &&
         looksLikeIntentToReadWithoutTools(response.text)
       ) {
+        const currentTask = this.#executionPlanManager.currentTask;
+        const createFromScratch = Boolean(executionPlan?.context?.createFromScratch);
+        const shouldForceCreation =
+          createFromScratch ||
+          currentTask?.phase === 'implementation' ||
+          /\b(create|new|setup|implement|write|skeleton|scaffold|from scratch)\b|创建|新建|搭建|实现|工程化/.test(
+            `${currentTask?.id || ''} ${currentTask?.name || ''} ${currentTask?.description || ''}`,
+          );
         this.#sessionManager.addAssistantMessage(response.text);
-        this.#sessionManager.addUserMessage(
-          'You expressed intent to read / understand the codebase but did not execute any tool calls. ' +
-            'Use the available read tools — read_file, search_file, search_content, list_dir — ' +
-            'to actually load the files you need. ' +
-            'Do NOT describe what you will read — immediately call the read tools NOW.',
+        this.#sessionManager.addSystemMessage(
+          shouldForceCreation
+            ? '[FORCED STRATEGY SWITCH] You expressed intent to inspect/read, but the current task is create/implementation work. Do NOT read guessed files. Your next response MUST call write_file, mkdir, shell, edit_file, or apply_hashline_patch to create the project files. If information is missing, call ask_user; do not continue prose-only analysis.'
+            : '[FORCED TOOL USE] You expressed intent to read / understand the codebase but did not execute any tool calls. Your next response MUST call a concrete read tool such as list_dir, read_file, search_file, or search_content. Do not describe what you will read.',
         );
         this.#ui.debugEvent?.('Nudge: intent to read without tools', {
           iteration,
           preview: this.#preview(response.text, 200),
+          forcedStrategy: shouldForceCreation ? 'create_or_edit' : 'read_tools',
         });
         continue;
       }
@@ -2089,6 +2097,7 @@ export class AgentEngine {
             currentTask: this.#executionPlanManager.currentTask,
             activeRoutedToolNames,
             scopeFiles: this.#executionPlanManager.currentTask?.scopeFiles || [],
+            workspaceState: this.#workspaceState,
           },
           {
             resultMode: 'tool',
@@ -2162,8 +2171,22 @@ export class AgentEngine {
         );
 
         // 工作区状态更新
-        if (this.#workspaceState && typeof this.#workspaceState.onToolEvent === 'function') {
-          this.#workspaceState.onToolEvent(execResult);
+        if (this.#workspaceState) {
+          if (typeof this.#workspaceState.onToolEvent === 'function') {
+            this.#workspaceState.onToolEvent(execResult);
+          } else if (typeof this.#workspaceState.recordToolResult === 'function') {
+            const success =
+              !execResult.error &&
+              !execResult.skipped &&
+              !String(execResult.result ?? '').startsWith('Error:') &&
+              !String(execResult.result ?? '').startsWith('FACT_BLOCKED:');
+            this.#workspaceState.recordToolResult(
+              execResult.name,
+              execResult.args || toolCall.arguments || {},
+              execResult.result,
+              success,
+            );
+          }
         }
 
         // 推进执行计划
@@ -2172,6 +2195,7 @@ export class AgentEngine {
             execResult.name,
             execResult.args || toolCall.arguments,
             execResult.result,
+            execResult,
           );
           if (planUpdate) {
             this.#ui.debugEvent?.('Execution plan updated', {

@@ -591,14 +591,26 @@ export class ExecutionPlan {
   }
 
   /**
-   * 获取所有就绪的任务
+   * 获取所有就绪的任务（按 phase 和添加顺序排序）
    */
   getReadyTasks() {
-    return Array.from(this.tasks.values()).filter((task) => {
+    const phaseOrder = ['exploration', 'planning', 'implementation', 'inspection', 'verification'];
+    const phaseRank = new Map(phaseOrder.map((phase, index) => [phase, index]));
+
+    const ready = Array.from(this.tasks.values()).filter((task) => {
       if (task.status !== TaskStatus.PENDING && task.status !== TaskStatus.BLOCKED) {
         return false;
       }
       return task.checkDependencies(this.tasks);
+    });
+
+    // 按 phase 顺序排序，同一 phase 内按添加顺序（保留原有顺序）
+    return ready.sort((a, b) => {
+      const phaseA = a.phase || 'implementation';
+      const phaseB = b.phase || 'implementation';
+      const rankA = phaseRank.get(phaseA) ?? 2; // 默认 implementation
+      const rankB = phaseRank.get(phaseB) ?? 2;
+      return rankA - rankB;
     });
   }
 
@@ -881,7 +893,7 @@ export class GraphPlanner extends EventEmitter {
     tdd: { phase: 'implementation', hint: '先写测试再写实现代码' },
     diagnose: { phase: 'implementation', hint: '诊断遇到的 bug 或问题' },
     review: { phase: 'inspection', hint: '审查变更的代码文件' },
-    verify: { phase: 'verification', hint: '运行时验证：执行测试/lint/build 确认正确性' },
+    verify: { phase: 'verification', hint: '运行时验证：先安装依赖(npm install等)，再执行测试/lint/build 确认正确性' },
     impact_map: {
       phase: 'exploration',
       hint: '绘制影响面/爆炸半径，适合跨模块、迁移、安全、数据、UI 改动',

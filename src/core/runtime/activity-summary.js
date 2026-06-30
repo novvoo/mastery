@@ -125,6 +125,8 @@ function getPlanEventFromDetail(detail) {
       needsRepair,
       progress: total > 0 ? Math.round((completed / total) * 100) : 0,
     },
+    strategy: plan?.strategy || plan?.context?.strategy || {},
+    context: plan?.context || {},
     update: detail.planUpdate || payload.update || null,
     toolName: detail.toolName || payload.toolName || '',
     timestamp: detail.timestamp || payload.timestamp || Date.now(),
@@ -152,6 +154,10 @@ function normalizePlanTask(task) {
     description: task?.description || '',
     status,
     displayStatus,
+    phase: task?.phase || '',
+    dependencies: Array.isArray(task?.dependencies) ? task.dependencies : [],
+    scopeFiles: Array.isArray(task?.scopeFiles) ? task.scopeFiles : [],
+    metadata: task?.metadata || {},
     statusReason: task?.statusReason || task?.result?.statusReason || '',
     cycleLabel: task?.cycleLabel || '',
   };
@@ -184,6 +190,8 @@ function buildPlanSummary(planEvents) {
     latest: latest ? { ...latest, tasks, progress } : null,
     tasks,
     progress,
+    strategy: latest?.strategy || {},
+    context: latest?.context || {},
     created: events.some((event) => event.type === 'created'),
     updateCount: events.filter((event) => event.type === 'updated').length,
   };

@@ -22,6 +22,8 @@ import { FileWorkbench } from './components/workbench/FileWorkbench.jsx';
 import { ChatWorkspace } from './components/workbench/ChatWorkspace.jsx';
 import { InspectorPanel } from './components/workbench/InspectorPanel.jsx';
 import { SidebarPanel } from './components/workbench/SidebarPanel.jsx';
+import { ConfirmDialog } from './components/ui/index.js';
+import { ContextMenu } from './components/ui/ContextMenu.jsx';
 import { useRuntime } from './hooks/useRuntime.js';
 import { useIPC } from './hooks/useIPC.js';
 import { formatPreviewUrlInput, normalizePreviewUrlInput } from './runtime/preview-url.js';
@@ -56,7 +58,6 @@ import {
   canEditComposerDraft,
   createComposerInteractionState,
   getComposerSubmitTransition,
-  hasUnsavedFileDraft,
   handleComposerKey,
 } from './app/interaction/interaction-model.js';
 import { styles } from './app/styles.js';
@@ -67,6 +68,7 @@ import {
   clampTerminalHeight,
 } from './components/workbench/controls/WorkbenchControls.jsx';
 import { getI18n, t as i18nT } from './i18n.js';
+import { useFileOperations } from './hooks/useFileOperations.js';
 import './index.css';
 
 // Codex 2026 风格布局常量
@@ -95,6 +97,7 @@ function App() {
   const [showLLMSetup, setShowLLMSetup] = useState(false);
   const [showManagement, setShowManagement] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [globalContextMenu, setGlobalContextMenu] = useState(null); // { x, y, text }
   const [llmForm, setLLMForm] = useState({
     provider: 'openai',
     apiKey: '',
@@ -113,6 +116,7 @@ function App() {
     isMaximized: false,
   });
   const [ipcDiagnostic, setIpcDiagnostic] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   // Codex 风格新状态 — 默认折叠侧边栏和 Inspector，突出聊天区
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -172,13 +176,6 @@ function App() {
     return storedUrl ? formatPreviewUrlInput(storedUrl) : '';
   });
 
-  // 文件编辑状态
-  const [openFile, setOpenFile] = useState(null);
-  const [fileDraft, setFileDraft] = useState('');
-  const [fileMode, setFileMode] = useState('preview');
-  const [fileStatus, setFileStatus] = useState('idle');
-  const [fileError, setFileError] = useState('');
-
   // 使用自定义 Hooks
   const runtime = useRuntime();
   const runtimeStatusMeta = getRuntimeStatusMeta(runtime.status);
@@ -193,6 +190,20 @@ function App() {
   useEffect(() => {
     directoryChildrenRef.current = directoryChildren;
   }, [directoryChildren]);
+
+  // 全局右键菜单监听（支持选中文字复制）
+  useEffect(() => {
+    const handleContextMenu = (e) => {
+      const selection = window.getSelection();
+      const selectedText = selection?.toString().trim();
+      if (selectedText) {
+        e.preventDefault();
+        setGlobalContextMenu({ x: e.clientX, y: e.clientY, text: selectedText });
+      }
+    };
+    document.addEventListener('contextmenu', handleContextMenu);
+    return () => document.removeEventListener('contextmenu', handleContextMenu);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(
@@ -753,6 +764,29 @@ function App() {
     await loadProjectDirectory('');
   }, [loadProjectDirectory]);
 
+  // 文件操作 Hook
+  const {
+    openFile,
+    fileDraft,
+    fileMode,
+    fileStatus,
+    fileError,
+    setFileDraft,
+    readWorkspaceFile: handleOpenWorkspaceFile,
+    writeWorkspaceFile: handleSaveWorkspaceFile,
+    closeFile: handleCloseFileWorkbench,
+    handleFileModeToggle,
+    setAfterSaveCallback,
+    // 文件 CRUD
+    createFile,
+    createDirectory,
+    deleteItem,
+    renameItem,
+  } = useFileOperations({ ipc });
+
+  // 设置保存后的回调
+  setAfterSaveCallback(handleProjectTreeRefresh);
+
   const followPreviewUrl = useCallback((url) => {
     const normalizedUrl = normalizePreviewUrlInput(url);
     if (!normalizedUrl) return;
@@ -975,99 +1009,31 @@ function App() {
     setChatInput('');
   }, [runtime]);
 
-  const handleOpenWorkspaceFile = useCallback(
-    async (entry) => {
-      if (!entry?.path || entry.type === 'directory') {
-        return;
-      }
-      if (
-        hasUnsavedFileDraft(openFile, fileDraft) &&
-        !window.confirm('当前文件有未保存修改，确定要切换文件吗？')
-      ) {
-        return;
-      }
-      setOpenFile({
-        path: entry.path,
-        name: entry.name,
-        content: '',
-        size: 0,
+  const requestConfirm = useCallback((options) => {
+    return new Promise((resolve) => {
+      setConfirmDialog({
+        ...options,
+        onCancel: () => {
+          setConfirmDialog(null);
+          resolve(false);
+        },
+        onConfirm: () => {
+          setConfirmDialog(null);
+          resolve(true);
+        },
       });
-      setFileDraft('');
-      setFileMode('preview');
-      setFileStatus('loading');
-      setFileError('');
-      try {
-        const result = await ipc.readWorkspaceFile(entry.path);
-        if (!result?.success) {
-          setFileStatus('error');
-          setFileError(result?.error || '\u65e0\u6cd5\u8bfb\u53d6\u6587\u4ef6');
-          return;
-        }
-        setOpenFile({
-          path: result.path || entry.path,
-          name: result.name || entry.name,
-          content: result.content || '',
-          size: result.size || 0,
-          mtimeMs: result.mtimeMs,
-        });
-        setFileDraft(result.content || '');
-        setFileStatus('ready');
-      } catch (error) {
-        setFileStatus('error');
-        setFileError(error.message || '\u65e0\u6cd5\u8bfb\u53d6\u6587\u4ef6');
-      }
-    },
-    [fileDraft, ipc, openFile],
-  );
-
-  const handleSaveWorkspaceFile = useCallback(async () => {
-    if (!openFile?.path) {
-      return;
-    }
-    setFileStatus('saving');
-    setFileError('');
-    try {
-      const result = await ipc.writeWorkspaceFile(openFile.path, fileDraft);
-      if (!result?.success) {
-        setFileStatus('error');
-        setFileError(result?.error || '\u4fdd\u5b58\u5931\u8d25');
-        return;
-      }
-      setOpenFile((prev) => ({
-        ...prev,
-        content: fileDraft,
-        size: result.size || fileDraft.length,
-        mtimeMs: result.mtimeMs,
-      }));
-      setFileMode('preview');
-      setFileStatus('ready');
-      handleProjectTreeRefresh();
-    } catch (error) {
-      setFileStatus('error');
-      setFileError(error.message || '\u4fdd\u5b58\u5931\u8d25');
-    }
-  }, [fileDraft, ipc, openFile?.path]);
-
-  const handleCloseFileWorkbench = useCallback(() => {
-    if (
-      hasUnsavedFileDraft(openFile, fileDraft) &&
-      !window.confirm('当前文件有未保存修改，确定要关闭吗？')
-    ) {
-      return;
-    }
-    setOpenFile(null);
-    setFileDraft('');
-    setFileMode('preview');
-    setFileStatus('idle');
-    setFileError('');
-  }, [fileDraft, openFile]);
-
-  const handleFileModeToggle = useCallback(() => {
-    setFileMode((prev) => (prev === 'edit' ? 'preview' : 'edit'));
+    });
   }, []);
 
-  const handleClearAgentHistory = useCallback(() => {
-    if (!window.confirm('确定要清空所有会话和历史记录吗？此操作无法撤销。')) {
+  const handleClearAgentHistory = useCallback(async () => {
+    if (
+      !(await requestConfirm({
+        title: '清空历史记录',
+        message: '确定要清空所有会话和历史记录吗？此操作无法撤销。',
+        confirmText: '清空',
+        danger: true,
+      }))
+    ) {
       return;
     }
     localStorage.removeItem(AGENT_HISTORY_STORAGE_KEY);
@@ -1087,7 +1053,7 @@ function App() {
       }),
     );
     window.dispatchEvent(new CustomEvent(AGENT_SESSIONS_UPDATED_EVENT));
-  }, [runtime]);
+  }, [requestConfirm, runtime]);
 
   // 处理窗口控制
   const handleMinimize = useCallback(() => {
@@ -1626,6 +1592,12 @@ function App() {
               error: projectTreeError,
               onToggleDirectory: handleProjectDirectoryToggle,
               onRefresh: handleProjectTreeRefresh,
+              // 文件 CRUD
+              onCreateFile: createFile,
+              onCreateDirectory: createDirectory,
+              onDeleteItem: deleteItem,
+              onRenameItem: renameItem,
+              workingDirectory,
             }}
           />
         )}
@@ -1746,6 +1718,41 @@ function App() {
           onFormChange={handleLLMFormChange}
           onProviderChange={handleLLMProviderChange}
           onSave={handleSaveLLMConfig}
+        />
+      )}
+      {confirmDialog && (
+        <ConfirmDialog
+          isOpen
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmText={confirmDialog.confirmText}
+          cancelText={confirmDialog.cancelText}
+          danger={confirmDialog.danger}
+          onCancel={confirmDialog.onCancel}
+          onConfirm={confirmDialog.onConfirm}
+        />
+      )}
+      {globalContextMenu && (
+        <ContextMenu
+          x={globalContextMenu.x}
+          y={globalContextMenu.y}
+          items={[
+            {
+              id: 'copy',
+              label: '复制',
+              icon: (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+              ),
+              onClick: () => {
+                navigator.clipboard.writeText(globalContextMenu.text);
+                setGlobalContextMenu(null);
+              },
+            },
+          ]}
+          onClose={() => setGlobalContextMenu(null)}
         />
       )}
     </div>

@@ -1,8 +1,23 @@
 export default [
   {
+    ignores: [
+      "node_modules/**",
+      "dist/**",
+      "**/dist/**",
+      ".test-temp/**",
+      ".sandboxes/**",
+      "test-*.mjs",
+    ],
+  },
+  {
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "module",
+      parserOptions: {
+        ecmaFeatures: {
+          jsx: true,
+        },
+      },
       globals: {
         console: "readonly",
         process: "readonly",
@@ -49,7 +64,7 @@ export default [
   },
   {
     // Tests directory: allow more flexibility
-    files: ["tests/**/*.{js,mjs}"],
+    files: ["tests/**/*.{js,mjs}", "desktop/tests/**/*.{js,mjs}"],
     languageOptions: {
       globals: {
         describe: "readonly",
@@ -68,6 +83,33 @@ export default [
       "no-throw-literal": "off",
       "no-undef": "error",
       "no-console": "off",
+    },
+  },
+  {
+    files: ["desktop/renderer/**/*.{js,jsx}"],
+    languageOptions: {
+      globals: {
+        window: "readonly",
+        document: "readonly",
+        navigator: "readonly",
+        localStorage: "readonly",
+        sessionStorage: "readonly",
+        requestAnimationFrame: "readonly",
+        cancelAnimationFrame: "readonly",
+        CustomEvent: "readonly",
+        Event: "readonly",
+        KeyboardEvent: "readonly",
+        MouseEvent: "readonly",
+        File: "readonly",
+        FileReader: "readonly",
+        Blob: "readonly",
+        FormData: "readonly",
+        HTMLElement: "readonly",
+        HTMLTextAreaElement: "readonly",
+        Node: "readonly",
+        ResizeObserver: "readonly",
+        MutationObserver: "readonly",
+      },
     },
   },
 ];

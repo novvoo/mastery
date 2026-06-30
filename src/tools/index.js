@@ -24,6 +24,7 @@ import createTddTool from './skills/tdd.js';
 import createDiagnoseTool from './skills/diagnose.js';
 import createVerifyTool from './skills/verify.js';
 import createCoverageCheckTool from './skills/coverage_check.js';
+import createAutoResearchTool from './skills/auto_research.js';
 import createAskUserTool from './skills/ask_user.js';
 import createReviewTool from './skills/review.js';
 import createArchitectTool from './skills/architect.js';
@@ -52,6 +53,7 @@ export const SKILL_TOOL_CREATORS = [
   createDiagnoseTool,
   createVerifyTool,
   createCoverageCheckTool,
+  createAutoResearchTool,
   createAskUserTool,
   createReviewTool,
   createArchitectTool,

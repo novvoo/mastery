@@ -97,6 +97,109 @@ export async function handleWriteWorkspaceFile(payload = {}, { engine, broadcast
   }
 }
 
+export async function handleCreateWorkspaceFile(payload = {}, { engine, broadcast }) {
+  try {
+    const { absolutePath, relativePath, workingDirectory } = resolveWorkspacePath(payload?.path, {
+      engine,
+    });
+    if (fs.existsSync(absolutePath)) {
+      return { success: false, error: '目标文件已存在', path: relativePath };
+    }
+
+    const content = String(payload?.content ?? '');
+    fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+    fs.writeFileSync(absolutePath, content, 'utf8');
+    const stat = fs.statSync(absolutePath);
+    broadcast?.('workspace:changed', {
+      path: relativePath,
+      workingDirectory,
+      action: 'create',
+    });
+    return {
+      success: true,
+      path: relativePath,
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+    };
+  } catch (error) {
+    return { success: false, error: error.message || 'Unable to create file.' };
+  }
+}
+
+export async function handleCreateWorkspaceDirectory(payload = {}, { engine, broadcast }) {
+  try {
+    const { absolutePath, relativePath, workingDirectory } = resolveWorkspacePath(payload?.path, {
+      engine,
+    });
+    if (fs.existsSync(absolutePath)) {
+      return { success: false, error: '目标目录已存在', path: relativePath };
+    }
+
+    fs.mkdirSync(absolutePath, { recursive: true });
+    broadcast?.('workspace:changed', {
+      path: relativePath,
+      workingDirectory,
+      action: 'create-directory',
+    });
+    return {
+      success: true,
+      path: relativePath,
+    };
+  } catch (error) {
+    return { success: false, error: error.message || 'Unable to create directory.' };
+  }
+}
+
+export async function handleDeleteWorkspaceItem(payload = {}, { engine, broadcast }) {
+  try {
+    const { absolutePath, relativePath, workingDirectory } = resolveWorkspacePath(payload?.path, {
+      engine,
+    });
+    if (!fs.existsSync(absolutePath)) {
+      return { success: false, error: '文件不存在', path: relativePath };
+    }
+
+    const stat = fs.lstatSync(absolutePath);
+    if (stat.isDirectory()) {
+      fs.rmSync(absolutePath, { recursive: true, force: false });
+    } else {
+      fs.unlinkSync(absolutePath);
+    }
+    broadcast?.('workspace:changed', {
+      path: relativePath,
+      workingDirectory,
+      action: 'delete',
+    });
+    return { success: true, path: relativePath };
+  } catch (error) {
+    return { success: false, error: error.message || 'Unable to delete item.' };
+  }
+}
+
+export async function handleRenameWorkspaceItem(payload = {}, { engine, broadcast }) {
+  try {
+    const source = resolveWorkspacePath(payload?.path, { engine });
+    const target = resolveWorkspacePath(payload?.newPath, { engine });
+    if (!fs.existsSync(source.absolutePath)) {
+      return { success: false, error: '源路径不存在', path: source.relativePath };
+    }
+    if (fs.existsSync(target.absolutePath)) {
+      return { success: false, error: '目标路径已存在', path: target.relativePath };
+    }
+
+    fs.renameSync(source.absolutePath, target.absolutePath);
+    broadcast?.('workspace:changed', {
+      path: target.relativePath,
+      oldPath: source.relativePath,
+      workingDirectory: target.workingDirectory,
+      action: 'rename',
+    });
+    return { success: true, path: target.relativePath, oldPath: source.relativePath };
+  } catch (error) {
+    return { success: false, error: error.message || 'Unable to rename item.' };
+  }
+}
+
 export async function handleFileDiff(payload = {}, { engine }) {
   const filePath = String(payload?.path ?? payload?.target ?? '').trim();
   if (!filePath) {

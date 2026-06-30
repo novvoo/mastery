@@ -99,7 +99,8 @@ export function createDefaultToolRegistry({
   for (const tool of coreTools) {
     try {
       registry.register(tool);
-    } catch (_) {
+    } catch (err) {
+      console.warn(`[tool-registry] ⚠️ 注册核心工具失败: ${tool?.name || 'unknown'}, error: ${err.message}`);
       /* 重复注册忽略 */
     }
   }
@@ -110,7 +111,8 @@ export function createDefaultToolRegistry({
       if (tool && tool.name) {
         registry.register(tool);
       }
-    } catch (_) {
+    } catch (err) {
+      console.warn(`[tool-registry] ⚠️ 注册技能工具失败: ${tool?.name || 'unknown'}, error: ${err.message}`);
       /* 忽略 */
     }
   }

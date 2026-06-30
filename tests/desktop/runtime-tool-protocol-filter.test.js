@@ -40,6 +40,12 @@ describe('runtime tool protocol filtering', () => {
     expect(stripActionBlocks('Done\n<output>\n</output>')).toBe('Done');
   });
 
+  test('strips CALL tool commands from visible assistant text', () => {
+    const text = 'Before\nCALL read_file({"path":"README.md"})\nAfter';
+
+    expect(stripActionBlocks(text)).toBe('Before\nAfter');
+  });
+
   test('keeps ordinary XML-like content for markdown escaping layer', () => {
     const text = 'Use <config>value</config> in the docs.';
 

@@ -63,6 +63,7 @@ export { default as createTddTool } from './tools/skills/tdd.js';
 export { default as createDiagnoseTool } from './tools/skills/diagnose.js';
 export { default as createVerifyTool } from './tools/skills/verify.js';
 export { default as createCoverageCheckTool } from './tools/skills/coverage_check.js';
+export { default as createAutoResearchTool } from './tools/skills/auto_research.js';
 export { default as createAskUserTool } from './tools/skills/ask_user.js';
 export { default as createReviewTool } from './tools/skills/review.js';
 export { default as createArchitectTool } from './tools/skills/architect.js';

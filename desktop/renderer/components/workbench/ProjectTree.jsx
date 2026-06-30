@@ -1,9 +1,53 @@
 /**
  * 增强版项目目录树组件
- * 提供现代化的文件/目录展示界面
+ * 提供现代化的文件/目录展示界面，支持右键菜单操作
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
+import { ContextMenu } from '../ui/ContextMenu.jsx';
+import { InputDialog } from '../ui/InputDialog.jsx';
+import ConfirmDialog from '../ui/ConfirmDialog.jsx';
+
+// 图标 SVG
+const Icons = {
+  file: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14,2 14,8 20,8" />
+    </svg>
+  ),
+  folder: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  ),
+  newFile: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14,2 14,8 20,8" />
+      <line x1="12" y1="18" x2="12" y2="12" />
+      <line x1="9" y1="15" x2="15" y2="15" />
+    </svg>
+  ),
+  newFolder: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      <line x1="12" y1="11" x2="12" y2="17" />
+      <line x1="9" y1="14" x2="15" y2="14" />
+    </svg>
+  ),
+  rename: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+    </svg>
+  ),
+  delete: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polyline points="3,6 5,6 21,6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  ),
+};
 
 const FILE_TYPE_ICONS = {
   js: { icon: '📄', color: '#f7df1e' },
@@ -210,6 +254,7 @@ function TreeNode({
   hasChildren = false,
   onToggle,
   onOpen,
+  onContextMenu,
   filteredCount = 0,
 }) {
   const [isHovered, setIsHovered] = useState(false);
@@ -245,6 +290,7 @@ function TreeNode({
         paddingLeft: depth > 0 ? `${depth * INDENT_SIZE}px` : '6px',
       }}
       onClick={handleClick}
+      onContextMenu={(e) => onContextMenu?.(e, entry)}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       title={entry.path}
@@ -296,6 +342,17 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
 
+  // 右键菜单状态
+  const [contextMenu, setContextMenu] = useState(null); // { x, y, entry }
+
+  // 对话框状态
+  const [dialog, setDialog] = useState(null);
+  // dialog: { type: 'createFile' | 'createDir' | 'rename', parentPath?, entry? }
+
+  // 确认对话框状态
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  // confirmDialog: { title, message, onConfirm }
+
   const {
     directoryChildren = {},
     expandedDirectories = new Set(),
@@ -304,7 +361,156 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
     error = '',
     onToggleDirectory,
     onRefresh,
+    onCreateFile,
+    onCreateDirectory,
+    onDeleteItem,
+    onRenameItem,
   } = projectTree || {};
+
+  // 计算相对路径
+  const getRelativePath = useCallback((fullPath) => {
+    if (!workingDirectory) return fullPath;
+    return fullPath.replace(workingDirectory + '/', '').replace(workingDirectory + '\\', '');
+  }, [workingDirectory]);
+
+  // 获取父目录路径
+  const getParentPath = useCallback((fullPath) => {
+    const parts = fullPath.split(/[\\/]/);
+    parts.pop();
+    return parts.join('/');
+  }, []);
+
+  // 右键菜单
+  const handleContextMenu = useCallback((e, entry) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, entry });
+  }, []);
+
+  // 创建文件
+  const handleCreateFile = useCallback((parentPath = '') => {
+    setContextMenu(null);
+    setDialog({ type: 'createFile', parentPath });
+  }, []);
+
+  // 创建目录
+  const handleCreateDirectory = useCallback((parentPath = '') => {
+    setContextMenu(null);
+    setDialog({ type: 'createDir', parentPath });
+  }, []);
+
+  // 重命名
+  const handleRename = useCallback((entry) => {
+    setContextMenu(null);
+    setDialog({ type: 'rename', entry });
+  }, []);
+
+  // 删除
+  const handleDelete = useCallback((entry) => {
+    setContextMenu(null);
+    setConfirmDialog({
+      title: '确认删除',
+      message: `确定要删除 ${entry.type === 'directory' ? '目录' : '文件'} "${entry.name}" 吗？此操作不可撤销。`,
+      danger: true,
+      onConfirm: async () => {
+        const result = await onDeleteItem?.(entry.path);
+        if (result?.success) {
+          onRefresh?.();
+        }
+      },
+    });
+  }, [onDeleteItem, onRefresh]);
+
+  // 确认创建/重命名
+  const handleDialogConfirm = useCallback(async (value) => {
+    const { type, parentPath, entry } = dialog;
+
+    if (type === 'createFile') {
+      const targetPath = parentPath ? `${parentPath}/${value}` : value;
+      const result = await onCreateFile?.(targetPath);
+      if (result?.success) {
+        onRefresh?.();
+        // 打开新创建的文件
+        const newEntry = { path: result.path, name: value, type: 'file' };
+        onOpenFile?.(newEntry);
+      }
+    } else if (type === 'createDir') {
+      const targetPath = parentPath ? `${parentPath}/${value}` : value;
+      const result = await onCreateDirectory?.(targetPath);
+      if (result?.success) {
+        onRefresh?.();
+      }
+    } else if (type === 'rename') {
+      const parent = getParentPath(entry.path);
+      const newPath = parent ? `${parent}/${value}` : value;
+      const result = await onRenameItem?.(entry.path, newPath);
+      if (result?.success) {
+        onRefresh?.();
+      }
+    }
+
+    setDialog(null);
+  }, [dialog, onCreateFile, onCreateDirectory, onRenameItem, onRefresh, onOpenFile, getParentPath]);
+
+  // 构建右键菜单项
+  const contextMenuItems = useMemo(() => {
+    if (!contextMenu?.entry) return [];
+
+    const { entry } = contextMenu;
+    const isDirectory = entry.type === 'directory';
+    const baseItems = [
+      {
+        id: 'rename',
+        label: '重命名',
+        icon: Icons.rename,
+        onClick: () => handleRename(entry),
+      },
+      {
+        id: 'delete',
+        label: '删除',
+        icon: Icons.delete,
+        danger: true,
+        onClick: () => handleDelete(entry),
+      },
+    ];
+
+    if (isDirectory) {
+      return [
+        {
+          id: 'newFile',
+          label: '新建文件',
+          icon: Icons.newFile,
+          onClick: () => handleCreateFile(entry.path),
+        },
+        {
+          id: 'newFolder',
+          label: '新建子目录',
+          icon: Icons.newFolder,
+          onClick: () => handleCreateDirectory(entry.path),
+        },
+        { type: 'divider' },
+        ...baseItems,
+      ];
+    }
+
+    return baseItems;
+  }, [contextMenu, handleRename, handleDelete, handleCreateFile, handleCreateDirectory]);
+
+  // 空白区域右键菜单
+  const blankContextMenuItems = useMemo(() => [
+    {
+      id: 'newFile',
+      label: '新建文件',
+      icon: Icons.newFile,
+      onClick: () => handleCreateFile(''),
+    },
+    {
+      id: 'newFolder',
+      label: '新建目录',
+      icon: Icons.newFolder,
+      onClick: () => handleCreateDirectory(''),
+    },
+  ], [handleCreateFile, handleCreateDirectory]);
 
   const rootName = useMemo(() => {
     if (!workingDirectory) return '未设置';
@@ -399,6 +605,7 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
                   hasChildren={hasChildren}
                   onToggle={onToggleDirectory}
                   onOpen={onOpenFile}
+                  onContextMenu={handleContextMenu}
                   filteredCount={filteredCount}
                 />
                 {isDirectory && isExpanded && renderTree(entry.path, depth + 1)}
@@ -416,6 +623,7 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
       activeOpenFile,
       onToggleDirectory,
       onOpenFile,
+      handleContextMenu,
       filterEntries,
       countFilteredChildren,
     ],
@@ -469,7 +677,20 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
         />
       </div>
 
-      <div style={styles.tree}>
+      <div
+        style={styles.tree}
+        onContextMenu={(e) => {
+          // Find if clicking on a tree item (button)
+          const treeRow = e.target.closest('button');
+          if (treeRow) {
+            // Tree item will handle its own context menu via TreeNode
+            return;
+          }
+          // Clicking on empty space - show blank area menu
+          e.preventDefault();
+          setContextMenu({ x: e.clientX, y: e.clientY, entry: null });
+        }}
+      >
         {error ? (
           <div style={styles.error}>{error}</div>
         ) : status === 'loading' && !hasAnyEntries ? (
@@ -491,6 +712,61 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
           renderTree('', 0)
         )}
       </div>
+
+      {/* 右键菜单 */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.entry ? contextMenuItems : blankContextMenuItems}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* 输入对话框 */}
+      {dialog && (
+        <InputDialog
+          title={
+            dialog.type === 'createFile'
+              ? '新建文件'
+              : dialog.type === 'createDir'
+              ? '新建目录'
+              : '重命名'
+          }
+          label={
+            dialog.type === 'createFile'
+              ? '文件名'
+              : dialog.type === 'createDir'
+              ? '目录名'
+              : '新名称'
+          }
+          placeholder={
+            dialog.type === 'createFile'
+              ? '例如: index.js'
+              : dialog.type === 'createDir'
+              ? '例如: src'
+              : '输入新名称'
+          }
+          defaultValue={dialog.type === 'rename' ? dialog.entry?.name || '' : ''}
+          onConfirm={handleDialogConfirm}
+          onCancel={() => setDialog(null)}
+        />
+      )}
+
+      {/* 确认对话框 */}
+      {confirmDialog && (
+        <ConfirmDialog
+          isOpen
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          danger={confirmDialog.danger}
+          onConfirm={() => {
+            confirmDialog.onConfirm?.();
+            setConfirmDialog(null);
+          }}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
     </div>
   );
 }

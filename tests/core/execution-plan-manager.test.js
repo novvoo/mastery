@@ -12,6 +12,7 @@ import {
   ExecutionPlanManager,
 } from '../../src/core/execution-plan-manager.js';
 import { quickAssess } from '../../src/core/runtime/agent/support/risk-budget.js';
+import { ExecutionPlan } from '../../src/planner/graph-planner.js';
 import {
   analyzeHashlinePatchResult,
   extractHashlinePatchPaths,
@@ -74,6 +75,10 @@ describe('isPlanningTool', () => {
 
   test('returns true for tdd', () => {
     expect(isPlanningTool('tdd')).toBe(true);
+  });
+
+  test('returns true for auto_research', () => {
+    expect(isPlanningTool('auto_research')).toBe(true);
   });
 
   test('returns true for to_prd', () => {
@@ -260,6 +265,14 @@ describe('isSuccessfulToolResult', () => {
 
   test('returns false for BLOCKED result', () => {
     expect(isSuccessfulToolResult('BLOCKED: cannot proceed')).toBe(false);
+  });
+
+  test('returns false for capability limitation result', () => {
+    expect(
+      isSuccessfulToolResult(
+        'Critical Limitation: I cannot proceed because I do not have access to file system operations.',
+      ),
+    ).toBe(false);
   });
 
   test('returns false for empty result', () => {
@@ -822,6 +835,64 @@ describe('ExecutionPlanManager', () => {
     manager.advance('list_dir', { path: '.' }, 'README.md\npyproject.toml\ntests\nsrc');
 
     expect(profileTask.status).toBe('completed');
+  });
+
+  test('create-from-scratch project tasks skip existing-project profiling gates', () => {
+    manager.createIfNeeded(
+      '实现一个工程化的贪吃蛇游戏，js实现',
+      quickAssess('实现一个工程化的贪吃蛇游戏，js实现'),
+    );
+
+    expect(manager.plan.context.createFromScratch).toBe(true);
+    expect(manager.plan.getTask('profile_project')).toBeUndefined();
+    expect(manager.plan.getTask('tdd_reproduce')).toBeUndefined();
+    expect(manager.plan.getTask('setup_project_structure')).toBeDefined();
+    expect(manager.plan.getTask('inspect_readme')).toBeUndefined();
+  });
+
+  test('empty workspace listing unlocks create-from-scratch implementation', () => {
+    manager.createIfNeeded(
+      '实现一个工程化的贪吃蛇游戏，js实现',
+      quickAssess('实现一个工程化的贪吃蛇游戏，js实现'),
+    );
+
+    expect(manager.plan.getTask('inspect_workspace').status).toBe('running');
+    manager.advance('list_dir', { path: '.' }, '.agent-data\n.agent-logs\n.agent-memory\ntest');
+
+    expect(manager.plan.context.workspaceMode).toBe('empty_create_from_scratch');
+    expect(manager.plan.getTask('inspect_workspace').status).toBe('completed');
+    expect(manager.plan.getTask('setup_project_structure').status).toBe('running');
+  });
+
+  test('fact-blocked guessed reads skip stale exploration gates and unlock creation', () => {
+    const plan = new ExecutionPlan({
+      name: 'Replay bad create plan',
+      context: { createFromScratch: true },
+    });
+    plan.addTask({
+      id: 'profile_project',
+      name: 'Profile project',
+      phase: 'exploration',
+      allowedTools: ['read_file'],
+      completionPredicate: ({ toolName }) => toolName === 'read_file',
+    });
+    plan.addTask({
+      id: 'setup_project_structure',
+      name: 'Setup project structure',
+      phase: 'implementation',
+      dependencies: ['profile_project'],
+      allowedTools: ['write_file'],
+    });
+    manager.setPlan(plan);
+
+    manager.advance(
+      'read_file',
+      { path: 'package.json' },
+      'FACT_BLOCKED: Workspace root is already known to be empty.',
+    );
+
+    expect(manager.plan.getTask('profile_project').status).toBe('completed');
+    expect(manager.plan.getTask('setup_project_structure').status).toBe('running');
   });
 
   test('profile_project does not complete from unrelated source reads', () => {

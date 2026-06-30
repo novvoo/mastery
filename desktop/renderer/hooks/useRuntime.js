@@ -2,9 +2,6 @@
  * Runtime Hook
  * 提供 Agent Runtime 的状态管理和操作方法
  */
-
-/* global window */
-
 import { useState, useCallback, useEffect, useRef } from 'react';
 
 /**
@@ -49,6 +46,11 @@ export function stripActionBlocks(text = '') {
     .replace(/<args\b[^>]*>[\s\S]*?<\/args>/gi, '')
     // 3) ```json / ```tool / ``` 代码块中的工具 JSON
     .replace(/```(?:json|tool)?\s*\{[\s\S]*?\}\s*```/gi, '');
+
+  out = out
+    .split('\n')
+    .filter((line) => !/^\s*CALL\s+[A-Za-z_][\w.-]*\s*\(/.test(line))
+    .join('\n');
 
   // 4) 裸 ReAct JSON（完整匹配）：{"action": ...} 或含 evaluation_previous_goal / next_goal / memory 的对象
   const trimmed = out.trim();
@@ -740,6 +742,22 @@ export function useRuntime() {
 
         // status:update 事件仅更新状态，不添加消息（避免与 agent:complete/processInput 的 result 消息重复）
         if (eventName === 'status:update') {
+          if (normalized.message?.event === 'agent:complete') {
+            const answer = normalized.message.content || extractAgentAnswer(payload);
+            if (answer && answer !== lastAnswerRef.current) {
+              lastAnswerRef.current = answer;
+              addMessage({
+                type: normalized.message.type || 'result',
+                content: answer,
+                resultMeta: payload,
+              });
+              completedByEventRef.current = true;
+              setStats((prev) => ({
+                ...prev,
+                endTime: Date.now(),
+              }));
+            }
+          }
           return;
         }
 
