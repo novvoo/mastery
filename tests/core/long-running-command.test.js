@@ -52,6 +52,29 @@ describe('classifyLongRunningCommand', () => {
     expect(result.recommendedTool).toBe('shell');
   });
 
+  test('does not classify plain npm install as long-running', async () => {
+    const result = await classifyLongRunningCommand('npm install');
+    expect(result.isLongRunning).toBe(false);
+    expect(result.reason).toContain('Package install');
+    expect(result.recommendedTool).toBe('shell');
+  });
+
+  test('does not classify npm install with specific dependency as long-running', async () => {
+    const result = await classifyLongRunningCommand('npm install express');
+    expect(result.isLongRunning).toBe(false);
+    expect(result.reason).toContain('Package install');
+    expect(result.recommendedTool).toBe('shell');
+  });
+
+  test('does not classify npm i / npm add / npm ci as long-running', async () => {
+    for (const cmd of ['npm i vite', 'npm add lodash', 'npm ci']) {
+      const result = await classifyLongRunningCommand(cmd);
+      expect(result.isLongRunning).toBe(false);
+      expect(result.reason).toContain('Package install');
+      expect(result.recommendedTool).toBe('shell');
+    }
+  });
+
   test('does not classify bare vitest invocation as long-running', async () => {
     const result = await classifyLongRunningCommand('vitest run');
     expect(result.isLongRunning).toBe(false);
