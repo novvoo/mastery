@@ -6,7 +6,9 @@ export const styles = {
     height: '100%',
     overflow: 'visible',
     backgroundColor: 'transparent',
-    border: 'none',
+    borderWidth: '0',
+    borderStyle: 'none',
+    borderColor: 'transparent',
     boxShadow: 'none'
   },
   
@@ -104,7 +106,9 @@ export const styles = {
   buttonActive: {
     backgroundColor: 'var(--primary-soft)',
     color: 'var(--primary-color)',
-    border: 'none'
+    borderWidth: '0',
+    borderStyle: 'none',
+    borderColor: 'transparent'
   },
   
   viewToggle: {
@@ -124,7 +128,9 @@ export const styles = {
     height: '24px',
     padding: 0,
     borderRadius: '999px',
-    border: 'none',
+    borderWidth: '0',
+    borderStyle: 'none',
+    borderColor: 'transparent',
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',
     cursor: 'pointer',

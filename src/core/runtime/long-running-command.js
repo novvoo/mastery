@@ -4,6 +4,31 @@ import { resolve } from 'path';
 const MAX_SNIPPET_CHARS = 5000;
 const CLASSIFIER_TIMEOUT_MS = 5000;
 
+const NON_LONG_RUNNING_COMMAND_PATTERNS = [
+  {
+    pattern:
+      /\b(?:npm|pnpm|yarn|bun)\s+(?:install|i|add|ci|exec|dlx)\b/i,
+    reason: 'Package install command — finite shell task',
+  },
+  {
+    pattern:
+      /\b(?:npm|pnpm|yarn|bun)\s+run\s+(?!dev\b|serve\b|start\b)[\w:-]+/i,
+    reason: 'Package run script — finite shell task',
+  },
+  {
+    pattern: /\b(?:npm|pnpm|yarn|bun)\s+test\b/i,
+    reason: 'Package test command — finite shell task',
+  },
+  {
+    pattern: /\b(?:vitest|jest|mocha)\b(?:\s|$)/i,
+    reason: 'Test runner invocation — finite shell task',
+  },
+  {
+    pattern: /\bvite\s+(?:build|preview|optimize|test|benchmark)\b/i,
+    reason: 'Vite build / utility command — finite shell task',
+  },
+];
+
 const LONG_RUNNING_COMMAND_PATTERNS = [
   {
     pattern: /\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:dev|serve|start)(?:\b|:)/i,
@@ -104,10 +129,17 @@ function detectLongRunningCommand(command) {
       continue;
     }
 
-    const match = LONG_RUNNING_COMMAND_PATTERNS.find(({ pattern }) =>
+    const exclusion = NON_LONG_RUNNING_COMMAND_PATTERNS.find(({ pattern }) =>
       pattern.test(normalizedSegment),
     );
-    if (!match) {
+    if (exclusion) {
+      continue;
+    }
+
+    const longRunningMatch = LONG_RUNNING_COMMAND_PATTERNS.find(({ pattern }) =>
+      pattern.test(normalizedSegment),
+    );
+    if (!longRunningMatch) {
       continue;
     }
 
@@ -117,11 +149,35 @@ function detectLongRunningCommand(command) {
     return {
       isLongRunning: true,
       confidence: 0.95,
-      reason: match.reason,
+      reason: longRunningMatch.reason,
       recommendedTool: 'pty_start',
       longRunningSegment: normalizedSegment,
       compoundWithLongRunning,
     };
+  }
+
+  const allSegments = searchableSegments
+    .map((segment) => normalizeShellSegment(segment))
+    .filter(Boolean);
+
+  const allExcluded =
+    allSegments.length > 0 &&
+    allSegments.every((segment) =>
+      NON_LONG_RUNNING_COMMAND_PATTERNS.some(({ pattern }) => pattern.test(segment)),
+    );
+
+  if (allExcluded) {
+    const matchedExclusion = NON_LONG_RUNNING_COMMAND_PATTERNS.find(({ pattern }) =>
+      pattern.test(allSegments[0]),
+    );
+    if (matchedExclusion) {
+      return {
+        isLongRunning: false,
+        confidence: 0.9,
+        reason: matchedExclusion.reason,
+        recommendedTool: 'shell',
+      };
+    }
   }
 
   return null;

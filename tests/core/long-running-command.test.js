@@ -41,8 +41,22 @@ describe('classifyLongRunningCommand', () => {
   test('does not classify ordinary finite package commands as long-running', async () => {
     const result = await classifyLongRunningCommand('npm test && npm run build');
     expect(result.isLongRunning).toBe(false);
-    expect(result.confidence).toBe(0);
-    expect(result.reason).toContain('No model provider');
+    expect(result.reason).toMatch(/Package (test|run|install)/);
+    expect(result.recommendedTool).toBe('shell');
+  });
+
+  test('does not classify npm install with vite/vitest packages as long-running', async () => {
+    const result = await classifyLongRunningCommand('npm install --save-dev vite vitest');
+    expect(result.isLongRunning).toBe(false);
+    expect(result.reason).toContain('Package install');
+    expect(result.recommendedTool).toBe('shell');
+  });
+
+  test('does not classify bare vitest invocation as long-running', async () => {
+    const result = await classifyLongRunningCommand('vitest run');
+    expect(result.isLongRunning).toBe(false);
+    expect(result.reason).toContain('Test runner');
+    expect(result.recommendedTool).toBe('shell');
   });
 
   test('detects npm start scripts without a modelProvider', async () => {
