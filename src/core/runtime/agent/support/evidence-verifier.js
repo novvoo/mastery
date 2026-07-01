@@ -66,8 +66,8 @@ function extractCommand(event) {
 }
 
 export function isMutationEvent(event) {
-  if (!event || !event.name) return false;
-  if (event.success === false) return false;
+  if (!event || !event.name) {return false;}
+  if (event.success === false) {return false;}
 
   // 委托给 tool-semantics.js 的 isStrictMutation（事件级别包装：含 success 检查）
   return isSemanticsStrictMutation(event.name, event.args);

@@ -29,6 +29,8 @@ import {
   isHashlinePatchTool,
 } from './support/hashline-plan-policy.js';
 import { classifyToolObservation, ObservationErrorCode } from './support/observation-state.js';
+import { ActionHistory, createActionRecord } from './support/action-history.js';
+import { FixTemplates, generateFixPlan, findMatchingTemplates } from './support/fix-templates.js';
 
 const CANONICAL_SINGLETON_TASK_IDS = new Set([
   'inspect_workspace',
@@ -139,6 +141,7 @@ export function isPlanningTool(toolName) {
     'ui_acceptance',
     'data_contract_check',
     'security_review',
+    'capture_requirements',
   ].includes(toolName);
 }
 
@@ -341,7 +344,7 @@ export function isSuccessfulToolResult(result) {
   if (hashline.isHashline && hashline.ok === false) {
     return false;
   }
-  return !/(^(Error|Command failed|BLOCKED):|\b(exit\s*code|status)\s*[:=]?\s*[1-9]\d*\b|\b(fail|failed|failing|failures?|tests?\s+failed|errorCount)\b|\b(cannot|can't|can not)\s+(proceed|continue|do|modify|run|access)\b|\b(no|without)\s+(file\s*system|filesystem|shell|command\s*line|terminal)\s+access\b|\bcritical limitation\b)/i.test(
+  return !/(^(Error|Command failed|BLOCKED|STEP_ABNORMAL):|\b(exit\s*code|status)\s*[:=]?\s*[1-9]\d*\b|\b(fail|failed|failing|failures?|tests?\s+failed|errorCount)\b|\b(command\s+timed\s+out|timed\s+out\s+after|timeout after)\b|\b(cannot|can't|can not)\s+(proceed|continue|do|modify|run|access)\b|\b(no|without)\s+(file\s*system|filesystem|shell|command\s*line|terminal)\s+access\b|\bcritical limitation\b)/i.test(
     text.trim(),
   );
 }
@@ -362,11 +365,15 @@ export class ExecutionPlanManager {
   #onPlanAdvance = null;
   #useExternalPlan = false;
   #verificationRepairCount = 0;
+  #capturedRequirements = null; // 结构化需求工件，null 表示尚未捕获
+  #actionHistory = new ActionHistory(); // 动作历史追踪，用于循环检测
+  #loopDetected = false; // 是否已检测到循环
 
   constructor({ debugEvent = null, sessionManager = null, onPlanAdvance = null } = {}) {
     this.#debugEvent = typeof debugEvent === 'function' ? debugEvent : null;
     this.#sessionManager = sessionManager || null;
     this.#onPlanAdvance = typeof onPlanAdvance === 'function' ? onPlanAdvance : null;
+    this.#actionHistory = new ActionHistory();
   }
 
   // ============== 生命周期阶段常量 ==============
@@ -1299,10 +1306,26 @@ export class ExecutionPlanManager {
             'data_contract_check',
             'ui_acceptance',
             'project_profile',
+            'capture_requirements',
           ];
         }
         if (!task.completionPredicate) {
-          task.completionPredicate = ({ toolName }) => isPlanningTool(toolName);
+          task.completionPredicate = ({ toolName, args, result }) => {
+            // plan_solution 的 completionPredicate：
+            // - 首选：capture_requirements 被成功调用 → 立即完成（结构化工件已写入）
+            // - 其次：工件已存在 → 任何规划工具都可完成（LLM 已通过 capture_requirements 前置声明）
+            // - 兼容：普通规划工具仍可推进（未启用结构化工件的场景继续工作）
+            if (task.id === 'plan_solution') {
+              if (toolName === 'capture_requirements' && isSuccessfulToolResult(result)) {
+                return true;
+              }
+              if (this.#isRequirementAlreadyComplete()) {
+                return true;
+              }
+              return isPlanningTool(toolName);
+            }
+            return isPlanningTool(toolName);
+          };
         }
       } else if (task.phase === ExecutionPlanManager.PHASE.IMPLEMENTATION) {
         if (!task.allowedTools?.length) {
@@ -1322,11 +1345,25 @@ export class ExecutionPlanManager {
           ];
         }
         if (!task.completionPredicate) {
-          task.completionPredicate = ({ toolName, args, result }) =>
-            isStrictMutationTool(toolName, args) &&
-            isSuccessfulToolResult(result) &&
-            (!isHashlinePatchTool(toolName) ||
-              analyzeHashlinePatchResult(toolName, args, result).ok === true);
+          task.completionPredicate = ({ toolName, args, result }) => {
+            // 硬门禁 2: implement_changes 必须先有 capture_requirements
+            // 产出的结构化工件，且工件 status 不得为 already_complete
+            // （already_complete 时应由上层直接跳 verify，不应进入实现）。
+            if (task.id === 'implement_changes') {
+              if (!this.#hasCapturedRequirements()) {
+                return false;
+              }
+              if (this.#isRequirementAlreadyComplete()) {
+                return false;
+              }
+            }
+            return (
+              isStrictMutationTool(toolName, args) &&
+              isSuccessfulToolResult(result) &&
+              (!isHashlinePatchTool(toolName) ||
+                analyzeHashlinePatchResult(toolName, args, result).ok === true)
+            );
+          };
         }
       } else if (task.phase === ExecutionPlanManager.PHASE.INSPECTION) {
         if (!task.allowedTools?.length) {
@@ -1447,6 +1484,7 @@ export class ExecutionPlanManager {
     this.#useLLMDecomposition = false;
     this.#graphPlanner = null;
     this.#verificationRepairCount = 0;
+    this.#capturedRequirements = null;
     if (!preserveExternalPlan) {
       this.#useExternalPlan = false;
     }
@@ -1466,6 +1504,7 @@ export class ExecutionPlanManager {
       requiredMutationPaths: Array.from(this.#requiredMutationPaths),
       completedMutationPaths: Array.from(this.#completedMutationPaths),
       mutationCallCount: this.#mutationCallCount,
+      capturedRequirements: this.#capturedRequirements,
       plan: {
         ...this.#plan.toJSON(),
         tasks: this.#plan.toJSON().tasks.map((task) => ({
@@ -1515,6 +1554,7 @@ export class ExecutionPlanManager {
     this.#requiredMutationPaths = new Set(snapshot.requiredMutationPaths || []);
     this.#completedMutationPaths = new Set(snapshot.completedMutationPaths || []);
     this.#mutationCallCount = Number(snapshot.mutationCallCount || 0);
+    this.#capturedRequirements = snapshot.capturedRequirements || null;
     this.#normalizeTaskExecutionConstraints(plan);
     this.#rebuildGraph(plan);
     this.#enforcePhaseBarriers(plan);
@@ -1672,6 +1712,31 @@ export class ExecutionPlanManager {
     }
 
     const plan = this.#plan;
+
+    // ============ 结构化需求工件写入 ============
+    // 当 capture_requirements 工具被调用时，把工件写入引擎状态，
+    // 作为后续 plan_solution / implement_changes 的硬门禁依据。
+    // 正常路径由工具 handler 通过 ctx.onRequirementsCaptured 写入；
+    // 此处兜底：当 handler 未触发时（如单元测试、外部直接调用 advance），
+    // 直接基于 args 解析工件。
+    if (toolName === 'capture_requirements') {
+      const artifact = this.#buildArtifactFromArgs(args);
+      if (artifact) {
+        this.#onRequirementsCaptured(artifact);
+      }
+    }
+
+    // ============ 动作历史记录与循环检测 ============
+    const currentTaskId = this.currentTask?.id;
+    const actionRecord = createActionRecord(toolName, args, result, currentTaskId);
+    this.#actionHistory.record(actionRecord);
+
+    const loopDetection = this.#actionHistory.detectLoop();
+    if (loopDetection.isLoop) {
+      this.#loopDetected = true;
+      this.#handleLoopDetected(plan, loopDetection);
+    }
+
     const before = this.#summarizeProgress(plan);
     const observation = classifyToolObservation(toolName, args, result, {
       error: executionResult?.error,
@@ -1900,44 +1965,85 @@ export class ExecutionPlanManager {
     const baseId = `repair_after_verification_failure_${iteration}`;
     const failureSummary = this.#summarizeFailureResult(result);
 
+    const fixPlan = generateFixPlan(failureSummary);
+    const errorType = fixPlan?.errorType || 'generic';
+    const isModuleSystemError = errorType === 'MODULE_SYSTEM_ERROR';
+
     runningVerificationTask.updateStatus(TaskStatus.PENDING);
     runningVerificationTask.completedAt = null;
     runningVerificationTask.result = {
       completedBy: 'failed-verification-observation',
       verificationFailed: true,
       displayStatus: 'needs_repair',
-      statusReason: 'Verification failed; repair tasks were added.',
+      statusReason: fixPlan
+        ? `${fixPlan.name} detected; repair tasks were added.`
+        : 'Verification failed; repair tasks were added.',
       toolName,
       args,
       failureSummary,
       repairIteration: iteration,
+      errorType,
+      fixPlan,
     };
+
+    let diagnoseDescription;
+    let fixDescription;
+
+    if (fixPlan) {
+      const analysisSteps = fixPlan.analysisSteps.join('\n');
+      diagnoseDescription = `${fixPlan.name} detected: ${fixPlan.description}\n\nAnalysis Steps:\n${analysisSteps}\n\nFailure evidence: ${failureSummary}`;
+
+      const strategy = fixPlan.recommendedStrategy;
+      const actions = strategy?.actions?.map((a) => a.action).join('\n') || '';
+      fixDescription = `Recommended fix strategy: ${strategy?.name || 'Unknown'}\n\nActions:\n${actions}`;
+    } else {
+      diagnoseDescription = isModuleSystemError
+        ? `Module system conflict detected: The error suggests a mismatch between ES Module and CommonJS syntax. First, read package.json to check the "type" field. Then examine the failing file(s) to identify whether they use require()/module.exports (CommonJS) or import/export (ES Module). Fix by ensuring all files use the same module system as specified in package.json. Failure evidence: ${failureSummary}`
+        : `Analyze the failed verification output and identify the root cause before editing. Failure evidence: ${failureSummary}`;
+
+      fixDescription = isModuleSystemError
+        ? 'Fix the module system mismatch by converting import/export statements to match the project configuration. If package.json has "type": "module", use import/export; otherwise use require()/module.exports.'
+        : 'Apply the smallest code or test change needed to resolve the verification failure.';
+    }
 
     this.#insertTasksBefore(plan, runningVerificationTask.id, [
       {
         id: `${baseId}_diagnose`,
-        name: 'Diagnose verification failure',
-        description: `Analyze the failed verification output and identify the root cause before editing. Failure evidence: ${failureSummary}`,
+        name: isModuleSystemError ? 'Diagnose module system conflict' : 'Diagnose verification failure',
+        description: diagnoseDescription,
         phase: ExecutionPlanManager.PHASE.INSPECTION,
-        allowedTools: [
-          'read_file',
-          'list_dir',
-          'glob',
-          'search',
-          'shell',
-          'review',
-          'preview_file',
-          'lsp_diagnostics',
-          'lsp_definition',
-          'lsp_references',
-        ],
-        metadata: { source: 'verification-repair', repairIteration: iteration },
+        allowedTools: isModuleSystemError
+          ? [
+              'read_file',
+              'list_dir',
+              'glob',
+              'search',
+              'shell',
+              'review',
+              'preview_file',
+              'lsp_diagnostics',
+              'lsp_definition',
+              'lsp_references',
+              'module_system_check',
+            ]
+          : [
+              'read_file',
+              'list_dir',
+              'glob',
+              'search',
+              'shell',
+              'review',
+              'preview_file',
+              'lsp_diagnostics',
+              'lsp_definition',
+              'lsp_references',
+            ],
+        metadata: { source: 'verification-repair', repairIteration: iteration, errorType: isModuleSystemError ? 'module_system_error' : 'generic' },
       },
       {
         id: `${baseId}_fix`,
-        name: 'Repair failed verification',
-        description:
-          'Apply the smallest code or test change needed to resolve the verification failure.',
+        name: isModuleSystemError ? 'Fix module system conflict' : 'Repair failed verification',
+        description: fixDescription,
         phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
         allowedTools: [
           'write_file',
@@ -1952,7 +2058,7 @@ export class ExecutionPlanManager {
           'harness_replace',
           'harness_delete',
         ],
-        metadata: { source: 'verification-repair', repairIteration: iteration },
+        metadata: { source: 'verification-repair', repairIteration: iteration, errorType: isModuleSystemError ? 'module_system_error' : 'generic' },
       },
       {
         id: `${baseId}_inspect`,
@@ -2061,6 +2167,46 @@ export class ExecutionPlanManager {
   #summarizeFailureResult(result) {
     const text = typeof result === 'string' ? result : JSON.stringify(result ?? '');
     return text.replace(/\s+/g, ' ').trim().slice(0, 600) || 'verification command failed';
+  }
+
+  #detectModuleSystemError(failureSummary) {
+    const text = String(failureSummary || '').toLowerCase();
+    return (
+      text.includes('cannot use import statement') ||
+      text.includes("'require' is not defined") ||
+      text.includes("'module' is not defined") ||
+      text.includes('es module') ||
+      text.includes('commonjs') ||
+      text.includes('unexpected token') ||
+      text.includes('cannot find module') ||
+      text.includes('syntaxerror')
+    );
+  }
+
+  #handleLoopDetected(plan, loopDetection) {
+    const recentActions = loopDetection.recentActions
+      .map((a) => `${a.toolName} (${a.timestamp})`)
+      .join(', ');
+
+    this.#sessionManager?.addSystemMessage?.(
+      `[LOOP DETECTED] Detected repeated similar actions: ${recentActions}\n` +
+        `Similarity: ${(loopDetection.avgSimilarity * 100).toFixed(0)}%\n` +
+        'Please try a different approach. Consider:\n' +
+        '1. Re-reading the current file state\n' +
+        '2. Using a different tool or strategy\n' +
+        '3. Checking for errors you might be ignoring\n' +
+        '4. Taking a step back and reconsidering the approach',
+    );
+
+    const runningTask = Array.from(plan.tasks.values()).find(
+      (t) => t.status === TaskStatus.RUNNING,
+    );
+    if (runningTask) {
+      runningTask.metadata.loopDetected = true;
+      runningTask.metadata.loopDetails = loopDetection;
+    }
+
+    plan.context.loopDetection = loopDetection;
   }
 
   #canCurrentTaskAcceptFailedEvidence(plan, toolName, args, result) {
@@ -2278,7 +2424,11 @@ export class ExecutionPlanManager {
     }
 
     if (taskId === 'plan_solution') {
-      return `${prefix} ${description} Decide the smallest concrete change before editing. Do not create a separate plan/report file unless explicitly requested.`;
+      return `${prefix} ${description} Decide the smallest concrete change before editing. Invoke the capture_requirements tool with three required artifacts: (1) request — a one-sentence restatement of the original user request, (2) targets — the exact files/symbols that must change, (3) expected — the observable behavior after change. Capture_requirements is the structural gate: plan_solution cannot complete without it, and implement_changes cannot start without it. If the codebase already satisfies the request, invoke capture_requirements with status="already_complete" so the plan routes to verify_result instead of mutating. Do not create a separate plan/report file unless explicitly requested.`;
+    }
+
+    if (taskId === 'analyze_requirements') {
+      return `${prefix} ${description} Re-state the original user request, inventory the features or behaviors that must be present, cross-check them against the current codebase, and produce a concrete change list (file + symbol + target behavior). If the request cannot be mapped to concrete files or symbols, call ask_user or read/search more code before proceeding — do not hand off an incomplete brief to implement_changes. If the codebase already satisfies every item, signal 'already complete' and route to verify_result instead of implementing.`;
     }
 
     if (taskId === 'tdd_reproduce') {
@@ -2293,7 +2443,7 @@ export class ExecutionPlanManager {
       const action = bugLike
         ? 'Apply the smallest fix that addresses the diagnosed failure.'
         : 'Apply the planned change with write_file, edit_file, apply_hashline_patch, or an appropriate filesystem/shell operation.';
-      return `${prefix} ${description} ${action}`;
+      return `${prefix} ${description} ${action} Hard structural gate: implement_changes is not allowed to complete until the engine holds a requirement artifact captured via capture_requirements. Before writing any code, confirm that such an artifact exists and that its request / targets / expected fields match the actual edit you are about to perform. If no artifact is visible, stop and call capture_requirements first — never fabricate changes without a captured artifact. If the artifact's status is "already_complete", do not mutate; finish and route to verify_result.`;
     }
 
     if (taskId === 'inspect_changes') {
@@ -2738,6 +2888,93 @@ export class ExecutionPlanManager {
       }
     }
     return true;
+  }
+
+  // ============== 结构化需求工件门禁 ==============
+
+  /** 供 capture_requirements 工具通过 ctx 写入的引擎回调。 */
+  #onRequirementsCaptured = (artifact) => {
+    if (!artifact || typeof artifact !== 'object') {
+      return;
+    }
+    const { request, targets, expected, status } = artifact;
+    if (
+      typeof request !== 'string' ||
+      !request.trim() ||
+      !Array.isArray(targets) ||
+      targets.length === 0 ||
+      typeof expected !== 'string' ||
+      !expected.trim()
+    ) {
+      return;
+    }
+    this.#capturedRequirements = {
+      request: request.trim(),
+      targets: targets.map((t) => String(t).trim()).filter(Boolean),
+      expected: expected.trim(),
+      status: status === 'already_complete' ? 'already_complete' : 'pending',
+      capturedAt: artifact.capturedAt || Date.now(),
+    };
+  };
+
+  /** 当前是否已捕获结构化需求工件。实现阶段的硬门禁依赖此方法。 */
+  #hasCapturedRequirements() {
+    const r = this.#capturedRequirements;
+    if (!r || typeof r !== 'object') {
+      return false;
+    }
+    if (typeof r.request !== 'string' || !r.request.trim()) {
+      return false;
+    }
+    if (!Array.isArray(r.targets) || r.targets.length === 0) {
+      return false;
+    }
+    if (typeof r.expected !== 'string' || !r.expected.trim()) {
+      return false;
+    }
+    return true;
+  }
+
+  /** 工件状态（pending / already_complete / none）。 */
+  getRequirementStatus() {
+    if (!this.#capturedRequirements) {
+      return 'none';
+    }
+    return this.#capturedRequirements.status === 'already_complete'
+      ? 'already_complete'
+      : 'pending';
+  }
+
+  /** 工件已标记为 "already_complete"：应当直接转入 verify_result。 */
+  #isRequirementAlreadyComplete() {
+    return this.#capturedRequirements?.status === 'already_complete';
+  }
+
+  /** 把工件注入到 ctx 里，供 capture_requirements 工具 handler 写入。 */
+  buildToolContextExtension() {
+    return {
+      onRequirementsCaptured: this.#onRequirementsCaptured,
+      getCapturedRequirements: () => this.#capturedRequirements,
+    };
+  }
+
+  /** 从 capture_requirements 的 args 中提取结构化工件。 */
+  #buildArtifactFromArgs(args) {
+    if (!args || typeof args !== 'object') {
+      return null;
+    }
+    const request = typeof args.request === 'string' ? args.request.trim() : '';
+    const targets = Array.isArray(args.targets)
+      ? args.targets.map((t) => String(t).trim()).filter(Boolean)
+      : [];
+    const expected = typeof args.expected === 'string' ? args.expected.trim() : '';
+    if (!request || targets.length === 0 || !expected) {
+      return null;
+    }
+    const status = typeof args.status === 'string' && args.status === 'already_complete'
+      ? 'already_complete'
+      : 'pending';
+    return { request, targets, expected, status, capturedAt: Date.now() };
   }
 
   #extractRequestedFilePaths(text) {

@@ -20,6 +20,8 @@ const BUILTIN_COMMANDS = [
   { name: '/context', description: '显示项目上下文', source: 'builtin' },
   { name: '/memory', description: '显示项目记忆', source: 'builtin' },
   { name: '/doc', description: '管理文档 RAG', source: 'builtin' },
+  { name: '/ocr', description: '管理 OCR 运行时', source: 'builtin' },
+  { name: '/orc', description: 'OCR 命令别名', source: 'builtin' },
   { name: '/compress', description: '压缩文本', source: 'builtin' },
   { name: '/reason', description: '显示推理使用情况', source: 'builtin' },
   { name: '/auto', description: '显示自动化状态', source: 'builtin' },
@@ -39,6 +41,10 @@ const SUBCOMMANDS = [
   { name: '/doc list', description: '列出已索引文档', source: 'builtin_subcommand' },
   { name: '/doc clear', description: '清空文档上下文', source: 'builtin_subcommand' },
   { name: '/doc help', description: '显示文档 RAG 帮助', source: 'builtin_subcommand' },
+  { name: '/ocr init', description: '下载并初始化 OCR 模型', source: 'builtin_subcommand' },
+  { name: '/ocr status', description: '显示 OCR 运行时状态', source: 'builtin_subcommand' },
+  { name: '/ocr run', description: '识别图片文本', source: 'builtin_subcommand' },
+  { name: '/ocr help', description: '显示 OCR 帮助', source: 'builtin_subcommand' },
 ];
 
 // 样式

@@ -68,24 +68,24 @@ function readablePlanStrategyValue(value) {
 
 function planTaskTone(task) {
   const status = String(task?.displayStatus || task?.status || 'pending').toLowerCase();
-  if (status === 'completed') return 'completed';
-  if (status === 'failed' || status === 'needs_repair') return 'failed';
-  if (status === 'running' || status === 'waiting') return 'running';
+  if (status === 'completed') {return 'completed';}
+  if (status === 'failed' || status === 'needs_repair') {return 'failed';}
+  if (status === 'running' || status === 'waiting') {return 'running';}
   return 'pending';
 }
 
 function lineChangeParts(counts) {
-  if (!counts) return null;
+  if (!counts) {return null;}
   const additions = Number(counts.additions || counts.lines || 0);
   const deletions = Number(counts.deletions || 0);
-  if (additions === 0 && deletions === 0) return null;
+  if (additions === 0 && deletions === 0) {return null;}
   return { additions, deletions };
 }
 
 function fileLineChangeParts(file) {
   const added = Number(file?.linesWritten || file?.linesAdded || 0);
   const deleted = Number(file?.linesDeleted || 0);
-  if (added === 0 && deleted === 0) return null;
+  if (added === 0 && deleted === 0) {return null;}
   return { additions: added, deletions: deleted };
 }
 
@@ -203,8 +203,8 @@ export function RuntimeDetailsPanel({
   const toggleActivityExpand = useCallback((activityId) => {
     setExpandedActivities((prev) => {
       const next = new Set(prev);
-      if (next.has(activityId)) next.delete(activityId);
-      else next.add(activityId);
+      if (next.has(activityId)) {next.delete(activityId);}
+      else {next.add(activityId);}
       return next;
     });
   }, []);

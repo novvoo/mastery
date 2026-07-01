@@ -277,15 +277,24 @@ export class DesktopCore {
         }
       },
       planProgress(progress) {
+        const plan = progress.plan || {};
+        const planId = progress.planId || plan.id;
+        const tasks = progress.tasks || plan.tasks || [];
         eventBus.emit(RuntimeEvent.EXECUTION_PLAN_UPDATED, {
+          planId,
           plan: {
-            tasks: (progress.tasks || []).map((t) => ({
+            id: planId,
+            name: plan.name,
+            description: plan.description,
+            tasks: tasks.map((t) => ({
               id: t.id,
               name: t.name,
               status: t.displayStatus || t.status,
               description: t.description,
             })),
-            status: progress.planStatus,
+            status: progress.planStatus || plan.status,
+            createdAt: plan.createdAt,
+            decompositionMethod: plan.decompositionMethod,
           },
           summary: `进度: ${progress.completed}/${progress.total}`,
           timestamp: Date.now(),

@@ -199,15 +199,15 @@ class ElectronMainApp {
       set: (target, prop, value) => {
         target[prop] = value;
         // 同步回主类私有字段
-        if (prop === 'desktopCore') this.#desktopCore = value;
-        else if (prop === 'ipcAdapter') this.#ipcAdapter = value;
-        else if (prop === 'mainWindow') this.#mainWindow = value;
-        else if (prop === 'tray') this.#tray = value;
-        else if (prop === 'isQuitting') this.#isQuitting = value;
-        else if (prop === 'workspaceWatcher') this.#workspaceWatcher = value;
-        else if (prop === 'fileServer') this.#fileServer = value;
-        else if (prop === 'fileServerUrl') this.#fileServerUrl = value;
-        else if (prop === 'config') this.#config = value;
+        if (prop === 'desktopCore') {this.#desktopCore = value;}
+        else if (prop === 'ipcAdapter') {this.#ipcAdapter = value;}
+        else if (prop === 'mainWindow') {this.#mainWindow = value;}
+        else if (prop === 'tray') {this.#tray = value;}
+        else if (prop === 'isQuitting') {this.#isQuitting = value;}
+        else if (prop === 'workspaceWatcher') {this.#workspaceWatcher = value;}
+        else if (prop === 'fileServer') {this.#fileServer = value;}
+        else if (prop === 'fileServerUrl') {this.#fileServerUrl = value;}
+        else if (prop === 'config') {this.#config = value;}
         return true;
       },
     });

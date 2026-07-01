@@ -17,7 +17,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
  * @returns {string} 过滤后的文本
  */
 export function stripActionBlocks(text = '') {
-  if (typeof text !== 'string') return text;
+  if (typeof text !== 'string') {return text;}
 
   let out = text
     // 1) <action> 标签包裹的工具调用
@@ -71,7 +71,7 @@ export function stripActionBlocks(text = '') {
  */
 function looksLikeProtocolStart(text) {
   const t = text.trim();
-  if (!t.startsWith('{')) return false;
+  if (!t.startsWith('{')) {return false;}
   // 检查前 200 字符内是否有协议特征字段
   const head = t.slice(0, Math.min(t.length, 200));
   return (
@@ -80,6 +80,107 @@ function looksLikeProtocolStart(text) {
     /"next_goal"\s*:/.test(head) ||
     /"memory"\s*:/.test(head)
   );
+}
+
+function getPlanMessageKey(message = {}) {
+  return (
+    message.planKey ||
+    message.plan?.id ||
+    message.planId ||
+    message.payload?.planId ||
+    message.payload?.plan?.id ||
+    null
+  );
+}
+
+function isSyntheticPlanMessageKey(key) {
+  return typeof key === 'string' && key.startsWith('plan_synthetic_');
+}
+
+function findLatestPlanMessageIndex(messages = []) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.type === 'user') {
+      break;
+    }
+    if (messages[index]?.type === 'plan') {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function createPlanSnapshot(message = {}) {
+  return {
+    id: `plan_snapshot_${message.timestamp || Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    event: message.event,
+    content: message.content,
+    timestamp: message.timestamp || Date.now(),
+    plan: message.plan || {},
+    planTasks: Array.isArray(message.planTasks) ? message.planTasks : [],
+    planProgress: message.planProgress || {},
+    planSummary: message.planSummary || '',
+    planUpdate: message.planUpdate || null,
+    toolName: message.toolName,
+  };
+}
+
+export function mergePlanMessageList(prevMessages, incomingMessage) {
+  const timestamp = incomingMessage.timestamp || Date.now();
+  const incoming = {
+    ...incomingMessage,
+    timestamp,
+  };
+  const incomingPlanKey = getPlanMessageKey(incoming);
+  let existingIndex = incomingPlanKey
+    ? prevMessages.findIndex(
+        (msg) => msg.type === 'plan' && getPlanMessageKey(msg) === incomingPlanKey,
+      )
+    : -1;
+
+  if (existingIndex < 0) {
+    const latestIndex = findLatestPlanMessageIndex(prevMessages);
+    if (latestIndex >= 0) {
+      const latestPlanKey = getPlanMessageKey(prevMessages[latestIndex]);
+      if (!incomingPlanKey || !latestPlanKey || isSyntheticPlanMessageKey(latestPlanKey)) {
+        existingIndex = latestIndex;
+      }
+    }
+  }
+
+  if (existingIndex < 0) {
+    const planKey =
+      incomingPlanKey || `plan_synthetic_${timestamp}_${Math.random().toString(36).slice(2, 8)}`;
+    const firstSnapshot = createPlanSnapshot({ ...incoming, planKey });
+    return [
+      ...prevMessages,
+      {
+        ...incoming,
+        id: incoming.id || `msg_${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
+        planKey,
+        planSnapshots: [firstSnapshot],
+      },
+    ];
+  }
+
+  const existing = prevMessages[existingIndex];
+  const existingPlanKey = getPlanMessageKey(existing);
+  const planKey =
+    incomingPlanKey && (!existingPlanKey || isSyntheticPlanMessageKey(existingPlanKey))
+      ? incomingPlanKey
+      : existingPlanKey || incomingPlanKey || `plan_synthetic_${existing.timestamp || timestamp}`;
+  const snapshot = createPlanSnapshot({ ...incoming, planKey });
+  const updated = {
+    ...existing,
+    ...incoming,
+    id: existing.id,
+    timestamp: existing.timestamp,
+    planKey,
+    planId: incoming.planId || existing.planId,
+    planSnapshots: [...(existing.planSnapshots || [createPlanSnapshot(existing)]), snapshot],
+  };
+  const next = [...prevMessages];
+  next[existingIndex] = updated;
+  return next;
 }
 
 /**
@@ -129,7 +230,7 @@ export function useRuntime() {
     setMessages((prev) =>
       prev.map((msg) => {
         const delta = pending.get(msg.id);
-        if (!delta) return msg;
+        if (!delta) {return msg;}
         return {
           ...msg,
           type: delta.type || msg.type,
@@ -142,11 +243,11 @@ export function useRuntime() {
 
   const queueMessageDelta = useCallback(
     (messageId, textToAppend, updates = {}) => {
-      if (!messageId || !textToAppend) return;
+      if (!messageId || !textToAppend) {return;}
 
       // 过滤掉内部控制 JSON 块
       const filteredText = stripActionBlocks(textToAppend);
-      if (!filteredText) return;
+      if (!filteredText) {return;}
 
       if (messageId === streamingMessageIdRef.current) {
         streamingTextRef.current += filteredText;
@@ -307,7 +408,7 @@ export function useRuntime() {
   // 追加到指定消息内容（流式增量）
   const appendToMessage = useCallback(
     (messageId, textToAppend, newType) => {
-      if (!textToAppend) return;
+      if (!textToAppend) {return;}
       queueMessageDelta(messageId, textToAppend, newType ? { type: newType } : {});
     },
     [queueMessageDelta],
@@ -497,12 +598,12 @@ export function useRuntime() {
 
   // 订阅 IPC 事件
   useEffect(() => {
-    if (!(typeof window !== 'undefined' && window != null && window.electronAPI)) return;
+    if (!(typeof window !== 'undefined' && window != null && window.electronAPI)) {return;}
 
     // ===== 切断当前流式消息（让下一个 delta 创建新的消息气泡）=====
     const cutoffStream = (messageIdRef, newType) => {
       const msgId = messageIdRef.current;
-      if (!msgId) return null;
+      if (!msgId) {return null;}
 
       // flush 已有增量
       if (pendingMessageDeltasRef.current.size > 0) {
@@ -511,7 +612,7 @@ export function useRuntime() {
         setMessages((prev) =>
           prev.map((msg) => {
             const delta = pending.get(msg.id);
-            if (!delta) return msg;
+            if (!delta) {return msg;}
             return {
               ...msg,
               type: delta.type || msg.type,
@@ -530,7 +631,7 @@ export function useRuntime() {
         // 有内容：关闭 isStreaming 标记，并更新类型（如从 assistant_stream -> agent）
         setMessages((prev) =>
           prev.map((msg) => {
-            if (msg.id !== msgId) return msg;
+            if (msg.id !== msgId) {return msg;}
             return {
               ...msg,
               isStreaming: false,
@@ -600,7 +701,7 @@ export function useRuntime() {
         if (payload?.text) {
           // 过滤掉内部控制 JSON 块
           const filteredText = stripActionBlocks(payload.text);
-          if (!filteredText) return;
+          if (!filteredText) {return;}
 
           if (!msgId) {
             // 当前没有活跃的流消息 → 创建新的消息气泡
@@ -761,36 +862,10 @@ export function useRuntime() {
           return;
         }
 
-        // plan 事件：同一 planId 的更新应该合并到现有消息，而不是创建新消息
+        // plan 事件：合并为一个动态 plan 消息，并保留每次更新的历史快照
         if (eventName === 'plan:created' || eventName === 'plan:decomposed' || eventName === 'plan:updated') {
-          const planId = normalized.message?.plan?.id || payload?.planId || payload?.plan?.id;
-          if (planId) {
-            // 检查是否已存在同一 planId 的消息
-            setMessages((prev) => {
-              const existingIndex = prev.findIndex(
-                (msg) => msg.type === 'plan' && msg.plan?.id === planId,
-              );
-              if (existingIndex >= 0) {
-                // 更新现有 plan 消息
-                const existing = prev[existingIndex];
-                const updated = {
-                  ...existing,
-                  ...normalized.message,
-                  // 保留原有的 id 和 timestamp，更新任务列表和进度
-                  planTasks: normalized.message.planTasks,
-                  planProgress: normalized.message.planProgress,
-                  planSummary: normalized.message.planSummary,
-                  content: normalized.message.content,
-                };
-                const newList = [...prev];
-                newList[existingIndex] = updated;
-                return newList;
-              }
-              // 不存在则创建新消息
-              return [...prev, normalized.message];
-            });
-            return;
-          }
+          setMessages((prev) => mergePlanMessageList(prev, normalized.message));
+          return;
         }
 
         addMessage(normalized.message);
@@ -953,6 +1028,7 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
     case 'plan:decomposed':
     case 'plan:updated': {
       const plan = payload?.plan || payload;
+      const planId = payload?.planId || plan?.id || payload?.plan?.id;
       const tasks = normalizePlanTasks(plan?.tasks);
       const completed = tasks.filter((task) => task.displayStatus === 'completed').length;
       const running = tasks.filter((task) => task.displayStatus === 'running').length;
@@ -971,6 +1047,8 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
                 ? '计划已分解为子任务'
                 : '执行计划已更新',
           plan,
+          planId,
+          planKey: planId || payload?.runId || null,
           planTasks: tasks,
           planSummary: payload?.summary || payload?.update?.after || '',
           planUpdate: payload?.update || null,
@@ -1127,7 +1205,7 @@ function createThinkingSummary(text = '') {
 }
 
 function extractAgentAnswer(data) {
-  if (!data) return '';
+  if (!data) {return '';}
 
   if (typeof data === 'string') {
     return stripActionBlocks(data);

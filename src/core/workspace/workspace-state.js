@@ -567,9 +567,9 @@ export class WorkspaceState {
     const agentOnlyPattern = /^(?:\.agent-(data|logs|memory)|test)(\/|$)/i;
     const realEntries = entries.filter((e) => {
       const name = e.replace(/^\.?\//, '');
-      if (!name) return false;
-      if (agentOnlyPattern.test(name)) return false;
-      if (name.startsWith('.')) return false; // 隐藏文件/目录
+      if (!name) {return false;}
+      if (agentOnlyPattern.test(name)) {return false;}
+      if (name.startsWith('.')) {return false;} // 隐藏文件/目录
       return true;
     });
     return realEntries.length === 0;

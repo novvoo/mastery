@@ -109,7 +109,7 @@ export function InputDialog({
 
   const handleSubmit = () => {
     const trimmed = value.trim();
-    if (!trimmed) return;
+    if (!trimmed) {return;}
     onConfirm(trimmed);
   };
 

@@ -5,23 +5,27 @@
  * parsing (PDF, DOCX, HTML, plain text).
  */
 
-import { readFile, stat } from 'fs/promises';
-import { basename, extname, isAbsolute, resolve } from 'path';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { basename, extname, isAbsolute, join, resolve } from 'path';
 import { Buffer } from 'buffer';
 import { normalizeText, cleanHTML } from './document-rag-utils.js';
+import { OCRRuntime } from '../../core/ocr-runtime.js';
 
 /* ─── constants ─────────────────────────────────────────────────────── */
 export const MAX_DOCUMENT_BYTES = 15 * 1024 * 1024;
 const USER_AGENT = 'Mastery-Agent/1.0 (+document-rag)';
 
 /* ─── public API ────────────────────────────────────────────────────── */
-export async function loadDocument({ source, content, title }, ctx) {
+export async function loadDocument({ source, content, title, ocr = 'auto' }, ctx) {
   if (typeof content === 'string' && content.trim()) {
     return {
       title: title || 'Inline document',
       source: 'inline',
       kind: 'text',
       text: content,
+      extractionMethod: 'text',
+      ocrConfidence: null,
     };
   }
 
@@ -31,14 +35,14 @@ export async function loadDocument({ source, content, title }, ctx) {
 
   const sourceValue = String(source).trim();
   if (/^https?:\/\//i.test(sourceValue)) {
-    return await loadURL(sourceValue, title);
+    return await loadURL(sourceValue, title, { ocr });
   }
 
-  return await loadLocalFile(sourceValue, title, ctx?.workingDirectory || process.cwd());
+  return await loadLocalFile(sourceValue, title, ctx?.workingDirectory || process.cwd(), { ocr });
 }
 
 /* ─── local file loading ────────────────────────────────────────────── */
-async function loadLocalFile(path, title, workingDirectory) {
+async function loadLocalFile(path, title, workingDirectory, options = {}) {
   const absolutePath = isAbsolute(path) ? path : resolve(workingDirectory, path);
   const fileStat = await stat(absolutePath);
   if (fileStat.size > MAX_DOCUMENT_BYTES) {
@@ -49,17 +53,20 @@ async function loadLocalFile(path, title, workingDirectory) {
 
   const buffer = await readFile(absolutePath);
   const kind = inferKind(absolutePath, '');
-  const text = await parseBuffer(buffer, kind);
+  const parsed = await parseBuffer(buffer, kind, {
+    ...options,
+    sourcePath: absolutePath,
+  });
   return {
     title: title || basename(absolutePath),
     source: absolutePath,
     kind,
-    text,
+    ...parsed,
   };
 }
 
 /* ─── URL loading ───────────────────────────────────────────────────── */
-async function loadURL(url, title) {
+async function loadURL(url, title, options = {}) {
   const response = await fetchWithTimeout(url);
   if (!response.ok) {
     throw new Error(`Failed to fetch document URL: HTTP ${response.status}`);
@@ -75,20 +82,45 @@ async function loadURL(url, title) {
   }
 
   const kind = inferKind(url, contentType);
-  const text = await parseBuffer(buffer, kind);
+  const parsed = await parseBuffer(buffer, kind, {
+    ...options,
+    sourcePath: url,
+    sourceBuffer: buffer,
+  });
   return {
     title: title || inferTitleFromURL(url),
     source: url,
     kind,
-    text,
+    ...parsed,
   };
 }
 
 /* ─── format-specific parsing ───────────────────────────────────────── */
-async function parseBuffer(buffer, kind) {
+async function parseBuffer(buffer, kind, options = {}) {
+  const forceOCR = options.ocr === true || options.ocr === 'force';
+  const autoOCR = options.ocr !== false && options.ocr !== 'false';
+
+  if (kind === 'image') {
+    const ocrResult = await parseWithOCR(options);
+    return {
+      text: ocrResult.text,
+      extractionMethod: 'ocr',
+      ocrConfidence: ocrResult.confidence,
+    };
+  }
+
+  if (forceOCR && supportsOCRFallback(kind)) {
+    const ocrResult = await parseWithOCR(options);
+    return {
+      text: ocrResult.text,
+      extractionMethod: 'ocr',
+      ocrConfidence: ocrResult.confidence,
+    };
+  }
+
   if (kind === 'pdf') {
     ensurePdfJsNodeGlobals();
-    return await withSuppressedPdfJsCanvasWarnings(async () => {
+    const text = await withSuppressedPdfJsCanvasWarnings(async () => {
       const { PDFParse } = await import('pdf-parse');
       const parser = new PDFParse({ data: buffer });
       try {
@@ -98,19 +130,44 @@ async function parseBuffer(buffer, kind) {
         await parser.destroy();
       }
     });
+    if (!text && autoOCR) {
+      const ocrResult = await parseWithOCR(options);
+      return {
+        text: ocrResult.text,
+        extractionMethod: 'ocr',
+        ocrConfidence: ocrResult.confidence,
+      };
+    }
+    return {
+      text,
+      extractionMethod: 'text',
+      ocrConfidence: null,
+    };
   }
 
   if (kind === 'docx') {
     const mammoth = await import('mammoth');
     const result = await mammoth.extractRawText({ buffer });
-    return normalizeText(result.value || '');
+    return {
+      text: normalizeText(result.value || ''),
+      extractionMethod: 'text',
+      ocrConfidence: null,
+    };
   }
 
   const text = buffer.toString('utf-8');
   if (kind === 'html') {
-    return cleanHTML(text);
+    return {
+      text: cleanHTML(text),
+      extractionMethod: 'text',
+      ocrConfidence: null,
+    };
   }
-  return normalizeText(text);
+  return {
+    text: normalizeText(text),
+    extractionMethod: 'text',
+    ocrConfidence: null,
+  };
 }
 
 function ensurePdfJsNodeGlobals() {
@@ -160,6 +217,12 @@ export function inferKind(source, contentType = '') {
   if (ext === '.html' || ext === '.htm' || type.includes('text/html')) {
     return 'html';
   }
+  if (
+    ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tif', '.tiff'].includes(ext) ||
+    type.startsWith('image/')
+  ) {
+    return 'image';
+  }
   if (ext === '.json' || type.includes('application/json')) {
     return 'json';
   }
@@ -167,6 +230,90 @@ export function inferKind(source, contentType = '') {
     return 'markdown';
   }
   return 'text';
+}
+
+function supportsOCRFallback(kind) {
+  return kind === 'pdf' || kind === 'image';
+}
+
+async function parseWithOCR(options = {}) {
+  const cleanupPaths = [];
+  let sourcePath = options.sourcePath;
+
+  if (/^https?:\/\//i.test(String(sourcePath || ''))) {
+    sourcePath = await writeOCRTempFile(options.sourceBuffer, sourcePath, cleanupPaths);
+  }
+
+  try {
+    const runtime = new OCRRuntime();
+    const result = await runtime.recognize(sourcePath);
+    const parsed = normalizeOCRResult(result);
+    if (!parsed.text) {
+      throw new Error('OCR produced no text.');
+    }
+    return parsed;
+  } finally {
+    await Promise.all(cleanupPaths.map((path) => rm(path, { recursive: true, force: true })));
+  }
+}
+
+async function writeOCRTempFile(buffer, source, cleanupPaths) {
+  if (!buffer) {
+    throw new Error('OCR fallback requires document bytes.');
+  }
+  const dir = await mkdtemp(join(tmpdir(), 'mastery-ocr-'));
+  cleanupPaths.push(dir);
+  const ext = extname(getURLSafePath(source)) || '.bin';
+  const path = join(dir, `document${ext}`);
+  await writeFile(path, buffer);
+  return path;
+}
+
+function normalizeOCRResult(result) {
+  if (typeof result === 'string') {
+    return { text: normalizeText(result), confidence: null };
+  }
+
+  if (Array.isArray(result)) {
+    const lines = [];
+    const confidences = [];
+    for (const item of result) {
+      if (typeof item === 'string') {
+        lines.push(item);
+        continue;
+      }
+      const text = item?.text || item?.line || item?.value || item?.[1]?.[0] || '';
+      if (text) {
+        lines.push(String(text));
+      }
+      const confidence = item?.confidence ?? item?.score ?? item?.[1]?.[1];
+      if (Number.isFinite(confidence)) {
+        confidences.push(Number(confidence));
+      }
+    }
+    return {
+      text: normalizeText(lines.join('\n')),
+      confidence: averageConfidence(confidences),
+    };
+  }
+
+  if (result && typeof result === 'object') {
+    const text = result.text || result.markdown || result.content || result.result || '';
+    const confidence = result.confidence ?? result.score ?? null;
+    return {
+      text: normalizeText(Array.isArray(text) ? text.join('\n') : text),
+      confidence: Number.isFinite(confidence) ? Number(confidence) : null,
+    };
+  }
+
+  return { text: '', confidence: null };
+}
+
+function averageConfidence(values) {
+  if (!values.length) {
+    return null;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function getURLSafePath(source) {

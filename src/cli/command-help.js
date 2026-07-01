@@ -142,7 +142,7 @@ export const COMMAND_HELP = {
     usage: [
       '/doc',
       '/doc init',
-      '/doc add [path-or-url]',
+      '/doc add [--ocr] [path-or-url]',
       '/doc search <query>',
       '/doc list',
       '/doc clear [document-id]',
@@ -150,17 +150,37 @@ export const COMMAND_HELP = {
     ],
     effects: [
       'init preflights the embedding runtime and shows model/download status.',
-      'add indexes a document in the current in-memory RAG index.',
+      'add indexes a document in the current in-memory RAG index; images use OCR and PDFs can fall back to OCR.',
+      '--ocr forces OCR for OCR-capable documents.',
       'search retrieves relevant chunks without calling the LLM.',
       'clear removes indexed document context for this CLI session.',
     ],
     examples: [
       '/doc init',
       '/doc add ./docs/spec.pdf',
+      '/doc add --ocr ./scanned.pdf',
       '/doc add https://example.com/runbook',
       '根据 @./docs/spec.pdf 总结风险',
       '/doc search "rollback policy"',
       '/doc clear',
+    ],
+  },
+  ocr: {
+    title: '/ocr',
+    description:
+      'Inspect and initialize the local OCR runtime backed by ulimit-orc-compatible OCR packages and ONNX model files.',
+    usage: ['/ocr', '/ocr status', '/ocr init', '/ocr <image-path>', '/ocr run <image-path>'],
+    effects: [
+      'status/doctor show OCR runtime and model download status.',
+      'init downloads missing OCR model files using the same Hugging Face mirror strategy as ONNX embeddings.',
+      'image OCR uses the configured ulimit-orc-compatible runtime package when available.',
+      'Does not call the LLM or index documents by itself.',
+    ],
+    examples: [
+      '/ocr',
+      '/ocr init',
+      '/ocr ./receipt.png',
+      'OCR_MODEL_MIRRORS=https://hf-mirror.com /ocr init',
     ],
   },
   preview: {
@@ -282,6 +302,8 @@ export const COMMAND_HELP_ALIASES = {
   docs: 'doc',
   document: 'doc',
   documents: 'doc',
+  ocr: 'ocr',
+  orc: 'ocr',
   preview: 'preview',
   context: 'memory',
   status: 'stats',

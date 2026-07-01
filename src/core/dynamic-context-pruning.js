@@ -467,7 +467,7 @@ export class DynamicContextPruning {
   }
 
   #buildFallbackSummary(messages) {
-    if (!Array.isArray(messages) || messages.length === 0) return '';
+    if (!Array.isArray(messages) || messages.length === 0) {return '';}
 
     const parts = [];
 

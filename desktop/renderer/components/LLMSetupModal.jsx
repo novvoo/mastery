@@ -14,7 +14,7 @@ export function LLMSetupModal({
   onSave,
 }) {
   const formatEnvPath = (path) => {
-    if (!path) return '~/.config/mastery/.env';
+    if (!path) {return '~/.config/mastery/.env';}
     return path.replace(/^\/Users\/[^/]+/, '~');
   };
 
@@ -116,7 +116,7 @@ export function LLMSetupModal({
                   }}
                   value={currentProviderModels.some(m => m.value === llmForm.model) ? llmForm.model : '__custom__'}
                   onChange={(event) => {
-                    if (event.target.value === '__custom__') return;
+                    if (event.target.value === '__custom__') {return;}
                     handleModelSelect(event.target.value);
                   }}
                   disabled={llmSetupSaving}

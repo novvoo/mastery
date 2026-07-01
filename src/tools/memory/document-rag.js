@@ -101,11 +101,19 @@ function createDocumentAddTool() {
         type: 'string',
         description: 'Optional stable document id. Defaults to a generated id.',
       },
+      ocr: {
+        type: 'boolean',
+        description:
+          'Force OCR extraction for OCR-capable files. By default, images use OCR and PDFs fall back to OCR when text extraction is empty.',
+      },
     },
-    handler: async ({ source, content, title, id }, ctx) => {
+    handler: async ({ source, content, title, id, ocr }, ctx) => {
       await ensureState(ctx?.workingDirectory);
       const startedAt = Date.now();
-      const parsed = await loadDocument({ source, content, title }, ctx);
+      const parsed = await loadDocument(
+        { source, content, title, ocr: ocr ? 'force' : 'auto' },
+        ctx,
+      );
       const documentId = sanitizeId(id) || createDocumentId(parsed.title, parsed.source);
 
       // --- section detection & chunking ---
@@ -141,6 +149,8 @@ function createDocumentAddTool() {
             kind: parsed.kind,
             chunkIndex: index + 1,
             sectionPath,
+            extractionMethod: parsed.extractionMethod || 'text',
+            ocrConfidence: parsed.ocrConfidence ?? null,
           },
         };
       });
@@ -159,6 +169,8 @@ function createDocumentAddTool() {
         tokens: rawTokens,
         sections: sectionPaths.length,
         section_headings: sectionPaths.map((p) => p[0]),
+        extractionMethod: parsed.extractionMethod || 'text',
+        ocrConfidence: parsed.ocrConfidence ?? null,
         chunks: documentChunks.length,
         addedAt: new Date().toISOString(),
       });
@@ -188,6 +200,8 @@ function createDocumentAddTool() {
         title: parsed.title,
         source: parsed.source,
         kind: parsed.kind,
+        extractionMethod: parsed.extractionMethod || 'text',
+        ocrConfidence: parsed.ocrConfidence ?? null,
         chunks: documentChunks.length,
         sections: sectionPaths.length,
         tokens: rawTokens,
@@ -200,6 +214,8 @@ function createDocumentAddTool() {
         title: parsed.title,
         source: parsed.source,
         kind: parsed.kind,
+        extractionMethod: parsed.extractionMethod || 'text',
+        ocrConfidence: parsed.ocrConfidence ?? null,
         chunks: documentChunks.length,
         chars: parsed.text.length,
         tokens: rawTokens,
@@ -550,6 +566,8 @@ async function buildStructuredAnswer(question, evidence, totalChunks, minScore, 
       source: md.source || null,
       chunk_index: md.chunkIndex || null,
       section_path: sectionPath,
+      extraction_method: md.extractionMethod || null,
+      ocr_confidence: md.ocrConfidence ?? null,
       score: Number(item.score) || 0, // fused (RRF) score
       semantic_score: Number(item.semanticScore) || 0,
       lexical_score: Number(item.lexicalScore) || 0,
@@ -565,6 +583,8 @@ async function buildStructuredAnswer(question, evidence, totalChunks, minScore, 
         title: docTitle,
         source: md.source || null,
         kind: md.kind || null,
+        extraction_method: md.extractionMethod || null,
+        ocr_confidence: md.ocrConfidence ?? null,
         references: 1,
         sections: sectionPath ? [sectionPath] : [],
       });

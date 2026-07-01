@@ -57,7 +57,7 @@ export function createMenu(ctx) {
   createApplicationMenu({
     onOpenProject: () => {
       // 延迟注入：由主类提供的 handleOpenProject 回调
-      if (typeof ctx.handleOpenProject === 'function') ctx.handleOpenProject();
+      if (typeof ctx.handleOpenProject === 'function') {ctx.handleOpenProject();}
     },
     onShowAboutDialog: () => showAboutDialog(ctx),
   });

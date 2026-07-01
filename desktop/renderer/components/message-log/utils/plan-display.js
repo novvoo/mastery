@@ -69,7 +69,7 @@ export const PLAN_ARCHITECTURE_LABELS = {
 
 export function getPlanModeLabel(plan) {
   const strategy = plan?.strategy || plan?.context?.strategy || {};
-  if (strategy.label) return strategy.label;
+  if (strategy.label) {return strategy.label;}
   const planType = String(
     strategy.type || plan?.context?.planType || plan?.metadata?.planType || 'standard',
   ).toLowerCase();
@@ -78,9 +78,9 @@ export function getPlanModeLabel(plan) {
 
 export function getPlanShapeLabel(plan, tasks) {
   const strategy = plan?.strategy || plan?.context?.strategy || {};
-  if (strategy.shape) return strategy.shape === 'dag' ? 'DAG' : strategy.shape;
+  if (strategy.shape) {return strategy.shape === 'dag' ? 'DAG' : strategy.shape;}
   const decomposition = String(plan?.context?.decomposition || '').toLowerCase();
-  if (decomposition === 'llm') return 'LLM 分解';
+  if (decomposition === 'llm') {return 'LLM 分解';}
   const hasFanIn = tasks.some(
     (task) => Array.isArray(task.dependencies) && task.dependencies.length > 1,
   );
@@ -98,7 +98,7 @@ export function groupPlanTasksByPhase(tasks) {
   const groups = new Map();
   for (const task of tasks || []) {
     const phase = String(task.phase || 'planning').toLowerCase();
-    if (!groups.has(phase)) groups.set(phase, []);
+    if (!groups.has(phase)) {groups.set(phase, []);}
     groups.get(phase).push(task);
   }
 
@@ -134,6 +134,6 @@ export function groupPlanTasksByPhase(tasks) {
 }
 
 export function formatPlanStrategyValue(value) {
-  if (value === null || value === undefined || value === '') return null;
+  if (value === null || value === undefined || value === '') {return null;}
   return String(value).replace(/_/g, ' ');
 }

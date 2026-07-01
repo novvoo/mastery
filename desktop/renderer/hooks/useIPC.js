@@ -74,7 +74,7 @@ export async function connectElectronAPI(ctx = {}) {
       try {
         logger.debug('IPC-DIAG[renderer] after wait timeout:', diagnoseIPC());
       } catch (_) {}
-      if (isConnectedRef) isConnectedRef.current = false;
+      if (isConnectedRef) {isConnectedRef.current = false;}
       return null;
     }
     logger.debug('window.electronAPI 轮询成功，可以连接');
@@ -83,22 +83,22 @@ export async function connectElectronAPI(ctx = {}) {
   api = getElectronAPI();
   if (!api) {
     logger.warn('electronAPI 不可用，可能不在 Electron 环境中');
-    if (isConnectedRef) isConnectedRef.current = false;
+    if (isConnectedRef) {isConnectedRef.current = false;}
     return null;
   }
 
   try {
     logger.debug('调用 electronAPI.connect() ...');
     const result = await api.connect();
-    if (isConnectedRef) isConnectedRef.current = true;
-    if (connectionInfoRef) connectionInfoRef.current = result;
-    if (typeof onConnected === 'function') onConnected(result);
+    if (isConnectedRef) {isConnectedRef.current = true;}
+    if (connectionInfoRef) {connectionInfoRef.current = result;}
+    if (typeof onConnected === 'function') {onConnected(result);}
 
     logger.debug('已连接到主进程:', result);
     return result;
   } catch (err) {
     logger.error('连接失败:', err);
-    if (isConnectedRef) isConnectedRef.current = false;
+    if (isConnectedRef) {isConnectedRef.current = false;}
     return null;
   }
 }
@@ -202,11 +202,11 @@ export function useIPC() {
 
   const disconnect = useCallback(() => {
     const api = getElectronAPI();
-    if (!api) return;
+    if (!api) {return;}
     try {
       api.disconnect();
       subscriptionsRef.current.forEach((unsub) => {
-        if (typeof unsub === 'function') unsub();
+        if (typeof unsub === 'function') {unsub();}
       });
       subscriptionsRef.current = [];
       isConnectedRef.current = false;
@@ -492,7 +492,7 @@ export function useIPC() {
   useEffect(() => {
     return () => {
       subscriptionsRef.current.forEach((unsub) => {
-        if (typeof unsub === 'function') unsub();
+        if (typeof unsub === 'function') {unsub();}
       });
       subscriptionsRef.current = [];
     };

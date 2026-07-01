@@ -10,7 +10,8 @@ export const styles = {
     color: 'var(--text-color)',
     fontFamily: 'var(--font-family)',
     overflow: 'hidden',
-    position: 'relative'
+    position: 'relative',
+    border: '1px solid var(--window-border-color)',
   },
   
   menuItem: {

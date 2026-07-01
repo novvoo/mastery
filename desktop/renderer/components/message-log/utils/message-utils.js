@@ -1,5 +1,5 @@
 export function getStableMessageId(msg = {}, index, scope = 'list') {
-  if (msg.id) return String(msg.id);
+  if (msg.id) {return String(msg.id);}
   const timestamp = msg.timestamp || msg.createdAt || '';
   const type = msg.type || msg.event || 'message';
   const contentSeed = [
@@ -13,16 +13,16 @@ export function getStableMessageId(msg = {}, index, scope = 'list') {
 }
 
 export function safeStringify(value, fallback = '') {
-  if (value == null) return fallback;
-  if (typeof value === 'string') return value;
+  if (value == null) {return fallback;}
+  if (typeof value === 'string') {return value;}
   try {
     const seen = new WeakSet();
     return JSON.stringify(value, (_key, item) => {
       if (typeof item === 'object' && item !== null) {
-        if (seen.has(item)) return '[Circular]';
+        if (seen.has(item)) {return '[Circular]';}
         seen.add(item);
       }
-      if (typeof item === 'function') return `[Function ${item.name || 'anonymous'}]`;
+      if (typeof item === 'function') {return `[Function ${item.name || 'anonymous'}]`;}
       return item;
     }, 2);
   } catch (error) {

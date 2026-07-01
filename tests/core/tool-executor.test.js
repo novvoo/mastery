@@ -198,6 +198,132 @@ describe('ToolExecutor', () => {
     expect(result2.duplicateMutation).toBe(true);
   });
 
+  test('requires workspace root observation before first create-task mutation', async () => {
+    const writeHandler = mock(async () => 'written');
+    const listHandler = mock(async () => 'package.json\nsrc');
+    const writeTool = makeTool('write_file', { handler: writeHandler });
+    const listTool = makeTool('list_dir', { handler: listHandler });
+    const { executor } = makeMockExecutor({ tools: [writeTool, listTool] });
+
+    const blocked = await executor.execute(
+      { id: '1', name: 'write_file', arguments: { path: 'package.json', content: '{}' } },
+      { currentTask: { phase: 'implementation', name: '实现一个工程化的贪吃蛇游戏' } },
+    );
+
+    expect(blocked.workspaceContextRequired).toBe(true);
+    expect(blocked.skipped).toBe(true);
+    expect(writeHandler).not.toHaveBeenCalled();
+
+    await executor.execute(
+      { id: '2', name: 'list_dir', arguments: { path: '.' } },
+      { currentTask: { phase: 'implementation', name: '实现一个工程化的贪吃蛇游戏' } },
+    );
+
+    const written = await executor.execute(
+      { id: '3', name: 'write_file', arguments: { path: 'snake/package.json', content: '{}' } },
+      { currentTask: { phase: 'implementation', name: '实现一个工程化的贪吃蛇游戏' } },
+    );
+
+    expect(written.result).toBe('written');
+    expect(writeHandler).toHaveBeenCalledTimes(1);
+  });
+
+  test('allows scoped create tasks to inspect workspace root before writing', async () => {
+    const listHandler = mock(async () => 'package.json\nsrc');
+    const listTool = makeTool('list_dir', { handler: listHandler });
+    const { executor } = makeMockExecutor({ tools: [listTool] });
+
+    const result = await executor.execute(
+      { id: '1', name: 'list_dir', arguments: { path: '.' } },
+      {
+        scopeFiles: ['src/game.js'],
+        currentTask: { phase: 'implementation', name: '实现一个工程化的贪吃蛇游戏' },
+      },
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.result).toBe('package.json\nsrc');
+    expect(listHandler).toHaveBeenCalledTimes(1);
+  });
+
+  test('still blocks scoped list_dir outside workspace-root observation', async () => {
+    const listHandler = mock(async () => 'should not run');
+    const listTool = makeTool('list_dir', { handler: listHandler });
+    const { executor } = makeMockExecutor({ tools: [listTool] });
+
+    const result = await executor.execute(
+      { id: '1', name: 'list_dir', arguments: { path: 'other' } },
+      {
+        scopeFiles: ['src/game.js'],
+        currentTask: { phase: 'implementation', name: '实现一个工程化的贪吃蛇游戏' },
+      },
+    );
+
+    expect(result.scopeBlocked).toBe(true);
+    expect(result.result).toContain('SCOPE_BLOCKED');
+    expect(listHandler).not.toHaveBeenCalled();
+  });
+
+  test('allows scoped create tasks to read root project context after workspace root observation', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-context-read-'));
+    try {
+      writeFileSync(join(root, 'package.json'), '{"name":"existing"}', 'utf-8');
+      const listTool = makeTool('list_dir', { handler: mock(async () => 'package.json\nsrc') });
+      const readHandler = mock(async () => '{"name":"existing"}');
+      const readTool = makeTool('read_file', { required: ['path'], handler: readHandler });
+      const { executor } = makeMockExecutor({
+        tools: [listTool, readTool],
+        config: { workingDirectory: root },
+      });
+      const context = {
+        scopeFiles: ['src/game.js'],
+        currentTask: { phase: 'implementation', name: '实现一个工程化的贪吃蛇游戏' },
+      };
+
+      await executor.execute({ id: '1', name: 'list_dir', arguments: { path: '.' } }, context);
+      const result = await executor.execute(
+        { id: '2', name: 'read_file', arguments: { path: 'package.json' } },
+        context,
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.result).toBe('{"name":"existing"}');
+      expect(readHandler).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('still blocks scoped read_file outside root project context', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-context-read-block-'));
+    try {
+      writeFileSync(join(root, 'other.txt'), 'nope', 'utf-8');
+      const listTool = makeTool('list_dir', { handler: mock(async () => 'other.txt\nsrc') });
+      const readHandler = mock(async () => 'should not run');
+      const readTool = makeTool('read_file', { required: ['path'], handler: readHandler });
+      const { executor } = makeMockExecutor({
+        tools: [listTool, readTool],
+        config: { workingDirectory: root },
+      });
+      const context = {
+        scopeFiles: ['src/game.js'],
+        currentTask: { phase: 'implementation', name: '实现一个工程化的贪吃蛇游戏' },
+      };
+
+      await executor.execute({ id: '1', name: 'list_dir', arguments: { path: '.' } }, context);
+      const result = await executor.execute(
+        { id: '2', name: 'read_file', arguments: { path: 'other.txt' } },
+        context,
+      );
+
+      expect(result.scopeBlocked).toBe(true);
+      expect(result.result).toContain('SCOPE_BLOCKED');
+      expect(readHandler).not.toHaveBeenCalled();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('duplicate mutation preserves empty previous result', async () => {
     const root = mkdtempSync(join(tmpdir(), 'tool-executor-empty-mutation-'));
     try {

@@ -64,6 +64,16 @@ describe('isWorkspaceInspectionTool', () => {
   });
 });
 
+describe('isSuccessfulToolResult abnormal outcomes', () => {
+  test('returns false for structured shell timeout abnormalities', () => {
+    expect(
+      isSuccessfulToolResult(
+        'STEP_ABNORMAL: shell_timeout\nCommand: npm test\nRecovery plan:\n1. Retry once with shell using timeout 60000ms.',
+      ),
+    ).toBe(false);
+  });
+});
+
 describe('isPlanningTool', () => {
   test('returns true for brainstorm', () => {
     expect(isPlanningTool('brainstorm')).toBe(true);
@@ -463,6 +473,12 @@ describe('ExecutionPlanManager', () => {
     manager.advance('list_dir', {}, 'OK');
     manager.advance('project_profile', {}, 'package.json scripts test');
     manager.advance('test_strategy', {}, 'targeted failing test identified');
+    manager.advance('capture_requirements', {
+      request: 'Fix bug in app.js',
+      targets: ['app.js'],
+      expected: 'tests pass after fix',
+      status: 'pending',
+    }, { ok: true });
     manager.advance('write_file', { path: 'app.js' }, 'OK');
     manager.advance('read_file', { path: 'app.js' }, 'OK');
 
@@ -644,6 +660,12 @@ describe('ExecutionPlanManager', () => {
     manager.advance('list_dir', {}, 'package.json\napp.js');
     manager.advance('project_profile', {}, 'package.json scripts test');
     manager.advance('test_strategy', {}, 'targeted app.js regression');
+    manager.advance('capture_requirements', {
+      request: 'Fix bug in app.js',
+      targets: ['app.js'],
+      expected: 'bug fixed in app.js',
+      status: 'pending',
+    }, { ok: true });
     manager.advance('architect', {}, 'small fix in app.js');
 
     const implementTask = manager.plan.getTask('implement_changes');
@@ -920,6 +942,12 @@ describe('ExecutionPlanManager', () => {
     manager.advance('list_dir', {}, 'OK');
     manager.advance('project_profile', {}, 'package.json scripts test');
     manager.advance('test_strategy', {}, 'targeted check');
+    manager.advance('capture_requirements', {
+      request: 'Fix bug in app.js',
+      targets: ['app.js'],
+      expected: 'bug fixed in app.js',
+      status: 'pending',
+    }, { ok: true });
     manager.advance('write_file', { path: 'app.js' }, 'OK');
     manager.advance('read_file', { path: 'app.js' }, 'OK');
     manager.advance('shell', { command: 'bun test' }, { exitCode: 1 });

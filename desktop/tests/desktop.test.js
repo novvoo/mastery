@@ -31,7 +31,7 @@ function createMockIpcMain() {
       handlers.set(channel, fn);
     },
     on(channel, fn) {
-      if (!listeners.has(channel)) listeners.set(channel, []);
+      if (!listeners.has(channel)) {listeners.set(channel, []);}
       listeners.get(channel).push(fn);
     },
   };
@@ -481,7 +481,7 @@ describe('Desktop IPC Initialization Order', () => {
       const savedEnv = snapshotEnv();
       const { fs, userDataDir, ctx } = await createModelTestContext();
       try {
-        for (const key of envKeys) delete process.env[key];
+        for (const key of envKeys) {delete process.env[key];}
         const { saveSingleModelConfig } = await import('../main-app/llm-config-and-persistence.js');
 
         const result = await saveSingleModelConfig(ctx, {
@@ -511,7 +511,7 @@ describe('Desktop IPC Initialization Order', () => {
       const savedEnv = snapshotEnv();
       const { fs, path, userDataDir, ctx } = await createModelTestContext('mastery-model-secure-');
       try {
-        for (const key of envKeys) delete process.env[key];
+        for (const key of envKeys) {delete process.env[key];}
         ctx.electron.safeStorage = {
           isEncryptionAvailable: () => true,
           encryptString(value) {
@@ -553,7 +553,7 @@ describe('Desktop IPC Initialization Order', () => {
       const savedEnv = snapshotEnv();
       const { fs, path, userDataDir, ctx } = await createModelTestContext('mastery-model-restore-');
       try {
-        for (const key of envKeys) delete process.env[key];
+        for (const key of envKeys) {delete process.env[key];}
         fs.writeFileSync(
           path.join(userDataDir, 'models.json'),
           JSON.stringify(
@@ -591,7 +591,7 @@ describe('Desktop IPC Initialization Order', () => {
       const savedEnv = snapshotEnv();
       const { fs, path, userDataDir, ctx } = await createModelTestContext('mastery-model-invalid-');
       try {
-        for (const key of envKeys) delete process.env[key];
+        for (const key of envKeys) {delete process.env[key];}
         const initialConfigs = [
           {
             id: 'model-openai',

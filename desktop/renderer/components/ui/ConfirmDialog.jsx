@@ -79,7 +79,7 @@ export default function ConfirmDialog({
 }) {
   const handleKeyDown = useCallback(
     (e) => {
-      if (!isOpen) return;
+      if (!isOpen) {return;}
       if (e.key === 'Escape') {
         onCancel?.();
       }
@@ -101,7 +101,7 @@ export default function ConfirmDialog({
     };
   }, [isOpen, handleKeyDown]);
 
-  if (!isOpen) return null;
+  if (!isOpen) {return null;}
 
   return (
     <div style={styles.overlay} onClick={onCancel} role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">

@@ -380,6 +380,60 @@ export const styles = {
     fontWeight: 700
   },
 
+  planTimelineControl: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    padding: '7px 8px',
+    marginBottom: '8px',
+    borderRadius: '7px',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--glass-bg-light)'
+  },
+
+  planTimelineMeta: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '8px',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 650,
+    fontVariantNumeric: 'tabular-nums'
+  },
+
+  planTimelineSliderRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    alignItems: 'center',
+    gap: '8px'
+  },
+
+  planTimelineSlider: {
+    width: '100%',
+    minWidth: 0,
+    accentColor: 'var(--primary-color)',
+    cursor: 'pointer'
+  },
+
+  planTimelineLatestButton: {
+    height: '24px',
+    padding: '0 8px',
+    borderRadius: '999px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--surface-color)',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 700,
+    cursor: 'pointer'
+  },
+
+  planTimelineLatestButtonActive: {
+    backgroundColor: 'var(--primary-soft)',
+    color: 'var(--primary-color)',
+    borderColor: 'transparent'
+  },
+
   planStrategyGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',

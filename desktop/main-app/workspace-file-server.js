@@ -19,9 +19,9 @@ import { writeUserEnv, applyRuntimeValues } from '../../src/core/runtime-config.
 const ALLOWED_LOCALHOST_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/.*)?$/i;
 
 function isAllowedFileServerOrigin(origin) {
-  if (!origin) return true;
-  if (origin === 'null' || origin === 'file://') return true;
-  if (ALLOWED_LOCALHOST_PATTERN.test(origin)) return true;
+  if (!origin) {return true;}
+  if (origin === 'null' || origin === 'file://') {return true;}
+  if (ALLOWED_LOCALHOST_PATTERN.test(origin)) {return true;}
   return false;
 }
 

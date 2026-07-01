@@ -105,17 +105,17 @@ export function registerCustomHandlers(ctx) {
   });
 
   ipc.registerHandler('window:minimize', async () => {
-    if (ctx.mainWindow) ctx.mainWindow.minimize();
+    if (ctx.mainWindow) {ctx.mainWindow.minimize();}
     return { success: true };
   });
 
   ipc.registerHandler('window:maximize', async () => {
     if (ctx.mainWindow) {
-      if (ctx.mainWindow.isMaximized()) ctx.mainWindow.unmaximize();
-      else ctx.mainWindow.maximize();
+      if (ctx.mainWindow.isMaximized()) {ctx.mainWindow.unmaximize();}
+      else {ctx.mainWindow.maximize();}
     }
     // 同步窗口状态广播
-    if (typeof ctx.broadcastWindowState === 'function') ctx.broadcastWindowState();
+    if (typeof ctx.broadcastWindowState === 'function') {ctx.broadcastWindowState();}
     return { success: true, ...(typeof ctx.getWindowState ? ctx.getWindowState() : {}) };
   });
 
@@ -139,7 +139,7 @@ export function registerCustomHandlers(ctx) {
   });
 
   ipc.registerHandler('window:hide', async () => {
-    if (ctx.mainWindow) ctx.mainWindow.hide();
+    if (ctx.mainWindow) {ctx.mainWindow.hide();}
     return { success: true };
   });
 
@@ -471,8 +471,8 @@ async function getCommandCompletions(prefix) {
     try {
       const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
       for (const entry of entries) {
-        if (!entry.name.startsWith(query)) continue;
-        if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+        if (!entry.name.startsWith(query)) {continue;}
+        if (!entry.isFile() && !entry.isSymbolicLink()) {continue;}
         if (await isExecutableFile(resolve(dirPath, entry.name))) {
           commands.add(entry.name);
         }
@@ -488,7 +488,7 @@ async function getCommandCompletions(prefix) {
 async function isExecutableFile(filePath) {
   try {
     const stats = await fs.promises.stat(filePath);
-    if (!stats.isFile()) return false;
+    if (!stats.isFile()) {return false;}
     if (process.platform === 'win32') {
       const ext = extname(filePath).toLowerCase();
       const pathext = String(process.env.PATHEXT || '.EXE;.CMD;.BAT;.COM;.PS1')
@@ -530,8 +530,8 @@ export function registerCommandPalette(ctx) {
     id: 'app.window.toggle-max', title: '切换最大化', category: '窗口',
     handler: async () => {
       const w = ctx.mainWindow;
-      if (!w) return { success: false, message: 'no-window' };
-      if (w.isMaximized()) w.unmaximize(); else w.maximize();
+      if (!w) {return { success: false, message: 'no-window' };}
+      if (w.isMaximized()) {w.unmaximize();} else {w.maximize();}
       return { success: true };
     },
   });
@@ -540,9 +540,9 @@ export function registerCommandPalette(ctx) {
     keywords: ['devtools', 'inspect'],
     handler: async () => {
       const w = ctx.mainWindow;
-      if (!w) return { success: false, message: 'no-window' };
-      if (w.webContents.isDevToolsOpened()) w.webContents.closeDevTools();
-      else w.webContents.openDevTools({ mode: 'detach' });
+      if (!w) {return { success: false, message: 'no-window' };}
+      if (w.webContents.isDevToolsOpened()) {w.webContents.closeDevTools();}
+      else {w.webContents.openDevTools({ mode: 'detach' });}
       return { success: true };
     },
   });
@@ -552,7 +552,7 @@ export function registerCommandPalette(ctx) {
     keywords: ['reset', 'clear', 'session'],
     handler: async () => {
       const core = ctx.desktopCore;
-      if (core?.agent?.reset) await core.agent.reset(true);
+      if (core?.agent?.reset) {await core.agent.reset(true);}
       return { success: true, message: 'session cleared' };
     },
   });
@@ -561,7 +561,7 @@ export function registerCommandPalette(ctx) {
     keywords: ['stop', 'cancel', 'abort'],
     handler: async () => {
       const core = ctx.desktopCore;
-      if (core?.agent?.requestStop) core.agent.requestStop();
+      if (core?.agent?.requestStop) {core.agent.requestStop();}
       return { success: true, message: 'stop requested' };
     },
   });
@@ -576,7 +576,7 @@ export function registerCommandPalette(ctx) {
   commandCatalog.register({
     id: 'app.preview.stop-all', title: '停止所有预览服务器', category: '预览',
     handler: async () => {
-      if (typeof ctx.stopAllPreviews === 'function') ctx.stopAllPreviews();
+      if (typeof ctx.stopAllPreviews === 'function') {ctx.stopAllPreviews();}
       return { success: true, message: 'all previews stopped' };
     },
   });
@@ -586,7 +586,7 @@ export function registerCommandPalette(ctx) {
     keywords: ['reload', 'refresh', 'scan'],
     handler: async () => {
       const core = ctx.desktopCore;
-      if (core?.agent?.workspaceState) core.agent.workspaceState.clear();
+      if (core?.agent?.workspaceState) {core.agent.workspaceState.clear();}
       return { success: true, message: 'workspace state reloaded' };
     },
   });
@@ -595,7 +595,7 @@ export function registerCommandPalette(ctx) {
     handler: async () => {
       const core = ctx.desktopCore;
       const ws = core?.agent?.workspaceState;
-      if (!ws) return { success: false, message: 'no-workspace-state' };
+      if (!ws) {return { success: false, message: 'no-workspace-state' };}
       return { success: true, data: ws.getSummary() };
     },
   });
@@ -609,7 +609,7 @@ export function registerCommandPalette(ctx) {
       })) };
     });
     ctx.ipcAdapter.registerHandler('command:run', async (payload) => {
-      if (!payload?.id) return { success: false, message: 'missing id' };
+      if (!payload?.id) {return { success: false, message: 'missing id' };}
       const r = await commandCatalog.run(payload.id, payload.payload || null);
       return r;
     });

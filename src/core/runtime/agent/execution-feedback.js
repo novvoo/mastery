@@ -88,14 +88,14 @@ class DecompositionPattern {
 
   updateFromRecord(record) {
     this.totalRuns++;
-    if (record.success) this.successRuns++;
+    if (record.success) {this.successRuns++;}
     this.avgDurationMs =
       (this.avgDurationMs * (this.totalRuns - 1) + (record.durationMs || 0)) / this.totalRuns;
     this.avgIterations =
       (this.avgIterations * (this.totalRuns - 1) + (record.iterations || 0)) / this.totalRuns;
     for (const phase of record.phasesCompleted || []) {
       if (!this.phaseCompletionRates[phase])
-        this.phaseCompletionRates[phase] = { total: 0, completed: 0 };
+        {this.phaseCompletionRates[phase] = { total: 0, completed: 0 };}
       this.phaseCompletionRates[phase].total++;
       this.phaseCompletionRates[phase].completed++;
     }
@@ -124,11 +124,11 @@ class ConflictPattern {
   record(conflictType, recovered, repairTimeMs, file) {
     this.conflictType = conflictType;
     this.totalOccurrences++;
-    if (recovered) this.successfulRecoveries++;
+    if (recovered) {this.successfulRecoveries++;}
     this.avgRepairTimeMs =
       (this.avgRepairTimeMs * (this.totalOccurrences - 1) + (repairTimeMs || 0)) /
       this.totalOccurrences;
-    if (file) this.affectedFiles.add(file);
+    if (file) {this.affectedFiles.add(file);}
     this.lastSeen = Date.now();
   }
 }
@@ -180,7 +180,7 @@ export class ExecutionFeedbackLoop {
     // 更新全局统计
     const gs = this.globalStats;
     gs.totalRuns++;
-    if (record.success) gs.successRuns++;
+    if (record.success) {gs.successRuns++;}
     gs.avgDurationMs =
       (gs.avgDurationMs * (gs.totalRuns - 1) + (record.durationMs || 0)) / gs.totalRuns;
     gs.avgIterations =
@@ -188,7 +188,7 @@ export class ExecutionFeedbackLoop {
 
     if (record.usedLLMDecomposition) {
       gs.llmDecompositionRuns++;
-      if (record.success) gs.llmDecompositionSuccesses++;
+      if (record.success) {gs.llmDecompositionSuccesses++;}
     }
 
     // 追踪意图分类准确度
@@ -252,7 +252,7 @@ export class ExecutionFeedbackLoop {
       }
     }
 
-    if (recentConflicts.length === 0) return { shouldReplan: false };
+    if (recentConflicts.length === 0) {return { shouldReplan: false };}
 
     // 按恢复率判断严重性
     for (const { type, pattern } of recentConflicts) {
@@ -300,7 +300,7 @@ export class ExecutionFeedbackLoop {
    * 包含：历史上类似任务的成功分解模式、应避免的模式。
    */
   enrichDecompositionContext(taskType) {
-    if (!this.learnFromHistory || this.history.length === 0) return null;
+    if (!this.learnFromHistory || this.history.length === 0) {return null;}
 
     const context = {
       recentResults: [],
@@ -353,7 +353,7 @@ export class ExecutionFeedbackLoop {
    * 包含：历史意图分类准确度、推荐工具命中率。
    */
   enrichClassificationContext() {
-    if (!this.learnFromHistory || this.history.length === 0) return null;
+    if (!this.learnFromHistory || this.history.length === 0) {return null;}
 
     return {
       intentHitRates: Object.entries(this.globalStats.intentHits).map(([intent, stats]) => ({
@@ -380,14 +380,14 @@ export class ExecutionFeedbackLoop {
 
   #computeAutomationAdjustment() {
     const gs = this.globalStats;
-    if (gs.totalRuns < 3) return 0; // 样本不足
+    if (gs.totalRuns < 3) {return 0;} // 样本不足
 
     const overallSuccessRate = gs.successRuns / gs.totalRuns;
 
     // 如果整体成功率低于 0.6，降低对自动化计划的信心
-    if (overallSuccessRate < 0.4) return -0.3;
-    if (overallSuccessRate < 0.6) return -0.15;
-    if (overallSuccessRate > 0.85) return 0.1;
+    if (overallSuccessRate < 0.4) {return -0.3;}
+    if (overallSuccessRate < 0.6) {return -0.15;}
+    if (overallSuccessRate > 0.85) {return 0.1;}
     return 0;
   }
 

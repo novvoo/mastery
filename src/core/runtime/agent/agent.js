@@ -1288,7 +1288,7 @@ export class ReActAgent {
 
   /** 快速估算消息列表的 token 数。CJK 字符 ×2，其他字符 /3.5 */
   #estimateMessageTokens(messages) {
-    if (!Array.isArray(messages)) return 0;
+    if (!Array.isArray(messages)) {return 0;}
     let total = 0;
     for (const msg of messages) {
       const content =
@@ -1436,7 +1436,7 @@ export class ReActAgent {
    */
   async #tryAutoAnswerAskUser(askResult) {
     const questions = Array.isArray(askResult.questions) ? askResult.questions : [];
-    if (questions.length === 0) return { autoAnswered: false };
+    if (questions.length === 0) {return { autoAnswered: false };}
 
     const reason = askResult.reason || '';
     const questionList = questions.map((q, i) => `${i + 1}. ${q}`).join('\n');

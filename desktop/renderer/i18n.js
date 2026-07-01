@@ -919,7 +919,7 @@ export class I18n {
         }
         return 'zh-CN';
       }
-      if (lower.startsWith('en')) return 'en';
+      if (lower.startsWith('en')) {return 'en';}
     } catch (_) { /* ignore */ }
 
     return DEFAULT_LANGUAGE;

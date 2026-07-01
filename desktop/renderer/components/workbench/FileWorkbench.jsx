@@ -55,7 +55,7 @@ const SEMANTIC_TOKEN_TO_STYLE = {
  * data: [deltaLine, deltaStart, length, tokenType, tokenModifiers, ...]
  */
 function decodeSemanticTokens(tokens, lines, tokenLegend) {
-  if (!tokens || !tokens.data || tokens.data.length === 0) return null;
+  if (!tokens || !tokens.data || tokens.data.length === 0) {return null;}
   const { tokenTypes } = tokenLegend;
 
   const perLine = Array.from({ length: lines.length }, () => []);
@@ -72,7 +72,7 @@ function decodeSemanticTokens(tokens, lines, tokenLegend) {
     line = deltaLine === 0 ? line : line + deltaLine;
     start = deltaStart === 0 ? start : start + deltaStart;
 
-    if (line >= lines.length) break;
+    if (line >= lines.length) {break;}
 
     const tokenName = tokenTypes[typeIdx] || 'plain';
     const styleType = SEMANTIC_TOKEN_TO_STYLE[tokenName] || 'plain';
@@ -116,10 +116,10 @@ function applySemanticSegments(lineText, tokenRanges) {
 // ── CSS helpers ────────────────────────────────────────────────────────────
 
 function getCodeTokenStyle(type, styles) {
-  if (type === 'keyword') return styles.codeKeyword;
-  if (type === 'string') return styles.codeString;
-  if (type === 'comment') return styles.codeComment;
-  if (type === 'number') return styles.codeNumber;
+  if (type === 'keyword') {return styles.codeKeyword;}
+  if (type === 'string') {return styles.codeString;}
+  if (type === 'comment') {return styles.codeComment;}
+  if (type === 'number') {return styles.codeNumber;}
   return null;
 }
 
@@ -136,10 +136,10 @@ function getFileLanguage(path = '') {
 }
 
 function diagnosticSeverityClass(severity) {
-  if (severity === 1) return 'diag-error';    // Error
-  if (severity === 2) return 'diag-warning';  // Warning
-  if (severity === 3) return 'diag-info';     // Information
-  if (severity === 4) return 'diag-hint';     // Hint
+  if (severity === 1) {return 'diag-error';}    // Error
+  if (severity === 2) {return 'diag-warning';}  // Warning
+  if (severity === 3) {return 'diag-info';}     // Information
+  if (severity === 4) {return 'diag-hint';}     // Hint
   return '';
 }
 
@@ -244,7 +244,7 @@ const fileStyles = {
 // ── DiagnosticTooltip ──────────────────────────────────────────────────────
 
 function DiagnosticTooltip({ diagnostic, anchorRect }) {
-  if (!diagnostic || !anchorRect) return null;
+  if (!diagnostic || !anchorRect) {return null;}
   return (
     <div style={{
       ...fileStyles.hoverTooltip,
@@ -298,7 +298,7 @@ function CodePreview({ openFile, useLSP }) {
       try {
         // Sync document to LSP
         await api.syncLSPDocument(filePath, content);
-        if (cancelled) return;
+        if (cancelled) {return;}
 
         // Fetch semantic tokens for highlighting
         const tokenResult = await api.getLSPSemanticTokens(filePath);
@@ -341,7 +341,7 @@ function CodePreview({ openFile, useLSP }) {
   const diagById = {};
   for (const d of diagnostics) {
     const startLine = d.range?.start?.line ?? 0;
-    if (!diagByLine[startLine]) diagByLine[startLine] = [];
+    if (!diagByLine[startLine]) {diagByLine[startLine] = [];}
     diagByLine[startLine].push(d);
     diagById[`${startLine}:${d.range?.start?.character ?? 0}`] = d;
   }
@@ -443,7 +443,7 @@ export function FileWorkbench({
 }) {
   const [lspAvailable, setLspAvailable] = useState(false);
 
-  if (!openFile) return null;
+  if (!openFile) {return null;}
 
   const isDirty = fileDraft !== openFile.content;
   const language = getFileLanguage(openFile.path);

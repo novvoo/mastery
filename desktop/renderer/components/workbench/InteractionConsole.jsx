@@ -14,10 +14,10 @@ import {
 import { styles } from '../../app/styles.js';
 
 function getStageStyle(state) {
-  if (state === 'active') return styles.interactionStageActive;
-  if (state === 'done') return styles.interactionStageDone;
-  if (state === 'attention') return styles.interactionStageAttention;
-  if (state === 'error') return styles.interactionStageError;
+  if (state === 'active') {return styles.interactionStageActive;}
+  if (state === 'done') {return styles.interactionStageDone;}
+  if (state === 'attention') {return styles.interactionStageAttention;}
+  if (state === 'error') {return styles.interactionStageError;}
   return {};
 }
 

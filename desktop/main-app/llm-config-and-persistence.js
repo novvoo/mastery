@@ -29,7 +29,7 @@ export async function initializeDesktopCore(ctx) {
 
   const writeFileApproval = async ({ args, workingDirectory }) => {
     const ipc = ctx.ipcAdapter;
-    if (!ipc || typeof ipc.request !== 'function') return true;
+    if (!ipc || typeof ipc.request !== 'function') {return true;}
 
     const file_path = args?.path || args?.file_path || '';
     const newContent = typeof args?.content === 'string' ? args.content : '';
@@ -39,7 +39,7 @@ export async function initializeDesktopCore(ctx) {
       const full = file_path && file_path.startsWith('/')
         ? file_path
         : `${workingDirectory}/${file_path}`;
-      if (fs.existsSync(full)) oldContent = fs.readFileSync(full, 'utf8');
+      if (fs.existsSync(full)) {oldContent = fs.readFileSync(full, 'utf8');}
     } catch (_) {}
 
     try {
@@ -48,8 +48,8 @@ export async function initializeDesktopCore(ctx) {
         oldContent,
         newContent,
       });
-      if (resp && resp.apply === false) return false;
-      if (resp && typeof resp.content === 'string') return { content: resp.content };
+      if (resp && resp.apply === false) {return false;}
+      if (resp && typeof resp.content === 'string') {return { content: resp.content };}
       return true;
     } catch (_) {
       return true;
@@ -335,7 +335,7 @@ function getSafeStorage(ctx) {
 
 function getApiKeyPreview(apiKey = '') {
   const value = String(apiKey || '');
-  if (!value) return '';
+  if (!value) {return '';}
   return value.length <= 4 ? '••••' : `••••${value.slice(-4)}`;
 }
 
@@ -444,7 +444,7 @@ function sanitizeModelConfigForRenderer(config = {}) {
 
 function preserveExistingApiKey(previousConfigs, incomingConfig = {}) {
   const apiKey = String(incomingConfig.apiKey || '').trim();
-  if (apiKey) return { ...incomingConfig, apiKey };
+  if (apiKey) {return { ...incomingConfig, apiKey };}
 
   const existing = previousConfigs.find(c => c.id === incomingConfig.id);
   if (existing?.apiKey) {
@@ -465,7 +465,7 @@ function preserveExistingApiKey(previousConfigs, incomingConfig = {}) {
 export function readAllModelConfigs(ctx) {
   try {
     const configPath = getModelConfigsPath(ctx);
-    if (!fs.existsSync(configPath)) return [];
+    if (!fs.existsSync(configPath)) {return [];}
     const raw = fs.readFileSync(configPath, 'utf8');
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.map(config => decryptModelConfig(ctx, config)) : [];
@@ -483,7 +483,7 @@ export function saveAllModelConfigs(ctx, configs) {
   try {
     const configPath = getModelConfigsPath(ctx);
     const dir = path.dirname(configPath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(dir)) {fs.mkdirSync(dir, { recursive: true });}
     const serialized = Array.isArray(configs)
       ? configs.map(config => serializeModelConfig(ctx, config))
       : [];

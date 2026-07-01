@@ -288,6 +288,92 @@ function shouldBlockContradictingRead(name, args, context = {}) {
   );
 }
 
+function hasObservedWorkspaceRoot(events = []) {
+  return events.some((event) => {
+    if (!event || event.success === false) {
+      return false;
+    }
+    if (event.name === 'workspace_knowledge') {
+      return true;
+    }
+    if (!['list_dir', 'tree', 'glob'].includes(event.name)) {
+      return false;
+    }
+    const targetPath = getScopeTargetPath(event.name, event.args || event.arguments || {});
+    return !targetPath || targetPath === '.' || targetPath === './' || targetPath === '';
+  });
+}
+
+function shouldRequireWorkspaceObservationBeforeMutation(name, _args, context = {}) {
+  if (!MUTATION_TOOLS.has(name)) {
+    return null;
+  }
+  if (!isCreateOrImplementationTask(context.currentTask, context.activePlan)) {
+    return null;
+  }
+
+  const workspaceState = context.workspaceState;
+  if (workspaceState && typeof workspaceState.isWorkspaceEmpty === 'function') {
+    if (workspaceState.isWorkspaceEmpty() === true) {
+      return null;
+    }
+  }
+
+  if (hasObservedWorkspaceRoot(context.toolEventsSnapshot || [])) {
+    return null;
+  }
+
+  return (
+    `WORKSPACE_CONTEXT_REQUIRED: Before ${name} in a create/implementation task, ` +
+    `inspect the real workspace root with list_dir({"path":"."}). ` +
+    `This prevents overwriting or ignoring an existing project layout.`
+  );
+}
+
+function isWorkspaceRootObservation(name, args, context = {}) {
+  if (name !== 'list_dir') {
+    return false;
+  }
+  if (!isCreateOrImplementationTask(context.currentTask, context.activePlan)) {
+    return false;
+  }
+  const targetPath = getScopeTargetPath(name, args);
+  return !targetPath || targetPath === '.' || targetPath === './' || targetPath === '';
+}
+
+function isRootProjectContextPath(targetPath) {
+  if (!targetPath) {
+    return false;
+  }
+  const normalized = targetPath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
+  if (!normalized || normalized.includes('/')) {
+    return false;
+  }
+  return (
+    /^(package|bun|pnpm-lock|yarn\.lock|package-lock)\.json$/i.test(normalized) ||
+    /^readme(\.[\w-]+)?$/i.test(normalized) ||
+    /^(vite|webpack|rollup|tsconfig|jsconfig|eslint|prettier|tailwind|postcss|next|nuxt|svelte|astro|vitest|jest|playwright|cypress|babel|biome|turbo)\.config\.[cm]?[jt]s$/i.test(
+      normalized,
+    ) ||
+    /^(tsconfig|jsconfig|composer|pyproject|cargo|go\.mod|requirements|gemfile|makefile|dockerfile)(\..*)?$/i.test(
+      normalized,
+    )
+  );
+}
+
+function isWorkspaceContextRead(name, args, context = {}) {
+  if (name !== 'read_file') {
+    return false;
+  }
+  if (!isCreateOrImplementationTask(context.currentTask, context.activePlan)) {
+    return false;
+  }
+  if (!hasObservedWorkspaceRoot(context.toolEventsSnapshot || [])) {
+    return false;
+  }
+  return isRootProjectContextPath(getScopeTargetPath(name, args));
+}
+
 export class ToolExecutor {
   #toolRegistry;
   #securityPolicy;
@@ -558,6 +644,29 @@ export class ToolExecutor {
       };
     }
 
+    const workspaceObservationRequired = shouldRequireWorkspaceObservationBeforeMutation(
+      name,
+      args,
+      {
+        ...context,
+        workspaceState: context.workspaceState || this.#config.workspaceState,
+        toolEventsSnapshot: this.#events,
+      },
+    );
+    if (workspaceObservationRequired) {
+      options.emitObservation?.(id, name, workspaceObservationRequired, resultMode);
+      this.#recordEvent(name, args, false, workspaceObservationRequired);
+      this.#ui.warn?.(`Workspace context required before ${name}`);
+      return {
+        name,
+        result: workspaceObservationRequired,
+        args,
+        error: workspaceObservationRequired,
+        skipped: true,
+        workspaceContextRequired: true,
+      };
+    }
+
     this.#ui.toolCall?.(name, args);
 
     const tool = this.#toolRegistry.get(name);
@@ -672,6 +781,11 @@ ${paramDesc || '无参数定义'}
       const targetPath = getScopeTargetPath(name, effectiveArgs);
       if (
         targetPath &&
+        !isWorkspaceRootObservation(name, effectiveArgs, context) &&
+        !isWorkspaceContextRead(name, effectiveArgs, {
+          ...context,
+          toolEventsSnapshot: this.#events,
+        }) &&
         !isPathInScope(
           targetPath,
           context.scopeFiles,
@@ -690,6 +804,11 @@ ${paramDesc || '无参数定义'}
     }
 
     // ============ 执行工具 ============
+    const planContextExtension =
+      context.activePlanManager && typeof context.activePlanManager.buildToolContextExtension === 'function'
+        ? context.activePlanManager.buildToolContextExtension()
+        : null;
+
     const executionContext = {
       workingDirectory: this.#config.workingDirectory || process.cwd(),
       memoryManager: context.memoryManager,
@@ -710,6 +829,7 @@ ${paramDesc || '无参数定义'}
       lspManager: this.#lspManager,
       editOrchestrator: this.#editOrchestrator,
       toolEventsSnapshot: this.#events.map((e) => ({ ...e })),
+      ...(planContextExtension || {}),
     };
 
     // ============ 文件存在性检查（read_file 前的防御） ============

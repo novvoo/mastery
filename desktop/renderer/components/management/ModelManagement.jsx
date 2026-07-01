@@ -25,7 +25,7 @@ function groupByProvider(configs) {
   }
   for (const config of configs || []) {
     const key = config.provider || 'openai';
-    if (!groups[key]) groups[key] = [];
+    if (!groups[key]) {groups[key] = [];}
     groups[key].push(config);
   }
   return groups;
@@ -223,7 +223,7 @@ function ModelConfigCard({
   });
 
   useEffect(() => {
-    if (!isEditing) return;
+    if (!isEditing) {return;}
     setForm({
       name: config.name || '',
       apiKey: '',

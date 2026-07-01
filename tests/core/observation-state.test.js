@@ -43,4 +43,15 @@ describe('observation-state', () => {
 
     expect(observation.errorCode).toBe(ObservationErrorCode.FACT_CONTRADICTION);
   });
+
+  test('classifies shell timeout recovery messages as timeout errors', () => {
+    const observation = classifyToolObservation(
+      'shell',
+      { command: 'npm test' },
+      'STEP_ABNORMAL: shell_timeout\nCommand: npm test\nRecovery plan:\n1. Retry once with shell using timeout 60000ms.',
+    );
+
+    expect(observation.errorCode).toBe(ObservationErrorCode.TIMEOUT_ERROR);
+    expect(observation.ok).toBe(false);
+  });
 });

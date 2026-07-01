@@ -254,7 +254,7 @@ function isInspectionTool(name) {
 function classifyShellCommand(args) {
   const cmd = String(args?.command || args?.input || args?.text || args?.cmd || '').toLowerCase();
 
-  if (!cmd) return ToolEffect.NO_PROGRESS;
+  if (!cmd) {return ToolEffect.NO_PROGRESS;}
 
   // 验证类命令
   if (

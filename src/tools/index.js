@@ -34,6 +34,8 @@ import createHandoffTool from './skills/handoff.js';
 import createToPrdTool from './skills/to_prd.js';
 import createToIssuesTool from './skills/to_issues.js';
 import createSetupTool from './skills/setup.js';
+import createCaptureRequirementsTool from './skills/capture-requirements.js';
+import createModuleSystemCheckTool from './skills/module_system_check.js';
 import {
   createDataContractCheckTool,
   createImpactMapTool,
@@ -72,6 +74,8 @@ export const SKILL_TOOL_CREATORS = [
   createUiAcceptanceTool,
   createDataContractCheckTool,
   createSecurityReviewTool,
+  createCaptureRequirementsTool,
+  createModuleSystemCheckTool,
 ];
 
 export function createCoreTools({

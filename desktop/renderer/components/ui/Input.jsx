@@ -34,7 +34,7 @@ export default function Input({
 
   // 自动调整高度
   useEffect(() => {
-    if (variant !== 'textarea' || !ref.current) return;
+    if (variant !== 'textarea' || !ref.current) {return;}
     const el = ref.current;
     el.style.height = 'auto';
     const maxHeight = SIZES[size].minHeight.replace('px', '') * maxRows;

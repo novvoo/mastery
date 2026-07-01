@@ -157,6 +157,9 @@
   --z-modal: 200;
   --z-toast: 300;
 
+  /* 窗口边框 — 暗色主题下透明，亮色主题下白色 */
+  --window-border-color: transparent;
+
   /* 面板背景层级 (从深到浅) */
   --bg-depth-0: #090B0D;
   --bg-depth-1: #101315;
@@ -277,6 +280,9 @@
   --shadow-elevated: 0 -8px 24px rgba(82, 110, 110, 0.08);
   --overlay-soft: rgba(248, 250, 251, 0.58);
   --surface-pure: #FFFFFF;
+
+  /* 窗口边框 — 亮色主题下白色 */
+  --window-border-color: #FFFFFF;
 
   /* 面板背景层级 - 亮色 */
   --bg-depth-0: #E5ECEE;

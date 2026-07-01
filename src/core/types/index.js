@@ -33,6 +33,7 @@ export const ErrorCategory = Object.freeze({
   SHELL_ERROR: 'shell_error',
   VALIDATION_ERROR: 'validation_error',
   TIMEOUT_ERROR: 'timeout_error',
+  MODULE_SYSTEM_ERROR: 'module_system_error',
 });
 
 export const ErrorSeverity = Object.freeze({

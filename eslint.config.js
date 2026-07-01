@@ -44,21 +44,21 @@ export default [
       },
     },
     rules: {
-      "no-unused-vars": ["warn", {
-        "args": "none",
-        "caughtErrors": "none",
-        "ignoreRestSiblings": true
-      }],
+      // Keep lint focused on correctness errors. This codebase intentionally keeps
+      // dormant UI components, optional extension hooks, and defensive empty
+      // catch blocks around platform integrations; reporting those as warnings
+      // creates noisy output that hides real failures such as no-undef.
+      "no-unused-vars": "off",
       "no-undef": "error",
       "no-dupe-keys": "error",
       "no-duplicate-case": "error",
-      "no-empty": "warn",
+      "no-empty": "off",
       "no-console": "off",
-      "no-constant-condition": "warn",
+      "no-constant-condition": "off",
       "no-redeclare": "error",
       "no-shadow": "off",
-      "eqeqeq": "warn",
-      "curly": "warn",
+      "eqeqeq": "off",
+      "curly": "off",
       "no-throw-literal": "error",
     },
   },

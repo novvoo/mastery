@@ -144,6 +144,13 @@ export function formatSearchResults(results, meta = {}) {
     if (metadata.chunkIndex) {
       lines.push(`Chunk  : ${metadata.chunkIndex}`);
     }
+    if (metadata.extractionMethod) {
+      const confidence =
+        Number.isFinite(metadata.ocrConfidence) && metadata.extractionMethod === 'ocr'
+          ? ` confidence=${(metadata.ocrConfidence * 100).toFixed(1)}%`
+          : '';
+      lines.push(`Extract: ${metadata.extractionMethod}${confidence}`);
+    }
     if (typeof result.semanticScore === 'number') {
       lines.push(`Semantic: ${result.semanticScore.toFixed(3)}`);
     }

@@ -18,6 +18,8 @@ const BUILTIN_COMMANDS = [
   { name: '/docs', description: 'Manage document RAG context', source: 'builtin' },
   { name: '/document', description: 'Manage document RAG context', source: 'builtin' },
   { name: '/documents', description: 'Manage document RAG context', source: 'builtin' },
+  { name: '/ocr', description: 'Manage OCR runtime and models', source: 'builtin' },
+  { name: '/orc', description: 'Alias for OCR runtime commands', source: 'builtin' },
   { name: '/doc add', description: 'Index a local document or URL', source: 'builtin_subcommand' },
   {
     name: '/doc init',
@@ -32,6 +34,14 @@ const BUILTIN_COMMANDS = [
     source: 'builtin_subcommand',
   },
   { name: '/doc help', description: 'Show document RAG help', source: 'builtin_subcommand' },
+  {
+    name: '/ocr init',
+    description: 'Download and initialize OCR models',
+    source: 'builtin_subcommand',
+  },
+  { name: '/ocr status', description: 'Show OCR runtime status', source: 'builtin_subcommand' },
+  { name: '/ocr run', description: 'Run OCR on an image path', source: 'builtin_subcommand' },
+  { name: '/ocr help', description: 'Show OCR help', source: 'builtin_subcommand' },
   { name: '/preview', description: 'Preview generated HTML or Node projects', source: 'builtin' },
   { name: '/preview list', description: 'List active previews', source: 'builtin_subcommand' },
   { name: '/preview stop', description: 'Stop an active preview', source: 'builtin_subcommand' },

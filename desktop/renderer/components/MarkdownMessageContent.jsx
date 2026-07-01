@@ -18,9 +18,9 @@ const XML_TAG_RE = /<\/?[A-Za-z_][\w:.-]*(?:\s+[^<>]*?)?\/?>/g;
 const XML_PAIR_RE = /<([A-Za-z_][\w:.-]*)(?:\s+[^<>]*?)?>[\s\S]*?<\/\1>/;
 
 function toUrl(src, workingDirectory, fileServerUrl) {
-  if (!src) return src;
-  if (/^(https?:)?\/\//i.test(src)) return src;
-  if (/^data:/i.test(src)) return src;
+  if (!src) {return src;}
+  if (/^(https?:)?\/\//i.test(src)) {return src;}
+  if (/^data:/i.test(src)) {return src;}
 
   let relative;
   if (/^[a-zA-Z]:[\\\/]/.test(src) || src.startsWith('/')) {
@@ -52,7 +52,7 @@ function toUrl(src, workingDirectory, fileServerUrl) {
 }
 
 function preprocessTextForLinks(text) {
-  if (!text || typeof text !== 'string') return text;
+  if (!text || typeof text !== 'string') {return text;}
   return text.replace(AUTO_LINK_RE, (match) => `[${match}](${match})`);
 }
 
@@ -64,12 +64,12 @@ function escapeMarkupToken(token) {
 }
 
 function escapeXmlLikeMarkup(text) {
-  if (!text || typeof text !== 'string') return text;
+  if (!text || typeof text !== 'string') {return text;}
 
   return text
     .split(FENCED_BLOCK_RE)
     .map((part) => {
-      if (/^(```|~~~)/.test(part)) return part;
+      if (/^(```|~~~)/.test(part)) {return part;}
       return part
         .replace(XML_DECL_RE, escapeMarkupToken)
         .replace(XML_COMMENT_RE, escapeMarkupToken)
@@ -80,7 +80,7 @@ function escapeXmlLikeMarkup(text) {
 }
 
 function preprocessImagePaths(text, workingDirectory, fileServerUrl) {
-  if (!text || typeof text !== 'string') return text;
+  if (!text || typeof text !== 'string') {return text;}
   let next = text;
   next = next.replace(
     /(!\[[^\]]*\]\()(\s*)([^)\s]+)(\s*([^)]*)\))/g,
@@ -107,7 +107,7 @@ function preprocessImagePaths(text, workingDirectory, fileServerUrl) {
 }
 
 function stabilizeStreamingMarkdown(text) {
-  if (!text || typeof text !== 'string') return text;
+  if (!text || typeof text !== 'string') {return text;}
 
   const fenceCount = (text.match(FENCE_LINE_RE) || []).length;
   if (fenceCount % 2 === 1) {
@@ -118,9 +118,9 @@ function stabilizeStreamingMarkdown(text) {
 
 function looksLikeMarkupBlock(text) {
   const clean = String(text || '').trim();
-  if (!clean || clean.length > 40000) return false;
-  if (!clean.startsWith('<')) return false;
-  if (clean.startsWith('<!--') || /^<\?xml\b/i.test(clean)) return true;
+  if (!clean || clean.length > 40000) {return false;}
+  if (!clean.startsWith('<')) {return false;}
+  if (clean.startsWith('<!--') || /^<\?xml\b/i.test(clean)) {return true;}
   return XML_PAIR_RE.test(clean) || /^<[A-Za-z_][\w:.-]*(?:\s+[^<>]*?)?\/?>$/.test(clean);
 }
 
@@ -141,8 +141,8 @@ export const MarkdownMessageContent = React.memo(function MarkdownMessageContent
   onLinkClick,
 }) {
   const markupBlock = useMemo(() => {
-    if (isCollapsed) return null;
-    if (!looksLikeMarkupBlock(text)) return null;
+    if (isCollapsed) {return null;}
+    if (!looksLikeMarkupBlock(text)) {return null;}
     return {
       language: guessMarkupLanguage(text),
       content: String(text || '').trim(),

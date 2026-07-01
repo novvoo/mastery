@@ -85,6 +85,26 @@ export function classifyError(error) {
     };
   }
 
+  // Module system errors
+  if (
+    message.includes('Cannot use import statement') ||
+    message.includes("'require' is not defined") ||
+    message.includes("'module' is not defined") ||
+    message.includes('Unexpected token') ||
+    message.includes('SyntaxError') ||
+    message.includes('ES module') ||
+    message.includes('CommonJS') ||
+    message.includes('Cannot find module')
+  ) {
+    return {
+      category: ErrorCategory.MODULE_SYSTEM_ERROR,
+      severity: ErrorSeverity.RECOVERABLE,
+      message,
+      originalError: err,
+      retryable: false,
+    };
+  }
+
   // Validation errors
   if (
     message.includes('validation') ||

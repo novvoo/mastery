@@ -4,7 +4,7 @@ import { useIPC } from '../../hooks/useIPC.js';
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const promptForDirectory = (workingDirectory) => {
-  if (!workingDirectory) return 'workspace';
+  if (!workingDirectory) {return 'workspace';}
   const normalized = workingDirectory.replace(/\\/g, '/');
   return normalized.split('/').filter(Boolean).slice(-1)[0] || normalized;
 };
@@ -16,7 +16,7 @@ const INITIAL_LINES = [
 
 async function createCommandOutput(command, workingDirectory, ipcInvoke) {
   const normalized = command.trim();
-  if (!normalized) return [];
+  if (!normalized) {return [];}
   
   try {
     const result = await ipcInvoke('terminal:execute', {
@@ -28,13 +28,13 @@ async function createCommandOutput(command, workingDirectory, ipcInvoke) {
     if (result.stdout) {
       const stdoutLines = result.stdout.trim().split('\n');
       stdoutLines.forEach(line => {
-        if (line) output.push({ text: line, isError: false });
+        if (line) {output.push({ text: line, isError: false });}
       });
     }
     if (result.stderr) {
       const stderrLines = result.stderr.trim().split('\n');
       stderrLines.forEach(line => {
-        if (line) output.push({ text: line, isError: true });
+        if (line) {output.push({ text: line, isError: true });}
       });
     }
     if (!result.stdout && !result.stderr) {
@@ -150,13 +150,13 @@ export function BottomTerminalPanel({
   useEffect(() => {
     const handlePointerMove = (event) => {
       const resizeState = resizeStateRef.current;
-      if (!resizeState) return;
+      if (!resizeState) {return;}
       const delta = resizeState.startY - event.clientY;
       onHeightChange(clamp(resizeState.startHeight + delta, 180, 520));
     };
 
     const handlePointerUp = () => {
-      if (!resizeStateRef.current) return;
+      if (!resizeStateRef.current) {return;}
       resizeStateRef.current = null;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
@@ -273,7 +273,7 @@ export function BottomTerminalPanel({
     } else if (event.key === 'Enter') {
       event.preventDefault();
       const command = input.trim();
-      if (!command || isStreaming) return;
+      if (!command || isStreaming) {return;}
       setLines(prev => [...prev, { type: 'command', text: `${promptLabel} $ ${command}` }]);
       setCommandHistory(prev => [...prev, command]);
       setHistoryIndex(-1);

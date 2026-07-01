@@ -1664,6 +1664,8 @@ function App() {
             previewUrlDraft={previewUrlDraft}
             ragDocs={ragDocs}
             ragStatus={ragStatus}
+            workingDirectory={workingDirectory}
+            fileServerUrl={fileServerUrl}
             onAddDocuments={handleAddRagDocuments}
             onExpandToggle={handleInspectorExpandToggle}
             onInitializeIndex={handleInitializeRagIndex}

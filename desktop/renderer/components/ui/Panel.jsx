@@ -100,7 +100,7 @@ export default function Panel({
   ariaLabel,
   ...rest
 }) {
-  if (collapsed) return null;
+  if (collapsed) {return null;}
 
   const variantStyles = VARIANTS[variant] || VARIANTS.card;
 

@@ -24,7 +24,7 @@ function normalizeHistory(history = []) {
     .map((item) => item.trim())
     .filter(Boolean)
     .filter((item) => {
-      if (seen.has(item)) return false;
+      if (seen.has(item)) {return false;}
       seen.add(item);
       return true;
     });
@@ -273,14 +273,14 @@ export function getShortcutHints({ hasHistory = false, status = 'idle' } = {}) {
 }
 
 export function getComposerAssistText({ status, value, notice }) {
-  if (notice?.text) return notice.text;
-  if (status === 'running') return 'Agent is running. Use the stop button to interrupt safely.';
+  if (notice?.text) {return notice.text;}
+  if (status === 'running') {return 'Agent is running. Use the stop button to interrupt safely.';}
   if (
     String(value || '')
       .trimStart()
       .startsWith('/')
   )
-    return 'Command palette is open. Pick a command or keep typing.';
+    {return 'Command palette is open. Pick a command or keep typing.';}
   return 'Ctrl+Enter sends. Shift+Enter adds a line. Esc twice clears. Up recalls history.';
 }
 
@@ -364,9 +364,9 @@ export function getToolActivitySummary(messages = []) {
   }
 
   const parts = [];
-  if (running > 0) parts.push(`${running} running`);
-  if (completed > 0) parts.push(`${completed} done`);
-  if (errored > 0) parts.push(`${errored} error`);
+  if (running > 0) {parts.push(`${running} running`);}
+  if (completed > 0) {parts.push(`${completed} done`);}
+  if (errored > 0) {parts.push(`${errored} error`);}
 
   return {
     count: toolMessages.length,

@@ -121,7 +121,7 @@ function createEmptyToolRegistry() {
 }
 
 export function stripActionBlocks(text = '', { toolRegistry } = {}) {
-  if (typeof text !== 'string') return text;
+  if (typeof text !== 'string') {return text;}
 
   let out = text
     .replace(
@@ -319,7 +319,7 @@ export function createProtocolStreamFilter() {
   let bufferingType = null;
 
   function push(text) {
-    if (!text || typeof text !== 'string') return { visibleText: '', protocolDetected: false };
+    if (!text || typeof text !== 'string') {return { visibleText: '', protocolDetected: false };}
 
     let input = text;
     let visibleText = '';
@@ -536,7 +536,7 @@ function scoreNumberedItem(item) {
 // ---------- 聚合判断: 整体是否为可执行任务列表 ----------
 function isActionableTaskList(text) {
   const items = text.match(/^\d+\.\s+.+/gm);
-  if (!items || items.length < 3) return false;
+  if (!items || items.length < 3) {return false;}
 
   let totalScore = 0;
   for (const item of items) {
@@ -558,11 +558,11 @@ function hasPlanLeadIn(text) {
 // 检测模型是否只输出了计划/描述而没有执行任何工具调用
 // =========================================================================
 function looksLikePlanWithoutExecution(text) {
-  if (!text?.trim()) return false;
+  if (!text?.trim()) {return false;}
   const t = text.trim();
 
   // -------- 强信号: 明确声明了文件创建清单 --------
-  if (/\*\*Files to create\*\*|Files to create:|待创建文件/i.test(t)) return true;
+  if (/\*\*Files to create\*\*|Files to create:|待创建文件/i.test(t)) {return true;}
 
   // -------- 核心判断: 编号条目是否为可执行任务列表 --------
   // 同时要求有"计划前导句"（Here's my plan...），提高置信度
@@ -571,11 +571,11 @@ function looksLikePlanWithoutExecution(text) {
     // 如果有明确的计划前导句 → 强信号，降低阈值
     if (hasPlanLeadIn(t)) {
       let score = 0;
-      for (const item of items) score += scoreNumberedItem(item);
-      if (score >= 1) return true; // 有计划声明时，微弱正评分即通过
+      for (const item of items) {score += scoreNumberedItem(item);}
+      if (score >= 1) {return true;} // 有计划声明时，微弱正评分即通过
     }
     // 否则用标准阈值
-    if (isActionableTaskList(t)) return true;
+    if (isActionableTaskList(t)) {return true;}
   }
 
   // -------- "I will / I'll / I am going to" 创建/写/构建——明确执行意图 --------
@@ -584,13 +584,13 @@ function looksLikePlanWithoutExecution(text) {
       t,
     )
   )
-    return true;
+    {return true;}
 
   // -------- "Let me first" —— 顺序执行意图 --------
-  if (/\bLet me first\b/i.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) return true;
+  if (/\bLet me first\b/i.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) {return true;}
 
   // -------- "Step by step / step-by-step" —— 步骤化解法声明 --------
-  if (/\bstep[-\s]by[-\s]step\b/i.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) return true;
+  if (/\bstep[-\s]by[-\s]step\b/i.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) {return true;}
 
   // -------- "Let me read/understand the codebase" —— 阅读意图未执行 --------
   if (
@@ -599,7 +599,7 @@ function looksLikePlanWithoutExecution(text) {
     ) &&
     !/CALL\s+\w+|action["<]/i.test(t)
   )
-    return true;
+    {return true;}
 
   // -------- "在 X 之前先 Y" —— 顺序依赖声明 --------
   if (
@@ -611,7 +611,7 @@ function looksLikePlanWithoutExecution(text) {
     ) &&
     !/CALL\s+\w+|action["<]/i.test(t)
   )
-    return true;
+    {return true;}
 
   return false;
 }
@@ -626,20 +626,20 @@ const DSML_PIPE_TAG = /<[|｜]+\s*DSML\s*[|｜]+[^>]*>[\s\S]*?<\/[|｜]+\s*DSML\
 // 因此 text 中任何 XML 标签都不是合法工具调用格式，全部视为泄漏
 // 场景: <dsml>, <info>, <thinking>, <plan>, <analysis>, <reasoning>, <reflection>, <note> 等
 function looksLikeLeakedThinking(text) {
-  if (!text?.trim()) return false;
+  if (!text?.trim()) {return false;}
   const t = text.trim();
   // 检测任何非工具 XML 标签（合法工具标签如 <action> 等已被 parser 消耗）
-  if (!ANY_XML_TAG.test(t) && !DSML_PIPE_TAG.test(t)) return false;
+  if (!ANY_XML_TAG.test(t) && !DSML_PIPE_TAG.test(t)) {return false;}
   // 去掉所有 XML / DSML 标签后的剩余文本
   const withoutTags = t.replace(ANY_XML_TAG, '').replace(DSML_PIPE_TAG, '').trim();
   // 标签之外没有任何实质内容（没有 CALL、没有 tool call、没有 FINAL_ANSWER）
-  if (!withoutTags || withoutTags.length < 20) return true;
+  if (!withoutTags || withoutTags.length < 20) {return true;}
   // 剩余内容只是 "Let me..." / "Thinking..." 之类无动作的声明
   if (
     /^(Let me|Thinking|I should|I need to|I'll)\b/i.test(withoutTags) &&
     !/CALL\s+\w+|action["<]/i.test(withoutTags)
   )
-    return true;
+    {return true;}
   return false;
 }
 
@@ -647,14 +647,14 @@ function looksLikeLeakedThinking(text) {
 // 这是比 plan-only 更严重的问题：模型编造了完整的执行过程和虚构输出。
 // 仅在 session 内实实在在未执行过任何工具时才判定为虚构。
 function looksLikeFakeExecution(text, toolEventsInRun) {
-  if (!text?.trim()) return false;
+  if (!text?.trim()) {return false;}
   // 如果 session 内已经执行过工具，可能是正常的总结描述，不拦截
-  if (toolEventsInRun > 0) return false;
+  if (toolEventsInRun > 0) {return false;}
   const t = text.trim();
   let indicators = 0;
 
   // 标记 1：虚构的 "Files Created/Created files" 章节（过去时，非将来时）
-  if (/\b(Files (C|c)reated|Created files|新增文件|已创建文件)/.test(t)) indicators++;
+  if (/\b(Files (C|c)reated|Created files|新增文件|已创建文件)/.test(t)) {indicators++;}
 
   // 标记 2：虚构的构建/验证输出（npm run build / yarn build 等 + 统计数字）
   if (
@@ -663,14 +663,14 @@ function looksLikeFakeExecution(text, toolEventsInRun) {
       t,
     )
   )
-    indicators++;
+    {indicators++;}
 
   // 标记 3：虚构的验证章节（Verification / 验证 / npm run build 带 ✅✓）
   if (
     /\b(Verification|验证|Test results?)\b/i.test(t) &&
     /(?:✅|✓|pass|success|成功|通过|No errors|zero errors)/i.test(t)
   )
-    indicators++;
+    {indicators++;}
 
   // 标记 4：虚构的错误诊断修正报告（"Root Cause" + "Fix" + 无工具执行）
   if (
@@ -678,7 +678,7 @@ function looksLikeFakeExecution(text, toolEventsInRun) {
     (/\bFiles? (C|c)reated\b/.test(t) || /\bFix\b/i.test(t) || /\bResolution\b/i.test(t)) &&
     !/CALL\s+\w+|action["<]/i.test(t)
   )
-    indicators++;
+    {indicators++;}
 
   // 标记 5：虚构的"错误已解决"开篇（The error is resolved / The issue is fixed）
   if (
@@ -686,11 +686,11 @@ function looksLikeFakeExecution(text, toolEventsInRun) {
       t,
     )
   )
-    indicators++;
+    {indicators++;}
 
   // 标记 6：虚构的文件导出声明（"Exports XXX class" / "Exports XXX function"）
   if (/^###\s+\d+\.\s+`[^`]+`\s*\n(?:Exports|导出)/m.test(t) && !/CALL\s+\w+|action["<]/i.test(t))
-    indicators++;
+    {indicators++;}
 
   // 标记 7：详细虚构文件内容描述（列出了具体方法名如 humanAct/processNight 等）
   if (
@@ -698,7 +698,7 @@ function looksLikeFakeExecution(text, toolEventsInRun) {
     /\b(class|method|function|array|stub)\b/i.test(t) &&
     !/CALL\s+\w+|action["<]/i.test(t)
   )
-    indicators++;
+    {indicators++;}
 
   // 至少 2 个信号同时命中才判定为虚构
   return indicators >= 2;
@@ -707,14 +707,14 @@ function looksLikeFakeExecution(text, toolEventsInRun) {
 // 检测模型表达了"需要阅读代码/文件"的意图，但未实际发起任何读操作工具调用
 // 这是比 plan-only 更具体的一类空轮次：模型声明要理解代码却不用 read_file / search_file 等工具
 function looksLikeIntentToReadWithoutTools(text) {
-  if (!text?.trim()) return false;
+  if (!text?.trim()) {return false;}
   const t = text.trim();
   // 表达了阅读/探索意图
   const readIntent =
     /\b(?:let me|I(?:'ll| will| need to| should| must)?|need to|going to)\s+(?:understand|read|examine|review|analyze|inspect|look\s+(?:at|into)|check\s+(?:out)?|explore|scan|study|get\s+(?:to\s+)?know|familiarize)\b/i;
   const readTarget =
     /\b(?:the\s+)?(?:full\s+)?(?:codebase|project|files?|code|repository|source|directory|structure|key\s+files?|relevant\s+(?:files?|code)|implementation|module|package)/i;
-  if (readIntent.test(t) && readTarget.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) return true;
+  if (readIntent.test(t) && readTarget.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) {return true;}
   // "before X, let me Y" 模式 (Y 是阅读操作)
   if (
     /\b(?:before|first|prior to)\s+(?:creating|writing|modifying|changing|editing|deleting|implementing|building|fixing|adding|removing)/i.test(
@@ -723,7 +723,7 @@ function looksLikeIntentToReadWithoutTools(text) {
     readIntent.test(t) &&
     !/CALL\s+\w+|action["<]/i.test(t)
   )
-    return true;
+    {return true;}
   return false;
 }
 
@@ -1335,6 +1335,8 @@ export class AgentEngine {
         'shell', // shell 具体操作由 tool-semantics.getToolEffect() 运行时分类
         'verify', // 允许验证已完成变更
         'review', // 允许审查已完成变更
+        'list_dir', // 允许在首次写入前确认工作区结构
+        'read_file', // 允许读取根目录项目上下文后再写入
       ]);
       let forceActionSystemNote = null;
       if (forceActionTriggered) {
@@ -1356,8 +1358,10 @@ export class AgentEngine {
         forceActionSystemNote =
           `<!-- FORCE-ACTION MODE: Only mutation tools are available. ` +
           `Usable tools: ${usableNames}. ` +
-          `All read/explore tools (read_file, list_dir, lsp_*, etc.) are BLOCKED. ` +
-          `You MUST write code NOW. -->`;
+          `Use list_dir first if the workspace root has not been observed in this run; ` +
+          `then read only relevant project context files before writing. ` +
+          `Other broad explore tools remain blocked. ` +
+          `You MUST ground the workspace briefly, then write code NOW. -->`;
       }
       const activeRoutedToolNames = new Set(routedTools.map((tool) => tool.name));
       const functions = this.#toolRegistry.toFunctionDefinitions(routedTools);
@@ -1489,7 +1493,7 @@ export class AgentEngine {
               async () => {
                 // 迭代增量事件，经协议过滤后转发到 UI
                 for await (const evt of streamResult.stream()) {
-                  if (!evt) continue;
+                  if (!evt) {continue;}
 
                   if (evt.type === 'text_delta' && evt.text) {
                     const out = protoFilter.push(evt.text);
@@ -1815,7 +1819,7 @@ export class AgentEngine {
         this.#sessionManager.addAssistantMessage(response.text);
         this.#sessionManager.addSystemMessage(
           shouldForceCreation
-            ? '[FORCED STRATEGY SWITCH] You expressed intent to inspect/read, but the current task is create/implementation work. Do NOT read guessed files. Your next response MUST call write_file, mkdir, shell, edit_file, or apply_hashline_patch to create the project files. If information is missing, call ask_user; do not continue prose-only analysis.'
+            ? '[FORCED STRATEGY SWITCH] You expressed intent to inspect/read, but the current task is create/implementation work. Do NOT read guessed files. First call list_dir on "." if the workspace root has not been observed in this run; then read only relevant existing project context files if needed, and call write_file, mkdir, shell, edit_file, or apply_hashline_patch to create the project files. If information is missing, call ask_user; do not continue prose-only analysis.'
             : '[FORCED TOOL USE] You expressed intent to read / understand the codebase but did not execute any tool calls. Your next response MUST call a concrete read tool such as list_dir, read_file, search_file, or search_content. Do not describe what you will read.',
         );
         this.#ui.debugEvent?.('Nudge: intent to read without tools', {
@@ -2532,7 +2536,7 @@ export class AgentEngine {
    *   下一轮 LLM → 读取更新后的 memory ✅
    */
   #refreshMemoryAfterTools(allToolCalls) {
-    if (!allToolCalls || allToolCalls.length === 0) return;
+    if (!allToolCalls || allToolCalls.length === 0) {return;}
 
     const mutationNames = new Set([
       'write_file',
@@ -2619,8 +2623,8 @@ export class AgentEngine {
    */
   #tryCreateProjection(taskProfile) {
     try {
-      if (!taskProfile?.isCodingTask) return null;
-      if (!this.#contextProjection) return null;
+      if (!taskProfile?.isCodingTask) {return null;}
+      if (!this.#contextProjection) {return null;}
 
       const projection = this.#contextProjection.projectMinimal();
 
@@ -2657,7 +2661,7 @@ export class AgentEngine {
   #expandContextOnDemand(iteration, maxIterations, _executionPlan) {
     try {
       // 仅在编码任务 + 迭代进入中后段时触发（前期让 agent 先尝试）
-      if (iteration < 2) return;
+      if (iteration < 2) {return;}
 
       // 使用当前 userInput 评估：文件是否存在、符号是否可索引、依赖图是否覆盖
       const confidence = this.#onDemandContext?.assessConfidence?.({
@@ -2665,7 +2669,7 @@ export class AgentEngine {
         symbolName: undefined,
       });
 
-      if (!confidence) return;
+      if (!confidence) {return;}
 
       // 置信度不足时注入提示，引导 agent 信任预计算上下文
       if (confidence.level === 'low' || confidence.level === 'unknown') {
@@ -2756,7 +2760,7 @@ export class AgentEngine {
     const warnings = [];
 
     for (const [uri, diags] of Object.entries(allDiags)) {
-      if (!Array.isArray(diags) || diags.length === 0) continue;
+      if (!Array.isArray(diags) || diags.length === 0) {continue;}
       const filePath = uri.replace(/^file:\/\//, '');
       for (const d of diags) {
         const entry = {
@@ -2816,13 +2820,13 @@ export class AgentEngine {
     const errorFiles = new Set();
 
     for (const [uri, diags] of Object.entries(allDiags)) {
-      if (!Array.isArray(diags)) continue;
+      if (!Array.isArray(diags)) {continue;}
       if (diags.some((d) => d.severity === 1)) {
         errorFiles.add(uri.replace(/^file:\/\//, ''));
       }
     }
 
-    if (errorFiles.size === 0) return null;
+    if (errorFiles.size === 0) {return null;}
 
     const lines = [];
     lines.push(
@@ -2866,7 +2870,7 @@ export class AgentEngine {
    * 用于在 import graph 中查找相关依赖。
    */
   #extractFileReferences(userInput) {
-    if (typeof userInput !== 'string' || !userInput) return [];
+    if (typeof userInput !== 'string' || !userInput) {return [];}
     const refs = new Set();
     // 匹配反引号包裹的文件路径: `src/foo/bar.ts`
     const backtickPattern =
@@ -2893,7 +2897,7 @@ export class AgentEngine {
    * 当 EditOrchestrator 报告冲突/回滚时，在 plan 中插入诊断→重试→重验证子任务。
    */
   #detectAndHandleHashlineConflict(execResult) {
-    if (!this.#executionPlanManager.isActive) return;
+    if (!this.#executionPlanManager.isActive) {return;}
 
     const result = execResult?.result;
     const error = execResult?.error;
@@ -2908,7 +2912,7 @@ export class AgentEngine {
       'harness_insert',
       'harness_delete',
     ];
-    if (!hashRelatedTools.includes(toolName)) return;
+    if (!hashRelatedTools.includes(toolName)) {return;}
 
     // 解析冲突信号
     let conflictType = null;
@@ -2965,7 +2969,7 @@ export class AgentEngine {
       }
     }
 
-    if (!conflictType) return; // 无冲突信号
+    if (!conflictType) {return;} // 无冲突信号
 
     // 提取受影响的文件
     const fileMatch = resultText.match(

@@ -106,13 +106,15 @@ export function createDefaultToolRegistry({
   }
   // Skill 工具（architect/to_issues 等）——按需注册，避免依赖过重
   for (const creator of SKILL_TOOL_CREATORS) {
+    let toolName = typeof creator === 'function' ? creator.name || 'unknown' : creator?.name || 'unknown';
     try {
       const tool = typeof creator === 'function' ? creator() : creator;
       if (tool && tool.name) {
+        toolName = tool.name;
         registry.register(tool);
       }
     } catch (err) {
-      console.warn(`[tool-registry] ⚠️ 注册技能工具失败: ${tool?.name || 'unknown'}, error: ${err.message}`);
+      console.warn(`[tool-registry] ⚠️ 注册技能工具失败: ${toolName}, error: ${err.message}`);
       /* 忽略 */
     }
   }

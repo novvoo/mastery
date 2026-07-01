@@ -34,7 +34,7 @@ const adapter = createLocalStorageAdapter(null, AGENT_SESSIONS_STORAGE_KEY, AGEN
 export function readDesktopLayout() {
   try {
     const raw = localStorage.getItem(DESKTOP_LAYOUT_STORAGE_KEY);
-    if (!raw) return {};
+    if (!raw) {return {};}
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {

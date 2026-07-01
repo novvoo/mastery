@@ -91,7 +91,8 @@ export const TASK_TEMPLATE_REGISTRY = {
     requiredToolIntents: ['read'],
     completionPredicate: (toolCall, result) =>
       ['read_file', 'semantic_search', 'context_assess'].includes(toolCall.name),
-    description: '基于代码现状分析需求和缺失功能',
+    description:
+      '基于代码现状分析需求和缺失功能，输出具体改动清单（文件 + 符号 + 目标行为）。若无法映射到具体文件或符号，先调用 read/search/ask_user 补充证据；若现有代码已满足全部需求，标记为"已完成"并转入 verify_result。',
     methodologyHint: 'plan',
   },
 
@@ -104,7 +105,8 @@ export const TASK_TEMPLATE_REGISTRY = {
     allowedTools: ['context_assess'],
     requiredToolIntents: [],
     completionPredicate: (toolCall, result) => toolCall.name === 'context_assess',
-    description: '设计实现方案，分解为具体改动',
+    description:
+      '设计实现方案，分解为具体改动，输出三项内容：(1) 原始需求一句话重述 (2) 具体改动清单（文件 + 符号）(3) 预期行为。若缺失任何一项，不得进入实现阶段。',
     methodologyHint: 'plan',
   },
 
@@ -116,7 +118,7 @@ export const TASK_TEMPLATE_REGISTRY = {
     allowedTools: ['context_assess'],
     requiredToolIntents: [],
     completionPredicate: (toolCall, result) => toolCall.name === 'context_assess',
-    description: '确定具体修改文件和代码位置',
+    description: '确定具体修改文件和代码位置，确保每一项需求都有对应的落点',
     methodologyHint: 'plan',
   },
 
@@ -131,7 +133,8 @@ export const TASK_TEMPLATE_REGISTRY = {
     completionPredicate: (toolCall, result) =>
       ['write_file', 'edit_file', 'apply_hashline_patch'].includes(toolCall.name) &&
       result?.success === true,
-    description: '通过 write_file/edit_file 修改源代码实现功能',
+    description:
+      '通过 write_file/edit_file 修改源代码实现功能。开始前必须具备三项：原始需求、具体文件/符号、预期行为；若缺任一项则停止并回退到规划阶段补充证据。',
     methodologyHint: 'implement',
     requiresMutation: true,
   },
@@ -146,7 +149,8 @@ export const TASK_TEMPLATE_REGISTRY = {
     completionPredicate: (toolCall, result) =>
       ['write_file', 'edit_file', 'apply_hashline_patch'].includes(toolCall.name) &&
       result?.success === true,
-    description: '执行实际代码修改',
+    description:
+      '执行实际代码修改。开始前必须具备三项：原始需求、具体文件/符号、预期行为；若缺任一项则停止并回退到规划阶段补充证据，严禁无依据的修改。',
     methodologyHint: 'implement',
     requiresMutation: true,
   },
@@ -924,9 +928,9 @@ export class GraphPlanner extends EventEmitter {
   static #inferPhase(taskName, description) {
     const lower = (taskName + ' ' + description).toLowerCase();
     // 验证阶段：verify, test, validate, confirm, lint, build_check, 验证, 测试
-    if (/\b(verify|test|validate|confirm|lint|build_check|check_diagnostics|run_tests|review_changes)\b/.test(lower) || /验证|测试/.test(lower)) return 'verification';
+    if (/\b(verify|test|validate|confirm|lint|build_check|check_diagnostics|run_tests|review_changes)\b/.test(lower) || /验证|测试/.test(lower)) {return 'verification';}
     // 审查阶段：inspect, review, check, audit, read_back, 审查, 复查
-    if (/\b(inspect_changes|review|audit|read_back|security_review|ui_acceptance|data_contract_check)\b/.test(lower) || /审[核查]|复查/.test(lower)) return 'inspection';
+    if (/\b(inspect_changes|review|audit|read_back|security_review|ui_acceptance|data_contract_check)\b/.test(lower) || /审[核查]|复查/.test(lower)) {return 'inspection';}
     // 实现阶段：implement, create, edit, write, fix, add, update, refactor, build, code, 修改, 实现, 创建, 编写, 修复, 重构
     if (
       /\b(implement|create|edit|write|fix|add|update|refactor|build|code|implement_features|implement_changes|create_new_files|refactor_code)\b/.test(
@@ -934,16 +938,16 @@ export class GraphPlanner extends EventEmitter {
       ) ||
       /修改|实现|创建|編写|修复|重构/.test(lower)
     )
-      return 'implementation';
+      {return 'implementation';}
     // 规划阶段：plan, design, architect, brainstorm, grill, zoom_out, approach, 方案, 设计, 规划
     if (/\b(plan|design|architect|brainstorm|grill|zoom_out|approach|plan_solution|design_changes|risk_check|test_strategy|migration_plan)\b/.test(lower) || /方案|设计|规划/.test(lower))
-      return 'planning';
+      {return 'planning';}
     // 探索阶段：inspect, explore, discover, read, gather, analyze, 了解, 探索, 检查, 分析, 读取, 发现
     if (
       /\b(inspect|explore|discover|read|gather|analyze|inspect_readme|inspect_workspace|inspect_existing_code|analyze_requirements|inspect_verification_target)\b/.test(lower) ||
       /了解|探索|检查|分析|读取|发现/.test(lower)
     )
-      return 'exploration';
+      {return 'exploration';}
     // 默认按任务顺序：第一个 → exploration，中间 → implementation，最后一个 → verification
     return null;
   }
@@ -1152,28 +1156,28 @@ ${toolHint}
     // 通过关键词匹配来选择最接近的语义化 ID
 
     // 探索阶段关键词 → 对应任务
-    if (/readme|说明|文档|description/.test(text)) return 'inspect_readme';
-    if (/dir|structure|目录|项目结构|查看|list/.test(text)) return 'inspect_workspace';
-    if (/exist|code|源代码|读取|existing/.test(text)) return 'inspect_existing_code';
-    if (/require|analysis|分析|需求|requirement/.test(text)) return 'analyze_requirements';
+    if (/readme|说明|文档|description/.test(text)) {return 'inspect_readme';}
+    if (/dir|structure|目录|项目结构|查看|list/.test(text)) {return 'inspect_workspace';}
+    if (/exist|code|源代码|读取|existing/.test(text)) {return 'inspect_existing_code';}
+    if (/require|analysis|分析|需求|requirement/.test(text)) {return 'analyze_requirements';}
 
     // 规划阶段关键词
-    if (/plan|design|方案|规划|设计|architecture/.test(text)) return 'plan_solution';
-    if (/design|改动|change/.test(text)) return 'design_changes';
+    if (/plan|design|方案|规划|设计|architecture/.test(text)) {return 'plan_solution';}
+    if (/design|改动|change/.test(text)) {return 'design_changes';}
 
     // 实现阶段关键词
     if (/implement|edit|write|fix|修改|实现|修复|coding|code/.test(text)) {
       // 进一步细分
-      if (/create|new|创建/.test(text)) return 'create_new_files';
-      if (/refactor|重构/.test(text)) return 'refactor_code';
+      if (/create|new|创建/.test(text)) {return 'create_new_files';}
+      if (/refactor|重构/.test(text)) {return 'refactor_code';}
       return 'implement_changes';
     }
 
     // 验证阶段关键词
     if (/verify|test|lint|build|验证|测试|诊断|diagnostic/.test(text)) {
-      if (/test|测试/.test(text)) return 'run_tests';
-      if (/diagnostic|diagnostics|诊断/.test(text)) return 'check_diagnostics';
-      if (/review|审查|复查/.test(text)) return 'review_changes';
+      if (/test|测试/.test(text)) {return 'run_tests';}
+      if (/diagnostic|diagnostics|诊断/.test(text)) {return 'check_diagnostics';}
+      if (/review|审查|复查/.test(text)) {return 'review_changes';}
       return 'verify_result';
     }
 

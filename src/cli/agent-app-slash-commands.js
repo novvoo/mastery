@@ -6,6 +6,9 @@
 
 import { ToolCategory } from '../core/types.js';
 import { Embedder } from '../core/embedder.js';
+import { OCRRuntime } from '../core/ocr-runtime.js';
+import { existsSync } from 'fs';
+import { resolve } from 'path';
 import { enhancedUI } from './enhanced-ui.js';
 import { COMMAND_HELP, COMMAND_HELP_ALIASES } from './command-help.js';
 import { handlePreviewCommand } from './agent-app-preview-commands.js';
@@ -129,6 +132,11 @@ export async function processCommand(agent, input) {
     return true;
   }
 
+  if (['/ocr', '/orc'].includes(commandName)) {
+    await handleOCRCommand(agent, argsText);
+    return true;
+  }
+
   if (commandName === '/preview') {
     await handlePreviewCommand(agent, argsText);
     return true;
@@ -234,7 +242,9 @@ export async function handleDocumentCommand(agent, argsText = '') {
   }
 
   if (['add', 'index', 'load'].includes(subcommand)) {
-    let source = stripWrappingQuotes(restText);
+    const addParts = restParts.filter((part) => part !== '--ocr' && part !== '--force-ocr');
+    const forceOCR = restParts.includes('--ocr') || restParts.includes('--force-ocr');
+    let source = stripWrappingQuotes(addParts.join(' '));
     if (!source) {
       source = await chooseDocumentFile();
     }
@@ -248,7 +258,7 @@ export async function handleDocumentCommand(agent, argsText = '') {
       spinner.start();
       const result = await toolRegistry.execute(
         'document_add',
-        { source },
+        { source, ocr: forceOCR },
         documentToolContext(agent),
       );
       spinner.stop();
@@ -259,6 +269,10 @@ export async function handleDocumentCommand(agent, argsText = '') {
       enhancedUI.success(`Indexed document: ${result.title}`);
       console.log(`  id: ${result.id}`);
       console.log(`  kind: ${result.kind}`);
+      console.log(`  extraction: ${result.extractionMethod || 'text'}`);
+      if (Number.isFinite(result.ocrConfidence)) {
+        console.log(`  OCR confidence: ${(result.ocrConfidence * 100).toFixed(1)}%`);
+      }
       console.log(`  chunks: ${result.chunks}`);
       console.log(`  source: ${result.source}`);
     } catch (error) {
@@ -364,7 +378,13 @@ export async function handleDocumentCommand(agent, argsText = '') {
       }
       for (const doc of result.documents) {
         console.log(`${doc.id}  ${doc.title}`);
-        console.log(`  kind=${doc.kind} chunks=${doc.chunks} chars=${doc.chars}`);
+        const extraction = doc.extractionMethod ? ` extraction=${doc.extractionMethod}` : '';
+        const confidence = Number.isFinite(doc.ocrConfidence)
+          ? ` ocrConfidence=${(doc.ocrConfidence * 100).toFixed(1)}%`
+          : '';
+        console.log(
+          `  kind=${doc.kind}${extraction}${confidence} chunks=${doc.chunks} chars=${doc.chars}`,
+        );
         console.log(`  source=${doc.source}`);
       }
       console.log('');
@@ -398,6 +418,229 @@ export async function handleDocumentCommand(agent, argsText = '') {
 
   enhancedUI.warning(`Unknown /doc command: ${subcommand}`);
   showBuiltInCommandHelp('doc');
+}
+
+// ---------------------------------------------------------------------------
+// OCR command
+// ---------------------------------------------------------------------------
+
+export async function handleOCRCommand(agent, argsText = '') {
+  const raw = String(argsText || '').trim();
+  const [subcommandRaw] = raw.split(/\s+/).filter(Boolean);
+  const subcommand = (subcommandRaw || 'status').toLowerCase();
+  const restText = raw.slice(subcommandRaw?.length || 0).trim();
+
+  if (['help', '--help', '-h'].includes(subcommand)) {
+    showBuiltInCommandHelp('ocr');
+    return;
+  }
+
+  if (['status', 'doctor', 'init'].includes(subcommand)) {
+    await handleOCRInitCommand({ prepare: subcommand === 'init' });
+    return;
+  }
+
+  if (['run', 'recognize'].includes(subcommand)) {
+    await handleOCRRunCommand(agent, restText);
+    return;
+  }
+
+  if (subcommandRaw) {
+    await handleOCRRunCommand(agent, raw);
+    return;
+  }
+
+  enhancedUI.warning(`Unknown /ocr command: ${subcommand}`);
+  showBuiltInCommandHelp('ocr');
+}
+
+async function handleOCRRunCommand(agent, imageText = '') {
+  const imageInput = stripWrappingQuotes(String(imageText || '').trim());
+  if (!imageInput) {
+    enhancedUI.info('Usage: /ocr <image-path>');
+    return;
+  }
+
+  const isUrl = /^https?:\/\//i.test(imageInput);
+  const imagePath = isUrl ? imageInput : resolve(agent?.workingDir || process.cwd(), imageInput);
+  if (!isUrl && !existsSync(imagePath)) {
+    enhancedUI.error(`OCR input file not found: ${imagePath}`);
+    return;
+  }
+
+  const ocrRuntime = new OCRRuntime();
+  const spinner = enhancedUI.spinner('Running OCR...');
+  try {
+    spinner.start();
+    const result = await ocrRuntime.recognize(imagePath);
+    spinner.stop();
+    console.log(enhancedUI.createHeader('OCR Result'));
+    printOCRResult(result);
+    console.log('');
+  } catch (error) {
+    spinner.stop();
+    enhancedUI.error(`OCR failed: ${error.message}`);
+  }
+}
+
+async function handleOCRInitCommand({ prepare = false } = {}) {
+  const ocrRuntime = new OCRRuntime();
+  const before = await ocrRuntime.inspect();
+
+  console.log(enhancedUI.createHeader('OCR Runtime'));
+  console.log('Runtime Package');
+  console.log(`  available: ${before.runtime.available ? 'yes' : 'no'}`);
+  console.log(`  package: ${before.runtime.packageName || '(not found)'}`);
+  console.log(`  candidates: ${before.runtime.candidates.join(', ')}`);
+  if (before.runtime.error) {
+    console.log(`  error: ${before.runtime.error}`);
+  }
+  console.log('');
+  printOCRModelStatus(before);
+  console.log(`  auto download: ${before.autoDownload ? 'enabled' : 'disabled'}`);
+  console.log(`  probe timeout: ${before.probeTimeoutMs}ms`);
+  console.log(`  download timeout: ${before.downloadTimeoutMs}ms`);
+  console.log('');
+  console.log('Download Candidates');
+  for (const [kind, candidates] of Object.entries(before.downloadCandidates)) {
+    console.log(`  ${kind}:`);
+    for (const [index, url] of candidates.entries()) {
+      console.log(`    ${index + 1}. ${url}`);
+    }
+  }
+  console.log('');
+
+  let prepared = before;
+  const missingFiles = Object.entries(before.files).filter(([, file]) => !file.exists);
+  if (prepare && missingFiles.length > 0 && before.autoDownload) {
+    enhancedUI.info(
+      'OCR model files are missing. Starting downloads before runtime initialization.',
+    );
+    const progressState = new Map();
+    try {
+      prepared = await ocrRuntime.prepareModel({
+        onDownloadProbeStart: ({ kind, candidates, timeoutMs }) => {
+          console.log(
+            `  checking ${kind} ${candidates.length} download candidate${candidates.length === 1 ? '' : 's'}...`,
+          );
+          console.log(`  probe timeout: ${timeoutMs}ms`);
+        },
+        onDownloadProbeResult: ({ kind, url, available, durationMs, totalBytes, error }) => {
+          const sizeText = totalBytes ? `, size ${formatBytes(totalBytes)}` : '';
+          const statusText = available ? 'available' : `unavailable: ${error}`;
+          console.log(`  ${kind} candidate: ${statusText} in ${durationMs}ms${sizeText}`);
+          console.log(`    ${url}`);
+        },
+        onDownloadSelected: ({ kind, url, durationMs, totalBytes }) => {
+          const sizeText = totalBytes ? `, ${formatBytes(totalBytes)}` : '';
+          console.log(`  ${kind} selected: ${url} (${durationMs}ms${sizeText})`);
+        },
+        onDownloadStart: ({ kind, file, url, timeoutMs }) => {
+          console.log(`  downloading ${kind} (${file}) from: ${url}`);
+          console.log(`  timeout: ${timeoutMs}ms`);
+        },
+        onDownloadProgress: ({ kind, downloadedBytes, totalBytes }) => {
+          const now = Date.now();
+          const last = progressState.get(kind) || { bytes: -1, at: 0 };
+          const bytesDelta = downloadedBytes - last.bytes;
+          const shouldReport =
+            last.bytes < 0 ||
+            downloadedBytes === totalBytes ||
+            bytesDelta >= 25 * 1024 * 1024 ||
+            now - last.at >= 5000;
+
+          if (!shouldReport) {
+            return;
+          }
+
+          progressState.set(kind, { bytes: downloadedBytes, at: now });
+          const totalText = totalBytes ? ` / ${formatBytes(totalBytes)}` : '';
+          const percentText = totalBytes
+            ? ` (${Math.min(100, (downloadedBytes / totalBytes) * 100).toFixed(1)}%)`
+            : '';
+          console.log(
+            `  ${kind} progress: ${formatBytes(downloadedBytes)}${totalText}${percentText}`,
+          );
+        },
+        onDownloadComplete: ({ kind, bytes }) => {
+          console.log(`  ${kind} downloaded: ${formatBytes(bytes)}`);
+        },
+      });
+      enhancedUI.success('OCR model files downloaded.');
+    } catch (error) {
+      enhancedUI.error(`OCR model download failed: ${error.message}`);
+    }
+    console.log('');
+  } else if (missingFiles.length > 0 && !before.autoDownload) {
+    enhancedUI.warning('OCR model files are missing and auto download is disabled.');
+    console.log('');
+  } else if (missingFiles.length > 0) {
+    enhancedUI.info('Use /ocr init to download missing OCR model files.');
+    console.log('');
+  }
+
+  if (prepare) {
+    const spinner = enhancedUI.spinner('Initializing OCR runtime...');
+    try {
+      spinner.start();
+      await ocrRuntime.initialize();
+      spinner.stop();
+    } catch (error) {
+      spinner.stop();
+      enhancedUI.error(`OCR initialization failed: ${error.message}`);
+    }
+  }
+
+  const after = prepare ? await ocrRuntime.inspect() : prepared;
+  console.log(enhancedUI.createHeader(prepare ? 'OCR Init Result' : 'OCR Status'));
+  printOCRModelStatus(after);
+  console.log(`Ready: ${after.ready ? 'yes' : 'no'}`);
+  console.log(`Initialized: ${after.initialized ? 'yes' : 'no'}`);
+  if (after.fallbackReason) {
+    console.log(`Fallback reason: ${after.fallbackReason}`);
+  }
+  if (after.ready) {
+    enhancedUI.success('OCR runtime is ready.');
+  } else {
+    enhancedUI.warning('OCR runtime is not ready yet.');
+  }
+  console.log('');
+}
+
+function printOCRModelStatus(status) {
+  console.log('OCR Model Files');
+  console.log(`  root: ${status.modelRoot}`);
+  for (const [kind, file] of Object.entries(status.files)) {
+    console.log(`  ${kind}: ${file.path}`);
+    console.log(`    exists: ${file.exists ? 'yes' : 'no'}`);
+    if (file.exists) {
+      console.log(`    size: ${formatBytes(file.bytes)}`);
+      console.log(`    modified: ${file.modifiedAt}`);
+    }
+  }
+}
+
+function printOCRResult(result) {
+  if (typeof result === 'string') {
+    console.log(result);
+    return;
+  }
+  if (Array.isArray(result)) {
+    for (const item of result) {
+      if (typeof item === 'string') {
+        console.log(item);
+      } else if (item?.text) {
+        const confidence = Number.isFinite(item.confidence)
+          ? ` (${(item.confidence * 100).toFixed(1)}%)`
+          : '';
+        console.log(`${item.text}${confidence}`);
+      } else {
+        console.log(enhancedUI.formatJSON(item));
+      }
+    }
+    return;
+  }
+  console.log(enhancedUI.formatJSON(result));
 }
 
 // ---------------------------------------------------------------------------

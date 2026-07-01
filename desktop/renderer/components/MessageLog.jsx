@@ -53,17 +53,17 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   // 比自定义 ReactMarkdown components 更可靠（components 对复杂嵌套内容可能不生效）
   const handleMessageContainerClick = useCallback((e) => {
     const target = e.target;
-    if (!target || target.nodeType !== 1) return;
+    if (!target || target.nodeType !== 1) {return;}
 
     // 查找最近的 <a> 祖先元素
     const anchor = target.closest('a');
-    if (!anchor) return;
+    if (!anchor) {return;}
 
     const href = anchor.getAttribute('href') || anchor.href;
-    if (!href) return;
+    if (!href) {return;}
 
     // 只处理外部链接（http/https）
-    if (!/^https?:\/\//i.test(href) && !/^www\./i.test(href)) return;
+    if (!/^https?:\/\//i.test(href) && !/^www\./i.test(href)) {return;}
 
     e.preventDefault();
     e.stopPropagation();
@@ -109,6 +109,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   const [largeRuntimePanels, setLargeRuntimePanels] = useState(new Set());
   const [expandedRuntimeDetails, setExpandedRuntimeDetails] = useState(new Set());
   const [expandedThinkingPanels, setExpandedThinkingPanels] = useState(new Set());
+  const [planFrameSelections, setPlanFrameSelections] = useState({});
   
   // 引用
   const listRef = useRef(null);
@@ -128,7 +129,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
 
   // 判断是否接近底部（阈值 80px）
   const isNearBottom = useCallback((el) => {
-    if (!el) return false;
+    if (!el) {return false;}
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     return distanceFromBottom < 80;
   }, []);
@@ -136,7 +137,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   // 主消息列表滚动事件：根据用户滚动行为智能切换 autoScroll
   const handleListScroll = useCallback((e) => {
     const el = e.target;
-    if (!el) return;
+    if (!el) {return;}
     const nearBottom = isNearBottom(el);
     // 用户主动滚动时切换 — 滚到附近底部→开启跟随；远离底部→停止跟随
     if (nearBottom && !autoScrollRef.current) {
@@ -152,8 +153,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
 
   // 自动滚动到底部 — 仅当用户希望自动跟随且不是结果类消息时才滚动
   useEffect(() => {
-    if (!listRef.current) return;
-    if (!autoScroll) return;  // 用户主动查看历史，不滚动
+    if (!listRef.current) {return;}
+    if (!autoScroll) {return;}  // 用户主动查看历史，不滚动
 
     const lastMessage = messages.filter(msg => !isRuntimeDetailMessage(msg)).at(-1);
     // 不因 Agent 回答结果而滚动（保持运行详情可见）
@@ -168,7 +169,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   // 智能滚动：子面板也使用同样策略
   const handleSubPanelScroll = useCallback((e) => {
     const el = e.target;
-    if (!el) return;
+    if (!el) {return;}
     // 子面板也遵循：用户离开底部后不强制跟随
   }, []);
 
@@ -297,7 +298,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   
   // 按时间分组消息（时间线视图）
   const groupedMessages = useMemo(() => {
-    if (viewMode !== 'timeline') return null;
+    if (viewMode !== 'timeline') {return null;}
     
     const groups = {};
     primaryMessages.forEach(msg => {
@@ -388,12 +389,28 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     });
   }, []);
 
+  const handlePlanFrameChange = useCallback((msgId, frameIndex) => {
+    setPlanFrameSelections(prev => ({
+      ...prev,
+      [msgId]: frameIndex,
+    }));
+  }, []);
+
+  const handlePlanFrameLatest = useCallback((msgId) => {
+    setPlanFrameSelections(prev => {
+      if (!(msgId in prev)) {return prev;}
+      const next = { ...prev };
+      delete next[msgId];
+      return next;
+    });
+  }, []);
+
   /**
    * 导出运行详情为 JSON 文件
    */
   const handleExportRuntimeDetails = useCallback((group) => {
     const details = group?.runtimeDetails || [];
-    if (details.length === 0) return;
+    if (details.length === 0) {return;}
 
     const exportData = buildRuntimeDetailsExportData(details);
 
@@ -464,7 +481,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         // 用户手动折叠了消息，从 userUncollapsedRef 移除
         userUncollapsedRef.current.delete(msgId);
         setShowDetails(detailsPrev => {
-          if (!detailsPrev.has(msgId)) return detailsPrev;
+          if (!detailsPrev.has(msgId)) {return detailsPrev;}
           const nextDetails = new Set(detailsPrev);
           nextDetails.delete(msgId);
           return nextDetails;
@@ -477,7 +494,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   // 处理消息详情显示/隐藏
   const handleToggleDetails = useCallback((msgId) => {
     setCollapsedMessages(prev => {
-      if (!prev.has(msgId)) return prev;
+      if (!prev.has(msgId)) {return prev;}
       const next = new Set(prev);
       next.delete(msgId);
       return next;
@@ -699,7 +716,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       } else if (msg.content && msg.content.startsWith('{')) {
         try {
           const parsed = JSON.parse(msg.content);
-          if (parsed && typeof parsed === 'object') args = parsed;
+          if (parsed && typeof parsed === 'object') {args = parsed;}
         } catch (e) {}
       }
 
@@ -837,7 +854,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     // ── 思考卡片渲染 ───────────────────────────
     const renderThinkingCard = () => {
       const content = getMessageDisplayText(msg);
-      if (!content) return null;
+      if (!content) {return null;}
 
       return (
         <div style={styles.thinkingCard}>
@@ -901,11 +918,30 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     };
 
     const renderPlanCard = () => {
-      const tasks = Array.isArray(msg.planTasks) ? msg.planTasks : [];
-      const progress = msg.planProgress || {};
-      const plan = msg.plan || {};
+      const snapshots = Array.isArray(msg.planSnapshots) && msg.planSnapshots.length > 0
+        ? msg.planSnapshots
+        : [{
+            content: msg.content,
+            timestamp: msg.timestamp,
+            plan: msg.plan || {},
+            planTasks: Array.isArray(msg.planTasks) ? msg.planTasks : [],
+            planProgress: msg.planProgress || {},
+            planSummary: msg.planSummary || '',
+            planUpdate: msg.planUpdate || null,
+            toolName: msg.toolName,
+          }];
+      const latestFrameIndex = Math.max(0, snapshots.length - 1);
+      const selectedFrameIndex = Math.min(
+        latestFrameIndex,
+        Math.max(0, planFrameSelections[msgId] ?? latestFrameIndex),
+      );
+      const frame = snapshots[selectedFrameIndex] || snapshots[latestFrameIndex] || {};
+      const isLatestFrame = selectedFrameIndex === latestFrameIndex;
+      const tasks = Array.isArray(frame.planTasks) ? frame.planTasks : [];
+      const progress = frame.planProgress || {};
+      const plan = frame.plan || {};
       const strategy = plan.strategy || plan.context?.strategy || {};
-      const title = msg.content || t('plan.title');
+      const title = frame.content || msg.content || t('plan.title');
       const modeLabel = getPlanModeLabel(plan);
       const shapeLabel = getPlanShapeLabel(plan, tasks);
       const decomposition = String(strategy.decomposition || plan?.context?.decomposition || '').toLowerCase();
@@ -957,10 +993,48 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           <div style={styles.planMetaRow}>
             <span style={styles.planMetaPill}>{progress.completed || 0}/{progress.total || tasks.length} {t('plan.status.completed')}</span>
             {decomposition && <span style={styles.planMetaPill}>{decomposition === 'llm' ? t('plan.decomposition_llm') : t('plan.decomposition_template')}</span>}
-            {(msg.planUpdate || strategy.dynamicReplanning) && <span style={styles.planMetaPill}>{t('plan.dynamic_replanning')}</span>}
+            {(frame.planUpdate || strategy.dynamicReplanning) && <span style={styles.planMetaPill}>{t('plan.dynamic_replanning')}</span>}
             {progress.running > 0 && <span style={styles.planMetaPill}>{t('plan.running_count', { count: progress.running })}</span>}
             {progress.needsRepair > 0 && <span style={styles.planMetaPillWarning}>{t('plan.needs_repair_count', { count: progress.needsRepair })}</span>}
           </div>
+
+          {snapshots.length > 1 && (
+            <div style={styles.planTimelineControl}>
+              <div style={styles.planTimelineMeta}>
+                <span>
+                  进度帧 {selectedFrameIndex + 1}/{snapshots.length}
+                  {isLatestFrame ? ' · 最新' : ' · 历史'}
+                </span>
+                <span>{frame.timestamp ? new Date(frame.timestamp).toLocaleTimeString() : ''}</span>
+              </div>
+              <div style={styles.planTimelineSliderRow}>
+                <input
+                  type="range"
+                  min="0"
+                  max={latestFrameIndex}
+                  step="1"
+                  value={selectedFrameIndex}
+                  onChange={(event) => handlePlanFrameChange(msgId, Number(event.target.value))}
+                  onClick={(event) => event.stopPropagation()}
+                  style={styles.planTimelineSlider}
+                  aria-label="切换计划进度历史"
+                />
+                <button
+                  type="button"
+                  style={{
+                    ...styles.planTimelineLatestButton,
+                    ...(isLatestFrame ? styles.planTimelineLatestButtonActive : {}),
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handlePlanFrameLatest(msgId);
+                  }}
+                >
+                  最新
+                </button>
+              </div>
+            </div>
+          )}
 
           {!isCollapsed && (
             <div style={styles.planStrategyGrid}>
@@ -1086,14 +1160,14 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         );
       }
 
-      if (msg.type === 'tool') return renderToolCard();
-      if (isAssistantMarkdownMessage && !isStreaming) return renderAssistantBubble();
-      if (msg.type === 'result' || msg.type === 'success' || msg.type === 'tool_result') return renderResultCard();
-      if (msg.type === 'error') return renderErrorCard();
-      if (msg.type === 'thinking') return renderThinkingCard();
-      if (msg.type === 'plan') return renderPlanCard();
+      if (msg.type === 'tool') {return renderToolCard();}
+      if (isAssistantMarkdownMessage && !isStreaming) {return renderAssistantBubble();}
+      if (msg.type === 'result' || msg.type === 'success' || msg.type === 'tool_result') {return renderResultCard();}
+      if (msg.type === 'error') {return renderErrorCard();}
+      if (msg.type === 'thinking') {return renderThinkingCard();}
+      if (msg.type === 'plan') {return renderPlanCard();}
       // streaming card：只有在没有 plan 的任务中立即显示，或者有 plan 但 plan 已经出现后才显示
-      if (isStreaming && (!hasPlanInTask || planHasAppeared)) return renderStreamingCard();
+      if (isStreaming && (!hasPlanInTask || planHasAppeared)) {return renderStreamingCard();}
 
       const content = getMessageDisplayText(msg);
       return (
@@ -1602,7 +1676,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
                 onChange={handleSearch}
                 placeholder={t('msg.search_messages')}
                 onBlur={() => {
-                  if (!searchQuery) setSearchExpanded(false);
+                  if (!searchQuery) {setSearchExpanded(false);}
                 }}
               />
             )}

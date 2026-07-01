@@ -61,7 +61,7 @@ export class ConversationJournal {
   recordResult(entry) {
     const { answer, success, reason, durationMs, toolCount, runId } = entry;
     const filePath = this.#findJournalFile();
-    if (!filePath || !existsSync(filePath)) return;
+    if (!filePath || !existsSync(filePath)) {return;}
 
     let content = readFileSync(filePath, 'utf-8');
     const placeholder = '<!-- RESULT_PENDING -->';
@@ -102,7 +102,7 @@ export class ConversationJournal {
 
   #journalDir;
   #ensureDir() {
-    if (!this.#journalDir) return;
+    if (!this.#journalDir) {return;}
     mkdirSync(this.#journalDir, { recursive: true });
   }
 }

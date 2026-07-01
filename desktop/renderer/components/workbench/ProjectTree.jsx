@@ -369,7 +369,7 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
 
   // 计算相对路径
   const getRelativePath = useCallback((fullPath) => {
-    if (!workingDirectory) return fullPath;
+    if (!workingDirectory) {return fullPath;}
     return fullPath.replace(workingDirectory + '/', '').replace(workingDirectory + '\\', '');
   }, [workingDirectory]);
 
@@ -454,7 +454,7 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
 
   // 构建右键菜单项
   const contextMenuItems = useMemo(() => {
-    if (!contextMenu?.entry) return [];
+    if (!contextMenu?.entry) {return [];}
 
     const { entry } = contextMenu;
     const isDirectory = entry.type === 'directory';
@@ -513,20 +513,20 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
   ], [handleCreateFile, handleCreateDirectory]);
 
   const rootName = useMemo(() => {
-    if (!workingDirectory) return '未设置';
+    if (!workingDirectory) {return '未设置';}
     const parts = workingDirectory.split(/[\\/]/).filter(Boolean);
     return parts.pop() || workingDirectory;
   }, [workingDirectory]);
 
   const filterEntries = useCallback((entries, query) => {
-    if (!query) return entries;
+    if (!query) {return entries;}
     const lowerQuery = query.toLowerCase();
     return entries.filter((entry) => entry.name.toLowerCase().includes(lowerQuery));
   }, []);
 
   const countFilteredChildren = useCallback(
     (path, query) => {
-      if (!query) return 0;
+      if (!query) {return 0;}
       const entries = directoryChildren[path] || [];
       let count = 0;
       for (const entry of entries) {

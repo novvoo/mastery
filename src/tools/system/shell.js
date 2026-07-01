@@ -11,16 +11,120 @@ import { DANGEROUS_SHELL_PATTERNS } from '../../utils/patterns.js';
 
 const MAX_COMMAND_LENGTH = 8192;
 const HARD_TIMEOUT_MS = 120000;
+const DEFAULT_TIMEOUT_MS = 30000;
+const INTERACTIVE_TIMEOUT_MS = 60000;
+const NO_OUTPUT_TIMEOUT_MS = 30000;
+
+function normalizeTimeout(timeout) {
+  if (timeout === undefined || timeout === null || timeout === '') {
+    return { timeoutMs: DEFAULT_TIMEOUT_MS, normalizedFromSeconds: false, originalTimeout: null };
+  }
+  const numeric = Number(timeout);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return { timeoutMs: DEFAULT_TIMEOUT_MS, normalizedFromSeconds: false, originalTimeout: timeout };
+  }
+  if (numeric < 1000) {
+    return {
+      timeoutMs: Math.min(Math.round(numeric * 1000), HARD_TIMEOUT_MS),
+      normalizedFromSeconds: true,
+      originalTimeout: numeric,
+    };
+  }
+  return {
+    timeoutMs: Math.min(Math.round(numeric), HARD_TIMEOUT_MS),
+    normalizedFromSeconds: false,
+    originalTimeout: numeric,
+  };
+}
+
+function isInteractiveCommand(command) {
+  return /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(test)\b|\b(npx\s+)?(jest|vitest|mocha)\b|\b(inquirer|ora|chalk|prompt)\b/i.test(
+    command,
+  );
+}
+
+function addNonInteractiveFlags(command) {
+  const normalized = command.toLowerCase();
+  
+  if (normalized.includes('jest') && !normalized.includes('--watchall') && !normalized.includes('--watch')) {
+    return command + ' --watchAll=false';
+  }
+  
+  if (normalized.includes('vitest') && !normalized.includes('--run') && !normalized.includes('--watch=false')) {
+    return command + ' --run';
+  }
+  
+  if (normalized.includes('mocha') && !normalized.includes('--watch')) {
+    return command;
+  }
+  
+  if (/npm\s+test/i.test(normalized)) {
+    return command;
+  }
+  
+  return command;
+}
+
+function isFiniteVerificationCommand(command) {
+  return /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(test|build|lint|check|typecheck)\b|\b(npx\s+)?(jest|vitest|eslint|tsc|playwright|cypress)\b|\b(pytest|go\s+test|cargo\s+test|mvn\s+test|gradle\s+test)\b/i.test(
+    command,
+  );
+}
+
+function buildTimeoutRecoveryMessage(command, timeoutInfo, longRunning) {
+  const commandLabel = command.length > 160 ? command.slice(0, 157) + '...' : command;
+  const finiteVerification = isFiniteVerificationCommand(command);
+  const retryTimeout = Math.min(Math.max(timeoutInfo.timeoutMs * 2, 60000), HARD_TIMEOUT_MS);
+  const lines = [
+    'STEP_ABNORMAL: shell_timeout',
+    `Command: ${commandLabel}`,
+    `Timeout: ${timeoutInfo.timeoutMs}ms`,
+  ];
+
+  if (timeoutInfo.normalizedFromSeconds) {
+    lines.push(
+      `Note: received timeout=${timeoutInfo.originalTimeout}; interpreted it as seconds (${timeoutInfo.timeoutMs}ms) because values below 1000 are usually accidental second-based inputs.`,
+    );
+  }
+
+  if (finiteVerification && !longRunning?.isLongRunning) {
+    lines.push('Likely cause: finite verification command exceeded the allotted time.');
+    lines.push('Recovery plan:');
+    lines.push(`1. Retry once with shell using timeout ${retryTimeout}ms.`);
+    lines.push('2. If it times out again, inspect the package scripts/config and run a narrower test/build command.');
+    lines.push('3. Do not mark verification complete until a finite command exits successfully.');
+    return lines.join('\n');
+  }
+
+  lines.push(
+    longRunning?.isLongRunning
+      ? `Likely cause: command behaves like a long-running process (${longRunning.reason || 'classifier match'}).`
+      : 'Likely cause: command exceeded the allotted time or is waiting for input.',
+  );
+  lines.push('Recovery plan:');
+  lines.push('1. If it is a dev server, watcher, REPL, TUI, game loop, or interactive prompt, run it with pty_start.');
+  lines.push('2. Inspect progress with pty_read, provide input with pty_write if needed, and stop it with pty_stop.');
+  lines.push(`3. If it should be finite, retry shell with a larger timeout such as ${retryTimeout}ms or narrow the command.`);
+  return lines.join('\n');
+}
 
 function executeAsync(command, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(options.executable || command, options.args || [], {
+    const isInteractive = isInteractiveCommand(command);
+    const finalCommand = isInteractive ? addNonInteractiveFlags(command) : command;
+    const effectiveTimeout = isInteractive 
+      ? Math.max(options.timeout || INTERACTIVE_TIMEOUT_MS, INTERACTIVE_TIMEOUT_MS)
+      : options.timeout || DEFAULT_TIMEOUT_MS;
+    
+    const child = spawn(options.executable || finalCommand, options.args || [], {
       cwd: options.cwd,
       shell: options.shell !== false,
       stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: options.timeout || 30000,
+      timeout: effectiveTimeout,
       env: {
         ...process.env,
+        CI: 'true',
+        CI_ENVIRONMENT: 'true',
         ...(options.env || {}),
       },
     });
@@ -28,8 +132,15 @@ function executeAsync(command, options = {}) {
     let stdout = '';
     let stderr = '';
     let killed = false;
+    let lastOutputTime = Date.now();
+    let wasInteractive = false;
+
+    const resetOutputTimer = () => {
+      lastOutputTime = Date.now();
+    };
 
     child.stdout.on('data', (data) => {
+      resetOutputTimer();
       stdout += data.toString();
       if (stdout.length > 5 * 1024 * 1024) {
         child.kill();
@@ -37,26 +148,50 @@ function executeAsync(command, options = {}) {
     });
 
     child.stderr.on('data', (data) => {
+      resetOutputTimer();
       stderr += data.toString();
     });
 
+    const noOutputTimer = setInterval(() => {
+      const elapsed = Date.now() - lastOutputTime;
+      if (elapsed > NO_OUTPUT_TIMEOUT_MS) {
+        if (isInteractive && !wasInteractive) {
+          wasInteractive = true;
+          child.stdin.write('\n');
+          resetOutputTimer();
+        } else if (elapsed > effectiveTimeout) {
+          killed = true;
+          child.kill('SIGTERM');
+          clearInterval(noOutputTimer);
+          setTimeout(() => {
+            if (!child.killed) {
+              child.kill('SIGKILL');
+            }
+          }, 5000);
+        }
+      }
+    }, 1000);
+
     child.on('close', (exitCode) => {
-      resolve({ stdout, stderr, exitCode, killed });
+      clearInterval(noOutputTimer);
+      resolve({ stdout, stderr, exitCode, killed, wasInteractive, originalCommand: command, finalCommand });
     });
 
     child.on('error', (error) => {
+      clearInterval(noOutputTimer);
       reject(error);
     });
 
     const timer = setTimeout(() => {
       killed = true;
       child.kill('SIGTERM');
+      clearInterval(noOutputTimer);
       setTimeout(() => {
         if (!child.killed) {
           child.kill('SIGKILL');
         }
       }, 5000);
-    }, options.timeout || 30000);
+    }, effectiveTimeout);
 
     child.on('close', () => clearTimeout(timer));
   });
@@ -89,17 +224,20 @@ export function createShellTool(options = {}) {
       }
 
       const cmd = command;
-      const ms = Math.min(timeout || 30000, HARD_TIMEOUT_MS);
+      const timeoutInfo = normalizeTimeout(timeout);
+      const ms = timeoutInfo.timeoutMs;
       const startedAt = Date.now();
 
       if (ctx.debug && ctx.ui?.debugEvent) {
         ctx.ui.debugEvent('Shell command prepared', {
-          command: cmd,
-          cwd: ctx.workingDirectory,
-          timeoutMs: ms,
-          tool: ctx.toolName || 'shell',
-          foregroundBypass: !!foreground,
-        });
+            command: cmd,
+            cwd: ctx.workingDirectory,
+            timeoutMs: ms,
+            originalTimeout: timeoutInfo.originalTimeout,
+            normalizedFromSeconds: timeoutInfo.normalizedFromSeconds,
+            tool: ctx.toolName || 'shell',
+            foregroundBypass: !!foreground,
+          });
       }
 
       for (const pattern of DANGEROUS_SHELL_PATTERNS) {
@@ -194,23 +332,30 @@ export function createShellTool(options = {}) {
             durationMs: Date.now() - startedAt,
             exitCode: result.exitCode,
             killed: result.killed,
+            wasInteractive: result.wasInteractive,
             stdoutPreview: result.stdout.trim().substring(0, 500),
             stderrPreview: result.stderr.trim().substring(0, 500),
           });
         }
 
+        if (result.wasInteractive) {
+          ctx.ui?.debugEvent?.('Shell command was interactive', {
+            command: cmd,
+            finalCommand: result.finalCommand,
+          });
+        }
+
         if (result.killed) {
-          return [
-            `Command timed out after ${ms}ms and was killed.`,
-            'If this command was expected to keep running (pygame window, game loop, dev server, watcher, REPL, or TUI), do not retry it with shell.',
-            'Run it with pty_start, inspect with pty_read, then stop it with pty_stop when finished.',
-          ].join('\n');
+          return buildTimeoutRecoveryMessage(cmd, timeoutInfo, longRunning);
         }
 
         if (result.exitCode !== 0) {
           const stderr = result.stderr.trim();
           const stdout = result.stdout.trim();
           let msg = `Command failed with exit code ${result.exitCode}`;
+          if (result.wasInteractive) {
+            msg += '\nNote: This command appeared to be waiting for input. If it requires interactive prompts, consider running it with pty_start.';
+          }
           if (stdout) {
             msg += `\nstdout: ${stdout}`;
           }
@@ -222,7 +367,9 @@ export function createShellTool(options = {}) {
 
         const output = result.stdout.trim();
         if (!output) {
-          return '(command produced no output)';
+          return result.wasInteractive 
+            ? '(command produced no output; it may have been waiting for input)'
+            : '(command produced no output)';
         }
         if (output.length > 5000) {
           return output.substring(0, 5000) + '\n... (truncated, ' + output.length + ' chars total)';

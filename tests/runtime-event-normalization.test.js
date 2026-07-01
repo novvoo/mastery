@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  mergePlanMessageList,
   normalizeRuntimeEventMessage,
   safeStringify,
 } from '../desktop/renderer/hooks/useRuntime.js';
@@ -48,6 +49,7 @@ describe('runtime event normalization', () => {
   test('normalizeRuntimeEventMessage renders execution plan events as plan messages', () => {
     const normalized = normalizeRuntimeEventMessage('plan:created', {
       plan: {
+        id: 'plan_123',
         name: 'Automatic coding task plan',
         tasks: [
           { id: 'inspect_workspace', name: 'Inspect workspace', status: 'completed' },
@@ -59,6 +61,8 @@ describe('runtime event normalization', () => {
     });
 
     expect(normalized.message.type).toBe('plan');
+    expect(normalized.message.planId).toBe('plan_123');
+    expect(normalized.message.planKey).toBe('plan_123');
     expect(normalized.message.runtimeDetail).toBeUndefined();
     expect(normalized.message.planTasks).toHaveLength(3);
     expect(normalized.message.planProgress).toMatchObject({
@@ -67,6 +71,47 @@ describe('runtime event normalization', () => {
       running: 1,
       progress: 33,
     });
+  });
+
+  test('mergePlanMessageList keeps planning and plan updates in one dynamic bubble', () => {
+    const first = normalizeRuntimeEventMessage('plan:updated', {
+      plan: {
+        tasks: [{ id: 'planning', name: '规划任务', status: 'running' }],
+      },
+      summary: '正在规划',
+    }).message;
+    const second = normalizeRuntimeEventMessage('plan:updated', {
+      plan: {
+        id: 'plan_real',
+        tasks: [
+          { id: 'planning', name: '规划任务', status: 'completed' },
+          { id: 'implement', name: '实现', status: 'running' },
+        ],
+      },
+      summary: '执行计划已更新',
+    }).message;
+
+    const messages = mergePlanMessageList(mergePlanMessageList([], first), second);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0].type).toBe('plan');
+    expect(messages[0].planKey).toBe('plan_real');
+    expect(messages[0].planSnapshots).toHaveLength(2);
+    expect(messages[0].planTasks).toHaveLength(2);
+  });
+
+  test('mergePlanMessageList keeps distinct real plans separated', () => {
+    const first = normalizeRuntimeEventMessage('plan:created', {
+      plan: { id: 'plan_one', tasks: [] },
+    }).message;
+    const second = normalizeRuntimeEventMessage('plan:created', {
+      plan: { id: 'plan_two', tasks: [] },
+    }).message;
+
+    const messages = mergePlanMessageList(mergePlanMessageList([], first), second);
+
+    expect(messages).toHaveLength(2);
+    expect(messages.map((message) => message.planKey)).toEqual(['plan_one', 'plan_two']);
   });
 
   test('normalizeRuntimeEventMessage extracts assistant content from common response shapes', () => {

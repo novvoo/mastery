@@ -198,6 +198,6 @@ export function useFileOperations({ ipc }) {
  * 检查是否有未保存的文件草稿
  */
 export function hasUnsavedFileDraft(openFile, fileDraft) {
-  if (!openFile?.content) return false;
+  if (!openFile?.content) {return false;}
   return openFile.content !== fileDraft;
 }

@@ -457,7 +457,7 @@ ${paramDesc || '无参数定义'}
   }
 
   #getReadToolTargetPath(name, args) {
-    if (!args) return null;
+    if (!args) {return null;}
     switch (name) {
       case 'read_file':
         return args.path || args.filePath || null;

@@ -147,6 +147,12 @@ describe('AgentPlanner', () => {
     planner.advance('project_profile', { task: 'auth fix' }, 'profiled project');
     planner.advance('test_strategy', {}, 'targeted auth permission regression');
     planner.advance('security_review', { surface: 'auth token' }, 'reviewed auth surface');
+    planner.advance('capture_requirements', {
+      request: '修复 auth token 权限绕过',
+      targets: ['src/auth.js'],
+      expected: 'auth token permission bypass is fixed',
+      status: 'pending',
+    }, { ok: true });
     planner.advance('write_file', { path: 'auth.js' }, 'success: written');
     planner.advance('security_review', { surface: 'auth token' }, 'reviewed changed auth surface');
     planner.advance('security_review', { surface: 'auth token' }, 'reviewed semantic risk');
@@ -339,11 +345,16 @@ describe('AgentPlanner', () => {
     planner.advance('test_strategy', {}, 'targeted check');
     expect(plan.getTask('tdd_reproduce').status).toBe(TaskStatus.COMPLETED);
 
-    // Phase 4: plan_solution
-    planner.advance('brainstorm', {}, 'some plan output');
+    // Phase 4: plan_solution — 调用 capture_requirements 产出结构化工件
+    planner.advance('capture_requirements', {
+      request: 'edit app.js to add a greeting',
+      targets: ['app.js'],
+      expected: 'app.js exports a greeting function',
+      status: 'pending',
+    }, { ok: true, artifact: { request: '...', targets: ['app.js'] } });
     expect(plan.getTask('plan_solution').status).toBe(TaskStatus.COMPLETED);
 
-    // Phase 5: implement_changes
+    // Phase 5: implement_changes — 工件存在后 mutation 工具放行
     planner.advance('write_file', { path: 'app.js' }, 'success: written');
     // implement_changes may still be running if requiredMutationPaths not met
     // With no file paths in input, it completes
@@ -358,7 +369,12 @@ describe('AgentPlanner', () => {
     planner.advance('list_dir', { path: '/src' }, 'file1.js');
     planner.advance('read_file', { path: 'package.json' }, '{"scripts":{"test":"bun test"}}');
     planner.advance('test_strategy', {}, 'targeted check');
-    planner.advance('brainstorm', {}, 'plan output');
+    planner.advance('capture_requirements', {
+      request: 'edit app.js',
+      targets: ['app.js'],
+      expected: 'app.js updated',
+      status: 'pending',
+    }, { ok: true });
     planner.advance('write_file', { path: 'app.js' }, 'success: written');
     planner.advance('read_file', { path: 'app.js' }, 'file content');
     planner.advance('shell', { command: 'bun test' }, 'all tests passed');

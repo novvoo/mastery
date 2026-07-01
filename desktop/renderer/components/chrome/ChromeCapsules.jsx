@@ -62,7 +62,7 @@ function StatsCapsule({ toolCount, stats, appVersion }) {
 }
 
 function WindowControls({ isMac, windowState, onMinimize, onMaximize, onClose }) {
-  if (isMac) return null;
+  if (isMac) {return null;}
   return (
     <div
       style={{
