@@ -7,7 +7,7 @@
  * Agent 不再直接读/写文件，而是操作状态图节点，通过投影获取上下文
  */
 
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 import { ContentAddressableStore, StateGraph } from '../../core/harness/state-graph-core.js';
 import { CompleteIndex } from '../../core/harness/content-addressable-store.js';
 import { ContextProjectionGenerator } from '../../core/harness/context-projection.js';

@@ -5,7 +5,7 @@ import {
   getMissingRequiredConfig,
   getProviderModel,
   getUserEnvPath,
-} from '../core/runtime-config.js';
+} from '../core/runtime/runtime-config.js';
 
 export function printCliHelp() {
   console.log(`AI Engineering Mastery Agent

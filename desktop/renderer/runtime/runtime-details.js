@@ -1,4 +1,3 @@
-// Re-export from src/core/ — runtime-details logic has been moved to runtime layer
 export {
   isRuntimeDetailMessage,
   isThinkingMessage,
@@ -13,4 +12,4 @@ export {
   createConversationGroups,
   createRuntimeDetailId,
   buildRuntimeDetailsExportData,
-} from '../../../../../src/core/runtime-details.js';
+} from '../../../src/core/runtime/runtime-details.js';

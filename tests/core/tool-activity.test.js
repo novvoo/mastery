@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { describeToolActivity } from '../../src/core/tool-activity.js';
+import { describeToolActivity } from '../../src/core/runtime/tool-activity.js';
 
 describe('tool activity descriptions', () => {
   test('describes file reads', () => {

@@ -4,7 +4,7 @@
  * Extracted from agent-app.js
  */
 
-import { ToolCategory } from '../core/types.js';
+import { ToolCategory } from '../core/types/index.js';
 import { Embedder } from '../core/embedder.js';
 import { OCRRuntime } from '../core/ocr-runtime.js';
 import { existsSync } from 'fs';

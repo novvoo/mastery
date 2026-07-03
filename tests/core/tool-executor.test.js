@@ -2,9 +2,9 @@ import { describe, test, expect, mock } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { ToolExecutor } from '../../src/core/tool-executor.js';
-import { Decision } from '../../src/core/security-policy.js';
-import { WorkspaceState } from '../../src/core/workspace-state.js';
+import { ToolExecutor } from '../../src/core/runtime/agent/tool-executor.js';
+import { Decision } from '../../src/core/runtime/agent/support/security-policy.js';
+import { WorkspaceState } from '../../src/core/workspace/workspace-state.js';
 
 function makeTool(name, extra = {}) {
   return {

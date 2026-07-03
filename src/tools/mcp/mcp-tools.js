@@ -3,7 +3,7 @@
  * MCP 工具集成 - 将 MCP 客户端功能暴露为 Agent 工具
  */
 
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 
 /**
  * 创建 MCP 工具集

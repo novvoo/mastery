@@ -1,7 +1,7 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join, resolve } from 'path';
 import { tmpdir } from 'os';
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 
 export default function handoff() {
   return {

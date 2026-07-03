@@ -9,7 +9,7 @@ import {
   PREVIEW_HOST,
   PREVIEW_PORT_END,
   PREVIEW_PORT_START,
-} from '../../src/core/preview-server.js';
+} from '../../src/core/runtime/preview-server.js';
 
 describe('desktop dev server ports', () => {
   test('Electron renderer dev server uses a separate port range from workspace previews', () => {

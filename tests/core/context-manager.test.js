@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { ContextManager } from '../../src/core/context-manager.js';
+import { ContextManager } from '../../src/core/runtime/agent/context-manager.js';
 
 /**
  * Helper: create a mock sessionManager for ContextManager tests.

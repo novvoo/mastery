@@ -1,4 +1,4 @@
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 
 function lines(title, sections) {
   return [

@@ -12,7 +12,7 @@
  * - harness_rollback: 回滚到之前状态
  */
 
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 import { ContentAddressableStore, FileAnalyzer } from '../../core/harness/content-addressing.js';
 import {
   HashAnchoredPatcher,

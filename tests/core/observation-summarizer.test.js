@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 import { ObservationSummarizer } from '../../src/core/observation-summarizer.js';
-import { WorkspaceState } from '../../src/core/workspace-state.js';
+import { WorkspaceState } from '../../src/core/workspace/workspace-state.js';
 
 describe('ObservationSummarizer', () => {
   test('processToolResult for unknown tool returns default', () => {

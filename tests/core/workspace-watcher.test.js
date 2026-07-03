@@ -6,7 +6,7 @@ import {
   listWorkspaceDirectory,
   createWorkspaceWatcher,
   DEFAULT_IGNORED_WATCH_DIRECTORIES,
-} from '../../src/core/workspace-watcher.js';
+} from '../../src/core/workspace/workspace-watcher.js';
 
 describe('workspace-watcher', () => {
   let tempDir;

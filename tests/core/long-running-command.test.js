@@ -1,5 +1,5 @@
 import { describe, test, expect, mock } from 'bun:test';
-import { classifyLongRunningCommand } from '../../src/core/long-running-command.js';
+import { classifyLongRunningCommand } from '../../src/core/runtime/long-running-command.js';
 
 describe('classifyLongRunningCommand', () => {
   test('returns isLongRunning false for empty command', async () => {

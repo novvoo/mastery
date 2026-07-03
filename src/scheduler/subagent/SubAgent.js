@@ -4,7 +4,7 @@
  * 增强版：支持记忆共享、原生嵌套、自动清理
  */
 
-import { ReActAgent } from '../../core/agent.js';
+import { ReActAgent } from '../../core/runtime/agent/agent.js';
 
 /**
  * 子代理状态枚举

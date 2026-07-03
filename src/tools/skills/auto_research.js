@@ -1,4 +1,4 @@
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 
 /**
  * auto_research - Metric-driven research loop planner.

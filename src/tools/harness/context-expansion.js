@@ -5,7 +5,7 @@
  * 实现"按需加载（load on demand）"而非"预加载（preload everything）"
  */
 
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 import { OnDemandContextExpansion } from '../../core/harness/on-demand-context.js';
 import { SymbolIndex } from '../../core/harness/symbol-index.js';
 import { DependencyGraph } from '../../core/harness/dependency-graph.js';

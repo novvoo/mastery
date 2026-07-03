@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { TaskClassifier } from '../../src/core/task-classifier.js';
+import { TaskClassifier } from '../../src/core/classification/task-classifier.js';
 
 describe('TaskClassifier', () => {
   test('classify returns task profile', () => {

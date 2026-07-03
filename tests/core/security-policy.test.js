@@ -6,7 +6,7 @@ import {
   createReadOnlyPolicy,
   createRestrictedPolicy,
   createFullPolicy,
-} from '../../src/core/security-policy.js';
+} from '../../src/core/runtime/agent/support/security-policy.js';
 
 describe('SecurityPolicy', () => {
   describe('Decision and DenyReason', () => {

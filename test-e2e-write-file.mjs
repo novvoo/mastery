@@ -2,8 +2,8 @@
 // 端到端测试：模拟 agent-engine 流程，验证 write_file 能否真实写文件
 import { writeFileSync, rmSync, existsSync, mkdirSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { createAgentEngine } from './src/core/agent-engine.js';
-import { ToolRegistry } from './src/core/tool-registry.js';
+import { createAgentEngine } from './src/core/runtime/agent/agent-engine.js';
+import { ToolRegistry } from './src/core/runtime/agent/tool-registry.js';
 import { createFileSystemTools } from './src/tools/filesystem/filesystem-tools.js';
 
 // 准备临时目录

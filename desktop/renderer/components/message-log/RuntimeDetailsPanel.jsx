@@ -11,13 +11,13 @@ import {
   getStatusUpdateText,
   isThinkingMessage,
   isStatusUpdateMessage,
-} from './utils/runtime-details.js';
+} from '../../runtime/runtime-details.js';
 import {
   buildActivitySummary,
   getActivityTone,
   getFileTypeIcon,
   formatDuration,
-} from './utils/activity-summary.js';
+} from '../../runtime/activity-summary.js';
 import {
   PLAN_PHASE_LABELS,
   formatPlanStrategyValue,
@@ -126,6 +126,14 @@ export function RuntimeDetailsPanel({
   const visibleRuntimeDetails = runtimeDetails.filter(
     (msg) => !isStatusUpdateMessage(msg) && !isThinkingMessage(msg),
   );
+  // ── 从 group.messages 中找最新 plan 帧作为单一数据源 ──
+  // 不再从 activitySummary.plan 重建（消除双管道不一致）
+  const planMessages = (group?.messages || []).filter((msg) => msg.type === 'plan');
+  const latestPlanMsg = planMessages.length > 0 ? planMessages[planMessages.length - 1] : null;
+  const latestPlanSnapshots = latestPlanMsg?.planSnapshots || [];
+  const latestPlanFrame = latestPlanSnapshots.length > 0
+    ? latestPlanSnapshots[latestPlanSnapshots.length - 1]
+    : latestPlanMsg || null;
   const latestStatusUpdate = [...runtimeDetails]
     .reverse()
     .find(
@@ -294,13 +302,18 @@ export function RuntimeDetailsPanel({
   };
 
   const renderPlanTasks = () => {
-    const planTasks = activitySummary.plan?.tasks || [];
+    if (!latestPlanFrame) {
+      return null;
+    }
+
+    const planTasks = latestPlanFrame.planTasks || [];
     if (planTasks.length === 0) {
       return null;
     }
 
-    const progress = activitySummary.plan?.progress || {};
-    const strategy = activitySummary.plan?.strategy || {};
+    const plan = latestPlanFrame.plan || {};
+    const progress = latestPlanFrame.planProgress || {};
+    const strategy = plan.strategy || plan.context?.strategy || {};
     const phaseGroups = groupPlanTasksByPhase(planTasks);
     const strategyItems = [
       strategy.planningArchitectureLabel || readablePlanStrategyValue(strategy.planningArchitecture),
@@ -308,70 +321,102 @@ export function RuntimeDetailsPanel({
       strategy.parallelPotential ? `并行 ${readablePlanStrategyValue(strategy.parallelPotential)}` : null,
       strategy.recommendedReview || null,
     ].filter(Boolean);
+
+    /* 状态色映射 */
+    const statusColorFor = (statusValue) => {
+      if (statusValue === 'completed') return 'var(--ds-status-success)';
+      if (statusValue === 'running') return 'var(--ds-status-warning)';
+      if (statusValue === 'needs_repair') return 'var(--ds-status-warning)';
+      if (statusValue === 'failed') return 'var(--ds-status-error)';
+      return 'var(--ds-text-tertiary)';
+    };
+
+    /* 轨道 dot 样式映射（复用 MessageLog planTimeline 样式） */
+    const dotStyleFor = (statusValue) => ({
+      ...styles.planTimelineDot,
+      ...(statusValue === 'completed' ? styles.planTimelineDotDone : {}),
+      ...(statusValue === 'running' ? styles.planTimelineDotRunning : {}),
+      ...(statusValue === 'needs_repair' ? styles.planTimelineDotRepair : {}),
+      ...(statusValue === 'failed' ? styles.planTimelineDotFailed : {}),
+    });
+
+    const taskStatusValue = (task) => String(task.displayStatus || task.status || 'pending').toLowerCase();
+
     return (
-      <section style={localStyles.planTaskSection}>
+      <section style={{
+        ...localStyles.planTaskSection,
+        border: '1px solid var(--ds-border-l1)',
+        backgroundColor: 'var(--ds-bg-default)',
+      }}>
         <div style={localStyles.planTaskHeader}>
-          <span style={localStyles.planTaskTitle}>
+          <span style={{ ...localStyles.planTaskTitle, color: 'var(--ds-text-primary)' }}>
             {strategy.label ? `执行计划 · ${strategy.label}` : '执行计划'}
           </span>
+          <span style={{ ...localStyles.planTaskProgress, color: 'var(--ds-text-secondary)' }}>
+            {progress.completed || 0}/{progress.total || planTasks.length}
+          </span>
         </div>
+
+        {/* 进度条 */}
+        {progress.total > 0 && (
+          <div style={styles.planProgressTrack}>
+            <div style={{
+              ...styles.planProgressFill,
+              width: `${Math.max(4, progress.progress || 0)}%`,
+              backgroundColor: progress.failed > 0 ? 'var(--ds-status-error)'
+                : progress.needsRepair > 0 ? 'var(--ds-status-warning)'
+                : progress.completed === progress.total ? 'var(--ds-status-success)'
+                : 'var(--ds-status-warning)',
+            }} />
+          </div>
+        )}
+
         {strategyItems.length > 0 && (
-          <div style={localStyles.planStrategyRow}>
+          <div style={{ ...localStyles.planStrategyRow, gap: '4px', marginBottom: 'var(--spacing-sm)' }}>
             {strategyItems.map((item) => (
-              <span key={item} style={localStyles.planStrategyChip}>
+              <span key={item} style={styles.planTag}>
                 {item}
               </span>
             ))}
           </div>
         )}
-        <div style={localStyles.planTaskList}>
-          {phaseGroups.map(([phase, tasks]) => (
-            <div key={phase} style={localStyles.planPhaseGroup}>
-              <div style={localStyles.planPhaseHeader}>
+
+        {/* 任务时间线 — 复用 MessageLog.planTimelineRow/plaTimelineDot 样式 */}
+        <div style={styles.planTaskList}>
+          {phaseGroups.map(([phase, tasks], phaseIdx) => (
+            <div key={phase} style={{
+              ...styles.planPhaseGroup,
+              ...(phaseIdx === 0 ? styles.planPhaseGroupFirst : {}),
+            }}>
+              <div style={styles.planPhaseHeader}>
                 <span>{PLAN_PHASE_LABELS[phase] || phase}</span>
-                <span>
-                  {tasks.filter((task) => planTaskTone(task) === 'completed').length}/{tasks.length}
+                <span style={{
+                  ...styles.planTag,
+                  ...(tasks.filter((t) => taskStatusValue(t) === 'completed').length === tasks.length ? styles.planTagSuccess : {}),
+                }}>
+                  {tasks.filter((t) => taskStatusValue(t) === 'completed').length}/{tasks.length}
                 </span>
               </div>
-              {tasks.map((task, index) => {
-                const status = task.displayStatus || task.status || 'pending';
-                const tone = planTaskTone(task);
+              {tasks.map((task, taskIndex) => {
+                const statusValue = taskStatusValue(task);
+                const isLast = taskIndex === tasks.length - 1;
+                const dependencies = Array.isArray(task.dependencies) ? task.dependencies : [];
                 return (
-                  <div
-                    key={task.id || `${task.name}_${index}`}
-                    style={{
-                      ...localStyles.planTaskItem,
-                      ...(tone === 'completed' ? localStyles.planTaskItemCompleted : {}),
-                      ...(tone === 'failed' ? localStyles.planTaskItemFailed : {}),
-                      ...(tone === 'running' ? localStyles.planTaskItemRunning : {}),
-                    }}
-                    title={task.statusReason || task.description || task.name}
-                  >
-                    <span
-                      style={{
-                        ...localStyles.planTaskMark,
-                        ...(tone === 'completed' ? localStyles.planTaskMarkCompleted : {}),
-                        ...(tone === 'failed' ? localStyles.planTaskMarkFailed : {}),
-                        ...(tone === 'running' ? localStyles.planTaskMarkRunning : {}),
-                      }}
-                    >
-                      {tone === 'completed'
-                        ? '✓'
-                        : tone === 'failed'
-                          ? '!'
-                          : tone === 'running'
-                            ? '…'
-                            : '·'}
-                    </span>
-                    <span style={localStyles.planTaskName}>
-                      {task.name || task.id || '任务'}
-                      {Array.isArray(task.dependencies) && task.dependencies.length > 0 ? (
-                        <span style={localStyles.planTaskDependency}>
-                          依赖 {task.dependencies.length}
-                        </span>
-                      ) : null}
-                    </span>
-                    <span style={localStyles.planTaskStatus}>{phaseLabel(status)}</span>
+                  <div key={task.id || `${phase}-${taskIndex}`} style={styles.planTimelineRow}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+                      <span style={dotStyleFor(statusValue)} />
+                      {!isLast && <div style={styles.planTimelineLine} />}
+                    </div>
+                    <div style={styles.planTaskContent}>
+                      <span style={styles.planTaskName} title={task.statusReason || task.description || task.name}>
+                        {task.name || task.id || 'Task'}
+                        {task.cycleLabel ? <span style={styles.planTaskDependency}> · {task.cycleLabel}</span> : ''}
+                        {dependencies.length > 0 ? <span style={styles.planTaskDependency}>依赖 {dependencies.length}</span> : null}
+                      </span>
+                      <span style={{ ...styles.planTaskStatus, color: statusColorFor(statusValue) }}>
+                        {phaseLabel(statusValue)}
+                      </span>
+                    </div>
                   </div>
                 );
               })}
@@ -691,7 +736,7 @@ export function RuntimeDetailsPanel({
               {t('msg.collapse')}
             </button>
           )}
-          {filteredActivities.length === 0 && (activitySummary.plan?.tasks || []).length === 0 && (
+          {filteredActivities.length === 0 && (latestPlanFrame?.planTasks || []).length === 0 && (
             <div style={localStyles.emptyTab}>
               {activitySearch ? '没有匹配的活动' : '暂无活动'}
             </div>
@@ -914,7 +959,7 @@ export function RuntimeDetailsPanel({
     ).length;
     const totalActivityCount = activitySummary.total || activitySummary.activities.length;
     const changedFileCount = changedFiles.length;
-    const planProgress = activitySummary.plan?.progress;
+    const planProgress = latestPlanFrame?.planProgress;
     const summaryItems = [
       runtimeDurationMs > 0 ? `耗时 ${formatDuration(runtimeDurationMs)}` : null,
       planProgress?.total > 0 ? `计划 ${planProgress.completed}/${planProgress.total}` : null,

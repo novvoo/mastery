@@ -18,15 +18,15 @@
  *   engine.dispose()           — 释放资源
  */
 
-import { SessionManager } from '../../session-manager.js';
+import { SessionManager } from '../../session/session-manager.js';
 import { buildSystemPrompt } from '../../../prompts/system-prompt.js';
 import { RetryStrategy, withTimeout } from '../../../errors/error-handler.js';
-import { TextToolParser } from '../../text-tool-parser.js';
+import { TextToolParser } from '../../parsing/text-tool-parser.js';
 import { IntentClassifier } from '../../intent-classifier.js';
 import { DynamicContextPruning } from '../../dynamic-context-pruning.js';
-import { WorkspaceIndex } from '../../workspace-index.js';
+import { WorkspaceIndex } from '../../workspace/workspace-index.js';
 import { selectToolsForRequest, shouldUseIntentClassifier } from './tool-router.js';
-import { WorkspaceState } from '../../workspace-state.js';
+import { WorkspaceState } from '../../workspace/workspace-state.js';
 import { ObservationSummarizer } from '../../observation-summarizer.js';
 import { ContentAddressableStore, FileAnalyzer } from '../../harness/content-addressing.js';
 import {
@@ -48,7 +48,7 @@ import { StateGraph } from '../../harness/state-graph-core.js';
 import { OnDemandContextExpansion } from '../../harness/on-demand-context.js';
 import { SymbolIndex } from '../../harness/symbol-index.js';
 import { DependencyGraph } from '../../harness/dependency-graph.js';
-import { withRoutedToolContext } from '../../routed-tool-context.js';
+import { withRoutedToolContext } from '../../tools/routed-tool-context.js';
 import { TokenScope } from './support/token-scope.js';
 import { quickAssess, computeIterationBudget } from './support/risk-budget.js';
 import { AgentPlanner } from './agent-planner.js';
@@ -78,10 +78,10 @@ import {
   MAX_ITERATIONS_DEFAULT,
   EXPLORATION_BUDGET,
   FORCE_ACTION_GRACE_TURNS,
-} from '../../agent-constants.js';
+} from '../../agent/constants.js';
 import { getToolEffect, isMeaningfulProgress, ToolEffect } from './support/tool-semantics.js';
 import { analyzeHashlinePatchResult } from './support/hashline-plan-policy.js';
-import { loadRuntimeEnv } from '../../runtime-config.js';
+import { loadRuntimeEnv } from '../runtime-config.js';
 import { createConfiguredModelProvider } from '../../../cli/model-provider-factory.js';
 
 /**

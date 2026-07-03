@@ -3,7 +3,7 @@
  * 调度计划管理工具定义
  */
 
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 import { CronExpression } from '../../scheduler/cron/CronExpression.js';
 
 /**

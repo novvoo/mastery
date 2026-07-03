@@ -1,6 +1,6 @@
 import { describe, test, expect, mock } from 'bun:test';
-import { createEnhancedWorkspace } from '../../src/core/enhanced-workspace.js';
-import { WorkspaceState } from '../../src/core/workspace-state.js';
+import { createEnhancedWorkspace } from '../../src/core/workspace/enhanced-workspace.js';
+import { WorkspaceState } from '../../src/core/workspace/workspace-state.js';
 import { ObservationSummarizer } from '../../src/core/observation-summarizer.js';
 
 describe('createEnhancedWorkspace', () => {

@@ -6,10 +6,10 @@
  *       MemoryManager / WorkspaceState / Model Provider Contract / Tool Dedup
  */
 
-import { SessionManager } from '../src/core/session-manager.js';
-import { TokenScope } from '../src/core/token-scope.js';
-import { ToolRegistry } from '../src/core/tool-registry.js';
-import { MAX_ITERATIONS_DEFAULT } from '../src/core/agent-constants.js';
+import { SessionManager } from '../src/core/session/session-manager.js';
+import { TokenScope } from '../src/core/runtime/agent/support/token-scope.js';
+import { ToolRegistry } from '../src/core/runtime/agent/tool-registry.js';
+import { MAX_ITERATIONS_DEFAULT } from '../src/core/agent/constants.js';
 import { RuntimeConfig, AgentState, PlatformType } from '../src/runtime/types.js';
 
 import { resolve, join } from 'path';

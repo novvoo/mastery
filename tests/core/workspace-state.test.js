@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { WorkspaceState } from '../../src/core/workspace-state.js';
+import { WorkspaceState } from '../../src/core/workspace/workspace-state.js';
 
 describe('WorkspaceState', () => {
   test('constructor initializes empty state', () => {

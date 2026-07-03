@@ -1,5 +1,5 @@
 import { resolve } from 'path';
-import { getProviderBaseUrl, getProviderModel } from '../core/runtime-config.js';
+import { getProviderBaseUrl, getProviderModel } from '../core/runtime/runtime-config.js';
 import { shellSandboxConfigFromEnv } from '../sandbox/shell-sandbox.js';
 
 export function getProviderApiKey(provider, env = process.env) {

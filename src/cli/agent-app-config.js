@@ -20,7 +20,7 @@ import {
   ensureMetricsSink,
   initializeMCPServersFromEnv,
   registerMCPTools as registerMCPToolsInBootstrap,
-} from '../core/runtime-bootstrap.js';
+} from '../core/runtime/runtime-bootstrap.js';
 
 import {
   applyRuntimeValues,
@@ -31,10 +31,10 @@ import {
   getProviderRequirement,
   getUserEnvPath,
   writeUserEnv,
-} from '../core/runtime-config.js';
+} from '../core/runtime/runtime-config.js';
 
 import { enhancedUI } from './enhanced-ui.js';
-import { loadRuntimeEnv } from '../core/runtime-config.js';
+import { loadRuntimeEnv } from '../core/runtime/runtime-config.js';
 
 /**
  * Load CLI configuration from environment

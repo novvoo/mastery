@@ -13,7 +13,7 @@ import {
   createConversationGroups,
   createRuntimeDetailId,
   buildRuntimeDetailsExportData,
-} from '../../src/core/runtime-details.js';
+} from '../../src/core/runtime/runtime-details.js';
 
 describe('runtime-details (src/core)', () => {
   test('isRuntimeDetailMessage classifies messages correctly', () => {

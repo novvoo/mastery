@@ -3,8 +3,8 @@
  */
 
 import { spawn } from 'child_process';
-import { ToolCategory } from '../../core/types.js';
-import { classifyLongRunningCommand } from '../../core/long-running-command.js';
+import { ToolCategory } from '../../core/types/index.js';
+import { classifyLongRunningCommand } from '../../core/runtime/long-running-command.js';
 import { createShellSandbox, shellSandboxConfigFromEnv } from '../../sandbox/shell-sandbox.js';
 import { startPtyCommand } from './pty.js';
 import { DANGEROUS_SHELL_PATTERNS } from '../../utils/patterns.js';

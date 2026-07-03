@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { AgentRouter } from '../../src/core/agent-router.js';
+import { AgentRouter } from '../../src/core/runtime/agent/agent-router.js';
 
 function makeMockDeps() {
   return {

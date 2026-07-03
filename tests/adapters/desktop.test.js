@@ -30,7 +30,7 @@ import {
   startPreview,
   stopAllPreviews,
   stopPreview,
-} from '../../src/core/preview-server.js';
+} from '../../src/core/runtime/preview-server.js';
 
 // ==================== IPCMessage 测试 ====================
 

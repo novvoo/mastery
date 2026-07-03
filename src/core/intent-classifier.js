@@ -15,9 +15,9 @@ import {
   mergeIntentProfile,
   computeIterationBudget,
   getCompletionGates,
-} from './risk-budget.js';
+} from './runtime/agent/support/risk-budget.js';
 import { SEMANTIC_RISK_DOMAINS } from '../utils/patterns.js';
-import { MAX_ITERATIONS_DEFAULT } from './agent-constants.js';
+import { MAX_ITERATIONS_DEFAULT } from './agent/constants.js';
 import {
   extractExplicitPlanType,
   getPlanTypeSelection,

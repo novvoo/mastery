@@ -1,6 +1,6 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join, resolve } from 'path';
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 
 /**
  * Convert a title string to a URL-safe slug.

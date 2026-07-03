@@ -12,9 +12,9 @@
 import { enhancedUI } from './enhanced-ui.js';
 import { createEnhancedCommands } from './enhanced-commands.js';
 import { getPackageVersion, printCliHelp, runDoctor } from './bootstrap-utils.js';
-import { getUserEnvPath } from '../core/runtime-config.js';
+import { getUserEnvPath } from '../core/runtime/runtime-config.js';
 import { stopAllPtySessions } from '../tools/system/pty.js';
-import { loadRuntimeEnv } from '../core/runtime-config.js';
+import { loadRuntimeEnv } from '../core/runtime/runtime-config.js';
 
 // Extracted modules
 import {

@@ -12,7 +12,7 @@ import {
   getCompletionGates,
   getMethodologyGuidance,
   mergeIntentProfile,
-} from '../../src/core/risk-budget.js';
+} from '../../src/core/runtime/agent/support/risk-budget.js';
 
 describe('risk-budget', () => {
   describe('RISK_LEVEL', () => {

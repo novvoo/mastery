@@ -399,7 +399,7 @@ mock.module('../../../src/core/agent-context.js', () => ({
   },
 }));
 
-import { ReActAgent } from '../../../src/core/agent.js';
+import { ReActAgent } from '../../../src/core/runtime/agent/agent.js';
 
 function makeModelProvider(response = 'Final answer') {
   return {

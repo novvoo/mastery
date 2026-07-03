@@ -4,19 +4,19 @@
  */
 
 import { RuntimeEvent } from '../../runtime/types.js';
-import { describeToolActivity, summarizeActivityForCLI } from '../../core/tool-activity.js';
+import { describeToolActivity, summarizeActivityForCLI } from '../../core/runtime/tool-activity.js';
 import {
   buildActivitySummary,
   getActivityTone,
   getFileStatusLabel,
   formatDuration,
-} from '../../core/activity-summary.js';
+} from '../../core/runtime/activity-summary.js';
 import {
   isRuntimeDetailMessage,
   isThinkingMessage,
   isStatusUpdateMessage,
-} from '../../core/runtime-details.js';
-import { getRuntimeStatusText } from '../../core/runtime-status.js';
+} from '../../core/runtime/runtime-details.js';
+import { getRuntimeStatusText } from '../../core/runtime/runtime-status.js';
 import { enhancedUI } from '../../cli/enhanced-ui.js';
 
 export class CLIUIAdapter {

@@ -9,7 +9,6 @@ export function buildActivitySummary(runtimeDetails = []) {
   const byKey = new Map();
   const fileStates = new Map();
   let waitingForUser = false;
-  const planEvents = [];
 
   for (const detail of runtimeDetails) {
     if (
@@ -18,11 +17,6 @@ export function buildActivitySummary(runtimeDetails = []) {
       detail?.status === 'needs_user_input'
     ) {
       waitingForUser = true;
-    }
-
-    const planEvent = getPlanEventFromDetail(detail);
-    if (planEvent) {
-      planEvents.push(planEvent);
     }
 
     const activity = getActivityFromDetail(detail);
@@ -71,7 +65,6 @@ export function buildActivitySummary(runtimeDetails = []) {
 
   return {
     activities: activities.sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0)),
-    plan: buildPlanSummary(planEvents),
     taskStages,
     progress:
       taskStages.length > 0
@@ -93,129 +86,6 @@ export function buildActivitySummary(runtimeDetails = []) {
     waitingForUser,
     total: activities.length,
   };
-}
-
-function getPlanEventFromDetail(detail) {
-  if (!detail || !['plan:created', 'plan:updated'].includes(detail.event)) {
-    return null;
-  }
-
-  const payload = detail.payload || {};
-  const plan = detail.plan || payload.plan || payload;
-  const tasks = normalizePlanTasks(plan?.tasks || detail.planTasks);
-  const completed = tasks.filter((task) => task.displayStatus === 'completed').length;
-  const running = tasks.filter((task) => task.displayStatus === 'running').length;
-  const failed = tasks.filter((task) => task.displayStatus === 'failed').length;
-  const needsRepair = tasks.filter((task) => task.displayStatus === 'needs_repair').length;
-  const total = tasks.length;
-
-  return {
-    id:
-      detail.id ||
-      `${detail.event}:${detail.timestamp || plan?.id || plan?.name || planEventsKey(plan)}`,
-    type: detail.event === 'plan:created' ? 'created' : 'updated',
-    title:
-      detail.content || (detail.event === 'plan:created' ? '执行计划已创建' : '执行计划已更新'),
-    tasks,
-    progress: {
-      total,
-      completed,
-      running,
-      failed,
-      needsRepair,
-      progress: total > 0 ? Math.round((completed / total) * 100) : 0,
-    },
-    strategy: plan?.strategy || plan?.context?.strategy || {},
-    context: plan?.context || {},
-    update: detail.planUpdate || payload.update || null,
-    toolName: detail.toolName || payload.toolName || '',
-    timestamp: detail.timestamp || payload.timestamp || Date.now(),
-  };
-}
-
-function normalizePlanTasks(tasks) {
-  if (!Array.isArray(tasks)) {
-    if (tasks && typeof tasks === 'object') {
-      return Object.values(tasks).map(normalizePlanTask);
-    }
-    return [];
-  }
-  return tasks.map(normalizePlanTask);
-}
-
-function normalizePlanTask(task) {
-  const status = String(task?.status || 'pending').toLowerCase();
-  const displayStatus = String(
-    task?.displayStatus || task?.result?.displayStatus || status,
-  ).toLowerCase();
-  return {
-    id: task?.id || task?.name || '',
-    name: task?.name || task?.id || 'Task',
-    description: task?.description || '',
-    status,
-    displayStatus,
-    phase: task?.phase || '',
-    dependencies: Array.isArray(task?.dependencies) ? task.dependencies : [],
-    scopeFiles: Array.isArray(task?.scopeFiles) ? task.scopeFiles : [],
-    metadata: task?.metadata || {},
-    statusReason: task?.statusReason || task?.result?.statusReason || '',
-    cycleLabel: task?.cycleLabel || '',
-  };
-}
-
-function buildPlanSummary(planEvents) {
-  const events = planEvents.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-  const latest = events.at(-1) || null;
-  const tasksById = new Map();
-
-  for (const event of events) {
-    for (const task of event.tasks || []) {
-      const key = task.id || task.name;
-      if (!key) {
-        continue;
-      }
-      const previous = tasksById.get(key) || {};
-      tasksById.set(key, {
-        ...previous,
-        ...task,
-      });
-    }
-  }
-
-  const tasks = Array.from(tasksById.values());
-  const progress = computePlanProgress(tasks);
-
-  return {
-    events,
-    latest: latest ? { ...latest, tasks, progress } : null,
-    tasks,
-    progress,
-    strategy: latest?.strategy || {},
-    context: latest?.context || {},
-    created: events.some((event) => event.type === 'created'),
-    updateCount: events.filter((event) => event.type === 'updated').length,
-  };
-}
-
-function computePlanProgress(tasks) {
-  const completed = tasks.filter((task) => task.displayStatus === 'completed').length;
-  const running = tasks.filter((task) => task.displayStatus === 'running').length;
-  const failed = tasks.filter((task) => task.displayStatus === 'failed').length;
-  const needsRepair = tasks.filter((task) => task.displayStatus === 'needs_repair').length;
-  const total = tasks.length;
-
-  return {
-    total,
-    completed,
-    running,
-    failed,
-    needsRepair,
-    progress: total > 0 ? Math.round((completed / total) * 100) : 0,
-  };
-}
-
-function planEventsKey(plan) {
-  return JSON.stringify(plan || {}).slice(0, 80);
 }
 
 function getActivityFromDetail(detail) {

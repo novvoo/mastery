@@ -10,22 +10,22 @@
  *     └─ AgentContext   — 上下文管理/工作区状态/停滞检测
  */
 
-import { SessionManager } from '../../session-manager.js';
+import { SessionManager } from '../../session/session-manager.js';
 import { buildSystemPrompt, buildTaskConstraintPrompt } from '../../../prompts/system-prompt.js';
 import { classifyError, RetryStrategy, withTimeout } from '../../../errors/error-handler.js';
 import { ui } from '../../../cli/ui.js';
-import { TextToolParser } from '../../text-tool-parser.js';
+import { TextToolParser } from '../../parsing/text-tool-parser.js';
 import { IntentClassifier } from '../../intent-classifier.js';
 import { DynamicContextPruning } from '../../dynamic-context-pruning.js';
 import { ConversationSummarizer } from '../../conversation-summarizer.js';
-import { WorkspaceIndex } from '../../workspace-index.js';
+import { WorkspaceIndex } from '../../workspace/workspace-index.js';
 import { selectToolsForRequest, shouldUseIntentClassifier } from './tool-router.js';
-import { WorkspaceState } from '../../workspace-state.js';
+import { WorkspaceState } from '../../workspace/workspace-state.js';
 import { ObservationSummarizer } from '../../observation-summarizer.js';
 import { ContentAddressableStore, FileAnalyzer } from '../../harness/content-addressing.js';
-import { withRoutedToolContext } from '../../routed-tool-context.js';
+import { withRoutedToolContext } from '../../tools/routed-tool-context.js';
 import { TokenScope } from './support/token-scope.js';
-import { MAX_ITERATIONS_DEFAULT, METHODOLOGY_TOOLS } from '../../agent-constants.js';
+import { MAX_ITERATIONS_DEFAULT, METHODOLOGY_TOOLS } from '../../agent/constants.js';
 import { TaskStatus } from '../../../planner/graph-planner.js';
 import { isMutationTool, isSemanticRiskReviewTool } from './execution-plan-manager.js';
 import { metricsSink } from '../metrics-sink.js';

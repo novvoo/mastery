@@ -14,7 +14,7 @@ import fs from 'fs';
 import http from 'http';
 import { createWorkspaceWatcher, listWorkspaceDirectory as _listWorkspaceDirectory } from '../workspace.js';
 import { saveAppConfig } from './llm-config-and-persistence.js';
-import { writeUserEnv, applyRuntimeValues } from '../../src/core/runtime-config.js';
+import { writeUserEnv, applyRuntimeValues } from '../../src/core/runtime/runtime-config.js';
 
 const ALLOWED_LOCALHOST_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/.*)?$/i;
 

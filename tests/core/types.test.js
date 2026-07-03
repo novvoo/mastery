@@ -6,7 +6,7 @@ import {
   PermissionLevel,
   ToolScope,
   ExperienceOutcome,
-} from '../../src/core/types.js';
+} from '../../src/core/types/index.js';
 
 describe('types', () => {
   test('ToolCategory has expected values', () => {

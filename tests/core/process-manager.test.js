@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeEach, afterEach } from 'bun:test';
-import { ProcessManager } from '../../src/core/process-manager.js';
+import { ProcessManager } from '../../src/core/runtime/process-manager.js';
 
 describe('ProcessManager', () => {
   let pm;

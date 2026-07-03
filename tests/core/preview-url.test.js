@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { normalizePreviewUrlInput, formatPreviewUrlInput } from '../../src/core/preview-url.js';
+import { normalizePreviewUrlInput, formatPreviewUrlInput } from '../../src/core/runtime/preview-url.js';
 
 describe('preview-url (src/core)', () => {
   test('normalizePreviewUrlInput normalizes localhost URLs', () => {

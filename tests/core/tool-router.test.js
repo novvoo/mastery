@@ -3,7 +3,7 @@ import {
   selectToolsForRequest,
   shouldUseIntentClassifier,
   PHASE,
-} from '../../src/core/tool-router.js';
+} from '../../src/core/runtime/agent/tool-router.js';
 
 function makeTool(name) {
   return { name, description: `${name} tool` };

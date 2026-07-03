@@ -8,7 +8,7 @@ import {
   findNextUnescapedQuote,
   extractRecoveredValue,
   findMatchingBracket,
-} from '../../src/core/text-tool-parser-call.js';
+} from '../../src/core/parsing/text-tool-parser-call.js';
 
 // ── findBalancedJSON ──────────────────────────────────────────────
 

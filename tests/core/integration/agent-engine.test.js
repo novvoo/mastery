@@ -431,7 +431,7 @@ mock.module('../../../src/core/prompt-builder.js', () => ({
   suggestVerificationStrategy: () => '',
 }));
 
-import { AgentEngine, createAgentEngine } from '../../../src/core/agent-engine.js';
+import { AgentEngine, createAgentEngine } from '../../../src/core/runtime/agent/agent-engine.js';
 
 function makeModelProvider() {
   return {

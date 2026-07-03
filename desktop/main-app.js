@@ -25,7 +25,7 @@ import electron from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import { getUserEnvPath, loadRuntimeEnv } from '../src/core/runtime-config.js';
+import { getUserEnvPath, loadRuntimeEnv } from '../src/core/runtime/runtime-config.js';
 
 import {
   setupAppProperties,

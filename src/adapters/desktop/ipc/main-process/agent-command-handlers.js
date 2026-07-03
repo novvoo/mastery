@@ -1,5 +1,9 @@
 import { RuntimeEvent } from '../../../../runtime/types.js';
-import { listPreviews, startPreview, stopPreview } from '../../../../core/preview-server.js';
+import {
+  listPreviews,
+  startPreview,
+  stopPreview,
+} from '../../../../core/runtime/preview-server.js';
 import { parsePreviewArgs } from '../../protocol/ipc-protocol.js';
 
 export function serializeTools(tools) {

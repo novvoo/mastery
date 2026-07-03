@@ -12,7 +12,7 @@ import {
   containsUnparsedToolSyntax,
   shouldCorrectToolRefusal,
   shouldBlockCodingFinal,
-} from '../../src/core/prompt-builder.js';
+} from '../../src/core/runtime/agent/support/prompt-builder.js';
 
 describe('PromptBuilder', () => {
   test('PromptBuilder is an object with all methods', () => {

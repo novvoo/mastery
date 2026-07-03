@@ -2,7 +2,7 @@
  * Error handling: taxonomy, retry strategy, and fallback handler
  */
 
-import { ErrorCategory, ErrorSeverity } from '../core/types.js';
+import { ErrorCategory, ErrorSeverity } from '../core/types/index.js';
 
 // ============ Error Classification ============
 

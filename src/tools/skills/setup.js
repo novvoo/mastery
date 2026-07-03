@@ -1,6 +1,6 @@
 import { mkdir, writeFile, access } from 'fs/promises';
 import { join, resolve } from 'path';
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 
 async function exists(path) {
   try {

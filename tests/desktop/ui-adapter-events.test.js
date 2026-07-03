@@ -6,7 +6,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { bootstrapRuntime } from '../../src/core/runtime-bootstrap.js';
+import { bootstrapRuntime } from '../../src/core/runtime/runtime-bootstrap.js';
 import { DesktopCore, createDesktopCore } from '../../src/adapters/desktop/desktop-core.js';
 import { getEventBus, RuntimeEvent } from '../../src/runtime/index.js';
 import { createI18n } from '../../src/core/i18n.js';

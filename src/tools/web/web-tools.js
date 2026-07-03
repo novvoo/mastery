@@ -7,7 +7,7 @@ import { isAbsolute, resolve } from 'path';
 import { platform } from 'os';
 import { promisify } from 'util';
 import { pathToFileURL, URL } from 'url';
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';

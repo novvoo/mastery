@@ -23,15 +23,15 @@
  */
 
 import { existsSync, mkdirSync } from 'fs';
-import { createAgentEngine } from '../agent-engine.js';
-import { ToolRegistry } from '../tool-registry.js';
+import { createAgentEngine } from './agent/agent-engine.js';
+import { ToolRegistry } from './agent/tool-registry.js';
 import {
   SecurityPolicy,
   createFullPolicy,
   createRestrictedPolicy,
   createReadOnlyPolicy,
 } from './agent/support/security-policy.js';
-import { WorkspaceState } from '../workspace-state.js';
+import { WorkspaceState } from '../workspace/workspace-state.js';
 import { metricsSink } from './metrics-sink.js';
 import { MCPClient } from '../../mcp/mcp-client.js';
 import { createCoreTools, SKILL_TOOL_CREATORS } from '../../tools/index.js';

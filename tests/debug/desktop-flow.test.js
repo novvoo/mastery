@@ -1,5 +1,5 @@
 // 模拟 desktop + runtime + engine 完整流程
-import { bootstrapRuntime } from '../../src/core/runtime-bootstrap.js';
+import { bootstrapRuntime } from '../../src/core/runtime/runtime-bootstrap.js';
 
 const workingDir = process.cwd();
 

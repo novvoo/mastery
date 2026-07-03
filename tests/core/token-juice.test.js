@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { TokenJuice } from '../../src/core/token-juice.js';
+import { TokenJuice } from '../../src/core/runtime/agent/support/token-juice.js';
 
 describe('TokenJuice', () => {
   test('compresses text and returns shorter output', () => {

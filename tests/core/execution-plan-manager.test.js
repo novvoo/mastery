@@ -10,7 +10,7 @@ import {
   isSemanticRiskReviewTool,
   isSuccessfulToolResult,
   ExecutionPlanManager,
-} from '../../src/core/execution-plan-manager.js';
+} from '../../src/core/runtime/agent/execution-plan-manager.js';
 import { quickAssess } from '../../src/core/runtime/agent/support/risk-budget.js';
 import { ExecutionPlan } from '../../src/planner/graph-planner.js';
 import {

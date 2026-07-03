@@ -1,5 +1,5 @@
 import { describe, test, expect, mock } from 'bun:test';
-import { AgentPlanner } from '../../src/core/agent-planner.js';
+import { AgentPlanner } from '../../src/core/runtime/agent/agent-planner.js';
 import { ExecutionPlan, TaskStatus } from '../../src/planner/graph-planner.js';
 
 // Helper: create a minimal AgentPlanner with mock dependencies

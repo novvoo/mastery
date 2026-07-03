@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { TextToolParser } from '../../src/core/text-tool-parser.js';
+import { TextToolParser } from '../../src/core/parsing/text-tool-parser.js';
 
 const makeRegistry = (names) => ({
   has: (n) => names.includes(n),

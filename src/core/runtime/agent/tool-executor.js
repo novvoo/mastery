@@ -18,7 +18,7 @@ import { existsSync, mkdir } from 'fs';
 import { readFile, appendFile } from 'fs/promises';
 import path from 'path';
 import { withTimeout } from '../../../errors/error-handler.js';
-import { TextToolParser } from '../../text-tool-parser.js';
+import { TextToolParser } from '../../parsing/text-tool-parser.js';
 import { Decision } from './support/security-policy.js';
 import { ObservationErrorCode } from './support/observation-state.js';
 import { normalizeToolResult } from './tool-result.js';

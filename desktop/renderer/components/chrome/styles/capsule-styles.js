@@ -6,11 +6,11 @@
  */
 
 export const STATUS_TONE = {
-  warning: { color: 'var(--warning-color)' },
-  error: { color: 'var(--error-color)', pulse: false },
-  success: { color: 'var(--success-color)', pulse: false },
-  info: { color: 'var(--info-color)', pulse: false },
-  muted: { color: 'var(--text-muted)', pulse: false },
+  warning: { color: 'var(--ds-status-warning)' },
+  error: { color: 'var(--ds-status-error)', pulse: false },
+  success: { color: 'var(--ds-status-success)', pulse: false },
+  info: { color: 'var(--ds-brand)', pulse: false },
+  muted: { color: 'var(--ds-text-tertiary)', pulse: false },
 };
 
 export const ACTIVE_PULSE_STATUSES = new Set([
@@ -28,10 +28,10 @@ export const CAPSULE_BASE = {
   display: 'inline-flex',
   alignItems: 'center',
   WebkitAppRegion: 'no-drag',
-  backgroundColor: 'var(--surface-card)',
-  border: '1px solid var(--border-card)',
+  backgroundColor: 'var(--ds-bg-raised)',
+  border: '1px solid var(--ds-border-l1)',
   boxShadow: 'var(--shadow-sm), var(--glass-inner-hl)',
-  color: 'var(--text-color)',
+  color: 'var(--ds-text-primary)',
 };
 
 export const CAPSULE_PRIMARY = {
@@ -48,8 +48,8 @@ export const CAPSULE_SECONDARY = {
   fontSize: '10px',
   borderRadius: 'var(--radius-md)',
   padding: '2px 9px',
-  backgroundColor: 'var(--surface-card)',
-  color: 'var(--text-muted)',
+  backgroundColor: 'var(--ds-bg-raised)',
+  color: 'var(--ds-text-tertiary)',
 };
 
 export const CAPSULE_CHROMELESS = {
@@ -126,7 +126,7 @@ export function connectionDotStyle(isConnected) {
     width: '6px',
     height: '6px',
     borderRadius: '50%',
-    backgroundColor: isConnected ? 'var(--success-color)' : 'var(--error-color)',
+    backgroundColor: isConnected ? 'var(--ds-status-success)' : 'var(--ds-status-error)',
     display: 'inline-block',
     flexShrink: 0,
   };

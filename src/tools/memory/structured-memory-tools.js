@@ -1,4 +1,4 @@
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 import { MemoryType } from '../../memory/memory-types.js';
 
 export function createStructuredMemoryTools() {

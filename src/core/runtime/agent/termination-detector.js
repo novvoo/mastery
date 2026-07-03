@@ -17,7 +17,7 @@ import {
   STAGNATION_NO_MUTATION_LIMIT,
   MAX_STAGNATION_NUDGES,
   PROGRESS_CHECKPOINT_INTERVAL,
-} from '../../agent-constants.js';
+} from '../../agent/constants.js';
 
 // ============== 终止检测 ==============
 
@@ -190,6 +190,33 @@ export class StagnationDetector {
           `[Progress check] No file modifications in ${STAGNATION_NO_MUTATION_LIMIT}+ iterations.\n` +
           `Plan status:\n${planStatus}\n` +
           `Choose the next narrow action from the evidence: edit if ready, gather one missing fact, run a focused diagnostic, replan/ask_user, or FINAL_ANSWER with the blocker.`,
+        shouldDegradeBudget,
+      };
+    }
+
+    // 5. 探索阶段停滞检测：连续多次调用探索工具但未推进到验证阶段
+    const explorationTools = new Set([
+      'read_file',
+      'list_dir',
+      'glob',
+      'search',
+      'search_codebase',
+      'semantic_search',
+      'grep_search',
+      'file_search',
+    ]);
+    const recent = window.slice(-5);
+    const allExploration =
+      recent.length >= 5 && recent.every((t) => explorationTools.has(t.toolName));
+    if (allExploration) {
+      this.#lastStagnationNudge++;
+      return {
+        type: 'exploration_stagnation',
+        message:
+          `[Progress check] You have been exploring for ${recent.length}+ consecutive iterations.\n` +
+          `If this is a verification/validation task, you should now execute verification commands (e.g., npm test, npm run build).\n` +
+          `If you have gathered sufficient context, either implement the fix or provide FINAL_ANSWER.\n` +
+          `Plan status:\n${planSummary || 'not available'}`,
         shouldDegradeBudget,
       };
     }

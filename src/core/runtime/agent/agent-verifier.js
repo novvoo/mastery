@@ -15,7 +15,7 @@ import {
   buildCodingCompletionGatePrompt as buildCodingCompletionGatePromptText,
   buildCodingTaskOperatingPrompt as buildCodingTaskOperatingPromptText,
   buildSemanticRiskGuidance as buildSemanticRiskGuidanceText,
-} from '../../coding-prompts.js';
+} from '../../prompts/coding-prompts.js';
 import {
   getCompletionGates,
   computeIterationBudget as rbComputeIterationBudget,
@@ -25,7 +25,7 @@ import {
   checkCompletionGates as evCheckCompletionGates,
   finalAnswerMentionsVerification,
 } from './support/evidence-verifier.js';
-import { METHODOLOGY_TOOLS, MAX_ITERATIONS_DEFAULT } from '../../agent-constants.js';
+import { METHODOLOGY_TOOLS, MAX_ITERATIONS_DEFAULT } from '../../agent/constants.js';
 import { TaskStatus } from '../../../planner/graph-planner.js';
 
 export class AgentVerifier {

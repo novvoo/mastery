@@ -24,7 +24,7 @@ import {
   createConversationGroups,
   isPrimaryMessage,
   isRuntimeDetailMessage,
-} from './message-log/utils/runtime-details.js';
+} from '../runtime/runtime-details.js';
 import { getMessageDisplayText, getMessageSerializableText, getStableMessageId, safeStringify } from './message-log/utils/message-utils.js';
 import {
   PLAN_ARCHITECTURE_LABELS,
@@ -784,7 +784,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       const hasContent = Boolean(displayText.trim());
 
       return (
-        <div style={{ ...styles.actionCard, borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--success-color)' }}>
+        <div style={{ ...styles.actionCard, borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--ds-status-success-s2)' }}>
           <div style={styles.actionCardHeader}>
             <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxResult }}>
               <Icon name="success" size={16} />
@@ -820,13 +820,13 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       const displayMsg = safeStringify(errorMsg, t('tool.failed'));
 
       return (
-        <div style={{ ...styles.actionCard, borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--error-border)' }}>
+        <div style={{ ...styles.actionCard, borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--ds-status-error-s2)' }}>
           <div style={styles.actionCardHeader}>
             <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxError }}>
               <Icon name="error" size={16} />
             </div>
             <div style={styles.actionTitleWrap}>
-              <div style={{ ...styles.actionName, color: 'var(--error-color)' }}>
+              <div style={{ ...styles.actionName, color: 'var(--ds-status-error)' }}>
                 {msg.event === 'tool:error' ? t('tool.error') : t('msg.error')}
               </div>
               <div style={styles.actionSubtitle}>{t('msg.hand_to_agent_hint')}</div>
@@ -841,7 +841,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
                 margin: 0,
                 fontSize: '12px',
                 lineHeight: 1.6,
-                color: 'var(--error-color)'
+                color: 'var(--ds-status-error)'
               }}>
                 {displayMsg.length > 500 ? displayMsg.slice(0, 500) + '…' : displayMsg}
               </pre>
@@ -863,7 +863,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             <span>{t('msg.thinking_in_progress')}</span>
           </div>
           {!isCollapsed && (
-            <div style={{ fontSize: '13px', color: 'var(--text-dark)', lineHeight: 1.7 }}>
+            <div style={{ fontSize: '13px', color: 'var(--ds-text-tertiary)', lineHeight: 1.7 }}>
               <MarkdownMessageContent
                 text={content}
                 isCollapsed={isCollapsed}
@@ -954,10 +954,10 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         [t('plan.strategy.phase'), strategy.phaseCount ? `${strategy.phaseCount} ${t('plan.strategy.units')}` : null],
       ].filter(([, value]) => value);
       const phaseGroups = groupPlanTasksByPhase(tasks);
-      const statusTone = progress.failed > 0 ? 'var(--error-color)'
-        : progress.needsRepair > 0 ? 'var(--warning-color)'
-        : progress.completed === progress.total && progress.total > 0 ? 'var(--success-color)'
-        : 'var(--warning-color)';
+      const statusTone = progress.failed > 0 ? 'var(--ds-status-error)'
+        : progress.needsRepair > 0 ? 'var(--ds-status-warning)'
+        : progress.completed === progress.total && progress.total > 0 ? 'var(--ds-status-success)'
+        : 'var(--ds-status-warning)';
 
       const taskLabel = (task) => task.name || task.id || 'Task';
       const taskStatus = (task) => String(task.displayStatus || task.status || 'pending').toLowerCase();
@@ -972,8 +972,34 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         }
       };
 
+      /* 轨道 dot 样式映射 */
+      const dotStyleFor = (statusValue) => ({
+        ...styles.planTimelineDot,
+        ...(statusValue === 'completed' ? styles.planTimelineDotDone : {}),
+        ...(statusValue === 'running' ? styles.planTimelineDotRunning : {}),
+        ...(statusValue === 'needs_repair' ? styles.planTimelineDotRepair : {}),
+        ...(statusValue === 'failed' ? styles.planTimelineDotFailed : {}),
+      });
+
+      /* tag 状态映射 */
+      const tagStyleFor = (tone) => {
+        if (tone === 'var(--ds-status-success)' || tone === 'success') return styles.planTagSuccess;
+        if (tone === 'var(--ds-status-error)' || tone === 'error') return styles.planTagDanger;
+        if (tone === 'var(--ds-status-warning)' || tone === 'warning') return styles.planTagWarning;
+        return styles.planTag;
+      };
+
+      /* 摘要指标 */
+      const summaryItems = [
+        { label: t('plan.status.completed'), value: `${progress.completed || 0}/${progress.total || tasks.length}` },
+        { label: t('plan.strategy.mode'), value: architecture || modeLabel },
+        ...(decomposition ? [{ label: '分解方式', value: decomposition === 'llm' ? t('plan.decomposition_llm') : t('plan.decomposition_template') }] : []),
+        { label: '进度', value: `${progress.progress ?? 0}%` },
+      ];
+
       return (
         <div style={styles.planCard}>
+          {/* ── Section 01: 概览 ── */}
           <div style={styles.planCardHeader}>
             <div style={{ ...styles.actionIconBox, ...styles.planIconBox }}>
               <Icon name="plan" size={16} />
@@ -990,14 +1016,26 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             </span>
           </div>
 
-          <div style={styles.planMetaRow}>
-            <span style={styles.planMetaPill}>{progress.completed || 0}/{progress.total || tasks.length} {t('plan.status.completed')}</span>
-            {decomposition && <span style={styles.planMetaPill}>{decomposition === 'llm' ? t('plan.decomposition_llm') : t('plan.decomposition_template')}</span>}
-            {(frame.planUpdate || strategy.dynamicReplanning) && <span style={styles.planMetaPill}>{t('plan.dynamic_replanning')}</span>}
-            {progress.running > 0 && <span style={styles.planMetaPill}>{t('plan.running_count', { count: progress.running })}</span>}
-            {progress.needsRepair > 0 && <span style={styles.planMetaPillWarning}>{t('plan.needs_repair_count', { count: progress.needsRepair })}</span>}
+          {/* 摘要指标网格 — 替代旧的 pill 横排 */}
+          <div style={styles.planSummaryGrid}>
+            {summaryItems.map((item) => (
+              <div key={item.label} style={styles.planSummaryCard}>
+                <span style={styles.planSummaryLabel}>{item.label}</span>
+                <span style={styles.planSummaryValue}>{item.value}</span>
+              </div>
+            ))}
           </div>
 
+          {/* 状态 tags — 动态重规划 / 运行中 / 需修复 */}
+          {((frame.planUpdate || strategy.dynamicReplanning) || progress.running > 0 || progress.needsRepair > 0) && (
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: 'var(--spacing-md)' }}>
+              {(frame.planUpdate || strategy.dynamicReplanning) && <span style={{ ...styles.planTag, ...styles.planTagBrand }}>{t('plan.dynamic_replanning')}</span>}
+              {progress.running > 0 && <span style={styles.planTag}>{t('plan.running_count', { count: progress.running })}</span>}
+              {progress.needsRepair > 0 && <span style={{ ...styles.planTag, ...styles.planTagWarning }}>{t('plan.needs_repair_count', { count: progress.needsRepair })}</span>}
+            </div>
+          )}
+
+          {/* 快照时间线 */}
           {snapshots.length > 1 && (
             <div style={styles.planTimelineControl}>
               <div style={styles.planTimelineMeta}>
@@ -1036,7 +1074,19 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             </div>
           )}
 
-          {!isCollapsed && (
+          {/* 进度条 */}
+          <div style={styles.planProgressTrack}>
+            <div
+              style={{
+                ...styles.planProgressFill,
+                width: `${Math.max(4, progress.progress || 0)}%`,
+                backgroundColor: statusTone,
+              }}
+            />
+          </div>
+
+          {/* ── Section 02: 策略（展开时显示） ── */}
+          {!isCollapsed && strategyFacts.length > 0 && (
             <div style={styles.planStrategyGrid}>
               {strategyFacts.map(([label, value]) => (
                 <div key={label} style={styles.planStrategyItem}>
@@ -1065,46 +1115,48 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             </div>
           )}
 
-          <div style={styles.planProgressTrack}>
-            <div
-              style={{
-                ...styles.planProgressFill,
-                width: `${Math.max(4, progress.progress || 0)}%`,
-                backgroundColor: statusTone,
-              }}
-            />
-          </div>
-
+          {/* ── Section 03: 任务时间线（展开时显示） ── */}
           {!isCollapsed && phaseGroups.length > 0 && (
             <div style={styles.planTaskList}>
-              {phaseGroups.map(([phase, phaseTasks]) => (
-                <div key={phase} style={styles.planPhaseGroup}>
+              {phaseGroups.map(([phase, phaseTasks], phaseIdx) => (
+                <div key={phase} style={{
+                  ...styles.planPhaseGroup,
+                  ...(phaseIdx === 0 ? styles.planPhaseGroupFirst : {}),
+                }}>
                   <div style={styles.planPhaseHeader}>
                     <span>{getPlanPhaseLabel(phase) || phase}</span>
-                    <span>{phaseTasks.filter((task) => taskStatus(task) === 'completed').length}/{phaseTasks.length}</span>
+                    <span style={{ ...styles.planTag, ...(phaseTasks.filter((t) => taskStatus(t) === 'completed').length === phaseTasks.length ? styles.planTagSuccess : {}) }}>
+                      {phaseTasks.filter((t) => taskStatus(t) === 'completed').length}/{phaseTasks.length}
+                    </span>
                   </div>
                   {phaseTasks.map((task, taskIndex) => {
                     const statusValue = taskStatus(task);
                     const dependencies = Array.isArray(task.dependencies) ? task.dependencies : [];
+                    const isLast = taskIndex === phaseTasks.length - 1;
                     return (
-                      <div key={task.id || `${phase}-${taskIndex}`} style={styles.planTaskRow}>
-                        <span
-                          style={{
-                            ...styles.planTaskDot,
-                            ...(statusValue === 'completed' ? styles.planTaskDotDone : {}),
-                            ...(statusValue === 'running' ? styles.planTaskDotRunning : {}),
-                            ...(statusValue === 'needs_repair' ? styles.planTaskDotRunning : {}),
-                            ...(statusValue === 'failed' ? styles.planTaskDotFailed : {}),
-                          }}
-                        />
-                        <span style={styles.planTaskName} title={task.description || taskLabel(task)}>
-                          {taskLabel(task)}
-                          {task.cycleLabel ? ` · ${task.cycleLabel}` : ''}
-                          {dependencies.length > 0 ? (
-                            <span style={styles.planTaskDependency}>依赖 {dependencies.length}</span>
-                          ) : null}
-                        </span>
-                        <span style={styles.planTaskStatus}>{taskStatusText(statusValue)}</span>
+                      <div key={task.id || `${phase}-${taskIndex}`} style={styles.planTimelineRow}>
+                        {/* 轨道 */}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+                          <span style={dotStyleFor(statusValue)} />
+                          {!isLast && <div style={styles.planTimelineLine} />}
+                        </div>
+                        {/* 内容 */}
+                        <div style={styles.planTaskContent}>
+                          <span style={styles.planTaskName} title={task.description || taskLabel(task)}>
+                            {taskLabel(task)}
+                            {task.cycleLabel ? <span style={styles.planTaskDependency}> · {task.cycleLabel}</span> : ''}
+                            {dependencies.length > 0 ? <span style={styles.planTaskDependency}>依赖 {dependencies.length}</span> : null}
+                          </span>
+                          <span style={{
+                            ...styles.planTaskStatus,
+                            ...(statusValue === 'completed' ? { color: 'var(--ds-status-success)' } : {}),
+                            ...(statusValue === 'running' ? { color: 'var(--ds-status-warning)' } : {}),
+                            ...(statusValue === 'failed' ? { color: 'var(--ds-status-error)' } : {}),
+                            ...(statusValue === 'needs_repair' ? { color: 'var(--ds-status-warning)' } : {}),
+                          }}>
+                            {taskStatusText(statusValue)}
+                          </span>
+                        </div>
                       </div>
                     );
                   })}
@@ -1117,22 +1169,27 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             <div style={styles.planTaskList}>
               {tasks.map((task, taskIndex) => {
                 const statusValue = taskStatus(task);
+                const isLast = taskIndex === tasks.length - 1;
                 return (
-                  <div key={task.id || taskIndex} style={styles.planTaskRow}>
-                    <span
-                      style={{
-                        ...styles.planTaskDot,
-                        ...(statusValue === 'completed' ? styles.planTaskDotDone : {}),
-                        ...(statusValue === 'running' ? styles.planTaskDotRunning : {}),
-                        ...(statusValue === 'needs_repair' ? styles.planTaskDotRunning : {}),
-                        ...(statusValue === 'failed' ? styles.planTaskDotFailed : {}),
-                      }}
-                    />
-                    <span style={styles.planTaskName}>
-                      {taskLabel(task)}
-                      {task.cycleLabel ? ` · ${task.cycleLabel}` : ''}
-                    </span>
-                    <span style={styles.planTaskStatus}>{taskStatusText(statusValue)}</span>
+                  <div key={task.id || taskIndex} style={styles.planTimelineRow}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+                      <span style={dotStyleFor(statusValue)} />
+                      {!isLast && <div style={styles.planTimelineLine} />}
+                    </div>
+                    <div style={styles.planTaskContent}>
+                      <span style={styles.planTaskName}>
+                        {taskLabel(task)}
+                        {task.cycleLabel ? <span style={styles.planTaskDependency}> · {task.cycleLabel}</span> : ''}
+                      </span>
+                      <span style={{
+                        ...styles.planTaskStatus,
+                        ...(statusValue === 'completed' ? { color: 'var(--ds-status-success)' } : {}),
+                        ...(statusValue === 'running' ? { color: 'var(--ds-status-warning)' } : {}),
+                        ...(statusValue === 'failed' ? { color: 'var(--ds-status-error)' } : {}),
+                      }}>
+                        {taskStatusText(statusValue)}
+                      </span>
+                    </div>
                   </div>
                 );
               })}
@@ -1153,7 +1210,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             ...(isUser ? styles.messageBubbleUser : {}),
             ...(isAgent ? styles.messageBubbleAgent : {})
           }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+            <span style={{ color: 'var(--ds-text-secondary)', fontSize: '12px' }}>
               {preview}{preview.length >= 60 ? '…' : ''}
             </span>
           </div>
@@ -1216,7 +1273,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           <div style={{
             ...styles.timelineDot,
             top: '12px',
-            backgroundColor: getTypeStyle(msg.type).border?.split(' ')[1] || 'var(--primary-color)'
+            backgroundColor: getTypeStyle(msg.type).border?.split(' ')[1] || 'var(--ds-brand)'
           }} />
         )}
         
@@ -1248,9 +1305,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
 
         {/* 对于事件类型，在消息流中显示简要负载，方便直接查看 */}
         {!isCollapsed && msg.type === 'event' && msg.payloadSummary && (
-          <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
-            <div style={{ marginBottom: '6px', color: 'var(--text-muted)' }}>{t('msg.payload')}</div>
-            <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--text-color)', backgroundColor: 'transparent', borderRadius: '4px' }}>{msg.payloadSummary}</pre>
+          <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--ds-text-secondary)' }}>
+            <div style={{ marginBottom: '6px', color: 'var(--ds-text-secondary)' }}>{t('msg.payload')}</div>
+            <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--ds-text-primary)', backgroundColor: 'transparent', borderRadius: '4px' }}>{msg.payloadSummary}</pre>
           </div>
         )}
 
@@ -1338,14 +1395,14 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           )}
           {msg.payload && (
             <div style={{ marginTop: '8px' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>{t('msg.payload')}</div>
-              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--text-color)', backgroundColor: 'transparent', borderRadius: '4px' }}>{safeStringify(msg.payload)}</pre>
+              <div style={{ fontSize: '12px', color: 'var(--ds-text-secondary)', marginBottom: '6px' }}>{t('msg.payload')}</div>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--ds-text-primary)', backgroundColor: 'transparent', borderRadius: '4px' }}>{safeStringify(msg.payload)}</pre>
             </div>
           )}
           {msg.raw && (
             <div style={{ marginTop: '8px' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>{t('msg.raw_data')}</div>
-              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--text-color)', backgroundColor: 'transparent', borderRadius: '4px' }}>{safeStringify(msg.raw)}</pre>
+              <div style={{ fontSize: '12px', color: 'var(--ds-text-secondary)', marginBottom: '6px' }}>{t('msg.raw_data')}</div>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--ds-text-primary)', backgroundColor: 'transparent', borderRadius: '4px' }}>{safeStringify(msg.raw)}</pre>
             </div>
           )}
         </div>
@@ -1655,7 +1712,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           <span>{t('msg.message_details')}</span>
           <span style={{
             fontSize: '12px',
-            color: 'var(--text-muted)',
+            color: 'var(--ds-text-secondary)',
             marginLeft: '4px'
           }}>
             ({filteredMessages.length}/{messages.length})
@@ -1741,10 +1798,10 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
               ...styles.button,
               ...(autoScroll ? styles.buttonActive : {}),
               ...(!autoScroll ? {
-                color: 'var(--warning-color)',
+                color: 'var(--ds-status-warning)',
                 borderWidth: '1px',
                 borderStyle: 'solid',
-                borderColor: 'var(--warning-color)',
+                borderColor: 'var(--ds-status-warning)',
                 fontWeight: '500',
               } : {})
             }}

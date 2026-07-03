@@ -10,9 +10,9 @@
  *   6. token 预算机制在超限后 stopRequested
  */
 
-import { ReActAgent } from '../src/core/agent.js';
-import { ToolRegistry } from '../src/core/tool-registry.js';
-import { SessionManager } from '../src/core/session-manager.js';
+import { ReActAgent } from '../src/core/runtime/agent/agent.js';
+import { ToolRegistry } from '../src/core/runtime/agent/tool-registry.js';
+import { SessionManager } from '../src/core/session/session-manager.js';
 import { resolve, dirname } from 'path';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'fs';
 

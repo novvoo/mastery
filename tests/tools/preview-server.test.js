@@ -3,7 +3,7 @@ import net from 'net';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { startPreview, stopAllPreviews, stopPreview } from '../../src/core/preview-server.js';
+import { startPreview, stopAllPreviews, stopPreview } from '../../src/core/runtime/preview-server.js';
 
 function getAvailablePort() {
   return new Promise((resolve, reject) => {

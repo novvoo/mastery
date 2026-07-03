@@ -1,6 +1,6 @@
 import { readFile } from 'fs/promises';
 import { resolve } from 'path';
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 
 /**
  * review - Code review with forbidden responses.

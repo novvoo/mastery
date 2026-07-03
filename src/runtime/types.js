@@ -67,8 +67,8 @@ export const RuntimeEvent = {
  * 默认最大迭代次数 —— 单一数据源定义在 core/agent-constants.js，
  * 运行时层与 Agent 层共享。此处 re-export 以保持向后兼容。
  */
-import { MAX_ITERATIONS_DEFAULT } from '../core/agent-constants.js';
-export { MAX_ITERATIONS_DEFAULT } from '../core/agent-constants.js';
+import { MAX_ITERATIONS_DEFAULT } from '../core/agent/constants.js';
+export { MAX_ITERATIONS_DEFAULT } from '../core/agent/constants.js';
 
 /**
  * 运行时配置类

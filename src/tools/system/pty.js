@@ -6,7 +6,7 @@ import os from 'os';
 import { resolve } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { spawn } from 'child_process';
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 
 const MAX_BUFFER_CHARS = 200000;
 const DEFAULT_SETTLE_MS = 300;

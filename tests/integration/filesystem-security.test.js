@@ -13,8 +13,8 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { mkdtempSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
-import { SecurityPolicy, Decision } from '../../src/core/security-policy.js';
-import { PermissionLevel } from '../../src/core/types.js';
+import { SecurityPolicy, Decision } from '../../src/core/runtime/agent/support/security-policy.js';
+import { PermissionLevel } from '../../src/core/types/index.js';
 import { createFileSystemTools } from '../../src/tools/filesystem/filesystem-tools.js';
 
 let workdir;

@@ -17,7 +17,7 @@
  * - 策略决策应优先使用 taskProfile，只有在需要风险评分时才使用 riskProfile
  */
 
-import { MAX_ITERATIONS_DEFAULT } from '../../../agent-constants.js';
+import { MAX_ITERATIONS_DEFAULT } from '../../../agent/constants.js';
 import {
   CODING_CONTEXT_KEYWORDS,
   CODING_VERB_CONTEXT_PATTERNS,

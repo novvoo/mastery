@@ -15,7 +15,7 @@ import {
   buildCodingCompletionGatePrompt as buildCodingCompletionGatePromptText,
   buildCodingTaskOperatingPrompt as buildCodingTaskOperatingPromptText,
   buildSemanticRiskGuidance as buildSemanticRiskGuidanceText,
-} from '../../../coding-prompts.js';
+} from '../../../prompts/coding-prompts.js';
 import { TERMINATION_KEYWORDS } from '../../../../utils/patterns.js';
 import { isMutationEvent } from './evidence-verifier.js';
 import { existsSync } from 'fs';

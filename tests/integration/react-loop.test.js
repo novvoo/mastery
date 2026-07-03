@@ -3,8 +3,8 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { createAgentEngine } from '../../src/core/agent-engine.js';
-import { ToolRegistry } from '../../src/core/tool-registry.js';
+import { createAgentEngine } from '../../src/core/runtime/agent/agent-engine.js';
+import { ToolRegistry } from '../../src/core/runtime/agent/tool-registry.js';
 
 function makeScriptedModelProvider(responseScript = []) {
   let idx = 0;

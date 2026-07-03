@@ -5,8 +5,8 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-import { bootstrapRuntime } from '../../src/core/runtime-bootstrap.js';
-import { createAgentEngine } from '../../src/core/agent-engine.js';
+import { bootstrapRuntime } from '../../src/core/runtime/runtime-bootstrap.js';
+import { createAgentEngine } from '../../src/core/runtime/agent/agent-engine.js';
 
 const tmpDir = join(tmpdir(), 'agent-debug-tool-calls');
 if (existsSync(tmpDir)) {rmSync(tmpDir, { recursive: true, force: true });}

@@ -15,7 +15,7 @@ import {
   createFileSystemStorageAdapter,
   MAX_AGENT_HISTORY_ITEMS,
   MAX_AGENT_SESSIONS,
-} from '../../src/core/session-store.js';
+} from '../../src/core/session/session-store.js';
 
 describe('session-store (src/core)', () => {
   test('createAgentSessionId generates unique IDs', () => {

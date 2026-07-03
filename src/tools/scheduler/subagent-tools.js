@@ -4,7 +4,7 @@
  * 增强版：支持同步/异步模式、结果回调、超时控制
  */
 
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 
 /**
  * 创建子代理管理工具

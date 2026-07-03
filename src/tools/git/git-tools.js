@@ -5,7 +5,7 @@
 
 import { execSync } from 'child_process';
 import { resolve } from 'path';
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 
 /**
  * 执行 Git 命令

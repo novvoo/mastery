@@ -6,7 +6,7 @@ import { readFile, stat } from 'fs/promises';
 import { relative, resolve } from 'path';
 import { glob } from 'glob';
 import { Embedder, heuristicCountTokens, mmrReRank } from '../../core/embedder.js';
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 import { VectorIndex } from './vector-index.js';
 
 const DEFAULT_PATTERN = '**/*.{js,mjs,cjs,ts,tsx,jsx,json,md,txt,yml,yaml,css,html}';

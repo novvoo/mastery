@@ -17,8 +17,8 @@ import {
   ensureMetricsSink,
   resolveSecurityPolicy,
   registerMCPTools,
-} from '../../src/core/runtime-bootstrap.js';
-import { metricsSink } from '../../src/core/metrics-sink.js';
+} from '../../src/core/runtime/runtime-bootstrap.js';
+import { metricsSink } from '../../src/core/runtime/metrics-sink.js';
 
 describe('runtime-bootstrap', () => {
   let dir;

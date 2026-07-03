@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { SessionManager } from '../../src/core/session-manager.js';
+import { SessionManager } from '../../src/core/session/session-manager.js';
 
 describe('SessionManager', () => {
   test('constructor creates instance', () => {

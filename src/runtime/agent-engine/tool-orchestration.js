@@ -11,7 +11,7 @@
 
 import { createCoreTools, createSchedulerTools, SKILL_TOOL_CREATORS } from '../../tools/index.js';
 import { HOOKS } from '../plugin-system.js';
-import { describeToolActivity } from '../../core/tool-activity.js';
+import { describeToolActivity } from '../../core/runtime/tool-activity.js';
 import { RuntimeEvent } from '../types.js';
 import { normalizeToolResult } from '../../core/runtime/agent/tool-result.js';
 

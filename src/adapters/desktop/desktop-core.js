@@ -15,9 +15,9 @@ import {
   bootstrapRuntime,
   attachModelProvider as attachRuntimeModelProvider,
   initializeMCPServersFromEnv,
-} from '../../core/runtime-bootstrap.js';
+} from '../../core/runtime/runtime-bootstrap.js';
 import { createMainProcessIPCAdapter } from './ipc-adapter.js';
-import { metricsSink } from '../../core/metrics-sink.js';
+import { metricsSink } from '../../core/runtime/metrics-sink.js';
 import { DesktopPlugin } from './desktop-core/desktop-plugin.js';
 import { UIBridge } from './desktop-core/ui-bridge.js';
 

@@ -6,7 +6,7 @@ import {
   readAllModelConfigs,
   saveAllModelConfigs,
 } from '../../desktop/main-app/llm-config-and-persistence.js';
-import { writeUserEnv } from '../../src/core/runtime-config.js';
+import { writeUserEnv } from '../../src/core/runtime/runtime-config.js';
 
 describe('Model Toggle Sync End-to-End', () => {
   let tmpDir;

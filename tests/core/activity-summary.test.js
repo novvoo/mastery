@@ -5,7 +5,7 @@ import {
   getFileStatusLabel,
   getFileTypeIcon,
   formatDuration,
-} from '../../src/core/activity-summary.js';
+} from '../../src/core/runtime/activity-summary.js';
 
 describe('activity-summary (src/core)', () => {
   test('buildActivitySummary returns empty summary for no details', () => {

@@ -2,7 +2,7 @@
 // 问题描述：当 LLM 返回含有工具调用格式（如 CALL shell(...)）的响应时，
 // 程序没有正确解析/执行，而是将原始文本直接返回给用户。
 
-import { TextToolParser } from '../../src/core/text-tool-parser.js';
+import { TextToolParser } from '../../src/core/parsing/text-tool-parser.js';
 
 // 模拟工具注册
 const mockRegistry = {

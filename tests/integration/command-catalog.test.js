@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
-import { CommandCatalog, commandCatalog } from '../../src/core/command-catalog.js';
+import { CommandCatalog, commandCatalog } from '../../src/core/tools/command-catalog.js';
 
 describe('CommandCatalog', () => {
   let catalog;

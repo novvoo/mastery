@@ -167,6 +167,31 @@
   /* 焦点环 */
   --focus-ring: 0 0 0 2px var(--primary-color);
   --focus-ring-soft: 0 0 0 3px var(--primary-soft);
+
+  /* ── 语义化 Token 别名（对齐 TRAE Work 设计体系） ── */
+  --ds-bg-default: var(--surface-card);
+  --ds-bg-secondary: var(--surface-subtle);
+  --ds-bg-raised: var(--surface-raised);
+  --ds-bg-overlay-l1: var(--surface-hover);
+  --ds-border-l1: var(--border-subtle);
+  --ds-border-l2: var(--glass-border);
+  --ds-border-l3: var(--border-color);
+  --ds-text-primary: var(--text-color);
+  --ds-text-secondary: var(--text-muted);
+  --ds-text-tertiary: var(--text-dark);
+  --ds-status-success: var(--success-color);
+  --ds-status-success-s1: var(--success-faint);
+  --ds-status-success-s2: var(--success-soft);
+  --ds-status-error: var(--error-color);
+  --ds-status-error-s1: var(--error-faint);
+  --ds-status-error-s2: var(--error-soft);
+  --ds-status-warning: var(--warning-color);
+  --ds-status-warning-s1: var(--warning-faint);
+  --ds-status-warning-s2: var(--warning-soft);
+  --ds-brand: var(--primary-color);
+  --ds-brand-soft: var(--primary-soft);
+  --ds-brand-s2: var(--primary-border);
+  --ds-font-mono: var(--font-mono);
 }
 
 /* 亮色主题 — 冷白 + 绿青色 */
@@ -949,6 +974,24 @@ button.ghost:hover:not(:disabled) {
   75% { transform: translateX(1px); }
 }
 
+/* ── Plan Card 专用动画 ── */
+@keyframes planTaskComplete {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes planDotPulse {
+  0%, 100% { box-shadow: 0 0 0 3px var(--ds-status-warning-s1); }
+  50%      { box-shadow: 0 0 0 6px var(--ds-status-warning-s2); }
+}
+@keyframes planSectionFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes planProgressGrow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
 /* ================== 动画工具类 ================== */
 .animate-spin { animation: spin 1s linear infinite; }
 .animate-spin-slow { animation: spin 3s linear infinite; }
@@ -1657,4 +1700,144 @@ button:focus-visible,
 
 .shine-on-hover:hover::after {
   opacity: 1;
+}
+
+/* ── Button Component ─────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: inherit;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Variants */
+.btn-default {
+  background-color: var(--glass-bg-light);
+  color: var(--text-color);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-button);
+}
+
+.btn-default:hover:not(:disabled) {
+  box-shadow: var(--shadow-button-hover);
+}
+
+.btn-default:active:not(:disabled) {
+  box-shadow: var(--shadow-inset);
+}
+
+.btn-primary {
+  background-color: var(--primary-color);
+  color: var(--text-on-primary);
+  border: 1px solid var(--primary-strong);
+  box-shadow: var(--shadow-button);
+}
+
+.btn-primary:hover:not(:disabled) {
+  box-shadow: var(--shadow-button-hover);
+}
+
+.btn-primary:active:not(:disabled) {
+  box-shadow: var(--shadow-inset);
+}
+
+.btn-danger {
+  background-color: var(--error-color);
+  color: var(--text-on-primary);
+  border: 1px solid var(--error-color);
+  box-shadow: var(--shadow-button);
+}
+
+.btn-danger:hover:not(:disabled) {
+  box-shadow: var(--shadow-button-hover);
+}
+
+.btn-danger:active:not(:disabled) {
+  box-shadow: var(--shadow-inset);
+}
+
+.btn-ghost {
+  background-color: transparent;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background-color: var(--surface-hover);
+  color: var(--text-color);
+}
+
+.btn-icon {
+  background-color: var(--glass-bg-light);
+  color: var(--text-muted);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-button);
+}
+
+.btn-icon:hover:not(:disabled) {
+  box-shadow: var(--shadow-button-hover);
+}
+
+.btn-icon:active:not(:disabled) {
+  box-shadow: var(--shadow-inset);
+}
+
+/* Sizes */
+.btn-sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  border-radius: var(--radius-md);
+  min-width: 28px;
+}
+
+.btn-md {
+  height: 32px;
+  padding: 0 13px;
+  font-size: 13px;
+  border-radius: var(--radius-md);
+}
+
+.btn-lg {
+  height: 40px;
+  padding: 0 16px;
+  font-size: 14px;
+  border-radius: var(--radius-lg);
+}
+
+/* Icon button sizes (square) */
+.btn-icon.btn-sm {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 14px;
+}
+
+.btn-icon.btn-md {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 15px;
+}
+
+.btn-icon.btn-lg {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  font-size: 18px;
 }

@@ -8,7 +8,7 @@ import {
   checkCompletionGates,
   crossCheckVerifyClaim,
   finalAnswerMentionsVerification,
-} from '../../src/core/evidence-verifier.js';
+} from '../../src/core/runtime/agent/support/evidence-verifier.js';
 
 describe('evidence-verifier', () => {
   describe('isMutationEvent', () => {

@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { AgentVerifier } from '../../src/core/agent-verifier.js';
+import { AgentVerifier } from '../../src/core/runtime/agent/agent-verifier.js';
 
 function makeMockDeps() {
   return {

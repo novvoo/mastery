@@ -1,5 +1,5 @@
-import { ToolCategory } from '../../core/types.js';
-import { listPreviews, startPreview, stopPreview } from '../../core/preview-server.js';
+import { ToolCategory } from '../../core/types/index.js';
+import { listPreviews, startPreview, stopPreview } from '../../core/runtime/preview-server.js';
 
 export function createPreviewTools() {
   return [createPreviewStartTool(), createPreviewStopTool(), createPreviewListTool()];

@@ -208,7 +208,7 @@ mock.module('../../../src/core/agent-constants.js', () => ({
   MAX_ITERATIONS_DEFAULT: 10,
 }));
 
-import { createAgentEngine, createProtocolStreamFilter } from '../../../src/core/agent-engine.js';
+import { createAgentEngine, createProtocolStreamFilter } from '../../../src/core/runtime/agent/agent-engine.js';
 import { StreamEventType } from '../../../src/models/streaming-parser.js';
 
 describe('AgentEngine Streaming', () => {

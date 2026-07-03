@@ -3,7 +3,7 @@ import {
   describeToolActivity,
   describeToolProgress,
   summarizeActivityForCLI,
-} from '../../src/core/tool-activity.js';
+} from '../../src/core/runtime/tool-activity.js';
 
 describe('tool-activity integration', () => {
   // --- describeToolActivity comprehensive ---

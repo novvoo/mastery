@@ -66,7 +66,7 @@ import {
   normalizeHeading,
 } from './document-rag-sections.js';
 
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 import { mmrReRank, mergeAdjacentChunks } from '../../core/embedder.js';
 
 /* =====================================================================

@@ -17,7 +17,7 @@ import {
   getProviderRequirement,
   writeUserEnv,
   applyRuntimeValues
-} from '../../src/core/runtime-config.js';
+} from '../../src/core/runtime/runtime-config.js';
 import { createConfiguredModelProvider } from '../../src/cli/model-provider-factory.js';
 import { createDesktopCore as _createDesktopCore } from '../../src/adapters/desktop/desktop-core.js';
 

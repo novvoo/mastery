@@ -12,7 +12,7 @@ import {
   getMissingRequiredConfig,
   buildMissingConfigMessage,
   applyRuntimeValues,
-} from '../../src/core/runtime-config.js';
+} from '../../src/core/runtime/runtime-config.js';
 
 describe('runtime-config (src/core)', () => {
   test('exports APP_NAME', () => {

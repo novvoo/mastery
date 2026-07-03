@@ -12,7 +12,7 @@ import {
   startPreview as _startPreview,
   stopAllPreviews as _stopAllPreviews,
   stopPreview as _stopPreview
-} from '../../src/core/preview-server.js';
+} from '../../src/core/runtime/preview-server.js';
 
 export function listPreviews() {
   return _listPreviews();

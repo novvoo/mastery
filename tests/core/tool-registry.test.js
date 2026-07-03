@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { ToolRegistry } from '../../src/core/tool-registry.js';
+import { ToolRegistry } from '../../src/core/runtime/agent/tool-registry.js';
 
 function makeTool(name, extra = {}) {
   return {

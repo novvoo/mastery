@@ -1,4 +1,4 @@
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 import { readFileSync, existsSync } from 'fs';
 
 export default function createModuleSystemCheckTool() {

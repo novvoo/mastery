@@ -3,7 +3,7 @@ import {
   buildSemanticRiskGuidance,
   buildCodingTaskOperatingPrompt,
   buildCodingCompletionGatePrompt,
-} from '../../src/core/coding-prompts.js';
+} from '../../src/core/prompts/coding-prompts.js';
 
 describe('coding-prompts', () => {
   describe('buildSemanticRiskGuidance', () => {

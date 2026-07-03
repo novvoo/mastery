@@ -14,9 +14,9 @@
  *   - IPC 事件监听（window-connected/disconnected/error）
  */
 
-import { commandCatalog } from '../../src/core/command-catalog.js';
-import { metricsSink } from '../../src/core/metrics-sink.js';
-import { getMissingRequiredConfig } from '../../src/core/runtime-config.js';
+import { commandCatalog } from '../../src/core/tools/command-catalog.js';
+import { metricsSink } from '../../src/core/runtime/metrics-sink.js';
+import { getMissingRequiredConfig } from '../../src/core/runtime/runtime-config.js';
 import { createConfiguredModelProvider } from '../../src/cli/model-provider-factory.js';
 import {
   handleCreateWorkspaceDirectory,

@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import { SessionManager } from '../../src/core/session-manager.js';
+import { SessionManager } from '../../src/core/session/session-manager.js';
 import { SessionPersistence } from '../../src/core/session/session-persistence.js';
 
 describe('SessionPersistence', () => {

@@ -9,9 +9,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { MetricsSink } from '../../src/core/metrics-sink.js';
-import { WriteFileGuard } from '../../src/core/write-file-guard.js';
-import { WorkspaceState } from '../../src/core/workspace-state.js';
+import { MetricsSink } from '../../src/core/runtime/metrics-sink.js';
+import { WriteFileGuard } from '../../src/core/tools/write-file-guard.js';
+import { WorkspaceState } from '../../src/core/workspace/workspace-state.js';
 
 // ============================================================
 // Helpers

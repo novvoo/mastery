@@ -3,7 +3,7 @@
  */
 
 import chalk from 'chalk';
-import { describeToolActivity, summarizeActivityForCLI } from '../core/tool-activity.js';
+import { describeToolActivity, summarizeActivityForCLI } from '../core/runtime/tool-activity.js';
 
 export const ui = {
   brand(text) {

@@ -3,7 +3,7 @@ export const managementStyles = {
 modalBackdrop: {
   position: 'fixed',
   inset: 0,
-  backgroundColor: 'var(--overlay-soft)',
+  backgroundColor: 'var(--ds-bg-overlay-l1)',
   backdropFilter: 'blur(8px) saturate(150%)',
   WebkitBackdropFilter: 'blur(8px) saturate(150%)',
   display: 'flex',
@@ -15,10 +15,10 @@ modalBackdrop: {
 
 modal: {
   width: 'min(560px, 100%)',
-  backgroundColor: 'var(--surface-color)',
-  border: '1px solid var(--glass-border)',
+  backgroundColor: 'var(--ds-bg-raised)',
+  border: '1px solid var(--ds-border-l2)',
   borderRadius: '12px',
-  boxShadow: 'var(--glass-shadow-lg)',
+  boxShadow: 'var(--ds-border-l3)',
   overflow: 'hidden'
 },
 
@@ -31,12 +31,12 @@ modalTitle: {
   margin: 0,
   fontSize: '18px',
   fontWeight: '700',
-  color: 'var(--text-color)'
+  color: 'var(--ds-text-primary)'
 },
 
 modalSubtitle: {
   margin: '8px 0 0',
-  color: 'var(--text-muted)',
+  color: 'var(--ds-text-tertiary)',
   fontSize: '13px',
   lineHeight: 1.5
 },
@@ -55,21 +55,21 @@ formRow: {
 formLabel: {
   fontSize: '12px',
   fontWeight: '700',
-  color: 'var(--text-muted)'
+  color: 'var(--ds-text-tertiary)'
 },
 
 formInput: {
   width: '100%',
   height: '36px',
   borderRadius: '8px',
-  border: '1px solid var(--glass-border)',
-  backgroundColor: 'var(--glass-bg-light)',
+  border: '1px solid var(--ds-border-l2)',
+  backgroundColor: 'var(--ds-bg-secondary)',
   backdropFilter: 'blur(8px) saturate(140%)',
   WebkitBackdropFilter: 'blur(8px) saturate(140%)',
-  color: 'var(--text-color)',
+  color: 'var(--ds-text-primary)',
   padding: '0 10px',
   boxShadow: 'var(--glass-inner-hl)',
-  transition: 'all var(--transition-fast)',
+  transition: 'all 0.15s ease',
   outline: 'none'
 },
 
@@ -79,8 +79,8 @@ modalFooter: {
   alignItems: 'center',
   gap: '12px',
   padding: '14px 20px',
-  borderTop: '1px solid var(--glass-border)',
-  backgroundColor: 'var(--glass-bg-light)',
+  borderTop: '1px solid var(--ds-border-l2)',
+  backgroundColor: 'var(--ds-bg-secondary)',
   backdropFilter: 'blur(8px) saturate(140%)',
   WebkitBackdropFilter: 'blur(8px) saturate(140%)',
   boxShadow: 'var(--glass-inner-hl)'
@@ -98,7 +98,7 @@ textButton: {
   borderRadius: '6px',
   border: 'none',
   backgroundColor: 'transparent',
-  color: 'var(--text-muted)',
+  color: 'var(--ds-text-tertiary)',
   cursor: 'pointer',
   minWidth: '86px',
   whiteSpace: 'nowrap'
@@ -109,7 +109,7 @@ primaryAction: {
   padding: '0 14px',
   borderRadius: '6px',
   border: 'none',
-  backgroundColor: 'var(--primary-color)',
+  backgroundColor: 'var(--ds-brand)',
   color: 'var(--text-on-primary)',
   fontWeight: '700',
   cursor: 'pointer',
@@ -118,12 +118,12 @@ primaryAction: {
 },
 
 formError: {
-  color: 'var(--error-color)',
+  color: 'var(--ds-status-error)',
   fontSize: '12px'
 },
 
 formHint: {
-  color: 'var(--text-dark)',
+  color: 'var(--ds-text-secondary)',
   fontSize: '12px',
   minWidth: 0,
   overflow: 'hidden',
@@ -150,10 +150,10 @@ managementContainer: {
   maxWidth: '800px',
   height: '80vh',
   maxHeight: '600px',
-  backgroundColor: 'var(--surface-color)',
-  border: '1px solid var(--glass-border)',
+  backgroundColor: 'var(--ds-bg-raised)',
+  border: '1px solid var(--ds-border-l2)',
   borderRadius: '14px',
-  boxShadow: 'var(--glass-shadow-lg)',
+  boxShadow: 'var(--ds-border-l3)',
   overflow: 'hidden',
 },
 
@@ -165,7 +165,7 @@ managementSidebar: {
   backgroundColor: 'var(--glass-bg)',
   backdropFilter: 'blur(16px) saturate(160%)',
   WebkitBackdropFilter: 'blur(16px) saturate(160%)',
-  borderRight: '1px solid var(--glass-border)',
+  borderRight: '1px solid var(--ds-border-l2)',
   boxShadow: 'var(--glass-inner-hl)',
   paddingTop: '12px',
 },
@@ -175,8 +175,8 @@ managementSidebarHeader: {
   alignItems: 'center',
   gap: '8px',
   padding: '8px 12px 14px',
-  color: 'var(--text-color)',
-  borderBottom: '1px solid var(--glass-border)',
+  color: 'var(--ds-text-primary)',
+  borderBottom: '1px solid var(--ds-border-l2)',
   marginBottom: '4px',
 },
 
@@ -189,17 +189,17 @@ managementTab: {
   padding: '0 14px',
   border: 'none',
   backgroundColor: 'transparent',
-  color: 'var(--text-muted)',
+  color: 'var(--ds-text-tertiary)',
   cursor: 'pointer',
   fontSize: '13px',
   fontWeight: 500,
   textAlign: 'left',
-  transition: 'all var(--transition-fast)',
+  transition: 'all 0.15s ease',
 },
 
 managementTabActive: {
-  backgroundColor: 'var(--primary-soft)',
-  color: 'var(--primary-color)',
+  backgroundColor: 'var(--ds-brand-soft)',
+  color: 'var(--ds-brand)',
   fontWeight: 700,
 },
 
@@ -220,16 +220,16 @@ managementCloseBtn: {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  border: '1px solid var(--glass-border)',
+  border: '1px solid var(--ds-border-l2)',
   borderRadius: '6px',
-  backgroundColor: 'var(--glass-bg-light)',
+  backgroundColor: 'var(--ds-bg-secondary)',
   backdropFilter: 'blur(8px) saturate(140%)',
   WebkitBackdropFilter: 'blur(8px) saturate(140%)',
-  color: 'var(--text-muted)',
+  color: 'var(--ds-text-tertiary)',
   cursor: 'pointer',
   fontSize: '13px',
   zIndex: 1,
-  transition: 'all var(--transition-fast)',
+  transition: 'all 0.15s ease',
   boxShadow: 'var(--glass-inner-hl)'
 },
 
@@ -258,7 +258,7 @@ mgmtSectionTitle: {
   backgroundColor: 'transparent',
   fontSize: '11px',
   fontWeight: 700,
-  color: 'var(--text-muted)',
+  color: 'var(--ds-text-tertiary)',
   textTransform: 'uppercase',
   padding: '0 2px',
 },
@@ -276,7 +276,7 @@ mgmtCheckboxRow: {
 mgmtCheckbox: {
   width: '14px',
   height: '14px',
-  accentColor: 'var(--primary-color)',
+  accentColor: 'var(--ds-brand)',
   cursor: 'pointer',
 },
 
@@ -284,8 +284,8 @@ mgmtCheckbox: {
 modelGroup: {
   marginBottom: '8px',
   borderRadius: '8px',
-  border: '1px solid var(--glass-border)',
-  backgroundColor: 'var(--glass-bg-light)',
+  border: '1px solid var(--ds-border-l2)',
+  backgroundColor: 'var(--ds-bg-secondary)',
   backdropFilter: 'blur(8px) saturate(140%)',
   WebkitBackdropFilter: 'blur(8px) saturate(140%)',
   boxShadow: 'var(--glass-inner-hl)',
@@ -299,20 +299,20 @@ modelGroupHeader: {
   width: '100%',
   padding: '10px 12px',
   border: 'none',
-  backgroundColor: 'var(--title-capsule-bg)',
-  color: 'var(--text-color)',
+  backgroundColor: 'var(--ds-brand-soft)',
+  color: 'var(--ds-text-primary)',
   cursor: 'pointer',
   fontSize: '13px',
   textAlign: 'left',
 },
 
 modelGroupBody: {
-  borderTop: '1px solid var(--glass-border)',
+  borderTop: '1px solid var(--ds-border-l2)',
   padding: '8px',
 },
 
 modelCard: {
-  border: '1px solid var(--glass-border)',
+  border: '1px solid var(--ds-border-l2)',
   borderRadius: '8px',
   marginBottom: '6px',
   backgroundColor: 'var(--glass-bg)',
@@ -340,7 +340,7 @@ modelCardInfo: {
 modelCardName: {
   fontWeight: 600,
   fontSize: '13px',
-  color: 'var(--text-color)',
+  color: 'var(--ds-text-primary)',
 },
 
 modelCardActions: {
@@ -356,15 +356,15 @@ modelActionBtn: {
   justifyContent: 'center',
   width: '24px',
   height: '24px',
-  border: '1px solid var(--glass-border)',
+  border: '1px solid var(--ds-border-l2)',
   borderRadius: '4px',
-  backgroundColor: 'var(--glass-bg-light)',
+  backgroundColor: 'var(--ds-bg-secondary)',
   backdropFilter: 'blur(8px) saturate(140%)',
   WebkitBackdropFilter: 'blur(8px) saturate(140%)',
-  color: 'var(--text-muted)',
+  color: 'var(--ds-text-tertiary)',
   cursor: 'pointer',
   fontSize: '11px',
-  transition: 'all var(--transition-fast)',
+  transition: 'all 0.15s ease',
   boxShadow: 'var(--glass-inner-hl)'
 },
 
@@ -372,19 +372,19 @@ modelAddBtn: {
   display: 'block',
   width: '100%',
   padding: '8px',
-  border: '1px dashed var(--glass-border-strong)',
+  border: '1px dashed var(--ds-border-l3)',
   borderRadius: '6px',
   backgroundColor: 'transparent',
-  color: 'var(--text-muted)',
+  color: 'var(--ds-text-tertiary)',
   cursor: 'pointer',
   fontSize: '12px',
   fontWeight: 500,
-  transition: 'all var(--transition-fast)',
+  transition: 'all 0.15s ease',
 },
 
 modelForm: {
   padding: '12px',
-  borderTop: '1px solid var(--glass-border)',
+  borderTop: '1px solid var(--ds-border-l2)',
 },
 
 modelFormActions: {
@@ -398,16 +398,16 @@ modelNameInput: {
   height: '28px',
   padding: '0 8px',
   borderRadius: '6px',
-  border: '1px solid var(--primary-soft)',
-  backgroundColor: 'var(--glass-bg-light)',
-  color: 'var(--text-color)',
+  border: '1px solid var(--ds-brand-soft)',
+  backgroundColor: 'var(--ds-bg-secondary)',
+  color: 'var(--ds-text-primary)',
   fontSize: '12px',
   width: '160px',
 },
 
 // ================== MCP 管理 ==================
 mcpServerCard: {
-  border: '1px solid var(--glass-border)',
+  border: '1px solid var(--ds-border-l2)',
   borderRadius: '8px',
   marginBottom: '8px',
   backgroundColor: 'var(--glass-bg)',

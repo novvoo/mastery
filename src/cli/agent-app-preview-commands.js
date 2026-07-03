@@ -1,5 +1,5 @@
 import { enhancedUI } from './enhanced-ui.js';
-import { listPreviews, startPreview, stopPreview } from '../core/preview-server.js';
+import { listPreviews, startPreview, stopPreview } from '../core/runtime/preview-server.js';
 
 export async function handlePreviewCommand(agent, argsText = '') {
   const args = parseArgs(argsText || '');

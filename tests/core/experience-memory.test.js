@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { ExperienceMemory } from '../../src/core/experience-memory.js';
+import { ExperienceMemory } from '../../src/core/session/experience-memory.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';

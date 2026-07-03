@@ -20,7 +20,7 @@ import {
   getFileStatusLabel,
   getFileTypeIcon,
   formatDuration as formatDurationCore,
-} from '../core/activity-summary.js';
+} from '../core/runtime/activity-summary.js';
 import {
   isRuntimeDetailMessage,
   isThinkingMessage,
@@ -30,8 +30,8 @@ import {
   getRuntimeDetailPreviewText,
   buildThinkingSummary,
   createConversationGroups,
-} from '../core/runtime-details.js';
-import { getRuntimeStatusText } from '../core/runtime-status.js';
+} from '../core/runtime/runtime-details.js';
+import { getRuntimeStatusText } from '../core/runtime/runtime-status.js';
 
 let debugEnabled = process.env.DEBUG === 'true';
 

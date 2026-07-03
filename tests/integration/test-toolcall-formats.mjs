@@ -1,7 +1,7 @@
 // 测试 normalizeModelResponse 对各种 tool call 格式的处理
-import { createAgentEngine } from '../../src/core/agent-engine.js';
-import { createDefaultToolRegistry } from '../../src/core/runtime-bootstrap.js';
-import { ToolExecutor } from '../../src/core/tool-executor.js';
+import { createAgentEngine } from '../../src/core/runtime/agent/agent-engine.js';
+import { createDefaultToolRegistry } from '../../src/core/runtime/runtime-bootstrap.js';
+import { ToolExecutor } from '../../src/core/runtime/agent/tool-executor.js';
 
 const tmpDir = process.cwd() + '/tmp-test-normalize';
 

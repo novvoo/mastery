@@ -2,11 +2,11 @@
 import { existsSync, mkdirSync, rmSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { createAgentEngine } from '../../src/core/agent-engine.js';
-import { createDefaultToolRegistry } from '../../src/core/runtime-bootstrap.js';
+import { createAgentEngine } from '../../src/core/runtime/agent/agent-engine.js';
+import { createDefaultToolRegistry } from '../../src/core/runtime/runtime-bootstrap.js';
 import { createFileSystemTools } from '../../src/tools/filesystem/filesystem-tools.js';
-import { ToolExecutor } from '../../src/core/tool-executor.js';
-import { ToolRegistry } from '../../src/core/tool-registry.js';
+import { ToolExecutor } from '../../src/core/runtime/agent/tool-executor.js';
+import { ToolRegistry } from '../../src/core/runtime/agent/tool-registry.js';
 
 // 测试阶段 1：直接测试 write_file handler
 async function testDirectHandler() {

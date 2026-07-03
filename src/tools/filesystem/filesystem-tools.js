@@ -12,7 +12,7 @@ import { execFile } from 'child_process';
 import { join, resolve, sep, isAbsolute } from 'path';
 import { Buffer } from 'buffer';
 import { createHash } from 'crypto';
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 import { computeTag } from '../../core/harness/hashline.js';
 
 /**

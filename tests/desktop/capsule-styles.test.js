@@ -8,11 +8,11 @@ import {
 
 describe('STATUS_TONE', () => {
   test('maps runtime tone to a color token', () => {
-    expect(STATUS_TONE.warning.color).toBe('var(--warning-color)');
-    expect(STATUS_TONE.error.color).toBe('var(--error-color)');
-    expect(STATUS_TONE.success.color).toBe('var(--success-color)');
-    expect(STATUS_TONE.info.color).toBe('var(--info-color)');
-    expect(STATUS_TONE.muted.color).toBe('var(--text-muted)');
+    expect(STATUS_TONE.warning.color).toBe('var(--ds-status-warning)');
+    expect(STATUS_TONE.error.color).toBe('var(--ds-status-error)');
+    expect(STATUS_TONE.success.color).toBe('var(--ds-status-success)');
+    expect(STATUS_TONE.info.color).toBe('var(--ds-brand)');
+    expect(STATUS_TONE.muted.color).toBe('var(--ds-text-tertiary)');
   });
 
   test('tone colors do not decide animation by themselves', () => {

@@ -7,7 +7,7 @@ import {
   stopPreview,
   listPreviews,
   stopAllPreviews,
-} from '../../src/core/preview-server.js';
+} from '../../src/core/runtime/preview-server.js';
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';

@@ -1,4 +1,4 @@
-import { RISK_LEVEL, getMethodologyGuidance } from '../risk-budget.js';
+import { RISK_LEVEL, getMethodologyGuidance } from '../runtime/agent/support/risk-budget.js';
 
 export function buildSemanticRiskGuidance(domains = []) {
   if (domains.length === 0) {

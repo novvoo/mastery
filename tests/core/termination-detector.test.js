@@ -5,7 +5,7 @@ import {
   normalizeFinalAnswer,
   StagnationDetector,
   Termination,
-} from '../../src/core/termination-detector.js';
+} from '../../src/core/runtime/agent/termination-detector.js';
 
 describe('Termination Detection', () => {
   test('isTermination returns false for empty/null', () => {

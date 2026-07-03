@@ -16,7 +16,7 @@ import {
   STAGNATION_SAME_TOOL_LIMIT,
   EXPLORATION_BUDGET,
   FORCE_ACTION_GRACE_TURNS,
-} from '../../agent-constants.js';
+} from '../../agent/constants.js';
 import {
   isWorkspaceInspectionTool,
   isVerificationTool,

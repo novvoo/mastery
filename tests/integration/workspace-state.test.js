@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
-import { WorkspaceState } from '../../src/core/workspace-state.js';
+import { WorkspaceState } from '../../src/core/workspace/workspace-state.js';
 
 describe('WorkspaceState（多文件上下文聚合）', () => {
   let ws;

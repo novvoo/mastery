@@ -12,7 +12,7 @@ import {
   RUNTIME_VERIFICATION_TOOLS,
   RUNTIME_VERIFICATION_COMMAND_PATTERNS,
   SEMANTIC_RISK_DOMAINS,
-} from '../../src/core/agent-constants.js';
+} from '../../src/core/agent/constants.js';
 
 describe('agent-constants', () => {
   test('MAX_ITERATIONS_DEFAULT is a positive number', () => {

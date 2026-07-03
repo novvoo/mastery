@@ -5,7 +5,7 @@ import { tmpdir } from 'os';
 
 // We need to test with a real temp dir for some tests, and mock for others
 // Import the module under test
-import { WorkspaceIndex } from '../../src/core/workspace-index.js';
+import { WorkspaceIndex } from '../../src/core/workspace/workspace-index.js';
 
 describe('WorkspaceIndex', () => {
   test('constructor initializes with zero size', () => {

@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { TokenScope } from '../../src/core/token-scope.js';
+import { TokenScope } from '../../src/core/runtime/agent/support/token-scope.js';
 
 describe('TokenScope', () => {
   test('constructor initializes with defaults', () => {

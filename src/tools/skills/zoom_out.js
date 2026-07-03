@@ -1,6 +1,6 @@
 import { readFile, readdir, stat } from 'fs/promises';
 import { join, resolve, relative, dirname, basename, extname } from 'path';
-import { ToolCategory } from '../../core/types.js';
+import { ToolCategory } from '../../core/types/index.js';
 
 /**
  * zoom_out - System-level context before changes.

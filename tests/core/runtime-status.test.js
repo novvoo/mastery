@@ -3,7 +3,7 @@ import {
   RUNTIME_STATUS_META,
   getRuntimeStatusMeta,
   getRuntimeStatusText,
-} from '../../src/core/runtime-status.js';
+} from '../../src/core/runtime/runtime-status.js';
 
 describe('runtime-status (src/core)', () => {
   test('RUNTIME_STATUS_META has required statuses', () => {
