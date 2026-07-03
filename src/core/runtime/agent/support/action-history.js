@@ -174,7 +174,7 @@ export class ActionHistory {
         filePath: a.filePath,
       })),
       overExploredTargets: this.#getOverExploredTargets(),
-      reason: `Detected ${this.#readOnlyStreak} consecutive read-only actions without any mutation`,
+      reason: `Detected ${this.#readOnlyStreak} consecutive read-only actions without decisive progress`,
     };
   }
 

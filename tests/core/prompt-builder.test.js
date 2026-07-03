@@ -30,6 +30,8 @@ describe('buildToolSyntaxCorrectionPrompt', () => {
     const result = buildToolSyntaxCorrectionPrompt(null, toolRegistry, 'bad tool call');
     expect(result).toContain('read_file');
     expect(result).toContain('FINAL_ANSWER');
+    expect(result).toContain('was not accepted as a final answer');
+    expect(result).not.toContain('must not be treated as a final answer');
   });
 
   test('includes diagnosis when parser detects malformed call', () => {
@@ -68,6 +70,8 @@ describe('buildCodingCompletionGatePrompt', () => {
   test('returns gate prompt', () => {
     const result = buildCodingCompletionGatePrompt('fix bug', { reason: 'no verification' });
     expect(typeof result).toBe('string');
+    expect(result).toContain('evidence-producing step');
+    expect(result).not.toContain('Run additional verification or write changes');
   });
 });
 

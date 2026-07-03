@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { groupPlanTasksByPhase } from '../../desktop/renderer/components/message-log/utils/plan-display.js';
+import {
+  PLAN_ARCHITECTURE_LABELS,
+  groupPlanTasksByPhase,
+} from '../../desktop/renderer/components/message-log/utils/plan-display.js';
 
 describe('plan display ordering', () => {
   test('shows executed tasks before pending tasks within a phase', () => {
@@ -18,5 +21,10 @@ describe('plan display ordering', () => {
       'active',
       'todo',
     ]);
+  });
+
+  test('uses acceptance language instead of gatekeeping language', () => {
+    expect(PLAN_ARCHITECTURE_LABELS['checklist-gated']).toBe('验收清单');
+    expect(PLAN_ARCHITECTURE_LABELS['checklist-gated']).not.toContain('门禁');
   });
 });

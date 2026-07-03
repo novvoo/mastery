@@ -591,6 +591,84 @@ export class WorkspaceState {
   }
 
   /**
+   * 基于已观察到的目录/文件事实，为一个不存在的路径推荐真实候选。
+   * 这用于把 list_dir 的证据连接回 read_file，避免模型继续读取幻觉路径。
+   * @param {string} missingPath
+   * @param {number} limit
+   * @returns {{path: string, reason: string}[]}
+   */
+  getPathAlternatives(missingPath, limit = 8) {
+    const normalized = this._normalizePath(missingPath);
+    if (!normalized) {
+      return [];
+    }
+
+    const parts = normalized.split('/').filter(Boolean);
+    const wantedName = parts.at(-1) || normalized;
+    const wantedDir = parts.length > 1 ? parts.slice(0, -1).join('/') : '.';
+    const wantedBase = wantedName.replace(/\.[^.]+$/, '').toLowerCase();
+    const wantedExt = (wantedName.match(/(\.[^.]+)$/)?.[1] || '').toLowerCase();
+    const candidates = new Map();
+    const comparablePath = (value) => this._normalizePath(value).replace(/^\.\//, '');
+
+    const addCandidate = (candidatePath, reason, score) => {
+      const candidate = this._normalizePath(candidatePath);
+      const comparableCandidate = comparablePath(candidate);
+      if (
+        !candidate ||
+        comparableCandidate === comparablePath(normalized) ||
+        this._failedPaths.has(candidate) ||
+        this._failedPaths.has(comparableCandidate)
+      ) {
+        return;
+      }
+      const existing = candidates.get(candidate);
+      if (!existing || score > existing.score) {
+        candidates.set(candidate, { path: comparableCandidate, reason, score });
+      }
+    };
+
+    for (const [filePath, meta] of this._files.entries()) {
+      if (meta?.exists === false) {
+        continue;
+      }
+      const comparableFilePath = comparablePath(filePath);
+      const fileParts = comparableFilePath.split('/').filter(Boolean);
+      const fileName = fileParts.at(-1) || filePath;
+      const fileDir = fileParts.length > 1 ? fileParts.slice(0, -1).join('/') : '.';
+      const fileBase = fileName.replace(/\.[^.]+$/, '').toLowerCase();
+      const fileExt = (fileName.match(/(\.[^.]+)$/)?.[1] || '').toLowerCase();
+
+      if (fileDir === wantedDir) {
+        addCandidate(comparableFilePath, `same directory "${wantedDir}"`, 80);
+      }
+      if (fileBase && fileBase === wantedBase) {
+        addCandidate(
+          comparableFilePath,
+          `same basename "${fileBase}"`,
+          fileExt === wantedExt ? 95 : 70,
+        );
+      }
+      if (wantedBase && (fileBase.includes(wantedBase) || wantedBase.includes(fileBase))) {
+        addCandidate(comparableFilePath, `similar basename to "${wantedName}"`, 50);
+      }
+    }
+
+    const dir = this._directories.get(wantedDir);
+    if (dir?.entries) {
+      for (const entry of dir.entries) {
+        const entryPath = entry.includes('/') ? entry : `${wantedDir}/${entry}`;
+        addCandidate(entryPath, `listed in "${wantedDir}"`, 90);
+      }
+    }
+
+    return Array.from(candidates.values())
+      .sort((a, b) => b.score - a.score || a.path.localeCompare(b.path))
+      .slice(0, limit)
+      .map(({ path, reason }) => ({ path, reason }));
+  }
+
+  /**
    * 判断工作区是否为空（已列举根目录且无实际项目文件）
    * 用于在计划生成阶段决定是否走 new_project 模板而非 LLM 分解。
    * @returns {boolean|null} null 表示尚未列举根目录，无法判断
@@ -690,10 +768,16 @@ export class WorkspaceState {
 
         const exists = this.checkPathExists(path);
         if (exists === 'not_found') {
+          const alternatives =
+            typeof this.getPathAlternatives === 'function' ? this.getPathAlternatives(path) : [];
           return {
             canSkip: true,
             reason: `Path "${path}" was previously checked and does not exist`,
-            predicted: { error: this.getPathNotFoundReason(path) || 'File not found' },
+            predicted: {
+              error: this.getPathNotFoundReason(path) || 'File not found',
+              missingPath: path,
+              alternatives,
+            },
             type: 'will_fail',
           };
         }

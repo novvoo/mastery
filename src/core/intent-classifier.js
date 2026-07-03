@@ -492,7 +492,7 @@ export class IntentClassifier {
     return deepAssess(userInput);
   }
 
-  /** completion gates — 对编码完成的后门策略 */
+  /** completion gates — 对编码完成的证据门控策略 */
   completionGates(profile) {
     if (!profile?.isModificationTask) {
       return [];

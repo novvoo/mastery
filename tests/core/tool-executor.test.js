@@ -128,6 +128,32 @@ describe('ToolExecutor', () => {
     expect(result2.result).toBe('content');
   });
 
+  test('missing read_file uses prior list_dir evidence to suggest existing paths', async () => {
+    const readHandler = mock(async () => 'should not run');
+    const tool = makeTool('read_file', { handler: readHandler });
+    const workspaceState = new WorkspaceState();
+    workspaceState.recordDirectoryListing('src', ['main.ts', 'game.js'], 'list_dir');
+    workspaceState.recordPathNotFound('src/main.js', 'File not found');
+    const { executor } = makeMockExecutor({
+      tools: [tool],
+      config: { workspaceState },
+    });
+
+    const result = await executor.execute({
+      id: '1',
+      name: 'read_file',
+      arguments: { path: 'src/main.js' },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.skipped).toBe(true);
+    expect(result.predicted).toBe(true);
+    expect(result.result).toContain('File not found: "src/main.js"');
+    expect(result.result).toContain('src/main.ts');
+    expect(result.result).toContain('do not retry "src/main.js"');
+    expect(readHandler).not.toHaveBeenCalled();
+  });
+
   test('read-only stagnation warning asks for evidence-based action', async () => {
     const tool = makeTool('read_file', { handler: async () => 'content' });
     const sessionManager = { addSystemMessage: mock(() => {}) };
@@ -152,9 +178,12 @@ describe('ToolExecutor', () => {
 
     expect(sessionManager.addSystemMessage).toHaveBeenCalled();
     const message = sessionManager.addSystemMessage.mock.calls.at(-1)[0];
+    expect(message).toContain('READ-ONLY LOOP CHECK');
+    expect(message).toContain('without decisive progress');
     expect(message).toContain('evidence-based step');
     expect(message).toContain('single missing fact');
     expect(message).toContain('focused read/search/diagnostic');
+    expect(message).not.toContain('without any mutation');
     expect(message).not.toContain('You MUST now take action');
     expect(message).not.toContain('Do NOT continue reading');
   });
@@ -215,7 +244,7 @@ describe('ToolExecutor', () => {
     }
   });
 
-  test('mutation tools are blocked on duplicate calls', async () => {
+  test('mutation tools are skipped on duplicate calls', async () => {
     const tool = makeTool('write_file', { handler: async () => 'written' });
     const { executor } = makeMockExecutor({ tools: [tool] });
 
@@ -226,6 +255,8 @@ describe('ToolExecutor', () => {
     expect(result1.skipped).toBeUndefined();
     expect(result2.skipped).toBe(true);
     expect(result2.duplicateMutation).toBe(true);
+    expect(result2.result.message).toContain('Duplicate mutation write_file skipped');
+    expect(result2.result.message).not.toContain('blocked');
   });
 
   test('requires workspace root observation before first create-task mutation', async () => {
@@ -258,26 +289,34 @@ describe('ToolExecutor', () => {
     expect(writeHandler).toHaveBeenCalledTimes(1);
   });
 
-  test('blocks write_file from overwriting an existing file before read_file', async () => {
+  test('write-before-read guardrail requires current file evidence before editing', async () => {
     const root = mkdtempSync(join(tmpdir(), 'tool-executor-write-before-read-'));
     try {
       writeFileSync(join(root, 'src.js'), 'export const oldValue = 1;\n', 'utf-8');
       const writeHandler = mock(async () => 'written');
       const writeTool = makeTool('write_file', { handler: writeHandler });
+      const sessionManager = { addSystemMessage: mock(() => {}) };
       const { executor } = makeMockExecutor({
         tools: [writeTool],
         config: { workingDirectory: root },
       });
 
-      const result = await executor.execute({
-        id: '1',
-        name: 'write_file',
-        arguments: { path: 'src.js', content: 'export const newValue = 2;\n' },
-      });
+      const result = await executor.execute(
+        {
+          id: '1',
+          name: 'write_file',
+          arguments: { path: 'src.js', content: 'export const newValue = 2;\n' },
+        },
+        { sessionManager },
+      );
 
       expect(result.success).toBe(false);
       expect(result.writeBeforeReadRequired).toBe(true);
       expect(result.result).toContain('without first reading');
+      const message = sessionManager.addSystemMessage.mock.calls.at(-1)[0];
+      expect(message).toContain('WRITE-BEFORE-READ GUARDRAIL');
+      expect(message).toContain('needs current-file evidence');
+      expect(message).not.toContain('You MUST read');
       expect(readFileSync(join(root, 'src.js'), 'utf-8')).toBe('export const oldValue = 1;\n');
       expect(writeHandler).not.toHaveBeenCalled();
     } finally {

@@ -191,6 +191,13 @@ describe('runtime-details (src/core)', () => {
           '## Current Execution Focus\n\nTask ID: implement_changes\nTask name: Implement changes\n\n### Tools exposed for this request\n- read_file\n- write_file',
       }),
     ).toBe(false);
+    expect(
+      isPrimaryMessage({
+        type: 'assistant',
+        content:
+          '## Current Execution Focus\n\nTask ID: verify_result\nTask name: Verify result\n\nTask IDs are scheduler labels, not tool names.',
+      }),
+    ).toBe(false);
 
     expect(isPrimaryMessage({ toolName: 'read_file', type: 'assistant' })).toBe(false);
     expect(isPrimaryMessage({ args: {}, type: 'assistant' })).toBe(false);

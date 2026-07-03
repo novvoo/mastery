@@ -37,7 +37,7 @@ export function buildToolSyntaxCorrectionPrompt(toolParser, toolRegistry, respon
     ? `\nParser diagnosis:\n  - problem: ${diag.tag}\n  - opening: ${diag.opening}\n  - closing: ${diag.closing}\n  - detail: ${diag.hint}\n`
     : '';
   return (
-    `Your previous response looked like a tool call, but this runtime could not parse it, so it must not be treated as a final answer.\n` +
+    `Your previous response looked like a tool call, but this runtime could not parse it, so it was not accepted as a final answer.\n` +
     `${diagnosis}\n` +
     `Previous response:\n${responseText}\n\n` +
     `Use one valid tool-call format now. Prefer: CALL tool_name({"param":"value"}). ` +
@@ -74,7 +74,7 @@ export function buildCodingTaskOperatingPrompt(params, extra = {}) {
     `  1) read specific code sections you need to edit (read_file with offset+limit),\n` +
     `  2) edit existing code with edit_file/apply_hashline_patch, or create new files with write_file,\n` +
     `  3) verify behavior (shell, review, verify).\n` +
-    `Do not explore the workspace broadly — act on the pre-computed context.\n` +
+    `Avoid broad workspace exploration when a focused read, edit, or verification step would produce better evidence.\n` +
     `User request: ${opts.userInput || 'coding task'}`
   );
 }
@@ -87,7 +87,7 @@ export function buildCodingCompletionGatePrompt(userInput, gate) {
     `Before providing a final answer for this coding task, reconsider:\n` +
     `  - reason: ${gate.reason || 'insufficient evidence'}\n` +
     `  - evidence so far: ${(gate.evidence || []).slice(0, 3).join('\n    ') || '(none recorded)'}\n` +
-    `Run additional verification or write changes, then reply with a final answer.`
+    `Continue with the next evidence-producing step: make the scoped change if clear, gather one missing fact if needed, run relevant verification after mutation, or explain the blocker in the final answer.`
   );
 }
 
@@ -362,7 +362,7 @@ export function shouldBlockCodingFinal(userInput, responseText, { taskProfile, t
   }
 
   // 3) 有代码修改 → 允许通过
-  //    更严格的验证（runtime verification / methodology tool）由 agent-verifier.js 负责
+  //    更严格的验证（runtime verification / semantic review evidence）由 agent-verifier.js 负责
   //    prompt-builder.js 只做基础证据检查
   return { block: false, evidence: { hasMutation: true } };
 }

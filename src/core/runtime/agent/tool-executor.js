@@ -75,6 +75,45 @@ function getSnapshotText(snapshot) {
   return null;
 }
 
+function formatPathAlternatives(alternatives) {
+  if (!Array.isArray(alternatives) || alternatives.length === 0) {
+    return '';
+  }
+  return alternatives
+    .slice(0, 8)
+    .map((item) => {
+      if (typeof item === 'string') {
+        return `- ${item}`;
+      }
+      return `- ${item.path}${item.reason ? ` (${item.reason})` : ''}`;
+    })
+    .join('\n');
+}
+
+function buildMissingReadObservation({
+  targetPath,
+  reason,
+  alternatives,
+  directoryListing,
+  correction,
+}) {
+  const candidateText = formatPathAlternatives(alternatives);
+  const listingText = directoryListing ? `\n\nDirectory evidence:\n${directoryListing}` : '';
+  const candidateBlock = candidateText
+    ? `\n\nKnown existing path candidates from prior list_dir/read observations:\n${candidateText}`
+    : '';
+  const correctionText =
+    correction ||
+    `\n\nCorrection: do not retry "${targetPath}". Pick one of the existing paths above, run list_dir on the relevant parent directory, or use write_file if this is a new file you need to create.`;
+  return (
+    `Error: File not found: "${targetPath}".\n` +
+    `${reason || 'The requested path is not known to exist.'}` +
+    candidateBlock +
+    listingText +
+    correctionText
+  );
+}
+
 function isPlanTaskPseudoTool(name) {
   return /^task_\d+$/i.test(String(name || ''));
 }
@@ -587,8 +626,8 @@ export class ToolExecutor {
         const hasCachedMutationResult = this.#resultCache.has(callSignature);
         const cachedMutationResult = this.#resultCache.get(callSignature);
         const observation = hasCachedMutationResult
-          ? `Duplicate mutation ${name} blocked. Previous result:\n${cachedMutationResult}`
-          : `Duplicate mutation ${name} blocked. Use previous observation or change arguments.`;
+          ? `Duplicate mutation ${name} skipped. Previous result:\n${cachedMutationResult}`
+          : `Duplicate mutation ${name} skipped. Use previous observation or change arguments.`;
 
         options.emitObservation?.(id, name, observation, resultMode);
         this.#recordEvent(
@@ -625,12 +664,19 @@ export class ToolExecutor {
         const predictedSuccess = prediction.type !== 'will_fail';
         const observation = predictedSuccess
           ? `Based on previous workspace observations:\n${prediction.reason}\n\nSkipping redundant operation; use the observed fact and continue.`
-          : `Based on previous exploration:\n${prediction.reason}\n\nThis operation would fail. Consider a different approach or check workspace_knowledge first.`;
+          : name === 'read_file'
+            ? buildMissingReadObservation({
+                targetPath: args?.path || args?.file_path || args?.file || '(unknown)',
+                reason: prediction.reason,
+                alternatives: prediction.predicted?.alternatives,
+              })
+            : `Based on previous exploration:\n${prediction.reason}\n\nThis operation would fail. Consider a different approach or check workspace_knowledge first.`;
         options.emitObservation?.(id, name, observation, resultMode);
-        this.#recordEvent(name, args, predictedSuccess, prediction.predicted || prediction.reason);
+        this.#recordEvent(name, args, predictedSuccess, observation);
         return {
           name,
-          result: prediction.predicted || { error: prediction.reason },
+          result: predictedSuccess ? prediction.predicted || prediction.reason : observation,
+          args,
           skipped: true,
           predicted: true,
           success: predictedSuccess,
@@ -887,6 +933,17 @@ ${paramDesc || '无参数定义'}
             if (dirTool) {
               try {
                 const dirResult = await dirTool.handler({ path: fallbackDir }, executionContext);
+                const state = context.workspaceState || this.#config.workspaceState;
+                if (state && typeof state.recordToolResult === 'function') {
+                  state.recordToolResult('list_dir', { path: fallbackDir }, dirResult, true);
+                }
+                if (state && typeof state.recordPathNotFound === 'function') {
+                  state.recordPathNotFound(targetPath, `File not found: ${targetPath}`);
+                }
+                const alternatives =
+                  state && typeof state.getPathAlternatives === 'function'
+                    ? state.getPathAlternatives(targetPath)
+                    : [];
                 const fallbackDesc = fallbackDir === '.' ? 'workspace root' : `"${fallbackDir}"`;
                 const currentPhase = String(
                   executionContext.currentTask?.phase || '',
@@ -902,12 +959,20 @@ ${paramDesc || '无参数定义'}
                 const correctionHint = shouldCreateInstead
                   ? `\n\nCorrection: this task is in implementation/create mode. Do not retry guessed reads for "${targetPath}". If this file is needed, create it with write_file (or mkdir/shell for directories) and continue building the project.`
                   : `\n\nCorrection: use the directory listing above to choose an existing path before retrying. If the user asked you to create this file from scratch, switch to write_file instead of read_file.`;
-                const observation = `Error: File not found: "${targetPath}".\n\nDirectory listing for ${fallbackDesc}:\n${dirResult}${correctionHint}`;
+                const observation = buildMissingReadObservation({
+                  targetPath,
+                  reason: `The file does not exist on disk. Fallback listed ${fallbackDesc}.`,
+                  alternatives,
+                  directoryListing: `Directory listing for ${fallbackDesc}:\n${dirResult}`,
+                  correction: correctionHint,
+                });
                 options.emitObservation?.(id, name, observation, resultMode);
                 this.#recordEvent('list_dir', { path: fallbackDir }, true, dirResult);
+                this.#recordEvent(name, effectiveArgs, false, observation);
                 this.#ui.debugEvent?.('read_file fallback listed directory', {
                   missingPath: targetPath,
                   fallbackDir,
+                  alternatives: alternatives.map((item) => item.path),
                 });
                 this.#ui.toolResult?.(name, observation, effectiveArgs);
                 return {
@@ -1259,7 +1324,7 @@ ${paramDesc || '无参数定义'}
     const recentActions = readOnlyLoop.recentReadOnlyActions.map((a) => a.toolName).join(', ');
 
     const message =
-      `[READ-ONLY STAGNATION WARNING] Detected ${readOnlyLoop.streak} consecutive read-only actions without any mutation.\n\n` +
+      `[READ-ONLY LOOP CHECK] Detected ${readOnlyLoop.streak} consecutive read-only actions without decisive progress.\n\n` +
       `Recent actions: ${recentActions}\n\n` +
       `Over-explored targets:\n${overExplored || '  None'}\n\n` +
       `Stop repeating the same read-only loop. Choose one concrete evidence-based step:\n` +
@@ -1326,7 +1391,7 @@ ${paramDesc || '无参数定义'}
     const sessionManager = context.sessionManager;
     if (sessionManager && typeof sessionManager.addSystemMessage === 'function') {
       sessionManager.addSystemMessage(
-        `[WRITE-BEFORE-READ ENFORCED] You attempted to modify "${targetPath}" without first reading it. You MUST read the file first to understand its current content before making changes.`,
+        `[WRITE-BEFORE-READ GUARDRAIL] "${targetPath}" needs current-file evidence before editing. Read the relevant section first, then make the scoped change.`,
       );
     }
 
@@ -1365,7 +1430,7 @@ ${paramDesc || '无参数定义'}
     const sessionManager = context.sessionManager;
     if (sessionManager && typeof sessionManager.addSystemMessage === 'function') {
       sessionManager.addSystemMessage(
-        `[FULL-FILE OVERWRITE BLOCKED] You attempted to replace existing file "${targetPath}" with write_file. Use edit_file/apply_hashline_patch for incremental edits, or retry write_file with overwrite=true and overwrite_reason only for an intentional full-file replacement.`,
+        `[FULL-FILE OVERWRITE GUARDRAIL] Replacing existing file "${targetPath}" needs an explicit overwrite decision. Prefer edit_file/apply_hashline_patch for incremental edits, or retry write_file with overwrite=true and overwrite_reason for an intentional full-file replacement.`,
       );
     }
 
