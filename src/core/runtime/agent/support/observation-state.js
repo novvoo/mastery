@@ -116,7 +116,9 @@ function classifyErrorCode(toolName, args, result, options = {}) {
   if (/duplicate mutation/i.test(text) || options.duplicateMutation) {
     return ObservationErrorCode.DUPLICATE_MUTATION;
   }
-  if (/STEP_ABNORMAL:\s*shell_timeout|Command timed out|timed out after|timeout after/i.test(text)) {
+  if (
+    /STEP_ABNORMAL:\s*shell_timeout|Command timed out|timed out after|timeout after/i.test(text)
+  ) {
     return ObservationErrorCode.TIMEOUT_ERROR;
   }
   if (/file not found|no such file|enoent|文件不存在|目录不存在/i.test(text)) {

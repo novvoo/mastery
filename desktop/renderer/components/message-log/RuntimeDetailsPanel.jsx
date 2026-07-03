@@ -314,9 +314,6 @@ export function RuntimeDetailsPanel({
           <span style={localStyles.planTaskTitle}>
             {strategy.label ? `执行计划 · ${strategy.label}` : '执行计划'}
           </span>
-          <span style={localStyles.planTaskProgress}>
-            {Number(progress.completed || 0)}/{Number(progress.total || planTasks.length)} 成功
-          </span>
         </div>
         {strategyItems.length > 0 && (
           <div style={localStyles.planStrategyRow}>

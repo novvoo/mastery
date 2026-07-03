@@ -13,6 +13,7 @@ import { createCoreTools, createSchedulerTools, SKILL_TOOL_CREATORS } from '../.
 import { HOOKS } from '../plugin-system.js';
 import { describeToolActivity } from '../../core/tool-activity.js';
 import { RuntimeEvent } from '../types.js';
+import { normalizeToolResult } from '../../core/runtime/agent/tool-result.js';
 
 /**
  * 注册所有核心工具 + 根据条件注册调度器工具 + skill 工具。
@@ -107,13 +108,23 @@ export function wrapToolCalls(ctx) {
       }
 
       try {
+        const startedAt = Date.now();
         const result = await originalExecute(name, arguments_, execCtx);
+        const normalized = normalizeToolResult(result);
         {
-          const activity = describeToolActivity(name, arguments_, 'completed', result);
+          const activity = describeToolActivity(
+            name,
+            arguments_,
+            normalized.success ? 'completed' : 'failed',
+            normalized.success ? result : normalized.error,
+          );
           eventBus.emit(RuntimeEvent.TOOL_RESULT, {
             toolName: name,
             args: arguments_,
             result,
+            success: normalized.success,
+            error: normalized.error,
+            durationMs: Date.now() - startedAt,
             activity,
           });
           eventBus.emit(RuntimeEvent.TOOL_ACTIVITY, activity);

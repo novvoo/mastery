@@ -113,6 +113,23 @@ describe('StagnationDetector', () => {
     }
   });
 
+  test('stagnation nudges ask for evidence-based action, not blind writes', () => {
+    const detector = new StagnationDetector();
+    detector.recordTool('read_file', { path: 'a.js' }, 1, () => false);
+    detector.recordTool('read_file', { path: 'b.js' }, 2, () => false);
+    detector.recordTool('read_file', { path: 'c.js' }, 3, () => false);
+
+    const result = detector.nudge(4, 20);
+
+    expect(result.type).toBe('same_tool_repetition');
+    expect(result.message).toContain('evidence-based step');
+    expect(result.message).toContain('focused read/diagnostic');
+    expect(result.message).toContain('change_plan');
+    expect(result.message).not.toContain('You MUST now do ONE');
+    expect(result.message).not.toContain('Do NOT read any more files');
+    expect(result.message).not.toContain('write_file or edit_file to make the change');
+  });
+
   test('getState returns object with expected keys', () => {
     const detector = new StagnationDetector();
     const state = detector.getState();

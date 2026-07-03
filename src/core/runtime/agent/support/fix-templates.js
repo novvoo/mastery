@@ -275,10 +275,7 @@ export const FixTemplates = Object.freeze({
       {
         name: 'Run with elevated privileges',
         conditions: [{ condition: 'Need admin/sudo access' }],
-        actions: [
-          { action: 'Prefix command with sudo' },
-          { action: 'Run as root user' },
-        ],
+        actions: [{ action: 'Prefix command with sudo' }, { action: 'Run as root user' }],
       },
       {
         name: 'Change output directory',

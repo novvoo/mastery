@@ -31,8 +31,7 @@ export default function createCaptureRequirementsTool() {
       },
       expected: {
         type: 'string',
-        description:
-          'Observable behavior after change — what the user will see / test will pass.',
+        description: 'Observable behavior after change — what the user will see / test will pass.',
       },
       status: {
         type: 'string',
@@ -70,8 +69,7 @@ export default function createCaptureRequirementsTool() {
         return {
           ok: false,
           error: 'capture_requirements rejected: missing or invalid artifacts. ' + errors.join(' '),
-          hint:
-            'Please provide (1) request restatement, (2) concrete targets (files/symbols), (3) expected observable behavior. Without these three artifacts, the plan cannot enter implement_changes.',
+          hint: 'Please provide (1) request restatement, (2) concrete targets (files/symbols), (3) expected observable behavior. Without these three artifacts, the plan cannot enter implement_changes.',
         };
       }
 

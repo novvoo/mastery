@@ -144,7 +144,7 @@ export class StagnationDetector {
           `${
             hasWritten
               ? 'You have made code changes — verify them and complete.'
-              : 'WARNING: No code modifications yet. If you have identified the issue, use write_file/edit_file NOW. Do NOT keep exploring.'
+              : 'No code modifications yet. If the target is clear, apply the smallest scoped edit; otherwise gather the single missing fact, replan, ask_user, or explain the blocker.'
           }`,
       };
     }
@@ -168,8 +168,8 @@ export class StagnationDetector {
         return {
           type: 'same_tool_repetition',
           message:
-            `[CRITICAL] You have called ${toolList} repeatedly for ${STAGNATION_SAME_TOOL_LIMIT} consecutive iterations with ZERO code modifications.\n` +
-            `You MUST now do ONE of: (1) use write_file or edit_file to make the change, (2) provide FINAL_ANSWER. Do NOT read any more files — you have enough information.`,
+            `[Progress check] You have called ${toolList} repeatedly for ${STAGNATION_SAME_TOOL_LIMIT} consecutive iterations with zero code modifications.\n` +
+            `Stop repeating the same exploration. Take one concrete evidence-based step: scoped edit, focused read/diagnostic for one missing fact, change_plan, ask_user, or FINAL_ANSWER with the blocker.`,
           shouldDegradeBudget,
         };
       }
@@ -187,9 +187,9 @@ export class StagnationDetector {
       return {
         type: 'no_mutation_stagnation',
         message:
-          `[CRITICAL] No file modifications in ${STAGNATION_NO_MUTATION_LIMIT}+ iterations. You are stuck in exploration.\n` +
+          `[Progress check] No file modifications in ${STAGNATION_NO_MUTATION_LIMIT}+ iterations.\n` +
           `Plan status:\n${planStatus}\n` +
-          `You MUST now use write_file or edit_file to implement the change, OR provide FINAL_ANSWER. Stop reading and start acting.`,
+          `Choose the next narrow action from the evidence: edit if ready, gather one missing fact, run a focused diagnostic, replan/ask_user, or FINAL_ANSWER with the blocker.`,
         shouldDegradeBudget,
       };
     }

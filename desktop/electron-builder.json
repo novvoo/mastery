@@ -3,6 +3,7 @@
   "appId": "com.ai-agent.desktop",
   "productName": "AI Agent Desktop",
   "copyright": "Copyright © 2024 AI Agent Team",
+  "electronVersion": "42.4.1",
   "directories": {
     "output": "../release/desktop",
     "buildResources": "build"
@@ -91,7 +92,6 @@
     "type": "distribution",
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
-    "strictIdentify": true,
     "artifactName": "desktop-${productName}-${version}-${arch}.${ext}",
     "darkModeSupport": true
   },
@@ -113,11 +113,8 @@
       "width": 540,
       "height": 380
     },
-    "title": "${productName} ${version}",
+    "title": "${productName} ${version} ${arch}",
     "iconSize": 100,
-    "artifactName": "desktop-${productName}-${version}-${arch}.${ext}"
-  },
-  "zip": {
     "artifactName": "desktop-${productName}-${version}-${arch}.${ext}"
   },
   "linux": {
@@ -160,9 +157,6 @@
     "synopsis": "AI Engineering Mastery Agent Desktop Application",
     "description": "A standalone ReAct agent with 12 professional coding skills, sandbox execution, graph planning, 3-layer memory, and MCP protocol support"
   },
-  "appImage": {
-    "systemIntegration": "ask"
-  },
   "deb": {
     "priority": "optional",
     "compression": "xz",
@@ -170,18 +164,13 @@
   },
   "rpm": {
     "compression": "xz",
-    "summary": "AI Agent Desktop Application",
-    "license": "MIT",
+    "synopsis": "AI Agent Desktop Application",
     "category": "Development/Tools"
   },
   "snap": {
     "confinement": "classic",
     "grade": "stable",
-    "channels": ["stable", "edge"],
     "plugs": ["default", "home", "network", "network-bind"]
-  },
-  "tar.gz": {
-    "compression": "gzip"
   },
   "publish": [
     {
@@ -191,9 +180,7 @@
       "releaseType": "release"
     }
   ],
-  "afterSign": "build/notarize.js",
   "buildDependenciesFromSource": false,
   "nodeGypRebuild": false,
-  "npmRebuild": true,
-  "yarn": false
+  "npmRebuild": true
 }

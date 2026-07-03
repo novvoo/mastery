@@ -108,10 +108,24 @@ export function BottomTerminalPanel({
   const resizeStateRef = useRef(null);
   const promptLabel = promptForDirectory(currentDirectory);
 
-  const problems = useMemo(() => ([
-    { level: 'warning', file: 'desktop/renderer/App.jsx', text: 'Terminal transport is mocked until PTY IPC is connected.' },
-    { level: 'info', file: 'terminal session', text: 'stdout/stderr are mirrored into the AI context buffer.' },
-  ]), []);
+  const problems = useMemo(() => {
+    const items = [];
+    if (!ipc.isConnected) {
+      items.push({
+        level: 'warning',
+        file: 'terminal transport',
+        text: 'Electron IPC is disconnected; terminal commands are unavailable in browser-only preview.',
+      });
+    }
+    if (lines.length > INITIAL_LINES.length) {
+      items.push({
+        level: 'info',
+        file: 'terminal session',
+        text: `${lines.length - INITIAL_LINES.length} terminal events captured for this session.`,
+      });
+    }
+    return items;
+  }, [ipc.isConnected, lines.length]);
 
   const outputLines = useMemo(() => ([
     'Architecture:',
@@ -299,7 +313,7 @@ export function BottomTerminalPanel({
 
   const tabs = [
     { id: 'terminal', label: 'Terminal', meta: isStreaming ? 'run' : '' },
-    { id: 'problems', label: 'Problems', meta: String(problems.length) },
+    { id: 'problems', label: 'Problems', meta: problems.length ? String(problems.length) : '' },
     { id: 'output', label: 'Output', meta: '' },
   ];
 

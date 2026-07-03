@@ -1,3 +1,15 @@
+const READ_ONLY_TOOL_NAMES = new Set([
+  'list_dir',
+  'read_file',
+  'glob',
+  'tree',
+  'stat_file',
+  'search_codebase',
+  'file_analyzer',
+  'view_patch',
+  'workspace_knowledge',
+]);
+
 export class ActionHistory {
   constructor(maxHistory = 50, loopThreshold = 0.85, maxLoopCount = 3) {
     this.#history = [];
@@ -6,6 +18,9 @@ export class ActionHistory {
     this.#maxLoopCount = maxLoopCount;
     this.#loopCount = 0;
     this.#lastAction = null;
+    this.#readOnlyStreak = 0;
+    this.#maxReadOnlyStreak = 0;
+    this.#explorationTargets = new Map();
   }
 
   #history;
@@ -14,12 +29,16 @@ export class ActionHistory {
   #maxLoopCount;
   #loopCount;
   #lastAction;
+  #readOnlyStreak;
+  #maxReadOnlyStreak;
+  #explorationTargets;
 
   record(action) {
     const actionRecord = {
       ...action,
       timestamp: Date.now(),
       id: this.#generateActionId(action),
+      isReadOnly: READ_ONLY_TOOL_NAMES.has(action.toolName),
     };
 
     this.#history.push(actionRecord);
@@ -29,7 +48,54 @@ export class ActionHistory {
       this.#history.shift();
     }
 
+    this.#updateReadOnlyStreak(actionRecord);
+    this.#updateExplorationTargets(actionRecord);
+
     return actionRecord;
+  }
+
+  #updateReadOnlyStreak(action) {
+    if (action.isReadOnly) {
+      this.#readOnlyStreak += 1;
+      if (this.#readOnlyStreak > this.#maxReadOnlyStreak) {
+        this.#maxReadOnlyStreak = this.#readOnlyStreak;
+      }
+    } else {
+      this.#readOnlyStreak = 0;
+    }
+  }
+
+  #updateExplorationTargets(action) {
+    if (!action.isReadOnly) return;
+
+    const targetKey = this.#getExplorationKey(action);
+    if (targetKey) {
+      const entry = this.#explorationTargets.get(targetKey) || {
+        count: 0,
+        firstTimestamp: action.timestamp,
+      };
+      entry.count += 1;
+      entry.lastTimestamp = action.timestamp;
+      this.#explorationTargets.set(targetKey, entry);
+    }
+  }
+
+  #getExplorationKey(action) {
+    const args = action.args || {};
+    switch (action.toolName) {
+      case 'read_file':
+        return `read:${args.file_path || args.path || ''}`;
+      case 'list_dir':
+        return `list:${args.path || '.'}`;
+      case 'glob':
+        return `glob:${args.pattern || ''}`;
+      case 'search_codebase':
+        return `search:${args.query || ''}`;
+      case 'file_analyzer':
+        return `analyze:${args.file_path || args.path || ''}`;
+      default:
+        return null;
+    }
   }
 
   #generateActionId(action) {
@@ -82,6 +148,86 @@ export class ActionHistory {
         ? `Detected ${this.#loopCount} consecutive similar actions (similarity: ${avgSimilarity.toFixed(2)})`
         : 'No loop detected',
     };
+  }
+
+  detectReadOnlyLoop(threshold = 5) {
+    if (this.#readOnlyStreak < threshold) {
+      return {
+        isReadOnlyLoop: false,
+        streak: this.#readOnlyStreak,
+        threshold,
+        reason: `ReadOnly streak (${this.#readOnlyStreak}) below threshold (${threshold})`,
+      };
+    }
+
+    const recentReadOnly = this.#history.filter((a) => a.isReadOnly).slice(-this.#readOnlyStreak);
+
+    return {
+      isReadOnlyLoop: true,
+      streak: this.#readOnlyStreak,
+      maxStreak: this.#maxReadOnlyStreak,
+      threshold,
+      recentReadOnlyActions: recentReadOnly.map((a) => ({
+        id: a.id,
+        toolName: a.toolName,
+        timestamp: a.timestamp,
+        filePath: a.filePath,
+      })),
+      overExploredTargets: this.#getOverExploredTargets(),
+      reason: `Detected ${this.#readOnlyStreak} consecutive read-only actions without any mutation`,
+    };
+  }
+
+  #getOverExploredTargets() {
+    const overExplored = [];
+    for (const [key, entry] of this.#explorationTargets.entries()) {
+      if (entry.count >= 2) {
+        overExplored.push({
+          key,
+          count: entry.count,
+          firstTimestamp: entry.firstTimestamp,
+          lastTimestamp: entry.lastTimestamp,
+          durationMs: entry.lastTimestamp - entry.firstTimestamp,
+        });
+      }
+    }
+    return overExplored.sort((a, b) => b.count - a.count);
+  }
+
+  getReadOnlyStreak() {
+    return this.#readOnlyStreak;
+  }
+
+  getMaxReadOnlyStreak() {
+    return this.#maxReadOnlyStreak;
+  }
+
+  getOverExploredTargets() {
+    return this.#getOverExploredTargets();
+  }
+
+  hasReadFile(filePath) {
+    if (!filePath) return false;
+    const normalizedPath = filePath.trim();
+    return this.#history.some((action) => {
+      if (action.toolName !== 'read_file') return false;
+      const actionPath = (action.args?.file_path || action.args?.path || '').trim();
+      return actionPath === normalizedPath;
+    });
+  }
+
+  hasExploredDirectory(dirPath) {
+    if (!dirPath) return false;
+    const normalizedDir = dirPath.trim();
+    return this.#history.some((action) => {
+      if (action.toolName !== 'list_dir' && action.toolName !== 'glob') return false;
+      const actionPath = (action.args?.path || action.args?.pattern || '').trim();
+      return (
+        actionPath === normalizedDir ||
+        actionPath.startsWith(normalizedDir + '/') ||
+        normalizedDir.startsWith(actionPath + '/')
+      );
+    });
   }
 
   #calculateSimilarity(action1, action2) {
@@ -203,6 +349,9 @@ export class ActionHistory {
     this.#history = [];
     this.#loopCount = 0;
     this.#lastAction = null;
+    this.#readOnlyStreak = 0;
+    this.#maxReadOnlyStreak = 0;
+    this.#explorationTargets = new Map();
   }
 
   toJSON() {
@@ -212,6 +361,9 @@ export class ActionHistory {
       maxHistory: this.#maxHistory,
       loopCount: this.#loopCount,
       maxLoopCount: this.#maxLoopCount,
+      readOnlyStreak: this.#readOnlyStreak,
+      maxReadOnlyStreak: this.#maxReadOnlyStreak,
+      explorationTargetCount: this.#explorationTargets.size,
     };
   }
 }

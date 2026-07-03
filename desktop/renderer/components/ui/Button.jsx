@@ -16,8 +16,6 @@ import React from 'react';
 const VARIANTS = {
   default: {
     backgroundColor: 'var(--glass-bg-light)',
-    backdropFilter: 'blur(8px) saturate(140%)',
-    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
     color: 'var(--text-color)',
     border: '1px solid var(--glass-border)',
   },
@@ -38,23 +36,21 @@ const VARIANTS = {
   },
   icon: {
     backgroundColor: 'var(--glass-bg-light)',
-    backdropFilter: 'blur(8px) saturate(140%)',
-    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
     color: 'var(--text-muted)',
     border: '1px solid var(--glass-border)',
   },
 };
 
 const SIZES = {
-  sm: { height: '28px', padding: '0 10px', fontSize: '12px', borderRadius: '999px', minWidth: '28px' },
-  md: { height: '32px', padding: '0 13px', fontSize: '13px', borderRadius: '999px' },
-  lg: { height: '40px', padding: '0 16px', fontSize: '14px', borderRadius: '999px' },
+  sm: { height: '28px', padding: '0 10px', fontSize: '12px', borderRadius: 'var(--radius-md)', minWidth: '28px' },
+  md: { height: '32px', padding: '0 13px', fontSize: '13px', borderRadius: 'var(--radius-md)' },
+  lg: { height: '40px', padding: '0 16px', fontSize: '14px', borderRadius: 'var(--radius-lg)' },
 };
 
 const ICON_SIZES = {
-  sm: { width: '28px', height: '28px', padding: 0, fontSize: '14px', borderRadius: '999px' },
-  md: { width: '32px', height: '32px', padding: 0, fontSize: '15px', borderRadius: '999px' },
-  lg: { width: '40px', height: '40px', padding: 0, fontSize: '18px', borderRadius: '999px' },
+  sm: { width: '28px', height: '28px', padding: 0, fontSize: '14px', borderRadius: 'var(--radius-md)' },
+  md: { width: '32px', height: '32px', padding: 0, fontSize: '15px', borderRadius: 'var(--radius-md)' },
+  lg: { width: '40px', height: '40px', padding: 0, fontSize: '18px', borderRadius: 'var(--radius-lg)' },
 };
 
 export default function Button({
@@ -94,18 +90,16 @@ export default function Button({
       }}
       onMouseEnter={(e) => {
         if (!disabled) {
-          e.currentTarget.style.transform = 'translateY(-1px)';
           if (variant !== 'ghost') {
             e.currentTarget.style.boxShadow = 'var(--shadow-button-hover)';
           }
           if (variant === 'ghost') {
-            e.currentTarget.style.backgroundColor = 'var(--glass-bg-light)';
+            e.currentTarget.style.backgroundColor = 'var(--surface-hover)';
             e.currentTarget.style.color = 'var(--text-color)';
           }
         }
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.transform = 'translateY(0)';
         if (variant !== 'ghost') {
           e.currentTarget.style.boxShadow = 'var(--shadow-button)';
         }
@@ -116,7 +110,6 @@ export default function Button({
       }}
       onMouseDown={(e) => {
         if (!disabled) {
-          e.currentTarget.style.transform = 'translateY(0)';
           if (variant !== 'ghost') {
             e.currentTarget.style.boxShadow = 'var(--shadow-inset)';
           }
@@ -124,7 +117,6 @@ export default function Button({
       }}
       onMouseUp={(e) => {
         if (!disabled) {
-          e.currentTarget.style.transform = 'translateY(-1px)';
           if (variant !== 'ghost') {
             e.currentTarget.style.boxShadow = 'var(--shadow-button-hover)';
           }

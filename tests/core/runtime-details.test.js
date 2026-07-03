@@ -184,6 +184,13 @@ describe('runtime-details (src/core)', () => {
         content: '  **Allowed Tools (ONLY use these):**\n- read_file\n- list_dir',
       }),
     ).toBe(false);
+    expect(
+      isPrimaryMessage({
+        type: 'assistant',
+        content:
+          '## Current Execution Focus\n\nTask ID: implement_changes\nTask name: Implement changes\n\n### Tools exposed for this request\n- read_file\n- write_file',
+      }),
+    ).toBe(false);
 
     expect(isPrimaryMessage({ toolName: 'read_file', type: 'assistant' })).toBe(false);
     expect(isPrimaryMessage({ args: {}, type: 'assistant' })).toBe(false);

@@ -31,6 +31,7 @@ import {
 import { classifyToolObservation, ObservationErrorCode } from './support/observation-state.js';
 import { ActionHistory, createActionRecord } from './support/action-history.js';
 import { FixTemplates, generateFixPlan, findMatchingTemplates } from './support/fix-templates.js';
+import { getPlanTemplateByTaskType } from './support/plan-templates.js';
 
 const CANONICAL_SINGLETON_TASK_IDS = new Set([
   'inspect_workspace',
@@ -44,6 +45,17 @@ const CANONICAL_SINGLETON_TASK_IDS = new Set([
 
 const WORKSPACE_METADATA_ENTRY_PATTERN =
   /^(?:\.agent-data|\.agent-logs|\.agent-memory|\.git|test)$/i;
+
+const LOW_QUALITY_TASK_TEXT_PATTERN =
+  /^(?:do\s*(?:it|this|task|work)?|handle\s*(?:it|this)?|process\s*(?:it|this)?|fix\s*(?:it|bug)?|work\s*on\s*(?:it|this)?|implement|verify|check|review|analyze|plan|update|change|处理|搞定|完成|执行|实现|修复|检查|验证|分析|规划|修改|更新|看一下|弄一下|做一下)$/i;
+
+const PHASE_QUALITY_GATES = Object.freeze({
+  exploration: 'evidence_required',
+  planning: 'decision_record_required',
+  implementation: 'mutation_with_prior_context_required',
+  inspection: 'read_back_or_diff_required',
+  verification: 'verification_evidence_required',
+});
 
 function isCreateFromScratchTask(profile, userInput = '') {
   const text = String(userInput || '').toLowerCase();
@@ -376,6 +388,10 @@ export class ExecutionPlanManager {
     this.#actionHistory = new ActionHistory();
   }
 
+  checkReadOnlyStagnation(threshold = 5) {
+    return this.#actionHistory.detectReadOnlyLoop(threshold);
+  }
+
   // ============== 生命周期阶段常量 ==============
   static PHASE = Object.freeze({
     EXPLORATION: 'exploration',
@@ -554,6 +570,9 @@ export class ExecutionPlanManager {
       }
     }
 
+    this.#hardenPlanQuality(plan, planType, taskProfile, {
+      decomposition: llmSubtasks ? 'llm' : 'template',
+    });
     this.#normalizeTaskExecutionConstraints(plan);
     this.#enforcePhaseBarriers(plan);
     plan.context.strategy = this.#buildPlanStrategy(plan, planType, taskProfile, {
@@ -680,20 +699,16 @@ export class ExecutionPlanManager {
    *   - 其他修改: explore → plan → implement → inspect
    */
   #buildTemplatePlan(plan, profile, selectedPlanType = null) {
-    // 兼容新旧 profile 格式
     const intent = profile?.intent;
     const mode = profile?.mode;
     const allowsMutation = profile?.allowsMutation;
 
-    // 从 intent/mode 映射到 taskType（必须与 isMutationTask 判断一致）
-    // 只有 allowsMutation=true 或 mode='mutate' 才是修改类任务
     let taskType = selectedPlanType || selectPlanType(profile, this.#userInput);
     if (taskType === PlanType.STANDARD) {
       taskType = null;
     }
 
     if (!taskType && (allowsMutation || mode === 'mutate')) {
-      // 修改类任务
       if (profile?.isBugTask || intent === 'diagnosis') {
         taskType = PlanType.BUG_FIX;
       } else if (intent === 'code_modification' || intent === 'feature_implementation') {
@@ -706,11 +721,9 @@ export class ExecutionPlanManager {
         taskType = 'modification';
       }
     } else if (!taskType) {
-      // 非修改类任务
       if (intent === 'project_info' || intent === 'how_to_run') {
         taskType = PlanType.RESEARCH;
       } else if (intent === 'diagnosis') {
-        // 诊断任务但不是修改型：使用分析模板
         taskType = PlanType.ANALYSIS;
       } else if (intent === 'read_only_analysis' || mode === 'inspect' || mode === 'diagnose') {
         taskType = PlanType.ANALYSIS;
@@ -729,333 +742,34 @@ export class ExecutionPlanManager {
       }
     }
 
-    // ===== 查询/回答类任务：轻量 2 步流程 =====
-    if (taskType === PlanType.RESEARCH || taskType === 'general') {
-      plan.addTask({
-        id: 'inspect_workspace',
-        name: 'Explore context',
-        description:
-          taskType === PlanType.RESEARCH
-            ? 'Search and gather relevant information from the codebase to answer the question.'
-            : 'Understand the user request and gather any necessary context.',
-        dependencies: [],
-        phase: ExecutionPlanManager.PHASE.EXPLORATION,
-      });
-      plan.addTask({
-        id: 'answer_question',
-        name: 'Provide answer',
-        description:
-          'Synthesize the gathered information into a clear, accurate response. No file modifications needed.',
-        dependencies: ['inspect_workspace'],
-        phase: ExecutionPlanManager.PHASE.VERIFICATION,
-      });
-      return;
-    }
-
-    // ===== 分析类任务：3 步流程 =====
-    if (taskType === PlanType.ANALYSIS) {
-      plan.addTask({
-        id: 'inspect_workspace',
-        name: 'Explore context',
-        description:
-          'Read relevant files, search codebase, and gather all necessary information for analysis.',
-        dependencies: [],
-        phase: ExecutionPlanManager.PHASE.EXPLORATION,
-      });
-      plan.addTask({
-        id: 'analyze_findings',
-        name: 'Analyze findings',
-        description:
-          'Analyze the gathered information and identify concrete findings. This is a read-only analysis step, not an implementation step.',
-        dependencies: ['inspect_workspace'],
-        phase: ExecutionPlanManager.PHASE.INSPECTION,
-      });
-      plan.addTask({
-        id: 'generate_report',
-        name: 'Summarize findings',
-        description:
-          'Summarize the analysis in the final response. Do not create PROJECT_REPORT.md, REPORT.md, or any report file unless the user explicitly asks for one.',
-        dependencies: ['analyze_findings'],
-        phase: ExecutionPlanManager.PHASE.VERIFICATION,
-      });
-      return;
-    }
-
-    // ===== 修改类任务：核心 4 步流程 =====
-    // 注：测试/验证由 createIfNeeded 的兜底逻辑按需自动添加，不写入模板
-
-    // bug_fix 特殊处理：直接修复，无需前置探索
-    if (taskType === PlanType.VERIFICATION) {
-      plan.addTask({
-        id: 'inspect_workspace',
-        name: 'Inspect verification target',
-        description: 'Identify the behavior, files, or commands that need verification.',
-        dependencies: [],
-        phase: ExecutionPlanManager.PHASE.EXPLORATION,
-      });
-      plan.addTask({
-        id: 'verify_result',
-        name: 'Run verification',
-        description:
-          'Run an appropriate verification: first install dependencies (npm install, etc.) if needed, then execute test/build/lint command and summarize the result.',
-        dependencies: ['inspect_workspace'],
-        phase: ExecutionPlanManager.PHASE.VERIFICATION,
-      });
-      return;
-    }
-
-    if (taskType === PlanType.QUICK) {
-      plan.addTask({
-        id: 'implement_changes',
-        name: 'Make focused edit',
-        description: 'Apply the obvious low-risk change with minimal surrounding edits.',
-        dependencies: [],
-        phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
-      });
-      plan.addTask({
-        id: 'inspect_changes',
-        name: 'Review edit',
-        description: 'Read back the changed file and confirm the focused edit.',
-        dependencies: ['implement_changes'],
-        phase: ExecutionPlanManager.PHASE.INSPECTION,
-      });
-      return;
-    }
-
-    // ===== 新项目创建任务：工程化脚手架流程 =====
     if (intent === 'new_project' || isCreateFromScratchTask(profile, this.#userInput)) {
-      plan.addTask({
-        id: 'inspect_workspace',
-        name: 'Inspect workspace',
-        description:
-          'Check whether the workspace is empty. For an empty workspace, do not read guessed files; proceed to create the project skeleton.',
-        dependencies: [],
-        phase: ExecutionPlanManager.PHASE.EXPLORATION,
-        allowedTools: ['list_dir', 'project_profile', 'shell', 'glob', 'preview_dir'],
-      });
-      plan.addTask({
-        id: 'setup_project_structure',
-        name: 'Setup project structure',
-        description:
-          'Create project directory structure with src/, tests/, configuration files (package.json, vite.config, eslint, etc.).',
-        dependencies: ['inspect_workspace'],
-        phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
-        allowedTools: [
-          'write_file',
-          'mkdir',
-          'shell',
-          'edit_file',
-          'apply_hashline_patch',
-          'lsp_workspace_edit',
-          'lsp_code_action',
-          'pty_exec',
-          'harness_insert',
-          'harness_replace',
-        ],
-        scopeFiles: [
-          'package.json',
-          'src/',
-          'tests/',
-          'vite.config.js',
-          'eslint.config.js',
-          'README.md',
-        ],
-      });
-      plan.addTask({
-        id: 'implement_core',
-        name: 'Implement core functionality',
-        description:
-          'Create core source files in src/ directory with proper ES module structure. Separate logic, components, and styles.',
-        dependencies: ['setup_project_structure'],
-        phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
-        allowedTools: [
-          'write_file',
-          'edit_file',
-          'apply_hashline_patch',
-          'lsp_workspace_edit',
-          'lsp_code_action',
-          'lsp_rename',
-          'shell',
-          'read_file',
-          'preview_file',
-          'harness_insert',
-          'harness_replace',
-          'harness_delete',
-        ],
-        scopeFiles: ['src/'],
-      });
-      plan.addTask({
-        id: 'add_tests',
-        name: 'Add tests',
-        description: 'Create unit tests in tests/ directory for core logic. Verify test coverage.',
-        dependencies: ['implement_core'],
-        phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
-        allowedTools: [
-          'write_file',
-          'edit_file',
-          'apply_hashline_patch',
-          'shell',
-          'read_file',
-          'preview_file',
-          'test_strategy',
-          'tdd',
-        ],
-        scopeFiles: ['tests/'],
-      });
-      plan.addTask({
-        id: 'verify_build',
-        name: 'Verify build and tests',
-        description:
-          'Run npm install, npm run build, and npm test to verify the project builds correctly and tests pass.',
-        dependencies: ['add_tests'],
-        phase: ExecutionPlanManager.PHASE.VERIFICATION,
-        allowedTools: [
-          'shell',
-          'verify',
-          'read_file',
-          'preview_file',
-          'pty_exec',
-          'git_add',
-          'git_commit',
-          'git_push',
-        ],
-      });
-      return;
+      taskType = 'new_project';
     }
 
-    if (taskType === PlanType.BUG_FIX) {
+    const template = getPlanTemplateByTaskType(taskType);
+    plan.context.riskLevel = template.riskLevel || 'medium';
+    plan.context.templateDescription = template.description || '';
+
+    for (const taskDef of template.tasks) {
       plan.addTask({
-        id: 'inspect_workspace',
-        name: 'Reproduce or inspect failure',
-        description: 'Find the failing path, relevant files, and likely root cause before editing.',
-        dependencies: [],
-        phase: ExecutionPlanManager.PHASE.EXPLORATION,
+        id: taskDef.id,
+        name: taskDef.name,
+        description: taskDef.description,
+        dependencies: taskDef.dependencies,
+        phase:
+          ExecutionPlanManager.PHASE[taskDef.phase.toUpperCase()] ||
+          ExecutionPlanManager.PHASE.EXPLORATION,
+        successCriteria: taskDef.successCriteria,
+        acceptanceCriteria: taskDef.acceptanceCriteria,
+        preconditions: taskDef.preconditions,
+        postconditions: taskDef.postconditions,
+        qualityGate: taskDef.qualityGate,
+        allowedTools: taskDef.allowedTools,
+        scopeFiles: taskDef.scopeFiles,
+        outputArtifacts: taskDef.outputArtifacts,
+        rollbackStrategy: taskDef.rollbackStrategy,
       });
-      plan.addTask({
-        id: 'implement_changes',
-        name: 'Implement bug fix',
-        description: 'Implement the smallest change that addresses the diagnosed failure.',
-        dependencies: ['inspect_workspace'],
-        phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
-      });
-      plan.addTask({
-        id: 'inspect_changes',
-        name: 'Review changes',
-        description: 'Read back the fixed code to verify the changes are correct.',
-        dependencies: ['implement_changes'],
-        phase: ExecutionPlanManager.PHASE.INSPECTION,
-      });
-      return;
     }
-
-    // coding / modification / documentation：标准 4 步流程
-    const descMap = {
-      coding: {
-        inspect:
-          'Discover the relevant project structure and existing files before reading or writing.',
-        plan: 'Choose the implementation approach and file split for the requested change.',
-        implement: 'Create or edit the required files using the smallest necessary changes.',
-        review: 'Read back or otherwise inspect the files that were created or edited.',
-      },
-      modification: {
-        inspect: 'Read the existing code to understand the current implementation.',
-        plan: 'Plan the modification approach and identify the smallest necessary changes.',
-        implement: 'Make the planned changes to the existing code.',
-        review: 'Read back the modified files to verify the changes.',
-      },
-      [PlanType.DOCUMENTATION]: {
-        inspect: 'Discover the project structure and identify existing documentation files.',
-        plan: 'Plan the documentation structure, sections, and key topics to cover.',
-        implement: 'Create or update documentation files with clear, structured content.',
-        review: 'Read back and review the documentation for clarity and completeness.',
-      },
-      [PlanType.REFACTOR]: {
-        inspect: 'Read current behavior and identify refactor boundaries.',
-        plan: 'Plan behavior-preserving refactor slices and checks.',
-        implement: 'Refactor code in small, reviewable steps.',
-        review: 'Review refactored code for behavior drift and unnecessary churn.',
-      },
-      [PlanType.TESTING]: {
-        inspect: 'Find existing tests, test runner, fixtures, and target behavior.',
-        plan: 'Plan test cases, assertions, and fixtures.',
-        implement: 'Create or update tests and minimal supporting code.',
-        review: 'Read back tests and inspect assertions for coverage and intent.',
-      },
-      [PlanType.CODE_REVIEW]: {
-        inspect: 'Gather changed files, relevant context, and current behavior.',
-        plan: 'Plan review focus areas and risk checklist.',
-        implement: 'Perform the code review and collect findings.',
-        review: 'Organize actionable findings with evidence.',
-      },
-      [PlanType.MIGRATION]: {
-        inspect:
-          'Inventory old and new usage sites, schemas, configs, and compatibility boundaries.',
-        plan: 'Plan migration order, compatibility, and rollback checks.',
-        implement: 'Apply migration changes in controlled steps.',
-        review: 'Review migrated references and compatibility paths.',
-      },
-      [PlanType.SETUP]: {
-        inspect:
-          'Inspect environment, check if workspace is empty, and identify existing package files or configs.',
-        plan: 'Plan the project structure (src/, tests/, config files) and setup sequence.',
-        implement: 'Create project structure and apply setup/configuration changes.',
-        review: 'Review setup result, verify file structure and build configuration.',
-      },
-      [PlanType.RELEASE]: {
-        inspect: 'Inspect release state, version files, package config, and CI scripts.',
-        plan: 'Plan versioning, changelog, packaging, or deployment steps.',
-        implement: 'Prepare release metadata, scripts, or artifacts.',
-        review: 'Review release preparation and pending diff.',
-      },
-      [PlanType.SECURITY]: {
-        inspect: 'Inspect auth, permissions, secrets, input handling, and security boundaries.',
-        plan: 'Plan a minimal secure change and identify abuse cases.',
-        implement: 'Apply security-sensitive changes carefully.',
-        review: 'Review security-sensitive behavior and boundary cases.',
-      },
-      [PlanType.DATA]: {
-        inspect: 'Inspect schemas, queries, datasets, migrations, or data scripts.',
-        plan: 'Plan validation, rollback, and data-shape compatibility.',
-        implement: 'Apply data, schema, query, or processing changes.',
-        review: 'Validate changed data logic and inspect outputs.',
-      },
-      [PlanType.UI]: {
-        inspect: 'Inspect components, styles, routes, and interaction structure.',
-        plan: 'Plan component, state, layout, and responsive behavior changes.',
-        implement: 'Update UI components, styles, and interactions.',
-        review: 'Inspect UI changes and preview or verify when possible.',
-      },
-    };
-    const desc = descMap[taskType] || descMap.modification;
-
-    plan.addTask({
-      id: 'inspect_workspace',
-      name: 'Inspect context',
-      description: desc.inspect,
-      dependencies: [],
-      phase: ExecutionPlanManager.PHASE.EXPLORATION,
-    });
-    plan.addTask({
-      id: 'plan_solution',
-      name: 'Plan changes',
-      description: desc.plan,
-      dependencies: ['inspect_workspace'],
-      phase: ExecutionPlanManager.PHASE.PLANNING,
-    });
-    plan.addTask({
-      id: 'implement_changes',
-      name: 'Apply changes',
-      description: desc.implement,
-      dependencies: ['plan_solution'],
-      phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
-    });
-    plan.addTask({
-      id: 'inspect_changes',
-      name: 'Inspect changes',
-      description: desc.review,
-      dependencies: ['implement_changes'],
-      phase: ExecutionPlanManager.PHASE.INSPECTION,
-    });
   }
 
   #shouldUseLLMDecomposition(taskProfile, planType) {
@@ -1186,6 +900,258 @@ export class ExecutionPlanManager {
     );
   }
 
+  #hardenPlanQuality(plan, planType = null, taskProfile = null, options = {}) {
+    if (!plan) {
+      return;
+    }
+
+    const normalizedPlanType = planType || plan.context?.planType || PlanType.STANDARD;
+    const mutationPlanTypes = new Set([
+      PlanType.STANDARD,
+      PlanType.BUG_FIX,
+      PlanType.QUICK,
+      PlanType.REFACTOR,
+      PlanType.TESTING,
+      PlanType.MIGRATION,
+      PlanType.SETUP,
+      PlanType.RELEASE,
+      PlanType.SECURITY,
+      PlanType.DATA,
+      PlanType.UI,
+    ]);
+    const isMutationPlan = Boolean(
+      taskProfile?.allowsMutation ||
+      taskProfile?.isModificationTask ||
+      taskProfile?.isCodingTask ||
+      taskProfile?.mode === 'mutate' ||
+      mutationPlanTypes.has(normalizedPlanType),
+    );
+
+    plan.context.qualityPolicy = {
+      version: 1,
+      standard: 'professional_execution_plan',
+      decomposition: options.decomposition || plan.context?.decomposition || 'template',
+      antiRubberStamp: true,
+      minimumTaskContract: [
+        'specific observable objective',
+        'execution focus and safety boundary',
+        'acceptance criteria',
+        'evidence or artifact expected',
+      ],
+      forbids: [
+        'generic task names without concrete evidence target',
+        'implementation before workspace/context inspection',
+        'final answer before verification evidence when mutation occurred',
+        'creating report files unless explicitly requested',
+      ],
+    };
+
+    for (const task of plan.tasks.values()) {
+      const originalDescription = task.description || '';
+      const originalName = task.name || task.id;
+      const wasGeneric = this.#isLowQualityTaskText(originalName, originalDescription);
+      const phase = task.phase || this.#inferTaskPhase(task.id, originalDescription);
+      task.phase = phase;
+
+      if (wasGeneric) {
+        task.description = this.#professionalTaskDescription(
+          task,
+          normalizedPlanType,
+          isMutationPlan,
+        );
+      }
+
+      if (!Array.isArray(task.acceptanceCriteria) || task.acceptanceCriteria.length === 0) {
+        task.acceptanceCriteria = this.#defaultAcceptanceCriteria(task, isMutationPlan);
+      }
+      task.acceptanceCriteria = this.#mergeCriteria(
+        task.acceptanceCriteria,
+        this.#antiRubberStampCriteria(task, isMutationPlan),
+      );
+      if (!Array.isArray(task.preconditions) || task.preconditions.length === 0) {
+        task.preconditions = this.#defaultPreconditions(task);
+      }
+      if (!Array.isArray(task.postconditions) || task.postconditions.length === 0) {
+        task.postconditions = this.#defaultPostconditions(task, isMutationPlan);
+      }
+      if (!Array.isArray(task.outputArtifacts) || task.outputArtifacts.length === 0) {
+        task.outputArtifacts = this.#defaultOutputArtifacts(task);
+      }
+      task.qualityGate ||= PHASE_QUALITY_GATES[phase] || 'evidence_required';
+      task.metadata = {
+        ...(task.metadata || {}),
+        planQuality: {
+          version: 1,
+          professionalized: true,
+          wasGeneric,
+          requiresEvidence: true,
+          phaseGate: task.qualityGate,
+          ...(wasGeneric ? { originalName, originalDescription } : {}),
+        },
+      };
+    }
+  }
+
+  #isLowQualityTaskText(name, description) {
+    const combined = `${name || ''} ${description || ''}`.trim();
+    if (!combined) {
+      return true;
+    }
+    const compact = combined.replace(/\s+/g, ' ').trim();
+    if (LOW_QUALITY_TASK_TEXT_PATTERN.test(compact)) {
+      return true;
+    }
+    const words = compact.split(/\s+/).filter(Boolean);
+    if (
+      words.length <= 3 &&
+      /^(do|handle|fix|implement|verify|check|review|plan|处理|完成|实现|修复|验证|检查|规划)$/i.test(
+        words[0] || '',
+      )
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  #professionalTaskDescription(task, planType, isMutationPlan) {
+    const phase = task.phase || ExecutionPlanManager.PHASE.EXPLORATION;
+    const target = task.scopeFiles?.length ? ` Scope: ${task.scopeFiles.join(', ')}.` : '';
+    switch (phase) {
+      case ExecutionPlanManager.PHASE.EXPLORATION:
+        return `Gather concrete repository evidence for "${this.#userInput}" before deciding what to change. Read/list/search only the relevant files and record which files, symbols, or commands matter.${target}`;
+      case ExecutionPlanManager.PHASE.PLANNING:
+        return `Convert gathered evidence into a concrete implementation decision: restate the request, identify exact files/symbols, expected behavior, verification command, and any risks or rollback notes.${target}`;
+      case ExecutionPlanManager.PHASE.IMPLEMENTATION:
+        return isMutationPlan
+          ? `Apply the smallest evidence-backed change for the planned target. Do not overwrite existing files without reading them first, and keep edits scoped to the files/symbols identified in planning.${target}`
+          : `Produce the requested artifact from gathered evidence without inventing unsupported details.${target}`;
+      case ExecutionPlanManager.PHASE.INSPECTION:
+        return `Inspect the actual changed files, diff, diagnostics, or rendered output and compare them against the planned behavior before verification.${target}`;
+      case ExecutionPlanManager.PHASE.VERIFICATION:
+        return `Run or inspect the narrowest relevant verification signal and compare actual output with expected behavior. If verification cannot run, capture the concrete blocker and residual risk.${target}`;
+      default:
+        return `Complete this task with concrete evidence, explicit success criteria, and no generic progress claims.${target}`;
+    }
+  }
+
+  #defaultAcceptanceCriteria(task, isMutationPlan) {
+    switch (task.phase) {
+      case ExecutionPlanManager.PHASE.EXPLORATION:
+        return [
+          'Relevant workspace structure, files, or symbols have been inspected',
+          'Evidence is specific enough to choose the next action',
+          'No guessed file contents or unsupported assumptions are used',
+        ];
+      case ExecutionPlanManager.PHASE.PLANNING:
+        return [
+          'Original request is restated in concrete terms',
+          'Exact files/symbols or artifact targets are identified',
+          'Expected behavior and verification method are defined',
+        ];
+      case ExecutionPlanManager.PHASE.IMPLEMENTATION:
+        return isMutationPlan
+          ? [
+              'Existing target files were read before modification',
+              'Only planned, scoped changes were made',
+              'No unrelated rewrites or report files were created',
+            ]
+          : ['Artifact matches gathered evidence', 'No unsupported claims were introduced'];
+      case ExecutionPlanManager.PHASE.INSPECTION:
+        return [
+          'Changed or analyzed material was read back or diffed',
+          'Actual result matches the plan intent',
+          'Risks or deviations are documented before final verification',
+        ];
+      case ExecutionPlanManager.PHASE.VERIFICATION:
+        return [
+          'Relevant test/lint/build/check or equivalent evidence was attempted',
+          'Actual output is compared with expected behavior',
+          'Failures, blockers, and residual risk are explicitly captured',
+        ];
+      default:
+        return ['Task has concrete evidence', 'Task result is not a generic progress claim'];
+    }
+  }
+
+  #antiRubberStampCriteria(task, isMutationPlan) {
+    switch (task.phase) {
+      case ExecutionPlanManager.PHASE.EXPLORATION:
+        return ['Evidence comes from actual tool observations, not assumptions'];
+      case ExecutionPlanManager.PHASE.PLANNING:
+        return ['Plan names exact targets, expected behavior, and verification signal'];
+      case ExecutionPlanManager.PHASE.IMPLEMENTATION:
+        return isMutationPlan
+          ? ['Existing target files were read before modification']
+          : ['Output is grounded in gathered evidence'];
+      case ExecutionPlanManager.PHASE.INSPECTION:
+        return ['Inspection uses read-back, diff, diagnostics, or concrete output'];
+      case ExecutionPlanManager.PHASE.VERIFICATION:
+        return ['Verification result is based on command output or explicit blocker evidence'];
+      default:
+        return ['Completion is supported by concrete evidence'];
+    }
+  }
+
+  #mergeCriteria(existing, additions) {
+    const merged = [];
+    for (const item of [...(existing || []), ...(additions || [])]) {
+      const text = String(item || '').trim();
+      if (text && !merged.includes(text)) {
+        merged.push(text);
+      }
+    }
+    return merged;
+  }
+
+  #defaultPreconditions(task) {
+    switch (task.phase) {
+      case ExecutionPlanManager.PHASE.PLANNING:
+        return ['Exploration evidence is available'];
+      case ExecutionPlanManager.PHASE.IMPLEMENTATION:
+        return ['Concrete plan and target files/symbols are known'];
+      case ExecutionPlanManager.PHASE.INSPECTION:
+        return ['Implementation or analysis output exists'];
+      case ExecutionPlanManager.PHASE.VERIFICATION:
+        return ['Final candidate result has been inspected'];
+      default:
+        return [];
+    }
+  }
+
+  #defaultPostconditions(task, isMutationPlan) {
+    switch (task.phase) {
+      case ExecutionPlanManager.PHASE.EXPLORATION:
+        return ['Relevant evidence gathered'];
+      case ExecutionPlanManager.PHASE.PLANNING:
+        return ['Concrete execution decision recorded'];
+      case ExecutionPlanManager.PHASE.IMPLEMENTATION:
+        return [isMutationPlan ? 'Scoped changes applied' : 'Requested artifact prepared'];
+      case ExecutionPlanManager.PHASE.INSPECTION:
+        return ['Result reviewed against plan intent'];
+      case ExecutionPlanManager.PHASE.VERIFICATION:
+        return ['Verification evidence ready for final answer'];
+      default:
+        return ['Task completed with evidence'];
+    }
+  }
+
+  #defaultOutputArtifacts(task) {
+    switch (task.phase) {
+      case ExecutionPlanManager.PHASE.EXPLORATION:
+        return ['evidence_notes'];
+      case ExecutionPlanManager.PHASE.PLANNING:
+        return ['decision_record'];
+      case ExecutionPlanManager.PHASE.IMPLEMENTATION:
+        return ['changed_files_or_artifact'];
+      case ExecutionPlanManager.PHASE.INSPECTION:
+        return ['inspection_notes'];
+      case ExecutionPlanManager.PHASE.VERIFICATION:
+        return ['verification_evidence'];
+      default:
+        return ['task_evidence'];
+    }
+  }
+
   #ensureTddGate(plan, planType, taskProfile) {
     if (!this.#shouldRequireTddGate(planType, taskProfile) || plan.getTask('tdd_reproduce')) {
       return;
@@ -1266,6 +1232,14 @@ export class ExecutionPlanManager {
         if (Array.isArray(task.allowedTools) && !task.allowedTools.includes('ask_user')) {
           task.allowedTools.push('ask_user');
         }
+        if (task.id === 'tdd_reproduce') {
+          task.completionPredicate = ({ toolName, args, result }) =>
+            isTddEvidenceTool(toolName, args, result);
+          task.metadata = {
+            ...(task.metadata || {}),
+            expectedFailureEvidence: true,
+          };
+        }
         continue;
       }
 
@@ -1312,14 +1286,14 @@ export class ExecutionPlanManager {
         if (!task.completionPredicate) {
           task.completionPredicate = ({ toolName, args, result }) => {
             // plan_solution 的 completionPredicate：
-            // - 首选：capture_requirements 被成功调用 → 立即完成（结构化工件已写入）
-            // - 其次：工件已存在 → 任何规划工具都可完成（LLM 已通过 capture_requirements 前置声明）
-            // - 兼容：普通规划工具仍可推进（未启用结构化工件的场景继续工作）
+            // - capture_requirements 或结构化 planning 结果写入需求证据 → 完成
+            // - 已有需求证据 → planning 工具可继续推进
+            // - 兼容：普通规划工具仍可推进，但实现阶段仍要求可见需求证据
             if (task.id === 'plan_solution') {
               if (toolName === 'capture_requirements' && isSuccessfulToolResult(result)) {
                 return true;
               }
-              if (this.#isRequirementAlreadyComplete()) {
+              if (this.#hasCapturedRequirements()) {
                 return true;
               }
               return isPlanningTool(toolName);
@@ -1331,12 +1305,12 @@ export class ExecutionPlanManager {
         if (!task.allowedTools?.length) {
           task.allowedTools = [
             'ask_user',
-            'write_file',
+            'apply_hashline_patch',
             'edit_file',
+            'write_file',
             'delete_file',
             'rename_file',
             'mkdir',
-            'apply_hashline_patch',
             'lsp_rename',
             'lsp_workspace_edit',
             'lsp_code_action',
@@ -1346,9 +1320,9 @@ export class ExecutionPlanManager {
         }
         if (!task.completionPredicate) {
           task.completionPredicate = ({ toolName, args, result }) => {
-            // 硬门禁 2: implement_changes 必须先有 capture_requirements
-            // 产出的结构化工件，且工件 status 不得为 already_complete
-            // （already_complete 时应由上层直接跳 verify，不应进入实现）。
+            // implement_changes requires explicit requirement evidence, regardless
+            // of whether it came from capture_requirements or a structured
+            // planning result. This keeps the gate evidence-based, not tool-based.
             if (task.id === 'implement_changes') {
               if (!this.#hasCapturedRequirements()) {
                 return false;
@@ -1555,6 +1529,9 @@ export class ExecutionPlanManager {
     this.#completedMutationPaths = new Set(snapshot.completedMutationPaths || []);
     this.#mutationCallCount = Number(snapshot.mutationCallCount || 0);
     this.#capturedRequirements = snapshot.capturedRequirements || null;
+    this.#hardenPlanQuality(plan, plan.context?.planType, this.#profile, {
+      decomposition: plan.context?.decomposition || 'restored',
+    });
     this.#normalizeTaskExecutionConstraints(plan);
     this.#rebuildGraph(plan);
     this.#enforcePhaseBarriers(plan);
@@ -1578,6 +1555,10 @@ export class ExecutionPlanManager {
       plan.startedAt = plan.startedAt || Date.now();
       plan.completedAt = null;
     }
+    this.#hardenPlanQuality(plan, plan.context?.planType, this.#profile, {
+      decomposition: plan.context?.decomposition || 'external',
+    });
+    this.#normalizeTaskExecutionConstraints(plan);
     this.#enforcePhaseBarriers(plan);
     this.#startReadyTasks(plan);
     this.#emitPlanProgress({ planCreated: true, decompositionMethod: 'external' });
@@ -1651,6 +1632,10 @@ export class ExecutionPlanManager {
         return { success: false, error: 'Plan change would create a dependency cycle' };
       }
 
+      this.#hardenPlanQuality(plan, plan.context?.planType, this.#profile, {
+        decomposition: 'dynamic',
+      });
+      this.#normalizeTaskExecutionConstraints(plan);
       this.#enforcePhaseBarriers(plan);
     } catch (error) {
       this.#restorePlanSnapshot(plan, snapshot);
@@ -1714,13 +1699,18 @@ export class ExecutionPlanManager {
     const plan = this.#plan;
 
     // ============ 结构化需求工件写入 ============
-    // 当 capture_requirements 工具被调用时，把工件写入引擎状态，
-    // 作为后续 plan_solution / implement_changes 的硬门禁依据。
+    // 当 capture_requirements 或结构化规划结果提供 request/targets/expected
+    // 时，把它归一化为后续 plan_solution / implement_changes 的需求证据。
     // 正常路径由工具 handler 通过 ctx.onRequirementsCaptured 写入；
     // 此处兜底：当 handler 未触发时（如单元测试、外部直接调用 advance），
     // 直接基于 args 解析工件。
     if (toolName === 'capture_requirements') {
       const artifact = this.#buildArtifactFromArgs(args);
+      if (artifact) {
+        this.#onRequirementsCaptured(artifact);
+      }
+    } else if (!this.#hasCapturedRequirements() && isPlanningTool(toolName)) {
+      const artifact = this.#buildArtifactFromPlanningEvidence(args, result);
       if (artifact) {
         this.#onRequirementsCaptured(artifact);
       }
@@ -2009,7 +1999,9 @@ export class ExecutionPlanManager {
     this.#insertTasksBefore(plan, runningVerificationTask.id, [
       {
         id: `${baseId}_diagnose`,
-        name: isModuleSystemError ? 'Diagnose module system conflict' : 'Diagnose verification failure',
+        name: isModuleSystemError
+          ? 'Diagnose module system conflict'
+          : 'Diagnose verification failure',
         description: diagnoseDescription,
         phase: ExecutionPlanManager.PHASE.INSPECTION,
         allowedTools: isModuleSystemError
@@ -2038,7 +2030,11 @@ export class ExecutionPlanManager {
               'lsp_definition',
               'lsp_references',
             ],
-        metadata: { source: 'verification-repair', repairIteration: iteration, errorType: isModuleSystemError ? 'module_system_error' : 'generic' },
+        metadata: {
+          source: 'verification-repair',
+          repairIteration: iteration,
+          errorType: isModuleSystemError ? 'module_system_error' : 'generic',
+        },
       },
       {
         id: `${baseId}_fix`,
@@ -2046,9 +2042,9 @@ export class ExecutionPlanManager {
         description: fixDescription,
         phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
         allowedTools: [
-          'write_file',
-          'edit_file',
           'apply_hashline_patch',
+          'edit_file',
+          'write_file',
           'shell',
           'lsp_workspace_edit',
           'lsp_code_action',
@@ -2058,7 +2054,11 @@ export class ExecutionPlanManager {
           'harness_replace',
           'harness_delete',
         ],
-        metadata: { source: 'verification-repair', repairIteration: iteration, errorType: isModuleSystemError ? 'module_system_error' : 'generic' },
+        metadata: {
+          source: 'verification-repair',
+          repairIteration: iteration,
+          errorType: isModuleSystemError ? 'module_system_error' : 'generic',
+        },
       },
       {
         id: `${baseId}_inspect`,
@@ -2361,7 +2361,8 @@ export class ExecutionPlanManager {
         const displayStatus = this.#taskDisplayStatus(t);
         const cycleLabel = this.#taskCycleLabel(t);
         const cycleStr = cycleLabel ? `, ${cycleLabel}` : '';
-        return `- ${t.id}: ${t.name} [${displayStatus}, ${phase}${cycleStr}]${scopeStr} - ${t.description}`;
+        const criteriaStr = this.#formatTaskCriteriaForPrompt(t);
+        return `- ${t.id}: ${t.name} [${displayStatus}, ${phase}${cycleStr}]${scopeStr} - ${t.description}${criteriaStr}`;
       })
       .join('\n');
 
@@ -2397,11 +2398,12 @@ export class ExecutionPlanManager {
       `Automatic task orchestration is active for this request:\n${this.#userInput}\n\n` +
       decompositionNote +
       `Phase meanings: exploration=understand existing context; planning=choose approach; implementation=make mutations; inspection=read/review changed or analyzed material; verification=run checks or summarize final evidence.\n` +
+      `Professional plan quality rules: every task must have concrete evidence, acceptance criteria, and a phase-appropriate quality gate. Do not treat vague progress claims like "handled", "checked", or "implemented" as completion unless the task's evidence and criteria are satisfied.\n` +
       `${tasks}\n\n` +
-      `The DAG task ids are status labels, not tool names. Use real available tools such as list_dir, read_file, write_file, shell, and methodology tools.\n` +
+      `The DAG task ids are status labels, not tool names. Use real available tools such as list_dir, read_file, write_file, shell, and methodology tools when they add evidence.\n` +
       `${HASHLINE_PLAN_COORDINATION_GUIDANCE}\n` +
       `For existing code projects, complete profile_project by identifying package/config files, scripts, test modules, and verification commands before choosing implementation or tests.\n` +
-      `When the current task offers methodology tools such as project_profile, impact_map, risk_check, test_strategy, security_review, data_contract_check, ui_acceptance, migration_plan, or release_checklist, prefer using the most relevant one before editing or finalizing.\n` +
+      `When the current task offers methodology tools such as project_profile, impact_map, risk_check, test_strategy, security_review, data_contract_check, ui_acceptance, migration_plan, or release_checklist, use the relevant one only when it clarifies scope, risk, acceptance, or verification.\n` +
       `If the plan becomes wrong during execution, call change_plan to append, replace, or insert tasks before continuing.\n` +
       `${this.#profile?.requiresSemanticRiskReview ? this.#buildSemanticRiskGuidance() + '\n' : ''}` +
       firstTaskPrompt +
@@ -2413,26 +2415,27 @@ export class ExecutionPlanManager {
     const taskId = task?.id;
     const phase = this.#formatPhaseForPrompt(task?.phase);
     const description = task?.description || 'Complete this task using the appropriate tools.';
+    const quality = this.#formatTaskCriteriaForPrompt(task, { multiline: false });
     const prefix = `Current task: ${taskId} (${phase}).`;
 
     if (taskId === 'inspect_workspace') {
-      return `${prefix} ${description} Use focused read/search/list tools to understand only the relevant context.`;
+      return `${prefix} ${description}${quality} Use focused read/search/list tools to understand only the relevant context.`;
     }
 
     if (taskId === 'profile_project') {
-      return `${prefix} Identify package/config files, scripts, test modules, framework conventions, and the narrowest useful verification command. Use project_profile when available, or read/list/search config and test files.`;
+      return `${prefix} Identify package/config files, scripts, test modules, framework conventions, and the narrowest useful verification command.${quality} Use project_profile when available, or read/list/search config and test files.`;
     }
 
     if (taskId === 'plan_solution') {
-      return `${prefix} ${description} Decide the smallest concrete change before editing. Invoke the capture_requirements tool with three required artifacts: (1) request — a one-sentence restatement of the original user request, (2) targets — the exact files/symbols that must change, (3) expected — the observable behavior after change. Capture_requirements is the structural gate: plan_solution cannot complete without it, and implement_changes cannot start without it. If the codebase already satisfies the request, invoke capture_requirements with status="already_complete" so the plan routes to verify_result instead of mutating. Do not create a separate plan/report file unless explicitly requested.`;
+      return `${prefix} ${description}${quality} Decide the smallest concrete change before editing. Ensure the engine has explicit requirement evidence: (1) request — a one-sentence restatement of the original user request, (2) targets — the exact files/symbols that must change, (3) expected — the observable behavior after change. Use capture_requirements when those fields are missing or need to be normalized for the plan; do not create a separate plan/report file unless explicitly requested. If the codebase already satisfies the request, record status="already_complete" so the plan routes to verify_result instead of mutating.`;
     }
 
     if (taskId === 'analyze_requirements') {
-      return `${prefix} ${description} Re-state the original user request, inventory the features or behaviors that must be present, cross-check them against the current codebase, and produce a concrete change list (file + symbol + target behavior). If the request cannot be mapped to concrete files or symbols, call ask_user or read/search more code before proceeding — do not hand off an incomplete brief to implement_changes. If the codebase already satisfies every item, signal 'already complete' and route to verify_result instead of implementing.`;
+      return `${prefix} ${description}${quality} Re-state the original user request, inventory the features or behaviors that must be present, cross-check them against the current codebase, and produce a concrete change list (file + symbol + target behavior). If the request cannot be mapped to concrete files or symbols, call ask_user or read/search more code before proceeding — do not hand off an incomplete brief to implement_changes. If the codebase already satisfies every item, signal 'already complete' and route to verify_result instead of implementing.`;
     }
 
     if (taskId === 'tdd_reproduce') {
-      return `${prefix} ${description} Prefer test_strategy or run the narrowest existing test first; an expected failing test is progress here, not a reason to skip into implementation.`;
+      return `${prefix} ${description}${quality} Prefer test_strategy or run the narrowest existing test first; an expected failing test is progress here, not a reason to skip into implementation.`;
     }
 
     if (taskId === 'implement_changes') {
@@ -2443,30 +2446,75 @@ export class ExecutionPlanManager {
       const action = bugLike
         ? 'Apply the smallest fix that addresses the diagnosed failure.'
         : 'Apply the planned change with write_file, edit_file, apply_hashline_patch, or an appropriate filesystem/shell operation.';
-      return `${prefix} ${description} ${action} Hard structural gate: implement_changes is not allowed to complete until the engine holds a requirement artifact captured via capture_requirements. Before writing any code, confirm that such an artifact exists and that its request / targets / expected fields match the actual edit you are about to perform. If no artifact is visible, stop and call capture_requirements first — never fabricate changes without a captured artifact. If the artifact's status is "already_complete", do not mutate; finish and route to verify_result.`;
+      return `${prefix} ${description}${quality} ${action} Before writing code, confirm the requirement evidence is visible and that its request / targets / expected fields match the edit you are about to perform. If that evidence is missing or stale, capture or refresh it before mutating; never fabricate changes from an incomplete brief. If the artifact's status is "already_complete", do not mutate; finish and route to verify_result.`;
     }
 
     if (taskId === 'inspect_changes') {
-      return `${prefix} ${description} Inspect the actual files or outputs affected by the previous mutation; this is not runtime verification.`;
+      return `${prefix} ${description}${quality} Inspect the actual files or outputs affected by the previous mutation; this is not runtime verification.`;
     }
 
     if (taskId === 'verify_result') {
-      return `${prefix} ${description} Run the narrowest relevant test/lint/build/check. If it fails, use the failure output as evidence, repair the issue, and re-run verification instead of finalizing.`;
+      return `${prefix} ${description}${quality} Run the narrowest relevant test/lint/build/check. If it fails, use the failure output as evidence, repair the issue, and re-run verification instead of finalizing.`;
     }
 
     if (taskId?.includes('repair_after_verification_failure')) {
-      return `${prefix} ${description} Use the captured failure output as the source of truth; fix the root cause, inspect the changed files, then re-run the failing check.`;
+      return `${prefix} ${description}${quality} Use the captured failure output as the source of truth; fix the root cause, inspect the changed files, then re-run the failing check.`;
     }
 
     if (taskId === 'analyze_findings') {
-      return `${prefix} ${description} Keep this read-only unless the user asked for a fix.`;
+      return `${prefix} ${description}${quality} Keep this read-only unless the user asked for a fix.`;
     }
 
     if (taskId === 'generate_report') {
-      return `${prefix} ${description} Summarize in FINAL_ANSWER; do not write REPORT.md/PROJECT_REPORT.md unless explicitly requested.`;
+      return `${prefix} ${description}${quality} Summarize in FINAL_ANSWER; do not write REPORT.md/PROJECT_REPORT.md unless explicitly requested.`;
     }
 
-    return `${prefix} ${description} Complete this task using the appropriate available tools.`;
+    return `${prefix} ${description}${quality} Complete this task using the appropriate available tools.`;
+  }
+
+  #formatTaskCriteriaForPrompt(task, { multiline = true } = {}) {
+    if (!task) {
+      return '';
+    }
+    const criteria = Array.isArray(task.acceptanceCriteria)
+      ? task.acceptanceCriteria.filter(Boolean).slice(0, 3)
+      : [];
+    const qualityGate = task.qualityGate
+      ? `qualityGate=${this.#formatQualityGateForPrompt(task.qualityGate)}`
+      : '';
+    const artifact =
+      Array.isArray(task.outputArtifacts) && task.outputArtifacts.length
+        ? `artifact=${task.outputArtifacts[0]}`
+        : '';
+    const parts = [qualityGate, artifact].filter(Boolean);
+    if (criteria.length === 0 && parts.length === 0) {
+      return '';
+    }
+    if (!multiline) {
+      return ` Acceptance: ${[...parts, ...criteria].join('; ')}.`;
+    }
+    const suffix = [
+      parts.length ? `gate: ${parts.join(', ')}` : '',
+      criteria.length ? `criteria: ${criteria.join('; ')}` : '',
+    ]
+      .filter(Boolean)
+      .join('; ');
+    return suffix ? ` (${suffix})` : '';
+  }
+
+  #formatQualityGateForPrompt(qualityGate) {
+    const gateLabels = {
+      must_read: 'evidence_from_relevant_context',
+      must_plan: 'explicit_scope_and_acceptance',
+      must_implement: 'mutation_with_prior_context',
+      must_review: 'changed_code_inspected',
+      must_test: 'runtime_verification',
+      tdd_required: 'regression_evidence',
+      security_required: 'security_evidence',
+      performance_required: 'performance_evidence',
+    };
+
+    return gateLabels[qualityGate] || qualityGate;
   }
 
   #formatPhaseForPrompt(phase) {
@@ -2971,10 +3019,89 @@ export class ExecutionPlanManager {
     if (!request || targets.length === 0 || !expected) {
       return null;
     }
-    const status = typeof args.status === 'string' && args.status === 'already_complete'
-      ? 'already_complete'
-      : 'pending';
+    const status =
+      typeof args.status === 'string' && args.status === 'already_complete'
+        ? 'already_complete'
+        : 'pending';
     return { request, targets, expected, status, capturedAt: Date.now() };
+  }
+
+  #buildArtifactFromPlanningEvidence(args, result) {
+    const direct = this.#buildArtifactFromArgs(args);
+    if (direct) {
+      return direct;
+    }
+
+    const candidates = [];
+    if (result && typeof result === 'object') {
+      candidates.push(result);
+      if (result.artifact && typeof result.artifact === 'object') {
+        candidates.push(result.artifact);
+      }
+      if (result.requirements && typeof result.requirements === 'object') {
+        candidates.push(result.requirements);
+      }
+    }
+
+    for (const candidate of candidates) {
+      const artifact = this.#buildArtifactFromArgs(candidate);
+      if (artifact) {
+        return artifact;
+      }
+    }
+
+    if (typeof result !== 'string') {
+      return null;
+    }
+
+    const parsed = this.#tryParseRequirementJson(result);
+    if (parsed) {
+      return parsed;
+    }
+
+    return this.#buildArtifactFromRequirementText(result);
+  }
+
+  #tryParseRequirementJson(text) {
+    const trimmed = String(text || '').trim();
+    const jsonMatch = trimmed.match(/```json\s*([\s\S]*?)```/i);
+    const candidate = jsonMatch ? jsonMatch[1].trim() : trimmed;
+    if (!candidate.startsWith('{')) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(candidate);
+      return this.#buildArtifactFromArgs(parsed) || this.#buildArtifactFromArgs(parsed.artifact);
+    } catch {
+      return null;
+    }
+  }
+
+  #buildArtifactFromRequirementText(text) {
+    const value = String(text || '');
+    const request = this.#extractRequirementLine(value, ['request', 'user request']);
+    const expected = this.#extractRequirementLine(value, ['expected', 'outcome', 'behavior']);
+    const targetsLine = this.#extractRequirementLine(value, ['targets', 'target files', 'files']);
+    const targets = targetsLine
+      ? targetsLine
+          .split(/[,，]/)
+          .map((target) => target.trim())
+          .filter(Boolean)
+      : [];
+
+    return this.#buildArtifactFromArgs({ request, targets, expected });
+  }
+
+  #extractRequirementLine(text, labels) {
+    for (const label of labels) {
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const match = text.match(new RegExp(`^\\s*[-*]?\\s*${escaped}\\s*:\\s*(.+)$`, 'im'));
+      if (match?.[1]) {
+        return match[1].trim();
+      }
+    }
+    return '';
   }
 
   #extractRequestedFilePaths(text) {
@@ -3007,6 +3134,97 @@ export class ExecutionPlanManager {
         return `- ${t.id}: ${displayStatus}${cycleLabel ? ` (${cycleLabel})` : ''}`;
       })
       .join('\n');
+  }
+
+  getProgress() {
+    const plan = this.#plan;
+    if (!plan) {
+      return {
+        percent: 0,
+        total: 0,
+        completed: 0,
+        running: 0,
+        pending: 0,
+        failed: 0,
+        phases: {},
+        currentTask: null,
+        estimatedRemaining: null,
+      };
+    }
+
+    const tasks = Array.from(plan.tasks.values());
+    const total = tasks.length;
+    const completed = tasks.filter((t) => t.status === TaskStatus.COMPLETED).length;
+    const running = tasks.filter((t) => t.status === TaskStatus.RUNNING).length;
+    const pending = tasks.filter(
+      (t) => t.status === TaskStatus.PENDING || t.status === TaskStatus.BLOCKED,
+    ).length;
+    const failed = tasks.filter((t) => t.status === TaskStatus.FAILED).length;
+
+    const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    const phaseCounts = {};
+    for (const phase of Object.values(ExecutionPlanManager.PHASE)) {
+      const phaseTasks = tasks.filter((t) => t.phase === phase);
+      const phaseCompleted = phaseTasks.filter((t) => t.status === TaskStatus.COMPLETED).length;
+      phaseCounts[phase] = {
+        total: phaseTasks.length,
+        completed: phaseCompleted,
+        percent: phaseTasks.length > 0 ? Math.round((phaseCompleted / phaseTasks.length) * 100) : 0,
+      };
+    }
+
+    const currentTask = this.currentTask;
+
+    let estimatedRemaining = null;
+    if (plan.startedAt && completed > 0) {
+      const elapsed = Date.now() - plan.startedAt;
+      const avgTimePerTask = elapsed / completed;
+      estimatedRemaining = Math.round(((pending + running) * avgTimePerTask) / 1000);
+    }
+
+    return {
+      progress,
+      total,
+      completed,
+      running,
+      pending,
+      failed,
+      phases: phaseCounts,
+      currentTask: currentTask
+        ? { id: currentTask.id, name: currentTask.name, phase: currentTask.phase }
+        : null,
+      estimatedRemaining,
+    };
+  }
+
+  getProgressSummary() {
+    const progress = this.getProgress();
+    if (progress.total === 0) {
+      return 'No active plan';
+    }
+
+    const phaseStatus = Object.entries(progress.phases)
+      .filter(([, v]) => v.total > 0)
+      .map(([phase, v]) => `${phase}: ${v.completed}/${v.total} (${v.percent}%)`)
+      .join(', ');
+
+    let eta = '';
+    if (progress.estimatedRemaining !== null) {
+      if (progress.estimatedRemaining < 60) {
+        eta = ` (ETA: ${progress.estimatedRemaining}s)`;
+      } else if (progress.estimatedRemaining < 3600) {
+        eta = ` (ETA: ${Math.round(progress.estimatedRemaining / 60)}min)`;
+      } else {
+        eta = ` (ETA: ${(progress.estimatedRemaining / 3600).toFixed(1)}h)`;
+      }
+    }
+
+    const currentTask = progress.currentTask
+      ? `Current: ${progress.currentTask.name}`
+      : 'No running task';
+
+    return `Progress: ${progress.completed}/${progress.total} (${progress.progress}%)${eta}\n${phaseStatus}\n${currentTask}`;
   }
 
   #taskDisplayStatus(task) {

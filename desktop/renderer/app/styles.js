@@ -97,10 +97,10 @@ export const styles = {
     flex: 1,
     minHeight: 0,
     display: 'flex',
-    padding: '40px 12px 18px',
-    gap: '8px',
+    padding: '38px 12px 14px',
+    gap: '10px',
     position: 'relative',
-    borderRadius: '20px',
+    borderRadius: 'var(--radius-xl)',
   },
 
   // WorkbenchControls 属于 chrome 层（与 DragRegion / 状态胶囊同级），
@@ -126,17 +126,15 @@ export const styles = {
   activityRail: {
     width: `${LAYOUT.activityRailWidth}px`,
     flexShrink: 0,
-    backgroundColor: 'var(--glass-control-bg)',
-    backdropFilter: 'blur(18px) saturate(170%)',
-    WebkitBackdropFilter: 'blur(18px) saturate(170%)',
-    border: '1px solid var(--glass-border)',
-    borderRadius: '12px',
+    backgroundColor: 'var(--surface-card)',
+    border: '1px solid var(--border-card)',
+    borderRadius: 'var(--radius-lg)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    padding: '8px 5px',
-    gap: '5px',
-    boxShadow: 'var(--glass-shadow-soft), var(--glass-inner-hl)',
+    padding: '7px 5px',
+    gap: '6px',
+    boxShadow: 'var(--shadow-sm), var(--glass-inner-hl)',
     position: 'relative',
     zIndex: 1,
   },
@@ -144,7 +142,7 @@ export const styles = {
   activityButton: {
     width: '34px',
     height: '34px',
-    borderRadius: '8px',
+    borderRadius: 'var(--radius-md)',
     border: '1px solid transparent',
     backgroundColor: 'transparent',
     color: 'var(--text-dark)',
@@ -160,23 +158,21 @@ export const styles = {
 
   activityButtonActive: {
     backgroundColor: 'var(--primary-soft)',
-    border: '1px solid var(--primary-strong)',
+    border: '1px solid var(--primary-border)',
     color: 'var(--primary-color)',
-    boxShadow: 'var(--shadow-inset)'
+    boxShadow: 'none'
   },
   
   // ================== 左侧工具面板 ==================
   leftSidebar: {
     width: `${LAYOUT.sidebarWidth}px`,
-    backgroundColor: 'var(--glass-control-bg)',
-    backdropFilter: 'blur(16px) saturate(160%)',
-    WebkitBackdropFilter: 'blur(16px) saturate(160%)',
-    borderRight: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--surface-card)',
+    borderRight: '1px solid var(--border-divider)',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
     transition: 'width var(--transition-normal)',
-    boxShadow: 'var(--glass-shadow)',
+    boxShadow: 'var(--shadow-sm)',
     position: 'relative',
     zIndex: 1,
   },
@@ -199,29 +195,27 @@ export const styles = {
     minHeight: '28px',
     display: 'inline-flex',
     alignItems: 'center',
-    padding: '0 2px',
-    borderRadius: '999px',
+    padding: '0 4px',
+    borderRadius: 'var(--radius-sm)',
     border: '1px solid transparent',
     backgroundColor: 'transparent',
     fontSize: '12px',
     fontWeight: '800',
     color: 'var(--text-muted)',
     textTransform: 'uppercase',
-    letterSpacing: '0.06em',
+    letterSpacing: '0.04em',
     boxShadow: 'none'
   },
   
   // ================== 右侧 Inspector 面板 ==================
   summaryPanel: {
-    backgroundColor: 'var(--glass-bg)',
-    backdropFilter: 'blur(16px) saturate(160%)',
-    WebkitBackdropFilter: 'blur(16px) saturate(160%)',
-    borderLeft: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--surface-card)',
+    borderLeft: '1px solid var(--border-divider)',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
     position: 'relative',
-    boxShadow: 'var(--glass-shadow)',
+    boxShadow: 'var(--shadow-sm)',
     zIndex: 1,
   },
 
@@ -241,7 +235,7 @@ export const styles = {
     alignItems: 'center',
     gap: '8px',
     padding: '8px',
-    borderBottom: 'none',
+    borderBottom: '1px solid var(--border-divider)',
     backgroundColor: 'transparent',
     backdropFilter: 'blur(8px) saturate(140%)',
     WebkitBackdropFilter: 'blur(8px) saturate(140%)',
@@ -265,15 +259,15 @@ export const styles = {
     gap: '4px',
     minWidth: 0,
     padding: '2px',
-    borderRadius: '999px',
-    border: '1px solid var(--glass-border)',
-    backgroundColor: 'var(--glass-control-bg)',
-    boxShadow: 'var(--glass-inner-hl)'
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-base)',
+    boxShadow: 'none'
   },
 
   inspectorTab: {
     height: '30px',
-    borderRadius: '999px',
+    borderRadius: 'var(--radius-sm)',
     border: '1px solid transparent',
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',
@@ -284,22 +278,18 @@ export const styles = {
   },
 
   inspectorTabActive: {
-    backgroundColor: 'var(--glass-bg-strong)',
-    backdropFilter: 'blur(8px) saturate(140%)',
-    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
-    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--surface-raised)',
+    border: '1px solid var(--border-subtle)',
     color: 'var(--text-color)',
-    boxShadow: 'var(--glass-inner-hl)'
+    boxShadow: 'var(--shadow-sm)'
   },
 
   iconButton: {
     width: '30px',
     height: '30px',
-    borderRadius: '999px',
-    border: '1px solid var(--glass-border)',
-    backgroundColor: 'var(--glass-bg-light)',
-    backdropFilter: 'blur(8px) saturate(140%)',
-    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-raised)',
     color: 'var(--text-muted)',
     cursor: 'pointer',
     fontSize: '13px',
@@ -309,7 +299,7 @@ export const styles = {
     padding: 0,
     flex: '0 0 auto',
     transition: 'all var(--transition-fast)',
-    boxShadow: 'var(--glass-inner-hl)'
+    boxShadow: 'none'
   },
 
   previewFrame: {
@@ -489,7 +479,9 @@ export const styles = {
     display: 'flex',
     flexDirection: 'column',
     backgroundColor: 'var(--surface-base)',
-    borderRadius: '20px',
+    border: '1px solid var(--border-card)',
+    borderRadius: 'var(--radius-xl)',
+    boxShadow: 'var(--shadow-panel)',
     overflow: 'hidden',
   },
 
@@ -499,7 +491,7 @@ export const styles = {
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    borderRadius: '20px',
+    borderRadius: 'var(--radius-xl)',
   },
   
   chatHeader: {
@@ -507,18 +499,16 @@ export const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: '12px',
-    padding: '8px 14px 4px',
-    borderBottom: 'none',
-    backgroundColor: 'transparent',
-    backdropFilter: 'blur(12px) saturate(150%)',
-    WebkitBackdropFilter: 'blur(12px) saturate(150%)',
+    padding: '10px 14px',
+    borderBottom: '1px solid var(--border-divider)',
+    backgroundColor: 'var(--surface-card)',
     boxShadow: 'none'
   },
   
   chatTitle: {
     minHeight: '28px',
     padding: '2px 2px',
-    borderRadius: '999px',
+    borderRadius: 'var(--radius-sm)',
     border: '1px solid transparent',
     backgroundColor: 'transparent',
     boxShadow: 'none',
@@ -529,19 +519,19 @@ export const styles = {
     alignItems: 'center',
     gap: '9px',
     textTransform: 'uppercase',
-    letterSpacing: '0.04em'
+    letterSpacing: '0.035em'
   },
 
   chatTitleMark: {
     width: '22px',
     height: '22px',
-    borderRadius: '999px',
+    borderRadius: 'var(--radius-md)',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'transparent',
+    background: 'var(--primary-soft)',
     color: 'var(--primary-color)',
-    border: '1px solid transparent',
+    border: '1px solid var(--primary-border)',
     fontSize: '10px',
     fontWeight: 800
   },
@@ -568,7 +558,7 @@ export const styles = {
     alignItems: 'center',
     gap: '6px',
     padding: '4px 10px',
-    borderRadius: '999px',
+    borderRadius: 'var(--radius-sm)',
     fontSize: '12px',
     fontWeight: '500',
     border: 'none'
@@ -591,19 +581,17 @@ export const styles = {
     flex: 1,
     minHeight: 0,
     overflow: 'visible',
-    padding: '8px 12px 10px',
+    padding: '10px 12px 12px',
   },
   
   // ================== 输入区域 ==================
   inputArea: {
-    margin: '0 14px 12px',
-    padding: '9px',
-    backgroundColor: 'var(--glass-bg)',
-    backdropFilter: 'blur(20px) saturate(180%)',
-    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+    margin: '0 12px 12px',
+    padding: '8px',
+    backgroundColor: 'var(--surface-card)',
     border: '1px solid var(--glass-border-strong)',
-    borderRadius: '14px',
-    boxShadow: 'var(--glass-shadow-soft), var(--glass-inner-hl)'
+    borderRadius: 'var(--radius-lg)',
+    boxShadow: 'var(--shadow-sm), var(--glass-inner-hl)'
   },
 
   interactionConsole: {
@@ -612,12 +600,10 @@ export const styles = {
     gap: '6px',
     marginBottom: '7px',
     padding: '4px 6px',
-    borderRadius: '999px',
-    border: '1px solid var(--glass-border)',
-    backgroundColor: 'var(--glass-bg-light)',
-    backdropFilter: 'blur(10px) saturate(140%)',
-    WebkitBackdropFilter: 'blur(10px) saturate(140%)',
-    boxShadow: 'var(--glass-inner-hl)'
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-base)',
+    boxShadow: 'none'
   },
 
   interactionStages: {
@@ -633,7 +619,7 @@ export const styles = {
     alignItems: 'center',
     gap: '5px',
     padding: '0 8px',
-    borderRadius: '999px',
+    borderRadius: 'var(--radius-sm)',
     border: '1px solid var(--border-subtle)',
     backgroundColor: 'var(--neutral-faint)',
     color: 'var(--text-muted)',
@@ -704,7 +690,7 @@ export const styles = {
     display: 'inline-flex',
     alignItems: 'center',
     padding: '0 7px',
-    borderRadius: '999px',
+    borderRadius: 'var(--radius-sm)',
     border: '1px solid var(--glass-border)',
     backgroundColor: 'var(--glass-bg)',
     color: 'var(--text-muted)',
@@ -718,7 +704,7 @@ export const styles = {
     display: 'inline-flex',
     alignItems: 'center',
     padding: '0 8px',
-    borderRadius: '999px',
+    borderRadius: 'var(--radius-sm)',
     border: '1px solid var(--glass-border)',
     backgroundColor: 'var(--neutral-faint)',
     color: 'var(--text-muted)',
@@ -768,7 +754,7 @@ export const styles = {
     display: 'inline-flex',
     alignItems: 'center',
     padding: '0 5px',
-    borderRadius: '4px',
+    borderRadius: 'var(--radius-sm)',
     border: '1px solid var(--glass-border)',
     backgroundColor: 'var(--glass-bg)',
     color: 'var(--text-muted)',
@@ -801,11 +787,9 @@ export const styles = {
 
   userInputRequestPanel: {
     marginBottom: '10px',
-    borderRadius: '16px',
+    borderRadius: 'var(--radius-lg)',
     border: '1px solid var(--glass-border)',
-    backgroundColor: 'var(--glass-bg-light)',
-    backdropFilter: 'blur(10px) saturate(140%)',
-    WebkitBackdropFilter: 'blur(10px) saturate(140%)',
+    backgroundColor: 'var(--surface-raised)',
     boxShadow: 'var(--glass-inner-hl)',
     overflow: 'hidden'
   },
@@ -840,18 +824,16 @@ export const styles = {
     minHeight: '54px',
     maxHeight: '120px',
     resize: 'vertical',
-    border: '1px solid var(--glass-border)',
-    borderRadius: '8px',
-    backgroundColor: 'var(--glass-bg-light)',
-    backdropFilter: 'blur(8px) saturate(140%)',
-    WebkitBackdropFilter: 'blur(8px) saturate(140%)',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: 'var(--radius-md)',
+    backgroundColor: 'var(--surface-input)',
     color: 'var(--text-color)',
     padding: '8px',
     fontSize: '13px',
     fontFamily: 'inherit',
     lineHeight: 1.4,
     outline: 'none',
-    boxShadow: 'var(--glass-inner-hl)'
+    boxShadow: 'none'
   },
 
   userInputRequestButton: {
@@ -877,32 +859,30 @@ export const styles = {
     minHeight: '48px',
     maxHeight: '200px',
     padding: '12px 14px',
-    borderRadius: '10px',
-    border: '1px solid var(--glass-border)',
-    backgroundColor: 'var(--glass-bg)',
-    backdropFilter: 'blur(10px) saturate(140%)',
-    WebkitBackdropFilter: 'blur(10px) saturate(140%)',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-input)',
     color: 'var(--text-color)',
     fontSize: '14px',
     fontFamily: 'inherit',
     resize: 'none',
     outline: 'none',
     lineHeight: 1.5,
-    boxShadow: 'var(--glass-inner-hl)',
+    boxShadow: 'none',
     transition: 'all var(--transition-fast)'
   },
   
   inputTextareaFocused: {
     border: '1px solid var(--primary-color)',
-    backgroundColor: 'var(--glass-bg-strong)',
-    boxShadow: '0 0 0 3px var(--primary-soft), var(--glass-inner-hl)'
+    backgroundColor: 'var(--surface-input-focused)',
+    boxShadow: 'var(--focus-ring-soft)'
   },
   
   sendButton: {
     width: '44px',
     height: '44px',
-    borderRadius: '10px',
-    border: '1px solid var(--glass-border)',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--primary-strong)',
     backgroundColor: 'var(--primary-color)',
     color: 'var(--text-on-primary)',
     cursor: 'pointer',
@@ -910,12 +890,13 @@ export const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'all 0.2s'
+    transition: 'all var(--transition-fast)',
+    boxShadow: 'var(--shadow-sm)'
   },
   
   sendButtonDisabled: {
-    backgroundColor: 'var(--glass-bg-light)',
-    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--surface-raised)',
+    border: '1px solid var(--border-subtle)',
     color: 'var(--text-muted)',
     cursor: 'not-allowed'
   },
@@ -930,7 +911,7 @@ export const styles = {
   tabButton: {
     flex: 1,
     height: '32px',
-    borderRadius: '6px',
+    borderRadius: 'var(--radius-sm)',
     border: 'none',
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',
@@ -949,7 +930,7 @@ export const styles = {
   headerActionButton: {
     height: '32px',
     padding: '0 12px',
-    borderRadius: '6px',
+    borderRadius: 'var(--radius-md)',
     border: 'none',
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',

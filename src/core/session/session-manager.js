@@ -12,6 +12,24 @@
 
 import { Tokenizer } from '../tokenizer.js';
 
+const INTERNAL_ACTION_PATTERN =
+  /"action"\s*:|"evaluation_previous_goal"\s*:|"next_goal"\s*:|"memory"\s*:/;
+
+function filterInternalActionOutput(text = '') {
+  if (typeof text !== 'string') {
+    return text;
+  }
+  const trimmed = text.trim();
+  if (
+    trimmed.startsWith('{') &&
+    (trimmed.endsWith('}') || trimmed.endsWith('}\n')) &&
+    INTERNAL_ACTION_PATTERN.test(trimmed)
+  ) {
+    return '';
+  }
+  return text;
+}
+
 export class SessionManager {
   /** @type {Array<{role: string, content: string, toolCalls?: Array, toolCallId?: string, priority: number}>} */
   #messages = [];
@@ -149,8 +167,8 @@ export class SessionManager {
    * @param {Array} [toolCalls]
    */
   addAssistantMessage(content, toolCalls) {
-    // Assistant 消息默认高一些优先级：里面可能包含决策/推理
-    this.addMessage('assistant', content, toolCalls, SessionManager.PRIORITY.EVIDENCE);
+    const filteredContent = filterInternalActionOutput(content);
+    this.addMessage('assistant', filteredContent, toolCalls, SessionManager.PRIORITY.EVIDENCE);
   }
 
   /** @param {string} toolCallId @param {string} toolName @param {string} result @param {number} [priority] */

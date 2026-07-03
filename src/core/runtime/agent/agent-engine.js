@@ -121,7 +121,9 @@ function createEmptyToolRegistry() {
 }
 
 export function stripActionBlocks(text = '', { toolRegistry } = {}) {
-  if (typeof text !== 'string') {return text;}
+  if (typeof text !== 'string') {
+    return text;
+  }
 
   let out = text
     .replace(
@@ -319,7 +321,9 @@ export function createProtocolStreamFilter() {
   let bufferingType = null;
 
   function push(text) {
-    if (!text || typeof text !== 'string') {return { visibleText: '', protocolDetected: false };}
+    if (!text || typeof text !== 'string') {
+      return { visibleText: '', protocolDetected: false };
+    }
 
     let input = text;
     let visibleText = '';
@@ -536,7 +540,9 @@ function scoreNumberedItem(item) {
 // ---------- 聚合判断: 整体是否为可执行任务列表 ----------
 function isActionableTaskList(text) {
   const items = text.match(/^\d+\.\s+.+/gm);
-  if (!items || items.length < 3) {return false;}
+  if (!items || items.length < 3) {
+    return false;
+  }
 
   let totalScore = 0;
   for (const item of items) {
@@ -558,11 +564,15 @@ function hasPlanLeadIn(text) {
 // 检测模型是否只输出了计划/描述而没有执行任何工具调用
 // =========================================================================
 function looksLikePlanWithoutExecution(text) {
-  if (!text?.trim()) {return false;}
+  if (!text?.trim()) {
+    return false;
+  }
   const t = text.trim();
 
   // -------- 强信号: 明确声明了文件创建清单 --------
-  if (/\*\*Files to create\*\*|Files to create:|待创建文件/i.test(t)) {return true;}
+  if (/\*\*Files to create\*\*|Files to create:|待创建文件/i.test(t)) {
+    return true;
+  }
 
   // -------- 核心判断: 编号条目是否为可执行任务列表 --------
   // 同时要求有"计划前导句"（Here's my plan...），提高置信度
@@ -571,11 +581,17 @@ function looksLikePlanWithoutExecution(text) {
     // 如果有明确的计划前导句 → 强信号，降低阈值
     if (hasPlanLeadIn(t)) {
       let score = 0;
-      for (const item of items) {score += scoreNumberedItem(item);}
-      if (score >= 1) {return true;} // 有计划声明时，微弱正评分即通过
+      for (const item of items) {
+        score += scoreNumberedItem(item);
+      }
+      if (score >= 1) {
+        return true;
+      } // 有计划声明时，微弱正评分即通过
     }
     // 否则用标准阈值
-    if (isActionableTaskList(t)) {return true;}
+    if (isActionableTaskList(t)) {
+      return true;
+    }
   }
 
   // -------- "I will / I'll / I am going to" 创建/写/构建——明确执行意图 --------
@@ -583,14 +599,19 @@ function looksLikePlanWithoutExecution(text) {
     /\b(I will|I'll|I am going to)\s+(create|write|build|make|implement|创建|编写|构建|实现)\b/i.test(
       t,
     )
-  )
-    {return true;}
+  ) {
+    return true;
+  }
 
   // -------- "Let me first" —— 顺序执行意图 --------
-  if (/\bLet me first\b/i.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) {return true;}
+  if (/\bLet me first\b/i.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) {
+    return true;
+  }
 
   // -------- "Step by step / step-by-step" —— 步骤化解法声明 --------
-  if (/\bstep[-\s]by[-\s]step\b/i.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) {return true;}
+  if (/\bstep[-\s]by[-\s]step\b/i.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) {
+    return true;
+  }
 
   // -------- "Let me read/understand the codebase" —— 阅读意图未执行 --------
   if (
@@ -598,8 +619,9 @@ function looksLikePlanWithoutExecution(text) {
       t,
     ) &&
     !/CALL\s+\w+|action["<]/i.test(t)
-  )
-    {return true;}
+  ) {
+    return true;
+  }
 
   // -------- "在 X 之前先 Y" —— 顺序依赖声明 --------
   if (
@@ -610,8 +632,9 @@ function looksLikePlanWithoutExecution(text) {
       t,
     ) &&
     !/CALL\s+\w+|action["<]/i.test(t)
-  )
-    {return true;}
+  ) {
+    return true;
+  }
 
   return false;
 }
@@ -626,20 +649,27 @@ const DSML_PIPE_TAG = /<[|｜]+\s*DSML\s*[|｜]+[^>]*>[\s\S]*?<\/[|｜]+\s*DSML\
 // 因此 text 中任何 XML 标签都不是合法工具调用格式，全部视为泄漏
 // 场景: <dsml>, <info>, <thinking>, <plan>, <analysis>, <reasoning>, <reflection>, <note> 等
 function looksLikeLeakedThinking(text) {
-  if (!text?.trim()) {return false;}
+  if (!text?.trim()) {
+    return false;
+  }
   const t = text.trim();
   // 检测任何非工具 XML 标签（合法工具标签如 <action> 等已被 parser 消耗）
-  if (!ANY_XML_TAG.test(t) && !DSML_PIPE_TAG.test(t)) {return false;}
+  if (!ANY_XML_TAG.test(t) && !DSML_PIPE_TAG.test(t)) {
+    return false;
+  }
   // 去掉所有 XML / DSML 标签后的剩余文本
   const withoutTags = t.replace(ANY_XML_TAG, '').replace(DSML_PIPE_TAG, '').trim();
   // 标签之外没有任何实质内容（没有 CALL、没有 tool call、没有 FINAL_ANSWER）
-  if (!withoutTags || withoutTags.length < 20) {return true;}
+  if (!withoutTags || withoutTags.length < 20) {
+    return true;
+  }
   // 剩余内容只是 "Let me..." / "Thinking..." 之类无动作的声明
   if (
     /^(Let me|Thinking|I should|I need to|I'll)\b/i.test(withoutTags) &&
     !/CALL\s+\w+|action["<]/i.test(withoutTags)
-  )
-    {return true;}
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -647,14 +677,20 @@ function looksLikeLeakedThinking(text) {
 // 这是比 plan-only 更严重的问题：模型编造了完整的执行过程和虚构输出。
 // 仅在 session 内实实在在未执行过任何工具时才判定为虚构。
 function looksLikeFakeExecution(text, toolEventsInRun) {
-  if (!text?.trim()) {return false;}
+  if (!text?.trim()) {
+    return false;
+  }
   // 如果 session 内已经执行过工具，可能是正常的总结描述，不拦截
-  if (toolEventsInRun > 0) {return false;}
+  if (toolEventsInRun > 0) {
+    return false;
+  }
   const t = text.trim();
   let indicators = 0;
 
   // 标记 1：虚构的 "Files Created/Created files" 章节（过去时，非将来时）
-  if (/\b(Files (C|c)reated|Created files|新增文件|已创建文件)/.test(t)) {indicators++;}
+  if (/\b(Files (C|c)reated|Created files|新增文件|已创建文件)/.test(t)) {
+    indicators++;
+  }
 
   // 标记 2：虚构的构建/验证输出（npm run build / yarn build 等 + 统计数字）
   if (
@@ -662,43 +698,49 @@ function looksLikeFakeExecution(text, toolEventsInRun) {
     /(?:modules? transformed|bundle generated|built in \d|构建完成|编译成功|Production bundle)/i.test(
       t,
     )
-  )
-    {indicators++;}
+  ) {
+    indicators++;
+  }
 
   // 标记 3：虚构的验证章节（Verification / 验证 / npm run build 带 ✅✓）
   if (
     /\b(Verification|验证|Test results?)\b/i.test(t) &&
     /(?:✅|✓|pass|success|成功|通过|No errors|zero errors)/i.test(t)
-  )
-    {indicators++;}
+  ) {
+    indicators++;
+  }
 
   // 标记 4：虚构的错误诊断修正报告（"Root Cause" + "Fix" + 无工具执行）
   if (
     /\bRoot Cause\b/i.test(t) &&
     (/\bFiles? (C|c)reated\b/.test(t) || /\bFix\b/i.test(t) || /\bResolution\b/i.test(t)) &&
     !/CALL\s+\w+|action["<]/i.test(t)
-  )
-    {indicators++;}
+  ) {
+    indicators++;
+  }
 
   // 标记 5：虚构的"错误已解决"开篇（The error is resolved / The issue is fixed）
   if (
     /^(?:The |这个)(?:error|issue|bug|problem|错误|问题)\b.{0,30}\b(?:resolved|fixed|solved|解决|修复)/im.test(
       t,
     )
-  )
-    {indicators++;}
+  ) {
+    indicators++;
+  }
 
   // 标记 6：虚构的文件导出声明（"Exports XXX class" / "Exports XXX function"）
-  if (/^###\s+\d+\.\s+`[^`]+`\s*\n(?:Exports|导出)/m.test(t) && !/CALL\s+\w+|action["<]/i.test(t))
-    {indicators++;}
+  if (/^###\s+\d+\.\s+`[^`]+`\s*\n(?:Exports|导出)/m.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) {
+    indicators++;
+  }
 
   // 标记 7：详细虚构文件内容描述（列出了具体方法名如 humanAct/processNight 等）
   if (
     /\b(?:humanAct|processNight|processDay|processDayVote|checkVictory|performAction)\b/.test(t) &&
     /\b(class|method|function|array|stub)\b/i.test(t) &&
     !/CALL\s+\w+|action["<]/i.test(t)
-  )
-    {indicators++;}
+  ) {
+    indicators++;
+  }
 
   // 至少 2 个信号同时命中才判定为虚构
   return indicators >= 2;
@@ -707,14 +749,18 @@ function looksLikeFakeExecution(text, toolEventsInRun) {
 // 检测模型表达了"需要阅读代码/文件"的意图，但未实际发起任何读操作工具调用
 // 这是比 plan-only 更具体的一类空轮次：模型声明要理解代码却不用 read_file / search_file 等工具
 function looksLikeIntentToReadWithoutTools(text) {
-  if (!text?.trim()) {return false;}
+  if (!text?.trim()) {
+    return false;
+  }
   const t = text.trim();
   // 表达了阅读/探索意图
   const readIntent =
     /\b(?:let me|I(?:'ll| will| need to| should| must)?|need to|going to)\s+(?:understand|read|examine|review|analyze|inspect|look\s+(?:at|into)|check\s+(?:out)?|explore|scan|study|get\s+(?:to\s+)?know|familiarize)\b/i;
   const readTarget =
     /\b(?:the\s+)?(?:full\s+)?(?:codebase|project|files?|code|repository|source|directory|structure|key\s+files?|relevant\s+(?:files?|code)|implementation|module|package)/i;
-  if (readIntent.test(t) && readTarget.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) {return true;}
+  if (readIntent.test(t) && readTarget.test(t) && !/CALL\s+\w+|action["<]/i.test(t)) {
+    return true;
+  }
   // "before X, let me Y" 模式 (Y 是阅读操作)
   if (
     /\b(?:before|first|prior to)\s+(?:creating|writing|modifying|changing|editing|deleting|implementing|building|fixing|adding|removing)/i.test(
@@ -722,8 +768,9 @@ function looksLikeIntentToReadWithoutTools(text) {
     ) &&
     readIntent.test(t) &&
     !/CALL\s+\w+|action["<]/i.test(t)
-  )
-    {return true;}
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -1306,62 +1353,19 @@ export class AgentEngine {
         currentTask,
       });
 
-      // ======== force-action 模式：禁止只读工具，强制 Agent 写代码 ========
-      // 注意：此白名单比 tool-semantics.js 中的 MUTATION 更宽，额外包含：
-      //   - verify / review（允许验证已完成的变更，避免 agent 无法确认结果）
-      //   - shell（shell 内的具体操作由 getToolEffect 在运行时判断）
-      // 过滤逻辑在下方 forceActionTriggered 分支中生效。
-      const FORCE_ACTION_MUTATION_TOOLS = new Set([
-        'write_file',
-        'edit_file',
-        'delete_file',
-        'rename_file',
-        'mkdir',
-        'apply_hashline_patch',
-        'lsp_rename',
-        'lsp_code_action',
-        'lsp_workspace_edit',
-        'harness_replace',
-        'harness_insert',
-        'harness_delete',
-        'harness_rollback',
-        'git_apply_patch',
-        'git_commit',
-        'git_add',
-        'git_push',
-        'git_pull',
-        'git_stash',
-        'git_reset',
-        'shell', // shell 具体操作由 tool-semantics.getToolEffect() 运行时分类
-        'verify', // 允许验证已完成变更
-        'review', // 允许审查已完成变更
-        'list_dir', // 允许在首次写入前确认工作区结构
-        'read_file', // 允许读取根目录项目上下文后再写入
-      ]);
-      let forceActionSystemNote = null;
+      // Progress-check mode keeps the full routed tool set available. A stalled
+      // coding task may still need one precise read, diagnostic command, plan
+      // repair, or user-owned fact before a safe mutation.
+      let progressCheckSystemNote = null;
       if (forceActionTriggered) {
-        const beforeCount = routedTools.length;
-        routedTools = routedTools.filter((t) => FORCE_ACTION_MUTATION_TOOLS.has(t.name));
-        if (routedTools.length === 0) {
-          // 保底：如果全被过滤了，至少保留核心写工具
-          routedTools = ['write_file', 'edit_file', 'apply_hashline_patch']
-            .map((name) => this.#toolRegistry.get(name))
-            .filter(Boolean);
-        }
-        if (this.#config?.debug && beforeCount !== routedTools.length) {
-          this.#ui.debugEvent?.(
-            `Force-action mode: tools restricted ${beforeCount} → ${routedTools.length} (read-only blocked)`,
-          );
-        }
-        // 构建 system note，在 messages 构造后注入
         const usableNames = routedTools.map((t) => t.name).join(', ');
-        forceActionSystemNote =
-          `<!-- FORCE-ACTION MODE: Only mutation tools are available. ` +
+        progressCheckSystemNote =
+          `<!-- IMPLEMENTATION PROGRESS CHECK: The task is stalling. ` +
           `Usable tools: ${usableNames}. ` +
-          `Use list_dir first if the workspace root has not been observed in this run; ` +
-          `then read only relevant project context files before writing. ` +
-          `Other broad explore tools remain blocked. ` +
-          `You MUST ground the workspace briefly, then write code NOW. -->`;
+          `Choose one concrete evidence-based step: apply the smallest scoped edit if ready; ` +
+          `otherwise gather the single missing fact, run a focused diagnostic or verification command, ` +
+          `or call change_plan/ask_user when the plan is wrong or blocked. ` +
+          `Do not repeat broad exploration or create report files. -->`;
       }
       const activeRoutedToolNames = new Set(routedTools.map((tool) => tool.name));
       const functions = this.#toolRegistry.toFunctionDefinitions(routedTools);
@@ -1376,9 +1380,9 @@ export class AgentEngine {
         currentPhase,
       );
 
-      // 注入 force-action system note（在 messages 构造之后）
-      if (forceActionSystemNote) {
-        messages.push({ role: 'system', content: forceActionSystemNote });
+      // Inject progress-check note after routed tool context.
+      if (progressCheckSystemNote) {
+        messages.push({ role: 'system', content: progressCheckSystemNote });
       }
 
       // —— 注入本轮工作区上下文（多文件聚合快照）——
@@ -1493,7 +1497,9 @@ export class AgentEngine {
               async () => {
                 // 迭代增量事件，经协议过滤后转发到 UI
                 for await (const evt of streamResult.stream()) {
-                  if (!evt) {continue;}
+                  if (!evt) {
+                    continue;
+                  }
 
                   if (evt.type === 'text_delta' && evt.text) {
                     const out = protoFilter.push(evt.text);
@@ -1819,8 +1825,8 @@ export class AgentEngine {
         this.#sessionManager.addAssistantMessage(response.text);
         this.#sessionManager.addSystemMessage(
           shouldForceCreation
-            ? '[FORCED STRATEGY SWITCH] You expressed intent to inspect/read, but the current task is create/implementation work. Do NOT read guessed files. First call list_dir on "." if the workspace root has not been observed in this run; then read only relevant existing project context files if needed, and call write_file, mkdir, shell, edit_file, or apply_hashline_patch to create the project files. If information is missing, call ask_user; do not continue prose-only analysis.'
-            : '[FORCED TOOL USE] You expressed intent to read / understand the codebase but did not execute any tool calls. Your next response MUST call a concrete read tool such as list_dir, read_file, search_file, or search_content. Do not describe what you will read.',
+            ? '[EXECUTION CHECK] You expressed intent to inspect/read, but the current task is create/implementation work. If the workspace root has not been observed in this run, call list_dir on "."; otherwise read only the one relevant existing file/section needed before editing. If the target is already clear, create or edit the project files now. If information is missing, call ask_user; do not continue prose-only analysis.'
+            : '[EXECUTION CHECK] You expressed intent to read / understand the codebase but did not execute any tool calls. Your next response should call a concrete read/search tool or explain the blocker with FINAL_ANSWER when no tool can help. Do not describe what you will read without doing it.',
         );
         this.#ui.debugEvent?.('Nudge: intent to read without tools', {
           iteration,
@@ -1959,8 +1965,8 @@ export class AgentEngine {
             `[HARD STOP] ${zeroToolCallStreak} consecutive responses with ZERO tool calls. ` +
               'You are stuck in an analysis loop. ' +
               `${zeroToolCallStreak >= 7 ? 'THIS IS YOUR LAST CHANCE. ' : `You will be TERMINATED in ${8 - zeroToolCallStreak} more zero-call response(s). `}` +
-              'IMMEDIATELY call write_file or edit_file to make the code change, OR provide FINAL_ANSWER. ' +
-              'No more analysis — ACT NOW.',
+              'Take one concrete action now: edit if the target is clear, gather the one missing fact with a tool, replan/ask_user if blocked, OR provide FINAL_ANSWER with the actual blocker. ' +
+              'No more prose-only analysis.',
           );
           if (zeroToolCallStreak >= 8 && !this.#executionPlanManager.isActive) {
             return this.#completeRun({
@@ -1975,7 +1981,8 @@ export class AgentEngine {
           continue;
         }
 
-        // 探索预算超出：先警告 + 禁止只读工具，再硬终止
+        // 探索预算超出：先警告并进入 progress-check mode. Do not
+        // block read-only tools; a safe edit may require one last focused read.
         // 引擎已在任务开始时预注入 WorkspaceIndex + ImportGraph +
         // AgentMemory + LSP diagnostics + plan context，agent 不应需要探索阶段
 
@@ -1992,10 +1999,10 @@ export class AgentEngine {
               ? `Current subtask scope: ${runningTask.scopeFiles.join(', ')}. Only read files within this scope.`
               : 'Focus on the CURRENT subtask only — do not pre-read files for future subtasks. The plan DAG shows which files belong to each subtask.';
           this.#sessionManager.addSystemMessage(
-            `[SCOPE REMINDER] You have read for ${explorationIterations} round(s) without making changes. ` +
+            `[SCOPE REMINDER] You have read for ${explorationIterations} round(s) without producing decisive progress. ` +
               `${scopeHint} The engine has pre-indexed the workspace — trust the pre-computed context. ` +
-              `Use lsp_symbols / lsp_diagnostics instead of read_file for broad exploration. ` +
-              `When ready to edit, read ONLY the specific section with offset+limit.`,
+              `Prefer precise symbol/diagnostic/context tools over broad exploration. ` +
+              `When ready to edit, read only the specific section with offset+limit or apply the scoped change.`,
           );
           this.#ui.debugEvent?.('Scope reminder injected', {
             iteration,
@@ -2010,16 +2017,14 @@ export class AgentEngine {
           forceActionTriggered = true;
           this.#sessionManager.addAssistantMessage(response.text);
           this.#sessionManager.addUserMessage(
-            `[HARD STOP - FORCE ACTION ACTIVATED] ` +
-              `You have spent ${explorationIterations} iterations reading/exploring without making ANY code changes.\n` +
+            `[IMPLEMENTATION PROGRESS CHECK] ` +
+              `You have spent ${explorationIterations} iterations reading/exploring without producing decisive progress.\n` +
               `(Budget: ${effectiveExplorationBudget} iterations — the engine already pre-injected workspace structure, diagnostics, project memory, and execution plan for you)\n\n` +
-              `CONSEQUENCE: All read-only tools (read_file, list_dir, lsp_*, web_search, etc.) are now BLOCKED. ` +
-              `Only write/edit/delete/shell/harness_* tools remain available.\n\n` +
-              `You have ${FORCE_ACTION_GRACE_TURNS} chances left. If you produce ${FORCE_ACTION_GRACE_TURNS} more non-mutation rounds, ` +
+              `No tools are blocked by this checkpoint; routing and security still decide what is callable. ` +
+              `The next step must be narrow and evidence-based.\n\n` +
+              `You have ${FORCE_ACTION_GRACE_TURNS} chances left. If you produce ${FORCE_ACTION_GRACE_TURNS} more rounds without decisive progress, ` +
               `you will be TERMINATED with reason "exploration_budget_exhausted".\n\n` +
-              'ACTION REQUIRED: Use write_file, edit_file, or apply_hashline_patch to implement the change. ' +
-              'Or provide FINAL_ANSWER explaining why you cannot proceed. ' +
-              'Do NOT attempt to read or explore — those tools are BLOCKED.',
+              'Choose one: apply the scoped edit; gather the single missing fact; run a focused diagnostic/verification command; call change_plan/ask_user; or provide FINAL_ANSWER explaining the blocker.',
           );
           continue;
         }
@@ -2037,8 +2042,8 @@ export class AgentEngine {
               success: false,
               status: 'error',
               answer:
-                `Agent spent ${explorationIterations} iterations exploring without making code changes, ` +
-                `and ignored the force-action directive (${FORCE_ACTION_GRACE_TURNS} warnings given).`,
+                `Agent spent ${explorationIterations} iterations exploring without decisive progress, ` +
+                `and ignored the implementation progress checkpoint (${FORCE_ACTION_GRACE_TURNS} warnings given).`,
               reason: 'exploration_budget_exhausted',
               iterations: iteration,
               startedAt: runStartedAt,
@@ -2047,10 +2052,9 @@ export class AgentEngine {
           this.#sessionManager.addAssistantMessage(response.text);
           this.#sessionManager.addUserMessage(
             `[FINAL WARNING ${forceActionIgnored}/${FORCE_ACTION_GRACE_TURNS}] ` +
-              `You have ignored the force-action directive for ${forceActionIgnored} iteration(s). ` +
-              `You will be TERMINATED in ${remaining} more non-mutation iteration(s). ` +
-              `Read-only tools are BLOCKED — your only options are: ` +
-              `write_file, edit_file, apply_hashline_patch, shell, or FINAL_ANSWER. ACT NOW.`,
+              `You have ignored the implementation progress checkpoint for ${forceActionIgnored} iteration(s). ` +
+              `You will be TERMINATED in ${remaining} more iteration(s) without decisive progress. ` +
+              `Take a concrete evidence-based step now: scoped edit, focused read/diagnostic, change_plan, ask_user, or FINAL_ANSWER with the blocker.`,
           );
           continue;
         }
@@ -2536,7 +2540,9 @@ export class AgentEngine {
    *   下一轮 LLM → 读取更新后的 memory ✅
    */
   #refreshMemoryAfterTools(allToolCalls) {
-    if (!allToolCalls || allToolCalls.length === 0) {return;}
+    if (!allToolCalls || allToolCalls.length === 0) {
+      return;
+    }
 
     const mutationNames = new Set([
       'write_file',
@@ -2623,8 +2629,12 @@ export class AgentEngine {
    */
   #tryCreateProjection(taskProfile) {
     try {
-      if (!taskProfile?.isCodingTask) {return null;}
-      if (!this.#contextProjection) {return null;}
+      if (!taskProfile?.isCodingTask) {
+        return null;
+      }
+      if (!this.#contextProjection) {
+        return null;
+      }
 
       const projection = this.#contextProjection.projectMinimal();
 
@@ -2661,7 +2671,9 @@ export class AgentEngine {
   #expandContextOnDemand(iteration, maxIterations, _executionPlan) {
     try {
       // 仅在编码任务 + 迭代进入中后段时触发（前期让 agent 先尝试）
-      if (iteration < 2) {return;}
+      if (iteration < 2) {
+        return;
+      }
 
       // 使用当前 userInput 评估：文件是否存在、符号是否可索引、依赖图是否覆盖
       const confidence = this.#onDemandContext?.assessConfidence?.({
@@ -2669,7 +2681,9 @@ export class AgentEngine {
         symbolName: undefined,
       });
 
-      if (!confidence) {return;}
+      if (!confidence) {
+        return;
+      }
 
       // 置信度不足时注入提示，引导 agent 信任预计算上下文
       if (confidence.level === 'low' || confidence.level === 'unknown') {
@@ -2760,7 +2774,9 @@ export class AgentEngine {
     const warnings = [];
 
     for (const [uri, diags] of Object.entries(allDiags)) {
-      if (!Array.isArray(diags) || diags.length === 0) {continue;}
+      if (!Array.isArray(diags) || diags.length === 0) {
+        continue;
+      }
       const filePath = uri.replace(/^file:\/\//, '');
       for (const d of diags) {
         const entry = {
@@ -2820,13 +2836,17 @@ export class AgentEngine {
     const errorFiles = new Set();
 
     for (const [uri, diags] of Object.entries(allDiags)) {
-      if (!Array.isArray(diags)) {continue;}
+      if (!Array.isArray(diags)) {
+        continue;
+      }
       if (diags.some((d) => d.severity === 1)) {
         errorFiles.add(uri.replace(/^file:\/\//, ''));
       }
     }
 
-    if (errorFiles.size === 0) {return null;}
+    if (errorFiles.size === 0) {
+      return null;
+    }
 
     const lines = [];
     lines.push(
@@ -2870,7 +2890,9 @@ export class AgentEngine {
    * 用于在 import graph 中查找相关依赖。
    */
   #extractFileReferences(userInput) {
-    if (typeof userInput !== 'string' || !userInput) {return [];}
+    if (typeof userInput !== 'string' || !userInput) {
+      return [];
+    }
     const refs = new Set();
     // 匹配反引号包裹的文件路径: `src/foo/bar.ts`
     const backtickPattern =
@@ -2897,7 +2919,9 @@ export class AgentEngine {
    * 当 EditOrchestrator 报告冲突/回滚时，在 plan 中插入诊断→重试→重验证子任务。
    */
   #detectAndHandleHashlineConflict(execResult) {
-    if (!this.#executionPlanManager.isActive) {return;}
+    if (!this.#executionPlanManager.isActive) {
+      return;
+    }
 
     const result = execResult?.result;
     const error = execResult?.error;
@@ -2912,7 +2936,9 @@ export class AgentEngine {
       'harness_insert',
       'harness_delete',
     ];
-    if (!hashRelatedTools.includes(toolName)) {return;}
+    if (!hashRelatedTools.includes(toolName)) {
+      return;
+    }
 
     // 解析冲突信号
     let conflictType = null;
@@ -2969,7 +2995,9 @@ export class AgentEngine {
       }
     }
 
-    if (!conflictType) {return;} // 无冲突信号
+    if (!conflictType) {
+      return;
+    } // 无冲突信号
 
     // 提取受影响的文件
     const fileMatch = resultText.match(

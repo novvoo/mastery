@@ -21,8 +21,13 @@ export default function createModuleSystemCheckTool() {
     handler: async (params, ctx) => {
       const { globSync } = await import('glob');
       const projectRoot = params.projectRoot || ctx?.workingDirectory || process.cwd();
-      const filePatterns =
-        params.filePatterns || ['**/*.js', '**/*.mjs', '**/*.cjs', '**/*.ts', '**/*.tsx'];
+      const filePatterns = params.filePatterns || [
+        '**/*.js',
+        '**/*.mjs',
+        '**/*.cjs',
+        '**/*.ts',
+        '**/*.tsx',
+      ];
 
       const packageJsonPath = `${projectRoot}/package.json`;
       let packageType = 'commonjs';
@@ -57,14 +62,16 @@ export default function createModuleSystemCheckTool() {
         if (!existsSync(filePath)) continue;
         try {
           const content = readFileSync(filePath, 'utf-8');
-          const hasImport = /\bimport\s+(?:\{[\s\S]*?\}|[\w*]+)\s+from\s+['"]/.test(content) ||
+          const hasImport =
+            /\bimport\s+(?:\{[\s\S]*?\}|[\w*]+)\s+from\s+['"]/.test(content) ||
             /\bimport\s+['"]/.test(content) ||
             /\bimport\(\s*['"]/.test(content);
-          const hasExport = /\bexport\s+(?:default|const|function|class|let|var|\{)/.test(content) ||
+          const hasExport =
+            /\bexport\s+(?:default|const|function|class|let|var|\{)/.test(content) ||
             /\bexport\s*=\s*/.test(content);
           const hasRequire = /\brequire\s*\(\s*['"]/.test(content);
-          const hasModuleExports = /\bmodule\.exports\s*=/.test(content) ||
-            /\bexports\s*=/.test(content);
+          const hasModuleExports =
+            /\bmodule\.exports\s*=/.test(content) || /\bexports\s*=/.test(content);
 
           const relativePath = filePath.replace(projectRoot, '').replace(/^\//, '');
 
@@ -108,7 +115,8 @@ export default function createModuleSystemCheckTool() {
             problem: 'ES Module syntax detected in CommonJS project',
             expected: 'require()/module.exports (CommonJS)',
             found: 'import/export (ES Module)',
-            suggestion: 'Convert to CommonJS syntax or rename file to .mjs or add "type": "module" to package.json',
+            suggestion:
+              'Convert to CommonJS syntax or rename file to .mjs or add "type": "module" to package.json',
           });
         }
       }
@@ -133,9 +141,10 @@ export default function createModuleSystemCheckTool() {
         mixedFilesCount: mixedFiles.length,
         conflicts: conflicts,
         hasConflicts: conflicts.length > 0,
-        summary: conflicts.length > 0
-          ? `Found ${conflicts.length} module system conflict(s). The project is configured as ${packageType.toUpperCase()}, but some files use incompatible module syntax.`
-          : `No module system conflicts detected. All ${allFiles.length} files are consistent with ${packageType.toUpperCase()} configuration.`,
+        summary:
+          conflicts.length > 0
+            ? `Found ${conflicts.length} module system conflict(s). The project is configured as ${packageType.toUpperCase()}, but some files use incompatible module syntax.`
+            : `No module system conflicts detected. All ${allFiles.length} files are consistent with ${packageType.toUpperCase()} configuration.`,
       };
 
       return formatReport(report);

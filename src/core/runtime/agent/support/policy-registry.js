@@ -11,8 +11,8 @@
  * | how_to_run             | answer   |    否 |     否 |    禁止 |         禁止 |
  * | read_only_analysis     | inspect  |   可选 |     否 |    禁止 |         禁止 |
  * | diagnosis              | diagnose |   可选 |    可选 |  默认禁止 |         禁止 |
- * | code_modification      | mutate   |    是 |     是 |    允许 |         允许 |
- * | feature_implementation | mutate   |    是 |     是 |    允许 |         允许 |
+ * | code_modification      | mutate   |    是 |    可选 |    允许 |         禁止 |
+ * | feature_implementation | mutate   |    是 |    可选 |    允许 |         禁止 |
  * | test_or_verify         | verify   |    否 |     否 |  禁止或受限 |         禁止 |
  */
 
@@ -75,7 +75,7 @@ const POLICIES = {
 
   [TaskIntent.CODE_MODIFICATION]: {
     prompt:
-      'Follow the methodology flow: Inspect → Plan → Implement → Verify. Make focused code changes. Always verify the fix with tests or runtime evidence before finishing.',
+      'Use repository evidence to identify the target, make focused code changes, and verify the fix with tests or runtime evidence before finishing. Use methodology tools only when they add useful planning, review, or verification evidence.',
     allowedToolClasses: [
       ToolClass.READ,
       ToolClass.SEARCH,
@@ -85,14 +85,14 @@ const POLICIES = {
     ],
     forbiddenToolClasses: [],
     plan: true,
-    methodology: true,
-    forceAction: true,
+    methodology: 'optional',
+    forceAction: false,
     verificationGate: true,
   },
 
   [TaskIntent.FEATURE_IMPLEMENTATION]: {
     prompt:
-      'Follow the methodology flow: Inspect → Plan → Implement → Verify. Create or modify code to implement features. Always verify with tests or runtime evidence before finishing.',
+      'Use repository evidence to design the smallest complete feature change, implement it, and verify behavior with tests or runtime evidence before finishing. Use methodology tools only when they clarify risk, scope, or acceptance.',
     allowedToolClasses: [
       ToolClass.READ,
       ToolClass.SEARCH,
@@ -102,8 +102,8 @@ const POLICIES = {
     ],
     forbiddenToolClasses: [],
     plan: true,
-    methodology: true,
-    forceAction: true,
+    methodology: 'optional',
+    forceAction: false,
     verificationGate: true,
   },
 

@@ -119,7 +119,9 @@ export class ConversationSummarizer {
 
     for (const msg of userMessages) {
       const content = String(msg.content || '').trim();
-      if (!content || seen.has(content.slice(0, 80))) {continue;}
+      if (!content || seen.has(content.slice(0, 80))) {
+        continue;
+      }
       seen.add(content.slice(0, 80));
 
       // 提取前 120 字符作为任务描述
@@ -138,7 +140,9 @@ export class ConversationSummarizer {
       tasks.push(taskDesc);
     }
 
-    if (tasks.length === 0) {return null;}
+    if (tasks.length === 0) {
+      return null;
+    }
 
     return `User Tasks & Feedback:\n${tasks.map((t, i) => `  ${i + 1}. ${t}`).join('\n')}`;
   }
@@ -341,7 +345,9 @@ export class ConversationSummarizer {
           const args = this.#parseArgs(call.function?.arguments || call.arguments);
           const path = args?.path || args?.file_path || args?.file || args?.target_file;
 
-          if (!path) {continue;}
+          if (!path) {
+            continue;
+          }
 
           if (name.includes('write') || name.includes('create')) {
             operations.created.push(path);
@@ -365,17 +371,23 @@ export class ConversationSummarizer {
         const writeMatch = content.match(
           /(?:Successfully|成功)\s+(?:wrote|created|写入|创建)\s+(?:file\s+)?['"]?([^\s"'\n]+)/i,
         );
-        if (writeMatch) {operations.created.push(writeMatch[1]);}
+        if (writeMatch) {
+          operations.created.push(writeMatch[1]);
+        }
 
         const editMatch = content.match(
           /(?:Successfully|成功)\s+(?:edited|modified|编辑|修改)\s+(?:file\s+)?['"]?([^\s"'\n]+)/i,
         );
-        if (editMatch) {operations.modified.push(editMatch[1]);}
+        if (editMatch) {
+          operations.modified.push(editMatch[1]);
+        }
 
         const delMatch = content.match(
           /(?:Successfully|成功)\s+(?:deleted|removed|删除)\s+(?:file\s+)?['"]?([^\s"'\n]+)/i,
         );
-        if (delMatch) {operations.deleted.push(delMatch[1]);}
+        if (delMatch) {
+          operations.deleted.push(delMatch[1]);
+        }
       }
     }
 
@@ -404,7 +416,9 @@ export class ConversationSummarizer {
    * 从 WorkspaceState 提取关键事实
    */
   #extractWorkspaceFacts() {
-    if (!this.#workspaceState) {return null;}
+    if (!this.#workspaceState) {
+      return null;
+    }
 
     const summary = this.#workspaceState.getSummary();
     const criticalFacts = this.#workspaceState.getCriticalFacts();
@@ -439,7 +453,9 @@ export class ConversationSummarizer {
    * 分类 Observation 消息
    */
   #classifyObservation(content) {
-    if (!content) {return { type: 'unknown', summary: '' };}
+    if (!content) {
+      return { type: 'unknown', summary: '' };
+    }
 
     // Observation from tool_name: ...
     const obsMatch = content.match(/^Observation from (\w+)/);
@@ -520,8 +536,12 @@ export class ConversationSummarizer {
    * 解析工具参数
    */
   #parseArgs(args) {
-    if (!args) {return null;}
-    if (typeof args === 'object' && !Array.isArray(args)) {return args;}
+    if (!args) {
+      return null;
+    }
+    if (typeof args === 'object' && !Array.isArray(args)) {
+      return args;
+    }
     if (typeof args === 'string') {
       try {
         return JSON.parse(args);

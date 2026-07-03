@@ -844,7 +844,7 @@ export class ReActAgent {
           this.#sessionManager.addAssistantMessage(response.text);
           this.#sessionManager.addUserMessage(
             `This is a coding task and no tool has been executed yet. The engine has pre-computed workspace structure and project memory — use this context directly. ` +
-              `To complete this task: (a) read the specific code sections you need to edit, (b) write code with write_file/edit_file, (c) verify with shell/verify. ` +
+              `To complete this task: (a) read the specific code sections you need to edit, (b) edit existing code with edit_file/apply_hashline_patch or create new files with write_file, (c) verify with shell/verify. ` +
               `Do not finish until you have produced and verified real code changes.`,
           );
           continue;
@@ -860,8 +860,8 @@ export class ReActAgent {
             this.#sessionManager.addUserMessage(
               `[HARD STOP] You have produced ${this.#agentContext.zeroToolCallStreak}+ consecutive responses with ZERO tool calls.\n` +
                 `You are stuck in an analysis loop that is consuming context without making progress.\n` +
-                `IMMEDIATELY call write_file or edit_file to make the code change, OR provide FINAL_ANSWER with what you have. ` +
-                `Do NOT output any more analysis or planning — ACT NOW.`,
+                `Take one concrete action now: edit if the target is clear, gather the one missing fact with a tool, replan/ask_user if blocked, OR provide FINAL_ANSWER with the actual blocker. ` +
+                `Do not output more prose-only analysis.`,
             );
             continue;
           }
@@ -1022,20 +1022,17 @@ export class ReActAgent {
                 forceWriteToolOnly: true,
               });
 
-              // 强制要求下一轮只能调用写文件工具
+              // Nudge the model out of analysis drift without forcing a blind
+              // mutation. If evidence is insufficient, the professional action
+              // is to gather the missing fact, replan, or ask the user.
               const forceActionPrompt =
-                `\n[CRITICAL - IMPLEMENTATION FORCED ACTION]\n` +
+                `\n[IMPLEMENTATION PROGRESS CHECK]\n` +
                 `You are in IMPLEMENTATION phase and have NOT made any code changes in the last ${this.#implementationNoMutationIterations} iteration(s).\n` +
-                `This breaker forces you to take action NOW:\n\n` +
-                `✅ REQUIRED: Your NEXT response MUST contain exactly ONE of these tools:\n` +
-                `  - write_file: Create a new file\n` +
-                `  - edit_file: Modify an existing file\n` +
-                `  - apply_hashline_patch: Apply a patch\n\n` +
-                `❌ FORBIDDEN: Do NOT output:\n` +
-                `  - Analysis, planning, or discussion\n` +
-                `  - read_file, list_dir, or other read-only tools\n` +
-                `  - Summaries or next steps\n\n` +
-                `If you truly cannot proceed, respond with "FINAL_ANSWER:" to stop.`;
+                `Choose the next concrete step based on evidence:\n` +
+                `- If the target and intended change are clear, apply the smallest scoped edit now.\n` +
+                `- If a required fact is missing, gather that single fact with a focused read/search.\n` +
+                `- If the plan is wrong or blocked, call change_plan or ask_user with the missing decision.\n` +
+                `Do not create report files or keep repeating broad analysis.`;
 
               this.#sessionManager.addUserMessage(forceActionPrompt);
 
@@ -1288,7 +1285,9 @@ export class ReActAgent {
 
   /** 快速估算消息列表的 token 数。CJK 字符 ×2，其他字符 /3.5 */
   #estimateMessageTokens(messages) {
-    if (!Array.isArray(messages)) {return 0;}
+    if (!Array.isArray(messages)) {
+      return 0;
+    }
     let total = 0;
     for (const msg of messages) {
       const content =
@@ -1436,7 +1435,9 @@ export class ReActAgent {
    */
   async #tryAutoAnswerAskUser(askResult) {
     const questions = Array.isArray(askResult.questions) ? askResult.questions : [];
-    if (questions.length === 0) {return { autoAnswered: false };}
+    if (questions.length === 0) {
+      return { autoAnswered: false };
+    }
 
     const reason = askResult.reason || '';
     const questionList = questions.map((q, i) => `${i + 1}. ${q}`).join('\n');

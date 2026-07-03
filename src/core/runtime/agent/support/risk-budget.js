@@ -367,7 +367,7 @@ export function getCompletionGates(riskLevel, profile = {}) {
   const gates = {
     requireMutation: profile.isModificationTask !== false,
     requireRuntimeVerification: true,
-    requireMethodologyTool: profile.isModificationTask !== false,
+    requireMethodologyTool: false,
     requireSemanticRiskReview: (profile.semanticDomains || []).length > 0,
   };
 
@@ -378,15 +378,14 @@ export function getMethodologyGuidance(riskLevel, profile = {}) {
   const domains = profile.semanticDomains || [];
 
   const lines = [
-    'All coding tasks follow the same methodology flow, driven by execution phases:',
-    '- Exploration: use brainstorm/grill/zoom_out/architect if the scope is unclear.',
-    '- Planning: use brainstorm/grill/architect/tdd to design the approach.',
-    '- Implementation: make focused edits; use diagnose if you encounter issues.',
-    '- Inspection: review changed files for correctness.',
-    '- Verification: verify/review/coverage_check with real runtime evidence.',
+    'Use methodology tools selectively when they create useful evidence for the current risk:',
+    '- Explore or design only when scope, architecture, or tradeoffs are unclear.',
+    '- Make focused edits once the target is clear.',
+    '- Inspect changed files for correctness.',
+    '- Verify with tests, builds, scripts, or behavior-level checks before finishing.',
     '',
-    'The execution plan advances automatically; just follow the DAG.',
-    'You MUST run a functional test at the final step before finishing — this is mandatory for all coding tasks.',
+    'The execution plan is scheduling metadata, not a substitute for judgment.',
+    'Before finishing a coding change, run the most relevant verification available and report its exact outcome.',
   ];
 
   if (domains.length > 0) {

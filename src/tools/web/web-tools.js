@@ -105,7 +105,7 @@ export function createBrowserOpenTool() {
         description: 'Return the opener command without launching the browser',
       },
     },
-    required: [],
+    required: ['target'],
     handler: async ({ target, url, path, dry_run }, ctx = {}) => {
       const rawTarget = target || url || path;
       const normalizedTarget = normalizeOpenTarget(rawTarget, ctx.workingDirectory);

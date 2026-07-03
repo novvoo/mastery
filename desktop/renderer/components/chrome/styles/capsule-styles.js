@@ -28,11 +28,9 @@ export const CAPSULE_BASE = {
   display: 'inline-flex',
   alignItems: 'center',
   WebkitAppRegion: 'no-drag',
-  backgroundColor: 'var(--glass-control-bg)',
-  backdropFilter: 'blur(18px) saturate(180%)',
-  WebkitBackdropFilter: 'blur(18px) saturate(180%)',
-  border: '1px solid var(--glass-border-strong)',
-  boxShadow: 'var(--glass-shadow-soft), var(--glass-inner-hl)',
+  backgroundColor: 'var(--surface-card)',
+  border: '1px solid var(--border-card)',
+  boxShadow: 'var(--shadow-sm), var(--glass-inner-hl)',
   color: 'var(--text-color)',
 };
 
@@ -40,7 +38,7 @@ export const CAPSULE_PRIMARY = {
   ...CAPSULE_BASE,
   gap: '4px',
   fontSize: '11px',
-  borderRadius: '10px',
+  borderRadius: 'var(--radius-md)',
   padding: '3px 10px',
 };
 
@@ -48,9 +46,9 @@ export const CAPSULE_SECONDARY = {
   ...CAPSULE_BASE,
   gap: '4px',
   fontSize: '10px',
-  borderRadius: '9px',
+  borderRadius: 'var(--radius-md)',
   padding: '2px 9px',
-  backgroundColor: 'var(--glass-control-bg)',
+  backgroundColor: 'var(--surface-card)',
   color: 'var(--text-muted)',
 };
 
@@ -67,7 +65,7 @@ export const CAPSULE_TOGGLE = {
   width: '30px',
   height: '22px',
   justifyContent: 'center',
-  borderRadius: '8px',
+  borderRadius: 'var(--radius-md)',
   padding: 0,
   fontSize: '14px',
   lineHeight: 1,

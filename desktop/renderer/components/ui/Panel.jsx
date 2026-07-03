@@ -12,20 +12,20 @@ import React from 'react';
 
 const VARIANTS = {
   sidebar: {
-    backgroundColor: 'var(--glass-control-bg)',
-    backdropFilter: 'blur(18px) saturate(170%)',
-    WebkitBackdropFilter: 'blur(18px) saturate(170%)',
+    backgroundColor: 'var(--surface-card)',
+    backdropFilter: 'blur(var(--glass-blur)) saturate(130%)',
+    WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(130%)',
     border: '1px solid var(--glass-border-strong)',
-    borderRadius: '16px',
-    boxShadow: 'var(--glass-shadow), var(--glass-inner-hl)',
+    borderRadius: 'var(--radius-xl)',
+    boxShadow: 'var(--shadow-sm), var(--glass-inner-hl)',
   },
   inspector: {
-    backgroundColor: 'var(--glass-control-bg)',
-    backdropFilter: 'blur(18px) saturate(170%)',
-    WebkitBackdropFilter: 'blur(18px) saturate(170%)',
+    backgroundColor: 'var(--surface-card)',
+    backdropFilter: 'blur(var(--glass-blur)) saturate(130%)',
+    WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(130%)',
     border: '1px solid var(--glass-border-strong)',
-    borderRadius: '16px',
-    boxShadow: 'var(--glass-shadow), var(--glass-inner-hl)',
+    borderRadius: 'var(--radius-xl)',
+    boxShadow: 'var(--shadow-sm), var(--glass-inner-hl)',
   },
   card: {
     backgroundColor: 'var(--glass-bg)',
@@ -42,8 +42,8 @@ export function PanelHeader({ title, actions, style }) {
     <div
       style={{
         minHeight: '46px',
-        padding: '8px var(--spacing-md)',
-        borderBottom: 'none',
+        padding: '8px 10px',
+        borderBottom: '1px solid var(--border-divider)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -59,8 +59,8 @@ export function PanelHeader({ title, actions, style }) {
           minHeight: '28px',
           display: 'inline-flex',
           alignItems: 'center',
-          padding: '0 2px',
-          borderRadius: '999px',
+          padding: '0 4px',
+          borderRadius: 'var(--radius-sm)',
           border: '1px solid transparent',
           backgroundColor: 'transparent',
           boxShadow: 'none',
@@ -68,7 +68,7 @@ export function PanelHeader({ title, actions, style }) {
           fontWeight: 800,
           color: 'var(--text-muted)',
           textTransform: 'uppercase',
-          letterSpacing: '0.06em',
+          letterSpacing: '0.04em',
         }}>
           {title}
         </span>
@@ -79,10 +79,10 @@ export function PanelHeader({ title, actions, style }) {
           gap: '4px',
           alignItems: 'center',
           padding: '2px',
-          borderRadius: '999px',
+          borderRadius: 'var(--radius-md)',
           border: '1px solid var(--glass-border)',
-          backgroundColor: 'var(--glass-control-bg)',
-          boxShadow: 'var(--glass-inner-hl)',
+          backgroundColor: 'var(--surface-base)',
+          boxShadow: 'none',
         }}>
           {actions}
         </div>

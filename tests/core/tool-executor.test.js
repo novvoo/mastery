@@ -1,11 +1,10 @@
 import { describe, test, expect, mock } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ToolExecutor } from '../../src/core/tool-executor.js';
 import { Decision } from '../../src/core/security-policy.js';
 import { WorkspaceState } from '../../src/core/workspace-state.js';
-import { ObservationErrorCode } from '../../src/core/runtime/agent/support/observation-state.js';
 
 function makeTool(name, extra = {}) {
   return {
@@ -129,6 +128,37 @@ describe('ToolExecutor', () => {
     expect(result2.result).toBe('content');
   });
 
+  test('read-only stagnation warning asks for evidence-based action', async () => {
+    const tool = makeTool('read_file', { handler: async () => 'content' });
+    const sessionManager = { addSystemMessage: mock(() => {}) };
+    const activePlanManager = {
+      checkReadOnlyStagnation: mock(() => ({
+        isReadOnlyLoop: true,
+        streak: 5,
+        recentReadOnlyActions: [{ toolName: 'read_file' }, { toolName: 'search' }],
+        overExploredTargets: [{ key: 'src/app.js', count: 3 }],
+      })),
+    };
+    const { executor } = makeMockExecutor({ tools: [tool] });
+
+    await executor.execute(
+      {
+        id: '1',
+        name: 'read_file',
+        arguments: { path: 'src/app.js' },
+      },
+      { activePlanManager, sessionManager },
+    );
+
+    expect(sessionManager.addSystemMessage).toHaveBeenCalled();
+    const message = sessionManager.addSystemMessage.mock.calls.at(-1)[0];
+    expect(message).toContain('evidence-based step');
+    expect(message).toContain('single missing fact');
+    expect(message).toContain('focused read/search/diagnostic');
+    expect(message).not.toContain('You MUST now take action');
+    expect(message).not.toContain('Do NOT continue reading');
+  });
+
   test('read-only cache returns empty string results', async () => {
     const root = mkdtempSync(join(tmpdir(), 'tool-executor-empty-cache-'));
     try {
@@ -226,6 +256,315 @@ describe('ToolExecutor', () => {
 
     expect(written.result).toBe('written');
     expect(writeHandler).toHaveBeenCalledTimes(1);
+  });
+
+  test('blocks write_file from overwriting an existing file before read_file', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-write-before-read-'));
+    try {
+      writeFileSync(join(root, 'src.js'), 'export const oldValue = 1;\n', 'utf-8');
+      const writeHandler = mock(async () => 'written');
+      const writeTool = makeTool('write_file', { handler: writeHandler });
+      const { executor } = makeMockExecutor({
+        tools: [writeTool],
+        config: { workingDirectory: root },
+      });
+
+      const result = await executor.execute({
+        id: '1',
+        name: 'write_file',
+        arguments: { path: 'src.js', content: 'export const newValue = 2;\n' },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.writeBeforeReadRequired).toBe(true);
+      expect(result.result).toContain('without first reading');
+      expect(readFileSync(join(root, 'src.js'), 'utf-8')).toBe('export const oldValue = 1;\n');
+      expect(writeHandler).not.toHaveBeenCalled();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('allows write_file to create a new file before read_file', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-create-before-read-'));
+    try {
+      const writeHandler = mock(async () => 'created');
+      const writeTool = makeTool('write_file', { handler: writeHandler });
+      const { executor } = makeMockExecutor({
+        tools: [writeTool],
+        config: { workingDirectory: root },
+      });
+
+      const result = await executor.execute({
+        id: '1',
+        name: 'write_file',
+        arguments: { path: 'new-file.js', content: 'export const value = 1;\n' },
+      });
+
+      expect(result.result).toBe('created');
+      expect(result.writeBeforeReadRequired).toBeUndefined();
+      expect(writeHandler).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('checks write-before-read before write_file approval preview', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-approval-before-read-'));
+    try {
+      writeFileSync(join(root, 'src.js'), 'export const oldValue = 1;\n', 'utf-8');
+      const writeHandler = mock(async () => 'written');
+      const approval = mock(async () => true);
+      const writeTool = makeTool('write_file', { handler: writeHandler });
+      const { executor } = makeMockExecutor({
+        tools: [writeTool],
+        config: { workingDirectory: root, writeFileApproval: approval },
+      });
+
+      const result = await executor.execute({
+        id: '1',
+        name: 'write_file',
+        arguments: { path: 'src.js', content: 'export const newValue = 2;\n' },
+      });
+
+      expect(result.writeBeforeReadRequired).toBe(true);
+      expect(approval).not.toHaveBeenCalled();
+      expect(writeHandler).not.toHaveBeenCalled();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('blocks write_file full overwrite of an existing file after read_file observed it', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-write-after-read-'));
+    try {
+      writeFileSync(join(root, 'src.js'), 'export const oldValue = 1;\n', 'utf-8');
+      const readHandler = mock(async () => '1: export const oldValue = 1;');
+      const writeHandler = mock(async () => 'written');
+      const readTool = makeTool('read_file', { required: ['path'], handler: readHandler });
+      const writeTool = makeTool('write_file', { handler: writeHandler });
+      const { executor } = makeMockExecutor({
+        tools: [readTool, writeTool],
+        config: { workingDirectory: root },
+      });
+
+      await executor.execute({
+        id: '1',
+        name: 'read_file',
+        arguments: { path: 'src.js' },
+      });
+      const result = await executor.execute({
+        id: '2',
+        name: 'write_file',
+        arguments: { path: 'src.js', content: 'export const newValue = 2;\n' },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.fullOverwriteBlocked).toBe(true);
+      expect(result.result).toContain('Refusing write_file overwrite');
+      expect(readFileSync(join(root, 'src.js'), 'utf-8')).toBe('export const oldValue = 1;\n');
+      expect(writeHandler).not.toHaveBeenCalled();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('allows explicit write_file full overwrite of an existing file after read_file observed it', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-explicit-overwrite-'));
+    try {
+      writeFileSync(join(root, 'src.js'), 'export const oldValue = 1;\n', 'utf-8');
+      const readHandler = mock(async () => '1: export const oldValue = 1;');
+      const writeHandler = mock(async () => 'written');
+      const readTool = makeTool('read_file', { required: ['path'], handler: readHandler });
+      const writeTool = makeTool('write_file', { handler: writeHandler });
+      const { executor } = makeMockExecutor({
+        tools: [readTool, writeTool],
+        config: { workingDirectory: root },
+      });
+
+      await executor.execute({
+        id: '1',
+        name: 'read_file',
+        arguments: { path: 'src.js' },
+      });
+      const result = await executor.execute({
+        id: '2',
+        name: 'write_file',
+        arguments: {
+          path: 'src.js',
+          content: 'export const newValue = 2;\n',
+          overwrite: true,
+          overwrite_reason: 'Replacing a generated fixture file in full.',
+        },
+      });
+
+      expect(result.result).toBe('written');
+      expect(result.fullOverwriteBlocked).toBeUndefined();
+      expect(writeHandler).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('requires overwrite_reason for explicit write_file full overwrite', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-overwrite-reason-'));
+    try {
+      writeFileSync(join(root, 'src.js'), 'export const oldValue = 1;\n', 'utf-8');
+      const readHandler = mock(async () => '1: export const oldValue = 1;');
+      const writeHandler = mock(async () => 'written');
+      const readTool = makeTool('read_file', { required: ['path'], handler: readHandler });
+      const writeTool = makeTool('write_file', { handler: writeHandler });
+      const { executor } = makeMockExecutor({
+        tools: [readTool, writeTool],
+        config: { workingDirectory: root },
+      });
+
+      await executor.execute({
+        id: '1',
+        name: 'read_file',
+        arguments: { path: 'src.js' },
+      });
+      const result = await executor.execute({
+        id: '2',
+        name: 'write_file',
+        arguments: {
+          path: 'src.js',
+          content: 'export const newValue = 2;\n',
+          overwrite: true,
+        },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.fullOverwriteBlocked).toBe(true);
+      expect(result.result).toContain('overwrite_reason');
+      expect(writeHandler).not.toHaveBeenCalled();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('does not unlock write_file after a failed read_file observation', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-failed-read-before-write-'));
+    try {
+      writeFileSync(join(root, 'src.js'), 'export const oldValue = 1;\n', 'utf-8');
+      const readHandler = mock(async () => 'Error: Permission denied');
+      const writeHandler = mock(async () => 'written');
+      const readTool = makeTool('read_file', { required: ['path'], handler: readHandler });
+      const writeTool = makeTool('write_file', { handler: writeHandler });
+      const { executor } = makeMockExecutor({
+        tools: [readTool, writeTool],
+        config: { workingDirectory: root },
+      });
+
+      const readResult = await executor.execute({
+        id: '1',
+        name: 'read_file',
+        arguments: { path: 'src.js' },
+      });
+      const writeResult = await executor.execute({
+        id: '2',
+        name: 'write_file',
+        arguments: { path: 'src.js', content: 'export const newValue = 2;\n' },
+      });
+
+      expect(readResult.success).toBe(false);
+      expect(writeResult.writeBeforeReadRequired).toBe(true);
+      expect(writeHandler).not.toHaveBeenCalled();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('read_file file_path alias unlocks write_file path for the same file', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-read-alias-before-write-'));
+    try {
+      writeFileSync(join(root, 'src.js'), 'export const oldValue = 1;\n', 'utf-8');
+      const readHandler = mock(async () => '1: export const oldValue = 1;');
+      const writeHandler = mock(async () => 'written');
+      const readTool = makeTool('read_file', { required: ['path'], handler: readHandler });
+      const writeTool = makeTool('write_file', { handler: writeHandler });
+      const { executor } = makeMockExecutor({
+        tools: [readTool, writeTool],
+        config: { workingDirectory: root },
+      });
+
+      await executor.execute({
+        id: '1',
+        name: 'read_file',
+        arguments: { file_path: 'src.js', path: 'src.js' },
+      });
+      const result = await executor.execute({
+        id: '2',
+        name: 'write_file',
+        arguments: {
+          path: 'src.js',
+          content: 'export const newValue = 2;\n',
+          overwrite: true,
+          overwrite_reason: 'Testing alias-based read unlock before intentional replacement.',
+        },
+      });
+
+      expect(result.result).toBe('written');
+      expect(writeHandler).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('blocks edit_file before read_file for an existing file', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-edit-before-read-'));
+    try {
+      writeFileSync(join(root, 'src.js'), 'export const oldValue = 1;\n', 'utf-8');
+      const editHandler = mock(async () => 'edited');
+      const editTool = makeTool('edit_file', { handler: editHandler });
+      const { executor } = makeMockExecutor({
+        tools: [editTool],
+        config: { workingDirectory: root },
+      });
+
+      const result = await executor.execute({
+        id: '1',
+        name: 'edit_file',
+        arguments: { path: 'src.js', old_text: 'oldValue', new_text: 'newValue' },
+      });
+
+      expect(result.writeBeforeReadRequired).toBe(true);
+      expect(result.result).toContain('without first reading');
+      expect(editHandler).not.toHaveBeenCalled();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('allows edit_file after read_file observed the target', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-edit-after-read-'));
+    try {
+      writeFileSync(join(root, 'src.js'), 'export const oldValue = 1;\n', 'utf-8');
+      const readHandler = mock(async () => '1: export const oldValue = 1;');
+      const editHandler = mock(async () => 'edited');
+      const readTool = makeTool('read_file', { required: ['path'], handler: readHandler });
+      const editTool = makeTool('edit_file', { handler: editHandler });
+      const { executor } = makeMockExecutor({
+        tools: [readTool, editTool],
+        config: { workingDirectory: root },
+      });
+
+      await executor.execute({
+        id: '1',
+        name: 'read_file',
+        arguments: { path: 'src.js' },
+      });
+      const result = await executor.execute({
+        id: '2',
+        name: 'edit_file',
+        arguments: { path: 'src.js', old_text: 'oldValue', new_text: 'newValue' },
+      });
+
+      expect(result.result).toBe('edited');
+      expect(editHandler).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test('allows scoped create tasks to inspect workspace root before writing', async () => {
@@ -483,6 +822,8 @@ describe('ToolExecutor', () => {
       });
 
       expect(result.name).toBe('read_file');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('File not found');
       expect(result.skipped).toBe(true);
       expect(result.fallbackToDir).toBe(true);
       expect(result.result).toContain('File not found');
@@ -503,40 +844,53 @@ describe('ToolExecutor', () => {
     }
   });
 
-  test('blocks guessed reads that contradict empty-workspace facts in create-from-scratch plans', async () => {
+  test('missing read_file in empty create-from-scratch workspace returns file context instead of fact-blocking', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-empty-read-'));
     const workspaceState = new WorkspaceState();
-    workspaceState.recordToolResult(
-      'list_dir',
-      { path: '.' },
-      '.agent-data\n.agent-logs\n.agent-memory\ntest',
-      true,
-    );
-    const readTool = makeTool('read_file', {
-      required: ['path'],
-      handler: mock(async () => 'should not run'),
-    });
-    const { executor } = makeMockExecutor({
-      tools: [readTool],
-      config: { workspaceState },
-    });
+    try {
+      workspaceState.recordToolResult(
+        'list_dir',
+        { path: '.' },
+        '.agent-data\n.agent-logs\n.agent-memory\ntest',
+        true,
+      );
+      const readTool = makeTool('read_file', {
+        required: ['path'],
+        handler: mock(async () => 'should not run'),
+      });
+      const listTool = makeTool('list_dir', {
+        handler: mock(async () => '.agent-data\n.agent-logs\n.agent-memory\ntest'),
+      });
+      const { executor } = makeMockExecutor({
+        tools: [readTool, listTool],
+        config: { workspaceState, workingDirectory: root },
+      });
 
-    const result = await executor.execute(
-      {
-        id: '1',
-        name: 'read_file',
-        arguments: { path: 'package.json' },
-      },
-      {
-        workspaceState,
-        activePlan: { context: { createFromScratch: true } },
-        currentTask: { id: 'profile_project', phase: 'exploration', allowedTools: ['read_file'] },
-      },
-    );
+      const result = await executor.execute(
+        {
+          id: '1',
+          name: 'read_file',
+          arguments: { path: 'package.json' },
+        },
+        {
+          workspaceState,
+          activePlan: { context: { createFromScratch: true } },
+          currentTask: {
+            id: 'profile_project',
+            phase: 'exploration',
+            allowedTools: ['read_file'],
+          },
+        },
+      );
 
-    expect(result.skipped).toBe(true);
-    expect(result.errorCode).toBe(ObservationErrorCode.FACT_CONTRADICTION);
-    expect(result.result).toContain('FACT_BLOCKED');
-    expect(readTool.handler).not.toHaveBeenCalled();
+      expect(result.skipped).toBe(true);
+      expect(result.fallbackToDir).toBe(true);
+      expect(result.result).toContain('File not found');
+      expect(result.result).not.toContain('FACT_BLOCKED');
+      expect(readTool.handler).not.toHaveBeenCalled();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test('normalizes OpenAI-style function tool calls', async () => {
@@ -704,6 +1058,26 @@ describe('ToolExecutor', () => {
     expect(result.skipped).toBe(true);
     expect(result.predicted).toBe(true);
     expect(result.result).toBe('cached content');
+  });
+
+  test('skips redundant shell mkdir when workspace facts already prove directory exists', async () => {
+    const workspaceState = new WorkspaceState();
+    workspaceState.recordFileRead('src/game/Snake.js', true, 'class Snake {}');
+    const handler = mock(async () => 'mkdir executed');
+    const tool = makeTool('shell', { handler });
+    const { executor } = makeMockExecutor({ tools: [tool], config: { workspaceState } });
+
+    const result = await executor.execute({
+      id: '1',
+      name: 'shell',
+      arguments: { command: "mkdir -p 'src/game'" },
+    });
+
+    expect(result.skipped).toBe(true);
+    expect(result.predicted).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.result).toContain('Skipped redundant mkdir');
+    expect(handler).not.toHaveBeenCalled();
   });
 
   test('events getter returns a copy (not the internal array)', async () => {

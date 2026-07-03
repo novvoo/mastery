@@ -13,6 +13,7 @@
 import { withTimeout } from '../../../errors/error-handler.js';
 import { existsSync } from 'fs';
 import { readFile, appendFile, mkdir } from 'fs/promises';
+import { normalizeToolArgumentAliases } from './tool-executor.js';
 
 const NON_CACHEABLE_TOOLS = new Set(['ask_user', 'request_user_input']);
 
@@ -140,7 +141,9 @@ export class AgentRouter {
     if (workspaceState) {
       const prediction = workspaceState.predictToolResult(name, args);
       if (prediction.canSkip) {
-        this.#ui.warn(`⚠️  Skipping ${name}: ${prediction.reason}`);
+        const isWarning = prediction.type === 'will_fail';
+        const logFn = isWarning ? this.#ui.warn : this.#ui.info;
+        logFn?.(`${isWarning ? '⚠️' : 'ℹ️'} Skipping ${name}: ${prediction.reason}`);
         this.#debugEvent('Tool call skipped (workspace prediction)', {
           tool: name,
           arguments: args,
@@ -178,7 +181,10 @@ export class AgentRouter {
         if (securityPolicy && typeof securityPolicy.isToolAllowed === 'function') {
           if (!securityPolicy.isToolAllowed(name)) {
             const errorMsg = `Tool "${name}" is blocked by security policy.`;
-            this.#debugEvent('Tool call blocked by security policy', { tool: name, arguments: args });
+            this.#debugEvent('Tool call blocked by security policy', {
+              tool: name,
+              arguments: args,
+            });
             this.#ui.toolError(name, errorMsg);
             return { name, result: errorMsg, error: errorMsg };
           }
@@ -194,10 +200,12 @@ export class AgentRouter {
       }
     }
 
+    // 参数别名标准化
+    let effectiveArgs = normalizeToolArgumentAliases(name, args || {});
+
     // 参数校验
-    let effectiveArgs = args || {};
     if (typeof this.#toolRegistry.validateAndCoerceArgs === 'function') {
-      const v = this.#toolRegistry.validateAndCoerceArgs(name, args);
+      const v = this.#toolRegistry.validateAndCoerceArgs(name, effectiveArgs);
       if (!v.valid) {
         // 参数校验失败 —— 返回错误让 LLM 修正后重新调用
         const schemaInfo = v.schema || {};
@@ -457,7 +465,9 @@ ${paramDesc || '无参数定义'}
   }
 
   #getReadToolTargetPath(name, args) {
-    if (!args) {return null;}
+    if (!args) {
+      return null;
+    }
     switch (name) {
       case 'read_file':
         return args.path || args.filePath || null;

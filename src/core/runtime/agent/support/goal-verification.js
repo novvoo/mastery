@@ -94,9 +94,7 @@ export class GoalVerification {
 
     for (let i = 0; i < last.results.length; i++) {
       const result = last.results[i];
-      lines.push(
-        `${result.passed ? '✅' : '❌'} **${i + 1}. ${result.description}**`,
-      );
+      lines.push(`${result.passed ? '✅' : '❌'} **${i + 1}. ${result.description}**`);
       if (!result.passed && result.reason) {
         lines.push(`   Reason: ${result.reason}`);
       }
@@ -116,8 +114,10 @@ export const CommonSuccessCriteria = {
     description: 'All tests pass',
     check: (output) => {
       const text = typeof output === 'string' ? output : JSON.stringify(output ?? '');
-      return /(all tests passed|test suite passed|tests passed|pass:\s*\d+)/i.test(text) &&
-        !/(fail:\s*\d+|error|test failed)/i.test(text);
+      return (
+        /(all tests passed|test suite passed|tests passed|pass:\s*\d+)/i.test(text) &&
+        !/(fail:\s*\d+|error|test failed)/i.test(text)
+      );
     },
   },
 
@@ -125,8 +125,10 @@ export const CommonSuccessCriteria = {
     description: 'Build completed successfully',
     check: (output) => {
       const text = typeof output === 'string' ? output : JSON.stringify(output ?? '');
-      return /(build completed|build succeeded|success|compiled successfully)/i.test(text) &&
-        !/(error|failed|build failed)/i.test(text);
+      return (
+        /(build completed|build succeeded|success|compiled successfully)/i.test(text) &&
+        !/(error|failed|build failed)/i.test(text)
+      );
     },
   },
 
@@ -134,8 +136,7 @@ export const CommonSuccessCriteria = {
     description: 'Linting passed',
     check: (output) => {
       const text = typeof output === 'string' ? output : JSON.stringify(output ?? '');
-      return /(no errors|lint passed|success)/i.test(text) &&
-        !/(error|warning|failed)/i.test(text);
+      return /(no errors|lint passed|success)/i.test(text) && !/(error|warning|failed)/i.test(text);
     },
   },
 
@@ -186,7 +187,10 @@ export const CommonSuccessCriteria = {
     description: `Function ${functionName} exists`,
     check: (output) => {
       const text = typeof output === 'string' ? output : JSON.stringify(output ?? '');
-      return new RegExp(`function\\s+${functionName}|const\\s+${functionName}\\s*=\\s*function|const\\s+${functionName}\\s*=\\s*\\(`, 'i').test(text);
+      return new RegExp(
+        `function\\s+${functionName}|const\\s+${functionName}\\s*=\\s*function|const\\s+${functionName}\\s*=\\s*\\(`,
+        'i',
+      ).test(text);
     },
   }),
 

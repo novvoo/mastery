@@ -57,12 +57,9 @@ export function selectPlanningArchitecture({
   }
 
   if (
-    [
-      PlanType.RESEARCH,
-      PlanType.ANALYSIS,
-      PlanType.CODE_REVIEW,
-      PlanType.VERIFICATION,
-    ].includes(planType)
+    [PlanType.RESEARCH, PlanType.ANALYSIS, PlanType.CODE_REVIEW, PlanType.VERIFICATION].includes(
+      planType,
+    )
   ) {
     return PlanningArchitecture.REACT;
   }

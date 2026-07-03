@@ -44,14 +44,9 @@ const LSP_EDIT_TOOLS = [
 
 const TERMINAL_TOOLS = ['shell', 'pty_start', 'pty_write', 'pty_read', 'pty_stop'];
 
-const WEB_TOOLS = [
-  'web_search',
-  'web_fetch',
-  'browser_open',
-  'preview_start',
-  'preview_stop',
-  'preview_list',
-];
+const WEB_TOOLS = ['web_search', 'web_fetch', 'preview_start', 'preview_stop', 'preview_list'];
+
+const BROWSER_TOOLS = ['browser_open'];
 
 // Legacy methodology tool tiers — kept for reference but no longer used
 // since tool selection is now driven by PHASE_CANDIDATE_TOOLS.
@@ -251,6 +246,7 @@ const PHASE_CANDIDATE_TOOLS = {
     'security_review',
     'data_contract_check',
     'ui_acceptance',
+    'browser_open',
   ],
 };
 
@@ -263,7 +259,8 @@ const PHASE_CANDIDATE_TOOLS = {
  * This is deliberately local and cheap: it avoids a preflight LLM call on
  * obvious coding tasks, while still exposing broad capabilities when needed.
  *
- * ✅ Enhanced: Now supports currentTask.allowedTools for strict task-based tool constraints
+ * Supports currentTask.allowedTools as task-intent guidance while preserving
+ * the broader execution substrate needed for real coding work.
  */
 export function selectToolsForRequest(
   allTools,
@@ -373,9 +370,8 @@ export function selectToolsForRequest(
     return Array.from(selected.values());
   }
 
-  // Tiered exposure for coding tasks based on execution phase.
-  // All coding tasks get the same complete methodology flow;
-  // phase determines which tools are visible at each step.
+  // Coding tasks get a complete execution base. Methodology tools are available
+  // as optional evidence helpers; phase only adds useful bias, not ceremony.
   if (taskProfile?.isCodingTask) {
     add(PLAN_ORCHESTRATION_TOOLS);
     add(ADVANCED_METHODOLOGY_TOOLS);

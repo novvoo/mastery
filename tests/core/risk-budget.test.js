@@ -160,6 +160,11 @@ describe('risk-budget', () => {
       const gates = getCompletionGates(RISK_LEVEL.LOW, { isModificationTask: true });
       expect(gates.requireMutation).toBe(true);
     });
+
+    test('modification task does not require a methodology tool event', () => {
+      const gates = getCompletionGates(RISK_LEVEL.LOW, { isModificationTask: true });
+      expect(gates.requireMethodologyTool).toBe(false);
+    });
   });
 
   describe('getMethodologyGuidance', () => {
@@ -167,6 +172,9 @@ describe('risk-budget', () => {
       const guidance = getMethodologyGuidance(RISK_LEVEL.MEDIUM);
       expect(typeof guidance).toBe('string');
       expect(guidance.length).toBeGreaterThan(0);
+      expect(guidance).toContain('Use methodology tools selectively');
+      expect(guidance).not.toContain('All coding tasks follow the same methodology flow');
+      expect(guidance).not.toContain('mandatory for all coding tasks');
     });
 
     test('includes semantic risk checklist', () => {

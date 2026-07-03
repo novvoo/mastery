@@ -10,6 +10,7 @@
 
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
+import { assertToolResultSucceeded } from '../core/runtime/agent/tool-result.js';
 
 /**
  * 任务状态枚举
@@ -128,13 +129,13 @@ export const TASK_TEMPLATE_REGISTRY = {
     semanticName: '实现功能',
     phase: 'implementation',
     priority: 50,
-    allowedTools: ['write_file', 'edit_file', 'apply_hashline_patch'],
+    allowedTools: ['apply_hashline_patch', 'edit_file', 'write_file'],
     requiredToolIntents: ['write'],
     completionPredicate: (toolCall, result) =>
-      ['write_file', 'edit_file', 'apply_hashline_patch'].includes(toolCall.name) &&
+      ['apply_hashline_patch', 'edit_file', 'write_file'].includes(toolCall.name) &&
       result?.success === true,
     description:
-      '通过 write_file/edit_file 修改源代码实现功能。开始前必须具备三项：原始需求、具体文件/符号、预期行为；若缺任一项则停止并回退到规划阶段补充证据。',
+      '通过 apply_hashline_patch/edit_file 修改现有源代码，write_file 仅用于新文件或显式整文件替换。开始前必须具备三项：原始需求、具体文件/符号、预期行为；若缺任一项则停止并回退到规划阶段补充证据。',
     methodologyHint: 'implement',
     requiresMutation: true,
   },
@@ -144,10 +145,10 @@ export const TASK_TEMPLATE_REGISTRY = {
     semanticName: '实现代码改动',
     phase: 'implementation',
     priority: 50,
-    allowedTools: ['write_file', 'edit_file', 'apply_hashline_patch'],
+    allowedTools: ['apply_hashline_patch', 'edit_file', 'write_file'],
     requiredToolIntents: ['write'],
     completionPredicate: (toolCall, result) =>
-      ['write_file', 'edit_file', 'apply_hashline_patch'].includes(toolCall.name) &&
+      ['apply_hashline_patch', 'edit_file', 'write_file'].includes(toolCall.name) &&
       result?.success === true,
     description:
       '执行实际代码修改。开始前必须具备三项：原始需求、具体文件/符号、预期行为；若缺任一项则停止并回退到规划阶段补充证据，严禁无依据的修改。',
@@ -271,6 +272,13 @@ export class Subtask {
     // ✅ 新增：执行约束
     // allowedTools: 该 task 只能调用这些工具
     this.allowedTools = Array.isArray(data.allowedTools) ? data.allowedTools : [];
+
+    this.acceptanceCriteria = Array.isArray(data.acceptanceCriteria) ? data.acceptanceCriteria : [];
+    this.preconditions = Array.isArray(data.preconditions) ? data.preconditions : [];
+    this.postconditions = Array.isArray(data.postconditions) ? data.postconditions : [];
+    this.outputArtifacts = Array.isArray(data.outputArtifacts) ? data.outputArtifacts : [];
+    this.qualityGate = data.qualityGate || null;
+    this.rollbackStrategy = data.rollbackStrategy || null;
 
     // requiredToolIntents: 该 task 必须调用的工具类型（如 'read', 'write'）
     this.requiredToolIntents = Array.isArray(data.requiredToolIntents)
@@ -771,6 +779,12 @@ export class ExecutionPlan {
         timeout: t.timeout,
         priority: t.priority,
         allowedTools: t.allowedTools,
+        acceptanceCriteria: t.acceptanceCriteria || [],
+        preconditions: t.preconditions || [],
+        postconditions: t.postconditions || [],
+        outputArtifacts: t.outputArtifacts || [],
+        qualityGate: t.qualityGate || null,
+        rollbackStrategy: t.rollbackStrategy || null,
         requiredToolIntents: t.requiredToolIntents,
         requiredMutationPaths: Array.from(t.requiredMutationPaths || []),
         scopeFiles: t.scopeFiles || [],
@@ -897,7 +911,10 @@ export class GraphPlanner extends EventEmitter {
     tdd: { phase: 'implementation', hint: '先写测试再写实现代码' },
     diagnose: { phase: 'implementation', hint: '诊断遇到的 bug 或问题' },
     review: { phase: 'inspection', hint: '审查变更的代码文件' },
-    verify: { phase: 'verification', hint: '运行时验证：先安装依赖(npm install等)，再执行测试/lint/build 确认正确性' },
+    verify: {
+      phase: 'verification',
+      hint: '运行时验证：先安装依赖(npm install等)，再执行测试/lint/build 确认正确性',
+    },
     impact_map: {
       phase: 'exploration',
       hint: '绘制影响面/爆炸半径，适合跨模块、迁移、安全、数据、UI 改动',
@@ -928,26 +945,50 @@ export class GraphPlanner extends EventEmitter {
   static #inferPhase(taskName, description) {
     const lower = (taskName + ' ' + description).toLowerCase();
     // 验证阶段：verify, test, validate, confirm, lint, build_check, 验证, 测试
-    if (/\b(verify|test|validate|confirm|lint|build_check|check_diagnostics|run_tests|review_changes)\b/.test(lower) || /验证|测试/.test(lower)) {return 'verification';}
+    if (
+      /\b(verify|test|validate|confirm|lint|build_check|check_diagnostics|run_tests|review_changes)\b/.test(
+        lower,
+      ) ||
+      /验证|测试/.test(lower)
+    ) {
+      return 'verification';
+    }
     // 审查阶段：inspect, review, check, audit, read_back, 审查, 复查
-    if (/\b(inspect_changes|review|audit|read_back|security_review|ui_acceptance|data_contract_check)\b/.test(lower) || /审[核查]|复查/.test(lower)) {return 'inspection';}
+    if (
+      /\b(inspect_changes|review|audit|read_back|security_review|ui_acceptance|data_contract_check)\b/.test(
+        lower,
+      ) ||
+      /审[核查]|复查/.test(lower)
+    ) {
+      return 'inspection';
+    }
     // 实现阶段：implement, create, edit, write, fix, add, update, refactor, build, code, 修改, 实现, 创建, 编写, 修复, 重构
     if (
       /\b(implement|create|edit|write|fix|add|update|refactor|build|code|implement_features|implement_changes|create_new_files|refactor_code)\b/.test(
         lower,
       ) ||
       /修改|实现|创建|編写|修复|重构/.test(lower)
-    )
-      {return 'implementation';}
+    ) {
+      return 'implementation';
+    }
     // 规划阶段：plan, design, architect, brainstorm, grill, zoom_out, approach, 方案, 设计, 规划
-    if (/\b(plan|design|architect|brainstorm|grill|zoom_out|approach|plan_solution|design_changes|risk_check|test_strategy|migration_plan)\b/.test(lower) || /方案|设计|规划/.test(lower))
-      {return 'planning';}
+    if (
+      /\b(plan|design|architect|brainstorm|grill|zoom_out|approach|plan_solution|design_changes|risk_check|test_strategy|migration_plan)\b/.test(
+        lower,
+      ) ||
+      /方案|设计|规划/.test(lower)
+    ) {
+      return 'planning';
+    }
     // 探索阶段：inspect, explore, discover, read, gather, analyze, 了解, 探索, 检查, 分析, 读取, 发现
     if (
-      /\b(inspect|explore|discover|read|gather|analyze|inspect_readme|inspect_workspace|inspect_existing_code|analyze_requirements|inspect_verification_target)\b/.test(lower) ||
+      /\b(inspect|explore|discover|read|gather|analyze|inspect_readme|inspect_workspace|inspect_existing_code|analyze_requirements|inspect_verification_target)\b/.test(
+        lower,
+      ) ||
       /了解|探索|检查|分析|读取|发现/.test(lower)
-    )
-      {return 'exploration';}
+    ) {
+      return 'exploration';
+    }
     // 默认按任务顺序：第一个 → exploration，中间 → implementation，最后一个 → verification
     return null;
   }
@@ -1036,11 +1077,12 @@ ${methodologyHints}
 
 ## Hashline 编辑路径
 - apply_hashline_patch: 原子化多文件编辑（含 preflight + LSP-sync + diagnostics-gate），用于跨文件事务性修改
-- write_file / edit_file: 单文件直接编辑
+- edit_file: 单文件增量编辑；write_file: 新文件或显式整文件替换
 - shell: 执行命令、构建、测试
 ${feedbackSection}
 ${taskProfileSection}
 ${planTypeSection}
+
 ## 输出格式
 严格输出 JSON 数组，每个元素:
 {
@@ -1048,7 +1090,8 @@ ${planTypeSection}
   "name": "人类可读任务名称",
   "description": "中文任务描述（含建议使用的方法论工具）",
   "dependencies": ["依赖的任务ID", ...],
-  "scope_files": ["该子任务涉及的 2-5 个关键文件路径或目录"]
+  "scope_files": ["该子任务涉及的 2-5 个关键文件路径或目录"],
+  "phase": "exploration/planning/implementation/inspection/verification"
 }
 
 ## scope_files 规则
@@ -1056,6 +1099,7 @@ ${planTypeSection}
 - 只写该子任务直接涉及的文件 —— 不要跨子任务预加载文件
 - 纯分析子任务（brainstorm/architect/grill），scope_files 可为空数组
 - 目录路径用 /dirname/ 表示（如 /src/runtime/），该子任务中只能 list_dir 该目录
+- 实现/检查阶段的任务必须至少有 1 个 scope_file
 
 ## 规划原则
 1. 遵循 inspect → plan → implement → verify 的生命周期
@@ -1091,7 +1135,24 @@ ${planTypeSection}
 - \`verify_result\` - 验证结果（shell, lsp_diagnostics）
 - \`run_tests\` - 运行测试（shell）
 - \`check_diagnostics\` - 检查诊断（lsp_diagnostics）
-- \`review_changes\` - 审查改动（read_file）`;
+- \`review_changes\` - 审查改动（read_file）
+
+## 🔴 质量检查清单（必须通过）
+1. **任务数量**: 2-10 个任务，过多或过少都会导致质量评分降低
+2. **阶段完整性**: 必须包含 exploration、implementation、verification 三个核心阶段
+3. **阶段顺序**: 依赖关系必须符合阶段顺序（exploration → planning → implementation → inspection → verification）
+4. **无循环依赖**: 依赖关系不能形成环
+5. **scope_files**: 实现/检查阶段的任务必须有明确的 scope_files
+6. **任务ID格式**: 必须是 snake_case 格式，如 inspect_workspace，禁止 task_1/task_2
+7. **无重复ID**: 每个任务ID必须唯一
+8. **验证步骤**: 编码任务必须包含验证步骤
+
+## 🟡 推荐实践
+- 先探索理解项目结构，再规划方案，然后实现，最后验证
+- 对于 bug 修复任务，先添加失败测试，再修复代码
+- 对于复杂任务，使用 architect/zoom_out 进行架构分析
+- 实现后使用 review/inspect 进行审查，再进行 verify
+- 每个任务的 scope_files 限制在 2-5 个文件`;
 
     const userPrompt = `请将以下任务分解为执行子任务：
 
@@ -1156,28 +1217,50 @@ ${toolHint}
     // 通过关键词匹配来选择最接近的语义化 ID
 
     // 探索阶段关键词 → 对应任务
-    if (/readme|说明|文档|description/.test(text)) {return 'inspect_readme';}
-    if (/dir|structure|目录|项目结构|查看|list/.test(text)) {return 'inspect_workspace';}
-    if (/exist|code|源代码|读取|existing/.test(text)) {return 'inspect_existing_code';}
-    if (/require|analysis|分析|需求|requirement/.test(text)) {return 'analyze_requirements';}
+    if (/readme|说明|文档|description/.test(text)) {
+      return 'inspect_readme';
+    }
+    if (/dir|structure|目录|项目结构|查看|list/.test(text)) {
+      return 'inspect_workspace';
+    }
+    if (/exist|code|源代码|读取|existing/.test(text)) {
+      return 'inspect_existing_code';
+    }
+    if (/require|analysis|分析|需求|requirement/.test(text)) {
+      return 'analyze_requirements';
+    }
 
     // 规划阶段关键词
-    if (/plan|design|方案|规划|设计|architecture/.test(text)) {return 'plan_solution';}
-    if (/design|改动|change/.test(text)) {return 'design_changes';}
+    if (/plan|design|方案|规划|设计|architecture/.test(text)) {
+      return 'plan_solution';
+    }
+    if (/design|改动|change/.test(text)) {
+      return 'design_changes';
+    }
 
     // 实现阶段关键词
     if (/implement|edit|write|fix|修改|实现|修复|coding|code/.test(text)) {
       // 进一步细分
-      if (/create|new|创建/.test(text)) {return 'create_new_files';}
-      if (/refactor|重构/.test(text)) {return 'refactor_code';}
+      if (/create|new|创建/.test(text)) {
+        return 'create_new_files';
+      }
+      if (/refactor|重构/.test(text)) {
+        return 'refactor_code';
+      }
       return 'implement_changes';
     }
 
     // 验证阶段关键词
     if (/verify|test|lint|build|验证|测试|诊断|diagnostic/.test(text)) {
-      if (/test|测试/.test(text)) {return 'run_tests';}
-      if (/diagnostic|diagnostics|诊断/.test(text)) {return 'check_diagnostics';}
-      if (/review|审查|复查/.test(text)) {return 'review_changes';}
+      if (/test|测试/.test(text)) {
+        return 'run_tests';
+      }
+      if (/diagnostic|diagnostics|诊断/.test(text)) {
+        return 'check_diagnostics';
+      }
+      if (/review|审查|复查/.test(text)) {
+        return 'review_changes';
+      }
       return 'verify_result';
     }
 
@@ -1211,17 +1294,22 @@ ${toolHint}
       }
 
       const validTaskIds = new Set();
-      const subtasks = parsed.map((item, index) => {
+      const idAliases = new Map();
+      const subtasks = [];
+
+      for (const [index, item] of parsed.entries()) {
         const rawId = item.id || item.name || `task_${index + 1}`;
         const id = GraphPlanner.#normalizeTaskId(rawId, item.description, index);
-        validTaskIds.add(id);
+        idAliases.set(String(rawId), id);
+        idAliases.set(String(item.id || ''), id);
+        idAliases.set(String(item.name || ''), id);
 
         const phase = item.phase || GraphPlanner.#inferPhase(id, item.description || '');
 
         // ✅ 第 2 阶段改进：应用任务模板
         const template = TASK_TEMPLATE_REGISTRY[id];
 
-        return {
+        const task = {
           id,
           name: template?.semanticName || (item.name && item.name !== rawId ? item.name : id),
           description: item.description || template?.description || `子任务 ${index + 1}`,
@@ -1239,10 +1327,23 @@ ${toolHint}
           requiresMutation: template?.requiresMutation || false,
           methodologyHint: template?.methodologyHint || null,
         };
-      });
+        const existing = subtasks.find((candidate) => candidate.id === id);
+        if (existing) {
+          GraphPlanner.#mergeDuplicateSubtask(existing, task);
+        } else {
+          validTaskIds.add(id);
+          subtasks.push(task);
+        }
+      }
 
       for (const task of subtasks) {
-        task.dependencies = task.dependencies.filter((dep) => validTaskIds.has(dep));
+        task.dependencies = Array.from(
+          new Set(
+            task.dependencies
+              .map((dep) => idAliases.get(String(dep)) || dep)
+              .filter((dep) => dep !== task.id && validTaskIds.has(dep)),
+          ),
+        );
       }
 
       const hasVerification = subtasks.some(
@@ -1264,6 +1365,16 @@ ${toolHint}
         });
       }
 
+      const qualityResult = this.#validateDecompositionQuality(subtasks, fallbackDescription);
+      if (!qualityResult.passed && this.#config?.debug) {
+        console.warn('[GraphPlanner] LLM 分解质量验证失败:', qualityResult.issues);
+      }
+
+      subtasks.forEach((t) => {
+        t.decompositionScore = qualityResult.score;
+        t.decompositionIssues = qualityResult.issues;
+      });
+
       return subtasks;
     } catch (parseErr) {
       if (this.#config?.debug) {
@@ -1271,6 +1382,147 @@ ${toolHint}
       }
       return this.#generateSubtasks(fallbackDescription, options);
     }
+  }
+
+  #validateDecompositionQuality(subtasks, taskDescription) {
+    const issues = [];
+    let score = 100;
+
+    if (subtasks.length < 2) {
+      issues.push(`任务数量过少 (${subtasks.length})，至少需要2个任务`);
+      score -= 20;
+    }
+    if (subtasks.length > 10) {
+      issues.push(`任务数量过多 (${subtasks.length})，建议不超过10个`);
+      score -= 15;
+    }
+
+    const phases = new Set(subtasks.map((t) => t.phase).filter(Boolean));
+    const requiredPhases = ['exploration', 'implementation', 'verification'];
+    const missingPhases = requiredPhases.filter((p) => !phases.has(p));
+    if (missingPhases.length > 0) {
+      issues.push(`缺少必要阶段: ${missingPhases.join(', ')}`);
+      score -= missingPhases.length * 15;
+    }
+
+    const phasesOrder = ['exploration', 'planning', 'implementation', 'inspection', 'verification'];
+    const phaseRank = new Map(phasesOrder.map((p, i) => [p, i]));
+    for (const task of subtasks) {
+      if (!task.phase) {
+        issues.push(`任务 ${task.id} 缺少阶段标识`);
+        score -= 10;
+      } else if (!phaseRank.has(task.phase)) {
+        issues.push(`任务 ${task.id} 使用了无效阶段: ${task.phase}`);
+        score -= 10;
+      }
+
+      for (const dep of task.dependencies || []) {
+        const depTask = subtasks.find((t) => t.id === dep);
+        if (depTask) {
+          const taskRank = phaseRank.get(task.phase) ?? 0;
+          const depRank = phaseRank.get(depTask.phase) ?? 0;
+          if (depRank > taskRank) {
+            issues.push(`任务 ${task.id} 依赖了后续阶段的任务 ${dep}`);
+            score -= 15;
+          }
+        }
+      }
+    }
+
+    for (const task of subtasks) {
+      const deps = task.dependencies || [];
+      const visited = new Set();
+      const hasCycle = this.#hasDependencyCycle(task, subtasks, visited);
+      if (hasCycle) {
+        issues.push(`任务 ${task.id} 存在循环依赖`);
+        score -= 25;
+        break;
+      }
+    }
+
+    let totalScopeFiles = 0;
+    for (const task of subtasks) {
+      if (task.phase === 'implementation' || task.phase === 'inspection') {
+        if (!Array.isArray(task.scopeFiles) || task.scopeFiles.length === 0) {
+          issues.push(`实现/检查任务 ${task.id} 缺少 scope_files`);
+          score -= 10;
+        } else {
+          totalScopeFiles += task.scopeFiles.length;
+        }
+      }
+    }
+
+    if (totalScopeFiles === 0 && phases.has('implementation')) {
+      issues.push('所有实现任务都缺少 scope_files');
+      score -= 15;
+    }
+
+    const idPattern = /^[a-z][a-z0-9_]*$/;
+    for (const task of subtasks) {
+      if (!idPattern.test(task.id)) {
+        issues.push(`任务ID格式无效: ${task.id}，应为 snake_case`);
+        score -= 5;
+      }
+    }
+
+    const duplicateIds = subtasks
+      .filter((t, i) => subtasks.findIndex((tt) => tt.id === t.id) !== i)
+      .map((t) => t.id);
+    if (duplicateIds.length > 0) {
+      issues.push(`存在重复任务ID: ${duplicateIds.join(', ')}`);
+      score -= 10;
+    }
+
+    score = Math.max(0, score);
+
+    return {
+      passed: score >= 60,
+      score,
+      issues,
+      details: {
+        taskCount: subtasks.length,
+        phases: Array.from(phases),
+        missingPhases,
+        hasImplementation: phases.has('implementation'),
+        hasVerification: phases.has('verification'),
+        totalScopeFiles,
+      },
+    };
+  }
+
+  #hasDependencyCycle(startTask, allTasks, visited = new Set()) {
+    if (visited.has(startTask.id)) {
+      return true;
+    }
+    visited.add(startTask.id);
+    for (const depId of startTask.dependencies || []) {
+      const depTask = allTasks.find((t) => t.id === depId);
+      if (depTask && this.#hasDependencyCycle(depTask, allTasks, new Set(visited))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static #mergeDuplicateSubtask(target, incoming) {
+    const descriptions = [target.description, incoming.description]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+    target.description = Array.from(new Set(descriptions)).join('\n');
+    target.dependencies = Array.from(
+      new Set([...(target.dependencies || []), ...(incoming.dependencies || [])]),
+    );
+    target.scopeFiles = Array.from(
+      new Set([...(target.scopeFiles || []), ...(incoming.scopeFiles || [])]),
+    ).slice(0, 8);
+    target.allowedTools = Array.from(
+      new Set([...(target.allowedTools || []), ...(incoming.allowedTools || [])]),
+    );
+    target.requiredToolIntents = Array.from(
+      new Set([...(target.requiredToolIntents || []), ...(incoming.requiredToolIntents || [])]),
+    );
+    target.requiresMutation = Boolean(target.requiresMutation || incoming.requiresMutation);
+    target.priority = Math.max(Number(target.priority || 0), Number(incoming.priority || 0));
   }
 
   /**
@@ -1499,6 +1751,7 @@ ${toolHint}
         result = { success: true };
       }
 
+      assertToolResultSucceeded(result, task.action?.command || task.id);
       task.updateStatus(TaskStatus.COMPLETED, { result });
       plan.results.set(task.id, result);
 

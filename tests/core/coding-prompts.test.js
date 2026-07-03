@@ -32,10 +32,11 @@ describe('coding-prompts', () => {
       expect(result).toContain('- state transitions: verify state invariants');
     });
 
-    test('includes CALL review instruction', () => {
+    test('does not force a ceremonial review call', () => {
       const domains = [{ label: 'test', checklist: 'check' }];
       const result = buildSemanticRiskGuidance(domains);
-      expect(result).toContain('CALL review');
+      expect(result).toContain('Use review only when it adds real semantic evidence');
+      expect(result).not.toContain('CALL review');
     });
 
     test('includes risk domains section', () => {
@@ -70,12 +71,13 @@ describe('coding-prompts', () => {
       expect(result).toContain('high');
     });
 
-    test('includes methodology line when hasMethodologyTools is true', () => {
+    test('includes selective methodology guidance when hasMethodologyTools is true', () => {
       const result = buildCodingTaskOperatingPrompt({
         userInput: 'test',
         hasMethodologyTools: true,
       });
-      expect(result).toContain('methodology');
+      expect(result).toContain('Use methodology tools selectively');
+      expect(result).not.toContain('All coding tasks follow the same methodology flow');
     });
 
     test('includes fallback methodology line when hasMethodologyTools is false', () => {
@@ -83,7 +85,7 @@ describe('coding-prompts', () => {
         userInput: 'test',
         hasMethodologyTools: false,
       });
-      expect(result).toContain('methodology tools are not registered');
+      expect(result).toContain('Methodology tools are not registered');
     });
 
     test('includes semantic risk guidance when profile requires it', () => {
@@ -108,7 +110,7 @@ describe('coding-prompts', () => {
 
     test('includes verification rules section', () => {
       const result = buildCodingTaskOperatingPrompt({ userInput: 'test' });
-      expect(result).toContain('Strict verification rules');
+      expect(result).toContain('Verification expectations');
       expect(result).toContain('runtime verification');
     });
 
@@ -139,12 +141,13 @@ describe('coding-prompts', () => {
       expect(result).toContain('without any successful tool evidence');
     });
 
-    test('maps missing_methodology_step reason', () => {
+    test('maps missing_methodology_step to evidence language', () => {
       const result = buildCodingCompletionGatePrompt({
         userInput: 'test',
         gate: { reason: 'missing_methodology_step', evidence: [] },
       });
-      expect(result).toContain('built-in coding methodology');
+      expect(result).toContain('missing enough planning, review, or verification evidence');
+      expect(result).not.toContain('built-in coding methodology');
     });
 
     test('maps missing_code_change reason', () => {
@@ -232,6 +235,8 @@ describe('coding-prompts', () => {
         gate: { reason: 'no_tool_evidence', evidence: [] },
       });
       expect(result).toContain('Continue working now');
+      expect(result).toContain('Choose the next evidence-producing step');
+      expect(result).not.toContain('call write_file or edit_file next');
     });
   });
 });

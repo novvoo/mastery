@@ -31,6 +31,25 @@ function extractTextResult(result) {
   return typeof text === 'string' ? text : null;
 }
 
+function extractMkdirPaths(command) {
+  const text = String(command || '').trim();
+  if (!/^mkdir(?:\s|$)/.test(text) || /[;&|`$<>]/.test(text)) {
+    return [];
+  }
+
+  const tokens = [];
+  const tokenPattern = /"([^"]+)"|'([^']+)'|(\S+)/g;
+  let match;
+  while ((match = tokenPattern.exec(text))) {
+    tokens.push(match[1] || match[2] || match[3]);
+  }
+
+  return tokens
+    .slice(1)
+    .filter((token) => token && !token.startsWith('-'))
+    .map((token) => token.replace(/^['"]|['"]$/g, ''));
+}
+
 export class WorkspaceState {
   constructor() {
     // 目录结构追踪: path -> { exists, entries: Set, timestamp }
@@ -121,14 +140,7 @@ export class WorkspaceState {
     const normalized = this._normalizePath(path);
 
     if (normalized.endsWith('/')) {
-      if (!this._directories.has(normalized)) {
-        this._directories.set(normalized, {
-          exists: true,
-          entries: new Set(),
-          timestamp: Date.now(),
-          source: 'inferred',
-        });
-      }
+      this._markDirectoryExists(normalized, 'inferred');
     } else {
       if (!this._files.has(normalized)) {
         this._files.set(normalized, {
@@ -137,6 +149,35 @@ export class WorkspaceState {
           source: 'inferred',
         });
       }
+      this._markParentDirectories(normalized, 'inferred_parent');
+    }
+  }
+
+  _markDirectoryExists(dirPath, source = 'inferred') {
+    const normalized = this._normalizePath(dirPath);
+    if (!normalized || normalized === '/') {
+      return;
+    }
+    if (!this._directories.has(normalized)) {
+      this._directories.set(normalized, {
+        exists: true,
+        entries: new Set(),
+        timestamp: Date.now(),
+        source,
+      });
+    }
+    this._failedPaths.delete(normalized);
+  }
+
+  _markParentDirectories(filePath, source = 'inferred_parent') {
+    const normalized = this._normalizePath(filePath);
+    const parts = normalized.split('/').filter(Boolean);
+    if (parts.length <= 1) {
+      return;
+    }
+    const prefix = normalized.startsWith('/') ? '/' : '';
+    for (let i = 1; i < parts.length; i += 1) {
+      this._markDirectoryExists(prefix + parts.slice(0, i).join('/'), source);
     }
   }
 
@@ -155,6 +196,7 @@ export class WorkspaceState {
         timestamp: Date.now(),
         source: 'read_file',
       });
+      this._markParentDirectories(normalized, 'read_file_parent');
 
       this._addFact({
         type: 'file_readable',
@@ -213,6 +255,7 @@ export class WorkspaceState {
     }
     const normalized = this._normalizePath(filePath);
     this._files.set(normalized, { exists: true, timestamp: Date.now(), source });
+    this._markParentDirectories(normalized, `${source}_parent`);
     this._cacheFileContent(normalized, content, source);
   }
 
@@ -307,6 +350,7 @@ export class WorkspaceState {
       timestamp: Date.now(),
       source: 'write_file',
     });
+    this._markParentDirectories(normalized, 'write_file_parent');
 
     // 从 failedPaths 中移除（如果之前存在）
     this._failedPaths.delete(normalized);
@@ -420,6 +464,11 @@ export class WorkspaceState {
         }
       } catch {
         // Directory inference is opportunistic; keep the durable fact below.
+      }
+    } else if (success && toolName === 'shell') {
+      const command = args?.command || args?.input || '';
+      for (const dirPath of extractMkdirPaths(command)) {
+        this._markDirectoryExists(dirPath, 'shell_mkdir');
       }
     }
 
@@ -567,9 +616,15 @@ export class WorkspaceState {
     const agentOnlyPattern = /^(?:\.agent-(data|logs|memory)|test)(\/|$)/i;
     const realEntries = entries.filter((e) => {
       const name = e.replace(/^\.?\//, '');
-      if (!name) {return false;}
-      if (agentOnlyPattern.test(name)) {return false;}
-      if (name.startsWith('.')) {return false;} // 隐藏文件/目录
+      if (!name) {
+        return false;
+      }
+      if (agentOnlyPattern.test(name)) {
+        return false;
+      }
+      if (name.startsWith('.')) {
+        return false;
+      } // 隐藏文件/目录
       return true;
     });
     return realEntries.length === 0;
@@ -702,6 +757,18 @@ export class WorkspaceState {
 
       case 'shell': {
         const command = args?.command || args?.input || '';
+        const mkdirPaths = extractMkdirPaths(command);
+        if (
+          mkdirPaths.length > 0 &&
+          mkdirPaths.every((p) => this.checkPathExists(p) === 'exists')
+        ) {
+          return {
+            canSkip: true,
+            reason: `mkdir target(s) already known to exist from previous workspace observations: ${mkdirPaths.join(', ')}`,
+            predicted: `Skipped redundant mkdir; target directory already exists: ${mkdirPaths.join(', ')}`,
+            type: 'redundant_success',
+          };
+        }
 
         // 检查是否在失败路径中尝试访问文件
         const pathMatch = command.match(/(?:cat|read|head|tail|ls)\s+([^\s;>&]+)/);

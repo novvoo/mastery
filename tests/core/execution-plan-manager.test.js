@@ -414,6 +414,75 @@ describe('ExecutionPlanManager', () => {
     expect(plan.getTask('implement_changes').dependencies.has('tdd_reproduce')).toBe(true);
   });
 
+  test('createIfNeeded preserves professional task contracts from templates', () => {
+    manager.createIfNeeded('Fix app.js bug', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+    });
+
+    const plan = manager.plan;
+    const inspectTask = Array.from(plan.tasks.values()).find(
+      (task) => task.phase === 'exploration',
+    );
+    const implementTask = Array.from(plan.tasks.values()).find(
+      (task) => task.phase === 'implementation',
+    );
+
+    expect(plan.context.qualityPolicy).toMatchObject({
+      version: 1,
+      standard: 'professional_execution_plan',
+      antiRubberStamp: true,
+    });
+    expect(inspectTask).toBeDefined();
+    expect(implementTask).toBeDefined();
+    expect(inspectTask.acceptanceCriteria.length).toBeGreaterThan(0);
+    expect(inspectTask.qualityGate).toBeDefined();
+    expect(implementTask.acceptanceCriteria.join(' ')).toContain('Existing target files');
+    expect(implementTask.outputArtifacts.length).toBeGreaterThan(0);
+    expect(implementTask.metadata.planQuality.requiresEvidence).toBe(true);
+  });
+
+  test('buildPrompt exposes plan quality gates and acceptance criteria', () => {
+    manager.createIfNeeded('Fix app.js bug', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+    });
+
+    const prompt = manager.buildPrompt();
+
+    expect(prompt).toContain('Professional plan quality rules');
+    expect(prompt).toContain('qualityGate=');
+    expect(prompt).toContain('qualityGate=evidence_from_relevant_context');
+    expect(prompt).toContain('acceptance criteria');
+    expect(prompt).toContain('concrete evidence');
+    expect(prompt).not.toContain('qualityGate=must_read');
+  });
+
+  test('setPlan professionalizes vague external plan tasks', () => {
+    const externalPlan = new ExecutionPlan({
+      name: 'Vague plan',
+      description: 'fix the app',
+      context: { planType: 'bug_fix', decomposition: 'external' },
+    });
+    externalPlan.addTask({
+      id: 'do_it',
+      name: 'Do it',
+      description: '处理',
+      phase: 'implementation',
+      dependencies: [],
+    });
+
+    manager.setPlan(externalPlan);
+    const task = manager.plan.getTask('do_it');
+
+    expect(task.description).toContain('Apply the smallest evidence-backed change');
+    expect(task.acceptanceCriteria.join(' ')).toContain('Existing target files');
+    expect(task.qualityGate).toBe('mutation_with_prior_context_required');
+    expect(task.metadata.planQuality.wasGeneric).toBe(true);
+  });
+
   test('documentation plan does not add code project profiling step', () => {
     manager.createIfNeeded('编写 README 文档', {
       requiresPlan: true,
@@ -473,12 +542,16 @@ describe('ExecutionPlanManager', () => {
     manager.advance('list_dir', {}, 'OK');
     manager.advance('project_profile', {}, 'package.json scripts test');
     manager.advance('test_strategy', {}, 'targeted failing test identified');
-    manager.advance('capture_requirements', {
-      request: 'Fix bug in app.js',
-      targets: ['app.js'],
-      expected: 'tests pass after fix',
-      status: 'pending',
-    }, { ok: true });
+    manager.advance(
+      'capture_requirements',
+      {
+        request: 'Fix bug in app.js',
+        targets: ['app.js'],
+        expected: 'tests pass after fix',
+        status: 'pending',
+      },
+      { ok: true },
+    );
     manager.advance('write_file', { path: 'app.js' }, 'OK');
     manager.advance('read_file', { path: 'app.js' }, 'OK');
 
@@ -522,6 +595,40 @@ describe('ExecutionPlanManager', () => {
     expect(result).not.toBeNull();
     expect(tddTask.status).toBe('completed');
     expect(manager.plan.getTask('implement_changes').status).toBe('running');
+  });
+
+  test('structured planning evidence satisfies implementation requirement gate', () => {
+    manager.createIfNeeded('Update app.js greeting behavior', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+      isModificationTask: true,
+      planType: 'modification',
+    });
+
+    manager.advance('list_dir', {}, 'package.json\napp.js');
+    manager.advance('project_profile', {}, 'package.json scripts test');
+    manager.advance('test_strategy', {}, 'targeted app.js regression check');
+
+    manager.advance(
+      'architect',
+      {},
+      {
+        request: 'Update app.js greeting behavior',
+        targets: ['app.js'],
+        expected: 'app.js returns the updated greeting and checks pass',
+      },
+    );
+
+    expect(manager.plan.getTask('plan_solution').status).toBe('completed');
+    expect(manager.getRequirementStatus()).toBe('pending');
+
+    const implementTask = manager.plan.getTask('implement_changes');
+    expect(implementTask.status).toBe('running');
+
+    manager.advance('write_file', { path: 'app.js' }, 'success: written');
+
+    expect(implementTask.status).toBe('completed');
   });
 
   test('advance completes inspect_workspace on inspection tool', () => {
@@ -576,6 +683,9 @@ describe('ExecutionPlanManager', () => {
     expect(prompt).toContain('Phase meanings:');
     expect(prompt).toContain('Hashline and plan are one execution loop');
     expect(prompt).toContain('apply_hashline_patch is the preferred fast edit vehicle');
+    expect(prompt).toContain('methodology tools when they add evidence');
+    expect(prompt).toContain('use the relevant one only when it clarifies scope');
+    expect(prompt).not.toContain('prefer using the most relevant one before editing');
   });
 
   test('buildPrompt describes non-bug implementation tasks without bug-fix wording', () => {
@@ -595,6 +705,9 @@ describe('ExecutionPlanManager', () => {
     const prompt = manager.buildPrompt();
     expect(prompt).toContain('Current task: implement_changes (implementation).');
     expect(prompt).toContain('Apply the planned change');
+    expect(prompt).toContain('confirm the requirement evidence is visible');
+    expect(prompt).not.toContain('Hard structural gate');
+    expect(prompt).not.toContain('not allowed to complete until');
     expect(prompt).not.toContain('identify the bug');
     expect(prompt).not.toContain('fix the bug');
   });
@@ -660,12 +773,16 @@ describe('ExecutionPlanManager', () => {
     manager.advance('list_dir', {}, 'package.json\napp.js');
     manager.advance('project_profile', {}, 'package.json scripts test');
     manager.advance('test_strategy', {}, 'targeted app.js regression');
-    manager.advance('capture_requirements', {
-      request: 'Fix bug in app.js',
-      targets: ['app.js'],
-      expected: 'bug fixed in app.js',
-      status: 'pending',
-    }, { ok: true });
+    manager.advance(
+      'capture_requirements',
+      {
+        request: 'Fix bug in app.js',
+        targets: ['app.js'],
+        expected: 'bug fixed in app.js',
+        status: 'pending',
+      },
+      { ok: true },
+    );
     manager.advance('architect', {}, 'small fix in app.js');
 
     const implementTask = manager.plan.getTask('implement_changes');
@@ -942,12 +1059,16 @@ describe('ExecutionPlanManager', () => {
     manager.advance('list_dir', {}, 'OK');
     manager.advance('project_profile', {}, 'package.json scripts test');
     manager.advance('test_strategy', {}, 'targeted check');
-    manager.advance('capture_requirements', {
-      request: 'Fix bug in app.js',
-      targets: ['app.js'],
-      expected: 'bug fixed in app.js',
-      status: 'pending',
-    }, { ok: true });
+    manager.advance(
+      'capture_requirements',
+      {
+        request: 'Fix bug in app.js',
+        targets: ['app.js'],
+        expected: 'bug fixed in app.js',
+        status: 'pending',
+      },
+      { ok: true },
+    );
     manager.advance('write_file', { path: 'app.js' }, 'OK');
     manager.advance('read_file', { path: 'app.js' }, 'OK');
     manager.advance('shell', { command: 'bun test' }, { exitCode: 1 });

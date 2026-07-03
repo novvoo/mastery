@@ -21,10 +21,11 @@ import { withTimeout } from '../../../errors/error-handler.js';
 import { TextToolParser } from '../../text-tool-parser.js';
 import { Decision } from './support/security-policy.js';
 import { ObservationErrorCode } from './support/observation-state.js';
+import { normalizeToolResult } from './tool-result.js';
 
 const TOOL_RESULT_CACHE_MAX = 500;
 const TOOL_RESULT_CACHE_TTL_MS = 5 * 60 * 1000;
-const DIR_TOOL_CACHE_TTL_MS = 30 * 1000;
+const DIR_TOOL_CACHE_TTL_MS = 5 * 60 * 1000;
 const NON_CACHEABLE_TOOLS = new Set(['ask_user', 'request_user_input']);
 const READ_ONLY_TOOLS = new Set([
   'list_dir',
@@ -99,6 +100,12 @@ function getScopeTargetPath(name, args) {
     case 'read_file':
       return args.path || args.file_path || args.file || args.filePath || null;
     case 'write_file':
+    case 'write_file_with_hashline':
+    case 'edit_file':
+    case 'update_file':
+    case 'delete_file':
+    case 'move_file':
+    case 'rename_file':
       return args.path || args.file_path || args.file || args.filePath || null;
     case 'list_dir':
       return args.path || null;
@@ -181,7 +188,7 @@ function normalizeToolNameSet(value) {
   return null;
 }
 
-function normalizeToolArgumentAliases(name, args = {}) {
+export function normalizeToolArgumentAliases(name, args = {}) {
   if (!args || typeof args !== 'object') {
     return {};
   }
@@ -208,6 +215,12 @@ function normalizeToolArgumentAliases(name, args = {}) {
     if (normalized.new_str === undefined) {
       normalized.new_str =
         normalized.new_text ?? normalized.new_content ?? normalized.newContent ?? normalized.new;
+    }
+    if (normalized.new_text === undefined && normalized.new_str !== undefined) {
+      normalized.new_text = normalized.new_str;
+    }
+    if (normalized.old_text === undefined && normalized.old_str !== undefined) {
+      normalized.old_text = normalized.old_str;
     }
   }
 
@@ -281,11 +294,7 @@ function shouldBlockContradictingRead(name, args, context = {}) {
   if (!targetPath) {
     return null;
   }
-  return (
-    `FACT_BLOCKED: Workspace root is already known to be empty for this create-from-scratch task. ` +
-    `Reading guessed path "${targetPath}" contradicts observed workspace facts. ` +
-    `Use write_file, mkdir, shell, edit_file, or apply_hashline_patch to create the project skeleton instead.`
-  );
+  return null;
 }
 
 function hasObservedWorkspaceRoot(events = []) {
@@ -606,21 +615,26 @@ export class ToolExecutor {
     }
 
     // ============ 基于工作区状态的智能预测（若提供） ============
-    if (
-      this.#config.workspaceState &&
-      typeof this.#config.workspaceState.predictToolResult === 'function'
-    ) {
-      const prediction = this.#config.workspaceState.predictToolResult(name, args);
+    const workspaceState = context.workspaceState || this.#config.workspaceState;
+    if (workspaceState && typeof workspaceState.predictToolResult === 'function') {
+      const prediction = workspaceState.predictToolResult(name, args);
       if (prediction.canSkip) {
-        this.#ui.warn?.(`⚠️  Skipping ${name}: ${prediction.reason}`);
-        const observation = `Based on previous exploration:\n${prediction.reason}\n\nThis operation would fail. Consider a different approach or check workspace_knowledge first.`;
+        const isWarning = prediction.type === 'will_fail';
+        const logFn = isWarning ? this.#ui.warn : this.#ui.info;
+        logFn?.(`${isWarning ? '⚠️' : 'ℹ️'} Skipping ${name}: ${prediction.reason}`);
+        const predictedSuccess = prediction.type !== 'will_fail';
+        const observation = predictedSuccess
+          ? `Based on previous workspace observations:\n${prediction.reason}\n\nSkipping redundant operation; use the observed fact and continue.`
+          : `Based on previous exploration:\n${prediction.reason}\n\nThis operation would fail. Consider a different approach or check workspace_knowledge first.`;
         options.emitObservation?.(id, name, observation, resultMode);
-        this.#recordEvent(name, args, false, prediction.reason);
+        this.#recordEvent(name, args, predictedSuccess, prediction.predicted || prediction.reason);
         return {
           name,
           result: prediction.predicted || { error: prediction.reason },
           skipped: true,
           predicted: true,
+          success: predictedSuccess,
+          ...(predictedSuccess ? { cached: true } : { error: prediction.reason }),
         };
       }
     }
@@ -628,6 +642,7 @@ export class ToolExecutor {
     const factBlocked = shouldBlockContradictingRead(name, args, {
       ...context,
       workspaceState: context.workspaceState || this.#config.workspaceState,
+      workingDirectory: this.#config.workingDirectory || process.cwd(),
     });
     if (factBlocked) {
       options.emitObservation?.(id, name, factBlocked, resultMode);
@@ -759,6 +774,20 @@ ${paramDesc || '无参数定义'}
       };
     }
 
+    const writeBeforeReadResult = this.#checkWriteBeforeRead(name, effectiveArgs, context);
+    if (writeBeforeReadResult) {
+      options.emitObservation?.(id, name, writeBeforeReadResult.result, resultMode);
+      this.#recordEvent(name, effectiveArgs, false, writeBeforeReadResult.result);
+      return writeBeforeReadResult;
+    }
+
+    const unsafeOverwriteResult = this.#checkUnsafeFullFileOverwrite(name, effectiveArgs, context);
+    if (unsafeOverwriteResult) {
+      options.emitObservation?.(id, name, unsafeOverwriteResult.result, resultMode);
+      this.#recordEvent(name, effectiveArgs, false, unsafeOverwriteResult.result);
+      return unsafeOverwriteResult;
+    }
+
     // ============ write_file 审批（若配置了 writeFileApproval） ============
     if (name === 'write_file' && typeof this.#config.writeFileApproval === 'function') {
       const approved = await this.#config.writeFileApproval({
@@ -805,7 +834,8 @@ ${paramDesc || '无参数定义'}
 
     // ============ 执行工具 ============
     const planContextExtension =
-      context.activePlanManager && typeof context.activePlanManager.buildToolContextExtension === 'function'
+      context.activePlanManager &&
+      typeof context.activePlanManager.buildToolContextExtension === 'function'
         ? context.activePlanManager.buildToolContextExtension()
         : null;
 
@@ -884,6 +914,8 @@ ${paramDesc || '无参数定义'}
                   name,
                   result: observation,
                   args: effectiveArgs,
+                  success: false,
+                  error: `File not found: ${targetPath}`,
                   skipped: true,
                   fallbackToDir: true,
                   errorCode: ObservationErrorCode.MISSING_FILE,
@@ -897,6 +929,8 @@ ${paramDesc || '无参数定义'}
       }
     }
 
+    this.#checkReadOnlyStagnation(name, args, context);
+
     let finalResult;
     try {
       const rawResult = await withTimeout(
@@ -905,14 +939,15 @@ ${paramDesc || '无参数定义'}
         `Tool ${name}`,
       );
       finalResult = this.#applySecurityResultPolicy(name, rawResult);
-      this.#recordEvent(name, effectiveArgs, true, finalResult);
+      const normalizedResult = normalizeToolResult(finalResult);
+      this.#recordEvent(name, effectiveArgs, normalizedResult.success, finalResult);
 
-      if (MUTATION_TOOLS.has(name)) {
+      if (normalizedResult.success && MUTATION_TOOLS.has(name)) {
         this.#invalidateReadOnlyHistory();
       }
 
       // 仅成功执行的调用才加入历史，避免失败后无法重试
-      if (canUseCache) {
+      if (normalizedResult.success && canUseCache) {
         this.#callHistory.add(callSignature);
         if (this.#callHistory.size > 50) {
           const oldest = this.#callHistory.values().next().value;
@@ -920,7 +955,7 @@ ${paramDesc || '无参数定义'}
         }
       }
       // 写工具写持久化缓存，读工具写内存缓存（通过 snapshotStore.head 比对文件 hash）
-      if (canUseCache && !isReadOnly) {
+      if (normalizedResult.success && canUseCache && !isReadOnly) {
         const cachedValue =
           typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult);
         this.#resultCache.set(callSignature, cachedValue);
@@ -965,7 +1000,7 @@ ${paramDesc || '无参数定义'}
             }
           }
         }
-      } else if (canUseCache) {
+      } else if (normalizedResult.success && canUseCache) {
         // 读工具：存储结果和当前文件 tag 到内存缓存，供后续 hash 比对
         const targetPath = getScopeTargetPath(name, effectiveArgs);
         const fileTag =
@@ -989,7 +1024,14 @@ ${paramDesc || '无参数定义'}
       }
       this.#ui.toolResult?.(name, finalResult, effectiveArgs);
       options.emitObservation?.(id, name, finalResult, resultMode);
-      return { name, result: finalResult, args: effectiveArgs, durationMs: Date.now() - startedAt };
+      return {
+        name,
+        result: finalResult,
+        args: effectiveArgs,
+        success: normalizedResult.success,
+        ...(normalizedResult.error ? { error: normalizedResult.error } : {}),
+        durationMs: Date.now() - startedAt,
+      };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       this.#recordEvent(name, effectiveArgs, false, `Error: ${errorMsg}`);
@@ -1189,6 +1231,152 @@ ${paramDesc || '无参数定义'}
     }
     const replacement = parsed[0];
     return { ...replacement, id: toolCall.id, source: 'shell_runtime_tool_redirect' };
+  }
+
+  #checkReadOnlyStagnation(name, args, context) {
+    if (!READ_ONLY_TOOLS.has(name)) {
+      return;
+    }
+
+    const activePlanManager = context.activePlanManager;
+    if (!activePlanManager || typeof activePlanManager.checkReadOnlyStagnation !== 'function') {
+      return;
+    }
+
+    const readOnlyLoop = activePlanManager.checkReadOnlyStagnation(5);
+    if (!readOnlyLoop.isReadOnlyLoop) {
+      return;
+    }
+
+    const sessionManager = context.sessionManager;
+    if (!sessionManager || typeof sessionManager.addSystemMessage !== 'function') {
+      return;
+    }
+
+    const overExplored = readOnlyLoop.overExploredTargets
+      .map((t) => `  - ${t.key}: ${t.count} times`)
+      .join('\n');
+    const recentActions = readOnlyLoop.recentReadOnlyActions.map((a) => a.toolName).join(', ');
+
+    const message =
+      `[READ-ONLY STAGNATION WARNING] Detected ${readOnlyLoop.streak} consecutive read-only actions without any mutation.\n\n` +
+      `Recent actions: ${recentActions}\n\n` +
+      `Over-explored targets:\n${overExplored || '  None'}\n\n` +
+      `Stop repeating the same read-only loop. Choose one concrete evidence-based step:\n` +
+      `1. Apply the smallest scoped edit if the target is clear\n` +
+      `2. Gather the single missing fact with a focused read/search/diagnostic\n` +
+      `3. Run a targeted verification command\n` +
+      `4. Replan, ask_user, or provide FINAL_ANSWER with the blocker`;
+
+    sessionManager.addSystemMessage(message);
+  }
+
+  #checkWriteBeforeRead(name, args, context) {
+    const WRITE_TOOLS_REQUIRING_READ = new Set([
+      'write_file',
+      'edit_file',
+      'update_file',
+      'apply_hashline_patch',
+      'write_file_with_hashline',
+    ]);
+
+    if (!WRITE_TOOLS_REQUIRING_READ.has(name)) {
+      return null;
+    }
+
+    const targetPath = getScopeTargetPath(name, args);
+    if (!targetPath) {
+      return null;
+    }
+
+    const workingDirectory = this.#config.workingDirectory || process.cwd();
+    if (name === 'write_file') {
+      const absPath = path.resolve(workingDirectory, targetPath);
+      if (!existsSync(absPath)) {
+        return null;
+      }
+    }
+
+    const workspaceState = context.workspaceState || this.#config.workspaceState;
+    if (
+      workspaceState &&
+      typeof workspaceState.isWorkspaceEmpty === 'function' &&
+      workspaceState.isWorkspaceEmpty() === true &&
+      isCreateOrImplementationTask(context.currentTask, context.activePlan)
+    ) {
+      return null;
+    }
+
+    const actionHistory = context.actionHistory;
+    const historyHasRead =
+      actionHistory && typeof actionHistory.hasReadFile === 'function'
+        ? actionHistory.hasReadFile(targetPath)
+        : false;
+    const eventHasRead = this.#events.some((event) => {
+      if (!event || event.success === false || event.name !== 'read_file') {
+        return false;
+      }
+      return getScopeTargetPath(event.name, event.args || event.arguments || {}) === targetPath;
+    });
+
+    if (historyHasRead || eventHasRead) {
+      return null;
+    }
+
+    const sessionManager = context.sessionManager;
+    if (sessionManager && typeof sessionManager.addSystemMessage === 'function') {
+      sessionManager.addSystemMessage(
+        `[WRITE-BEFORE-READ ENFORCED] You attempted to modify "${targetPath}" without first reading it. You MUST read the file first to understand its current content before making changes.`,
+      );
+    }
+
+    return {
+      name,
+      success: false,
+      result: `Error: Cannot ${name} "${targetPath}" without first reading it. Please call read_file to examine the current content before making changes.`,
+      error: `Cannot ${name} "${targetPath}" without first reading it.`,
+      skipped: true,
+      writeBeforeReadRequired: true,
+    };
+  }
+
+  #checkUnsafeFullFileOverwrite(name, args, context) {
+    if (name !== 'write_file') {
+      return null;
+    }
+
+    const targetPath = getScopeTargetPath(name, args);
+    if (!targetPath) {
+      return null;
+    }
+
+    const workingDirectory = this.#config.workingDirectory || process.cwd();
+    const absPath = path.resolve(workingDirectory, targetPath);
+    if (!existsSync(absPath)) {
+      return null;
+    }
+
+    const overwriteReason =
+      typeof args?.overwrite_reason === 'string' ? args.overwrite_reason.trim() : '';
+    if (args?.overwrite === true && overwriteReason.length > 0) {
+      return null;
+    }
+
+    const sessionManager = context.sessionManager;
+    if (sessionManager && typeof sessionManager.addSystemMessage === 'function') {
+      sessionManager.addSystemMessage(
+        `[FULL-FILE OVERWRITE BLOCKED] You attempted to replace existing file "${targetPath}" with write_file. Use edit_file/apply_hashline_patch for incremental edits, or retry write_file with overwrite=true and overwrite_reason only for an intentional full-file replacement.`,
+      );
+    }
+
+    return {
+      name,
+      success: false,
+      result: `Error: Refusing write_file overwrite of existing file "${targetPath}". Use edit_file/apply_hashline_patch for incremental changes, or pass overwrite=true with overwrite_reason for an intentional full-file replacement.`,
+      error: `Refusing write_file overwrite of existing file "${targetPath}".`,
+      skipped: true,
+      fullOverwriteBlocked: true,
+    };
   }
 }
 

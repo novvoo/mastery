@@ -112,4 +112,29 @@ describe('ToolRegistry', () => {
     reg.register(makeTool('a'));
     expect(reg.size).toBe(1);
   });
+
+  test('executeWithMeta normalizes string error results', async () => {
+    const reg = new ToolRegistry();
+    reg.register(makeTool('read_file', { handler: async () => 'Error: File not found: "x.js"' }));
+
+    const result = await reg.executeWithMeta('read_file', { path: 'x.js' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('File not found');
+    expect(result.result).toContain('File not found');
+  });
+
+  test('executeWithMeta normalizes object failure results', async () => {
+    const reg = new ToolRegistry();
+    reg.register(
+      makeTool('shell', {
+        handler: async () => ({ success: false, error: 'Command failed', code: 1 }),
+      }),
+    );
+
+    const result = await reg.executeWithMeta('shell', { command: 'exit 1' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Command failed');
+  });
 });

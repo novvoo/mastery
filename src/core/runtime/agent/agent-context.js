@@ -238,7 +238,7 @@ export class AgentContext {
       const hasWritten = this.#stagnationWindow.some((t) => t.isMutation);
       this.#sessionManager.addUserMessage(
         `[Progress checkpoint @iter ${iteration}/${maxIterations}]\nPlan status:\n${planStatus}\n` +
-          `${hasWritten ? 'You have made code changes — verify and complete.' : 'WARNING: No code modifications yet. If you have identified the issue, use write_file/edit_file NOW to fix it. Do NOT keep exploring.'}`,
+          `${hasWritten ? 'You have made code changes — verify and complete.' : 'No code modifications yet. If the target is clear, apply the smallest scoped edit; otherwise gather the single missing fact, replan, ask_user, or explain the blocker.'}`,
       );
       return;
     }
@@ -264,7 +264,7 @@ export class AgentContext {
         this.#lastStagnationNudge++;
         const toolList = [...uniqueTools].join(', ');
         this.#sessionManager.addUserMessage(
-          `[CRITICAL] You have called ${toolList} repeatedly for ${STAGNATION_SAME_TOOL_LIMIT} consecutive iterations with ZERO code modifications.\nYou MUST now do ONE of: (1) use write_file or edit_file to make the change, (2) provide FINAL_ANSWER. Do NOT read any more files — you have enough information.`,
+          `[Progress check] You have called ${toolList} repeatedly for ${STAGNATION_SAME_TOOL_LIMIT} consecutive iterations with zero code modifications.\nStop repeating the same exploration. Take one concrete evidence-based step: scoped edit, focused read/diagnostic for one missing fact, change_plan, ask_user, or FINAL_ANSWER with the blocker.`,
         );
         this.#consecutiveSameTool = 0;
         return;
@@ -280,7 +280,7 @@ export class AgentContext {
       this.#lastStagnationNudge++;
       const planStatus = planSummary || 'not available';
       this.#sessionManager.addUserMessage(
-        `[CRITICAL] No file modifications in ${STAGNATION_NO_MUTATION_LIMIT}+ iterations. You are stuck in exploration.\nPlan status:\n${planStatus}\nYou MUST now use write_file or edit_file to implement the change, OR provide FINAL_ANSWER. Stop reading and start acting.`,
+        `[Progress check] No file modifications in ${STAGNATION_NO_MUTATION_LIMIT}+ iterations.\nPlan status:\n${planStatus}\nChoose the next narrow action from the evidence: edit if ready, gather one missing fact, run a focused diagnostic, replan/ask_user, or FINAL_ANSWER with the blocker.`,
       );
       this.#lastMutationIteration = iteration;
     }
@@ -353,17 +353,15 @@ export class AgentContext {
     }
     if (this.#forceActionIgnored === 0) {
       return (
-        `[HARD STOP - Exploration Budget Exhausted] You have spent ${this.#explorationIterations} iterations reading and exploring without making ANY code changes.\n` +
-        'This is a coding task — the user expects code to be written or edited.\n' +
-        'You MUST now use write_file or edit_file to implement the change. ' +
-        'If you cannot identify what to change, provide FINAL_ANSWER explaining why. ' +
-        'Do NOT read or explore any further.'
+        `[IMPLEMENTATION PROGRESS CHECK] You have spent ${this.#explorationIterations} iterations reading and exploring without decisive progress.\n` +
+        'This is a coding task — the user expects a concrete evidence-backed step.\n' +
+        'If the target is clear, apply the smallest scoped edit. If one fact is missing, gather that fact. If the plan is wrong, replan or ask_user. If you cannot proceed, provide FINAL_ANSWER explaining why.'
       );
     }
     return (
-      `[FINAL WARNING] You have ignored the force-action directive for ${this.#forceActionIgnored} iteration(s). ` +
+      `[FINAL WARNING] You have ignored the implementation progress checkpoint for ${this.#forceActionIgnored} iteration(s). ` +
       `You will be terminated in ${FORCE_ACTION_GRACE_TURNS - this.#forceActionIgnored} more iteration(s) ` +
-      `if you do not use write_file or edit_file NOW. This is a coding task — ACT.`
+      `if you do not take a concrete evidence-based step. This is a coding task — act from the evidence.`
     );
   }
 
@@ -371,8 +369,7 @@ export class AgentContext {
   getZeroToolCallNudge() {
     return (
       '[HARD STOP] You have produced 5+ consecutive responses with ZERO tool calls. ' +
-      'You are stuck in an analysis loop. IMMEDIATELY call write_file or edit_file to make ' +
-      'the code change, OR provide FINAL_ANSWER with what you have.'
+      'You are stuck in an analysis loop. Take one concrete action now: edit if the target is clear, gather the one missing fact with a tool, replan/ask_user if blocked, OR provide FINAL_ANSWER with the actual blocker.'
     );
   }
 

@@ -23,6 +23,15 @@ describe('WorkspaceState', () => {
     expect(ws.checkPathExists('/src/app.js')).toBe('exists');
   });
 
+  test('recordFileRead success infers parent directories exist', () => {
+    const ws = new WorkspaceState();
+    ws.recordFileRead('src/game/Snake.js', true, 'content');
+
+    expect(ws.checkPathExists('src')).toBe('exists');
+    expect(ws.checkPathExists('src/game')).toBe('exists');
+    expect(ws.checkPathExists('src/game/Snake.js')).toBe('exists');
+  });
+
   test('recordFileRead caches string and empty content snapshots', () => {
     const ws = new WorkspaceState();
     ws.recordFileRead('/src/app.js', true, 'content');
@@ -169,6 +178,24 @@ describe('WorkspaceState', () => {
     ws.recordPathNotFound('/gone.js', 'deleted');
     const pred = ws.predictToolResult('shell', { command: 'cat /gone.js' });
     expect(pred.canSkip).toBe(true);
+  });
+
+  test('predictToolResult skips redundant mkdir after parent directory was inferred', () => {
+    const ws = new WorkspaceState();
+    ws.recordFileRead('src/game/Snake.js', true, 'content');
+
+    const pred = ws.predictToolResult('shell', { command: "mkdir -p 'src/game'" });
+
+    expect(pred.canSkip).toBe(true);
+    expect(pred.type).toBe('redundant_success');
+    expect(pred.predicted).toContain('Skipped redundant mkdir');
+  });
+
+  test('recordToolResult records successful shell mkdir directories', () => {
+    const ws = new WorkspaceState();
+    ws.recordToolResult('shell', { command: "mkdir -p 'tests'" }, 'ok', true);
+
+    expect(ws.checkPathExists('tests')).toBe('exists');
   });
 
   test('predictToolResult returns unknown for unrecognized tool', () => {

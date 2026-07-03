@@ -2,6 +2,8 @@
  * Tool Registry - manages all tool definitions and lookups
  */
 
+import { normalizeToolResult } from './tool-result.js';
+
 export class ToolRegistry {
   /** @type {Map<string, object>} */
   #tools = new Map();
@@ -263,6 +265,19 @@ export class ToolRegistry {
    * @returns {Promise<any>} - Tool execution result
    */
   async execute(name, args = {}, context = {}) {
+    const meta = await this.executeWithMeta(name, args, context);
+    if (!meta.success && meta.thrown) {
+      throw meta.errorObject;
+    }
+    return meta.result;
+  }
+
+  /**
+   * Execute a tool and return structured execution metadata.
+   * This keeps the legacy execute() API intact while giving professional callers
+   * a reliable success/error contract even when tools return string errors.
+   */
+  async executeWithMeta(name, args = {}, context = {}) {
     const tool = this.get(name);
     if (!tool) {
       throw new Error(`Tool "${name}" not found`);
@@ -270,6 +285,26 @@ export class ToolRegistry {
     if (!tool.handler || typeof tool.handler !== 'function') {
       throw new Error(`Tool "${name}" has no handler function`);
     }
-    return await tool.handler(args, context);
+    const startedAt = Date.now();
+    try {
+      const result = await tool.handler(args, context);
+      return {
+        toolName: name,
+        args,
+        durationMs: Date.now() - startedAt,
+        ...normalizeToolResult(result),
+      };
+    } catch (error) {
+      const result = `Error: ${error instanceof Error ? error.message : String(error)}`;
+      return {
+        toolName: name,
+        args,
+        durationMs: Date.now() - startedAt,
+        ...normalizeToolResult(error),
+        result,
+        thrown: true,
+        errorObject: error,
+      };
+    }
   }
 }

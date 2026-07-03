@@ -21,7 +21,11 @@ function normalizeTimeout(timeout) {
   }
   const numeric = Number(timeout);
   if (!Number.isFinite(numeric) || numeric <= 0) {
-    return { timeoutMs: DEFAULT_TIMEOUT_MS, normalizedFromSeconds: false, originalTimeout: timeout };
+    return {
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+      normalizedFromSeconds: false,
+      originalTimeout: timeout,
+    };
   }
   if (numeric < 1000) {
     return {
@@ -45,23 +49,31 @@ function isInteractiveCommand(command) {
 
 function addNonInteractiveFlags(command) {
   const normalized = command.toLowerCase();
-  
-  if (normalized.includes('jest') && !normalized.includes('--watchall') && !normalized.includes('--watch')) {
+
+  if (
+    normalized.includes('jest') &&
+    !normalized.includes('--watchall') &&
+    !normalized.includes('--watch')
+  ) {
     return command + ' --watchAll=false';
   }
-  
-  if (normalized.includes('vitest') && !normalized.includes('--run') && !normalized.includes('--watch=false')) {
+
+  if (
+    normalized.includes('vitest') &&
+    !normalized.includes('--run') &&
+    !normalized.includes('--watch=false')
+  ) {
     return command + ' --run';
   }
-  
+
   if (normalized.includes('mocha') && !normalized.includes('--watch')) {
     return command;
   }
-  
+
   if (/npm\s+test/i.test(normalized)) {
     return command;
   }
-  
+
   return command;
 }
 
@@ -91,7 +103,9 @@ function buildTimeoutRecoveryMessage(command, timeoutInfo, longRunning) {
     lines.push('Likely cause: finite verification command exceeded the allotted time.');
     lines.push('Recovery plan:');
     lines.push(`1. Retry once with shell using timeout ${retryTimeout}ms.`);
-    lines.push('2. If it times out again, inspect the package scripts/config and run a narrower test/build command.');
+    lines.push(
+      '2. If it times out again, inspect the package scripts/config and run a narrower test/build command.',
+    );
     lines.push('3. Do not mark verification complete until a finite command exits successfully.');
     return lines.join('\n');
   }
@@ -102,9 +116,15 @@ function buildTimeoutRecoveryMessage(command, timeoutInfo, longRunning) {
       : 'Likely cause: command exceeded the allotted time or is waiting for input.',
   );
   lines.push('Recovery plan:');
-  lines.push('1. If it is a dev server, watcher, REPL, TUI, game loop, or interactive prompt, run it with pty_start.');
-  lines.push('2. Inspect progress with pty_read, provide input with pty_write if needed, and stop it with pty_stop.');
-  lines.push(`3. If it should be finite, retry shell with a larger timeout such as ${retryTimeout}ms or narrow the command.`);
+  lines.push(
+    '1. If it is a dev server, watcher, REPL, TUI, game loop, or interactive prompt, run it with pty_start.',
+  );
+  lines.push(
+    '2. Inspect progress with pty_read, provide input with pty_write if needed, and stop it with pty_stop.',
+  );
+  lines.push(
+    `3. If it should be finite, retry shell with a larger timeout such as ${retryTimeout}ms or narrow the command.`,
+  );
   return lines.join('\n');
 }
 
@@ -112,10 +132,9 @@ function executeAsync(command, options = {}) {
   return new Promise((resolve, reject) => {
     const isInteractive = isInteractiveCommand(command);
     const finalCommand = isInteractive ? addNonInteractiveFlags(command) : command;
-    const effectiveTimeout = isInteractive 
-      ? Math.max(options.timeout || INTERACTIVE_TIMEOUT_MS, INTERACTIVE_TIMEOUT_MS)
-      : options.timeout || DEFAULT_TIMEOUT_MS;
-    
+    const effectiveTimeout =
+      options.timeout || (isInteractive ? INTERACTIVE_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
+
     const child = spawn(options.executable || finalCommand, options.args || [], {
       cwd: options.cwd,
       shell: options.shell !== false,
@@ -172,9 +191,18 @@ function executeAsync(command, options = {}) {
       }
     }, 1000);
 
-    child.on('close', (exitCode) => {
+    child.on('close', (exitCode, signal) => {
       clearInterval(noOutputTimer);
-      resolve({ stdout, stderr, exitCode, killed, wasInteractive, originalCommand: command, finalCommand });
+      resolve({
+        stdout,
+        stderr,
+        exitCode,
+        signal,
+        killed: killed || signal === 'SIGTERM' || signal === 'SIGKILL',
+        wasInteractive,
+        originalCommand: command,
+        finalCommand,
+      });
     });
 
     child.on('error', (error) => {
@@ -230,14 +258,14 @@ export function createShellTool(options = {}) {
 
       if (ctx.debug && ctx.ui?.debugEvent) {
         ctx.ui.debugEvent('Shell command prepared', {
-            command: cmd,
-            cwd: ctx.workingDirectory,
-            timeoutMs: ms,
-            originalTimeout: timeoutInfo.originalTimeout,
-            normalizedFromSeconds: timeoutInfo.normalizedFromSeconds,
-            tool: ctx.toolName || 'shell',
-            foregroundBypass: !!foreground,
-          });
+          command: cmd,
+          cwd: ctx.workingDirectory,
+          timeoutMs: ms,
+          originalTimeout: timeoutInfo.originalTimeout,
+          normalizedFromSeconds: timeoutInfo.normalizedFromSeconds,
+          tool: ctx.toolName || 'shell',
+          foregroundBypass: !!foreground,
+        });
       }
 
       for (const pattern of DANGEROUS_SHELL_PATTERNS) {
@@ -354,7 +382,8 @@ export function createShellTool(options = {}) {
           const stdout = result.stdout.trim();
           let msg = `Command failed with exit code ${result.exitCode}`;
           if (result.wasInteractive) {
-            msg += '\nNote: This command appeared to be waiting for input. If it requires interactive prompts, consider running it with pty_start.';
+            msg +=
+              '\nNote: This command appeared to be waiting for input. If it requires interactive prompts, consider running it with pty_start.';
           }
           if (stdout) {
             msg += `\nstdout: ${stdout}`;
@@ -367,7 +396,7 @@ export function createShellTool(options = {}) {
 
         const output = result.stdout.trim();
         if (!output) {
-          return result.wasInteractive 
+          return result.wasInteractive
             ? '(command produced no output; it may have been waiting for input)'
             : '(command produced no output)';
         }

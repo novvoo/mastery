@@ -265,6 +265,58 @@ describe('Intent Analysis and Plan Creation Integration', () => {
 
       expect(result).toBeDefined();
     });
+
+    test('deduplicates repeated semantic task ids from LLM plans', async () => {
+      const mockModelProvider = {
+        chat: mock(() => ({
+          text: JSON.stringify([
+            {
+              id: 'inspect_workspace',
+              name: 'Inspect workspace',
+              description: 'Inspect workspace',
+              dependencies: [],
+              scope_files: ['/'],
+            },
+            {
+              id: 'implement_changes',
+              name: 'Implement core changes',
+              description: 'Implement runtime fix',
+              dependencies: ['inspect_workspace'],
+              scope_files: ['src/runtime/a.js'],
+            },
+            {
+              id: 'implement_changes',
+              name: 'Implement UI changes',
+              description: 'Implement UI fix',
+              dependencies: ['inspect_workspace'],
+              scope_files: ['desktop/renderer/App.jsx'],
+            },
+            {
+              id: 'verify_result',
+              name: 'Verify result',
+              description: 'Run tests',
+              dependencies: ['implement_changes'],
+              scope_files: [],
+            },
+          ]),
+        })),
+      };
+      const planner = new GraphPlanner();
+
+      const result = await planner.decomposeTaskLLM('修复核心能力', mockModelProvider, {
+        availableTools: ['read_file', 'write_file', 'shell'],
+      });
+
+      const implementTasks = result.filter((task) => task.id === 'implement_changes');
+      expect(implementTasks.length).toBe(1);
+      expect(implementTasks[0].description).toContain('Implement runtime fix');
+      expect(implementTasks[0].description).toContain('Implement UI fix');
+      expect(implementTasks[0].scopeFiles).toContain('src/runtime/a.js');
+      expect(implementTasks[0].scopeFiles).toContain('desktop/renderer/App.jsx');
+      expect(result.find((task) => task.id === 'verify_result').dependencies).toEqual([
+        'implement_changes',
+      ]);
+    });
   });
 
   describe('End-to-End Integration', () => {

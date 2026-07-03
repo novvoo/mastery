@@ -6,13 +6,11 @@ const CLASSIFIER_TIMEOUT_MS = 5000;
 
 const NON_LONG_RUNNING_COMMAND_PATTERNS = [
   {
-    pattern:
-      /\b(?:npm|pnpm|yarn|bun)\s+(?:install|i|add|ci|exec|dlx)\b/i,
+    pattern: /\b(?:npm|pnpm|yarn|bun)\s+(?:install|i|add|ci|exec|dlx)\b/i,
     reason: 'Package install command — finite shell task',
   },
   {
-    pattern:
-      /\b(?:npm|pnpm|yarn|bun)\s+run\s+(?!dev\b|serve\b|start\b)[\w:-]+/i,
+    pattern: /\b(?:npm|pnpm|yarn|bun)\s+run\s+(?!dev\b|serve\b|start\b)[\w:-]+/i,
     reason: 'Package run script — finite shell task',
   },
   {

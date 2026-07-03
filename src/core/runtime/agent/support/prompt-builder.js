@@ -72,7 +72,7 @@ export function buildCodingTaskOperatingPrompt(params, extra = {}) {
     `You are working on a coding task. The engine has pre-computed workspace structure and diagnostics.\n` +
     `Use this context directly:\n` +
     `  1) read specific code sections you need to edit (read_file with offset+limit),\n` +
-    `  2) write or edit code (write_file, edit_file, apply_hashline_patch),\n` +
+    `  2) edit existing code with edit_file/apply_hashline_patch, or create new files with write_file,\n` +
     `  3) verify behavior (shell, review, verify).\n` +
     `Do not explore the workspace broadly — act on the pre-computed context.\n` +
     `User request: ${opts.userInput || 'coding task'}`

@@ -376,11 +376,21 @@ export function createFileSystemTools() {
     {
       name: 'write_file',
       description:
-        'Write content to a file. Creates the file if it does not exist, overwrites if it does.',
+        'Write full content to a file. Use for new files by default. For existing files, prefer edit_file or apply_hashline_patch; full-file replacement requires overwrite=true with overwrite_reason.',
       category: ToolCategory.FILESYSTEM,
       params: {
         path: { type: 'string', description: 'File path relative to working directory' },
         content: { type: 'string', description: 'Content to write to the file' },
+        overwrite: {
+          type: 'boolean',
+          description:
+            'Set true only when intentionally replacing an existing file after reading it.',
+        },
+        overwrite_reason: {
+          type: 'string',
+          description:
+            'Required when overwrite=true for an existing file; explain why edit_file/apply_hashline_patch is not appropriate.',
+        },
       },
       required: ['path', 'content'],
       handler: async ({ path, content }, ctx) => {
@@ -492,8 +502,12 @@ export function createFileSystemTools() {
           let matchOffset, matchLength, firstMatchLine, strategy;
 
           const findMatchByLineRange = (start, end) => {
-            if (start < 1 || start > lines.length) {return null;}
-            if (end < start || end > lines.length) {return null;}
+            if (start < 1 || start > lines.length) {
+              return null;
+            }
+            if (end < start || end > lines.length) {
+              return null;
+            }
             let offset = 0;
             for (let i = 0; i < start - 1; i++) {
               offset += lines[i].length + 1;
@@ -508,8 +522,12 @@ export function createFileSystemTools() {
 
           const findExactMatch = (text) => {
             const occurrences = countOccurrences(content, text);
-            if (occurrences === 0) {return null;}
-            if (occurrences > 1) {return { multiple: true };}
+            if (occurrences === 0) {
+              return null;
+            }
+            if (occurrences > 1) {
+              return { multiple: true };
+            }
             const offset = content.indexOf(text);
             return {
               offset,
@@ -519,7 +537,9 @@ export function createFileSystemTools() {
           };
 
           const findFuzzyMatch = (text) => {
-            if (!text || !text.trim()) {return null;}
+            if (!text || !text.trim()) {
+              return null;
+            }
             const trimmed = text.trim();
             const candidates = [];
             for (let i = 0; i < lines.length; i++) {
@@ -766,8 +786,12 @@ INS.POST 6=
 
           const preflightSummary = preflight
             .map((p) => {
-              if (p.ok) {return `  ✓ ${p.path}: tag matches (${p.tag?.substring(0, 12)}...)`;}
-              if (p.recoverable) {return `  ⚠ ${p.path}: stale tag, will attempt recovery`;}
+              if (p.ok) {
+                return `  ✓ ${p.path}: tag matches (${p.tag?.substring(0, 12)}...)`;
+              }
+              if (p.recoverable) {
+                return `  ⚠ ${p.path}: stale tag, will attempt recovery`;
+              }
               return `  ✗ ${p.path}: ${p.error}`;
             })
             .join('\n');

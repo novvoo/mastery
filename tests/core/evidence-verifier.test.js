@@ -188,6 +188,24 @@ describe('evidence-verifier', () => {
       );
       expect(result.block).toBe(false);
     });
+
+    test('does not require methodology evidence when the gate is disabled', () => {
+      const result = checkCompletionGates(
+        [
+          { name: 'write_file', success: true },
+          { name: 'shell', args: { command: 'bun test' }, success: true },
+        ],
+        {
+          requireMutation: true,
+          requireRuntimeVerification: true,
+          requireMethodologyTool: false,
+          requireSemanticRiskReview: false,
+        },
+        { isModificationTask: true },
+      );
+      expect(result.block).toBe(false);
+      expect(result.missing).not.toContain('no_methodology_tool');
+    });
   });
 
   describe('crossCheckVerifyClaim', () => {
