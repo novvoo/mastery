@@ -734,8 +734,6 @@ export class TextToolParser {
       internet_search: 'web_search',
       fetch_url: 'web_fetch',
       browser_fetch: 'web_fetch',
-      plan: 'brainstorm',
-      plan_solution: 'brainstorm',
     };
     if (snakeName === 'create_directory' || snakeName === 'mkdir') {
       const path = args.path || args.dir || args.directory || '.';
@@ -764,7 +762,7 @@ export class TextToolParser {
             args.steps ||
             args.plan ||
             args.value ||
-            'Plan the requested implementation before editing files.',
+            'Explore candidate approaches for the requested change.',
         },
       };
     }
@@ -881,7 +879,7 @@ export class TextToolParser {
       const problem =
         parsedArgs.problem ??
         parsedArgs.positional[0] ??
-        'Plan the requested implementation before editing files.';
+        'Explore candidate approaches for the requested change.';
       return { problem };
     }
     return {};

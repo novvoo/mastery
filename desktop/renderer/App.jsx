@@ -141,9 +141,19 @@ function App() {
   const {
     activeAgentSessionId,
     sessions,
+    loading,
+    searchQuery,
+    setSearchQuery,
+    hasMore,
+    loadMore,
     handleNewTask,
     handleClearHistory,
     handleRestoreHistory,
+    handleSelectSession,
+    handleDeleteSession,
+    handleRenameSession,
+    handleForkSession,
+    handleRefreshSessions,
   } = useSessionManager(runtime, workingDirectory);
 
   // ── 项目目录树 ───────────────────────────────────────────
@@ -195,6 +205,7 @@ function App() {
     handleSubmitAgentInput,
     clearInput,
     canEditComposer,
+    queueCount,
   } = useChatComposer(runtime, agentOptions, activeAgentSessionId, {
     setPreviewSession,
     followPreviewUrl,
@@ -490,6 +501,15 @@ function App() {
             onSwitchSession={handleRestoreHistoryCallback}
             onRestoreHistory={handleRestoreHistoryCallback}
             onClearHistory={handleClearAgentHistory}
+            onDeleteSession={handleDeleteSession}
+            onRenameSession={handleRenameSession}
+            onForkSession={handleForkSession}
+            onRefreshSessions={handleRefreshSessions}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            loading={loading}
+            hasMore={hasMore}
+            onLoadMore={loadMore}
             onNewTask={handleNewTaskCallback}
             onWorkingDirectoryChange={handleWorkingDirectoryChange}
             onOpenFile={handleOpenWorkspaceFile}
@@ -534,6 +554,7 @@ function App() {
             inputFocused={inputFocused}
             inputEditable={canEditComposer}
             showSuggestions={showSuggestions}
+            queueCount={queueCount}
             onAskAgentFromMessage={handleAskAgentFromMessage}
             onChatInputChange={handleChatInputChange}
             onChatKeyDown={handleChatKeyDown}
@@ -567,18 +588,29 @@ function App() {
             inspectorExpanded={inspectorExpanded}
             inspectorPanelWidth={inspectorPanelWidth}
             ipc={ipc}
+            messages={runtime.messages}
             previewFrameKey={previewFrameKey}
             previewSession={previewSession}
             previewStatus={previewStatus}
             previewUrlDraft={previewUrlDraft}
             ragDocs={ragDocs}
             ragStatus={ragStatus}
+            sessions={sessions}
+            activeSessionId={activeAgentSessionId}
+            sessionLoading={loading}
+            sessionHasMore={hasMore}
+            sessionSearchQuery={searchQuery}
             workingDirectory={workingDirectory}
             fileServerUrl={fileServerUrl}
             onAddDocuments={handleAddRagDocuments}
+            onClearHistory={handleClearHistory(window.confirm, clearInput)}
+            onDeleteSession={handleDeleteSession}
             onExpandToggle={handleInspectorExpandToggle}
+            onForkSession={handleForkSession}
             onInitializeIndex={handleInitializeRagIndex}
             onInsertDocSearch={handleInsertDocSearch}
+            onLoadMoreSessions={loadMore}
+            onNewSession={handleNewTaskCallback}
             onOpenExternal={handleOpenExternal}
             onPreviewUrlDraftChange={setPreviewUrlDraft}
             onPreviewUrlSubmit={handlePreviewUrlSubmit}
@@ -586,8 +618,10 @@ function App() {
             onRemoveDocument={handleRemoveRagDocument}
             onResetRag={handleResetRag}
             onResizeStart={handleInspectorResizeStart}
+            onSearchSessions={setSearchQuery}
             onStartPreview={handleStartPreview}
             onStopPreview={handleStopPreview}
+            onSwitchSession={(id) => handleSelectSession(id, clearInput)}
             onTabChange={setActiveInspectorTab}
           />
         )}

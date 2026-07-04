@@ -17,6 +17,7 @@ import {
   analyzeHashlinePatchResult,
   extractHashlinePatchPaths,
 } from '../../src/core/runtime/agent/support/hashline-plan-policy.js';
+import { HASHLINE_TOOL_DESCRIPTION } from '../../src/tools/filesystem/filesystem-tools.js';
 
 describe('isWorkspaceInspectionTool', () => {
   test('returns true for list_dir', () => {
@@ -211,6 +212,14 @@ describe('isTddEvidenceTool', () => {
 });
 
 describe('hashline plan policy', () => {
+  test('Hashline tool prompt describes the model-facing protocol without internals', () => {
+    expect(HASHLINE_TOOL_DESCRIPTION).toContain('Every section starts with [path/to/file#tag]');
+    expect(HASHLINE_TOOL_DESCRIPTION).toContain('INS.POST N:');
+    expect(HASHLINE_TOOL_DESCRIPTION).toContain('Body rows are final content');
+    expect(HASHLINE_TOOL_DESCRIPTION).not.toMatch(/3-way|EditOrchestrator|diagnostics gate/i);
+    expect(HASHLINE_TOOL_DESCRIPTION).not.toContain('compute the tag');
+  });
+
   test('extracts section paths from Hashline patch text', () => {
     const paths = extractHashlinePatchPaths({
       patch: `[src/a.js#abc]\nSWAP 1.=1:\n+one\n[src/b.ts#def]\nDEL 2.=2`,
@@ -829,6 +838,12 @@ describe('ExecutionPlanManager', () => {
       'implementation',
       'inspection',
     ]);
+    expect(repairTasks.map((task) => task.name)).toEqual([
+      'Re-read edited file context',
+      'Rebuild and apply edit',
+      'Inspect edited result',
+    ]);
+    expect(repairTasks[0].description).not.toMatch(/stale anchors|diagnostics before retrying/i);
     expect(repairTasks[0].status).toBe('running');
     expect(repairTasks[0].scopeFiles).toEqual(['app.js']);
   });
@@ -1000,7 +1015,11 @@ describe('ExecutionPlanManager', () => {
 
     expect(manager.plan.context.workspaceMode).toBe('empty_create_from_scratch');
     expect(manager.plan.getTask('inspect_workspace').status).toBe('completed');
-    expect(manager.plan.getTask('setup_project_structure').status).toBe('running');
+    expect(manager.plan.getTask('design_project').status).toBe('running');
+    expect(manager.plan.getTask('setup_project_structure').status).toBe('pending');
+    expect(manager.plan.getTask('setup_project_structure').dependencies.has('design_project')).toBe(
+      true,
+    );
   });
 
   test('fact-blocked guessed reads skip stale exploration gates and unlock creation', () => {

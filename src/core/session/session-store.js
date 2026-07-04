@@ -221,3 +221,162 @@ export function createFileSystemStorageAdapter(configDir, fs, path) {
     },
   };
 }
+
+export class SessionStore {
+  #sessions = new Map();
+  #fileStore = null;
+  #workingDirectory = '';
+  #autoPersist = true;
+  #pendingWrites = [];
+
+  constructor(options = {}) {
+    this.#fileStore = options.fileStore || null;
+    this.#workingDirectory = options.workingDirectory || '';
+    this.#autoPersist = options.autoPersist !== false;
+  }
+
+  createSession(sessionId, meta = {}) {
+    const now = Date.now();
+    const session = {
+      id: sessionId,
+      title: meta.title || '未命名会话',
+      createdAt: meta.createdAt || now,
+      updatedAt: now,
+      messages: [],
+      toolCalls: [],
+      toolResults: [],
+      ...meta,
+    };
+    this.#sessions.set(sessionId, session);
+
+    if (this.#fileStore && this.#autoPersist) {
+      this.#enqueueWrite(() =>
+        this.#fileStore.appendMeta(
+          sessionId,
+          {
+            title: session.title,
+            createdAt: session.createdAt,
+            workingDirectory: this.#workingDirectory,
+            status: meta.status || 'running',
+          },
+          this.#workingDirectory,
+        ),
+      );
+    }
+
+    return session;
+  }
+
+  getSession(sessionId) {
+    return this.#sessions.get(sessionId) || null;
+  }
+
+  addMessage(sessionId, message) {
+    const session = this.#sessions.get(sessionId);
+    if (!session) {
+      return null;
+    }
+    session.messages.push(message);
+    session.updatedAt = Date.now();
+
+    if (this.#fileStore && this.#autoPersist) {
+      this.#enqueueWrite(() =>
+        this.#fileStore.appendMessage(sessionId, message, this.#workingDirectory),
+      );
+    }
+
+    return message;
+  }
+
+  addToolCall(sessionId, toolName, args) {
+    const session = this.#sessions.get(sessionId);
+    if (!session) {
+      return null;
+    }
+    const toolCall = {
+      toolName,
+      args,
+      timestamp: Date.now(),
+    };
+    session.toolCalls.push(toolCall);
+    session.updatedAt = Date.now();
+
+    if (this.#fileStore && this.#autoPersist) {
+      this.#enqueueWrite(() =>
+        this.#fileStore.appendToolCall(sessionId, toolName, args, this.#workingDirectory),
+      );
+    }
+
+    return toolCall;
+  }
+
+  addToolResult(sessionId, toolName, result) {
+    const session = this.#sessions.get(sessionId);
+    if (!session) {
+      return null;
+    }
+    const toolResult = {
+      toolName,
+      result,
+      timestamp: Date.now(),
+    };
+    session.toolResults.push(toolResult);
+    session.updatedAt = Date.now();
+
+    if (this.#fileStore && this.#autoPersist) {
+      this.#enqueueWrite(() =>
+        this.#fileStore.appendToolResult(sessionId, toolName, result, this.#workingDirectory),
+      );
+    }
+
+    return toolResult;
+  }
+
+  getMessages(sessionId) {
+    const session = this.#sessions.get(sessionId);
+    return session ? [...session.messages] : [];
+  }
+
+  getAllSessions() {
+    return Array.from(this.#sessions.values());
+  }
+
+  deleteSession(sessionId) {
+    return this.#sessions.delete(sessionId);
+  }
+
+  #enqueueWrite(promiseFn) {
+    const promise = Promise.resolve()
+      .then(promiseFn)
+      .catch((error) => {
+        console.error('[SessionStore] Persist write failed:', error.message);
+      });
+    this.#pendingWrites.push(promise);
+    const cleanup = () => {
+      const idx = this.#pendingWrites.indexOf(promise);
+      if (idx >= 0) {
+        this.#pendingWrites.splice(idx, 1);
+      }
+    };
+    promise.then(cleanup, cleanup);
+  }
+
+  async flush() {
+    if (this.#fileStore && typeof this.#fileStore.flush === 'function') {
+      await this.#fileStore.flush();
+    }
+    await Promise.all(this.#pendingWrites);
+  }
+
+  getFileStore() {
+    return this.#fileStore;
+  }
+
+  get workingDirectory() {
+    return this.#workingDirectory;
+  }
+}
+
+export function createSessionStore(options = {}) {
+  return new SessionStore(options);
+}

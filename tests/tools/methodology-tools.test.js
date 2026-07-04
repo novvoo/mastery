@@ -1,4 +1,6 @@
 import { describe, test, expect } from 'bun:test';
+import createBrainstormTool from '../../src/tools/skills/brainstorm.js';
+import createTddTool from '../../src/tools/skills/tdd.js';
 import {
   createDataContractCheckTool,
   createImpactMapTool,
@@ -57,5 +59,31 @@ describe('expanded methodology tools', () => {
     });
     expect(result).toContain('Security Review');
     expect(result).toContain('permission bypass');
+  });
+
+  test('brainstorm is an optional planning aid, not a hard gate', async () => {
+    const tool = createBrainstormTool();
+    const result = await tool.handler({
+      problem: 'Refactor parser planning behavior',
+      constraints: 'avoid ceremonial tool calls',
+    });
+
+    expect(tool.description).toContain('Optional design exploration');
+    expect(result).toContain('Planning aid');
+    expect(result).not.toContain('HARD-GATE');
+    expect(result).not.toContain('must be reviewed and approved');
+  });
+
+  test('tdd guidance does not forbid implementation when evidence already exists', async () => {
+    const tool = createTddTool();
+    const result = await tool.handler({
+      component: 'parser',
+      spec: 'does not coerce plan task ids into brainstorm calls',
+      phase: 'red',
+    });
+
+    expect(result).toContain('Prefer a focused failing test');
+    expect(result).toContain('If stronger evidence already exists');
+    expect(result).not.toContain('Do NOT write any implementation code');
   });
 });

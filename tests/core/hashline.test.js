@@ -261,6 +261,13 @@ describe('hashline: parsePatch', () => {
     expect(h[1]).toMatchObject({ op: OP_INS_POST, start: 5, lines: ['after'] });
   });
 
+  test('parses colon body headers for INS.PRE and INS.POST', () => {
+    const patch = parsePatch('[a#t]\nINS.PRE 3:\n+before\nINS.POST 5:\n+after');
+    const h = patch.sections[0].hunks;
+    expect(h[0]).toMatchObject({ op: OP_INS_PRE, start: 3, lines: ['before'] });
+    expect(h[1]).toMatchObject({ op: OP_INS_POST, start: 5, lines: ['after'] });
+  });
+
   test('content line: + is pure marker, content preserved verbatim', () => {
     // `+` 是标记符，其后内容原样保留（保留缩进）
     const a = parsePatch('[a#t]\nSWAP 1.=1:\n+foo');
@@ -519,18 +526,18 @@ describe('hashline: Patcher recovery', () => {
     expect(r.sections[0].warnings[0]).toContain('recovered');
   });
 
-  test('3-way merge detects conflicts when base and current differ', async () => {
+  test('stale tag with content drift fails with mismatch error', async () => {
     const fs = new MemoryFilesystem({ 'a.txt': 'line1\nline2\nline3\n' });
     const snapshots = new InMemorySnapshotStore();
     const tag = snapshots.record('a.txt', 'line1\nline2\nline3\n');
     await fs.write('a.txt', 'line1\nMODIFIED\nline3\n');
     const patcher = new Patcher({ fs, snapshots });
     const r = await patcher.apply(`[a.txt#${tag}]\nSWAP 2.=2:\n+PATCHED`);
-    expect(r.ok).toBe(true);
-    expect(r.sections[0].recovered).toBe(true);
-    expect(r.sections[0].conflicts.length).toBeGreaterThan(0);
-    expect(r.sections[0].conflicts[0].type).toBe('conflict');
-    expect(r.sections[0].warnings.some((w) => w.includes('conflict'))).toBe(true);
+    expect(r.ok).toBe(false);
+    expect(r.error).toBeDefined();
+    expect(/mismatch|stale|hash/i.test(r.error)).toBe(true);
+    expect(r.conflicts.length).toBeGreaterThan(0);
+    expect(patcher.getLastConflicts().length).toBeGreaterThan(0);
   });
 
   test('LCS-based line mapping handles deletions correctly', async () => {
@@ -555,13 +562,14 @@ describe('hashline: Patcher recovery', () => {
     expect(await fs.read('a.txt')).toBe('a\nINSERTED\nb\nMODIFIED_C\n');
   });
 
-  test('getLastConflicts returns detected conflicts', async () => {
+  test('getLastConflicts returns mismatch info on stale tag', async () => {
     const fs = new MemoryFilesystem({ 'a.txt': 'base\n' });
     const snapshots = new InMemorySnapshotStore();
     const tag = snapshots.record('a.txt', 'base\n');
     await fs.write('a.txt', 'modified\n');
     const patcher = new Patcher({ fs, snapshots });
-    await patcher.apply(`[a.txt#${tag}]\nSWAP 1.=1:\n+patched\n`);
+    const r = await patcher.apply(`[a.txt#${tag}]\nSWAP 1.=1:\n+patched\n`);
+    expect(r.ok).toBe(false);
     const conflicts = patcher.getLastConflicts();
     expect(conflicts.length).toBeGreaterThan(0);
     expect(conflicts[0].type).toBe('conflict');

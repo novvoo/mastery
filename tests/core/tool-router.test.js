@@ -104,12 +104,14 @@ describe('selectToolsForRequest', () => {
     expect(names).toContain('shell');
     expect(names).toContain('git_status');
     expect(names).toContain('change_plan');
-    expect(names).toContain('impact_map');
-    expect(names).toContain('risk_check');
-    expect(names).toContain('test_strategy');
+    expect(names).toContain('ask_user');
+    expect(names).toContain('diagnose');
+    expect(names).not.toContain('impact_map');
+    expect(names).not.toContain('risk_check');
+    expect(names).not.toContain('test_strategy');
   });
 
-  test('current task allowedTools still exposes change_plan for dynamic replanning', () => {
+  test('current task allowedTools exposes execution substrate without ceremonial methodology', () => {
     const selected = selectToolsForRequest(ALL_TOOLS, {
       currentTask: { allowedTools: ['read_file'] },
     });
@@ -118,9 +120,10 @@ describe('selectToolsForRequest', () => {
     expect(names).toContain('change_plan');
     expect(names).toContain('write_file');
     expect(names).toContain('shell');
-    expect(names).toContain('risk_check');
-    expect(names).toContain('verify');
-    expect(names).toContain('review');
+    expect(names).not.toContain('risk_check');
+    expect(names).not.toContain('verify');
+    expect(names).not.toContain('review');
+    expect(names).not.toContain('brainstorm');
   });
 
   test('current task allowedTools preserves safe context tools for plan execution', () => {
@@ -195,12 +198,13 @@ describe('selectToolsForRequest', () => {
     expect(names).toContain('diagnose');
   });
 
-  test('non-coding task gets core read tools and general methodology', () => {
+  test('non-coding task gets core read tools and minimal clarification only', () => {
     const selected = selectToolsForRequest(ALL_TOOLS, { userInput: 'hello world' });
     const names = namesOf(selected);
     expect(names).toContain('read_file');
     expect(names).toContain('ask_user');
-    expect(names).toContain('brainstorm');
+    expect(names).not.toContain('brainstorm');
+    expect(names).not.toContain('write_file');
   });
 
   test('non-coding task requesting fresh data gets web tools', () => {
@@ -304,14 +308,16 @@ describe('selectToolsForRequest', () => {
     expect(names).toContain('read_file');
   });
 
-  test('coding task without currentPhase gets general methodology tools', () => {
+  test('coding task without currentPhase gets minimal methodology tools', () => {
     const selected = selectToolsForRequest(ALL_TOOLS, {
       taskProfile: { isCodingTask: true },
     });
     const names = namesOf(selected);
     expect(names).toContain('ask_user');
-    expect(names).toContain('review');
     expect(names).toContain('diagnose');
+    expect(names).not.toContain('review');
+    expect(names).not.toContain('verify');
+    expect(names).not.toContain('brainstorm');
   });
 
   test('only selects tools that exist in allTools', () => {

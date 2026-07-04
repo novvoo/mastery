@@ -137,4 +137,199 @@ describe('ToolRegistry', () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe('Command failed');
   });
+
+  // —— paramAliases 别名映射测试 ——
+  test('paramAliases maps alias to canonical name', () => {
+    const reg = new ToolRegistry();
+    reg.register(
+      makeTool('edit_file', {
+        params: {
+          path: { type: 'string' },
+          old_text: { type: 'string' },
+          new_text: { type: 'string', allowEmpty: true },
+        },
+        required: ['path', 'new_text'],
+        paramAliases: { file_path: 'path', old_str: 'old_text', new_str: 'new_text' },
+      }),
+    );
+
+    // LLM 用 old_str/new_str（如 system-prompt 示例曾用过的参数名）
+    const result = reg.validateAndCoerceArgs('edit_file', {
+      path: 'test.js',
+      old_str: 'foo',
+      new_str: 'bar',
+    });
+    expect(result.valid).toBe(true);
+    expect(result.coercedArgs.old_text).toBe('foo');
+    expect(result.coercedArgs.new_text).toBe('bar');
+    expect(result.coercedArgs.old_str).toBeUndefined();
+    expect(result.coercedArgs.new_str).toBeUndefined();
+  });
+
+  test('paramAliases maps file_path to path', () => {
+    const reg = new ToolRegistry();
+    reg.register(
+      makeTool('read_file', {
+        params: { path: { type: 'string' } },
+        required: ['path'],
+        paramAliases: { file_path: 'path' },
+      }),
+    );
+
+    const result = reg.validateAndCoerceArgs('read_file', { file_path: 'test.js' });
+    expect(result.valid).toBe(true);
+    expect(result.coercedArgs.path).toBe('test.js');
+  });
+
+  // —— allowEmpty 空字符串测试 ——
+  test('allowEmpty: true allows empty string for required field', () => {
+    const reg = new ToolRegistry();
+    reg.register(
+      makeTool('edit_file', {
+        params: {
+          path: { type: 'string' },
+          new_text: { type: 'string', allowEmpty: true },
+        },
+        required: ['path', 'new_text'],
+      }),
+    );
+
+    // new_text: "" 表示删除操作，应通过校验
+    const result = reg.validateAndCoerceArgs('edit_file', {
+      path: 'test.js',
+      new_text: '',
+    });
+    expect(result.valid).toBe(true);
+    expect(result.coercedArgs.new_text).toBe('');
+  });
+
+  test('allowEmpty: false (default) rejects empty string for required field', () => {
+    const reg = new ToolRegistry();
+    reg.register(
+      makeTool('write_file', {
+        params: {
+          path: { type: 'string' },
+          content: { type: 'string' },
+        },
+        required: ['path', 'content'],
+      }),
+    );
+
+    // content: "" 应被拦截（write_file 不允许空内容）
+    const result = reg.validateAndCoerceArgs('write_file', {
+      path: 'test.js',
+      content: '',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('content'))).toBe(true);
+  });
+
+  test('allowEmpty only applies to fields that declare it', () => {
+    const reg = new ToolRegistry();
+    reg.register(
+      makeTool('edit_file', {
+        params: {
+          path: { type: 'string' },
+          new_text: { type: 'string', allowEmpty: true },
+        },
+        required: ['path', 'new_text'],
+      }),
+    );
+
+    // path: "" 仍然应被拦截（path 没声明 allowEmpty）
+    const result = reg.validateAndCoerceArgs('edit_file', {
+      path: '',
+      new_text: 'content',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('path'))).toBe(true);
+  });
+
+  // —— edit_file 别名 + allowEmpty 组合测试 ——
+  test('edit_file: old_str/new_str aliases + new_str="" (delete via alias)', () => {
+    const reg = new ToolRegistry();
+    reg.register(
+      makeTool('edit_file', {
+        params: {
+          path: { type: 'string' },
+          old_text: { type: 'string' },
+          new_text: { type: 'string', allowEmpty: true },
+        },
+        required: ['path', 'new_text'],
+        paramAliases: { file_path: 'path', old_str: 'old_text', new_str: 'new_text' },
+      }),
+    );
+
+    // LLM 用别名 new_str: "" 删除内容
+    const result = reg.validateAndCoerceArgs('edit_file', {
+      file_path: 'test.js',
+      old_str: 'line to delete',
+      new_str: '',
+    });
+    expect(result.valid).toBe(true);
+    expect(result.coercedArgs.path).toBe('test.js');
+    expect(result.coercedArgs.old_text).toBe('line to delete');
+    expect(result.coercedArgs.new_text).toBe('');
+  });
+
+  // —— old_string/new_string 别名测试（claude-code/Aider 惯例）——
+  test('edit_file: old_string/new_string aliases (claude-code convention)', () => {
+    const reg = new ToolRegistry();
+    reg.register(
+      makeTool('edit_file', {
+        params: {
+          path: { type: 'string' },
+          old_text: { type: 'string' },
+          new_text: { type: 'string', allowEmpty: true },
+        },
+        required: ['path', 'new_text'],
+        paramAliases: {
+          file_path: 'path',
+          old_str: 'old_text',
+          new_str: 'new_text',
+          old_string: 'old_text',
+          new_string: 'new_text',
+        },
+      }),
+    );
+
+    const result = reg.validateAndCoerceArgs('edit_file', {
+      file_path: 'test.js',
+      old_string: 'old code',
+      new_string: 'new code',
+    });
+    expect(result.valid).toBe(true);
+    expect(result.coercedArgs.path).toBe('test.js');
+    expect(result.coercedArgs.old_text).toBe('old code');
+    expect(result.coercedArgs.new_text).toBe('new code');
+  });
+
+  test('edit_file: new_string="" (delete via old_string/new_string alias)', () => {
+    const reg = new ToolRegistry();
+    reg.register(
+      makeTool('edit_file', {
+        params: {
+          path: { type: 'string' },
+          old_text: { type: 'string' },
+          new_text: { type: 'string', allowEmpty: true },
+        },
+        required: ['path', 'new_text'],
+        paramAliases: {
+          file_path: 'path',
+          old_str: 'old_text',
+          new_str: 'new_text',
+          old_string: 'old_text',
+          new_string: 'new_text',
+        },
+      }),
+    );
+
+    const result = reg.validateAndCoerceArgs('edit_file', {
+      path: 'test.js',
+      old_string: 'line to delete',
+      new_string: '',
+    });
+    expect(result.valid).toBe(true);
+    expect(result.coercedArgs.new_text).toBe('');
+  });
 });

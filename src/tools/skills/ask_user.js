@@ -42,12 +42,16 @@ export default function askUser() {
         items: { type: 'string', description: 'Suggested answer or choice.' },
       },
     },
-    required: ['reason', 'questions'],
+    required: [],
     handler: async (params) => {
       const questions = normalizeList(params.questions).slice(0, 3);
       const blockingFacts = normalizeList(params.blocking_facts);
       const suggestions = normalizeList(params.suggestions);
       const reason = String(params.reason || '').trim() || 'Need user input before continuing.';
+
+      if (questions.length === 0) {
+        questions.push('Please provide clarification or additional information.');
+      }
 
       return {
         type: 'user_input_required',

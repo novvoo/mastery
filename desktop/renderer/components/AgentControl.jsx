@@ -1,25 +1,19 @@
-/**
- * Agent 控制面板组件（增强版）
- * 提供 Agent 的输入、执行控制等功能
- *
- * 新增功能：
- * - 智能输入提示（自动补全）
- * - 快捷命令面板
- * - 输入历史搜索
- * - 输入模板
- * - 多行输入支持
- * - 字符计数
- */
-
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { getRuntimeStatusMeta } from '../runtime/runtime-status.js';
 import { useIPC } from '../hooks/useIPC.js';
 import { ProjectTree } from './workbench/ProjectTree.jsx';
 
-// removed
 const ACTIVE_AGENT_SESSION_STORAGE_KEY = 'activeAgentConversationSessionId';
 
-// 样式定义
+const SESSION_STATUS_COLORS = {
+  running: 'var(--primary-color)',
+  complete: 'var(--success-color)',
+  error: 'var(--error-color)',
+  interrupted: 'var(--warning-color)',
+  pending: 'var(--text-muted)',
+  unknown: 'var(--text-dark)',
+};
+
 const styles = {
   container: {
     flex: 1,
@@ -44,7 +38,6 @@ const styles = {
     gap: '8px',
   },
 
-  // 状态区域
   statusContainer: {
     display: 'flex',
     alignItems: 'center',
@@ -92,7 +85,6 @@ const styles = {
     border: 'none',
   },
 
-  // 工作目录
   workingDirectory: {
     display: 'flex',
     alignItems: 'center',
@@ -141,7 +133,6 @@ const styles = {
     minHeight: 0,
   },
 
-  // 输入区域
   inputContainer: {
     display: 'flex',
     flexDirection: 'column',
@@ -211,7 +202,6 @@ const styles = {
     transition: 'all 0.15s',
   },
 
-  // 智能提示
   suggestionsContainer: {
     position: 'absolute',
     bottom: '100%',
@@ -260,7 +250,6 @@ const styles = {
     backgroundColor: 'var(--background-color)',
   },
 
-  // 按钮组
   buttonGroup: {
     display: 'flex',
     gap: '8px',
@@ -299,21 +288,22 @@ const styles = {
     cursor: 'not-allowed',
   },
 
-  // 历史记录
   historySection: {
-    maxHeight: '200px',
+    maxHeight: '360px',
     overflowY: 'auto',
   },
 
   historySearch: {
     width: '100%',
-    padding: '6px 10px',
-    borderRadius: '4px',
-    border: 'none',
+    padding: '8px 10px',
+    borderRadius: '6px',
+    border: '1px solid var(--glass-border)',
     backgroundColor: 'var(--background-color)',
     color: 'var(--text-color)',
     fontSize: '12px',
-    marginBottom: '8px',
+    marginBottom: '10px',
+    outline: 'none',
+    boxSizing: 'border-box',
   },
 
   historyList: {
@@ -343,7 +333,10 @@ const styles = {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    maxWidth: '90%',
+    maxWidth: 'calc(100% - 60px)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
   },
 
   historyItemTime: {
@@ -352,27 +345,74 @@ const styles = {
     marginTop: '4px',
   },
 
-  historyItemDelete: {
+  historyItemActions: {
     position: 'absolute',
-    right: '8px',
+    right: '4px',
     top: '50%',
     transform: 'translateY(-50%)',
-    padding: '2px 4px',
+    display: 'flex',
+    gap: '2px',
+    opacity: '0',
+    transition: 'opacity 0.15s',
+  },
+
+  historyItemActionsVisible: {
+    opacity: '1',
+  },
+
+  iconButton: {
+    padding: '4px 6px',
     borderRadius: '3px',
     border: 'none',
     backgroundColor: 'transparent',
     color: 'var(--text-muted)',
     cursor: 'pointer',
     fontSize: '11px',
-    opacity: '0',
-    transition: 'opacity 0.15s',
+    transition: 'all 0.15s',
   },
 
-  historyItemDeleteVisible: {
-    opacity: '1',
+  statusDot: {
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    flexShrink: 0,
   },
 
-  // 模板面板
+  loadMoreButton: {
+    width: '100%',
+    padding: '8px',
+    marginTop: '8px',
+    borderRadius: '4px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--background-color)',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    fontSize: '12px',
+    transition: 'all 0.15s',
+  },
+
+  loadingSkeleton: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+  },
+
+  skeletonItem: {
+    height: '32px',
+    borderRadius: '4px',
+    backgroundColor: 'var(--glass-bg-light)',
+    animation: 'pulse 1.5s ease-in-out infinite',
+  },
+
+  spinner: {
+    width: '16px',
+    height: '16px',
+    border: '2px solid var(--glass-border)',
+    borderTopColor: 'var(--primary-color)',
+    borderRadius: '50%',
+    animation: 'spin 0.8s linear infinite',
+  },
+
   templatesPanel: {
     backgroundColor: 'var(--glass-bg-light)',
     borderRadius: '10px',
@@ -427,7 +467,6 @@ const styles = {
     marginLeft: '4px',
   },
 
-  // 执行选项
   optionsContainer: {
     display: 'flex',
     flexDirection: 'column',
@@ -463,7 +502,6 @@ const styles = {
     fontSize: '12px',
   },
 
-  // 空状态
   emptyHistory: {
     textAlign: 'center',
     padding: '16px',
@@ -472,7 +510,6 @@ const styles = {
   },
 };
 
-// 输入模板定义
 const INPUT_TEMPLATES = [
   {
     icon: 'BUG',
@@ -507,17 +544,6 @@ const INPUT_TEMPLATES = [
   },
 ];
 
-/**
- * Agent 控制面板组件
- * @param {Object} props - 组件属性
- * @param {Object} props.runtime - Runtime Hook 返回的对象
- * @param {string} props.workingDirectory - 当前工作目录
- * @param {Function} props.onWorkingDirectoryChange - 工作目录变更回调
- * @param {Object} props.agentOptions - 当前执行选项
- * @param {Function} props.onOptionsChange - 执行选项变更回调
- * @param {Function} props.onInsertText - 将文本插入到主消息输入框
- * @param {Object} props.projectTree - 当前项目文件树状态和操作
- */
 function AgentControl({
   runtime,
   workingDirectory,
@@ -530,11 +556,19 @@ function AgentControl({
   onSwitchSession,
   onRestoreHistory,
   onClearHistory,
+  onDeleteSession,
+  onRenameSession,
+  onForkSession,
+  onRefreshSessions,
+  searchQuery,
+  onSearchChange,
+  loading,
+  hasMore,
+  onLoadMore,
   projectTree,
   onOpenFile,
   activeOpenFile,
 }) {
-  // 状态
   const ipc = useIPC();
 
   const [showTemplates, setShowTemplates] = useState(false);
@@ -571,7 +605,6 @@ function AgentControl({
     [onOptionsChange],
   );
 
-  // 获取状态样式
   const getStatusStyle = () => {
     const statusMeta = getRuntimeStatusMeta(runtime.status);
     switch (runtime.status) {
@@ -596,10 +629,28 @@ function AgentControl({
     }
   };
 
-  // 获取状态文本
   const getStatusText = () => {
     return getRuntimeStatusMeta(runtime.status).text;
   };
+
+  const getSessionStatusColor = (session) => {
+    const status = session?.status || 'unknown';
+    return SESSION_STATUS_COLORS[status] || SESSION_STATUS_COLORS.unknown;
+  };
+
+  const handleForkClick = useCallback((e, sessionId) => {
+    e.stopPropagation();
+    if (onForkSession) {
+      onForkSession(sessionId);
+    }
+  }, [onForkSession]);
+
+  const handleDeleteClick = useCallback((e, sessionId) => {
+    e.stopPropagation();
+    if (onDeleteSession) {
+      onDeleteSession(sessionId);
+    }
+  }, [onDeleteSession]);
 
   const rootName = workingDirectory
     ? workingDirectory.split(/[\\/]/).filter(Boolean).pop() || workingDirectory
@@ -607,12 +658,10 @@ function AgentControl({
 
   return (
     <div style={styles.container}>
-      {/* 状态显示 */}
       <div style={styles.section}>
         <div style={styles.statusContainer}>
           <div style={getStatusStyle()}>{getStatusText()}</div>
 
-          {/* 运行时间 */}
           {runtime.status === 'running' && runtime.stats?.startTime && (
             <div
               style={{
@@ -625,7 +674,6 @@ function AgentControl({
           )}
         </div>
 
-        {/* 工作目录 */}
         <div style={styles.workingDirectory}>
           <span style={styles.directoryIcon}>Workspace</span>
           <span style={styles.directoryText}>{workingDirectory || '未设置'}</span>
@@ -649,9 +697,6 @@ function AgentControl({
         </div>
       </div>
 
-      {/* 快捷命令面板已移除 */}
-
-      {/* 输入区域 */}
       <div style={styles.section}>
         <div style={styles.sectionTitle}>
           <span>输入任务</span>
@@ -664,7 +709,6 @@ function AgentControl({
           </button>
         </div>
 
-        {/* 模板面板 */}
         {showTemplates && (
           <div style={styles.templatesPanel}>
             <div style={styles.templatesHeader}>
@@ -693,7 +737,6 @@ function AgentControl({
         )}
       </div>
 
-      {/* 执行选项 */}
       <div style={styles.section}>
         <div style={styles.sectionTitle}>
           <span>执行选项</span>
@@ -729,8 +772,7 @@ function AgentControl({
         </div>
       </div>
 
-      {/* 历史会话 */}
-      <div style={styles.section}>
+      <div style={{ ...styles.section, flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <div style={styles.sectionTitle}>
           <span>📜</span>
           <span>历史会话</span>
@@ -759,44 +801,122 @@ function AgentControl({
           </button>
         </div>
 
-        {/* 列表 */}
-        <div style={styles.historySection}>
-          <div style={styles.historyList}>
-            {sessions.map((session) => {
-              const isActive = session.id === activeSessionId;
-              return (
-                <div
-                  key={session.id}
-                  role="button"
-                  tabIndex={0}
-                  style={{
-                    ...styles.historyItem,
-                    ...(isActive ? styles.historyItemHover : {}),
-                    border: isActive ? 'none' : 'none',
-                  }}
-                  onClick={() => onSwitchSession(session.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      onSwitchSession(session.id);
-                    }
-                  }}
-                  title={'切换到会话: ' + (session.title || session.id)}
-                >
-                  <div style={styles.historyItemContent}>{session.title || '(未命名会话)'}</div>
-                  <div style={styles.historyItemTime}>
-                    {session.updatedAt ? new Date(session.updatedAt).toLocaleString() : ''}
-                    {' · ' + (session.messages ? session.messages.length : 0) + '条消息'}
-                    {isActive ? ' · 当前' : ''}
-                  </div>
-                </div>
-              );
-            })}
+        <input
+          type="text"
+          style={styles.historySearch}
+          placeholder="搜索会话..."
+          value={searchQuery || ''}
+          onChange={(e) => onSearchChange?.(e.target.value)}
+        />
 
-            {sessions.length === 0 && (
-              <div style={styles.emptyHistory}>暂无会话，发送一条消息后会自动创建</div>
-            )}
-          </div>
+        <div style={{ ...styles.historySection, flex: 1, overflowY: 'auto' }}>
+          {loading && sessions.length === 0 ? (
+            <div style={styles.loadingSkeleton}>
+              {[...Array(5)].map((_, i) => (
+                <div key={i} style={styles.skeletonItem} />
+              ))}
+            </div>
+          ) : (
+            <div style={styles.historyList}>
+              {sessions.map((session) => {
+                const isActive = session.id === activeSessionId;
+                const isHovered = hoveredHistoryItem === session.id;
+                return (
+                  <div
+                    key={session.id}
+                    role="button"
+                    tabIndex={0}
+                    style={{
+                      ...styles.historyItem,
+                      ...(isActive ? styles.historyItemHover : {}),
+                      border: isActive ? 'none' : 'none',
+                    }}
+                    onClick={() => onSwitchSession(session.id)}
+                    onMouseEnter={() => setHoveredHistoryItem(session.id)}
+                    onMouseLeave={() => setHoveredHistoryItem(null)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onSwitchSession(session.id);
+                      }
+                    }}
+                    title={'切换到会话: ' + (session.title || session.id)}
+                  >
+                    <div style={styles.historyItemContent}>
+                      <span
+                        style={{
+                          ...styles.statusDot,
+                          backgroundColor: getSessionStatusColor(session),
+                        }}
+                      />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {session.title || '(未命名会话)'}
+                      </span>
+                    </div>
+                    <div style={styles.historyItemTime}>
+                      {session.updatedAt ? new Date(session.updatedAt).toLocaleString() : ''}
+                      {' · ' + (session.messages ? session.messages.length : 0) + '条消息'}
+                      {isActive ? ' · 当前' : ''}
+                    </div>
+                    <div
+                      style={{
+                        ...styles.historyItemActions,
+                        ...(isHovered ? styles.historyItemActionsVisible : {}),
+                      }}
+                    >
+                      <button
+                        style={styles.iconButton}
+                        onClick={(e) => handleForkClick(e, session.id)}
+                        title="分叉会话"
+                        onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-color)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+                      >
+                        🔀
+                      </button>
+                      {onDeleteSession && (
+                        <button
+                          style={styles.iconButton}
+                          onClick={(e) => handleDeleteClick(e, session.id)}
+                          title="删除会话"
+                          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--error-color)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+                        >
+                          🗑️
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {sessions.length === 0 && !loading && (
+                <div style={styles.emptyHistory}>暂无会话，发送一条消息后会自动创建</div>
+              )}
+            </div>
+          )}
+
+          {hasMore && !loading && (
+            <button
+              style={styles.loadMoreButton}
+              onClick={onLoadMore}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--glass-bg-light)';
+                e.currentTarget.style.color = 'var(--text-color)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--background-color)';
+                e.currentTarget.style.color = 'var(--text-muted)';
+              }}
+            >
+              加载更多
+            </button>
+          )}
+
+          {loading && sessions.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '12px' }}>
+              <div style={styles.spinner} />
+            </div>
+          )}
         </div>
       </div>
     </div>

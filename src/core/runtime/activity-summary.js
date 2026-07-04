@@ -8,7 +8,9 @@ export function buildActivitySummary(runtimeDetails = []) {
   const activities = [];
   const byKey = new Map();
   const fileStates = new Map();
+  const planTasks = new Map();
   let waitingForUser = false;
+  let planUpdateCount = 0;
 
   for (const detail of runtimeDetails) {
     if (
@@ -17,6 +19,20 @@ export function buildActivitySummary(runtimeDetails = []) {
       detail?.status === 'needs_user_input'
     ) {
       waitingForUser = true;
+    }
+
+    const planEvent = getPlanEventFromDetail(detail);
+    if (planEvent) {
+      if (detail?.event === 'plan:updated') {
+        planUpdateCount++;
+      }
+      for (const task of planEvent.tasks || []) {
+        const existing = planTasks.get(task.id);
+        planTasks.set(task.id, {
+          ...existing,
+          ...task,
+        });
+      }
     }
 
     const activity = getActivityFromDetail(detail);
@@ -63,6 +79,15 @@ export function buildActivitySummary(runtimeDetails = []) {
       .map((activity) => activity.target),
   );
 
+  const planTasksArray = Array.from(planTasks.values());
+  const planNeedsRepair = planTasksArray.filter(
+    (t) => t.status === 'completed' && t.displayStatus === 'needs_repair',
+  ).length;
+  const planCompleted = planTasksArray.filter(
+    (t) => t.status === 'completed' && t.displayStatus !== 'needs_repair',
+  ).length;
+  const planRunning = planTasksArray.filter((t) => t.status === 'running').length;
+
   return {
     activities: activities.sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0)),
     taskStages,
@@ -85,7 +110,34 @@ export function buildActivitySummary(runtimeDetails = []) {
     fileCount: fileTargets.size,
     waitingForUser,
     total: activities.length,
+    plan:
+      planTasksArray.length > 0
+        ? {
+            tasks: planTasksArray,
+            updateCount: planUpdateCount,
+            progress: {
+              total: planTasksArray.length,
+              completed: planCompleted,
+              running: planRunning,
+              needsRepair: planNeedsRepair,
+              progress: Math.round((planCompleted / planTasksArray.length) * 100),
+            },
+          }
+        : null,
   };
+}
+
+function getPlanEventFromDetail(detail) {
+  if (
+    (detail?.event === 'plan:created' || detail?.event === 'plan:updated') &&
+    detail?.payload?.plan
+  ) {
+    return detail.payload.plan;
+  }
+  if (detail?.type === 'plan' && detail?.payload?.plan) {
+    return detail.payload.plan;
+  }
+  return null;
 }
 
 function getActivityFromDetail(detail) {

@@ -369,6 +369,80 @@ export function shouldBlockCodingFinal(userInput, responseText, { taskProfile, t
 
 // ============== 工厂：便于按名称调用 ==============
 
+export function detectLanguageMismatch(executedCommands, { workingDirectory } = {}) {
+  const root = workingDirectory || process.cwd();
+  const detectedLanguages = new Set();
+  const usedLanguages = new Set();
+
+  if (existsSync(`${root}/package.json`)) {
+    detectedLanguages.add('javascript');
+  }
+  if (existsSync(`${root}/tsconfig.json`) || existsSync(`${root}/tsconfig.app.json`)) {
+    detectedLanguages.add('typescript');
+  }
+  if (
+    existsSync(`${root}/pyproject.toml`) ||
+    existsSync(`${root}/requirements.txt`) ||
+    existsSync(`${root}/setup.py`)
+  ) {
+    detectedLanguages.add('python');
+  }
+  if (existsSync(`${root}/go.mod`)) {
+    detectedLanguages.add('go');
+  }
+  if (existsSync(`${root}/cargo.toml`)) {
+    detectedLanguages.add('rust');
+  }
+
+  for (const cmd of executedCommands) {
+    const lowerCmd = String(cmd || '').toLowerCase();
+    if (/python|pytest|pip|py_compile/.test(lowerCmd)) {
+      usedLanguages.add('python');
+    }
+    if (/node|npm|bun|tsc|jest|vitest/.test(lowerCmd)) {
+      usedLanguages.add('javascript');
+    }
+    if (/go build|go test/.test(lowerCmd)) {
+      usedLanguages.add('go');
+    }
+    if (/cargo/.test(lowerCmd)) {
+      usedLanguages.add('rust');
+    }
+  }
+
+  const mismatch = [];
+  for (const lang of usedLanguages) {
+    if (!detectedLanguages.has(lang)) {
+      mismatch.push(lang);
+    }
+  }
+
+  if (mismatch.length === 0) {
+    return null;
+  }
+
+  const primaryLang = Array.from(detectedLanguages)[0] || 'javascript';
+  const suggestions = [];
+  if (primaryLang === 'javascript') {
+    suggestions.push('npm test', 'npm run lint', 'npx tsc --noEmit', 'bun test');
+  } else if (primaryLang === 'typescript') {
+    suggestions.push('npx tsc --noEmit', 'npm test', 'bun test');
+  } else if (primaryLang === 'python') {
+    suggestions.push('pytest', 'python -m unittest');
+  } else if (primaryLang === 'go') {
+    suggestions.push('go test ./...', 'go build ./...');
+  } else if (primaryLang === 'rust') {
+    suggestions.push('cargo test', 'cargo check');
+  }
+
+  return {
+    used: mismatch,
+    detected: Array.from(detectedLanguages),
+    primary: primaryLang,
+    suggestions,
+  };
+}
+
 export const PromptBuilder = {
   buildToolSyntaxCorrectionPrompt,
   buildToolUseCorrectionPrompt,
@@ -376,6 +450,7 @@ export const PromptBuilder = {
   buildCodingCompletionGatePrompt,
   buildSemanticRiskGuidance,
   suggestVerificationStrategy,
+  detectLanguageMismatch,
   isTermination,
   extractFinalAnswer,
   normalizeFinalAnswer,

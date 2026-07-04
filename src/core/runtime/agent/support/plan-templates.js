@@ -1,3 +1,5 @@
+import { PlanTemplateRegistry } from '../../../../planner/plan-template-registry.js';
+
 const PHASE = Object.freeze({
   EXPLORATION: 'exploration',
   PLANNING: 'planning',
@@ -892,14 +894,9 @@ export const PLAN_TEMPLATES = Object.freeze({
 
   CODE_REVIEW: {
     label: 'Code Review',
-    description: 'Comprehensive code review with security and performance checks',
-    phases: [
-      PHASE.EXPLORATION,
-      PHASE.PLANNING,
-      PHASE.IMPLEMENTATION,
-      PHASE.INSPECTION,
-      PHASE.VERIFICATION,
-    ],
+    description:
+      'Read-only code review with prioritized findings grounded in changed-code evidence',
+    phases: [PHASE.EXPLORATION, PHASE.PLANNING, PHASE.INSPECTION, PHASE.VERIFICATION],
     riskLevel: 'low',
     tasks: [
       {
@@ -943,7 +940,7 @@ export const PLAN_TEMPLATES = Object.freeze({
         name: 'Perform review',
         description:
           'Perform the code review and collect findings. Use review checklist for consistency.',
-        phase: PHASE.IMPLEMENTATION,
+        phase: PHASE.INSPECTION,
         dependencies: ['plan_review'],
         preconditions: ['Review plan created'],
         postconditions: ['Review performed', 'Findings collected'],
@@ -1957,11 +1954,22 @@ function createQuickTemplate() {
     ...PLAN_TEMPLATES.QUICK,
     tasks: [
       {
+        id: 'verify_context',
+        name: 'Verify context',
+        description:
+          'Read the target file or surrounding evidence before applying the quick change.',
+        phase: PHASE.EXPLORATION,
+        dependencies: [],
+        qualityGate: QUALITY_GATE.MUST_READ,
+        allowedTools: ['read_file', 'search', 'grep_search', 'list_dir', 'shell'],
+        outputArtifacts: ['context_verification'],
+      },
+      {
         id: 'implement_changes',
         name: 'Implement changes',
         description: 'Apply the obvious low-risk change with minimal surrounding edits.',
         phase: PHASE.IMPLEMENTATION,
-        dependencies: [],
+        dependencies: ['verify_context'],
         qualityGate: QUALITY_GATE.MUST_IMPLEMENT,
         allowedTools: ['write_file', 'edit_file', 'apply_hashline_patch', 'shell'],
         outputArtifacts: ['modified_file'],
@@ -2007,12 +2015,23 @@ function createNewProjectTemplate() {
         outputArtifacts: ['workspace_status'],
       },
       {
+        id: 'design_project',
+        name: 'Design project',
+        description:
+          'Choose the initial architecture, tech stack, directory layout, scripts, and verification path before writing files.',
+        phase: PHASE.PLANNING,
+        dependencies: ['inspect_workspace'],
+        qualityGate: QUALITY_GATE.MUST_PLAN,
+        allowedTools: ['ask_user', 'brainstorm', 'architect', 'setup', 'capture_requirements'],
+        outputArtifacts: ['project_design', 'tech_stack'],
+      },
+      {
         id: 'setup_project_structure',
         name: 'Setup project structure',
         description:
           'Create the initial project structure, package metadata, source directories, and configuration files.',
         phase: PHASE.IMPLEMENTATION,
-        dependencies: ['inspect_workspace'],
+        dependencies: ['design_project'],
         qualityGate: QUALITY_GATE.MUST_IMPLEMENT,
         allowedTools: ['mkdir', 'write_file', 'edit_file', 'shell'],
         outputArtifacts: ['project_structure'],
@@ -2092,3 +2111,49 @@ export function getPlanTemplateByTaskType(taskType) {
 }
 
 export { PHASE, QUALITY_GATE };
+
+// ============================================================================
+// PlanTemplateRegistry 集成（向后兼容）
+// ============================================================================
+//
+// 将所有硬编码模板注册到 PlanTemplateRegistry 中，新代码可以直接使用
+// registry 的动态注册能力，旧代码继续使用原 API，零迁移成本。
+
+/**
+ * 全局计划模板注册表实例
+ * 预注册了所有内置模板，新模板可通过 register() 动态添加
+ */
+export const planTemplateRegistry = new PlanTemplateRegistry();
+
+// 注册所有内置模板
+(function registerBuiltinTemplates() {
+  const builtinTemplates = [
+    { id: 'RESEARCH', ...PLAN_TEMPLATES.RESEARCH, aliases: ['research', 'general'] },
+    { id: 'ANALYSIS', ...PLAN_TEMPLATES.ANALYSIS, aliases: ['analysis'] },
+    { id: 'VERIFICATION', ...PLAN_TEMPLATES.VERIFICATION, aliases: ['verification', 'verify'] },
+    { id: 'QUICK', ...PLAN_TEMPLATES.QUICK, aliases: ['quick'] },
+    { id: 'STANDARD', ...PLAN_TEMPLATES.STANDARD, aliases: ['standard', 'coding', 'modification'] },
+    { id: 'BUG_FIX', ...PLAN_TEMPLATES.BUG_FIX, aliases: ['bug_fix'] },
+    { id: 'DOCUMENTATION', ...PLAN_TEMPLATES.DOCUMENTATION, aliases: ['documentation'] },
+    { id: 'REFACTOR', ...PLAN_TEMPLATES.REFACTOR, aliases: ['refactor'] },
+    { id: 'TESTING', ...PLAN_TEMPLATES.TESTING, aliases: ['testing'] },
+    { id: 'CODE_REVIEW', ...PLAN_TEMPLATES.CODE_REVIEW, aliases: ['code_review'] },
+    { id: 'MIGRATION', ...PLAN_TEMPLATES.MIGRATION, aliases: ['migration'] },
+    { id: 'SETUP', ...PLAN_TEMPLATES.SETUP, aliases: ['setup'] },
+    { id: 'RELEASE', ...PLAN_TEMPLATES.RELEASE, aliases: ['release'] },
+    { id: 'SECURITY', ...PLAN_TEMPLATES.SECURITY, aliases: ['security'] },
+    { id: 'DATA', ...PLAN_TEMPLATES.DATA, aliases: ['data'] },
+    { id: 'UI', ...PLAN_TEMPLATES.UI, aliases: ['ui'] },
+    { id: 'NEW_PROJECT', ...PLAN_TEMPLATES.NEW_PROJECT, aliases: ['new_project'] },
+  ];
+
+  for (const tpl of builtinTemplates) {
+    try {
+      planTemplateRegistry.register(tpl);
+    } catch {
+      /* 静默跳过重复注册，确保多次导入也不会出错 */
+    }
+  }
+})();
+
+export { PlanTemplateRegistry };

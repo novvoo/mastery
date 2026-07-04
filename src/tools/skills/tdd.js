@@ -61,7 +61,7 @@ function generateRedPhase(component, spec, testFile) {
   const lines = [
     '# TDD: RED Phase - Write Failing Tests',
     '',
-    '> **Rule**: Do NOT write any implementation code until all tests are written and failing.',
+    '> **Guidance**: Prefer a focused failing test or clearly identified existing regression signal before editing when the risk justifies it. If stronger evidence already exists, use that evidence and continue.',
     '',
     '---',
     '',
@@ -123,7 +123,7 @@ function generateRedPhase(component, spec, testFile) {
     '- [ ] Each test is independent and does not depend on other tests',
     '- [ ] Edge cases and error paths are covered',
     '',
-    '> **Next Step**: Once all tests are written and failing, run the tdd tool with phase "green" to get minimal implementation guidance.',
+    '> **Next Step**: Once regression evidence is in place, make the smallest implementation change and verify it against that evidence.',
     '',
   );
 
@@ -138,7 +138,7 @@ function generateGreenPhase(component, spec, sourceFile, testFile) {
   const lines = [
     '# TDD: GREEN Phase - Minimal Implementation',
     '',
-    '> **Rule**: Write the MINIMUM code required to make all tests pass. No premature optimization.',
+    '> **Guidance**: Write the minimum code required to satisfy the regression evidence. Avoid premature optimization.',
     '',
     '---',
     '',
@@ -204,7 +204,7 @@ function generateGreenPhase(component, spec, sourceFile, testFile) {
     '- [ ] No new dependencies were added unless absolutely necessary',
     '- [ ] Code is syntactically correct and linter passes',
     '',
-    '> **Next Step**: Once all tests pass, run the tdd tool with phase "refactor" to improve the code while keeping tests green.',
+    '> **Next Step**: Once the focused check passes, inspect the change and refactor only where it clearly improves the result without widening scope.',
     '',
   ];
 
@@ -219,7 +219,7 @@ function generateRefactorPhase(component, spec, sourceFile, testFile) {
   const lines = [
     '# TDD: REFACTOR Phase - Improve with Confidence',
     '',
-    '> **Rule**: All tests MUST remain green throughout refactoring. If a test breaks, revert immediately.',
+    '> **Guidance**: Keep the relevant checks green throughout refactoring. If a check breaks, stop and restore the last known-good behavior.',
     '',
     '---',
     '',

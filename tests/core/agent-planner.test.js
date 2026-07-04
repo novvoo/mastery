@@ -70,11 +70,13 @@ describe('AgentPlanner', () => {
 
     expect(plan.context.planType).toBe('quick');
     expect(Array.from(plan.tasks.keys())).toEqual([
+      'verify_context',
       'implement_changes',
       'inspect_changes',
       'verify_result',
     ]);
-    expect(plan.getTask('implement_changes').status).toBe(TaskStatus.RUNNING);
+    expect(plan.getTask('verify_context').status).toBe(TaskStatus.RUNNING);
+    expect(plan.getTask('implement_changes').dependencies.has('verify_context')).toBe(true);
   });
 
   test('createIfNeeded selects documentation plan for documentation profile', () => {

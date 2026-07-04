@@ -409,6 +409,18 @@ export function useIPC() {
     return invoke('llm:toggle-model', { id, enabled });
   }, [invoke]);
 
+  const listSessions = useCallback(async (options = {}) => invoke('session:list', options), [invoke]);
+  const loadSession = useCallback(async (sessionId) => invoke('session:load', { sessionId }), [invoke]);
+  const getSessionMeta = useCallback(async (sessionId) => invoke('session:meta', { sessionId }), [invoke]);
+  const deleteSession = useCallback(async (sessionId) => invoke('session:delete', { sessionId }), [invoke]);
+  const renameSession = useCallback(async (sessionId, title) => invoke('session:rename', { sessionId, title }), [invoke]);
+  const forkSession = useCallback(async (sessionId, options = {}) => invoke('session:fork', { sessionId, ...options }), [invoke]);
+  const searchSessions = useCallback(async (query, limit = 20) => invoke('session:search', { query, limit }), [invoke]);
+  const getSessionPreview = useCallback(async (sessionId, previewLength) => invoke('session:preview', { sessionId, previewLength }), [invoke]);
+  const getSessionLineage = useCallback(async (sessionId) => invoke('session:lineage', { sessionId }), [invoke]);
+  const getSessionChildren = useCallback(async (sessionId) => invoke('session:children', { sessionId }), [invoke]);
+  const countSessions = useCallback(async () => invoke('session:count', {}), [invoke]);
+
   const onAgentStart = useCallback((callback) => {
     return subscribe('agent:start', callback);
   }, [subscribe]);
@@ -557,6 +569,18 @@ export function useIPC() {
     getLLMConfigStatus,
     saveLLMConfig,
     toggleModel,
+
+    listSessions,
+    loadSession,
+    getSessionMeta,
+    deleteSession,
+    renameSession,
+    forkSession,
+    searchSessions,
+    getSessionPreview,
+    getSessionLineage,
+    getSessionChildren,
+    countSessions,
 
     onAgentStart,
     onAgentComplete,

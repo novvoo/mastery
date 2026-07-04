@@ -296,7 +296,17 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
             return this.createResponse(message, result !== undefined ? result : { success: true });
           }
 
-          throw new Error(`未知的频道: ${channel}`);
+          // 未注册或未知频道：统一返回友好错误响应（不抛异常，避免污染日志）
+          return this.createResponse(message, {
+            success: false,
+            error: DIRECT_INVOKE_CHANNELS.includes(channel)
+              ? `处理器未注册: ${channel}`
+              : `未知的频道: ${channel}`,
+            code: DIRECT_INVOKE_CHANNELS.includes(channel)
+              ? 'HANDLER_NOT_REGISTERED'
+              : 'UNKNOWN_CHANNEL',
+            channel,
+          });
       }
     } catch (error) {
       console.error(`[MainProcessIPC] 处理请求时出错 (${channel}):`, error);

@@ -1035,41 +1035,18 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             </div>
           )}
 
-          {/* 快照时间线 */}
+          {/* 快照时间线 — 隐藏 slider，保留动态刷新指示器 */}
           {snapshots.length > 1 && (
-            <div style={styles.planTimelineControl}>
+            <div style={{
+              ...styles.planTimelineControl,
+              padding: '4px var(--spacing-sm)',
+            }}>
               <div style={styles.planTimelineMeta}>
                 <span>
                   进度帧 {selectedFrameIndex + 1}/{snapshots.length}
                   {isLatestFrame ? ' · 最新' : ' · 历史'}
                 </span>
                 <span>{frame.timestamp ? new Date(frame.timestamp).toLocaleTimeString() : ''}</span>
-              </div>
-              <div style={styles.planTimelineSliderRow}>
-                <input
-                  type="range"
-                  min="0"
-                  max={latestFrameIndex}
-                  step="1"
-                  value={selectedFrameIndex}
-                  onChange={(event) => handlePlanFrameChange(msgId, Number(event.target.value))}
-                  onClick={(event) => event.stopPropagation()}
-                  style={styles.planTimelineSlider}
-                  aria-label="切换计划进度历史"
-                />
-                <button
-                  type="button"
-                  style={{
-                    ...styles.planTimelineLatestButton,
-                    ...(isLatestFrame ? styles.planTimelineLatestButtonActive : {}),
-                  }}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handlePlanFrameLatest(msgId);
-                  }}
-                >
-                  最新
-                </button>
               </div>
             </div>
           )}
@@ -1219,36 +1196,44 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
 
       if (msg.type === 'tool') {return renderToolCard();}
       if (isAssistantMarkdownMessage && !isStreaming) {return renderAssistantBubble();}
-      if (msg.type === 'result' || msg.type === 'success' || msg.type === 'tool_result') {return renderResultCard();}
       if (msg.type === 'error') {return renderErrorCard();}
       if (msg.type === 'thinking') {return renderThinkingCard();}
-      if (msg.type === 'plan') {return renderPlanCard();}
+      if (msg.type === 'plan') {
+        const planProgress = msg.planSnapshots?.length > 0
+          ? msg.planSnapshots[msg.planSnapshots.length - 1]?.planProgress
+          : msg.planProgress;
+        const pct = planProgress?.progress ?? 0;
+        return (
+          <div style={styles.planInlineIndicator}>
+            <Icon name="plan" size={12} />
+            <span>{t('plan.title')}</span>
+            <span style={{ margin: '0 2px', opacity: 0.6 }}>·</span>
+            <span>{pct}%</span>
+          </div>
+        );
+      }
       // streaming card：只有在没有 plan 的任务中立即显示，或者有 plan 但 plan 已经出现后才显示
       if (isStreaming && (!hasPlanInTask || planHasAppeared)) {return renderStreamingCard();}
 
       const content = getMessageDisplayText(msg);
+      if (!content) {
+        return null;
+      }
       return (
         <div style={{
           ...styles.enhancedMessageBubble,
           ...(isUser ? styles.enhancedMessageBubbleUser : styles.enhancedMessageBubbleAgent)
         }}>
-          {content ? (
-            <MarkdownMessageContent
-              text={content}
-              isCollapsed={isCollapsed}
-              isUser={isUser}
-              isStreaming={isStreaming}
-              workingDirectory={workingDirectory}
-              fileServerUrl={fileServerUrl}
-              markdownComponents={markdownComponents}
-              onLinkClick={handleMessageContainerClick}
-            />
-          ) : (
-            <div style={styles.emptyAssistantMessage}>
-              <span style={styles.emptyAssistantDot} />
-              <span>等待响应内容</span>
-            </div>
-          )}
+          <MarkdownMessageContent
+            text={content}
+            isCollapsed={isCollapsed}
+            isUser={isUser}
+            isStreaming={isStreaming}
+            workingDirectory={workingDirectory}
+            fileServerUrl={fileServerUrl}
+            markdownComponents={markdownComponents}
+            onLinkClick={handleMessageContainerClick}
+          />
         </div>
       );
     };

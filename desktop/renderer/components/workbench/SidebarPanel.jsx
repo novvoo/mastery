@@ -17,6 +17,15 @@ export function SidebarPanel({
   onSwitchSession,
   onRestoreHistory,
   onClearHistory,
+  onDeleteSession,
+  onRenameSession,
+  onForkSession,
+  onRefreshSessions,
+  searchQuery,
+  onSearchChange,
+  loading,
+  hasMore,
+  onLoadMore,
   onWorkingDirectoryChange,
   onNewTask,
   projectTree,
@@ -44,6 +53,15 @@ export function SidebarPanel({
       onSwitchSession={onSwitchSession}
       onRestoreHistory={onRestoreHistory}
       onClearHistory={onClearHistory}
+      onDeleteSession={onDeleteSession}
+      onRenameSession={onRenameSession}
+      onForkSession={onForkSession}
+      onRefreshSessions={onRefreshSessions}
+      searchQuery={searchQuery}
+      onSearchChange={onSearchChange}
+      loading={loading}
+      hasMore={hasMore}
+      onLoadMore={onLoadMore}
       projectTree={projectTree}
     />
   );

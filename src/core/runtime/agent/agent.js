@@ -30,6 +30,16 @@ import { TaskStatus } from '../../../planner/graph-planner.js';
 import { isMutationTool, isSemanticRiskReviewTool } from './execution-plan-manager.js';
 import { metricsSink } from '../metrics-sink.js';
 import {
+  LifecycleEvent,
+  AgentPhase,
+  createAgentStartEvent,
+  createAgentEndEvent,
+  createTurnStartEvent,
+  createTurnEndEvent,
+  createPhaseChangeEvent,
+} from '../lifecycle-events.js';
+import { RunSummaryCollector } from '../run-summary.js';
+import {
   isTermination as isTerminationResponse,
   extractFinalAnswer,
   normalizeFinalAnswer,
@@ -46,6 +56,28 @@ import { AgentVerifier } from './agent-verifier.js';
 import { AgentRouter } from './agent-router.js';
 import { AgentContext } from './agent-context.js';
 import { stripActionBlocks } from './agent-engine.js';
+
+/**
+ * Plan 阶段 → AgentPhase 映射
+ * @param {string} planPhase
+ * @returns {string|null}
+ */
+function mapPlanPhaseToAgentPhase(planPhase) {
+  switch (planPhase) {
+    case 'exploration':
+      return AgentPhase.EXPLORING;
+    case 'planning':
+      return AgentPhase.PLANNING;
+    case 'implementation':
+      return AgentPhase.IMPLEMENTING;
+    case 'inspection':
+      return AgentPhase.REVIEWING;
+    case 'verification':
+      return AgentPhase.VERIFYING;
+    default:
+      return null;
+  }
+}
 
 export class ReActAgent {
   #modelProvider;
@@ -76,6 +108,15 @@ export class ReActAgent {
   // ✅ 新增：实现阶段无代码变更熔断追踪
   #implementationNoMutationIterations = 0;
   #implementationPhaseStarted = false;
+
+  // ✅ 新增：运行统计收集器
+  #runSummaryCollector = new RunSummaryCollector();
+
+  // ✅ 新增：生命周期事件回调（由外部注入，如 UI adapter）
+  #onLifecycleEvent = null;
+
+  // 当前阶段
+  #currentPhase = AgentPhase.INITIALIZING;
 
   // 子系统
   #textToolParser;
@@ -165,6 +206,10 @@ export class ReActAgent {
     // plan 进度回调（由 UI facade 注入，推送 plan 更新到事件总线）
     this.#onPlanAdvance = typeof config.onPlanAdvance === 'function' ? config.onPlanAdvance : null;
 
+    // 生命周期事件回调（由 UI facade 注入）
+    this.#onLifecycleEvent =
+      typeof config.onLifecycleEvent === 'function' ? config.onLifecycleEvent : null;
+
     this.#planner = new AgentPlanner({
       ...sharedDeps,
       onPlanAdvance: (progress) => {
@@ -212,181 +257,21 @@ export class ReActAgent {
   // ============================================================
 
   async run(userInput) {
-    const runStartedAt = Date.now();
-    const runId = `run-${runStartedAt}-${Math.random().toString(36).slice(2, 8)}`;
-    metricsSink.startRun(runId);
+    // 阶段 1：初始化运行状态
+    const { runStartedAt } = this.#initializeRun(userInput);
 
-    this.#stopRequested = false;
-    this.#lastRunResult = {
-      success: false,
-      status: 'running',
-      answer: '',
-      reason: null,
-      iterations: 0,
-      durationMs: 0,
-      toolEvents: [],
-      runId,
-    };
-    this.#debugEvent('Agent run started', {
-      runId,
-      inputPreview: this.#preview(userInput, 240),
-      workingDirectory: this.#config.workingDirectory,
-      maxIterations: this.#config.maxIterations,
-    });
+    // 阶段 2：确保会话已初始化
+    this.#ensureSessionInitialized();
 
-    // 首次 run：设置 system prompt
-    if (this.#sessionManager.length === 0) {
-      const systemPrompt = buildSystemPrompt(
-        this.#memoryManager,
-        this.#toolRegistry,
-        this.#config.workingDirectory,
-      );
-      this.#sessionManager.setSystemPrompt(systemPrompt);
-      const toolInstructions = this.#textToolParser.generateToolPrompt([]);
-      this.#sessionManager.addSystemMessage(toolInstructions);
-      this.#debugEvent('Session initialized', {
-        toolCount: this.#toolRegistry.size,
-        systemPromptChars: systemPrompt.length,
-        toolInstructionChars: toolInstructions.length,
-      });
-    }
+    // 阶段 3：意图识别 + 任务分类
+    const { intent, taskProfile } = await this.#classifyIntentAndTask(userInput);
 
-    // Step 1: 意图识别
-    const intent =
-      this.#intentClassifier && shouldUseIntentClassifier(userInput)
-        ? await this.#intentClassifier.classify(userInput, {
-            recentMessages: this.#sessionManager.getRecentExchanges(3),
-          })
-        : null;
+    // 阶段 4：准备运行上下文
+    const { maxIterations } = await this.#prepareRunContext(userInput, intent, taskProfile);
 
-    if (this.#intentClassifier && !intent) {
-      this.#debugEvent('Intent classifier skipped', { reason: 'local_task_router' });
-    }
-    if (intent) {
-      this.#debugEvent('Intent classified', {
-        intent: intent.intent,
-        confidence: intent.confidence,
-        normalizedTask: intent.normalizedTask,
-        requiresFreshData: intent.requiresFreshData,
-        recommendedTools: intent.recommendedTools,
-        firstActionHint: intent.firstActionHint,
-      });
-    }
-
-    // Step 2: 任务分类（合并进 IntentClassifier，消除一层路由）
-    const taskProfile = this.#intentClassifier?.classifyTask(userInput, intent) || {
-      isCodingTask: false,
-      isModificationTask: false,
-      riskLevel: 'low',
-      semanticRiskDomains: [],
-      requiresSemanticRiskReview: false,
-    };
-
-    // Step 3: 准备运行上下文
-    this.#sessionManager.addUserMessage(userInput);
-
-    // 任务锚点：将原始用户任务保存为 memory layer，确保不被上下文裁剪丢弃
-    // 这是防止 context window overflow 导致 agent 忘记原始任务的关键机制
-    const taskAnchor =
-      `[TASK ANCHOR — original user request, never forget this]\n` +
-      `The user's original task is: ${typeof userInput === 'string' ? userInput.substring(0, 800) : String(userInput).substring(0, 800)}\n` +
-      `This is the primary objective. All actions must directly serve this goal. ` +
-      `Periodically re-evaluate whether current actions are progressing toward this objective.`;
-    this.#sessionManager.addLayer('layer_task_anchor', taskAnchor, {
-      priority: SessionManager.LAYER.MEMORY + 1, // 比 memory 更高的优先级，最后注入
-    });
-
-    const routingPrompt = this.#intentClassifier?.buildRoutingPrompt(intent);
-    if (routingPrompt) {
-      this.#sessionManager.addUserMessage(routingPrompt);
-    }
-
-    // Step 3b: 注入多文件上下文聚合（最近引用的文件 + 最近读写的文件）
-    if (this.#workspaceState) {
-      const ctx = this.#workspaceState.aggregateContext({
-        maxFiles: 6,
-        maxCharsPerFile: 500,
-        maxTotalChars: 2400,
-      });
-      if (ctx && ctx.summary && ctx.files.length > 0) {
-        this.#sessionManager.addSystemMessage(
-          `<!-- workspace-context: files=${ctx.files.join(',')} -->\n${ctx.summary}`,
-        );
-        this.#debugEvent('Workspace context injected', {
-          files: ctx.files,
-          totalChars: ctx.totalChars,
-        });
-      }
-    }
-
-    // 重置运行态
-    this.#lastResponse = '';
-    this.#repeatCount = 0;
-    this.#runToolEvents = [];
-    this.#activeTaskProfile = taskProfile;
-    this.#activeRoutedToolNames = null;
-    this.#stagnationBudgetDowngrade = false;
-    // ✅ 重置熔断追踪
-    this.#implementationNoMutationIterations = 0;
-    this.#implementationPhaseStarted = false;
-
-    this.#planner.reset({ preserveExternalPlan: true });
-    this.#router.reset();
-    this.#agentContext.reset();
-
-    // Step 4: 执行计划
-    const executionPlan = await this.#planner.createIfNeeded(userInput, taskProfile);
-    const maxIterations = this.#verifier.computeIterationBudget(
-      taskProfile,
-      this.#config.maxIterations,
-    );
-
-    // Step 5: 编码任务增强
+    // 编码任务增强的本地变量（保持向后兼容）
     let toolUseCorrections = 0;
     let codingGateCorrections = 0;
-
-    if (taskProfile.isCodingTask) {
-      this.#debugEvent('Coding task mode enabled', taskProfile);
-      const basePrompt = this.#verifier.buildCodingTaskOperatingPrompt(userInput, taskProfile);
-      const strategy = await this.#verifier.suggestVerificationStrategy(
-        userInput,
-        this.#config.workingDirectory,
-      );
-      this.#sessionManager.addUserMessage(`${basePrompt}\n\nVerification strategy:\n${strategy}`);
-    }
-
-    if (executionPlan) {
-      this.#debugEvent('Automatic task orchestration enabled', { plan: executionPlan.toJSON() });
-      const semanticGuidance = this.#verifier.buildSemanticRiskGuidance(taskProfile);
-      this.#sessionManager.addUserMessage(this.#planner.buildPrompt(userInput, semanticGuidance));
-    }
-
-    // 异步预热工作目录索引
-    if (this.#workspaceIndex && taskProfile.isCodingTask) {
-      // 同步注入：利用已缓存的数据（WorkspaceIndex 磁盘缓存、Memory）
-      this.#injectPreExploredContextSync(userInput, taskProfile);
-
-      // 异步增强管道
-      this.#agentContext
-        .warmWorkspaceCache()
-        .then((summary) => {
-          if (summary && this.#sessionManager) {
-            this.#sessionManager.addUserMessage(summary);
-            try {
-              this.#debugEvent('Workspace index warmed', {
-                files: this.#workspaceIndex.size,
-                summaryChars: summary.length,
-              });
-            } catch {}
-          }
-        })
-        .catch((err) => {
-          try {
-            this.#debugEvent('Workspace index warm failed', { error: err.message });
-          } catch {}
-        });
-      this.#workspaceIndex.startPeriodicSync();
-    }
 
     // ============================================================
     // 主循环
@@ -432,6 +317,9 @@ export class ReActAgent {
 
       this.#ui.iteration(iteration, maxIterations);
 
+      // 运行统计：记录 chat start
+      this.#runSummaryCollector.recordChatStart();
+
       // 注入工作区上下文（包含最近的工具结果和文件快照）
       // 工具结果不直接作为消息发出，而是通过 aggregateContext 聚合后注入
       if (this.#workspaceState) {
@@ -466,6 +354,12 @@ export class ReActAgent {
         // deriveCurrentPhase() 内部已优先使用 currentRunnableTask.phase，
         // 因此 methodology phase 由 Plan task 驱动。
         const currentPhase = this.#planner.deriveCurrentPhase();
+
+        // 同步生命周期阶段（如果有变化则发出 phase_change 事件）
+        const mappedPhase = mapPlanPhaseToAgentPhase(currentPhase);
+        if (mappedPhase && mappedPhase !== this.#currentPhase) {
+          this.#changePhase(mappedPhase, `Plan phase: ${currentPhase}`);
+        }
 
         // ✅ 获取当前可执行任务（用于 task 约束）
         const currentTask = this.#planner.getCurrentRunnableTask();
@@ -590,7 +484,7 @@ export class ReActAgent {
           llmError = error instanceof Error ? error.message : String(error);
           try {
             metricsSink.recordLLMRequest({
-              runId,
+              runId: this.#lastRunResult.runId,
               model:
                 this.#modelProvider.getModelName?.() ||
                 this.#modelProvider.constructor?.name ||
@@ -624,7 +518,7 @@ export class ReActAgent {
             this.#modelProvider.constructor?.name ||
             'unknown';
           metricsSink.recordLLMRequest({
-            runId,
+            runId: this.#lastRunResult.runId,
             model: modelName,
             durationMs: Date.now() - llmStartedAt,
             tokensIn: response.usage?.inputTokens,
@@ -1190,6 +1084,348 @@ export class ReActAgent {
   // ============================================================
 
   /**
+   * 阶段 1：初始化运行状态
+   * 生成 runId、重置运行状态、记录开始事件
+   *
+   * @param {string} userInput
+   * @returns {{ runStartedAt: number, runId: string }}
+   */
+  #initializeRun(userInput) {
+    const runStartedAt = Date.now();
+    const runId = `run-${runStartedAt}-${Math.random().toString(36).slice(2, 8)}`;
+    metricsSink.startRun(runId);
+
+    // 重置运行统计收集器
+    this.#runSummaryCollector.reset();
+    this.#currentPhase = AgentPhase.INITIALIZING;
+
+    this.#stopRequested = false;
+    this.#lastRunResult = {
+      success: false,
+      status: 'running',
+      answer: '',
+      reason: null,
+      iterations: 0,
+      durationMs: 0,
+      toolEvents: [],
+      runId,
+    };
+    this.#debugEvent('Agent run started', {
+      runId,
+      inputPreview: this.#preview(userInput, 240),
+      workingDirectory: this.#config.workingDirectory,
+      maxIterations: this.#config.maxIterations,
+    });
+
+    // 发出生命周期事件：agent_start
+    this.#emitLifecycle(
+      createAgentStartEvent({
+        runId,
+        inputPreview: this.#preview(userInput, 240),
+        workingDirectory: this.#config.workingDirectory,
+        maxIterations: this.#config.maxIterations,
+      }),
+    );
+
+    return { runStartedAt, runId };
+  }
+
+  /**
+   * 阶段 2：确保会话已初始化（首次运行时设置 system prompt）
+   */
+  #ensureSessionInitialized() {
+    if (this.#sessionManager.length > 0) return;
+
+    const systemPrompt = buildSystemPrompt(
+      this.#memoryManager,
+      this.#toolRegistry,
+      this.#config.workingDirectory,
+    );
+    this.#sessionManager.setSystemPrompt(systemPrompt);
+    const toolInstructions = this.#textToolParser.generateToolPrompt([]);
+    this.#sessionManager.addSystemMessage(toolInstructions);
+    this.#debugEvent('Session initialized', {
+      toolCount: this.#toolRegistry.size,
+      systemPromptChars: systemPrompt.length,
+      toolInstructionChars: toolInstructions.length,
+    });
+  }
+
+  /**
+   * 阶段 3：意图识别 + 任务分类
+   *
+   * @param {string} userInput
+   * @returns {{ intent: object|null, taskProfile: object }}
+   */
+  async #classifyIntentAndTask(userInput) {
+    // Step 1: 意图识别
+    const intent =
+      this.#intentClassifier && shouldUseIntentClassifier(userInput)
+        ? await this.#intentClassifier.classify(userInput, {
+            recentMessages: this.#sessionManager.getRecentExchanges(3),
+          })
+        : null;
+
+    if (this.#intentClassifier && !intent) {
+      this.#debugEvent('Intent classifier skipped', { reason: 'local_task_router' });
+    }
+    if (intent) {
+      this.#debugEvent('Intent classified', {
+        intent: intent.intent,
+        confidence: intent.confidence,
+        normalizedTask: intent.normalizedTask,
+        requiresFreshData: intent.requiresFreshData,
+        recommendedTools: intent.recommendedTools,
+        firstActionHint: intent.firstActionHint,
+      });
+    }
+
+    // Step 2: 任务分类
+    const taskProfile = this.#intentClassifier?.classifyTask(userInput, intent) || {
+      isCodingTask: false,
+      isModificationTask: false,
+      riskLevel: 'low',
+      semanticRiskDomains: [],
+      requiresSemanticRiskReview: false,
+    };
+
+    return { intent, taskProfile };
+  }
+
+  /**
+   * 阶段 4：准备运行上下文
+   * 包括：添加用户消息、设置 task anchor、注入路由提示、工作区上下文、重置运行态
+   *
+   * @param {string} userInput
+   * @param {object} intent
+   * @param {object} taskProfile
+   * @returns {{ executionPlan: object|null, maxIterations: number }}
+   */
+  async #prepareRunContext(userInput, intent, taskProfile) {
+    // 添加用户消息
+    this.#sessionManager.addUserMessage(userInput);
+
+    // 任务锚点：防止 context window overflow 导致 agent 忘记原始任务
+    const taskAnchor =
+      `[TASK ANCHOR — original user request, never forget this]\n` +
+      `The user's original task is: ${typeof userInput === 'string' ? userInput.substring(0, 800) : String(userInput).substring(0, 800)}\n` +
+      `This is the primary objective. All actions must directly serve this goal. ` +
+      `Periodically re-evaluate whether current actions are progressing toward this objective.`;
+    this.#sessionManager.addLayer('layer_task_anchor', taskAnchor, {
+      priority: SessionManager.LAYER.MEMORY + 1,
+    });
+
+    // 路由提示
+    const routingPrompt = this.#intentClassifier?.buildRoutingPrompt(intent);
+    if (routingPrompt) {
+      this.#sessionManager.addUserMessage(routingPrompt);
+    }
+
+    // 注入多文件上下文聚合
+    if (this.#workspaceState) {
+      const ctx = this.#workspaceState.aggregateContext({
+        maxFiles: 6,
+        maxCharsPerFile: 500,
+        maxTotalChars: 2400,
+      });
+      if (ctx && ctx.summary && ctx.files.length > 0) {
+        this.#sessionManager.addSystemMessage(
+          `<!-- workspace-context: files=${ctx.files.join(',')} -->\n${ctx.summary}`,
+        );
+        this.#debugEvent('Workspace context injected', {
+          files: ctx.files,
+          totalChars: ctx.totalChars,
+        });
+      }
+    }
+
+    // 重置运行态
+    this.#lastResponse = '';
+    this.#repeatCount = 0;
+    this.#runToolEvents = [];
+    this.#activeTaskProfile = taskProfile;
+    this.#activeRoutedToolNames = null;
+    this.#stagnationBudgetDowngrade = false;
+    this.#implementationNoMutationIterations = 0;
+    this.#implementationPhaseStarted = false;
+
+    this.#planner.reset({ preserveExternalPlan: true });
+    this.#router.reset();
+    this.#agentContext.reset();
+
+    // Step 4: 执行计划
+    const executionPlan = await this.#planner.createIfNeeded(userInput, taskProfile);
+    const maxIterations = this.#verifier.computeIterationBudget(
+      taskProfile,
+      this.#config.maxIterations,
+    );
+
+    // 编码任务增强
+    if (taskProfile.isCodingTask) {
+      this.#debugEvent('Coding task mode enabled', taskProfile);
+      const basePrompt = this.#verifier.buildCodingTaskOperatingPrompt(userInput, taskProfile);
+      const strategy = await this.#verifier.suggestVerificationStrategy(
+        userInput,
+        this.#config.workingDirectory,
+      );
+      this.#sessionManager.addUserMessage(`${basePrompt}\n\nVerification strategy:\n${strategy}`);
+    }
+
+    if (executionPlan) {
+      this.#debugEvent('Automatic task orchestration enabled', { plan: executionPlan.toJSON() });
+      const semanticGuidance = this.#verifier.buildSemanticRiskGuidance(taskProfile);
+      this.#sessionManager.addUserMessage(this.#planner.buildPrompt(userInput, semanticGuidance));
+      this.#changePhase(AgentPhase.PLANNING, 'Task plan created');
+    }
+
+    // 异步预热工作目录索引
+    if (this.#workspaceIndex && taskProfile.isCodingTask) {
+      this.#injectPreExploredContextSync(userInput, taskProfile);
+
+      this.#agentContext
+        .warmWorkspaceCache()
+        .then((summary) => {
+          if (summary && this.#sessionManager) {
+            this.#sessionManager.addUserMessage(summary);
+            try {
+              this.#debugEvent('Workspace index warmed', {
+                files: this.#workspaceIndex.size,
+                summaryChars: summary.length,
+              });
+            } catch {}
+          }
+        })
+        .catch((err) => {
+          try {
+            this.#debugEvent('Workspace index warm failed', { error: err.message });
+          } catch {}
+        });
+      this.#workspaceIndex.startPeriodicSync();
+    }
+
+    return { executionPlan, maxIterations };
+  }
+
+  /**
+   * 阶段 5：单次迭代的 LLM 调用准备
+   * 构建消息、工具路由、token 检查
+   *
+   * @param {string} userInput
+   * @param {object} intent
+   * @param {number} iteration
+   * @param {number} maxIterations
+   * @returns {{ messages: Array, functions: Array, currentPhase: string, currentTask: object|null }}
+   */
+  #prepareIteration(userInput, intent, iteration, maxIterations) {
+    // 注入工作区上下文
+    if (this.#workspaceState) {
+      const ctx = this.#workspaceState.aggregateContext({
+        maxFiles: 6,
+        maxCharsPerFile: 500,
+        maxTotalChars: 2400,
+      });
+      if (ctx && ctx.summary && ctx.files.length > 0) {
+        this.#sessionManager.addSystemMessage(
+          `<!-- workspace-context: files=${ctx.files.join(',')} -->\n${ctx.summary}`,
+        );
+      }
+    }
+
+    // 停滞检测 + 上下文管理
+    const planSummary = this.#planner.activePlan ? this.#planner.buildPrompt('') : null;
+    this.#agentContext.injectStagnationNudge(iteration, maxIterations, planSummary);
+    this.#agentContext.manageContextWindow(this.#modelProvider, maxIterations);
+
+    this.#debugEvent('Iteration started', {
+      iteration,
+      maxIterations,
+      sessionMessages: this.#sessionManager.getHistory().length,
+      estimatedTokens: this.#sessionManager.getTokenCount(),
+    });
+
+    // 三层执行链：Plan task → Methodology phase → Tool pool
+    const currentPhase = this.#planner.deriveCurrentPhase();
+    const currentTask = this.#planner.getCurrentRunnableTask();
+    const allowedTools = this.#planner.getCurrentAllowedTools();
+
+    const routedTools = selectToolsForRequest(this.#toolRegistry.getAll(), {
+      userInput,
+      taskProfile: this.#activeTaskProfile,
+      intent,
+      currentPhase,
+      currentTask,
+    });
+    this.#activeRoutedToolNames = new Set(routedTools.map((tool) => tool.name));
+    const effectiveAllowedTools = allowedTools ? routedTools.map((tool) => tool.name) : null;
+    const functions = this.#toolRegistry.toFunctionDefinitions(routedTools);
+
+    // 注入任务约束
+    if (currentTask && allowedTools) {
+      const taskConstraintPrompt = buildTaskConstraintPrompt(currentTask, effectiveAllowedTools);
+      if (taskConstraintPrompt) {
+        this.#sessionManager.addSystemMessage(taskConstraintPrompt);
+        this.#debugEvent('Task constraint prompt injected', {
+          taskId: currentTask.id,
+          taskName: currentTask.name,
+          allowedTools: effectiveAllowedTools,
+        });
+      }
+    }
+
+    const routedToolPrompt = [
+      this.#textToolParser.generateToolPrompt(routedTools),
+      `Workspace: all relative paths resolve from ${this.#config.workingDirectory}. ` +
+        `Shell cwd is ${this.#config.workingDirectory}.`,
+    ].join('\n\n');
+    const messages = withRoutedToolContext(
+      this.#sessionManager.getMessages(),
+      routedToolPrompt,
+      currentPhase,
+    );
+
+    // 硬 Token 上限检查
+    const modelMaxContext = this.#modelProvider.getMaxContextTokens?.() || 128000;
+    const hardCapRatio = 0.85;
+    const estimatedTotalTokens = this.#estimateMessageTokens(messages);
+    if (estimatedTotalTokens > modelMaxContext * hardCapRatio) {
+      this.#debugEvent('Pre-LLM hard token cap triggered', {
+        estimatedTotalTokens,
+        modelMaxContext,
+        hardCapTokens: Math.floor(modelMaxContext * hardCapRatio),
+        messagesBefore: this.#sessionManager.getHistory().length,
+      });
+      const targetTokens = Math.floor(modelMaxContext * 0.6);
+      if (this.#contextPruner && typeof this.#contextPruner.compress === 'function') {
+        this.#contextPruner.updateConfig?.({
+          maxTokens: modelMaxContext,
+          targetTokens,
+          preserveRecentMessages: 6,
+        });
+        const stats = this.#sessionManager.compressWithSummarizer(this.#contextPruner, {
+          maxTokens: modelMaxContext,
+          targetTokens,
+          preserveRecentMessages: 6,
+        });
+        this.#debugEvent('Pre-LLM summary-compress completed', {
+          messagesAfter: this.#sessionManager.getHistory().length,
+          estimatedTokensAfter: this.#sessionManager.getTokenCount(),
+          stats,
+        });
+      } else {
+        this.#sessionManager.trimToContextWindow(targetTokens, {
+          minRecentMessages: 4,
+        });
+        this.#debugEvent('Pre-LLM force-prune (fallback) completed', {
+          messagesAfter: this.#sessionManager.getHistory().length,
+          estimatedTokensAfter: this.#sessionManager.getTokenCount(),
+        });
+      }
+    }
+
+    return { messages, functions, currentPhase, currentTask };
+  }
+
+  /**
    * 同步注入预探索上下文：利用 WorkspaceIndex + AgentMemory 数据，
    * 在首轮迭代前注入项目结构和记忆上下文，消除 agent 的探索阶段。
    * 使用 SessionManager 分层 API，支持运行时刷新。
@@ -1267,6 +1503,31 @@ export class ReActAgent {
       result.userInputRequest = userInputRequest;
     }
     this.#lastRunResult = result;
+
+    // 切换到结束阶段
+    if (success) {
+      this.#changePhase(AgentPhase.FINISHED, 'Task completed successfully');
+    } else {
+      this.#changePhase(AgentPhase.FINISHED, `Task ${status}: ${reason || ''}`);
+    }
+
+    // 构建运行统计汇总
+    const summary = this.#runSummaryCollector.markRunEnded(durationMs);
+    result.summary = summary;
+
+    // 发出生命周期事件：agent_end
+    this.#emitLifecycle(
+      createAgentEndEvent({
+        runId: this.#lastRunResult.runId,
+        success,
+        status,
+        answer,
+        reason,
+        iterations,
+        durationMs,
+        summary,
+      }),
+    );
 
     try {
       metricsSink.finishRun(this.#lastRunResult?.runId, {
@@ -1698,6 +1959,35 @@ export class ReActAgent {
     if (this.#config.debug === true || process.env.DEBUG === 'true') {
       this.#ui.debug?.(`${label}: ${JSON.stringify(details)}`);
     }
+  }
+
+  /**
+   * 发出生命周期事件
+   * @param {object} event - 生命周期事件对象
+   * @private
+   */
+  #emitLifecycle(event) {
+    if (this.#onLifecycleEvent) {
+      try {
+        this.#onLifecycleEvent(event);
+      } catch (err) {
+        this.#debugEvent('Lifecycle event handler error', { error: err.message });
+      }
+    }
+  }
+
+  /**
+   * 切换当前阶段并发出 phase_change 事件
+   * @param {string} phase - AgentPhase 常量
+   * @param {string} [detail] - 详细描述
+   * @private
+   */
+  #changePhase(phase, detail = '') {
+    if (this.#currentPhase === phase) return;
+    this.#currentPhase = phase;
+    this.#runSummaryCollector.recordPhaseChange(phase);
+    this.#emitLifecycle(createPhaseChangeEvent({ phase, detail }));
+    this.#debugEvent('Phase changed', { phase, detail });
   }
 
   #preview(value, maxLength = 200) {

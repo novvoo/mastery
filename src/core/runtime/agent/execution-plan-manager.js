@@ -32,6 +32,7 @@ import { classifyToolObservation, ObservationErrorCode } from './support/observa
 import { ActionHistory, createActionRecord } from './support/action-history.js';
 import { FixTemplates, generateFixPlan, findMatchingTemplates } from './support/fix-templates.js';
 import { getPlanTemplateByTaskType } from './support/plan-templates.js';
+import { detectLanguageMismatch } from './support/prompt-builder.js';
 
 const CANONICAL_SINGLETON_TASK_IDS = new Set([
   'inspect_workspace',
@@ -1851,10 +1852,10 @@ export class ExecutionPlanManager {
     this.#insertTasksBefore(plan, runningImplementationTask.id, [
       {
         id: `${baseId}_diagnose`,
-        name: 'Diagnose Hashline edit failure',
+        name: 'Re-read edited file context',
         description:
-          `Inspect current file tags, stale anchors, and diagnostics before retrying. ` +
-          `Conflict: ${conflictType}. Failure evidence: ${failureSummary}`,
+          `Read the affected files again and identify the smallest line ranges that still satisfy the current implementation task. ` +
+          `Failure evidence: ${failureSummary}`,
         phase: ExecutionPlanManager.PHASE.INSPECTION,
         scopeFiles: hashline.affectedFiles,
         allowedTools: [
@@ -1872,9 +1873,9 @@ export class ExecutionPlanManager {
       },
       {
         id: `${baseId}_retry`,
-        name: 'Retry Hashline edit',
+        name: 'Rebuild and apply edit',
         description:
-          'Rebuild the patch from the current file content and apply the smallest valid Hashline edit.',
+          'Rebuild the edit from the fresh file snapshot. Prefer a tight Hashline patch; use another edit tool only if the patch language is a poor fit.',
         phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
         scopeFiles: hashline.affectedFiles,
         allowedTools: [
@@ -1891,9 +1892,9 @@ export class ExecutionPlanManager {
       },
       {
         id: `${baseId}_inspect`,
-        name: 'Inspect Hashline edit result',
+        name: 'Inspect edited result',
         description:
-          'Read back the edited files or diff and confirm the retry matches the plan intent.',
+          'Read back the changed files or diff and confirm the edit matches the plan intent before verification.',
         phase: ExecutionPlanManager.PHASE.INSPECTION,
         scopeFiles: hashline.affectedFiles,
         allowedTools: [
@@ -1936,6 +1937,48 @@ export class ExecutionPlanManager {
 
     runningVerificationTask.recordToolCall(toolName, args, result);
 
+    const failureSummary = this.#summarizeFailureResult(result);
+
+    const executedCommands = [args?.command, args?.input, failureSummary]
+      .filter(Boolean)
+      .map(String);
+    const langMismatch = detectLanguageMismatch(executedCommands, {
+      workingDirectory: this.#sessionManager?.getConfig?.()?.workingDirectory,
+    });
+
+    if (langMismatch) {
+      runningVerificationTask.updateStatus(TaskStatus.PENDING);
+      runningVerificationTask.completedAt = null;
+      runningVerificationTask.result = {
+        completedBy: 'language-mismatch-detection',
+        verificationFailed: true,
+        displayStatus: 'needs_language_correction',
+        statusReason: `Language mismatch detected: You used ${langMismatch.used.join(', ')} commands but the project appears to be ${langMismatch.detected.join(', ')}.`,
+        toolName,
+        args,
+        failureSummary,
+        langMismatch,
+      };
+
+      const baseId = `language_correction_${Date.now()}`;
+      this.#insertTasksBefore(plan, runningVerificationTask.id, [
+        {
+          id: `${baseId}_correct`,
+          name: 'Correct verification command language',
+          description: `Language mismatch detected: The project appears to be ${langMismatch.detected.join(', ')}, but you used ${langMismatch.used.join(', ')} verification commands. Please use the correct verification commands for ${langMismatch.primary}. Recommended commands: ${langMismatch.suggestions.join(', ')}.`,
+          phase: ExecutionPlanManager.PHASE.VERIFICATION,
+          allowedTools: ['shell', 'read_file', 'list_dir'],
+        },
+      ]);
+
+      this.#enforcePhaseBarriers(plan);
+      this.#startReadyTasks(plan);
+      this.#sessionManager?.addUserMessage?.(
+        `[LANGUAGE MISMATCH DETECTED] You used ${langMismatch.used.join(', ')} verification commands, but the project appears to be ${langMismatch.detected.join(', ')}. Please correct your approach and use ${langMismatch.primary} verification commands: ${langMismatch.suggestions.join(', ')}.`,
+      );
+      return true;
+    }
+
     if (this.#verificationRepairCount >= 2) {
       runningVerificationTask.updateStatus(TaskStatus.FAILED, {
         error: {
@@ -1953,7 +1996,6 @@ export class ExecutionPlanManager {
     this.#verificationRepairCount += 1;
     const iteration = this.#verificationRepairCount;
     const baseId = `repair_after_verification_failure_${iteration}`;
-    const failureSummary = this.#summarizeFailureResult(result);
 
     const fixPlan = generateFixPlan(failureSummary);
     const errorType = fixPlan?.errorType || 'generic';
@@ -2632,7 +2674,7 @@ export class ExecutionPlanManager {
       {
         id: diagnoseId,
         name: `Diagnose: ${conflictType}`,
-        description: `Hashline 冲突检测: ${conflictType}。涉及文件: ${(affectedFiles || []).join(', ') || 'unknown'}。建议策略: ${(suggestedStrategies || ['re-read + retry']).join('; ')}`,
+        description: `重新读取受影响文件，确认当前内容、目标行号和最小修改范围。失败类型: ${conflictType}。涉及文件: ${(affectedFiles || []).join(', ') || 'unknown'}。建议: ${(suggestedStrategies || ['re-read + retry']).join('; ')}`,
         phase: ExecutionPlanManager.PHASE.INSPECTION,
         scopeFiles: affectedFiles || [],
         metadata: { source: 'replan-diagnose', conflictType },
@@ -2640,7 +2682,7 @@ export class ExecutionPlanManager {
       {
         id: retryId,
         name: `Retry after ${conflictType}`,
-        description: `在诊断 hash 冲突后，用正确的上下文重新执行编辑。涉及文件: ${(affectedFiles || []).join(', ') || 'unknown'}`,
+        description: `基于新的文件快照重建编辑并重试。涉及文件: ${(affectedFiles || []).join(', ') || 'unknown'}`,
         phase: ExecutionPlanManager.PHASE.IMPLEMENTATION,
         scopeFiles: affectedFiles || [],
         metadata: { source: 'replan-retry', conflictType },

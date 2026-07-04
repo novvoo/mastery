@@ -477,6 +477,15 @@ describe('hashline coverage: parsePatchExtended', () => {
     expect(h[1].op).toBe(OP_INS_TAIL);
     expect(h[1].lines).toEqual(['// bottom']);
   });
+
+  test('INS.HEAD and INS.TAIL support shorthand colon headers', () => {
+    const p = parsePatchExtended(
+      '[a#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]\nINS.HEAD:\n+// top\nINS.TAIL:\n+// bottom',
+    );
+    const h = p.sections[0].hunks;
+    expect(h[0]).toMatchObject({ op: OP_INS_HEAD, start: 1, lines: ['// top'] });
+    expect(h[1]).toMatchObject({ op: OP_INS_TAIL, start: 0, lines: ['// bottom'] });
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -620,16 +629,19 @@ describe('hashline coverage: Patcher recovery internals', () => {
   });
 
   test('_remapHunksAgainstBase gone branch', async () => {
-    // 当 baseToCurMapping 返回 undefined 且 baseLine 也不存在时触发 "gone" 分支
+    // gone-delete 恢复：base 有 4 行，current 只有 2 行，DEL 3 指向的行 gone。
+    // 纯 DEL 操作 + 锚定行已不存在 → 恢复成功，操作已满足。
     const fs = new MemoryFilesystem({ 'a.txt': 'a\nb\n' });
     const snapshots = new InMemorySnapshotStore();
     const tag = snapshots.record('a.txt', 'a\nb\nc\nd\n');
-    // current 只有 2 行，但 base 有 4 行 → line 3-4 的映射应为 undefined
+    // current 只有 2 行，但 base 有 4 行 → line 3-4 gone
     await fs.write('a.txt', 'a\nb\n');
     const p = new Patcher({ fs, snapshots });
     const r = await p.apply(`[a.txt#${tag}]\nDEL 3.=3`);
-    // 应该 recovery 成功（DEL 操作在 gone 分支标记冲突）
+    // gone-delete 恢复：行已不存在 → ok=true
     expect(r.ok).toBe(true);
+    const allWarnings = r.sections[0].warnings.join(' ');
+    expect(allWarnings).toBeTruthy();
   });
 
   test('_computeLCSGreedy correct for simple case', async () => {
@@ -1067,33 +1079,31 @@ describe('hashline coverage: error formatting & utilities', () => {
 
 describe('hashline coverage: recovery edge cases', () => {
   test('recovery warnings include gone type conflict', async () => {
-    // 让 base 有 5 行，current 只有 2 行 → hunk 指向的行 gone
+    // gone-delete 恢复：base 有 5 行，current 只有 2 行，DEL 3 指向的行 gone。
+    // 纯 DEL 操作 + 锚定行已不存在 → 恢复成功，操作已满足。
     const fs = new MemoryFilesystem({ 'a.txt': 'surviving1\nsurviving2\n' });
     const snapshots = new InMemorySnapshotStore();
     const tag = snapshots.record('a.txt', 'l1\nl2\nl3\nl4\nl5\n');
     const p = new Patcher({ fs, snapshots });
     const r = await p.apply(`[a.txt#${tag}]\nDEL 3.=3`);
+    // gone-delete 恢复：行已不存在 → ok=true
     expect(r.ok).toBe(true);
-    // 应该有 gone 类型的 warning
     const allWarnings = r.sections[0].warnings.join(' ');
     expect(allWarnings).toBeTruthy();
   });
 
   test('diff3 merge fallback path through _remapHunksAgainstBase', async () => {
-    // diff3 returns merged=null → 降级到 _remapHunksAgainstBase
+    // 新模块恢复架构：完全不同的内容 + SWAP 操作（非纯 DEL）→
+    // diff3 merge、remap、session-chain、gone-delete 均无法恢复 → ok=false。
     const fs = new MemoryFilesystem({ 'a.txt': 'COMPLETELY_DIFFERENT\nTEXT_HERE\n' });
     const snapshots = new InMemorySnapshotStore();
     const tag = snapshots.record('a.txt', 'original\ncontent\nhere\n');
     const p = new Patcher({ fs, snapshots });
     const r = await p.apply(`[a.txt#${tag}]\nSWAP 1.=1:\n+REPLACED`);
-    expect(r.ok).toBe(true);
-    expect(r.sections[0].recovered).toBe(true);
-    // fallback warnings should include 'diff3 merge incomplete'
-    expect(
-      r.sections[0].warnings.some(
-        (w) => w.includes('diff3 merge incomplete') || w.includes('fallback'),
-      ),
-    ).toBe(true);
+    // SWAP 不是纯 DEL → gone-delete 不适用 → 恢复失败
+    expect(r.ok).toBe(false);
+    expect(r.conflicts).toBeDefined();
+    expect(r.conflicts.length).toBeGreaterThan(0);
   });
 
   test('Patcher.apply compute error returns failure', async () => {

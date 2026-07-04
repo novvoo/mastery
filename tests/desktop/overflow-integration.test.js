@@ -15,7 +15,7 @@ import {
   getFileTypeIcon,
   formatDuration,
   getActivityTone,
-} from '../../desktop/renderer/components/message-log/utils/activity-summary.js';
+} from '../../src/core/runtime/activity-summary.js';
 import {
   buildThinkingSummary,
   buildRuntimeDetailsExportData,
@@ -28,7 +28,7 @@ import {
   isRuntimeDetailMessage,
   isStatusUpdateMessage,
   isThinkingMessage,
-} from '../../desktop/renderer/components/message-log/utils/runtime-details.js';
+} from '../../src/core/runtime/runtime-details.js';
 
 // ===== 辅助函数：模拟 RuntimeDetailsPanel 的 null 返回判断逻辑 =====
 function shouldPanelBeVisible(runtimeDetails, isRunningGroup) {

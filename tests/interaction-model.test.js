@@ -50,16 +50,18 @@ describe('desktop interaction model', () => {
     expect(transition.nextValue).toBe('answer the follow-up');
   });
 
-  test('composer submission while running preserves the draft', () => {
+  test('composer submission while running queues the message', () => {
     const transition = getComposerSubmitTransition({
       value: '/doc search auth',
       status: 'running',
     });
 
-    expect(transition.accepted).toBe(false);
-    expect(transition.nextValue).toBe('/doc search auth');
-    expect(transition.focus).toBe(true);
-    expect(transition.showSuggestions).toBe(true);
+    expect(transition.accepted).toBe(true);
+    expect(transition.input).toBe('/doc search auth');
+    expect(transition.nextValue).toBe('');
+    expect(transition.restoreValue).toBe('/doc search auth');
+    expect(transition.focus).toBe(false);
+    expect(transition.showSuggestions).toBe(false);
   });
 
   test('composer remains editable while the agent is running', () => {
@@ -93,14 +95,15 @@ describe('desktop interaction model', () => {
     expect(second.action).toBe('submit');
   });
 
-  test('Ctrl+Enter is a noop while runtime is running', () => {
+  test('Ctrl+Enter submits to queue while runtime is running', () => {
     const result = handleComposerKey(
       { key: 'Enter', metaKey: true },
       createComposerInteractionState(),
       { value: 'new task', status: 'running', now: 1000 },
     );
 
-    expect(result.action).toBe('noop');
+    expect(result.action).toBe('submit');
+    expect(result.state.historyIndex).toBe(-1);
   });
 
   test('Escape requires a second press before clearing a draft', () => {

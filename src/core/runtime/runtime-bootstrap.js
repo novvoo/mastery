@@ -23,6 +23,7 @@
  */
 
 import { existsSync, mkdirSync } from 'fs';
+import path from 'path';
 import { createAgentEngine } from './agent/agent-engine.js';
 import { ToolRegistry } from './agent/tool-registry.js';
 import {
@@ -35,6 +36,7 @@ import { WorkspaceState } from '../workspace/workspace-state.js';
 import { metricsSink } from './metrics-sink.js';
 import { MCPClient } from '../../mcp/mcp-client.js';
 import { createCoreTools, SKILL_TOOL_CREATORS } from '../../tools/index.js';
+import { createSessionFileStore, SessionFileStore } from '../session/session-file-store.js';
 
 // ====================================================================
 // 安全策略工厂
@@ -173,7 +175,29 @@ export async function bootstrapRuntime(options = {}) {
     workingDirectory,
   });
 
-  // 5) AgentEngine（真正的内核）
+  // 5) Session File Store（JSONL 持久化）
+  let sessionFileStore = null;
+  if (options.sessionFileStore) {
+    if (options.sessionFileStore instanceof SessionFileStore) {
+      sessionFileStore = options.sessionFileStore;
+    } else if (typeof options.sessionFileStore === 'object') {
+      sessionFileStore = createSessionFileStore(options.sessionFileStore);
+    }
+  } else if (options.sessionPersistence !== false) {
+    const appDataDir =
+      process.env.MASTERY_DATA_DIR ||
+      path.join(process.env.HOME || process.env.USERPROFILE || '', '.mastery-agent');
+    try {
+      sessionFileStore = createSessionFileStore({
+        appDataDir,
+        debounceMs: options.sessionFileDebounceMs ?? 500,
+      });
+    } catch (_) {
+      sessionFileStore = null;
+    }
+  }
+
+  // 6) AgentEngine（真正的内核）
   const modelProvider = options.modelProvider || null;
   const ui = options.ui || null;
   const engine = createAgentEngine({
@@ -181,6 +205,8 @@ export async function bootstrapRuntime(options = {}) {
     toolRegistry,
     memoryManager: options.memoryManager || null,
     ui,
+    fileStore: sessionFileStore,
+    sessionId: options.sessionId || null,
     config: {
       workingDirectory,
       maxIterations,
@@ -190,6 +216,7 @@ export async function bootstrapRuntime(options = {}) {
       tokenBudget: options.tokenBudget || null,
       tokenBudgetWarningThreshold: options.tokenBudgetWarningThreshold ?? 70,
       temperature: options.temperature,
+      autoPersist: options.autoPersist !== false,
       ...(options.engineConfigOverrides || {}),
     },
   });
@@ -202,6 +229,7 @@ export async function bootstrapRuntime(options = {}) {
     workspaceState: engine.getWorkspaceState?.() || new WorkspaceState(),
     metricsSink: ms,
     mcpClient,
+    sessionFileStore,
     workingDirectory,
   };
 }

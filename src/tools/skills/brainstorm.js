@@ -1,15 +1,15 @@
 import { ToolCategory } from '../../core/types/index.js';
 
 /**
- * brainstorm - HARD-GATE design exploration before coding.
+ * brainstorm - optional design exploration for uncertain work.
  * Generates a structured design document with candidate approaches,
- * risks, and decision points requiring user confirmation.
+ * risks, and decision points for evidence-backed planning.
  */
 export default function brainstorm() {
   return {
     name: 'brainstorm',
     description:
-      'HARD-GATE design exploration tool. Must be invoked before coding to generate a structured design document with candidate approaches, pros/cons, risks, and decision points. Updates memory with the design decision.',
+      'Optional design exploration tool for uncertain or cross-cutting work. Produces candidate approaches, tradeoffs, risks, and decision points without blocking direct evidence-backed implementation.',
     category: ToolCategory.skill_engineering,
     params: {
       problem: {
@@ -28,7 +28,7 @@ export default function brainstorm() {
       },
     },
     required: ['problem'],
-    handler: async (params, ctx) => {
+    handler: async (params, ctx = {}) => {
       const { problem, constraints = '', approach = '' } = params;
       const { memoryManager } = ctx;
 
@@ -237,7 +237,7 @@ function formatDesignDocument(
   const lines = [
     '# Design Exploration Document',
     '',
-    '> **HARD-GATE**: This design document must be reviewed and approved before any implementation begins.',
+    '> **Planning aid**: Use this when the approach is uncertain or cross-cutting. It is evidence for the active plan, not a mandatory approval gate.',
     '',
     '---',
     '',
@@ -296,7 +296,7 @@ function formatDesignDocument(
     lines.push(`| ${r.description} | ${r.probability} | ${r.impact} | ${r.mitigation} |`);
   });
 
-  lines.push('', '---', '', '## 5. Decision Points (Require User Confirmation)', '');
+  lines.push('', '---', '', '## 5. Decision Points', '');
 
   decisionPoints.forEach((dp) => {
     lines.push(`### ${dp.id}: ${dp.question}`);
@@ -311,7 +311,7 @@ function formatDesignDocument(
   lines.push(
     '---',
     '',
-    '> **Next Steps**: Confirm decision points above, then proceed with the grill tool for deep alignment before coding.',
+    '> **Next Steps**: Resolve any decision points that materially affect the change, then continue with the narrowest useful read, edit, or verification step.',
     '',
   );
 

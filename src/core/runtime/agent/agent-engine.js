@@ -816,8 +816,11 @@ export class AgentEngine {
   #conversationJournal;
   #sessionPersistence;
   #systemPromptInitialized = false;
+  #fileStore = null;
+  #sessionId = null;
+  #sessionMetaWritten = false;
 
-  constructor({ modelProvider, toolRegistry, memoryManager, config, ui }) {
+  constructor({ modelProvider, toolRegistry, memoryManager, config, ui, fileStore, sessionId }) {
     this.#modelProvider = modelProvider;
     this.#toolRegistry = toolRegistry || createEmptyToolRegistry();
     // memoryManager 可选：没传时默认创建 AgentMemory（含结构化记忆、检索、校验），
@@ -866,9 +869,17 @@ export class AgentEngine {
       onReasoningDelta: () => {},
       onToolCallDelta: () => {},
     };
+    this.#fileStore = fileStore || null;
+    this.#sessionId = sessionId || null;
 
     // ============ 子系统初始化 ============
-    this.#sessionManager = new SessionManager({ model: this.#config.session?.model });
+    this.#sessionManager = new SessionManager({
+      model: this.#config.session?.model,
+      fileStore: this.#fileStore,
+      sessionId: this.#sessionId,
+      workingDirectory: this.#config.workingDirectory,
+      autoPersist: config?.autoPersist !== false,
+    });
     const restoredSession = this.#sessionPersistence.restoreInto(this.#sessionManager);
     this.#systemPromptInitialized = restoredSession && this.#sessionManager.getHistory().length > 0;
     if (restoredSession) {
@@ -1022,6 +1033,29 @@ export class AgentEngine {
     // —— Metrics: 会话级标记（每次 run 都有独立的 runId）——
     const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
     this.#lastUserInput = userInput;
+
+    if (!this.#sessionId) {
+      this.#sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      this.#sessionManager.setSessionId(this.#sessionId);
+    }
+
+    if (this.#fileStore && !this.#sessionMetaWritten) {
+      this.#sessionMetaWritten = true;
+      this.#fileStore
+        .appendMeta(
+          this.#sessionId,
+          {
+            title: String(userInput || '').slice(0, 80) || '未命名会话',
+            createdAt: Date.now(),
+            workingDirectory: this.#config.workingDirectory,
+            status: 'running',
+          },
+          this.#config.workingDirectory,
+        )
+        .catch((error) => {
+          console.error('[AgentEngine] Failed to write session meta:', error.message);
+        });
+    }
     // 用户输入后立刻写入 conversation journal
     if (this.#conversationJournal) {
       try {
@@ -2093,6 +2127,17 @@ export class AgentEngine {
       // 执行每个工具调用（ToolExecutor 统一处理：安全策略、缓存、规范化）
       for (const toolCall of allToolCalls) {
         const toolStart = Date.now();
+        const toolName = toolCall.name || toolCall.function?.name || 'unknown';
+        const toolArgs = toolCall.arguments || toolCall.function?.arguments || {};
+
+        if (this.#fileStore && this.#sessionId) {
+          this.#fileStore
+            .appendToolCall(this.#sessionId, toolName, toolArgs, this.#config.workingDirectory)
+            .catch((error) => {
+              console.error('[AgentEngine] Failed to write tool call:', error.message);
+            });
+        }
+
         const execResult = await this.#toolExecutor.execute(
           toolCall,
           {
@@ -2288,6 +2333,31 @@ export class AgentEngine {
   /** 访问当前 WorkspaceState（用于外部订阅 / 聚和上下文） */
   getWorkspaceState() {
     return this.#workspaceState;
+  }
+
+  getSessionManager() {
+    return this.#sessionManager;
+  }
+
+  getFileStore() {
+    return this.#fileStore;
+  }
+
+  getSessionId() {
+    return this.#sessionId;
+  }
+
+  setSessionId(sessionId) {
+    this.#sessionId = sessionId;
+    if (this.#sessionManager) {
+      this.#sessionManager.setSessionId(sessionId);
+    }
+  }
+
+  async flushSession() {
+    if (this.#sessionManager && typeof this.#sessionManager.flush === 'function') {
+      await this.#sessionManager.flush();
+    }
   }
 
   /** 最近一次 run 的结果 */

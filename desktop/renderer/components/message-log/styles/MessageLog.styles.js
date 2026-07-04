@@ -317,6 +317,21 @@ export const styles = {
 
   /* ── Plan Card（对齐 TRAE Work 设计体系） ── */
 
+  /* 消息流中的轻量 plan 指示器（plan 详情在右侧面板） */
+  planInlineIndicator: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 'var(--spacing-xs)',
+    padding: '4px 10px',
+    borderRadius: 'var(--radius-md)',
+    backgroundColor: 'var(--ds-brand-soft)',
+    color: 'var(--ds-brand)',
+    fontSize: 'var(--font-size-xs)',
+    fontWeight: 600,
+    border: '1px solid var(--ds-brand-s2)',
+    maxWidth: 'fit-content',
+  },
+
   planCard: {
     borderRadius: 'var(--radius-lg)',
     borderWidth: '1px',
@@ -614,7 +629,7 @@ export const styles = {
   /* 三列时间线网格: 阶段 | 轨道 | 内容 */
   planTimelineRow: {
     display: 'grid',
-    gridTemplateColumns: 'auto 16px minmax(0, 1fr)',
+    gridTemplateColumns: '16px minmax(0, 1fr)',
     gap: 'var(--spacing-sm)',
     alignItems: 'start',
     minHeight: '22px',

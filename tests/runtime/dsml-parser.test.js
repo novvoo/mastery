@@ -134,6 +134,18 @@ describe('TextToolParser DSML Format', () => {
       expect(result[0].name).toBe('list_dir');
     });
 
+    it('parses explicit brainstorm calls without treating generic plan as brainstorm', () => {
+      const parser = createParser();
+
+      const explicit = parser.parse('CALL brainstorm({"problem": "Compare parser designs"})');
+      expect(explicit.length).toBe(1);
+      expect(explicit[0].name).toBe('brainstorm');
+      expect(explicit[0].arguments.problem).toBe('Compare parser designs');
+
+      expect(parser.parse('CALL plan({"steps": ["inspect", "edit", "verify"]})')).toEqual([]);
+      expect(parser.parse('CALL plan_solution({"problem": "Fix parser"})')).toEqual([]);
+    });
+
     it('still parses ```tool JSON block format', () => {
       const parser = createParser();
       const text = '```tool\n{"name": "list_dir", "arguments": {"path": "/tmp"}}\n```';

@@ -879,32 +879,174 @@ export const styles = {
   },
   
   sendButton: {
-    width: '44px',
-    height: '44px',
+    width: '36px',
+    height: '36px',
     borderRadius: 'var(--radius-md)',
-    border: '1px solid var(--primary-strong)',
-    backgroundColor: 'var(--primary-color)',
+    border: '1px solid var(--ds-brand-s2)',
+    backgroundColor: 'var(--ds-brand)',
     color: 'var(--text-on-primary)',
     cursor: 'pointer',
-    fontSize: '18px',
+    fontSize: '14px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'all var(--transition-fast)',
-    boxShadow: 'var(--shadow-sm)'
+    transition: 'all 0.15s ease',
+    boxShadow: 'none',
+    flexShrink: 0,
   },
-  
+
   sendButtonDisabled: {
-    backgroundColor: 'var(--surface-raised)',
-    border: '1px solid var(--border-subtle)',
-    color: 'var(--text-muted)',
-    cursor: 'not-allowed'
+    backgroundColor: 'var(--ds-bg-raised)',
+    border: '1px solid var(--ds-border-l1)',
+    color: 'var(--ds-text-tertiary)',
+    cursor: 'not-allowed',
+    opacity: 0.6,
+  },
+
+  /* 运行时停止按钮 — 圆形 + 脉冲光环 */
+  sendButtonRunning: {
+    backgroundColor: 'var(--ds-status-error)',
+    border: '1px solid var(--ds-status-error)',
+    color: '#fff',
+    cursor: 'pointer',
+    animation: 'planDotPulse 2s ease-in-out infinite',
+  },
+
+  /* 运行时发送按钮（次要） */
+  sendButtonRunningSecondary: {
+    width: '36px',
+    height: '36px',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--ds-border-l1)',
+    backgroundColor: 'var(--ds-bg-raised)',
+    color: 'var(--ds-text-primary)',
+    cursor: 'pointer',
+    fontSize: '14px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'all 0.15s ease',
+    flexShrink: 0,
   },
   
   inputHint: {
     marginTop: '4px',
     fontSize: '11px',
     color: 'var(--text-dark)'
+  },
+
+  askUserFloatingCapsule: {
+    position: 'fixed',
+    top: '80px',
+    left: '50%',
+    zIndex: 1000,
+    minWidth: '320px',
+    maxWidth: '480px',
+    borderRadius: '24px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'rgba(20, 20, 24, 0.85)',
+    backdropFilter: 'blur(20px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), var(--glass-inner-hl)',
+    padding: '14px 18px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    opacity: 0,
+    pointerEvents: 'none',
+    transform: 'translateX(-50%) translateY(-20px)'
+  },
+
+  askUserFloatingCapsuleVisible: {
+    opacity: 1,
+    pointerEvents: 'auto',
+    transform: 'translateX(-50%) translateY(0)'
+  },
+
+  askUserIconWrapper: {
+    width: '40px',
+    height: '40px',
+    borderRadius: '12px',
+    backgroundColor: 'var(--primary-soft)',
+    border: '1px solid var(--primary-border)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0
+  },
+
+  askUserContent: {
+    flex: 1,
+    minWidth: 0
+  },
+
+  askUserTitle: {
+    fontSize: '12px',
+    fontWeight: '700',
+    color: 'var(--text-muted)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    marginBottom: '2px'
+  },
+
+  askUserMessage: {
+    fontSize: '14px',
+    color: 'var(--text-color)',
+    lineHeight: 1.4,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap'
+  },
+
+  askUserInputWrapper: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginTop: '10px',
+    padding: '6px',
+    borderRadius: '12px',
+    backgroundColor: 'var(--surface-input)',
+    border: '1px solid var(--border-subtle)',
+    transition: 'all var(--transition-fast)'
+  },
+
+  askUserInputWrapperFocused: {
+    border: '1px solid var(--primary-color)',
+    boxShadow: 'var(--focus-ring-soft)'
+  },
+
+  askUserInput: {
+    flex: 1,
+    minWidth: 0,
+    height: '32px',
+    backgroundColor: 'transparent',
+    border: 'none',
+    color: 'var(--text-color)',
+    fontSize: '13px',
+    outline: 'none',
+    padding: '0 8px'
+  },
+
+  askUserButton: {
+    width: '32px',
+    height: '32px',
+    borderRadius: '8px',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'var(--primary-color)',
+    color: 'var(--text-on-primary)',
+    cursor: 'pointer',
+    fontSize: '12px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    transition: 'all var(--transition-fast)'
+  },
+
+  askUserButtonDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed'
   },
   
   // ================== 通用标签按钮 ==================

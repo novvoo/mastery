@@ -226,6 +226,26 @@ export function parseRuntimeToolInvocations(
     });
     if (call) {
       toolCalls.push(call);
+    } else {
+      const firstWord = line.split(/\s+/)[0];
+      if (firstWord) {
+        const mapped = mapRuntimeToolCommandName(firstWord, (name) => name);
+        if (!mapped || mapped === 'shell' || !toolRegistry?.has?.(mapped)) {
+          // 对于 shell 别名（run_command/bash/exec 等），剥离工具名前缀，
+          // 只保留实际命令部分（如 'run_command npm test' → 'npm test'）
+          let commandText = line;
+          if (mapped === 'shell') {
+            const rest = line.slice(firstWord.length).trim();
+            commandText = rest || line;
+          }
+          toolCalls.push({
+            id: `call_${Date.now()}_${startIndex + toolCalls.length}`,
+            name: 'shell',
+            arguments: { command: commandText },
+            source: 'shell_code_block',
+          });
+        }
+      }
     }
   }
 
@@ -236,10 +256,25 @@ export function parseRuntimeToolInvocations(
  * Split text into runtime tool command lines.
  */
 export function runtimeToolCommandLines(text) {
-  return String(text || '')
+  const rawLines = String(text || '')
     .split('\n')
     .map((line) => line.trim().replace(/^\$\s*/, ''))
     .filter((line) => line && !line.startsWith('#'));
+
+  const mergedLines = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    const current = rawLines[i];
+    const next = rawLines[i + 1];
+
+    if (next && next.startsWith('{') && /^[A-Za-z_][\w-]*$/.test(current)) {
+      mergedLines.push(current + ' ' + next);
+      i++;
+    } else {
+      mergedLines.push(current);
+    }
+  }
+
+  return mergedLines;
 }
 
 /**
@@ -268,6 +303,14 @@ export function runtimeToolCallFromBareCommand(
       return null;
     }
     args = normalizeJSONToolCall(mapped, jsonArgs).args;
+  } else if (rest.startsWith('{')) {
+    const jsonMatch = line.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const jsonArgs = safeJSONParse(jsonMatch[0]);
+      if (jsonArgs && typeof jsonArgs === 'object' && !Array.isArray(jsonArgs)) {
+        args = normalizeJSONToolCall(mapped, jsonArgs).args;
+      }
+    }
   } else if (mapped === 'list_dir') {
     args = { path: stripShellTokenQuotes(rest || '.') };
   } else if (mapped === 'read_file') {
@@ -321,22 +364,54 @@ export function parseShellCodeBlockFormat(
         toolCalls.push(...normalizedRuntimeToolCalls);
         continue;
       }
+
+      if (isKnownToolName(normalized, toolRegistry)) {
+        continue;
+      }
+
       toolCalls.push({
         id: `call_${Date.now()}_${toolCalls.length}`,
         name: 'shell',
-        arguments: { command: normalized },
+        arguments: { command: stripShellAliasPrefix(normalized) },
         source: 'shell_code_block',
       });
+      continue;
+    }
+
+    if (isKnownToolName(command, toolRegistry)) {
       continue;
     }
 
     toolCalls.push({
       id: `call_${Date.now()}_${toolCalls.length}`,
       name: 'shell',
-      arguments: { command },
+      arguments: { command: stripShellAliasPrefix(command) },
       source: 'shell_code_block',
     });
   }
 
   return toolCalls;
+}
+
+function isKnownToolName(command, toolRegistry) {
+  const firstWord = command.split(/\s+/)[0];
+  if (!firstWord) return false;
+
+  const mapped = mapRuntimeToolCommandName(firstWord, (name) => name);
+  return mapped && mapped !== 'shell' && toolRegistry?.has?.(mapped);
+}
+
+/**
+ * 剥离 shell 工具别名前缀（如 'run_command npm test' → 'npm test'）。
+ * 如果命令不以 shell 别名开头，则原样返回。
+ */
+function stripShellAliasPrefix(command) {
+  const firstWord = String(command).split(/\s+/)[0];
+  if (!firstWord) return command;
+  const mapped = mapRuntimeToolCommandName(firstWord, (name) => name);
+  if (mapped === 'shell') {
+    const rest = command.slice(firstWord.length).trim();
+    return rest || command;
+  }
+  return command;
 }

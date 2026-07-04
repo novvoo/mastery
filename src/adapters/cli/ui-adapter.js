@@ -413,6 +413,15 @@ export class CLIUIAdapter {
           this.#ui.error(message);
         }
         break;
+      case 'warn':
+        // Warnings are expected skip/block observations, not errors.
+        // Show as dimmed info if theme available, otherwise as info.
+        if (this.#ui.theme?.dim) {
+          console.log(this.#ui.theme.dim(`  ⚠ ${message}`));
+        } else if (this.#ui.info) {
+          this.#ui.info(message);
+        }
+        break;
       case 'info':
       default:
         if (this.#ui.info) {

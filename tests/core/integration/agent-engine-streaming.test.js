@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach, mock } from 'bun:test';
 
-mock.module('../../../src/core/session-manager.js', () => ({
+mock.module('../../../src/core/session/session-manager.js', () => ({
   SessionManager: class SessionManager {
     static PRIORITY = Object.freeze({ ORDINARY: 1, EVIDENCE: 2, DECISION: 3 });
     static LAYER = Object.freeze({
@@ -11,6 +11,7 @@ mock.module('../../../src/core/session-manager.js', () => ({
       MEMORY: 40,
     });
     constructor(opts = {}) {}
+    setSessionId() {}
     setSystemPrompt() {}
     addSystemMessage() {}
     addMessage() {}
@@ -49,7 +50,7 @@ mock.module('../../../src/errors/error-handler.js', () => ({
   withTimeout: (fn) => fn(),
 }));
 
-mock.module('../../../src/core/text-tool-parser.js', () => ({
+mock.module('../../../src/core/parsing/text-tool-parser.js', () => ({
   TextToolParser: class TextToolParser {
     constructor() {}
     parse() {
@@ -78,7 +79,7 @@ mock.module('../../../src/core/dynamic-context-pruning.js', () => ({
   },
 }));
 
-mock.module('../../../src/core/workspace-index.js', () => ({
+mock.module('../../../src/core/workspace/workspace-index.js', () => ({
   WorkspaceIndex: class WorkspaceIndex {
     constructor() {}
     startPeriodicSync() {}
@@ -86,7 +87,7 @@ mock.module('../../../src/core/workspace-index.js', () => ({
   },
 }));
 
-mock.module('../../../src/core/workspace-state.js', () => ({
+mock.module('../../../src/core/workspace/workspace-state.js', () => ({
   WorkspaceState: class WorkspaceState {
     constructor() {}
     aggregateContext() {
@@ -98,11 +99,11 @@ mock.module('../../../src/core/workspace-state.js', () => ({
   },
 }));
 
-mock.module('../../../src/core/routed-tool-context.js', () => ({
+mock.module('../../../src/core/tools/routed-tool-context.js', () => ({
   withRoutedToolContext: (fn) => fn,
 }));
 
-mock.module('../../../src/core/token-scope.js', () => ({
+mock.module('../../../src/core/runtime/agent/support/token-scope.js', () => ({
   TokenScope: class TokenScope {
     constructor() {}
     allocate() {}
@@ -113,7 +114,7 @@ mock.module('../../../src/core/token-scope.js', () => ({
   },
 }));
 
-mock.module('../../../src/core/agent-planner.js', () => ({
+mock.module('../../../src/core/runtime/agent/agent-planner.js', () => ({
   AgentPlanner: class AgentPlanner {
     constructor() {}
     get plan() {
@@ -122,16 +123,28 @@ mock.module('../../../src/core/agent-planner.js', () => ({
     get isCompleted() {
       return true;
     }
+    get isActive() {
+      return false;
+    }
+    get currentTask() {
+      return null;
+    }
     buildPlan() {
       return null;
     }
     createIfNeeded() {
       return null;
     }
+    buildPrompt() {
+      return '';
+    }
+    advance() {
+      return null;
+    }
   },
 }));
 
-mock.module('../../../src/core/tool-executor.js', () => ({
+mock.module('../../../src/core/runtime/agent/tool-executor.js', () => ({
   ToolExecutor: class ToolExecutor {
     constructor() {
       this.events = [];
@@ -143,7 +156,7 @@ mock.module('../../../src/core/tool-executor.js', () => ({
   },
 }));
 
-mock.module('../../../src/core/context-manager.js', () => ({
+mock.module('../../../src/core/runtime/agent/context-manager.js', () => ({
   ContextManager: class ContextManager {
     constructor() {}
     prepareContext() {
@@ -153,7 +166,7 @@ mock.module('../../../src/core/context-manager.js', () => ({
   },
 }));
 
-mock.module('../../../src/core/metrics-sink.js', () => ({
+mock.module('../../../src/core/runtime/metrics-sink.js', () => ({
   metricsSink: {
     startRun() {},
     endRun() {},
@@ -167,11 +180,12 @@ mock.module('../../../src/memory/memory-manager.js', () => ({
   },
 }));
 
-mock.module('../../../src/core/prompt-builder.js', () => ({
+mock.module('../../../src/core/runtime/agent/support/prompt-builder.js', () => ({
   buildToolSyntaxCorrectionPrompt: () => '',
   buildToolUseCorrectionPrompt: () => '',
   buildCodingTaskOperatingPrompt: () => '',
   buildCodingCompletionGatePrompt: () => '',
+  buildSemanticRiskGuidance: () => '',
   suggestVerificationStrategy: () => null,
   isTermination: () => false,
   extractFinalAnswer: (text) => text,
@@ -181,7 +195,7 @@ mock.module('../../../src/core/prompt-builder.js', () => ({
   shouldBlockCodingFinal: () => false,
 }));
 
-mock.module('../../../src/core/termination-detector.js', () => ({
+mock.module('../../../src/core/runtime/agent/termination-detector.js', () => ({
   StagnationDetector: class StagnationDetector {
     constructor() {}
     reset() {}
@@ -204,8 +218,10 @@ mock.module('../../../src/planner/graph-planner.js', () => ({
   },
 }));
 
-mock.module('../../../src/core/agent-constants.js', () => ({
+mock.module('../../../src/core/agent/constants.js', () => ({
   MAX_ITERATIONS_DEFAULT: 10,
+  EXPLORATION_BUDGET: 10,
+  FORCE_ACTION_GRACE_TURNS: 3,
 }));
 
 import { createAgentEngine, createProtocolStreamFilter } from '../../../src/core/runtime/agent/agent-engine.js';

@@ -27,7 +27,7 @@ import {
 } from 'fs';
 import { join, dirname } from 'path';
 import { createHash } from 'crypto';
-import { computeTag } from './hashline.js';
+import { computeTag } from './hashline/index.js';
 
 // ── 抽象接口 ──────────────────────────────────────────────────────────────
 

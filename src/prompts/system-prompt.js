@@ -106,7 +106,7 @@ Thought: Pre-explored context already shows payment.ts imports and dependencies.
 Action: CALL read_file({"path": "src/services/payment.ts", "offset": 20, "limit": 40})
 Observation: [function processPayment code]
 Thought: I can see the function. Adding try/catch with error handling.
-Action: CALL edit_file({"path": "src/services/payment.ts", "old_str": "async function processPayment(amount) {\n  const result = await chargeCard(amount);\n  return result;", "new_str": "async function processPayment(amount) {\n  try {\n    const result = await chargeCard(amount);\n    return result;\n  } catch (error) {\n    logger.error('Payment failed', { amount, error: error.message });\n    throw new PaymentError('Payment processing failed', { cause: error });\n  }"})
+Action: CALL edit_file({"path": "src/services/payment.ts", "old_text": "async function processPayment(amount) {\n  const result = await chargeCard(amount);\n  return result;", "new_text": "async function processPayment(amount) {\n  try {\n    const result = await chargeCard(amount);\n    return result;\n  } catch (error) {\n    logger.error('Payment failed', { amount, error: error.message });\n    throw new PaymentError('Payment processing failed', { cause: error });\n  }"})
 Observation: [file edited successfully]
 Thought: Change applied. Let me verify.
 Action: CALL shell({"command": "npx tsc --noEmit"})

@@ -16,7 +16,7 @@
  */
 
 import { IndustrialDiff3Engine } from './diff3-engine.js';
-import { hashContent } from './hashline.js';
+import { hashContent } from './hashline/index.js';
 
 // ── 类型定义 ────────────────────────────────────────────────────────────
 

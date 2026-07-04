@@ -11,6 +11,7 @@
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import { assertToolResultSucceeded } from '../core/runtime/agent/tool-result.js';
+import { TaskTemplateRegistry } from './task-template-registry.js';
 
 /**
  * 任务状态枚举
@@ -234,6 +235,13 @@ export const TASK_TEMPLATE_REGISTRY = {
     methodologyHint: 'verify',
   },
 };
+
+/**
+ * 内置任务模板注册表单例
+ * — 新代码建议用此 API（register/get/find/filter）
+ * — TASK_TEMPLATE_REGISTRY 保留用于向后兼容
+ */
+export const taskTemplateRegistry = new TaskTemplateRegistry(Object.values(TASK_TEMPLATE_REGISTRY));
 
 /**
  * 子任务节点

@@ -47,6 +47,12 @@ export class SessionManager {
   #usesCustomTokenCounter;
   #tokenizerModel;
 
+  #fileStore = null;
+  #sessionId = null;
+  #workingDirectory = '';
+  #autoPersist = true;
+  #pendingWrites = [];
+
   // priority 分级: 1 = ordinary, 2 = evidence, 3 = decision
   static PRIORITY = Object.freeze({ ORDINARY: 1, EVIDENCE: 2, DECISION: 3 });
 
@@ -65,6 +71,55 @@ export class SessionManager {
     this.#tokenCounter = this.#usesCustomTokenCounter
       ? options.tokenCounter
       : Tokenizer.createTokenCounter({ model: this.#tokenizerModel });
+    this.#fileStore = options.fileStore || null;
+    this.#sessionId = options.sessionId || null;
+    this.#workingDirectory = options.workingDirectory || '';
+    this.#autoPersist = options.autoPersist !== false;
+  }
+
+  setSessionId(sessionId) {
+    this.#sessionId = sessionId;
+  }
+
+  getSessionId() {
+    return this.#sessionId;
+  }
+
+  setFileStore(fileStore, workingDirectory) {
+    this.#fileStore = fileStore;
+    if (workingDirectory !== undefined) {
+      this.#workingDirectory = workingDirectory;
+    }
+  }
+
+  #enqueueWrite(promiseFn) {
+    if (!this.#fileStore || !this.#sessionId || !this.#autoPersist) {
+      return;
+    }
+    const promise = Promise.resolve()
+      .then(promiseFn)
+      .catch((error) => {
+        console.error('[SessionManager] Persist write failed:', error.message);
+      });
+    this.#pendingWrites.push(promise);
+    const cleanup = () => {
+      const idx = this.#pendingWrites.indexOf(promise);
+      if (idx >= 0) {
+        this.#pendingWrites.splice(idx, 1);
+      }
+    };
+    promise.then(cleanup, cleanup);
+  }
+
+  async flush() {
+    if (this.#fileStore && typeof this.#fileStore.flush === 'function') {
+      await this.#fileStore.flush();
+    }
+    await Promise.all(this.#pendingWrites);
+  }
+
+  getFileStore() {
+    return this.#fileStore;
   }
 
   /** @param {string} prompt */
@@ -149,12 +204,16 @@ export class SessionManager {
    * @param {number} [priority]
    */
   addMessage(role, content, toolCalls, priority) {
-    this.#messages.push({
+    const message = {
       role,
       content,
       ...(toolCalls !== undefined ? { toolCalls } : {}),
       priority: priority ?? SessionManager.PRIORITY.ORDINARY,
-    });
+    };
+    this.#messages.push(message);
+    this.#enqueueWrite(() =>
+      this.#fileStore.appendMessage(this.#sessionId, message, this.#workingDirectory),
+    );
   }
 
   /** @param {string} content */
@@ -173,13 +232,19 @@ export class SessionManager {
 
   /** @param {string} toolCallId @param {string} toolName @param {string} result @param {number} [priority] */
   addToolResult(toolCallId, toolName, result, priority) {
-    // Tool 结果默认 evidence：它往往是后续决策的依据
-    this.#messages.push({
+    const message = {
       role: 'tool',
       content: result,
       toolCallId,
       priority: priority ?? SessionManager.PRIORITY.EVIDENCE,
-    });
+    };
+    this.#messages.push(message);
+    this.#enqueueWrite(() =>
+      this.#fileStore.appendMessage(this.#sessionId, message, this.#workingDirectory),
+    );
+    this.#enqueueWrite(() =>
+      this.#fileStore.appendToolResult(this.#sessionId, toolName, result, this.#workingDirectory),
+    );
   }
 
   /**

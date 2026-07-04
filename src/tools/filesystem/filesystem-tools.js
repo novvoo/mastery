@@ -13,7 +13,63 @@ import { join, resolve, sep, isAbsolute } from 'path';
 import { Buffer } from 'buffer';
 import { createHash } from 'crypto';
 import { ToolCategory } from '../../core/types/index.js';
-import { computeTag } from '../../core/harness/hashline.js';
+import { computeTag } from '../../core/harness/hashline/index.js';
+
+export const HASHLINE_TOOL_DESCRIPTION = `Apply compact, line-anchored edits to existing files with the Hashline patch language.
+
+Use this after reading the exact lines you need to change. The latest read gives you the file text and the content tag for the section header. For new files, use write_file instead.
+
+<format>
+Every section starts with [path/to/file#tag].
+Line numbers are 1-based and refer to the original file snapshot for this one call.
+A header ending in ":" takes + body rows. DEL has no body.
+</format>
+
+<ops>
+SWAP N.=M: replace original lines N through M with the following + rows.
+DEL N.=M delete original lines N through M. DEL N deletes one line.
+INS.PRE N: insert the following + rows immediately before line N.
+INS.POST N: insert the following + rows immediately after line N.
+INS.HEAD: insert the following + rows at the start of the file.
+INS.TAIL: insert the following + rows at the end of the file.
+</ops>
+
+<body>
+Every body row starts with +. The text after + is written verbatim, including indentation.
++ alone writes a blank line.
+Do not write -old lines or unchanged context lines. To keep a line, leave it out of every range.
+Literal Markdown bullets still need the body prefix: "+- item".
+</body>
+
+<examples>
+[src/app.js#abc123]
+SWAP 2.=2:
++const enabled = true;
+
+[src/app.js#abc123]
+INS.POST 5:
++  return result;
+
+[README.md#def456]
+INS.TAIL:
++## Notes
++- item
+
+[src/app.js#abc123]
+DEL 8
+</examples>
+
+<failure>
+If the tag is stale, the range is wrong, or the result is surprising, stop and read the file again before retrying.
+After a successful edit, use the new tag from the result or read again before making another Hashline patch.
+</failure>
+
+<critical>
+Use tags and line numbers from the latest read.
+Keep ranges tight: touch only lines that change.
+Body rows are final content, not an old/new diff.
+Use write_file for new files.
+</critical>`;
 
 /**
  * 检测内容是否为 base64 编码，并在适当时解码
@@ -331,6 +387,7 @@ export function createFileSystemTools() {
         limit: { type: 'number', description: 'Number of lines to read' },
       },
       required: ['path'],
+      paramAliases: { file_path: 'path' },
       handler: async ({ path, offset, limit }, ctx) => {
         const safe = safeResolvePath(ctx.workingDirectory, path);
         if (!safe.ok) {
@@ -393,6 +450,7 @@ export function createFileSystemTools() {
         },
       },
       required: ['path', 'content'],
+      paramAliases: { file_path: 'path', file_content: 'content' },
       handler: async ({ path, content }, ctx) => {
         const safe = safeResolvePath(ctx.workingDirectory, path);
         if (!safe.ok) {
@@ -474,7 +532,7 @@ export function createFileSystemTools() {
           description:
             'The text to find and replace. If line/startLine/endLine is provided, old_text is optional (used for validation).',
         },
-        new_text: { type: 'string', description: 'The replacement text' },
+        new_text: { type: 'string', description: 'The replacement text (empty string to delete)', allowEmpty: true },
         line: { type: 'number', description: 'Single line number (1-based) to replace' },
         startLine: {
           type: 'number',
@@ -486,6 +544,13 @@ export function createFileSystemTools() {
         },
       },
       required: ['path', 'new_text'],
+      paramAliases: {
+        file_path: 'path',
+        old_str: 'old_text',
+        new_str: 'new_text',
+        old_string: 'old_text',
+        new_string: 'new_text',
+      },
       handler: async ({ path, old_text, new_text, line, startLine, endLine }, ctx) => {
         const safe = safeResolvePath(ctx.workingDirectory, path);
         if (!safe.ok) {
@@ -676,39 +741,7 @@ export function createFileSystemTools() {
     // =====================================================================
     {
       name: 'apply_hashline_patch',
-      description: `Apply a multi-file, content-hash-anchored patch using the Hashline DSL.
-
-The patch format is compact and line-anchored, with each section bound to a content hash (tag) of the file. This enables safe, atomic, multi-file edits with stale-tag detection and automatic recovery.
-
-When an execution plan is active, use this tool as the implementation vehicle for the current plan task. The plan supplies intent, scope, and completion criteria; Hashline supplies fast atomic edits. Do not use Hashline to bypass required planning, inspection, review, or verification tasks.
-
-**Patch DSL syntax:**
-
-\`\`\`
-[path/to/file.js#a1b2c3...]
-SWAP 1.=2:
-+new line 1
-+new line 2
-DEL 3.=4
-INS.PRE 5=
-+// comment before line 5
-INS.POST 6=
-+// comment after line 6
-\`\`\`
-
-- \`[path#tag]\`: Section header. tag is the content hash of the normalized file text.
-- \`SWAP start.=end:\`: Replace lines [start, end] (1-based, inclusive) with following + lines.
-- \`DEL start.=end\`: Delete lines [start, end].
-- \`INS.PRE line=\`: Insert following + lines before the given line.
-- \`INS.POST line=\`: Insert following + lines after the given line.
-- Content lines start with \`+\`. Empty lines and \`#\` comments between operations are ignored.
-
-**Benefits over edit_file:**
-- Multi-file atomic: all sections preflight together, none written if any fail
-- Content-hash anchored: detects stale files (concurrent modifications) and auto-recovers via 3-way merge
-- Semantic operations: SWAP/DEL/INS instead of fragile text matching
-
-**Important:** Use the tag (content hash) from the most recent read of the file. If you don't know the tag, use read_file first to get the current content, then compute the tag using the sha256 of the normalized text (trailing newlines trimmed, lines joined with \\n).`,
+      description: HASHLINE_TOOL_DESCRIPTION,
       category: ToolCategory.FILESYSTEM,
       params: {
         patch: {

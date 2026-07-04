@@ -20,6 +20,7 @@ function makeMockRegistry(tools = []) {
   const map = new Map(tools.map((t) => [t.name, t]));
   return {
     get: mock((name) => map.get(name)),
+    getAll: mock(() => tools),
     validateAndCoerceArgs: mock((name, args) => ({ valid: true, coercedArgs: args || {} })),
     has: mock((name) => map.has(name)),
   };
@@ -79,7 +80,10 @@ describe('ToolExecutor', () => {
     expect(result.result).toContain('not registered');
   });
 
-  test('blocks tools outside the current routed plan task before emitting toolCall', async () => {
+  test('registered tools are allowed even when not in activeRoutedToolNames', async () => {
+    // Regression: verify (and other registered methodology tools) were blocked
+    // because getAllowedToolSet didn't receive toolRegistry. Registered tools
+    // should always be available; route-blocking only filters unregistered ones.
     const browserHandler = mock(async () => 'opened');
     const browserTool = makeTool('browser_open', { handler: browserHandler });
     const writeTool = makeTool('write_file', { required: ['path', 'content'] });
@@ -93,11 +97,10 @@ describe('ToolExecutor', () => {
       },
     );
 
-    expect(result.routeBlocked).toBe(true);
-    expect(result.error).toContain('not available');
-    expect(result.error).toContain('write_file');
-    expect(browserHandler).not.toHaveBeenCalled();
-    expect(ui.toolCall).not.toHaveBeenCalled();
+    expect(result.routeBlocked).toBeUndefined();
+    expect(result.error).toBeUndefined();
+    expect(browserHandler).toHaveBeenCalled();
+    expect(ui.toolCall).toHaveBeenCalled();
   });
 
   test('does not treat an empty routed tool set as a deny-all policy', async () => {
@@ -1204,5 +1207,83 @@ describe('ToolExecutor', () => {
     });
 
     expect(result.result).toBe('long ');
+  });
+
+  // —— edit_file 参数别名兜底测试 ——
+  test('edit_file accepts old_string/new_string (claude-code convention)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-old-string-alias-'));
+    try {
+      writeFileSync(join(root, 'test.js'), 'old code\n', 'utf-8');
+      const editHandler = mock(async ({ old_text, new_text }) => `replaced ${old_text} → ${new_text}`);
+      const editTool = makeTool('edit_file', {
+        required: ['path', 'new_text'],
+        params: { path: { type: 'string' }, old_text: { type: 'string' }, new_text: { type: 'string', allowEmpty: true } },
+        paramAliases: {
+          file_path: 'path',
+          old_str: 'old_text',
+          new_str: 'new_text',
+          old_string: 'old_text',
+          new_string: 'new_text',
+        },
+        handler: editHandler,
+      });
+      const readTool = makeTool('read_file', { handler: async () => 'old code' });
+      const { executor } = makeMockExecutor({ tools: [editTool, readTool], config: { workingDirectory: root } });
+
+      // Read the file first to satisfy write-before-read guardrail
+      await executor.execute({ id: '1', name: 'read_file', arguments: { path: 'test.js' } });
+
+      const result = await executor.execute({
+        id: '2',
+        name: 'edit_file',
+        arguments: { path: 'test.js', old_string: 'old code', new_string: 'new code' },
+      });
+
+      expect(result.error).toBeUndefined();
+      expect(editHandler).toHaveBeenCalled();
+      const args = editHandler.mock.calls[0][0];
+      expect(args.old_text).toBe('old code');
+      expect(args.new_text).toBe('new code');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('edit_file accepts old_string/new_string with empty new_string (delete)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-delete-alias-'));
+    try {
+      writeFileSync(join(root, 'test.js'), 'line to delete\n', 'utf-8');
+      const editHandler = mock(async ({ old_text, new_text }) => `deleted ${old_text}`);
+      const editTool = makeTool('edit_file', {
+        required: ['path', 'new_text'],
+        params: { path: { type: 'string' }, old_text: { type: 'string' }, new_text: { type: 'string', allowEmpty: true } },
+        paramAliases: {
+          file_path: 'path',
+          old_str: 'old_text',
+          new_str: 'new_text',
+          old_string: 'old_text',
+          new_string: 'new_text',
+        },
+        handler: editHandler,
+      });
+      const readTool = makeTool('read_file', { handler: async () => 'content' });
+      const { executor } = makeMockExecutor({ tools: [editTool, readTool], config: { workingDirectory: root } });
+
+      // Read the file first to satisfy write-before-read guardrail
+      await executor.execute({ id: '1', name: 'read_file', arguments: { path: 'test.js' } });
+
+      const result = await executor.execute({
+        id: '2',
+        name: 'edit_file',
+        arguments: { path: 'test.js', old_string: 'line to delete', new_string: '' },
+      });
+
+      expect(result.error).toBeUndefined();
+      expect(editHandler).toHaveBeenCalled();
+      const args = editHandler.mock.calls[0][0];
+      expect(args.new_text).toBe('');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

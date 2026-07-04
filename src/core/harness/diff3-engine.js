@@ -9,7 +9,7 @@
  *  5. 渐进式合并策略：clean merge → partial merge → conflict markers → reject
  */
 
-import { hashContent } from './hashline.js';
+import { hashContent } from './hashline/index.js';
 
 // ── Myers Diff Algorithm ──────────────────────────────────────────────────
 

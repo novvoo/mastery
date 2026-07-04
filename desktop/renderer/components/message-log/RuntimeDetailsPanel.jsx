@@ -20,9 +20,12 @@ import {
 } from '../../runtime/activity-summary.js';
 import {
   PLAN_PHASE_LABELS,
+  PLAN_ARCHITECTURE_LABELS,
+  getPlanModeLabel,
   formatPlanStrategyValue,
   groupPlanTasksByPhase,
 } from './utils/plan-display.js';
+import Icon from '../ui/Icon.jsx';
 
 // ===== Tab 定义（1 个 Tab：活动）=====
 const TABS = [{ id: 'activity', key: 'exec.activity_log', icon: '⚡' }];
@@ -314,13 +317,38 @@ export function RuntimeDetailsPanel({
     const plan = latestPlanFrame.plan || {};
     const progress = latestPlanFrame.planProgress || {};
     const strategy = plan.strategy || plan.context?.strategy || {};
+    const modeLabel = getPlanModeLabel(plan);
+    const architectureId = strategy.planningArchitecture || strategy.architecture;
+    const architecture = strategy.planningArchitectureLabel || PLAN_ARCHITECTURE_LABELS[architectureId] || formatPlanStrategyValue(architectureId);
+    const decomposition = String(strategy.decomposition || plan?.context?.decomposition || '').toLowerCase();
     const phaseGroups = groupPlanTasksByPhase(planTasks);
-    const strategyItems = [
+    const title = latestPlanFrame.content || latestPlanMsg?.content || t('plan.title');
+
+    /* 摘要指标 */
+    const summaryItems = [
+      { label: t('plan.status.completed'), value: `${progress.completed || 0}/${progress.total || planTasks.length}` },
+      { label: t('plan.strategy.mode'), value: architecture || modeLabel },
+      ...(decomposition ? [{ label: '分解方式', value: decomposition === 'llm' ? t('plan.decomposition_llm') : t('plan.decomposition_template') }] : []),
+      { label: '进度', value: `${progress.progress ?? 0}%` },
+    ];
+
+    /* 策略标签 */
+    const strategyTags = [
       strategy.planningArchitectureLabel || readablePlanStrategyValue(strategy.planningArchitecture),
       strategy.verificationStrength ? `验证 ${readablePlanStrategyValue(strategy.verificationStrength)}` : null,
       strategy.parallelPotential ? `并行 ${readablePlanStrategyValue(strategy.parallelPotential)}` : null,
       strategy.recommendedReview || null,
     ].filter(Boolean);
+
+    /* 进度条颜色 */
+    const statusTone = progress.failed > 0 ? 'var(--ds-status-error)'
+      : progress.needsRepair > 0 ? 'var(--ds-status-warning)'
+      : progress.completed === progress.total && progress.total > 0 ? 'var(--ds-status-success)'
+      : 'var(--ds-status-warning)';
+
+    /* 快照帧指示 */
+    const allSnapshots = latestPlanMsg?.planSnapshots || [];
+    const snapshotCount = allSnapshots.length;
 
     /* 状态色映射 */
     const statusColorFor = (statusValue) => {
@@ -331,7 +359,7 @@ export function RuntimeDetailsPanel({
       return 'var(--ds-text-tertiary)';
     };
 
-    /* 轨道 dot 样式映射（复用 MessageLog planTimeline 样式） */
+    /* 轨道 dot 样式映射 */
     const dotStyleFor = (statusValue) => ({
       ...styles.planTimelineDot,
       ...(statusValue === 'completed' ? styles.planTimelineDotDone : {}),
@@ -347,41 +375,94 @@ export function RuntimeDetailsPanel({
         ...localStyles.planTaskSection,
         border: '1px solid var(--ds-border-l1)',
         backgroundColor: 'var(--ds-bg-default)',
+        padding: 'var(--spacing-sm)',
       }}>
-        <div style={localStyles.planTaskHeader}>
-          <span style={{ ...localStyles.planTaskTitle, color: 'var(--ds-text-primary)' }}>
-            {strategy.label ? `执行计划 · ${strategy.label}` : '执行计划'}
-          </span>
-          <span style={{ ...localStyles.planTaskProgress, color: 'var(--ds-text-secondary)' }}>
-            {progress.completed || 0}/{progress.total || planTasks.length}
+        {/* ── 头部：标题 + 进度百分比 ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-sm)' }}>
+          <div style={{ ...styles.actionIconBox, ...styles.planIconBox }}>
+            <Icon name="plan" size={14} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 'var(--font-size-base)', fontWeight: 600, color: 'var(--ds-text-primary)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {title}
+            </div>
+            <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--ds-text-secondary)', fontWeight: 400 }}>
+              {modeLabel} · {architecture}
+            </div>
+          </div>
+          <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 700, fontVariantNumeric: 'tabular-nums', fontFamily: 'var(--ds-font-mono)', color: statusTone, flexShrink: 0 }}>
+            {progress.progress ?? 0}%
           </span>
         </div>
 
-        {/* 进度条 */}
+        {/* ── 摘要指标网格 ── */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${summaryItems.length}, minmax(0, 1fr))`,
+          gap: 'var(--spacing-xs)',
+          marginBottom: 'var(--spacing-sm)',
+        }}>
+          {summaryItems.map((item) => (
+            <div key={item.label} style={styles.planSummaryCard}>
+              <span style={styles.planSummaryLabel}>{item.label}</span>
+              <span style={styles.planSummaryValue}>{item.value}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* ── 动态状态 tags ── */}
+        {((latestPlanFrame.planUpdate || strategy.dynamicReplanning) || progress.running > 0 || progress.needsRepair > 0) && (
+          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: 'var(--spacing-sm)' }}>
+            {(latestPlanFrame.planUpdate || strategy.dynamicReplanning) && <span style={{ ...styles.planTag, ...styles.planTagBrand }}>{t('plan.dynamic_replanning')}</span>}
+            {progress.running > 0 && <span style={styles.planTag}>{t('plan.running_count', { count: progress.running })}</span>}
+            {progress.needsRepair > 0 && <span style={{ ...styles.planTag, ...styles.planTagWarning }}>{t('plan.needs_repair_count', { count: progress.needsRepair })}</span>}
+          </div>
+        )}
+
+        {/* ── 帧指示器 ── */}
+        {snapshotCount > 1 && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--spacing-sm)',
+            padding: '3px var(--spacing-xs)',
+            marginBottom: 'var(--spacing-sm)',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--ds-border-l1)',
+            background: 'var(--ds-bg-secondary)',
+            fontSize: 'var(--font-size-xs)',
+            fontWeight: 600,
+            color: 'var(--ds-text-secondary)',
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            <span>进度帧 {snapshotCount}</span>
+            <span style={{ marginLeft: 'auto' }}>
+              {latestPlanFrame.timestamp ? new Date(latestPlanFrame.timestamp).toLocaleTimeString() : ''}
+            </span>
+          </div>
+        )}
+
+        {/* ── 进度条 ── */}
         {progress.total > 0 && (
           <div style={styles.planProgressTrack}>
             <div style={{
               ...styles.planProgressFill,
               width: `${Math.max(4, progress.progress || 0)}%`,
-              backgroundColor: progress.failed > 0 ? 'var(--ds-status-error)'
-                : progress.needsRepair > 0 ? 'var(--ds-status-warning)'
-                : progress.completed === progress.total ? 'var(--ds-status-success)'
-                : 'var(--ds-status-warning)',
+              backgroundColor: statusTone,
             }} />
           </div>
         )}
 
-        {strategyItems.length > 0 && (
-          <div style={{ ...localStyles.planStrategyRow, gap: '4px', marginBottom: 'var(--spacing-sm)' }}>
-            {strategyItems.map((item) => (
-              <span key={item} style={styles.planTag}>
-                {item}
-              </span>
+        {/* ── 策略 tags ── */}
+        {strategyTags.length > 0 && (
+          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: 'var(--spacing-sm)' }}>
+            {strategyTags.map((item) => (
+              <span key={item} style={styles.planTag}>{item}</span>
             ))}
           </div>
         )}
 
-        {/* 任务时间线 — 复用 MessageLog.planTimelineRow/plaTimelineDot 样式 */}
+        {/* ── 任务时间线 ── */}
         <div style={styles.planTaskList}>
           {phaseGroups.map(([phase, tasks], phaseIdx) => (
             <div key={phase} style={{
@@ -607,7 +688,6 @@ export function RuntimeDetailsPanel({
           </div>
 
           <div style={localStyles.activityList}>
-            {renderPlanTasks()}
             {displayedActivities.map((activity, index) => {
               const tone = getActivityTone(activity);
               const isExpandedDetail = expandedActivities.has(activity.id || index);

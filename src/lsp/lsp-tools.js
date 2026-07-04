@@ -17,7 +17,7 @@ import { readFile, writeFile } from 'fs/promises';
 import { resolve, dirname, relative, basename, sep } from 'path';
 import { pathToFileURL } from 'url';
 import { ToolCategory } from '../core/types/index.js';
-import { computeTag } from '../core/harness/hashline.js';
+import { computeTag } from '../core/harness/hashline/index.js';
 
 // ── 辅助 ───────────────────────────────────────────────────────────────────
 

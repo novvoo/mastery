@@ -69,7 +69,7 @@ export function handleComposerKey(event, state, context = {}) {
         historyIndex: -1,
         draftBeforeHistory: '',
       },
-      action: value.trim() && status !== 'running' ? 'submit' : 'noop',
+      action: value.trim() ? 'submit' : 'noop',
       risk,
     };
   }
@@ -164,14 +164,15 @@ export function getComposerSubmitTransition({
   }
 
   if (status === 'running') {
-    const nextValue = keepWhenBusy ? input : String(value || '');
+    // 运行时允许提交 — 消息加入队列，当前任务完成后自动执行下一条
+    // 不中断当前任务，也不创建并发 agent
     return {
-      accepted: false,
+      accepted: true,
       input,
-      nextValue,
-      restoreValue: nextValue,
-      focus: keepWhenBusy,
-      showSuggestions: nextValue.trimStart().startsWith('/'),
+      nextValue: clearInput ? '' : String(value || ''),
+      restoreValue: input,
+      focus: false,
+      showSuggestions: false,
     };
   }
 
@@ -274,7 +275,11 @@ export function getShortcutHints({ hasHistory = false, status = 'idle' } = {}) {
 
 export function getComposerAssistText({ status, value, notice }) {
   if (notice?.text) {return notice.text;}
-  if (status === 'running') {return 'Agent is running. Use the stop button to interrupt safely.';}
+  if (status === 'running') {
+    return value?.trim()
+      ? '输入会加入队列，等当前任务完成后自动执行；点 ■ 可停止当前任务。'
+      : 'Agent is running. Use the stop button to interrupt safely.';
+  }
   if (
     String(value || '')
       .trimStart()

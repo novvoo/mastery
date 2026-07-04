@@ -255,6 +255,13 @@ export function normalizeToolArgumentAliases(name, args = {}) {
       normalized.new_str =
         normalized.new_text ?? normalized.new_content ?? normalized.newContent ?? normalized.new;
     }
+    // Support old_string/new_string (claude-code/Aider convention) as well
+    if (normalized.old_string !== undefined && normalized.old_text === undefined) {
+      normalized.old_text = normalized.old_string;
+    }
+    if (normalized.new_string !== undefined && normalized.new_text === undefined) {
+      normalized.new_text = normalized.new_string;
+    }
     if (normalized.new_text === undefined && normalized.new_str !== undefined) {
       normalized.new_text = normalized.new_str;
     }
@@ -284,8 +291,12 @@ export function normalizeToolArgumentAliases(name, args = {}) {
 function getAllowedToolSet(context = {}) {
   const taskAllowed = context.currentTask?.allowedTools;
   if (Array.isArray(taskAllowed) && taskAllowed.length > 0) {
+    // All registered tools are available; route-blocking only filters out
+    // tools that are not registered. This prevents the LLM from being blocked
+    // when it uses a registered tool (e.g. verify) that wasn't pre-selected
+    // by selectToolsForRequest for the current phase.
     const allRegisteredToolNames = Array.from(
-      context.toolRegistry?.getAll()?.map((t) => t.name) || [],
+      context.toolRegistry?.getAll?.()?.map((t) => t.name) || [],
     );
     const routed = normalizeToolNameSet(context.activeRoutedToolNames);
 
@@ -527,7 +538,10 @@ export class ToolExecutor {
     const startedAt = Date.now();
     const callSignature = `${name}:${JSON.stringify(args)}`;
 
-    const allowedToolNames = getAllowedToolSet(context);
+    const allowedToolNames = getAllowedToolSet({
+      ...context,
+      toolRegistry: context.toolRegistry || this.#toolRegistry,
+    });
     if (allowedToolNames && !allowedToolNames.has(name)) {
       const availableToolNames = Array.from(allowedToolNames).join(', ') || '(none)';
       const msg = `Tool "${name}" is registered but not available for the current plan task/phase. Available tools now: ${availableToolNames}.`;
@@ -658,9 +672,10 @@ export class ToolExecutor {
     if (workspaceState && typeof workspaceState.predictToolResult === 'function') {
       const prediction = workspaceState.predictToolResult(name, args);
       if (prediction.canSkip) {
-        const isWarning = prediction.type === 'will_fail';
-        const logFn = isWarning ? this.#ui.warn : this.#ui.info;
-        logFn?.(`${isWarning ? '⚠️' : 'ℹ️'} Skipping ${name}: ${prediction.reason}`);
+        // Skip predictions are normal observations (already sent to LLM via
+        // emitObservation below). Log at debug level — NOT warn/error — to
+        // avoid polluting the error log with expected behavior.
+        this.#ui.debug?.(`Skipping ${name}: ${prediction.reason}`);
         const predictedSuccess = prediction.type !== 'will_fail';
         const observation = predictedSuccess
           ? `Based on previous workspace observations:\n${prediction.reason}\n\nSkipping redundant operation; use the observed fact and continue.`
@@ -791,6 +806,14 @@ ${paramDesc || '无参数定义'}
     if (Array.isArray(tool.required) && tool.required.length > 0) {
       const missing = tool.required.filter((param) => {
         const value = effectiveArgs ? effectiveArgs[param] : undefined;
+        // Respect allowEmpty: if the param definition allows empty strings,
+        // only treat undefined/null as missing (not ''). This supports delete
+        // operations where new_text="" is a valid intentional value.
+        const paramDef = tool.params?.[param] || tool.parameters?.properties?.[param];
+        const allowEmpty = paramDef?.allowEmpty === true;
+        if (allowEmpty) {
+          return value === undefined || value === null;
+        }
         return value === undefined || value === null || value === '';
       });
       if (missing.length > 0) {

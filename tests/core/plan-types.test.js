@@ -11,6 +11,10 @@ describe('plan type selection', () => {
   test('supports Chinese explicit plan type hints', () => {
     expect(extractExplicitPlanType('计划类型: 安全 修复登录鉴权')).toBe('security');
     expect(extractExplicitPlanType('使用 文档 计划 更新 README')).toBe('documentation');
+    expect(extractExplicitPlanType('plan:review inspect the current diff')).toBe('code_review');
+    expect(extractExplicitPlanType('plan type: review inspect the current diff')).toBe(
+      'code_review',
+    );
   });
 
   test('selects specialized plan families from task signals', () => {

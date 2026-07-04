@@ -1,50 +1,76 @@
 /**
  * Tool Registry - manages all tool definitions and lookups
+ *
+ * 设计原则（参考 oh-my-pi）：
+ * - 单一入口注册，统一格式校验
+ * - 参数别名由工具自身声明，而非注册表硬编码
+ * - 执行链路通过中间件扩展，而非多层包装
  */
 
 import { normalizeToolResult } from './tool-result.js';
+import { normalizeTool } from './tool-definition.js';
 
 export class ToolRegistry {
   /** @type {Map<string, object>} */
   #tools = new Map();
   /** @type {Map<string, Array<string>>} 校验错误缓存 —— 每个工具只报一次 */
   #reportedSchemaIssues = new Map();
+  /** @type {Array<Function>} 执行中间件 */
+  #middleware = [];
 
   /** @param {object} tool */
   register(tool) {
-    // 基本字段校验：name 和 call/handler 二选一
     if (!tool || typeof tool !== 'object') {
       throw new Error('ToolRegistry.register: tool 必须是一个对象');
     }
     if (typeof tool.name !== 'string' || tool.name.length === 0) {
       throw new Error('ToolRegistry.register: tool.name 必须是非空字符串');
     }
-    if (!tool.call && !tool.handler) {
-      throw new Error(`Tool "${tool.name}" 必须定义 call 或 handler 方法`);
-    }
     if (this.#tools.has(tool.name)) {
       throw new Error(`Tool "${tool.name}" is already registered`);
     }
 
-    // 规范化 parameters：允许 `params` 或 `parameters.properties` 两种格式
-    // —— 这里只做结构记录，不强校验，因为上游工具风格多样
-    const toolParams =
-      tool.params ||
-      (tool.parameters && tool.parameters.properties ? tool.parameters.properties : {});
-    const toolRequired =
-      tool.required ||
-      (tool.parameters && tool.parameters.required ? tool.parameters.required : []);
+    // 统一规范化为标准格式
+    const normalized = normalizeTool(tool);
+    this.#tools.set(normalized.name, normalized);
+  }
 
-    // 统一存储为：schema.normalizedProperties + schema.required
-    const normalizedTool = {
-      ...tool,
-      _schema: {
-        properties: toolParams,
-        required: toolRequired,
-      },
-    };
+  /**
+   * 批量注册工具
+   * @param {Array<object>} tools
+   * @returns {ToolRegistry} this
+   */
+  registerMany(tools) {
+    for (const tool of tools) {
+      this.register(tool);
+    }
+    return this;
+  }
 
-    this.#tools.set(tool.name, normalizedTool);
+  /**
+   * 注销工具
+   * @param {string} name
+   * @returns {boolean} 是否成功注销
+   */
+  unregister(name) {
+    const existed = this.#tools.has(name);
+    this.#tools.delete(name);
+    this.#reportedSchemaIssues.delete(name);
+    return existed;
+  }
+
+  /**
+   * 注册执行中间件。中间件按注册顺序执行。
+   * 签名: async (context, next) => result
+   *   context = { toolName, args, handler, tool }
+   *   next = async () => handlerResult
+   *
+   * 参考 oh-my-pi 的工具边界归一化设计：
+   * 日志、审计、限流、缓存等都通过中间件实现。
+   */
+  use(middleware) {
+    this.#middleware.push(middleware);
+    return this;
   }
 
   /** @param {string} name @returns {object|undefined} */
@@ -86,19 +112,12 @@ export class ToolRegistry {
       return { valid: false, errors: [`Tool "${toolName}" not found`], coercedArgs: coerced };
     }
 
-    const schema = tool._schema || { properties: {}, required: [] };
+    const schema = tool.parameters || { properties: {}, required: [] };
     const props = schema.properties || {};
     const required = schema.required || [];
 
-    // 参数别名映射 (兼容 LLM 生成的不同参数名)
-    const paramAliases = {
-      write_file: { file_path: 'path', file_content: 'content' },
-      read_file: { file_path: 'path' },
-      edit_file: { file_path: 'path' },
-    };
-
-    // 处理参数别名
-    const toolAliases = paramAliases[toolName] || {};
+    // 参数别名映射：从工具定义中读取（工具自己声明自己的别名）
+    const toolAliases = tool.paramAliases || {};
     for (const [alias, canonical] of Object.entries(toolAliases)) {
       if (coerced[alias] !== undefined && coerced[canonical] === undefined) {
         coerced[canonical] = coerced[alias];
@@ -106,9 +125,15 @@ export class ToolRegistry {
       }
     }
 
-    // 1) required 检查
+    // 1) required 检查（allowEmpty: true 的字段允许空字符串，如 edit_file 的 new_text 用于删除）
     for (const key of required) {
-      if (coerced[key] === undefined || coerced[key] === null || coerced[key] === '') {
+      const param = props[key];
+      const allowEmpty = param && param.allowEmpty;
+      if (
+        coerced[key] === undefined ||
+        coerced[key] === null ||
+        (coerced[key] === '' && !allowEmpty)
+      ) {
         errors.push(`缺少必填参数: ${key}`);
       }
     }
@@ -198,38 +223,27 @@ export class ToolRegistry {
   }
 
   #toFunctionDefinition(tool) {
-    // Support both `params` (skill tools) and `parameters` (scheduler tools) formats
-    const toolParams =
-      tool.params ||
-      (tool.parameters && tool.parameters.properties ? tool.parameters.properties : {});
-    const toolRequired =
-      tool.required ||
-      (tool.parameters && tool.parameters.required ? tool.parameters.required : []);
+    const params = tool.parameters || { type: 'object', properties: {}, required: [] };
     return {
       name: tool.name,
       description: tool.description,
       parameters: {
         type: 'object',
         properties: Object.fromEntries(
-          Object.entries(toolParams).map(([key, param]) => {
+          Object.entries(params.properties || {}).map(([key, param]) => {
             /** @type {Record<string, unknown>} */
             const entry = {
               type: param.type,
               description: param.description,
             };
-            if (param.enum) {
-              entry.enum = param.enum;
-            }
-            if (param.items) {
+            if (param.enum) entry.enum = param.enum;
+            if (param.items)
               entry.items = { type: param.items.type, description: param.items.description };
-            }
-            if (param.default !== undefined) {
-              entry.default = param.default;
-            }
+            if (param.default !== undefined) entry.default = param.default;
             return [key, entry];
           }),
         ),
-        required: toolRequired,
+        required: params.required || [],
       },
     };
   }
@@ -274,8 +288,7 @@ export class ToolRegistry {
 
   /**
    * Execute a tool and return structured execution metadata.
-   * This keeps the legacy execute() API intact while giving professional callers
-   * a reliable success/error contract even when tools return string errors.
+   * 执行经过中间件链，中间件可以修改 args、拦截调用、记录日志等。
    */
   async executeWithMeta(name, args = {}, context = {}) {
     const tool = this.get(name);
@@ -285,9 +298,22 @@ export class ToolRegistry {
     if (!tool.handler || typeof tool.handler !== 'function') {
       throw new Error(`Tool "${name}" has no handler function`);
     }
+
     const startedAt = Date.now();
+    const middleware = this.#middleware;
+
+    // 构建中间件调用链
+    let index = 0;
+    const runNext = async () => {
+      if (index < middleware.length) {
+        const m = middleware[index++];
+        return m({ toolName: name, args, tool, context, registry: this }, runNext);
+      }
+      return tool.handler(args, context);
+    };
+
     try {
-      const result = await tool.handler(args, context);
+      const result = await runNext();
       return {
         toolName: name,
         args,

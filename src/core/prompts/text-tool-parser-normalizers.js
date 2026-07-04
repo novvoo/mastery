@@ -19,7 +19,6 @@ export const TOOL_CODE_CALL_NAMES = [
   'browser_search',
   'web_fetch',
   'fetch_url',
-  'plan_solution',
 ];
 
 export const NAMED_XML_TOOL_ALIASES = {
@@ -43,8 +42,6 @@ export const NAMED_XML_TOOL_ALIASES = {
   internet_search: 'web_search',
   fetch_url: 'web_fetch',
   browser_fetch: 'web_fetch',
-  plan: 'brainstorm',
-  plan_solution: 'brainstorm',
 };
 
 const TOOL_CODE_ALIASES = {
@@ -75,20 +72,36 @@ const TOOL_CODE_ALIASES = {
   fetch_url: 'web_fetch',
   browser_fetch: 'web_fetch',
   web_fetch: 'web_fetch',
-  plan_solution: 'brainstorm',
 };
 
 const RUNTIME_COMMAND_ALIASES = {
   list_files: 'list_dir',
   list_directory: 'list_dir',
+  list: 'list_dir',
   inspect_workspace: 'list_dir',
+  ls: 'list_dir',
+  read: 'read_file',
+  cat: 'read_file',
+  write: 'write_file',
+  write_file: 'write_file',
   save_file: 'write_file',
+  edit: 'edit_file',
+  edit_file: 'edit_file',
+  // shell 别名：映射为 'shell' 后，裸命令格式会将其整体作为 shell 命令执行
+  // （避免 'run_command npm test' 被拆解为不存在的 'run_command' 命令）
+  shell: 'shell',
+  bash: 'shell',
+  run: 'shell',
+  run_command: 'shell',
+  execute_command: 'shell',
+  run_in_terminal: 'shell',
+  terminal: 'shell',
+  exec: 'shell',
   search_web: 'web_search',
   browser_search: 'web_search',
   internet_search: 'web_search',
   fetch_url: 'web_fetch',
   browser_fetch: 'web_fetch',
-  plan_solution: 'brainstorm',
 };
 
 export function stripShellTokenQuotes(value) {

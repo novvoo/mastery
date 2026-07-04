@@ -9,6 +9,7 @@
         "boxen": "^8.0.1",
         "chalk": "^5.3.0",
         "cli-table3": "^0.6.5",
+        "diff": "^9.0.0",
         "dotenv": "^17.0.0",
         "glob": "^10.4.5",
         "https-proxy-agent": "^9.0.0",
@@ -510,6 +511,8 @@
     "dequal": ["dequal@2.0.3", "", {}, "sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA=="],
 
     "devlop": ["devlop@1.1.0", "", { "dependencies": { "dequal": "^2.0.0" } }, "sha512-RWmIqhcFf1lRYBvNmr7qTNuyCt/7/ns2jbpp1+PalgE/rDQcBT0fioSMUpJ93irlUhC5hrg4cYqe6U+0ImW0rA=="],
+
+    "diff": ["diff@9.0.0", "", {}, "sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw=="],
 
     "dingbat-to-unicode": ["dingbat-to-unicode@1.0.1", "", {}, ""],
 

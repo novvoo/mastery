@@ -167,6 +167,18 @@ try {
       'lsp:getHover',
       'lsp:syncDocument',
       'lsp:supportedLanguages',
+      'session:list',
+      'session:load',
+      'session:meta',
+      'session:delete',
+      'session:rename',
+      'session:fork',
+      'session:search',
+      'session:preview',
+      'session:lineage',
+      'session:children',
+      'session:count',
+      'session:create',
     ],
 
     // 发送频道（使用 send）

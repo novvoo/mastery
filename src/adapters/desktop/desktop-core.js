@@ -232,7 +232,11 @@ export class DesktopCore {
         eventBus.emit(RuntimeEvent.AGENT_COMPLETE, { answer, timestamp: Date.now() });
       },
       warn(message) {
-        eventBus.emit(RuntimeEvent.AGENT_ERROR, {
+        // Warnings are not errors — they are expected skip/block observations
+        // (e.g. "file previously checked and does not exist"). Emitting them as
+        // AGENT_ERROR would pollute the error log and set agent status to 'error'.
+        // Use STATUS_UPDATE with level:'warn' instead, matching session-state.js.
+        eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
           level: 'warn',
           message: typeof message === 'string' ? message : (message?.message ?? String(message)),
           timestamp: Date.now(),
@@ -758,6 +762,34 @@ export class DesktopCore {
   }
   getToolRegistry() {
     return this.#runtime?.toolRegistry;
+  }
+
+  getSessionFileStore() {
+    return this.#runtime?.sessionFileStore || null;
+  }
+
+  getSessionManager() {
+    return this.#engine ? this.#engine.getSessionManager?.() : null;
+  }
+
+  getSessionStore() {
+    return this.getSessionManager();
+  }
+
+  getSessionId() {
+    return this.#engine ? this.#engine.getSessionId?.() : null;
+  }
+
+  setSessionId(sessionId) {
+    if (this.#engine && typeof this.#engine.setSessionId === 'function') {
+      this.#engine.setSessionId(sessionId);
+    }
+  }
+
+  async flushSession() {
+    if (this.#engine && typeof this.#engine.flushSession === 'function') {
+      await this.#engine.flushSession();
+    }
   }
 
   /**

@@ -48,12 +48,6 @@ const WEB_TOOLS = ['web_search', 'web_fetch', 'preview_start', 'preview_stop', '
 
 const BROWSER_TOOLS = ['browser_open'];
 
-// Legacy methodology tool tiers — kept for reference but no longer used
-// since tool selection is now driven by PHASE_CANDIDATE_TOOLS.
-// const MINIMAL_METHOD_TOOLS = ['ask_user', 'review', 'verify', 'diagnose'];
-// const EXTENDED_PLANNING_TOOLS = ['brainstorm', 'grill', 'zoom_out', 'architect', 'tdd'];
-// const ADVANCED_METHOD_TOOLS = ['coverage_check', 'handoff'];
-
 const DOC_PRODUCT_TOOLS = ['to_prd', 'to_issues', 'setup'];
 
 // See PHASE_CANDIDATE_TOOLS above for phase-driven tool selection.
@@ -146,10 +140,9 @@ const COMPRESS_TOOLS = ['caveman', 'handoff'];
 
 const PLAN_ORCHESTRATION_TOOLS = ['change_plan'];
 
-// Plan execution is not a pure planning document: the agent often needs to
-// inspect, edit, run, preview, review, and replan inside the same task loop.
-// Planner-authored allowedTools are therefore treated as the task's primary
-// intent, not as a narrow deny-list for the execution substrate.
+// Plan execution needs a stable engineering substrate, but methodology tools
+// should come from the current phase, explicit user intent, or the task's own
+// allowedTools. Keeping them out of the base avoids ceremonial tool calls.
 const PLAN_TASK_EXECUTION_TOOLS = [
   ...CORE_READ_TOOLS,
   ...CORE_WRITE_TOOLS,
@@ -161,10 +154,6 @@ const PLAN_TASK_EXECUTION_TOOLS = [
   ...GIT_READ_TOOLS,
   ...HARNESS_STATE_TOOLS,
   ...CONTEXT_EXPANSION_TOOLS,
-  ...GENERAL_METHODOLOGY_TOOLS,
-  ...ADVANCED_METHODOLOGY_TOOLS,
-  ...DOC_PRODUCT_TOOLS,
-  'coverage_check',
   'read_files',
   'tree',
   'lsp_format',
@@ -174,12 +163,10 @@ const PLAN_TASK_EXECUTION_TOOLS = [
 // =============================================================
 // Phase-aware methodology tool selection
 //
-// 核心思想：方法论工具按执行阶段动态加载，所有编码任务走完整流程。
-// - 探索阶段：需要 brainstorm/architect/zoom_out，不需要 verify/review
-// - 规划阶段：需要 brainstorm/grill/architect/tdd，不需要 verify/review
-// - 实现阶段：需要 diagnose，不需要 brainstorm/architect
-// - 检查阶段：需要 review/diagnose，不需要 brainstorm/architect
-// - 验证阶段：需要 verify/review/coverage_check，不需要 brainstorm/architect
+// 核心思想：方法论工具按执行阶段和明确意图动态加载。
+// - 探索/规划阶段可以暴露设计与风险工具
+// - 实现阶段只保留必要的诊断/风险工具
+// - 检查/验证阶段暴露审查、验证和覆盖工具
 //
 // 风险等级不再限制工具可见性，仅影响迭代预算和完成门严格度。
 // =============================================================
@@ -222,6 +209,8 @@ const PHASE_CANDIDATE_TOOLS = {
     'ui_acceptance',
     'data_contract_check',
     'security_review',
+    'setup',
+    'capture_requirements',
   ],
   [PHASE.IMPLEMENTATION]: ['ask_user', 'diagnose', 'risk_check'],
   [PHASE.INSPECTION]: [
@@ -250,9 +239,8 @@ const PHASE_CANDIDATE_TOOLS = {
   ],
 };
 
-// 注意：风险等级不再限制方法论工具可见性。
-// 工具可见性完全由执行阶段决定（PHASE_CANDIDATE_TOOLS）。
-// 风险等级仅影响迭代预算和完成门严格度。
+// 风险等级影响迭代预算和完成门严格度；工具可见性由 phase、
+// explicit intent、currentTask.allowedTools 共同决定。
 
 /**
  * Select the smallest useful set of tools for the current request.
@@ -273,9 +261,12 @@ export function selectToolsForRequest(
     maxTools = 32,
   } = {},
 ) {
-  console.log(
-    `[tool-router] selectToolsForRequest: currentPhase=${currentPhase}, currentTask=${currentTask?.id || 'none'}, allToolsCount=${allTools.length}`,
-  );
+  const debugRouter = process.env.DEBUG === 'true' || process.env.AGENT_TRACE === 'true';
+  if (debugRouter) {
+    console.log(
+      `[tool-router] selectToolsForRequest: currentPhase=${currentPhase}, currentTask=${currentTask?.id || 'none'}, allToolsCount=${allTools.length}`,
+    );
+  }
   const byName = new Map(allTools.map((tool) => [tool.name, tool]));
   const selected = new Map();
   const input = String(userInput || '').toLowerCase();
@@ -285,12 +276,12 @@ export function selectToolsForRequest(
   const allToolNames = allTools.map((t) => t.name);
   const missingCriticalTools = criticalTools.filter((name) => !byName.has(name));
   if (missingCriticalTools.length > 0) {
-    console.warn(
-      `[tool-router] ⚠️ 关键工具未注册: ${missingCriticalTools.join(', ')}. ` +
-        `allTools 数量: ${allTools.length}, 已注册工具名: ${allToolNames.slice(0, 20).join(', ')}${allToolNames.length > 20 ? '...' : ''}`,
-    );
-  } else {
-    console.log(`[tool-router] ✓ 核心工具检查通过. allTools 数量: ${allTools.length}`);
+    if (debugRouter) {
+      console.warn(
+        `[tool-router] Critical tools not registered: ${missingCriticalTools.join(', ')}. ` +
+          `allTools count: ${allTools.length}, registered: ${allToolNames.slice(0, 20).join(', ')}${allToolNames.length > 20 ? '...' : ''}`,
+      );
+    }
   }
 
   const add = (names) => {
@@ -374,7 +365,6 @@ export function selectToolsForRequest(
   // as optional evidence helpers; phase only adds useful bias, not ceremony.
   if (taskProfile?.isCodingTask) {
     add(PLAN_ORCHESTRATION_TOOLS);
-    add(ADVANCED_METHODOLOGY_TOOLS);
     add(CORE_READ_TOOLS);
     add(CORE_WRITE_TOOLS);
     // LSP + Hashline — dramatically reduces exploration rounds.
@@ -395,24 +385,21 @@ export function selectToolsForRequest(
     add(CONTEXT_EXPANSION_TOOLS);
 
     // Phase-aware methodology tool selection:
-    // 工具可见性完全由执行阶段决定。
-    // - 有 currentTask → phase 只做额外偏置，不做硬限制（完整执行底座）
-    // - 无 currentTask → 按阶段动态暴露
+    // 方法论工具按阶段暴露；无 phase 时只保留最小澄清/诊断工具。
     if (currentTask) {
-      // 计划态：完整执行底座 + phase 额外偏置
-      // 所有方法论工具始终可用，phase 只添加阶段特定工具
-      add(GENERAL_METHODOLOGY_TOOLS);
       if (currentPhase) {
         const phaseCandidates = PHASE_CANDIDATE_TOOLS[currentPhase] || [];
         add(phaseCandidates);
+      } else {
+        add(['ask_user', 'diagnose']);
       }
     } else if (currentPhase) {
       // 非计划态：按阶段动态暴露
       const phaseCandidates = PHASE_CANDIDATE_TOOLS[currentPhase] || [];
       add(phaseCandidates);
     } else {
-      // 无 ExecutionPlan 的降级路径：暴露基础方法论
-      add(GENERAL_METHODOLOGY_TOOLS);
+      // 无 ExecutionPlan 的降级路径：只保留澄清/诊断，避免规划仪式化
+      add(['ask_user', 'diagnose']);
     }
 
     // Bug-focused tasks get coverage_check (heuristic: only when bug-like)
@@ -439,21 +426,16 @@ export function selectToolsForRequest(
     }
   } else if (asksForFreshData) {
     add(PLAN_ORCHESTRATION_TOOLS);
-    add(ADVANCED_METHODOLOGY_TOOLS);
     add(WEB_TOOLS);
-    add(['review', 'verify']);
+    add(['ask_user', 'coverage_check', 'review', 'verify']);
     add(CORE_READ_TOOLS);
-    add(CORE_WRITE_TOOLS);
-    add(GENERAL_METHODOLOGY_TOOLS);
     if (asksForBrowser) {
       add(['browser_open']);
     }
   } else {
     add(PLAN_ORCHESTRATION_TOOLS);
-    add(ADVANCED_METHODOLOGY_TOOLS);
     add(CORE_READ_TOOLS);
-    add(CORE_WRITE_TOOLS);
-    add(GENERAL_METHODOLOGY_TOOLS);
+    add(['ask_user']);
     if (asksForBrowser) {
       add(['browser_open']);
     }
@@ -483,13 +465,13 @@ export function selectToolsForRequest(
 
   if (selected.size === 0) {
     add(CORE_READ_TOOLS);
-    add(GENERAL_METHODOLOGY_TOOLS);
+    add(['ask_user']);
     add(WEB_TOOLS);
   }
 
   const priorityNames = [
     ...PLAN_ORCHESTRATION_TOOLS,
-    ...(currentPhase ? PHASE_CANDIDATE_TOOLS[currentPhase] || [] : GENERAL_METHODOLOGY_TOOLS),
+    ...(currentPhase ? PHASE_CANDIDATE_TOOLS[currentPhase] || [] : ['ask_user', 'diagnose']),
     ...(taskProfile?.isBugTask ||
     /bug|报错|错误|失败|崩溃|卡住|test failing|failing test/i.test(input)
       ? ['coverage_check']

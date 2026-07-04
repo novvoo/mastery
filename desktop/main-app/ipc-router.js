@@ -24,6 +24,7 @@ import {
   handleDeleteWorkspaceItem,
   handleRenameWorkspaceItem,
 } from '../../src/adapters/desktop/ipc/main-process/workspace-handlers.js';
+import { registerSessionHandlers } from '../../src/adapters/desktop/ipc/main-process/session-handlers.js';
 import fs from 'fs';
 import { exec } from 'child_process';
 import { resolve, extname } from 'path';
@@ -450,6 +451,8 @@ export function registerCustomHandlers(ctx) {
       return { success: false, error: e.message, languages: [] };
     }
   });
+
+  registerSessionHandlers(ctx);
 
   if (ctx.config.debug) {
     console.log('   注册了自定义 IPC 处理器');
