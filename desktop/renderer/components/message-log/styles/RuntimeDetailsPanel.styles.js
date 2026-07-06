@@ -27,7 +27,12 @@ export const localStyles = {
     backgroundColor: 'var(--ds-brand-soft)',
   },
   tabIcon: {
-    fontSize: '11px',
+    width: '12px',
+    height: '12px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   tabBadge: {
     padding: '0 5px',

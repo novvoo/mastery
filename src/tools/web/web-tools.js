@@ -41,6 +41,17 @@ export function createWebSearchTool() {
         return 'Error: Missing required search query.';
       }
 
+      const trimmedQuery = query.trim();
+      if (isLikelyCodeSnippet(trimmedQuery)) {
+        return (
+          `Error: web_search query looks like source code, not a search query.\n` +
+          `Query (${trimmedQuery.length} chars): ${trimmedQuery.substring(0, 120)}${trimmedQuery.length > 120 ? '...' : ''}\n\n` +
+          `Use read_file, grep, or semantic_search to inspect code in this project. ` +
+          `Web search is for finding public information (documentation, tutorials, news, APIs). ` +
+          `If you need to understand the codebase, use the project's search tools instead.`
+        );
+      }
+
       const maxResults = Math.max(1, Math.min(Number(max_results) || 5, 10));
       const startedAt = Date.now();
       const attempts = [
@@ -410,4 +421,23 @@ function debugWebEvent(ctx, label, details) {
   if (ctx?.debug && ctx.ui?.debugEvent) {
     ctx.ui.debugEvent(label, details);
   }
+}
+
+function isLikelyCodeSnippet(query) {
+  if (!query || query.length < 60) return false;
+
+  let codeCharCount = 0;
+  for (const ch of query) {
+    if ('{}[]();=<>+*/&|!?:'.includes(ch)) {
+      codeCharCount++;
+    }
+  }
+  const codeDensity = codeCharCount / query.length;
+
+  const hasCodeStructure =
+    /=>|\bthis\.|\bfunction\b|\bclass\b|\bconst\b|\blet\b|\bvar\b|\bif\s*\(/.test(query);
+  const hasBraceDensity = (query.match(/[{}()\[\]]/g) || []).length >= 3;
+  const hasHighDensity = codeDensity > 0.08;
+
+  return (hasCodeStructure && hasHighDensity) || (hasCodeStructure && hasBraceDensity);
 }

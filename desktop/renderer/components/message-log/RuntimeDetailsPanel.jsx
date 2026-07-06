@@ -27,8 +27,14 @@ import {
 } from './utils/plan-display.js';
 import Icon from '../ui/Icon.jsx';
 
+const activityIcon = (
+  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M8.5 1L2 9H7.5L6 15L14 7H8L8.5 1Z" />
+  </svg>
+);
+
 // ===== Tab 定义（1 个 Tab：活动）=====
-const TABS = [{ id: 'activity', key: 'exec.activity_log', icon: '⚡' }];
+const TABS = [{ id: 'activity', key: 'exec.activity_log', icon: activityIcon }];
 
 // ===== 活动 intent 过滤选项 =====
 const INTENT_FILTERS = [

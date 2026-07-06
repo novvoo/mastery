@@ -303,6 +303,10 @@ const TRANSLATIONS = {
     'tool.success': 'Execution Success',
     'tool.failed': 'Execution Failed',
     'tool.error': 'Tool Execution Failed',
+    'tool.executing': 'Executing…',
+    'tool.completed': 'Completed',
+    'tool.error_occurred': 'Error',
+    'tool.exit_code': 'exit {code}',
 
     // ===== Plan card =====
     'plan.title': 'Execution Plan',
@@ -312,8 +316,8 @@ const TRANSLATIONS = {
     'plan.dynamic_replanning': 'Dynamic Replanning',
     'plan.running_count': '{count} Running',
     'plan.needs_repair_count': '{count} Needs Repair',
-    'plan.expand': '▶ Expand',
-    'plan.collapse': '▼ Collapse',
+    'plan.expand': 'Expand',
+    'plan.collapse': 'Collapse',
     'plan.advanced_by': 'Advanced by {toolName}',
     'plan.task_status': 'Task Status',
 
@@ -619,6 +623,10 @@ const TRANSLATIONS = {
     'tool.success': '执行成功',
     'tool.failed': '操作失败',
     'tool.error': '工具执行失败',
+    'tool.executing': '执行中…',
+    'tool.completed': '完成',
+    'tool.error_occurred': '出错',
+    'tool.exit_code': '退出码 {code}',
 
     // ===== Plan card =====
     'plan.title': '执行计划',
@@ -628,8 +636,8 @@ const TRANSLATIONS = {
     'plan.dynamic_replanning': '动态重规划',
     'plan.running_count': '{count} 个进行中',
     'plan.needs_repair_count': '{count} 个需修复',
-    'plan.expand': '▶ 展开',
-    'plan.collapse': '▼ 折叠',
+    'plan.expand': '展开',
+    'plan.collapse': '折叠',
     'plan.advanced_by': '由 {toolName} 推进',
     'plan.task_status': '任务状态',
 

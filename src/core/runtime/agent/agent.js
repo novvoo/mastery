@@ -287,23 +287,32 @@ export class ReActAgent {
         const needsUserInput = this.isWaitingForUserInput;
 
         if (!planComplete && !needsUserInput) {
-          // plan未完成且不需要用户交互，不应该中断
-          this.#debugEvent('Stop requested but blocked - plan incomplete', {
+          this.#debugEvent('Stop requested - graceful termination', {
             iteration,
             planStatus: this.#planner.activePlan?.status,
             planSummary: this.#planner.activePlan ? this.#summarizePlanStatus() : 'no plan',
           });
 
           this.#sessionManager.addUserMessage(
-            '⚠️ 执行计划未完成，请继续执行当前任务。不要提前给出最终答案。\n' +
-              '当前计划状态：\n' +
+            '⏸️ 任务已暂停。当前执行计划已保存，可以随时继续执行。\n' +
+              '暂停时的计划状态：\n' +
               this.#summarizePlanStatus(),
           );
 
-          this.#stopRequested = false; // 重置中断标志
-          // 继续执行，不中断
+          return this.#completeRun({
+            success: false,
+            status: 'paused',
+            answer: '',
+            reason: 'user_pause',
+            iterations: iteration,
+            startedAt: runStartedAt,
+            plan: this.#planner.activePlan ? {
+              status: this.#planner.activePlan.status,
+              tasks: this.#planner.activePlan.tasks,
+              currentTaskIndex: this.#planner.activePlan.currentTaskIndex,
+            } : null,
+          });
         } else {
-          // plan已完成或需要用户交互，允许中断
           return this.#completeRun({
             success: false,
             status: 'cancelled',

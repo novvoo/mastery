@@ -12,6 +12,7 @@ import {
   readAgentSession,
   saveAgentSession,
   deleteAgentSession,
+  clearAllSessions,
   renameAgentSession,
   forkAgentSession,
   searchAgentSessions,
@@ -145,16 +146,13 @@ export function useSessionManager(runtime, workingDirectory) {
         danger: true,
       }))) return;
 
-      localStorage.removeItem(AGENT_HISTORY_STORAGE_KEY);
-      localStorage.removeItem(AGENT_SESSIONS_STORAGE_KEY);
-      localStorage.removeItem(ACTIVE_AGENT_SESSION_STORAGE_KEY);
+      await clearAllSessions();
       skipNextSessionPersistRef.current = true;
       setActiveAgentSessionId(createAgentSessionId());
       runtime.clearMessages();
       setSessions([]);
       clearInputCallback?.();
       window.dispatchEvent(new CustomEvent(AGENT_HISTORY_UPDATED_EVENT, { detail: [] }));
-      window.dispatchEvent(new CustomEvent(AGENT_SESSIONS_UPDATED_EVENT));
     };
   }, [runtime]);
 

@@ -16,6 +16,14 @@ describe('buildSystemPrompt', () => {
     expect(prompt).not.toContain("Call 'verify' first");
     expect(prompt).not.toContain('ANTI-PROCRASTINATION');
   });
+
+  test('guides numbered line edits instead of large old_text replacements', () => {
+    const prompt = buildSystemPrompt(null, null, '/workspace/project', '');
+
+    expect(prompt).toContain('prefer line/startLine/endLine from the latest numbered read');
+    expect(prompt).toContain('"startLine": 20, "endLine": 23');
+    expect(prompt).not.toContain('"old_text": "async function processPayment(amount)');
+  });
 });
 
 describe('buildTaskConstraintPrompt', () => {

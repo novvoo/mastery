@@ -363,6 +363,7 @@ function App() {
   }, [modelConfigs, ipc.isConnected]);
 
   // ── 工作目录切换 ─────────────────────────────────────────
+  const [workingDirectorySyncMessage, setWorkingDirectorySyncMessage] = useState('');
   const handleWorkingDirectoryChange = useCallback(async () => {
     const result = await ipc.openDirectoryDialog({ title: '选择工作目录' });
     if (!result.canceled && result.filePaths.length > 0) {
@@ -370,6 +371,14 @@ function App() {
       const workspaceResult = await ipc.setWorkingDirectory(newDir);
       setWorkingDirectory(workspaceResult?.workingDirectory || newDir);
       if (workspaceResult?.fileServerUrl) setFileServerUrl(workspaceResult.fileServerUrl);
+      if (workspaceResult?.envSynced) {
+        setWorkingDirectorySyncMessage(
+          workspaceResult.envPath
+            ? `✅ 工作目录已切换到 ${workspaceResult.workingDirectory}，配置已同步到 .env`
+            : `✅ 工作目录已切换到 ${workspaceResult.workingDirectory}`
+        );
+        setTimeout(() => setWorkingDirectorySyncMessage(''), 5000);
+      }
       resetProjectTree();
       resetRag();
       runtime.loadTools();
@@ -380,9 +389,6 @@ function App() {
   const handleNewTaskCallback = useCallback(() => {
     handleNewTask(clearInput);
   }, [handleNewTask, clearInput]);
-
-  // ── 清空历史 ──────────────────────────────────────────────
-  const handleClearAgentHistory = handleClearHistory(requestConfirm, clearInput);
 
   // ── 窗口控制 ─────────────────────────────────────────────
   const handleMinimize = useCallback(() => ipc.minimizeWindow(), [ipc]);
@@ -420,18 +426,6 @@ function App() {
       await handleSubmitAgentInput(prompt);
     },
     [handleSubmitAgentInput],
-  );
-
-  // ── 历史恢复 ─────────────────────────────────────────────
-  const handleRestoreHistoryCallback = useCallback(
-    (item) => {
-      handleRestoreHistory(item, (text) => {
-        if (text !== undefined) handleInsertText(text);
-      });
-      setSidebarCollapsed(false);
-      setActiveTab('agent');
-    },
-    [handleRestoreHistory, handleInsertText, setSidebarCollapsed],
   );
 
   // ── 外部链接 ─────────────────────────────────────────────
@@ -496,22 +490,9 @@ function App() {
             agentOptions={agentOptions}
             onOptionsChange={setAgentOptions}
             onInsertText={handleInsertText}
-            sessions={sessions}
-            activeSessionId={activeAgentSessionId}
-            onSwitchSession={handleRestoreHistoryCallback}
-            onRestoreHistory={handleRestoreHistoryCallback}
-            onClearHistory={handleClearAgentHistory}
-            onDeleteSession={handleDeleteSession}
-            onRenameSession={handleRenameSession}
-            onForkSession={handleForkSession}
-            onRefreshSessions={handleRefreshSessions}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            loading={loading}
-            hasMore={hasMore}
-            onLoadMore={loadMore}
             onNewTask={handleNewTaskCallback}
             onWorkingDirectoryChange={handleWorkingDirectoryChange}
+            workingDirectorySyncMessage={workingDirectorySyncMessage}
             onOpenFile={handleOpenWorkspaceFile}
             activeOpenFile={openFile}
             projectTree={{

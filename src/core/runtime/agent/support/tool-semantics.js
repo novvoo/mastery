@@ -46,11 +46,10 @@ export function getToolEffect(toolName, args = {}) {
 
   // ---- 显式文件写入 / 编辑工具 ----
   if (isExplicitMutationTool(name)) {
-    return ToolEffect.MUTATION;
-  }
-
-  // ---- Hashline / Harness 编辑工具 ----
-  if (isHarnessMutationTool(name)) {
+    // 校验替换是否真的有变化
+    if (!hasActualContentChange(name, args)) {
+      return ToolEffect.NO_PROGRESS;
+    }
     return ToolEffect.MUTATION;
   }
 
@@ -95,7 +94,7 @@ export function getToolEffect(toolName, args = {}) {
  */
 export function isMutation(toolName, args = {}) {
   const effect = getToolEffect(toolName, args);
-  return effect === ToolEffect.MUTATION || effect === ToolEffect.VERIFICATION;
+  return effect === ToolEffect.MUTATION;
 }
 
 /**
@@ -178,14 +177,7 @@ const EXPLICIT_MUTATION_TOOLS = new Set([
   'delete_file',
   'rename_file',
   'mkdir',
-]);
-
-const HARNESS_MUTATION_TOOLS = new Set([
   'apply_hashline_patch',
-  'harness_replace',
-  'harness_insert',
-  'harness_delete',
-  'harness_rollback',
 ]);
 
 const LSP_EDIT_TOOLS = new Set(['lsp_rename', 'lsp_workspace_edit', 'lsp_code_action']);
@@ -223,9 +215,6 @@ const INSPECTION_TOOLS = new Set([
 
 function isExplicitMutationTool(name) {
   return EXPLICIT_MUTATION_TOOLS.has(name);
-}
-function isHarnessMutationTool(name) {
-  return HARNESS_MUTATION_TOOLS.has(name);
 }
 function isLspEditTool(name) {
   return LSP_EDIT_TOOLS.has(name);
@@ -315,6 +304,55 @@ function classifyShellCommand(args) {
 
   // 默认未知
   return ToolEffect.NO_PROGRESS;
+}
+
+// ============================================================
+// 内部：校验替换是否真的有内容变化
+// ============================================================
+
+/**
+ * 判断工具调用是否产生了实际的内容变更。
+ * 防止 old_string === new_string 或 patch 无 diff 时被误判为 mutation。
+ *
+ * @param {string} toolName - 工具名称
+ * @param {object} args - 工具参数
+ * @returns {boolean} true = 有实际变化
+ */
+function hasActualContentChange(toolName, args) {
+  const name = (toolName || '').toLowerCase().trim();
+
+  // edit_file: old_string 必须不等于 new_string
+  if (name === 'edit_file') {
+    const oldStr = String(args?.old_string ?? '');
+    const newStr = String(args?.new_string ?? '');
+    return oldStr !== newStr;
+  }
+
+  // apply_hashline_patch: patch 中必须包含实际的 diff 行（+ 或 -）
+  if (name === 'apply_hashline_patch') {
+    const patch = String(args?.patch ?? args?.content ?? '');
+    if (!patch.trim()) return false;
+    // 解析 patch hunk：寻找以 + 或 - 开头的行（排除 --- 和 +++ 文件头）
+    const lines = patch.split(/\r?\n/);
+    for (const line of lines) {
+      if (
+        (line.startsWith('+') && !line.startsWith('+++')) ||
+        (line.startsWith('-') && !line.startsWith('---'))
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // write_file: content 不能为空
+  if (name === 'write_file') {
+    const content = String(args?.content ?? '');
+    return content.length > 0;
+  }
+
+  // delete_file / rename_file / mkdir: 总是算有变化
+  return true;
 }
 
 // ============================================================

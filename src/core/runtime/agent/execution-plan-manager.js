@@ -2092,9 +2092,6 @@ export class ExecutionPlanManager {
           'lsp_code_action',
           'lsp_rename',
           'preview_file',
-          'harness_insert',
-          'harness_replace',
-          'harness_delete',
         ],
         metadata: {
           source: 'verification-repair',

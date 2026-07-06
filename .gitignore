@@ -45,3 +45,4 @@ desktop/renderer/dist/
 .superpowers/
 .test-e2e-write-file/
 .agent-memory/
+./uploads/

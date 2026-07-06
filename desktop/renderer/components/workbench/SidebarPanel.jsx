@@ -9,23 +9,10 @@ export function SidebarPanel({
   activeTab,
   runtime,
   workingDirectory,
+  workingDirectorySyncMessage,
   agentOptions,
   onOptionsChange,
   onInsertText,
-  sessions,
-  activeSessionId,
-  onSwitchSession,
-  onRestoreHistory,
-  onClearHistory,
-  onDeleteSession,
-  onRenameSession,
-  onForkSession,
-  onRefreshSessions,
-  searchQuery,
-  onSearchChange,
-  loading,
-  hasMore,
-  onLoadMore,
   onWorkingDirectoryChange,
   onNewTask,
   projectTree,
@@ -42,26 +29,13 @@ export function SidebarPanel({
     <AgentControl
       runtime={runtime}
       workingDirectory={workingDirectory}
+      workingDirectorySyncMessage={workingDirectorySyncMessage}
       onWorkingDirectoryChange={onWorkingDirectoryChange}
       agentOptions={agentOptions}
       onOpenFile={onOpenFile}
       activeOpenFile={activeOpenFile}
       onOptionsChange={onOptionsChange}
       onInsertText={onInsertText}
-      sessions={sessions}
-      activeSessionId={activeSessionId}
-      onSwitchSession={onSwitchSession}
-      onRestoreHistory={onRestoreHistory}
-      onClearHistory={onClearHistory}
-      onDeleteSession={onDeleteSession}
-      onRenameSession={onRenameSession}
-      onForkSession={onForkSession}
-      onRefreshSessions={onRefreshSessions}
-      searchQuery={searchQuery}
-      onSearchChange={onSearchChange}
-      loading={loading}
-      hasMore={hasMore}
-      onLoadMore={onLoadMore}
       projectTree={projectTree}
     />
   );

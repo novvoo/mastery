@@ -75,18 +75,19 @@
   --glass-inner-hl: inset 0 1px 0 rgba(255, 255, 255, 0.07);
 
   /* 消息气泡 — 独立于底层玻璃，保证聊天内容有清晰层级 */
-  --message-agent-bg: rgba(18, 24, 26, 0.78);
-  --message-agent-border: rgba(225, 242, 245, 0.09);
-  --message-user-bg: rgba(123, 211, 184, 0.14);
-  --message-user-border: rgba(123, 211, 184, 0.2);
+  /* 气泡需比 surface-hover(#24292C) 更亮，形成"浮起"效果 */
+  --message-agent-bg: rgba(42, 48, 52, 0.82);
+  --message-agent-border: rgba(225, 242, 245, 0.12);
+  --message-user-bg: rgba(123, 211, 184, 0.18);
+  --message-user-border: rgba(123, 211, 184, 0.26);
   --message-user-text: #D4F0E8;
-  --message-tool-bg: rgba(13, 18, 20, 0.74);
-  --message-tool-border: rgba(127, 184, 217, 0.14);
-  --message-result-bg: rgba(15, 28, 25, 0.62);
-  --message-result-border: rgba(123, 211, 184, 0.16);
-  --message-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
-  --title-capsule-bg: rgba(12, 17, 19, 0.68);
-  --title-capsule-border: rgba(225, 242, 245, 0.12);
+  --message-tool-bg: rgba(38, 44, 48, 0.78);
+  --message-tool-border: rgba(127, 184, 217, 0.18);
+  --message-result-bg: rgba(28, 52, 46, 0.68);
+  --message-result-border: rgba(123, 211, 184, 0.22);
+  --message-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --title-capsule-bg: rgba(38, 42, 46, 0.72);
+  --title-capsule-border: rgba(225, 242, 245, 0.14);
 
   /* 阴影 */
   --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.4);
@@ -264,18 +265,19 @@
   --glass-inner-hl: inset 0 1px 0 rgba(255, 255, 255, 0.85);
 
   /* 消息气泡 — 亮色主题 */
-  --message-agent-bg: rgba(255, 255, 255, 0.94);
-  --message-agent-border: rgba(62, 88, 92, 0.18);
-  --message-user-bg: rgba(23, 132, 116, 0.12);
-  --message-user-border: rgba(23, 132, 116, 0.2);
+  /* 列表背景 surface-hover=#E7EEF0，气泡需更亮形成浮起 */
+  --message-agent-bg: rgba(255, 255, 255, 0.97);
+  --message-agent-border: rgba(62, 88, 92, 0.22);
+  --message-user-bg: rgba(23, 132, 116, 0.15);
+  --message-user-border: rgba(23, 132, 116, 0.25);
   --message-user-text: #1A7A6A;
-  --message-tool-bg: rgba(245, 249, 250, 0.96);
-  --message-tool-border: rgba(61, 122, 184, 0.2);
-  --message-result-bg: rgba(238, 248, 244, 0.96);
-  --message-result-border: rgba(46, 139, 106, 0.2);
-  --message-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
-  --title-capsule-bg: rgba(248, 250, 251, 0.82);
-  --title-capsule-border: rgba(62, 88, 92, 0.16);
+  --message-tool-bg: rgba(250, 252, 253, 0.98);
+  --message-tool-border: rgba(61, 122, 184, 0.24);
+  --message-result-bg: rgba(242, 251, 248, 0.98);
+  --message-result-border: rgba(46, 139, 106, 0.25);
+  --message-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --title-capsule-bg: rgba(252, 254, 255, 0.88);
+  --title-capsule-border: rgba(62, 88, 92, 0.2);
 
   /* 阴影 - 亮色 */
   --shadow-sm: 0 1px 2px rgba(82, 110, 110, 0.08);
@@ -364,18 +366,19 @@
   --glass-shadow-soft: 0 8px 20px rgba(0, 0, 0, 0.18);
   --glass-shadow-lg: 0 24px 58px rgba(0, 0, 0, 0.36);
   --glass-inner-hl: inset 0 1px 0 rgba(255, 255, 255, 0.045);
-  --message-agent-bg: rgba(17, 22, 28, 0.94);
-  --message-agent-border: rgba(216, 226, 230, 0.12);
-  --message-user-bg: rgba(57, 165, 143, 0.13);
-  --message-user-border: rgba(57, 165, 143, 0.24);
+  /* 气泡需比 surface-hover(#202832) 更亮，形成"浮起"效果 */
+  --message-agent-bg: rgba(36, 44, 54, 0.88);
+  --message-agent-border: rgba(216, 226, 230, 0.16);
+  --message-user-bg: rgba(57, 165, 143, 0.18);
+  --message-user-border: rgba(57, 165, 143, 0.3);
   --message-user-text: #D9F5EF;
-  --message-tool-bg: rgba(13, 18, 25, 0.92);
-  --message-tool-border: rgba(125, 173, 206, 0.18);
-  --message-result-bg: rgba(14, 38, 33, 0.7);
-  --message-result-border: rgba(57, 165, 143, 0.22);
-  --message-shadow: none;
-  --title-capsule-bg: rgba(17, 22, 28, 0.92);
-  --title-capsule-border: rgba(216, 226, 230, 0.12);
+  --message-tool-bg: rgba(32, 40, 50, 0.84);
+  --message-tool-border: rgba(125, 173, 206, 0.22);
+  --message-result-bg: rgba(24, 52, 44, 0.76);
+  --message-result-border: rgba(57, 165, 143, 0.28);
+  --message-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+  --title-capsule-bg: rgba(36, 44, 54, 0.86);
+  --title-capsule-border: rgba(216, 226, 230, 0.16);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.24);
   --shadow-lg: 0 22px 54px rgba(0, 0, 0, 0.34);
@@ -450,16 +453,17 @@
   --glass-shadow-soft: 0 6px 16px rgba(30, 48, 58, 0.07);
   --glass-shadow-lg: 0 22px 50px rgba(30, 48, 58, 0.16);
   --glass-inner-hl: inset 0 1px 0 rgba(255, 255, 255, 0.75);
-  --message-agent-bg: rgba(255, 255, 255, 0.96);
-  --message-agent-border: rgba(42, 61, 70, 0.13);
-  --message-user-bg: rgba(22, 127, 109, 0.1);
-  --message-user-border: rgba(22, 127, 109, 0.2);
+  /* 列表背景 surface-hover=#EEF3F5，气泡需更亮形成浮起 */
+  --message-agent-bg: rgba(255, 255, 255, 0.98);
+  --message-agent-border: rgba(42, 61, 70, 0.18);
+  --message-user-bg: rgba(22, 127, 109, 0.13);
+  --message-user-border: rgba(22, 127, 109, 0.25);
   --message-user-text: #106E5E;
-  --message-tool-bg: rgba(247, 250, 251, 0.96);
-  --message-tool-border: rgba(57, 98, 130, 0.18);
-  --message-result-bg: rgba(238, 248, 245, 0.98);
-  --message-result-border: rgba(22, 127, 109, 0.18);
-  --message-shadow: none;
+  --message-tool-bg: rgba(252, 253, 254, 0.98);
+  --message-tool-border: rgba(57, 98, 130, 0.22);
+  --message-result-bg: rgba(244, 252, 249, 0.98);
+  --message-result-border: rgba(22, 127, 109, 0.24);
+  --message-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
   --shadow-sm: 0 1px 2px rgba(30, 48, 58, 0.08);
   --shadow-md: 0 10px 26px rgba(30, 48, 58, 0.1);
   --shadow-lg: 0 22px 52px rgba(30, 48, 58, 0.16);

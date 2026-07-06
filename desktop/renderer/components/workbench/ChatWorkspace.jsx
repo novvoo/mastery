@@ -54,7 +54,13 @@ export function ChatWorkspace({
       />
       <div style={styles.chatHeader}>
         <div style={styles.chatTitle}>
-          <span style={styles.chatTitleMark}>AI</span>
+          <span style={styles.chatTitleMark}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8 2.5C5.51472 2.5 3.5 4.51472 3.5 7C3.5 7.88564 3.74512 8.71387 4.16602 9.41602L3.91699 11.083L5.58496 10.834C6.28711 11.2549 7.11436 11.5 8 11.5C10.4853 11.5 12.5 9.48528 12.5 7C12.5 4.51472 10.4853 2.5 8 2.5Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+              <path d="M8 5.5V8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+              <path d="M6.5 7H9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+            </svg>
+          </span>
           <span>{t('chat.title')}</span>
           <span style={styles.chatMessageCount}>
             {t('chat.message_count', { count: runtime.messages.length })}
@@ -98,8 +104,12 @@ export function ChatWorkspace({
                 marginBottom: '4px',
               }}
             >
-              <span style={{ fontWeight: 600, color: 'var(--primary-color)' }}>
-                ⏳ 队列中的消息 ({queueCount})
+              <span style={{ fontWeight: 600, color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M8 4.5V8L10.5 9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                队列中的消息 ({queueCount})
               </span>
               <span style={{ fontSize: '11px', color: 'var(--text-dark)' }}>
                 当前任务完成后自动执行

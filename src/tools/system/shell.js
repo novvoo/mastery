@@ -225,6 +225,76 @@ function executeAsync(command, options = {}) {
   });
 }
 
+// 剥除 ANSI 转义码，避免模型读到 \x1B[31m 等噪音
+function stripAnsi(text) {
+  return text.replace(/\x1B\[[\d;]*[A-Za-z]/g, '').replace(/\x1B\][0-9;]*\x1B\\/g, '');
+}
+
+// 测试输出精简：检测常见测试框架，只保留失败详情 + 摘要
+function summarizeTestOutput(stdout, stderr) {
+  const combined = `${stdout}\n${stderr}`;
+  const lines = combined.split('\n');
+
+  // 检测是否为测试框架输出
+  const isTestOutput = lines.some((l) =>
+    /FAIL|Tests|Test Files|Test Suites|test result|RUNS|❯|failed|Error|not defined/.test(l),
+  );
+  if (!isTestOutput) return null;
+
+  // 保留失败测试行 + 错误上下文 + 摘要
+  const kept = [];
+  let summaryLines = [];
+  let failuresCount = 0;
+  const MAX_FAILURES = 15;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // 摘要行 — 始终保留
+    if (
+      /^\s*(Test Files|Tests|Test Suites|Test Files:|Snapshots|Time:|Duration|test result)/.test(
+        line,
+      )
+    ) {
+      summaryLines.push(line.trim());
+      continue;
+    }
+
+    // 失败测试标题 — 保留
+    // 检测条件：行包含 ❯/FAILED 失败标记，且要么行自身含失败关键词，要么后续行有 → 错误详情
+    const hasNextLineError = i + 1 < lines.length && /→/.test(lines[i + 1]);
+    if (
+      (/❯|✗|✕|●|×|FAIL/.test(line) &&
+        (/failed|Error|not defined|is not/.test(line) || hasNextLineError)) ||
+      /FAIL(ED)?\s/.test(line)
+    ) {
+      if (failuresCount < MAX_FAILURES) {
+        kept.push(line.trimEnd());
+        // 保留后续 5 行错误上下文
+        for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
+          const ctx = lines[j].trimEnd();
+          if (!ctx || /^(✓|✔|√|○|PASS|Test Files|Tests:|❯|✗|✕|\s*$)/.test(ctx)) break;
+          kept.push(ctx);
+        }
+        kept.push('---');
+        failuresCount++;
+      }
+      continue;
+    }
+
+    // 保留 stderr 中的编译/构建错误
+    if (!stdout && line.includes('Error:')) {
+      kept.push(line.trimEnd());
+    }
+  }
+
+  if (kept.length === 0 && summaryLines.length === 0) return null;
+  if (summaryLines.length > 0) kept.push('', '── 摘要 ──', ...summaryLines);
+  return kept.join('\n');
+}
+
+export { stripAnsi, summarizeTestOutput };
+
 export function createShellTool(options = {}) {
   const sandbox = createShellSandbox(options.sandbox || shellSandboxConfigFromEnv());
 
@@ -378,32 +448,39 @@ export function createShellTool(options = {}) {
         }
 
         if (result.exitCode !== 0) {
-          const stderr = result.stderr.trim();
-          const stdout = result.stdout.trim();
+          const stderr = stripAnsi(result.stderr.trim());
+          const stdout = stripAnsi(result.stdout.trim());
           let msg = `Command failed with exit code ${result.exitCode}`;
           if (result.wasInteractive) {
             msg +=
               '\nNote: This command appeared to be waiting for input. If it requires interactive prompts, consider running it with pty_start.';
           }
-          if (stdout) {
-            msg += `\nstdout: ${stdout}`;
-          }
-          if (stderr) {
-            msg += `\nstderr: ${stderr}`;
+          // 测试输出精简：失败时优先展示失败摘要
+          const summary = stdout ? summarizeTestOutput(stdout, stderr) : null;
+          if (summary) {
+            msg += `\n${summary}`;
+          } else {
+            if (stdout) msg += `\nstdout: ${stdout}`;
+            if (stderr) msg += `\nstderr: ${stderr}`;
           }
           return msg;
         }
 
-        const output = result.stdout.trim();
-        if (!output) {
+        const rawOutput = stripAnsi(result.stdout.trim());
+        // 测试输出精简：成功时也精简（可能部分失败或全部通过）
+        const summary = rawOutput ? summarizeTestOutput(rawOutput, '') : null;
+        if (summary) return `Command completed.\n${summary}`;
+        if (!rawOutput) {
           return result.wasInteractive
             ? '(command produced no output; it may have been waiting for input)'
             : '(command produced no output)';
         }
-        if (output.length > 5000) {
-          return output.substring(0, 5000) + '\n... (truncated, ' + output.length + ' chars total)';
+        if (rawOutput.length > 5000) {
+          return (
+            rawOutput.substring(0, 5000) + '\n... (truncated, ' + rawOutput.length + ' chars total)'
+          );
         }
-        return output;
+        return rawOutput;
       } catch (error) {
         if (ctx.debug && ctx.ui?.debugEvent) {
           ctx.ui.debugEvent('Shell command errored', {

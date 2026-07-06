@@ -43,6 +43,18 @@ export class SessionManager {
    */
   #layers = new Map();
 
+  /**
+   * read_file 结果索引：Map<toolCallId, filePath>
+   * 用于 Supersede 机制：当文件被写入后，旧的 read_file 结果被替换为占位符。
+   */
+  #readFileIndex = new Map();
+
+  /**
+   * 已被 supersede 的文件路径集合。
+   * 这些文件的最新写入已使之前的读取结果失效。
+   */
+  #supersededPaths = new Set();
+
   #tokenCounter;
   #usesCustomTokenCounter;
   #tokenizerModel;
@@ -248,6 +260,26 @@ export class SessionManager {
   }
 
   /**
+   * 将 toolCallId 与文件路径关联，用于 Supersede 机制。
+   * 通常对 read_file 的结果调用。
+   */
+  trackReadFileResult(toolCallId, filePath) {
+    if (toolCallId && filePath) {
+      this.#readFileIndex.set(toolCallId, filePath);
+    }
+  }
+
+  /**
+   * 标记一个文件路径的旧读取结果已失效（Supersede）。
+   * 当文件被写入/编辑后调用。
+   * 再次 getMessages() 时，该文件旧的 read_file 结果会被替换为占位符。
+   */
+  supersedeFileReads(filePath) {
+    if (!filePath) return;
+    this.#supersededPaths.add(filePath);
+  }
+
+  /**
    * 给最后一条消息重新打 priority tag。用于 agent 运行时对消息动态打标。
    * @param {number} priority
    */
@@ -323,8 +355,22 @@ export class SessionManager {
       all.push({ role: 'system', content });
     }
 
-    // 3. 对话历史
-    all.push(...this.#messages);
+    // 3. 对话历史 —— 应用 Supersede：替换已失效的 read_file 结果为占位符
+    for (const msg of this.#messages) {
+      if (msg.role === 'tool' && msg.toolCallId && this.#readFileIndex.has(msg.toolCallId)) {
+        const filePath = this.#readFileIndex.get(msg.toolCallId);
+        if (filePath && this.#supersededPaths.has(filePath)) {
+          all.push({
+            role: 'tool',
+            content: `[Superseded by a newer write/edit of ${filePath}. The current file content may differ from what was read earlier.]`,
+            toolCallId: msg.toolCallId,
+            priority: msg.priority,
+          });
+          continue;
+        }
+      }
+      all.push(msg);
+    }
 
     // 4. 清除一次性 layer
     this.clearTransientLayers();

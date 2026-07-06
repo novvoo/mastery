@@ -1051,6 +1051,7 @@ export function InspectorPanel({
         </Button>
       </div>
 
+      <div style={styles.inspectorTabContent}>
       {activeInspectorTab === 'plan' && (
         <PlanTab messages={messages} />
       )}
@@ -1071,7 +1072,6 @@ export function InspectorPanel({
           onLoadMore={onLoadMoreSessions}
         />
       )}
-
       {activeInspectorTab === 'rag' && (
         <RagTab
           ipc={ipc}
@@ -1105,6 +1105,7 @@ export function InspectorPanel({
           onPreviewUrlSubmit={onPreviewUrlSubmit}
         />
       )}
+      </div>
     </Panel>
   );
 }

@@ -213,6 +213,11 @@ export function useRuntime() {
   const recentRuntimeEventSignaturesRef = useRef(new Map());
   const pendingMessageDeltasRef = useRef(new Map());
   const pendingMessageDeltaTimerRef = useRef(null);
+    /**
+     * 当 tool:result 比 tool:call 先到达 React commit 时，暂存结果数据。
+     * Map<toolName, { result, exitCode, duration, isError }>
+     */
+    const pendingToolResultsRef = useRef(new Map());
 
   const flushMessageDeltas = useCallback(() => {
     if (pendingMessageDeltaTimerRef.current) {
@@ -298,10 +303,31 @@ export function useRuntime() {
 
   // 添加消息
   const addMessage = useCallback((message) => {
+    if (!message || typeof message !== 'object') {
+      return null;
+    }
+
+    // 检查是否有暂存的 tool:result 待合并（处理 tool:result 先于 tool:call commit 问题）
+    let mergedMessage = { ...message };
+    if (message.type === 'tool' && message.toolName) {
+      const pending = pendingToolResultsRef.current.get(message.toolName);
+      if (pending) {
+        mergedMessage = {
+          ...mergedMessage,
+          result: pending.result,
+          toolResult: true,
+          exitCode: pending.exitCode,
+          duration: pending.duration,
+          isError: pending.isError,
+        };
+        pendingToolResultsRef.current.delete(message.toolName);
+      }
+    }
+
     const newMessage = {
-      ...message,
-      timestamp: message.timestamp || Date.now(),
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      ...mergedMessage,
+      timestamp: mergedMessage.timestamp || Date.now(),
+      id: mergedMessage.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     };
 
     // 更新消息缓冲
@@ -342,13 +368,32 @@ export function useRuntime() {
       pendingMessageDeltaTimerRef.current = null;
     }
     recentRuntimeEventSignaturesRef.current = new Map();
-    const restoredMessages = Array.isArray(nextMessages)
-      ? nextMessages.map((message) => ({
-          ...message,
-          timestamp: message.timestamp || Date.now(),
-          id: message.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        }))
-      : [];
+
+    // 清理历史会话中的重复消息：合并 tool_result 到前一个 tool 消息
+    // （旧版本 race condition 导致 tool + tool_result 两条消息）
+    const deduplicated = [];
+    if (Array.isArray(nextMessages)) {
+      for (const msg of nextMessages) {
+        if (msg.type === 'tool_result' && deduplicated.length > 0) {
+          const prev = deduplicated[deduplicated.length - 1];
+          if (prev.type === 'tool' && prev.toolName === msg.toolName) {
+            prev.result = msg.result || msg.content;
+            prev.toolResult = true;
+            prev.exitCode = msg.exitCode ?? null;
+            prev.duration = msg.duration ?? null;
+            prev.isError = msg.isError ?? false;
+            continue;
+          }
+        }
+        deduplicated.push({ ...msg });
+      }
+    }
+
+    const restoredMessages = deduplicated.map((message) => ({
+      ...message,
+      timestamp: message.timestamp || Date.now(),
+      id: message.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    }));
 
     messageBufferRef.current = restoredMessages;
     setMessages(restoredMessages);
@@ -868,6 +913,39 @@ export function useRuntime() {
           return;
         }
 
+        // tool:result → 合并到上一个 tool 消息（claude-code 风格：call+result 一个视觉单元）
+        // 注意：这里直接 return 不走到 runtimeDetail 分支
+        if (eventName === 'tool:result') {
+          if (normalized.message) {
+            const resultMsg = normalized.message;
+            setMessages((prev) => {
+              const idx = findLastToolCall(prev, resultMsg.toolName);
+              if (idx === -1) {
+                // React state 还未 commit → 暂存到 pendingToolResultsRef，
+                // 等 tool:call 通过 addMessage 时自动合并
+                pendingToolResultsRef.current.set(resultMsg.toolName, {
+                  result: resultMsg.result || resultMsg.content,
+                  exitCode: resultMsg.exitCode ?? payload?.exitCode ?? null,
+                  duration: payload?.duration ?? resultMsg.duration ?? null,
+                  isError: resultMsg.isError ?? false,
+                });
+                return prev;
+              }
+              const updated = [...prev];
+              updated[idx] = {
+                ...updated[idx],
+                result: resultMsg.result || resultMsg.content,
+                toolResult: true,
+                exitCode: resultMsg.exitCode ?? payload?.exitCode ?? null,
+                duration: payload?.duration ?? resultMsg.duration ?? null,
+                isError: resultMsg.isError ?? false,
+              };
+              return updated;
+            });
+          }
+          return;
+        }
+
         addMessage(normalized.message);
       }
     });
@@ -1118,6 +1196,20 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
         },
       };
   }
+}
+
+/**
+ * 在消息列表中查找最后一个与指定工具名匹配的 tool 消息。
+ * 用于 tool:result 合并到 tool:call。
+ */
+function findLastToolCall(messages, toolName) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.type === 'tool' && msg.toolName === toolName && !msg.toolResult) {
+      return i;
+    }
+  }
+  return -1;
 }
 
 function normalizePlanTasks(tasks) {

@@ -236,7 +236,7 @@ export const styles = {
     gap: '8px',
     padding: '8px',
     borderBottom: '1px solid var(--border-divider)',
-    backgroundColor: 'transparent',
+    backgroundColor: 'var(--surface-card)',
     backdropFilter: 'blur(8px) saturate(140%)',
     WebkitBackdropFilter: 'blur(8px) saturate(140%)',
     boxShadow: 'none'
@@ -282,6 +282,16 @@ export const styles = {
     border: '1px solid var(--border-subtle)',
     color: 'var(--text-color)',
     boxShadow: 'var(--shadow-sm)'
+  },
+
+  inspectorTabContent: {
+    flex: 1,
+    minHeight: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    backgroundColor: 'var(--surface-hover)',
+    borderTop: '1px solid var(--border-divider)',
   },
 
   iconButton: {
@@ -523,8 +533,8 @@ export const styles = {
   },
 
   chatTitleMark: {
-    width: '22px',
-    height: '22px',
+    width: '24px',
+    height: '24px',
     borderRadius: 'var(--radius-md)',
     display: 'inline-flex',
     alignItems: 'center',
@@ -532,8 +542,7 @@ export const styles = {
     background: 'var(--primary-soft)',
     color: 'var(--primary-color)',
     border: '1px solid var(--primary-border)',
-    fontSize: '10px',
-    fontWeight: 800
+    flexShrink: 0,
   },
 
   chatMessageCount: {
@@ -587,11 +596,11 @@ export const styles = {
   // ================== 输入区域 ==================
   inputArea: {
     margin: '0 12px 12px',
-    padding: '8px',
-    backgroundColor: 'var(--surface-card)',
-    border: '1px solid var(--glass-border-strong)',
-    borderRadius: 'var(--radius-lg)',
-    boxShadow: 'var(--shadow-sm), var(--glass-inner-hl)'
+    padding: '0',
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderRadius: '0',
+    boxShadow: 'none'
   },
 
   interactionConsole: {
@@ -782,7 +791,12 @@ export const styles = {
     gap: '10px',
     alignItems: 'flex-end',
     position: 'relative',
-    zIndex: 50
+    zIndex: 50,
+    padding: '10px 12px',
+    backgroundColor: 'var(--surface-card)',
+    border: '1px solid var(--glass-border-strong)',
+    borderRadius: 'var(--radius-lg)',
+    boxShadow: 'var(--shadow-sm), var(--glass-inner-hl)'
   },
 
   userInputRequestPanel: {
@@ -879,10 +893,10 @@ export const styles = {
   },
   
   sendButton: {
-    width: '36px',
-    height: '36px',
+    width: '32px',
+    height: '32px',
     borderRadius: 'var(--radius-md)',
-    border: '1px solid var(--ds-brand-s2)',
+    border: 'none',
     backgroundColor: 'var(--ds-brand)',
     color: 'var(--text-on-primary)',
     cursor: 'pointer',
@@ -890,32 +904,31 @@ export const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'all 0.15s ease',
+    transition: 'all 0.12s ease',
     boxShadow: 'none',
     flexShrink: 0,
   },
 
   sendButtonDisabled: {
     backgroundColor: 'var(--ds-bg-raised)',
-    border: '1px solid var(--ds-border-l1)',
+    border: 'none',
     color: 'var(--ds-text-tertiary)',
     cursor: 'not-allowed',
-    opacity: 0.6,
+    opacity: 0.5,
   },
 
-  /* 运行时停止按钮 — 圆形 + 脉冲光环 */
+  /* 运行时停止按钮 */
   sendButtonRunning: {
     backgroundColor: 'var(--ds-status-error)',
-    border: '1px solid var(--ds-status-error)',
+    border: 'none',
     color: '#fff',
     cursor: 'pointer',
-    animation: 'planDotPulse 2s ease-in-out infinite',
   },
 
   /* 运行时发送按钮（次要） */
   sendButtonRunningSecondary: {
-    width: '36px',
-    height: '36px',
+    width: '32px',
+    height: '32px',
     borderRadius: 'var(--radius-md)',
     border: '1px solid var(--ds-border-l1)',
     backgroundColor: 'var(--ds-bg-raised)',
@@ -925,7 +938,7 @@ export const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'all 0.15s ease',
+    transition: 'all 0.12s ease',
     flexShrink: 0,
   },
   
@@ -933,6 +946,28 @@ export const styles = {
     marginTop: '4px',
     fontSize: '11px',
     color: 'var(--text-dark)'
+  },
+
+  askUserFloatingCapsuleCollapsed: {
+    position: 'fixed',
+    bottom: '120px',
+    right: '24px',
+    zIndex: 1000,
+    width: '38px',
+    height: '38px',
+    borderRadius: '50%',
+    border: '1px solid var(--glass-border)',
+    backgroundColor: 'rgba(20, 20, 24, 0.55)',
+    backdropFilter: 'blur(12px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    color: 'var(--text-muted)',
+    opacity: 0.55,
+    transition: 'opacity 0.2s ease, background-color 0.2s ease'
   },
 
   askUserFloatingCapsule: {
@@ -973,7 +1008,8 @@ export const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0
+    flexShrink: 0,
+    cursor: 'pointer'
   },
 
   askUserContent: {

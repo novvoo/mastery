@@ -198,13 +198,15 @@ describe('selectToolsForRequest', () => {
     expect(names).toContain('diagnose');
   });
 
-  test('non-coding task gets core read tools and minimal clarification only', () => {
+  test('non-coding task gets core tools and terminal tools (no methodology)', () => {
     const selected = selectToolsForRequest(ALL_TOOLS, { userInput: 'hello world' });
     const names = namesOf(selected);
     expect(names).toContain('read_file');
+    expect(names).toContain('write_file');
+    expect(names).toContain('edit_file');
+    expect(names).toContain('shell');
     expect(names).toContain('ask_user');
     expect(names).not.toContain('brainstorm');
-    expect(names).not.toContain('write_file');
   });
 
   test('non-coding task requesting fresh data gets web tools', () => {
@@ -342,15 +344,15 @@ describe('selectToolsForRequest', () => {
     expect(names).toContain('verify');
   });
 
-  test('coding task always gets harness state tools', () => {
+  test('coding task does not include deprecated harness state tools', () => {
     const selected = selectToolsForRequest(ALL_TOOLS, {
       taskProfile: { isCodingTask: true },
       currentPhase: PHASE.EXPLORATION,
     });
     const names = namesOf(selected);
-    expect(names).toContain('harness_analyze');
-    expect(names).toContain('harness_replace');
-    expect(names).toContain('harness_rollback');
+    expect(names).not.toContain('harness_analyze');
+    expect(names).not.toContain('harness_replace');
+    expect(names).not.toContain('harness_rollback');
   });
 });
 

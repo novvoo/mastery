@@ -148,6 +148,34 @@ describe('runtimeToolCallFromBareCommand', () => {
     expect(result.arguments.path).toBe('.');
   });
 
+  test('parses list_dir with path= prefix (Agent hallucination)', () => {
+    const r1 = runtimeToolCallFromBareCommand('list_dir path=.', 0, defaultDeps);
+    expect(r1).not.toBeNull();
+    expect(r1.name).toBe('list_dir');
+    expect(r1.arguments.path).toBe('.');
+
+    const r2 = runtimeToolCallFromBareCommand('list_dir path=/workspace', 0, defaultDeps);
+    expect(r2).not.toBeNull();
+    expect(r2.arguments.path).toBe('/workspace');
+  });
+
+  test('parses read_file with path= prefix (Agent hallucination)', () => {
+    const r1 = runtimeToolCallFromBareCommand('read_file path=src/snake.js', 0, defaultDeps);
+    expect(r1).not.toBeNull();
+    expect(r1.name).toBe('read_file');
+    expect(r1.arguments.path).toBe('src/snake.js');
+
+    const r2 = runtimeToolCallFromBareCommand('read_file path=/Users/jingslunt/workspace/src/snake.js', 0, defaultDeps);
+    expect(r2).not.toBeNull();
+    expect(r2.arguments.path).toBe('/Users/jingslunt/workspace/src/snake.js');
+  });
+
+  test('parses list_dir with file_path= prefix', () => {
+    const r = runtimeToolCallFromBareCommand('list_dir file_path=.', 0, defaultDeps);
+    expect(r).not.toBeNull();
+    expect(r.arguments.path).toBe('.');
+  });
+
   test('returns null for unknown tool', () => {
     const result = runtimeToolCallFromBareCommand('unknown_tool {"a": 1}', 0, defaultDeps);
     expect(result).toBeNull();

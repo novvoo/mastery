@@ -221,6 +221,44 @@ export class StagnationDetector {
       };
     }
 
+    // 6. 反复测试不修改检测：连续运行测试/验证命令但没有代码变更
+    const mutationTools = new Set([
+      'write_file',
+      'edit_file',
+      'delete_file',
+      'rename_file',
+      'apply_hashline_patch',
+    ]);
+    const testLikeCommands = /test|check|lint|build|run|vitest|jest|pytest|mocha/i;
+    const lastMutationIter = this.#window
+      .map((t) => t.iteration)
+      .findLast((_, i) => {
+        const tools = this.#window.slice(0, i + 1);
+        return tools.some((t) => mutationTools.has(t.toolName) && t.isMutation);
+      });
+    const lastMutation = lastMutationIter ?? -1;
+    const testOnlyStreak = this.#window.filter(
+      (t) => t.iteration > lastMutation && testLikeCommands.test(t.toolName),
+    ).length;
+    const testCountOutsideWindow =
+      this.#window.length >= 4 &&
+      this.#window.filter((t) => t.iteration > lastMutation && t.toolName === 'shell').length >=
+        3 &&
+      this.#window.every((t) => t.iteration <= lastMutation || !mutationTools.has(t.toolName));
+    if (testCountOutsideWindow) {
+      this.#lastStagnationNudge++;
+      return {
+        type: 'test_without_mutation_stagnation',
+        message:
+          `[Progress check] You have run test/build commands ${testOnlyStreak} times without modifying any code.\n` +
+          `Running the same tests repeatedly will not fix them. Identify the root cause, edit the relevant source files, ` +
+          `then run verification.\n` +
+          `If the target is clear, apply the fix now with edit_file or apply_hashline_patch. ` +
+          `If blocked, call ask_user or provide FINAL_ANSWER explaining the blocker.`,
+        shouldDegradeBudget,
+      };
+    }
+
     return null;
   }
 

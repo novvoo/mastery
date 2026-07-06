@@ -61,7 +61,9 @@ export function clampInspectorWidth(width) {
   return Math.max(LAYOUT.inspectorMinWidth, Math.min(viewportLimit, numericWidth));
 }
 
-export { createAgentErrorPrompt, normalizeRagDocuments, mergeRagDocuments, getDocumentDisplayName };
+export {
+  createAgentErrorPrompt, normalizeRagDocuments, mergeRagDocuments, getDocumentDisplayName,
+};
 
 export function createAgentSessionId() {
   return _createAgentSessionId();
@@ -133,6 +135,28 @@ export async function deleteAgentSession(sessionId) {
   }
   const sessions = adapter.readSessions().filter((s) => s?.id !== sessionId);
   adapter.writeSessions(sessions);
+  window.dispatchEvent(new CustomEvent(AGENT_SESSIONS_UPDATED_EVENT));
+}
+
+export async function clearAllSessions() {
+  // 先通过 IPC 删除文件系统侧的所有会话
+  if (hasElectronAPI()) {
+    const sessions = adapter.readSessions();
+    for (const session of sessions) {
+      if (session?.id) {
+        try {
+          await invokeElectronAPI('session:delete', { sessionId: session.id });
+        } catch (err) {
+          console.warn('clearAllSessions: delete failed for', session.id, err);
+        }
+      }
+    }
+  }
+  // 清空 localStorage 侧
+  localStorage.removeItem(AGENT_SESSIONS_STORAGE_KEY);
+  localStorage.removeItem(AGENT_HISTORY_STORAGE_KEY);
+  localStorage.removeItem(ACTIVE_AGENT_SESSION_STORAGE_KEY);
+  adapter.writeSessions([]);
   window.dispatchEvent(new CustomEvent(AGENT_SESSIONS_UPDATED_EVENT));
 }
 

@@ -102,6 +102,152 @@ describe('Filesystem sandbox: path containment', () => {
     const result = await tools.read_file.handler({ path: 'roundtrip.txt' }, makeCtx(workdir));
     expect(String(result)).toMatch(/roundtrip value/);
   });
+
+  test('edit_file 在 old_text 存在轻微空白差异时可回退到 normalized 匹配', async () => {
+    writeFileSync(
+      join(workdir, 'normalized-edit.js'),
+      "function demo() {\r\n  return answer;\r\n}\r\n",
+      'utf8',
+    );
+
+    const result = await tools.edit_file.handler(
+      {
+        path: 'normalized-edit.js',
+        old_text: "function demo() {\nreturn answer;\n}",
+        new_text: "function demo() {\n  return value;\n}",
+      },
+      makeCtx(workdir),
+    );
+
+    expect(String(result)).toContain('File edited successfully');
+    expect(String(result)).toContain('Strategy: normalized');
+
+    const after = await tools.read_file.handler({ path: 'normalized-edit.js' }, makeCtx(workdir));
+    expect(String(after)).toContain('return value;');
+  });
+
+  test('edit_file delegates to EditOrchestrator when available', async () => {
+    writeFileSync(join(workdir, 'orchestrator-test.js'), 'const x = 1;\n', 'utf8');
+    const mockOrchestrator = {
+      editViaHashline: async () => ({
+        success: true,
+        filesChanged: ['orchestrator-test.js'],
+        totalEdits: 1,
+        diagnostics: { ok: true },
+        repaired: [],
+        memoryUpdated: true,
+        error: null,
+      }),
+    };
+    const ctx = { ...makeCtx(workdir), editOrchestrator: mockOrchestrator };
+
+    const result = await tools.edit_file.handler(
+      { path: 'orchestrator-test.js', old_text: 'const x = 1;', new_text: 'const y = 2;' },
+      ctx,
+    );
+
+    expect(String(result)).toContain('via EditOrchestrator');
+    expect(String(result)).toContain('Diagnostics gate: PASSED');
+    expect(String(result)).toContain('Memory: updated');
+  });
+
+  test('edit_file propagates orchestrator failure', async () => {
+    writeFileSync(join(workdir, 'orchestrator-fail.js'), 'const a = 1;\n', 'utf8');
+    const mockOrchestrator = {
+      editViaHashline: async () => ({
+        success: false,
+        filesChanged: [],
+        totalEdits: 0,
+        diagnostics: null,
+        error: 'simulated orchestrator error',
+      }),
+    };
+    const ctx = { ...makeCtx(workdir), editOrchestrator: mockOrchestrator };
+
+    const result = await tools.edit_file.handler(
+      { path: 'orchestrator-fail.js', old_text: 'const a = 1;', new_text: 'const b = 2;' },
+      ctx,
+    );
+
+    expect(String(result)).toContain('Edit failed via orchestrator');
+    expect(String(result)).toContain('simulated orchestrator error');
+  });
+
+  test('edit_file falls back to patcher when no orchestrator', async () => {
+    writeFileSync(join(workdir, 'patcher-fallback.js'), 'const p = 1;\n', 'utf8');
+    const mockPatcher = {
+      preflight: async () => ({
+        patch: {},
+        preflight: [{ ok: true, path: 'patcher-fallback.js', tag: 'abc', recoverable: false }],
+      }),
+      apply: async () => ({
+        ok: true,
+        sections: [{ path: 'patcher-fallback.js', hunksApplied: 1, tag: 'abc', newTag: 'def' }],
+        error: null,
+      }),
+    };
+    const ctx = { ...makeCtx(workdir), hashlinePatcher: mockPatcher };
+
+    const result = await tools.edit_file.handler(
+      { path: 'patcher-fallback.js', old_text: 'const p = 1;', new_text: 'const q = 2;' },
+      ctx,
+    );
+
+    expect(String(result)).toContain('via Hashline patcher');
+    expect(String(result)).toContain('File edited successfully');
+  });
+
+  test('edit_file direct fallback when no orchestrator or patcher', async () => {
+    writeFileSync(join(workdir, 'direct-fallback.js'), 'const d = 1;\n', 'utf8');
+
+    const result = await tools.edit_file.handler(
+      { path: 'direct-fallback.js', old_text: 'const d = 1;', new_text: 'const e = 2;' },
+      makeCtx(workdir),
+    );
+
+    expect(String(result)).toContain('(direct)');
+    expect(String(result)).toContain('File edited successfully');
+  });
+
+  test('edit_file accepts original_text alias for old_text', async () => {
+    writeFileSync(join(workdir, 'orig-alias.js'), 'const x = 1;\n', 'utf8');
+
+    const result = await tools.edit_file.handler(
+      { path: 'orig-alias.js', original_text: 'const x = 1;', new_text: 'const y = 2;' },
+      makeCtx(workdir),
+    );
+
+    expect(String(result)).toContain('File edited successfully');
+    expect(String(result)).toContain('exact');
+  });
+
+  test('edit_file accepts edits array (Claude Code format)', async () => {
+    writeFileSync(join(workdir, 'edits-array.js'), 'let a = 1;\n', 'utf8');
+
+    const result = await tools.edit_file.handler(
+      {
+        path: 'edits-array.js',
+        edits: [{ old_text: 'let a = 1;', new_text: 'let b = 2;' }],
+      },
+      makeCtx(workdir),
+    );
+
+    expect(String(result)).toContain('File edited successfully');
+  });
+
+  test('edit_file accepts changes array (Claude Code format)', async () => {
+    writeFileSync(join(workdir, 'changes-array.js'), 'const p = 1;\n', 'utf8');
+
+    const result = await tools.edit_file.handler(
+      {
+        path: 'changes-array.js',
+        changes: [{ old_text: 'const p = 1;', new_text: 'const q = 2;' }],
+      },
+      makeCtx(workdir),
+    );
+
+    expect(String(result)).toContain('File edited successfully');
+  });
 });
 
 describe('SecurityPolicy permission levels', () => {

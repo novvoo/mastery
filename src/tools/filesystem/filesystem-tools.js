@@ -304,6 +304,23 @@ function countOccurrences(text, sub) {
   return count;
 }
 
+function normalizeComparableLine(line) {
+  return line.replace(/\r/g, '').trim();
+}
+
+function normalizeComparableBlock(text) {
+  return text
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => normalizeComparableLine(line))
+    .join('\n')
+    .trim();
+}
+
+// 跟踪编辑循环检测：path -> { count, lastContentHash }
+const noopEditTracker = new Map();
+const NOOP_EDIT_LIMIT = 3;
+
 export function createFileSystemTools() {
   return [
     {
@@ -488,6 +505,55 @@ export function createFileSystemTools() {
             return `File written successfully: ${path} (${contentInfo})`;
           }
 
+          // 对现有文件的覆盖写入走事务化管线
+          if (existsSync(fullPath)) {
+            // 1) EditOrchestrator 完整事务
+            const orchestrator = ctx.editOrchestrator;
+            if (orchestrator && typeof orchestrator.writeFile === 'function') {
+              const result = await orchestrator.writeFile(fullPath, content);
+              if (result.success) {
+                const lineCount = content.split('\n').length;
+                const parts = [
+                  `File written successfully: ${path} (${lineCount} lines, via EditOrchestrator)`,
+                ];
+                if (result.diagnostics) {
+                  parts.push(
+                    result.diagnostics.ok
+                      ? 'Diagnostics gate: PASSED'
+                      : `Diagnostics gate: ${result.diagnostics.newErrors?.length || 0} new errors`,
+                  );
+                }
+                if (result.repaired?.length > 0) {
+                  parts.push(`Auto-repaired: ${result.repaired.length} error(s) via codeAction`);
+                }
+                if (result.memoryUpdated) {
+                  parts.push('Memory: updated');
+                }
+                return parts.join('\n');
+              }
+              return `Error writing file ${path}: orchestrator write failed - ${result.error || 'unknown error'}`;
+            }
+
+            // 2) Hashline Patcher 回退
+            const patcher = ctx.hashlinePatcher;
+            if (patcher && typeof patcher.preflight === 'function') {
+              try {
+                const tag = computeTag(await readFile(fullPath, 'utf-8'));
+                const newLines = content.split('\n');
+                const totalLines = newLines.length;
+                const body = newLines.map((l) => `+${l}`).join('\n');
+                const patchText = `[${safe.relPath}#${tag}]\nSWAP 1.=${Math.max(1, totalLines)}:\n${body}`;
+                const { patch: parsedPatch, preflight } = await patcher.preflight(patchText);
+                if (!preflight.find((p) => !p.ok && !p.recoverable)) {
+                  const applyResult = await patcher.apply(parsedPatch);
+                  if (applyResult.ok) {
+                    return `File written successfully: ${path} (${content.split('\n').length} lines, via Hashline patcher)`;
+                  }
+                }
+              } catch {}
+            }
+          }
+
           await writeFile(fullPath, content, 'utf-8');
           if (ctx.memoryManager && typeof ctx.memoryManager.updateFileMap === 'function') {
             ctx.memoryManager.updateFileMap(path, 'created/modified').catch(() => {});
@@ -503,7 +569,6 @@ export function createFileSystemTools() {
             } catch {}
           }
 
-          // 自动记录 snapshot 到 Hashline SnapshotStore
           if (ctx.snapshotStore && typeof ctx.snapshotStore.record === 'function') {
             try {
               ctx.snapshotStore.record(path, content);
@@ -532,7 +597,11 @@ export function createFileSystemTools() {
           description:
             'The text to find and replace. If line/startLine/endLine is provided, old_text is optional (used for validation).',
         },
-        new_text: { type: 'string', description: 'The replacement text (empty string to delete)', allowEmpty: true },
+        new_text: {
+          type: 'string',
+          description: 'The replacement text (empty string to delete)',
+          allowEmpty: true,
+        },
         line: { type: 'number', description: 'Single line number (1-based) to replace' },
         startLine: {
           type: 'number',
@@ -550,8 +619,26 @@ export function createFileSystemTools() {
         new_str: 'new_text',
         old_string: 'old_text',
         new_string: 'new_text',
+        original_text: 'old_text',
+        start_line: 'startLine',
+        end_line: 'endLine',
+        search: 'old_text',
+        replace: 'new_text',
       },
-      handler: async ({ path, old_text, new_text, line, startLine, endLine }, ctx) => {
+      handler: async (
+        { path, old_text, new_text, line, startLine, endLine, edits, changes, original_text },
+        ctx,
+      ) => {
+        // Claude Code 兼容：edits/changes 数组作为单次替换处理
+        const editArray = edits || changes;
+        if (editArray && Array.isArray(editArray) && editArray.length > 0) {
+          old_text =
+            editArray[0].old_text || editArray[0].old_string || editArray[0].old_str || old_text;
+          new_text =
+            editArray[0].new_text || editArray[0].new_string || editArray[0].new_str || new_text;
+        }
+        // Claude Code 兼容：original_text 作为 old_text
+        if (!old_text && original_text) old_text = original_text;
         const safe = safeResolvePath(ctx.workingDirectory, path);
         if (!safe.ok) {
           return safe.error;
@@ -618,6 +705,32 @@ export function createFileSystemTools() {
             return null;
           };
 
+          const findNormalizedUniqueMatch = (text) => {
+            if (!text || !text.trim()) {
+              return null;
+            }
+            const targetLines = text.replace(/\r/g, '').split('\n');
+            const targetLen = targetLines.length;
+            if (targetLen === 0 || targetLen > lines.length) {
+              return null;
+            }
+            const normalizedTarget = normalizeComparableBlock(text);
+            const candidates = [];
+            for (let i = 0; i <= lines.length - targetLen; i++) {
+              const candidateText = lines.slice(i, i + targetLen).join('\n');
+              if (normalizeComparableBlock(candidateText) === normalizedTarget) {
+                candidates.push(i + 1);
+                if (candidates.length > 1) {
+                  return { multiple: true, firstLine: candidates[0] };
+                }
+              }
+            }
+            if (candidates.length === 1) {
+              return findMatchByLineRange(candidates[0], candidates[0] + targetLen - 1);
+            }
+            return null;
+          };
+
           if (line !== undefined && line !== null) {
             const result = findMatchByLineRange(line, line);
             if (result) {
@@ -626,7 +739,7 @@ export function createFileSystemTools() {
               firstMatchLine = result.line;
               strategy = 'line';
             } else {
-              return `Error: Line ${line} is out of range (file has ${lines.length} lines)`;
+              return `Error: Line ${line} is out of range (file has ${lines.length} lines). Re-read the file to see current line numbers.`;
             }
           } else if (startLine !== undefined && startLine !== null) {
             const end = endLine !== undefined && endLine !== null ? endLine : startLine;
@@ -658,34 +771,128 @@ export function createFileSystemTools() {
                 firstMatchLine = fuzzy.line;
                 strategy = 'fuzzy';
               } else {
-                return `Error: old_text not found in file. Try using line/startLine/endLine for line-based editing.`;
+                const normalized = findNormalizedUniqueMatch(old_text);
+                if (normalized?.multiple) {
+                  return `Error: old_text matches multiple normalized locations (first at line ${normalized.firstLine}). Use line/startLine/endLine for unambiguous edits.`;
+                }
+                if (normalized) {
+                  matchOffset = normalized.offset;
+                  matchLength = normalized.length;
+                  firstMatchLine = normalized.line;
+                  strategy = 'normalized';
+                } else {
+                  return (
+                    `Error: old_text not found in file. The file may have been modified since you last read it.\n` +
+                    `1) Re-read the file with read_file to see current content\n` +
+                    `2) Retry with exact text from the latest read\n` +
+                    `3) Use line/startLine/endLine for line-based editing`
+                  );
+                }
               }
             }
           } else {
             return `Error: Either old_text or line/startLine must be provided`;
           }
 
+          // Noop 循环检测：编辑后内容不变则跟踪并截断
+          const checkNoopLoop = (newContent) => {
+            const contentHash = hashContent(newContent);
+            const tracker = noopEditTracker.get(safe.relPath) || { count: 0, lastHash: null };
+            if (tracker.lastHash === contentHash) {
+              tracker.count++;
+              noopEditTracker.set(safe.relPath, tracker);
+              if (tracker.count >= NOOP_EDIT_LIMIT) {
+                return (
+                  `Error: ${NOOP_EDIT_LIMIT} consecutive no-op edits detected for "${path}". ` +
+                  `The file content is not changing. Re-read the file to see current state and stop retrying the same change.`
+                );
+              }
+            } else {
+              noopEditTracker.set(safe.relPath, { count: 0, lastHash: contentHash });
+            }
+            return null;
+          };
+
           const old_text_content = content.substring(matchOffset, matchOffset + matchLength);
+          const oldLineCount = old_text_content.split('\n').length;
+          const endLineForPatch = firstMatchLine + oldLineCount - 1;
 
-          const ctxStart = Math.max(0, matchOffset - 200);
-          const ctxEnd = Math.min(content.length, matchOffset + matchLength + 200);
-          const anchorContext = content.substring(ctxStart, ctxEnd);
-          const anchorHash = hashContent(anchorContext);
-          const beforeHash = hashContent(content);
+          // 尝试走成熟编辑链路：orchestrator > patcher > 直接写盘
+          const editViaHashlinePipeline = async () => {
+            const tag = computeTag(content);
+            const normalizedNew = new_text.replace(/\r\n/g, '\n');
+            const newPatchLines = normalizedNew.split('\n');
 
-          if (ctx.contentStore) {
-            const storedAnchor = ctx.contentStore.getAnchor(anchorHash);
-            if (storedAnchor) {
-              const knownSnippet = storedAnchor.text.slice(
-                0,
-                Math.min(storedAnchor.text.length, 50),
-              );
-              if (!anchorContext.includes(knownSnippet)) {
-                return `Error: Anchor hash ${anchorHash.substring(0, 12)}... no longer matches file content. The file was modified underneath this edit. Re-read the file and try again.`;
+            let patchText;
+            if (newPatchLines.length === 1 && newPatchLines[0] === '' && oldLineCount > 0) {
+              patchText = `[${safe.relPath}#${tag}]\nDEL ${firstMatchLine}.=${endLineForPatch}`;
+            } else {
+              const body = newPatchLines.map((l) => `+${l}`).join('\n');
+              patchText = `[${safe.relPath}#${tag}]\nSWAP ${firstMatchLine}.=${endLineForPatch}:\n${body}`;
+            }
+
+            // 1) EditOrchestrator 完整事务管道（preflight → apply → LSP sync → diagnostics gate → memory update）
+            const orchestrator = ctx.editOrchestrator;
+            if (orchestrator && typeof orchestrator.editViaHashline === 'function') {
+              const result = await orchestrator.editViaHashline(patchText);
+              if (result.success) {
+                const parts = [
+                  `File edited successfully: ${path}`,
+                  `Strategy: ${strategy} (via EditOrchestrator)`,
+                  `Changed ${oldLineCount} line(s) starting at line ${firstMatchLine}.`,
+                  `Files changed: ${result.filesChanged.join(', ')}`,
+                ];
+                if (result.diagnostics) {
+                  parts.push(
+                    result.diagnostics.ok
+                      ? 'Diagnostics gate: PASSED'
+                      : `Diagnostics gate: ${result.diagnostics.newErrors?.length || 0} new errors`,
+                  );
+                }
+                if (result.repaired?.length > 0) {
+                  parts.push(`Auto-repaired: ${result.repaired.length} error(s) via codeAction`);
+                }
+                if (result.memoryUpdated) {
+                  parts.push('Memory: updated');
+                }
+                return parts.join('\n');
+              }
+              return `Edit failed via orchestrator: ${result.error || 'unknown error'}`;
+            }
+
+            // 2) Hashline Patcher 回退（无 diagnostics gate，但有 preflight tag 校验和 recovery）
+            const patcher = ctx.hashlinePatcher;
+            if (patcher && typeof patcher.preflight === 'function') {
+              try {
+                const { patch: parsedPatch, preflight } = await patcher.preflight(patchText);
+                const fatalSection = preflight.find((p) => !p.ok && !p.recoverable);
+                if (!fatalSection) {
+                  const applyResult = await patcher.apply(parsedPatch);
+                  if (applyResult.ok) {
+                    return (
+                      `File edited successfully: ${path}\n` +
+                      `Strategy: ${strategy} (via Hashline patcher)\n` +
+                      `Changed ${oldLineCount} line(s) starting at line ${firstMatchLine}.`
+                    );
+                  }
+                  return `Edit failed via patcher: ${applyResult.error}`;
+                }
+                return `Edit failed: ${fatalSection.path}: ${fatalSection.error}. Re-read the file and try again.`;
+              } catch (err) {
+                return `Edit failed via patcher: ${err.message}`;
               }
             }
+
+            return null;
+          };
+
+          const pipelineResult = await editViaHashlinePipeline();
+          if (pipelineResult !== null) {
+            return pipelineResult;
           }
 
+          // 3) 直接写盘回退（无 orchestrator/patcher 时的兜底路径）
+          const beforeHash = hashContent(content);
           const newContent =
             content.substring(0, matchOffset) +
             new_text +
@@ -693,26 +900,13 @@ export function createFileSystemTools() {
           const afterHash = hashContent(newContent);
           const diff = generateUnifiedDiff(content, newContent, path);
 
-          await writeFile(fullPath, newContent, 'utf-8');
-          if (ctx.memoryManager && typeof ctx.memoryManager.updateFileMap === 'function') {
-            ctx.memoryManager.updateFileMap(path, 'edited').catch(() => {});
+          // Noop 检测
+          if (afterHash === beforeHash) {
+            const loopErr = checkNoopLoop(newContent);
+            if (loopErr) return loopErr;
           }
 
-          if (ctx.contentStore) {
-            try {
-              ctx.contentStore.storeAnchor(
-                path,
-                matchOffset,
-                matchOffset + matchLength,
-                old_text_content,
-              );
-              const newBlobHash = ctx.contentStore.storeBlob(newContent);
-              ctx.contentStore.setRef(`file:${path}`, newBlobHash);
-              if (ctx.fileAnalyzer && typeof ctx.fileAnalyzer.analyzeFile === 'function') {
-                ctx.fileAnalyzer.analyzeFile(path, newContent);
-              }
-            } catch {}
-          }
+          await writeFile(fullPath, newContent, 'utf-8');
 
           if (ctx.snapshotStore && typeof ctx.snapshotStore.record === 'function') {
             try {
@@ -720,12 +914,10 @@ export function createFileSystemTools() {
             } catch {}
           }
 
-          const oldLineCount = old_text_content.split('\n').length;
           return (
             `File edited successfully: ${path}\n` +
-            `Strategy: ${strategy}\n` +
+            `Strategy: ${strategy} (direct)\n` +
             `Changed ${oldLineCount} line(s) starting at line ${firstMatchLine}.\n` +
-            `Anchor hash: ${anchorHash.substring(0, 16)}...\n` +
             `Before hash: ${beforeHash.substring(0, 16)}\n` +
             `After hash:  ${afterHash.substring(0, 16)}\n` +
             `---- diff ----\n${diff}`

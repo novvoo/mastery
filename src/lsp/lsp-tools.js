@@ -245,6 +245,7 @@ export function createLSPTools({
           contentStore,
           hashlinePatcher,
           snapshotStore: ctx.snapshotStore,
+          editOrchestrator: ctx.editOrchestrator,
         });
 
         if (!appResult.success && appResult.rolledBack) {
@@ -581,8 +582,61 @@ export function createLSPTools({
         const formatted = applyTextEdits(content, edits);
 
         if (args.apply) {
+          // 通过事务化管线应用格式化变更
+          const normalizedContent = content.replace(/\r\n/g, '\n');
+          const formatted = applyTextEdits(normalizedContent, edits);
+          const orchestrateFallback = async () => {
+            // 1) EditOrchestrator（跳过 diagnostics gate — 格式化是格式变更而非语义变更）
+            const orchestrator = ctx.editOrchestrator;
+            if (orchestrator && typeof orchestrator.editViaHashline === 'function') {
+              const tag = computeTag(normalizedContent);
+              const newLines = formatted.split('\n');
+              const totalLines = normalizedContent.split('\n').length;
+              const body = newLines.map((l) => `+${l}`).join('\n');
+              const patchText = `[${filePath}#${tag}]\nSWAP 1.=${Math.max(1, totalLines)}:\n${body}`;
+              const result = await orchestrator.editViaHashline(patchText, {
+                skipDiagnostics: true,
+              });
+              if (result.success) {
+                return {
+                  success: true,
+                  message: 'Formatting applied via EditOrchestrator.',
+                  applied: true,
+                  editCount: edits.length,
+                };
+              }
+              return null;
+            }
+            // 2) Hashline Patcher
+            const patcher = ctx.hashlinePatcher;
+            if (patcher && typeof patcher.preflight === 'function') {
+              try {
+                const tag = computeTag(normalizedContent);
+                const newLines = formatted.split('\n');
+                const totalLines = normalizedContent.split('\n').length;
+                const body = newLines.map((l) => `+${l}`).join('\n');
+                const patchText = `[${filePath}#${tag}]\nSWAP 1.=${Math.max(1, totalLines)}:\n${body}`;
+                const { patch: parsedPatch, preflight } = await patcher.preflight(patchText);
+                if (!preflight.find((p) => !p.ok && !p.recoverable)) {
+                  const applyResult = await patcher.apply(parsedPatch);
+                  if (applyResult.ok) {
+                    return {
+                      success: true,
+                      message: 'Formatting applied via Hashline patcher.',
+                      applied: true,
+                      editCount: edits.length,
+                    };
+                  }
+                }
+              } catch {}
+            }
+            return null;
+          };
+          const orchResult = await orchestrateFallback();
+          if (orchResult) return orchResult;
+
+          // 回退：直接写盘
           await writeFile(filePath, formatted, 'utf-8');
-          // 更新 CAS / snapshot
           if (contentStore) {
             contentStore.storeBlob(formatted);
             contentStore.setRef(`file:${filePath}`, contentStore.storeBlob(formatted));
@@ -590,7 +644,6 @@ export function createLSPTools({
           if (ctx.snapshotStore) {
             ctx.snapshotStore.record(filePath, formatted);
           }
-          // 同步到 LSP
           await lspManager.syncDocument(filePath, formatted);
           return {
             success: true,
@@ -1501,6 +1554,7 @@ export function createLSPTools({
               hashlinePatcher,
               snapshotStore: ctx.snapshotStore,
               lspManager,
+              editOrchestrator: ctx.editOrchestrator,
             },
           );
         }
@@ -1675,7 +1729,7 @@ function detectWorkspaceEditConflicts(editsByPath) {
  */
 async function applyWorkspaceEdit(
   workspaceEdit,
-  { workingDirectory, contentStore, hashlinePatcher, snapshotStore, lspManager },
+  { workingDirectory, contentStore, hashlinePatcher, snapshotStore, lspManager, editOrchestrator },
 ) {
   const filesChanged = [];
   const filesFailed = [];
@@ -1743,6 +1797,43 @@ async function applyWorkspaceEdit(
     Object.keys(workspaceEdit.changes || {}).length + (workspaceEdit.documentChanges || []).length
   ) {
     return { success: false, filesChanged: [], filesFailed, totalEdits: 0 };
+  }
+
+  if (
+    editOrchestrator &&
+    typeof editOrchestrator.applyWorkspaceEdit === 'function' &&
+    Object.keys(editsByPath).length > 0
+  ) {
+    try {
+      const result = await editOrchestrator.applyWorkspaceEdit(workspaceEdit);
+      if (result.success) {
+        return {
+          success: true,
+          filesChanged: result.filesChanged,
+          filesFailed: result.filesFailed,
+          totalEdits: result.totalEdits,
+          atomic: true,
+          diagnostics: result.diagnostics,
+          memoryUpdated: result.memoryUpdated,
+        };
+      }
+      return {
+        success: false,
+        filesChanged: result.filesChanged || [],
+        filesFailed: result.filesFailed || [
+          `Workspace edit failed via EditOrchestrator: ${result.error}`,
+        ],
+        totalEdits: result.totalEdits,
+        diagnostics: result.diagnostics,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        filesChanged: [],
+        filesFailed: [`EditOrchestrator workspace edit error: ${err.message}`],
+        totalEdits,
+      };
+    }
   }
 
   if (hashlinePatcher && Object.keys(editsByPath).length > 0) {
@@ -2178,6 +2269,7 @@ async function executeCodeAction(action, { lspManager, contentStore, hashlinePat
       hashlinePatcher,
       snapshotStore: ctx.snapshotStore,
       lspManager,
+      editOrchestrator: ctx.editOrchestrator,
     });
   }
 

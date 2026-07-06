@@ -162,7 +162,7 @@ managementSidebar: {
   flexDirection: 'column',
   width: '180px',
   minWidth: '180px',
-  backgroundColor: 'var(--glass-bg)',
+  backgroundColor: 'var(--surface-hover)',
   backdropFilter: 'blur(16px) saturate(160%)',
   WebkitBackdropFilter: 'blur(16px) saturate(160%)',
   borderRight: '1px solid var(--ds-border-l2)',

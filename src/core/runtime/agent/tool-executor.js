@@ -452,6 +452,7 @@ export class ToolExecutor {
   #hashlinePatcher;
   #lspManager;
   #editOrchestrator;
+  #fileFreshnessCache = new Map();
 
   constructor({
     toolRegistry,
@@ -516,6 +517,7 @@ export class ToolExecutor {
     this.#callHistory = new Set();
     this.#resultCache = new Map();
     this.#dirToolCache = new Map();
+    this.#fileFreshnessCache = new Map();
     this.#events = [];
     this.#cacheLoaded = false;
   }
@@ -1049,6 +1051,19 @@ ${paramDesc || '无参数定义'}
         this.#resultCache.set(callSignature, cachedValue);
         this.#flushCacheEntry(callSignature, cachedValue);
 
+        // 写工具成功后更新文件新鲜度缓存
+        const mutationTarget = getScopeTargetPath(name, effectiveArgs);
+        if (
+          mutationTarget &&
+          this.#snapshotStore &&
+          typeof this.#snapshotStore.head === 'function'
+        ) {
+          const newTag = this.#snapshotStore.head(mutationTarget);
+          if (newTag) {
+            this.#fileFreshnessCache.set(mutationTarget, newTag);
+          }
+        }
+
         // 写文件后预填充读缓存，避免立即重复读取
         const writeTools = [
           'write_file',
@@ -1094,6 +1109,11 @@ ${paramDesc || '无参数定义'}
         const fileTag =
           targetPath && this.#snapshotStore ? this.#snapshotStore.head(targetPath) : null;
         this.#resultCache.set(callSignature, { result: finalResult, fileTag });
+
+        // 更新文件新鲜度缓存
+        if (targetPath && fileTag) {
+          this.#fileFreshnessCache.set(targetPath, fileTag);
+        }
 
         // 目录类工具：存储到 TTL 缓存
         const dirTools = ['list_dir', 'glob', 'tree'];
@@ -1407,25 +1427,46 @@ ${paramDesc || '无参数定义'}
       return getScopeTargetPath(event.name, event.args || event.arguments || {}) === targetPath;
     });
 
-    if (historyHasRead || eventHasRead) {
-      return null;
+    if (!historyHasRead && !eventHasRead) {
+      const sessionManager = context.sessionManager;
+      if (sessionManager && typeof sessionManager.addSystemMessage === 'function') {
+        sessionManager.addSystemMessage(
+          `[WRITE-BEFORE-READ GUARDRAIL] "${targetPath}" needs current-file evidence before editing. Read the relevant section first, then make the scoped change.`,
+        );
+      }
+      return {
+        name,
+        success: false,
+        result: `Error: Cannot ${name} "${targetPath}" without first reading it. Please call read_file to examine the current content before making changes.`,
+        error: `Cannot ${name} "${targetPath}" without first reading it.`,
+        skipped: true,
+        writeBeforeReadRequired: true,
+      };
     }
 
-    const sessionManager = context.sessionManager;
-    if (sessionManager && typeof sessionManager.addSystemMessage === 'function') {
-      sessionManager.addSystemMessage(
-        `[WRITE-BEFORE-READ GUARDRAIL] "${targetPath}" needs current-file evidence before editing. Read the relevant section first, then make the scoped change.`,
-      );
+    // 文件新鲜度检查：对比当前文件内容 hash 与上次读取时的 hash
+    if (this.#snapshotStore && typeof this.#snapshotStore.head === 'function') {
+      const currentTag = this.#snapshotStore.head(targetPath);
+      const cachedTag = this.#fileFreshnessCache.get(targetPath);
+      if (cachedTag && currentTag && cachedTag !== currentTag) {
+        const sessionManager = context.sessionManager;
+        if (sessionManager && typeof sessionManager.addSystemMessage === 'function') {
+          sessionManager.addSystemMessage(
+            `[STALE FILE DETECTED] "${targetPath}" was modified since you last read it. Read it again to see the current content before editing.`,
+          );
+        }
+        return {
+          name,
+          success: false,
+          result: `Error: "${targetPath}" has been modified since you last read it. Read the file again to see the current content before making changes.`,
+          error: `Stale file: "${targetPath}" modified since last read`,
+          skipped: true,
+          staleFile: true,
+        };
+      }
     }
 
-    return {
-      name,
-      success: false,
-      result: `Error: Cannot ${name} "${targetPath}" without first reading it. Please call read_file to examine the current content before making changes.`,
-      error: `Cannot ${name} "${targetPath}" without first reading it.`,
-      skipped: true,
-      writeBeforeReadRequired: true,
-    };
+    return null;
   }
 
   #checkUnsafeFullFileOverwrite(name, args, context) {

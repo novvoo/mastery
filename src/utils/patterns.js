@@ -204,7 +204,7 @@ export const DANGEROUS_SHELL_PATTERNS = [
   /(?:^|[\s;&|`$()])(?:\/\S+\/)?rm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*|-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*|--recursive\s+--force)\s+(?:\/|~|\.\.\/|\$\{|`)/,
   /(?:^|[\s;&|`$()])(?:\/\S+\/)?rm\s+-[a-zA-Z]*(?:rf|fr)[a-zA-Z]*\s+(?:\/|~|\.\.)/,
   /(?:^|[\s;&|`$()])(?:mkfs|mkswap|dd|shred)\b/,
-  />\s*\/dev\//,
+  />\s*\/dev\/(?!null\b)/,
   /chmod\s+(?:-R\s+)?777\s+(?:\/|~|\.\.)/,
   /(?:curl|wget|aria2c|python|python3|node)\b[^\n;|&`]*\|\s*(?:ba|z|k|da)?sh\b/,
   /(?:curl|wget)\b[^\n;|&`]*>\s*(?:\/tmp|\/var)\/.*\.(?:sh|py|pl)\b/,

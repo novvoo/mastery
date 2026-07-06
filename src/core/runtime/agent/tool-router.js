@@ -89,16 +89,6 @@ const GIT_MUTATION_TOOLS = [
   'git_reset',
 ];
 
-// State-Centric / Hash-Anchored tools.
-const HARNESS_STATE_TOOLS = [
-  'harness_analyze',
-  'harness_replace',
-  'harness_insert',
-  'harness_delete',
-  'harness_query',
-  'harness_rollback',
-];
-
 // On-Demand Context Expansion tools — 按需上下文扩展
 // - context_index: 索引项目文件，构建符号索引和依赖图
 // - context_assess: 评估当前上下文置信度
@@ -152,7 +142,6 @@ const PLAN_TASK_EXECUTION_TOOLS = [
   ...TERMINAL_TOOLS,
   ...WEB_TOOLS,
   ...GIT_READ_TOOLS,
-  ...HARNESS_STATE_TOOLS,
   ...CONTEXT_EXPANSION_TOOLS,
   'read_files',
   'tree',
@@ -334,7 +323,6 @@ export function selectToolsForRequest(
     add(HASHLINE_TOOLS);
     add(TERMINAL_TOOLS);
     add(GIT_READ_TOOLS);
-    add(HARNESS_STATE_TOOLS);
     add(CONTEXT_EXPANSION_TOOLS);
     add(currentTask.allowedTools);
 
@@ -376,9 +364,6 @@ export function selectToolsForRequest(
     add(HASHLINE_TOOLS);
     add(TERMINAL_TOOLS);
     add(GIT_READ_TOOLS);
-
-    // State-centric / hash-anchored tools — always available for coding tasks
-    add(HARNESS_STATE_TOOLS);
 
     // Context expansion tools — always available for coding tasks
     // so agent can request more context on-demand instead of exploring file-by-file
@@ -435,6 +420,9 @@ export function selectToolsForRequest(
   } else {
     add(PLAN_ORCHESTRATION_TOOLS);
     add(CORE_READ_TOOLS);
+    add(CORE_WRITE_TOOLS);
+    add(TERMINAL_TOOLS);
+    add(HASHLINE_TOOLS);
     add(['ask_user']);
     if (asksForBrowser) {
       add(['browser_open']);
@@ -490,7 +478,6 @@ export function selectToolsForRequest(
     ...LSP_EDIT_TOOLS,
     ...TERMINAL_TOOLS,
     ...GIT_READ_TOOLS,
-    ...HARNESS_STATE_TOOLS,
     ...CONTEXT_EXPANSION_TOOLS,
     ...ADVANCED_METHODOLOGY_TOOLS,
   ];

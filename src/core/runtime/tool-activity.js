@@ -10,13 +10,7 @@ const READ_TOOLS = new Set([
   'check_file',
 ]);
 const WRITE_TOOLS = new Set(['write_file', 'mkdir']);
-const EDIT_TOOLS = new Set([
-  'edit_file',
-  'git_apply_patch',
-  'harness_replace',
-  'harness_insert',
-  'harness_delete',
-]);
+const EDIT_TOOLS = new Set(['edit_file', 'git_apply_patch']);
 const DELETE_TOOLS = new Set(['delete_file', 'rename_file']);
 const REVIEW_TOOLS = new Set(['review', 'verify', 'coverage_check']);
 

@@ -182,4 +182,67 @@ describe('SessionManager', () => {
     const after = sm.getHistory().length;
     expect(after).toBeLessThanOrEqual(before);
   });
+
+  // ================================================================
+  // Supersede 机制测试
+  // ================================================================
+
+  describe('Supersede', () => {
+    test('getMessages replaces superseded read_file results with placeholder', () => {
+      const sm = new SessionManager();
+
+      // 添加 read_file 结果
+      sm.addToolResult('call_read_1', 'read_file', '1: class Snake {\n2:   ...corrupted code...');
+      sm.trackReadFileResult('call_read_1', 'src/game/Snake.js');
+
+      // 添加另一个不相关的结果
+      sm.addToolResult('call_read_2', 'read_file', '1: import Snake from...');
+      sm.trackReadFileResult('call_read_2', 'snake.test.js');
+
+      // 验证 supersede 前：原始内容可见
+      const before = sm.getMessages();
+      expect(before.some(m => m.content === '1: class Snake {\n2:   ...corrupted code...')).toBe(true);
+      expect(before.some(m => m.content === '1: import Snake from...')).toBe(true);
+
+      // 模拟写入后触发 supersede
+      sm.supersedeFileReads('src/game/Snake.js');
+
+      // 验证 supersede 后：snake.js 的结果已被替换，snake.test.js 的没变
+      const after = sm.getMessages();
+      expect(after.some(m => m.content.includes('[Superseded by a newer write/edit of src/game/Snake.js'))).toBe(true);
+      expect(after.some(m => m.content === '1: class Snake {\n2:   ...corrupted code...')).toBe(false);
+      expect(after.some(m => m.content === '1: import Snake from...')).toBe(true);
+    });
+
+    test('supersede只替换匹配文件的结果', () => {
+      const sm = new SessionManager();
+
+      sm.addToolResult('call_a', 'read_file', 'content A');
+      sm.trackReadFileResult('call_a', 'src/game/Snake.js');
+      sm.addToolResult('call_b', 'read_file', 'content B');
+      sm.trackReadFileResult('call_b', 'src/snake.js');
+
+      sm.supersedeFileReads('src/game/Snake.js');
+
+      const msgs = sm.getMessages();
+      // snake.js 被替换
+      expect(msgs.find(m => m.toolCallId === 'call_a').content).toContain('[Superseded by');
+      // src/snake.js 没被替换
+      expect(msgs.find(m => m.toolCallId === 'call_b').content).toBe('content B');
+    });
+
+    test('trackReadFileResult 空参数不报错', () => {
+      const sm = new SessionManager();
+      sm.trackReadFileResult(null, 'file.js');
+      sm.trackReadFileResult('id', null);
+      // 不会崩溃即可
+    });
+
+    test('supersedeFileReads 空参数不报错', () => {
+      const sm = new SessionManager();
+      sm.supersedeFileReads(null);
+      sm.supersedeFileReads('');
+      // 不会崩溃即可
+    });
+  });
 });

@@ -5,7 +5,7 @@ export const styles = {
     flexDirection: 'column',
     height: '100%',
     overflow: 'visible',
-    backgroundColor: 'transparent',
+    backgroundColor: 'var(--surface-hover)',
     borderWidth: '0',
     borderStyle: 'none',
     borderColor: 'transparent',
@@ -158,9 +158,7 @@ export const styles = {
   runtimeDetailsPanel: {
     marginBottom: '12px',
     borderRadius: 'var(--radius-lg)',
-    borderWidth: '1px',
-    borderStyle: 'solid',
-    borderColor: 'var(--ds-border-l2)',
+    border: '1px solid var(--ds-border-l2)',
     backgroundColor: 'var(--ds-bg-raised)',
     overflow: 'visible',
     position: 'relative',
@@ -957,13 +955,11 @@ export const styles = {
     borderRadius: 'var(--radius-lg)',
     padding: '10px 12px',
     backgroundColor: 'var(--message-agent-bg)',
-    borderWidth: '1px',
-    borderStyle: 'solid',
-    borderColor: 'var(--message-agent-border)',
+    border: '1px solid var(--message-agent-border)',
     boxShadow: 'var(--message-shadow)',
     color: 'var(--ds-text-primary)',
     maxWidth: '82%',
-    lineHeight: '1.45'
+    lineHeight: 1.45
   },
 
   messageBubbleUser: {
@@ -1225,14 +1221,20 @@ export const styles = {
   },
   
   actionButton: {
-    padding: '3px 7px',
-    borderRadius: '5px',
-    border: 'none',
-    backgroundColor: 'var(--ds-bg-raised)',
+    height: '24px',
+    padding: '0 8px',
+    borderRadius: 'var(--radius-sm, 4px)',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
     color: 'var(--ds-text-secondary)',
     cursor: 'pointer',
     fontSize: '11px',
-    transition: 'all 0.15s'
+    fontWeight: 500,
+    lineHeight: 1,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    transition: 'all 0.12s ease'
   },
 
   emptyChip: {
@@ -1279,7 +1281,7 @@ export const styles = {
     textOverflow: 'ellipsis'
   },
   
-  // 空状态
+  /* 空状态 */
   emptyContainer: {
     display: 'flex',
     flexDirection: 'column',
@@ -1288,17 +1290,15 @@ export const styles = {
     height: '100%',
     color: 'var(--ds-text-secondary)',
     textAlign: 'center',
-    padding: '32px',
+    padding: '40px 24px',
+    gap: '12px',
     background: 'var(--gradient-primary)'
   },
   
   emptyIcon: {
-    fontSize: '13px',
-    marginBottom: '14px',
-    opacity: '1',
-    width: '42px',
-    height: '42px',
-    borderRadius: '8px',
+    width: '36px',
+    height: '36px',
+    borderRadius: 'var(--radius-md)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1388,14 +1388,17 @@ export const styles = {
     position: 'fixed',
     bottom: '20px',
     right: '20px',
-    padding: '8px 16px',
+    padding: '8px 14px',
     backgroundColor: 'var(--ds-status-success)',
     color: 'var(--text-on-success)',
-    borderRadius: '4px',
+    borderRadius: 'var(--radius-md)',
     fontSize: '12px',
+    fontWeight: 600,
+    lineHeight: 1.4,
     boxShadow: 'var(--shadow-toast)',
     animation: 'fadeIn 0.2s ease-out',
-    zIndex: 1000
+    zIndex: 1000,
+    border: 'none'
   },
 
   // ─── 优雅 Action / 工具调用卡片 ───
@@ -1403,16 +1406,15 @@ export const styles = {
   actionCard: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '10px',
+    gap: '0',
     padding: '12px',
     borderRadius: 'var(--radius-lg)',
     backgroundColor: 'var(--message-tool-bg)',
-    borderWidth: '1px',
-    borderStyle: 'solid',
-    borderColor: 'var(--message-tool-border)',
+    border: '1px solid var(--message-tool-border)',
     boxShadow: 'var(--message-shadow)',
     overflow: 'hidden',
-    maxWidth: '82%'
+    maxWidth: '82%',
+    transition: 'border-color 0.15s ease'
   },
 
   actionCardHeader: {
@@ -1420,8 +1422,8 @@ export const styles = {
     alignItems: 'center',
     gap: '10px',
     minHeight: '30px',
-    paddingBottom: '8px',
-    borderBottom: '1px solid var(--ds-border-l1)'
+    paddingBottom: '0',
+    borderBottom: 'none'
   },
 
   actionIconBox: {
@@ -1482,6 +1484,30 @@ export const styles = {
     flexShrink: 0
   },
 
+  actionExitCode: {
+    fontSize: '11px',
+    fontWeight: 600,
+    fontFamily: 'var(--font-mono)',
+    padding: '2px 7px',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'var(--ds-bg-raised)',
+    border: '1px solid var(--ds-border-l1)',
+    flexShrink: 0,
+    lineHeight: 1.4,
+  },
+
+  actionLoader: {
+    width: '14px',
+    height: '14px',
+    borderWidth: '2px',
+    borderStyle: 'solid',
+    borderColor: 'var(--ds-border-l2)',
+    borderTopColor: 'var(--ds-brand)',
+    borderRadius: '50%',
+    animation: 'spin 600ms linear infinite',
+    display: 'inline-block',
+  },
+
   // 参数键值对列表
   actionArgs: {
     display: 'flex',
@@ -1530,10 +1556,9 @@ export const styles = {
     color: 'var(--ds-text-secondary)',
     lineHeight: 1.6,
     padding: '8px 10px',
+    marginTop: '10px',
     backgroundColor: 'var(--message-result-bg)',
-    borderWidth: '1px',
-    borderStyle: 'solid',
-    borderColor: 'var(--message-result-border)',
+    border: '1px solid var(--message-result-border)',
     borderRadius: 'var(--radius-md)'
   },
 
@@ -1543,8 +1568,9 @@ export const styles = {
     color: 'var(--ds-status-error)',
     lineHeight: 1.6,
     padding: '8px 10px',
+    marginTop: '10px',
     backgroundColor: 'var(--ds-status-error-s1)',
-    borderRadius: '6px',
+    borderRadius: 'var(--radius-md)',
     borderLeft: '3px solid var(--ds-status-error)'
   },
 
@@ -1556,9 +1582,7 @@ export const styles = {
     padding: '12px 14px',
     borderRadius: 'var(--radius-lg)',
     backgroundColor: 'var(--ds-brand-soft)',
-    borderWidth: '1px',
-    borderStyle: 'solid',
-    borderColor: 'var(--ds-brand-s2)',
+    border: '1px solid var(--ds-brand-s2)',
     fontSize: '13px',
     color: 'var(--ds-text-secondary)',
     lineHeight: 1.7
@@ -1570,16 +1594,14 @@ export const styles = {
     gap: '8px',
     color: 'var(--ds-brand)',
     fontSize: '12px',
-    fontWeight: 500
+    fontWeight: 600
   },
 
   // Agent 普通文本气泡增强
   enhancedMessageBubble: {
     padding: '12px 14px',
     borderRadius: 'var(--radius-lg)',
-    borderWidth: '1px',
-    borderStyle: 'solid',
-    borderColor: 'var(--message-agent-border)',
+    border: '1px solid var(--message-agent-border)',
     backgroundColor: 'var(--message-agent-bg)',
     boxShadow: 'var(--message-shadow)',
     fontSize: '14px',
@@ -1609,21 +1631,22 @@ export const styles = {
   },
 
   emptyAssistantMessage: {
-    minHeight: '24px',
+    minHeight: '28px',
     display: 'inline-flex',
     alignItems: 'center',
     gap: '8px',
     color: 'var(--ds-text-secondary)',
-    fontSize: '13px',
-    fontWeight: 600
+    fontSize: '12px',
+    fontWeight: 500
   },
 
-  emptyAssistantDot: {
-    width: '7px',
-    height: '7px',
+  emptyAssistantPulse: {
+    width: '6px',
+    height: '6px',
     borderRadius: '50%',
-    backgroundColor: 'var(--ds-text-secondary)',
-    boxShadow: '0 0 0 4px var(--ds-bg-overlay-l1)'
+    backgroundColor: 'var(--ds-text-tertiary)',
+    animation: 'pulse 1.6s ease-in-out infinite',
+    flexShrink: 0,
   },
 
   streamingBubble: {
@@ -1631,9 +1654,7 @@ export const styles = {
     minWidth: '220px',
     padding: '11px 13px',
     borderRadius: 'var(--radius-lg)',
-    borderWidth: '1px',
-    borderStyle: 'solid',
-    borderColor: 'var(--message-agent-border)',
+    border: '1px solid var(--message-agent-border)',
     backgroundColor: 'var(--message-agent-bg)',
     boxShadow: 'var(--message-shadow)',
     fontSize: '14px',

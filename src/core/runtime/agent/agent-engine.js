@@ -73,6 +73,7 @@ import {
   shouldBlockCodingFinal,
 } from './support/prompt-builder.js';
 import { StagnationDetector } from './termination-detector.js';
+import { verifyCompletion } from './support/verification-engine.js';
 import { TaskStatus } from '../../../planner/graph-planner.js';
 import {
   MAX_ITERATIONS_DEFAULT,
@@ -819,6 +820,8 @@ export class AgentEngine {
   #fileStore = null;
   #sessionId = null;
   #sessionMetaWritten = false;
+  #softToolRequired = null; // { toolName: string, escalations: number }
+  #toolEmptyArgFailures = new Map(); // toolName → consecutive failure count
 
   constructor({ modelProvider, toolRegistry, memoryManager, config, ui, fileStore, sessionId }) {
     this.#modelProvider = modelProvider;
@@ -1016,6 +1019,68 @@ export class AgentEngine {
     // ============ 公共 getter ============
     this.getLSPManager = () => this.#lspManager;
     this.getEditOrchestrator = () => this.#editOrchestrator;
+  }
+
+  // ============== 软工具要求：检测 + 升级 + 强制 ==============
+
+  #trackToolArgFailure(toolName) {
+    const count = (this.#toolEmptyArgFailures.get(toolName) || 0) + 1;
+    this.#toolEmptyArgFailures.set(toolName, count);
+    if (count >= 2 && !this.#softToolRequired) {
+      this.#softToolRequired = { toolName, escalations: 0 };
+      this.#ui.debugEvent?.('Soft tool requirement set', { toolName, failures: count });
+    }
+  }
+
+  /** 在 LLM 调用前注入软工具要求提示 */
+  #injectSoftToolRequirement(messages) {
+    if (!this.#softToolRequired) return;
+    const sr = this.#softToolRequired;
+    if (sr.escalations === 0) {
+      messages.push({
+        role: 'system',
+        content:
+          `[SOFT TOOL REQUIREMENT] The "${sr.toolName}" tool keeps failing with empty/insufficient arguments. ` +
+          `Call "${sr.toolName}" with valid path and content parameters now. Other tools will still work, ` +
+          `but "${sr.toolName}" must succeed before this task can proceed.`,
+      });
+    } else if (sr.escalations >= 1) {
+      messages.push({
+        role: 'system',
+        content:
+          `[ENFORCED TOOL REQUIREMENT] You MUST call "${sr.toolName}" with valid parameters in this response. ` +
+          `No other tools will be accepted until "${sr.toolName}" succeeds. ` +
+          `Re-read the tool's parameter schema and pass all required fields.`,
+      });
+    }
+  }
+
+  /** 在工具调用解析后检查是否调用了要求的工具 */
+  #checkSoftToolRequirement(allToolCalls) {
+    if (!this.#softToolRequired) return;
+    const requiredName = this.#softToolRequired.toolName;
+    const hasRequired = allToolCalls.some((tc) => (tc.name || tc.function?.name) === requiredName);
+    if (hasRequired) {
+      this.#softToolRequired = null;
+      this.#toolEmptyArgFailures.delete(requiredName);
+      this.#ui.debugEvent?.('Soft tool requirement satisfied', { toolName: requiredName });
+    } else if (this.#softToolRequired.escalations >= 1) {
+      this.#softToolRequired.escalations++;
+      this.#ui.debugEvent?.('Soft tool requirement escalated', {
+        toolName: requiredName,
+        escalations: this.#softToolRequired.escalations,
+      });
+    } else {
+      this.#softToolRequired.escalations++;
+      this.#ui.debugEvent?.('Soft tool requirement reminder sent', {
+        toolName: requiredName,
+      });
+    }
+  }
+
+  #resetSoftToolRequirement() {
+    this.#softToolRequired = null;
+    this.#toolEmptyArgFailures = new Map();
   }
 
   // ============================================================
@@ -1222,6 +1287,7 @@ export class AgentEngine {
 
     this.#stagnationDetector.reset();
     this.#toolExecutor.reset();
+    this.#resetSoftToolRequirement();
 
     // ==== 意图分析 → Plan 智能分解：编码任务强制走 plan，LLM 驱动子任务拆分 ====
     // ==== 反馈闭环：注入历史分解经验到 GraphPlanner.decomposeTaskLLM ====
@@ -1418,6 +1484,9 @@ export class AgentEngine {
       if (progressCheckSystemNote) {
         messages.push({ role: 'system', content: progressCheckSystemNote });
       }
+
+      // Inject soft tool requirement reminder if a tool keeps failing with empty args.
+      this.#injectSoftToolRequirement(messages);
 
       // —— 注入本轮工作区上下文（多文件聚合快照）——
       if (this.#workspaceState && typeof this.#workspaceState.aggregateContext === 'function') {
@@ -1681,6 +1750,9 @@ export class AgentEngine {
         nativeToolCalls.length === 0 ? this.#textToolParser.parse(response.text) : [];
       const allToolCalls = [...nativeToolCalls, ...parsedToolCalls];
 
+      // Check soft tool requirement: if a required tool was called, clear it; otherwise escalate.
+      this.#checkSoftToolRequirement(allToolCalls);
+
       if (allToolCalls.length > 0) {
         this.#ui.debugEvent?.('Tool calls detected', {
           native: nativeToolCalls.map((call) => ({ name: call.name, arguments: call.arguments })),
@@ -1823,6 +1895,26 @@ export class AgentEngine {
         (!this.#executionPlanManager.isActive || this.#executionPlanManager.isCompleted)
       ) {
         const answer = normalizeFinalAnswer(extractFinalAnswer(response.text));
+
+        // 程序化验证：检查测试是否真的通过
+        const toolEvents =
+          this.#executionPlanManager?.getToolEventHistory?.() ||
+          this.#toolExecutor?.getToolEventHistory?.() ||
+          [];
+        const planSteps = this.#executionPlanManager?.getPlanSteps?.() || null;
+        if (toolEvents.length > 0) {
+          const vResult = verifyCompletion({ toolEvents, planSteps });
+          if (!vResult.passed) {
+            this.#ui.debugEvent?.('Verification blocked completion', {
+              details: vResult.details,
+              guidance: vResult.guidance,
+            });
+            this.#sessionManager.addAssistantMessage(response.text);
+            this.#sessionManager.addSystemMessage(vResult.guidance);
+            continue;
+          }
+        }
+
         this.#ui.debugEvent?.('Final answer emitted', {
           iteration,
           totalDurationMs: Date.now() - runStartedAt,
@@ -1904,6 +1996,24 @@ export class AgentEngine {
         !this.#executionPlanManager.isActive
       ) {
         const answer = normalizeFinalAnswer(response.text);
+
+        // 程序化验证：检查测试是否真的通过
+        const toolEvents = this.#toolExecutor?.getToolEventHistory?.() || [];
+        const planSteps = this.#executionPlanManager?.getPlanSteps?.() || null;
+        if (toolEvents.length > 0) {
+          const vResult = verifyCompletion({ toolEvents, planSteps });
+          if (!vResult.passed) {
+            this.#ui.debugEvent?.('Verification blocked completion', {
+              details: vResult.details,
+              guidance: vResult.guidance,
+              reason: 'provider_stop_no_tools',
+            });
+            this.#sessionManager.addAssistantMessage(response.text);
+            this.#sessionManager.addSystemMessage(vResult.guidance);
+            continue;
+          }
+        }
+
         this.#ui.debugEvent?.('Final answer emitted', {
           iteration,
           totalDurationMs: Date.now() - runStartedAt,
@@ -2128,7 +2238,7 @@ export class AgentEngine {
       for (const toolCall of allToolCalls) {
         const toolStart = Date.now();
         const toolName = toolCall.name || toolCall.function?.name || 'unknown';
-        const toolArgs = toolCall.arguments || toolCall.function?.arguments || {};
+        let toolArgs = toolCall.arguments || toolCall.function?.arguments || {};
 
         if (this.#fileStore && this.#sessionId) {
           this.#fileStore
@@ -2200,6 +2310,25 @@ export class AgentEngine {
           );
         }
 
+        // —— Supersede：写入后使旧的 read_file 结果失效 ——
+        toolArgs = execResult.args || toolCall.arguments || {};
+        const filePath = toolArgs.path || toolArgs.file_path || '';
+        if (!execResult.error && !execResult.skipped) {
+          if (execResult.name === 'read_file' && filePath && toolCall.id) {
+            this.#sessionManager.trackReadFileResult(toolCall.id, filePath);
+          }
+          const mutationTools = new Set([
+            'write_file',
+            'edit_file',
+            'delete_file',
+            'rename_file',
+            'apply_hashline_patch',
+          ]);
+          if (mutationTools.has(execResult.name) && filePath) {
+            this.#sessionManager.supersedeFileReads(filePath);
+          }
+        }
+
         // 记录到停滞检测
         this.#stagnationDetector.recordTool(
           execResult.name,
@@ -2215,13 +2344,22 @@ export class AgentEngine {
               'git_commit',
               'git_add',
               'git_push',
-              'harness_replace',
-              'harness_insert',
-              'harness_delete',
             ]);
             return mutationNames.has(name);
           },
         );
+
+        // 工具空参失败跟踪：为软工具要求机制积累证据
+        if (!execResult.success && !execResult.skipped && !execResult.cached) {
+          const errorText = String(execResult.error || execResult.result || '');
+          if (
+            /missing required param/i.test(errorText) ||
+            /参数校验失败/i.test(errorText) ||
+            /SCHEMA_VALIDATION/i.test(errorText)
+          ) {
+            this.#trackToolArgFailure(execResult.name);
+          }
+        }
 
         // 工作区状态更新
         if (this.#workspaceState) {
@@ -2622,9 +2760,6 @@ export class AgentEngine {
       'apply_hashline_patch',
       'git_apply_patch',
       'git_commit',
-      'harness_replace',
-      'harness_insert',
-      'harness_delete',
       'lsp_rename',
       'lsp_workspace_edit',
     ]);
@@ -2998,14 +3133,7 @@ export class AgentEngine {
     const toolName = execResult?.name || '';
 
     // 仅关注 Hashline 编辑相关工具
-    const hashRelatedTools = [
-      'apply_hashline_patch',
-      'write_file',
-      'edit_file',
-      'harness_replace',
-      'harness_insert',
-      'harness_delete',
-    ];
+    const hashRelatedTools = ['apply_hashline_patch', 'write_file', 'edit_file'];
     if (!hashRelatedTools.includes(toolName)) {
       return;
     }

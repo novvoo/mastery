@@ -220,10 +220,10 @@ export async function setWorkingDirectory(ctx, directory) {
     success: true,
     workingDirectory: nextDirectory,
     fileServerUrl: ctx.fileServerUrl,
-    persisted: persistence.success && envPersistence.success,
+    envPath: envPersistence.success ? envPersistence.envPath : null,
+    envSynced: envPersistence.success,
     configPath: persistence.configPath,
-    envPath: envPersistence.envPath,
-    persistenceError: persistence.error || envPersistence.error
+    persistenceError: persistence.error || envPersistence.error,
   };
 }
 

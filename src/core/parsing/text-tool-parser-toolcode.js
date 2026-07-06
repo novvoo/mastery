@@ -296,6 +296,12 @@ export function runtimeToolCallFromBareCommand(
   }
 
   const rest = String(match[2] || '').trim();
+  // 预处理：如果 rest 以已知参数 key= 开头（如 "path=."），剥除 key=
+  const bareValue = rest.replace(
+    /^(?:file_path|path|dir|directory|command|cmd|code|commands|arg0|query|q|url|problem|steps|plan|text|question|value|q|search)\s*=\s*/i,
+    '',
+  );
+
   let args = {};
   if (rest.startsWith('{') && rest.endsWith('}')) {
     const jsonArgs = safeJSONParse(rest);
@@ -312,12 +318,12 @@ export function runtimeToolCallFromBareCommand(
       }
     }
   } else if (mapped === 'list_dir') {
-    args = { path: stripShellTokenQuotes(rest || '.') };
+    args = { path: stripShellTokenQuotes(bareValue || '.') };
   } else if (mapped === 'read_file') {
-    if (!rest) {
+    if (!bareValue) {
       return null;
     }
-    args = { path: stripShellTokenQuotes(rest) };
+    args = { path: stripShellTokenQuotes(bareValue) };
   } else {
     return null;
   }

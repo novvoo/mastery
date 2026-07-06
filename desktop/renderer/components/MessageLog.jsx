@@ -18,6 +18,58 @@ import { useIPC } from '../hooks/useIPC.js';
 import { RuntimeDetailsPanel } from './message-log/RuntimeDetailsPanel.jsx';
 import { Icon } from './ui/index.js';
 import { t } from '../i18n.js';
+
+/* ── Inline SVG Icons (replaces emoji) ───────────────────── */
+
+const MsgIcons = {
+  check: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M13.7117 2.90824C13.9472 2.656 14.3432 2.64248 14.5955 2.87797C14.8477 3.1135 14.8612 3.50945 14.6257 3.76176L6.38551 12.5909C6.06158 12.9379 5.51701 12.9556 5.17067 12.6309L1.74098 9.41606C1.48925 9.17996 1.47661 8.78405 1.71266 8.53227C1.94875 8.28054 2.34466 8.2679 2.59645 8.50395L5.73903 11.4502L13.7117 2.90824Z" />
+    </svg>
+  ),
+  copy: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M10.0415 8.53288C10.0415 7.96275 10.0408 7.57225 10.0161 7.27019C9.99201 6.97565 9.94869 6.81974 9.89209 6.70866C9.76027 6.45 9.54919 6.23987 9.29053 6.10808C9.17939 6.05151 9.02362 6.00715 8.729 5.98308C8.42689 5.95841 8.03654 5.95866 7.46631 5.95866H5.8667C5.29648 5.95866 4.90612 5.95841 4.604 5.98308C4.30934 6.00715 4.15358 6.05151 4.04248 6.10808C3.78381 6.23987 3.57275 6.45001 3.44092 6.70866C3.38432 6.81975 3.34099 6.97565 3.3169 7.27019C3.29222 7.57225 3.2915 7.96275 3.2915 8.53288V10.1335C3.2915 10.7038 3.29221 11.094 3.3169 11.3962C3.34098 11.6908 3.38433 11.8466 3.44092 11.9577C3.57274 12.2164 3.78375 12.4265 4.04248 12.5583C4.15359 12.6149 4.30922 12.6592 4.604 12.6833C4.90612 12.7079 5.29646 12.7087 5.8667 12.7087H7.46631C8.03656 12.7087 8.42689 12.7079 8.729 12.6833C9.02374 12.6592 9.17938 12.6149 9.29053 12.5583C9.54924 12.4265 9.76028 12.2164 9.89209 11.9577C9.94868 11.8466 9.99203 11.6908 10.0161 11.3962C10.0408 11.094 10.0415 10.7038 10.0415 10.1335V8.53288Z" />
+    </svg>
+  ),
+  info: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M13.3958 8.125C13.3958 5.15647 10.9893 2.75 8.02075 2.75C5.05222 2.75 2.64575 5.15647 2.64575 8.125C2.64575 11.0936 5.05222 13.5 8.02075 13.5C10.9893 13.5 13.3958 11.0936 13.3958 8.125ZM7.39575 10.792V8.08301H7.35376C7.00873 8.08283 6.72876 7.80308 6.72876 7.45801C6.72894 7.11309 7.00884 6.83318 7.35376 6.83301H8.02075C8.36582 6.83301 8.64558 7.11298 8.64575 7.45801V10.792C8.64558 11.137 8.36582 11.417 8.02075 11.417C7.67568 11.417 7.39593 11.137 7.39575 10.792Z" />
+    </svg>
+  ),
+  chevronDown: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  chevronRight: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M6 4L10 8L6 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  search: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M7.33398 2.04199C10.2562 2.0423 12.625 4.41167 12.625 7.33398C12.6248 8.5697 12.1992 9.70502 11.4893 10.6055L13.7754 12.8916C14.0192 13.1357 14.0193 13.5314 13.7754 13.7754C13.5314 14.0194 13.1357 14.0192 12.8916 13.7754L10.6045 11.4893C9.70413 12.1989 8.56941 12.6249 7.33398 12.625C4.4117 12.625 2.04235 10.2562 2.04199 7.33398C2.04199 4.41148 4.41148 2.04199 7.33398 2.04199Z" />
+    </svg>
+  ),
+  folder: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M1.375 10.6667V4.66666C1.375 3.21691 2.55026 2.04166 4 2.04166H5.95312C6.60779 2.04167 7.21883 2.36904 7.58203 2.91373L8.12402 3.72623L8.17773 3.79654C8.31129 3.95108 8.50671 4.04166 8.71387 4.04166H12C13.4498 4.04166 14.625 5.21692 14.625 6.66666V10.6667C14.625 12.1164 13.4498 13.2917 12 13.2917H4C2.55026 13.2917 1.375 12.1164 1.375 10.6667Z" />
+    </svg>
+  ),
+  brain: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 2.5C5.51472 2.5 3.5 4.51472 3.5 7C3.5 7.88564 3.74512 8.71387 4.16602 9.41602L3.91699 11.083L5.58496 10.834C6.28711 11.2549 7.11436 11.5 8 11.5C10.4853 11.5 12.5 9.48528 12.5 7C12.5 4.51472 10.4853 2.5 8 2.5Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M8 5.5V8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <path d="M6.5 7H9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  ),
+  edit: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M10.8906 3.55786C11.871 2.57751 13.4609 2.5777 14.4414 3.55786C15.4219 4.53832 15.4219 6.12816 14.4414 7.10864L9.02734 12.5227C8.53509 13.0149 7.86701 13.2913 7.1709 13.2913H5.33301C4.98794 13.2911 4.70801 13.0114 4.70801 12.6663V10.8284C4.70805 10.1322 4.98439 9.46415 5.47656 8.97192L10.8906 3.55786Z" />
+    </svg>
+  ),
+};
 import {
   buildThinkingSummary,
   buildRuntimeDetailsExportData,
@@ -690,9 +742,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             />
           ) : (
             <div style={styles.emptyAssistantMessage}>
-              <span style={styles.emptyAssistantDot} />
-              <span>暂无回复内容</span>
-            </div>
+            <span style={styles.emptyAssistantPulse} />
+            <span style={{ color: 'var(--ds-text-tertiary)', fontSize: '12px' }}>暂无回复内容</span>
+          </div>
           )}
         </div>
       );
@@ -710,6 +762,15 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         : msg.toolName?.includes('file') ? 'preview'
         : 'tool';
 
+      const isWaiting = !msg.toolResult && !msg.isError;
+      const hasResult = !!msg.result || !!msg.content;
+      const hasError = msg.isError || msg.type === 'error';
+      const borderColor = hasError
+        ? 'var(--ds-status-error-s2)'
+        : isWaiting
+          ? 'var(--message-tool-border)'
+          : 'var(--ds-status-success-s2)';
+
       let args = null;
       if (msg.args && typeof msg.args === 'object' && Object.keys(msg.args).length > 0) {
         args = msg.args;
@@ -720,23 +781,40 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         } catch (e) {}
       }
 
+      const resultText = msg.result || msg.content || '';
+
       return (
-        <div style={styles.actionCard}>
+        <div style={{ ...styles.actionCard, borderColor }}>
           <div style={styles.actionCardHeader}>
             <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxTool }}>
-              <Icon name={toolIconName} size={16} />
+              {isWaiting ? (
+                <span style={styles.actionLoader} />
+              ) : hasError ? (
+                <Icon name="error" size={16} />
+              ) : (
+                <Icon name={toolIconName} size={16} />
+              )}
             </div>
             <div style={styles.actionTitleWrap}>
               <div style={styles.actionName}>{toolName}</div>
               <div style={styles.actionSubtitle}>
-                {toolName.includes('subagent') ? t('tool.subagent_task') : t('tool.execute')}
+                {isWaiting ? t('tool.executing') : hasError ? t('tool.error_occurred') : (msg.duration ? `${msg.duration}ms` : t('tool.completed'))}
               </div>
             </div>
-            {msg.duration && (
+            {msg.duration && !isWaiting && (
               <span style={styles.actionDurationBadge}>{msg.duration}ms</span>
+            )}
+            {msg.exitCode != null && !isWaiting && (
+              <span style={{
+                ...styles.actionExitCode,
+                color: msg.exitCode === 0 ? 'var(--ds-status-success)' : 'var(--ds-status-error)',
+              }}>
+                {t('tool.exit_code', { code: msg.exitCode })}
+              </span>
             )}
           </div>
 
+          {/* 工具参数 */}
           {args && !isCollapsed && (
             <div style={styles.actionArgs}>
               {Object.entries(args).map(([key, value], idx) => (
@@ -757,16 +835,52 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             </div>
           )}
 
-          {!args && msg.content && msg.content.length > 0 && !isCollapsed && (
-            <div style={styles.actionResultSummary}>
+          {/* 加载动画（等待中） */}
+          {isWaiting && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '20px',
+            }}>
+              <span style={styles.actionLoader} />
+              <span style={{ fontSize: '11px', color: 'var(--ds-text-tertiary)', fontWeight: 500 }}>{t('tool.executing')}</span>
+            </div>
+          )}
+
+          {/* 结果内容 */}
+          {hasResult && !isCollapsed && (
+            <div style={{
+              ...styles.actionResultSummary,
+              borderColor: hasError ? 'var(--ds-status-error-s2)' : 'var(--message-result-border)',
+            }}>
               <MarkdownMessageContent
-                text={msg.content || ''}
+                text={resultText.length > 2000 ? resultText.slice(0, 2000) + '…' : resultText}
                 isCollapsed={isCollapsed}
                 workingDirectory={workingDirectory}
                 fileServerUrl={fileServerUrl}
                 markdownComponents={markdownComponents}
                 onLinkClick={handleMessageContainerClick}
               />
+            </div>
+          )}
+
+          {/* 错误详情 */}
+          {hasError && !isCollapsed && (
+            <div style={styles.actionErrorBody}>
+              <pre style={{
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                margin: 0,
+                fontSize: '12px',
+                lineHeight: 1.6,
+                color: 'var(--ds-status-error)'
+              }}>
+                {(msg.error || msg.result || msg.content || '').length > 500
+                  ? (msg.error || msg.result || msg.content || '').slice(0, 500) + '…'
+                  : msg.error || msg.result || msg.content || ''}
+              </pre>
             </div>
           )}
         </div>
@@ -784,7 +898,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       const hasContent = Boolean(displayText.trim());
 
       return (
-        <div style={{ ...styles.actionCard, borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--ds-status-success-s2)' }}>
+        <div style={{ ...styles.actionCard, border: '1px solid var(--ds-status-success-s2)' }}>
           <div style={styles.actionCardHeader}>
             <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxResult }}>
               <Icon name="success" size={16} />
@@ -820,7 +934,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       const displayMsg = safeStringify(errorMsg, t('tool.failed'));
 
       return (
-        <div style={{ ...styles.actionCard, borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--ds-status-error-s2)' }}>
+        <div style={{ ...styles.actionCard, border: '1px solid var(--ds-status-error-s2)' }}>
           <div style={styles.actionCardHeader}>
             <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxError }}>
               <Icon name="error" size={16} />
@@ -859,7 +973,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       return (
         <div style={styles.thinkingCard}>
           <div style={styles.thinkingCardHeader}>
-            <span>💭</span>
+            <span style={{ width: '16px', height: '16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{MsgIcons.brain}</span>
             <span>{t('msg.thinking_in_progress')}</span>
           </div>
           {!isCollapsed && (
@@ -1195,6 +1309,35 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       }
 
       if (msg.type === 'tool') {return renderToolCard();}
+      if (msg.type === 'tool_result') {
+        // 这里的 tool_result 是兜底消息（没有匹配的 tool:call）
+        // 渲染为简洁的结果卡片
+        return (
+          <div style={{ ...styles.actionCard, borderColor: 'var(--ds-status-success-s2)' }}>
+            <div style={styles.actionCardHeader}>
+              <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxResult }}>
+                <Icon name="success" size={16} />
+              </div>
+              <div style={styles.actionTitleWrap}>
+                <div style={styles.actionName}>{msg.toolName || t('tool.result')}</div>
+                <div style={styles.actionSubtitle}>{msg.duration ? `${msg.duration}ms` : t('tool.completed')}</div>
+              </div>
+            </div>
+            {msg.result && !isCollapsed && (
+              <div style={styles.actionResultSummary}>
+                <MarkdownMessageContent
+                  text={String(msg.result).slice(0, 1000)}
+                  isCollapsed={isCollapsed}
+                  workingDirectory={workingDirectory}
+                  fileServerUrl={fileServerUrl}
+                  markdownComponents={markdownComponents}
+                  onLinkClick={handleMessageContainerClick}
+                />
+              </div>
+            )}
+          </div>
+        );
+      }
       if (isAssistantMarkdownMessage && !isStreaming) {return renderAssistantBubble();}
       if (msg.type === 'error') {return renderErrorCard();}
       if (msg.type === 'thinking') {return renderThinkingCard();}
@@ -1322,7 +1465,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           }}
           title={t('msg.copy_hint')}
         >
-          📋 {t('msg.copy')}
+          <span style={{ width: '14px', height: '14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{MsgIcons.copy}</span>
+          {t('msg.copy')}
         </button>
         
         <button
@@ -1333,7 +1477,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           }}
           title={t('msg.details')}
         >
-          {showDetail ? `📖 ${t('msg.hide_details')}` : `📖 ${t('msg.details')}`}
+          <span style={{ width: '14px', height: '14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{MsgIcons.info}</span>
+          {showDetail ? t('msg.hide_details') : t('msg.details')}
         </button>
         
         <button
@@ -1344,7 +1489,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           }}
           title={t('msg.expand')}
         >
-          {isCollapsed ? '▶' : '▼'}
+          <span style={{ width: '14px', height: '14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            {isCollapsed ? MsgIcons.chevronRight : MsgIcons.chevronDown}
+          </span>
         </button>
       </div>
       
@@ -1495,7 +1642,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   // 渲染分组标题
   const renderGroupHeader = (title, count) => (
     <div style={styles.groupHeader}>
-      <span style={styles.groupIcon}>📁</span>
+      <span style={{ ...styles.groupIcon, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px' }}>{MsgIcons.folder}</span>
       <span style={styles.groupTitle}>{title}</span>
       <span style={styles.groupCount}>{count} 条消息</span>
     </div>
@@ -1506,7 +1653,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     return (
       <div style={styles.container}>
         <div style={styles.emptyContainer}>
-          <div style={styles.emptyIcon}>AI</div>
+          <div style={styles.emptyIcon}>
+            <span style={{ width: '18px', height: '18px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ds-brand)' }}>{MsgIcons.brain}</span>
+          </div>
           <div style={styles.emptyText}>{t('ui.root')}</div>
           <div style={styles.emptyHint}>
             {t('chat.placeholder')}
@@ -1769,12 +1918,12 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             onChange={(e) => handleFilterChange(e.target.value)}
           >
             <option value="all">{t('ui.root')}</option>
-            <option value="user">👤 {t('msg.user')}</option>
-            <option value="info">ℹ️ {t('msg.info')}</option>
-            <option value="success">✅ {t('msg.success')}</option>
-            <option value="error">❌ {t('msg.error')}</option>
-            <option value="tool">🔧 {t('msg.tool')}</option>
-            <option value="result">📊 {t('msg.result')}</option>
+            <option value="user">{t('msg.user')}</option>
+            <option value="info">{t('msg.info')}</option>
+            <option value="success">{t('msg.success')}</option>
+            <option value="error">{t('msg.error')}</option>
+            <option value="tool">{t('msg.tool')}</option>
+            <option value="result">{t('msg.result')}</option>
           </select>
           
           {/* 自动滚动按钮 — 跟随模式/锁定模式 */}
@@ -1836,7 +1985,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         {/* 无匹配消息 */}
         {primaryMessages.length === 0 && runtimeDetailMessages.length === 0 && messages.length > 0 && (
           <div style={styles.emptyContainer}>
-            <div style={styles.emptyIcon}>🔍</div>
+            <div style={{ ...styles.emptyIcon, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{MsgIcons.search}</div>
             <div style={styles.emptyText}>{t('status.not_set')}</div>
             <div style={styles.emptyHint}>
               {t('msg.search_messages')}
@@ -1847,8 +1996,14 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       
       {/* 复制成功提示 */}
       {copiedMessage && (
-        <div style={styles.copyToast}>
-          ✅ 已复制到剪贴板
+        <div style={{
+          ...styles.copyToast,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+        }}>
+          <span style={{ width: '14px', height: '14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--text-on-success)' }}>{MsgIcons.check}</span>
+          已复制到剪贴板
         </div>
       )}
       
