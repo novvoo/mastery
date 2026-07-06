@@ -819,6 +819,18 @@ export function useRuntime() {
           toolCalls: prev.toolCalls + 1,
         }));
       }
+
+      // status:update 事件不依赖 normalized.message，必须放在守卫外
+      if (eventName === 'status:update' && typeof payload?.status === 'string') {
+        setStatus(payload.status);
+        if (payload.status === 'needs_user_input' && payload.data) {
+          setAskUserInfo(payload.data);
+        }
+        if (payload.status === 'running') {
+          setAskUserInfo(null);
+        }
+      }
+
       if (normalized.message) {
         if (eventName === 'agent:start') {
           setStatus('running');
@@ -826,15 +838,6 @@ export function useRuntime() {
           setStatus('error');
         } else if (eventName === 'agent:stop') {
           setStatus('idle');
-        } else if (eventName === 'status:update' && typeof payload?.status === 'string') {
-          setStatus(payload.status);
-          // 捕获 ask_user 信息供独立交互面板使用
-          if (payload.status === 'needs_user_input' && payload.data) {
-            setAskUserInfo(payload.data);
-          }
-          if (payload.status === 'running') {
-            setAskUserInfo(null);
-          }
         }
 
         if (eventName === 'agent:complete') {
