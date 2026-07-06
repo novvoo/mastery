@@ -1,4 +1,96 @@
+import { existsSync } from 'fs';
+import { readFile, readdir } from 'fs/promises';
+import { join, resolve } from 'path';
 import { ToolCategory } from '../../core/types/index.js';
+
+const CONFIG_FILES = [
+  'package.json', 'tsconfig.json', 'jsconfig.json', 'tsconfig.app.json',
+  'vite.config.ts', 'vite.config.js', 'vitest.config.ts', 'vitest.config.js',
+  'jest.config.js', 'jest.config.ts', 'jest.config.mjs',
+  'playwright.config.ts', 'playwright.config.js',
+  'eslint.config.js', 'eslint.config.mjs', '.eslintrc.json', '.eslintrc.js',
+  'biome.json', '.prettierrc', 'prettier.config.js',
+  'pyproject.toml', 'requirements.txt', 'setup.py', 'setup.cfg', 'tox.ini', 'pytest.ini',
+  'go.mod', 'go.sum',
+  'Cargo.toml', 'Cargo.lock',
+  'Gemfile', 'composer.json',
+  'pom.xml', 'build.gradle', 'gradle.properties',
+  'Makefile', 'docker-compose.yml', 'docker-compose.yaml', 'Dockerfile',
+  'README.md', 'CONTEXT.md',
+  '.github/workflows',
+];
+
+async function findTestDirs(baseDir) {
+  const testDirNames = ['tests', '__tests__', 'spec', 'test', 'e2e', 'integration'];
+  const found = [];
+  for (const name of testDirNames) {
+    const testDir = join(baseDir, name);
+    if (existsSync(testDir)) {
+      try {
+        const entries = await readdir(testDir, { withFileTypes: true });
+        const fileCount = entries.filter(e => e.isFile() && /\.(js|ts|tsx|jsx|py|go|rs|java)$/i.test(e.name)).length;
+        found.push({ path: name, fileCount });
+      } catch {}
+    }
+  }
+  return found;
+}
+
+async function findTestScripts(baseDir) {
+  const scripts = [];
+  const pkgPath = join(baseDir, 'package.json');
+  if (existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'));
+      if (pkg.scripts) {
+        const testScripts = Object.entries(pkg.scripts).filter(([k, v]) =>
+          /^(test|vitest|jest|pytest|check|lint|typecheck|type-check|build)$/i.test(k) ||
+          /test|lint|typecheck|check|build/i.test(k)
+        );
+        for (const [name, cmd] of testScripts) {
+          scripts.push({ name, command: cmd });
+        }
+      }
+    } catch {}
+  }
+  return scripts;
+}
+
+async function readConfigFile(baseDir, relativePath) {
+  const fullPath = join(baseDir, relativePath);
+  if (!existsSync(fullPath)) return null;
+  try {
+    const content = await readFile(fullPath, 'utf-8');
+    const lines = content.split('\n');
+    return {
+      path: relativePath,
+      size: content.length,
+      lines: lines.length,
+      preview: lines.slice(0, 20).join('\n'),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function formatConfigSection(header, configs) {
+  const found = configs.filter(Boolean);
+  if (found.length === 0) return '';
+  return [
+    `## ${header}`,
+    '',
+    ...found.map((c) => {
+      const parts = [
+        `- **${c.path}** (${c.lines} 行, ${c.size} 字节)`,
+        '  ```',
+        ...c.preview.split('\n').map((l) => `  ${l}`),
+        `  ${c.lines > 20 ? `  ... (+${c.lines - 20} more lines)` : ''}`,
+        '  ```',
+      ];
+      return parts.join('\n');
+    }),
+  ].join('\n');
+}
 
 function lines(title, sections) {
   return [
@@ -56,7 +148,7 @@ export function createProjectProfileTool() {
   return {
     name: 'project_profile',
     description:
-      'Methodology tool for profiling an existing in-development codebase before planning edits: config files, package manager, scripts, test modules, lint/build commands, and local conventions.',
+      'Scan key project config files (package.json, tsconfig, test config, etc.), discover available scripts and test modules, and return a structured summary of the project setup. Use this once instead of manually reading each config file separately.',
     category: ToolCategory.skill_engineering,
     params: {
       task: { type: 'string', description: 'The code task being planned.' },
@@ -66,28 +158,126 @@ export function createProjectProfileTool() {
       },
     },
     required: ['task'],
-    handler: async ({ task, focus = '' }) =>
-      lines('Project Profile', [
-        ['Task', [task]],
-        ['Focus', [focus || 'existing project configuration, tests, scripts, conventions']],
-        [
-          'Inspect first',
-          [
-            'Identify package manager and project entry points from package/config files.',
-            'Find available scripts for test, lint, typecheck, build, dev, or preview.',
-            'Locate existing test modules, fixtures, and test naming conventions.',
-            'Check framework/tooling config that constrains the implementation.',
-          ],
-        ],
-        [
-          'Use in plan',
-          [
-            'Choose implementation style that matches existing project conventions.',
-            'Choose the narrowest useful verification command from discovered scripts/tests.',
-            'Update the plan if required config, missing scripts, or absent tests change the scope.',
-          ],
-        ],
-      ]),
+    handler: async ({ task, focus = '' }, ctx) => {
+      const baseDir = (ctx && ctx.workingDirectory) || process.cwd();
+      const parts = [
+        `# Project Profile for: ${task}`,
+        `Focus: ${focus || 'existing project configuration, tests, scripts, conventions'}`,
+        '',
+      ];
+
+      // 1. 扫描所有已知的配置文件
+      const configResults = [];
+      for (const configFile of CONFIG_FILES) {
+        if (configFile.includes('*')) continue;
+        const resolvedPath = join(baseDir, configFile);
+        if (existsSync(resolvedPath)) {
+          try {
+            const content = await readFile(resolvedPath, 'utf-8');
+            const lines = content.split('\n');
+            configResults.push({
+              path: configFile,
+              size: content.length,
+              lines: lines.length,
+              preview: lines.slice(0, 15).join('\n'),
+            });
+          } catch {}
+        }
+      }
+      if (configResults.length > 0) {
+        parts.push(formatConfigSection('Discovered Config Files', configResults));
+      } else {
+        parts.push('## Config Files');
+        parts.push('');
+        parts.push('No standard config files found.');
+        parts.push('');
+      }
+
+      // 2. 扫描 .github/workflows
+      const workflowsDir = join(baseDir, '.github/workflows');
+      if (existsSync(workflowsDir)) {
+        try {
+          const workflows = await readdir(workflowsDir);
+          const yamlFiles = workflows.filter(f => /\.(yml|yaml)$/i.test(f));
+          if (yamlFiles.length > 0) {
+            parts.push('## CI/CD Workflows');
+            parts.push('');
+            for (const wf of yamlFiles) {
+              const wfContent = await readFile(join(workflowsDir, wf), 'utf-8');
+              const wfLines = wfContent.split('\n');
+              parts.push(`- **.github/workflows/${wf}** (${wfLines.length} 行)`);
+              const scriptLines = wfLines.filter(l => /^\s+run\s*[:=]/i.test(l) || /^\s+-\s+run\s/i.test(l));
+              if (scriptLines.length > 0) {
+                parts.push('');
+                for (const sl of scriptLines.slice(0, 5)) {
+                  parts.push(`  - \`${sl.trim()}\``);
+                }
+                if (scriptLines.length > 5) {
+                  parts.push(`  - ... (+${scriptLines.length - 5} more steps)`);
+                }
+              }
+            }
+            parts.push('');
+          }
+        } catch {}
+      }
+
+      // 3. 扫描 test 目录
+      const testDirs = await findTestDirs(baseDir);
+      if (testDirs.length > 0) {
+        parts.push('## Test Directories');
+        parts.push('');
+        for (const td of testDirs) {
+          parts.push(`- **${td.path}/** — ${td.fileCount} source files`);
+        }
+        parts.push('');
+      }
+
+      // 4. 发现可用的脚本
+      const scripts = await findTestScripts(baseDir);
+      if (scripts.length > 0) {
+        parts.push('## Available Scripts');
+        parts.push('');
+        parts.push('| Script | Command |');
+        parts.push('|--------|---------|');
+        for (const s of scripts) {
+          parts.push(`| \`${s.name}\` | \`${s.command}\` |`);
+        }
+        parts.push('');
+        const testScript = scripts.find(s => /^(test|vitest|jest|pytest|spec|check)$/i.test(s.name));
+        if (testScript) {
+          parts.push(`**Recommended verification:** \`${testScript.command}\``);
+          parts.push('');
+        }
+      }
+
+      // 5. 扫描 src/ 的关键子目录结构
+      const srcDir = join(baseDir, 'src');
+      if (existsSync(srcDir)) {
+        try {
+          const topDirs = (await readdir(srcDir, { withFileTypes: true }))
+            .filter(e => e.isDirectory())
+            .map(e => e.name);
+          if (topDirs.length > 0) {
+            parts.push('## Source Structure (src/)');
+            parts.push('');
+            parts.push(`Top-level directories: ${topDirs.join(', ')}`);
+            parts.push('');
+          }
+        } catch {}
+      }
+
+      // 6. 输出总结
+      parts.push('## Summary');
+      parts.push('');
+      parts.push(`- Config files found: ${configResults.length}`);
+      parts.push(`- Test directories: ${testDirs.length}`);
+      parts.push(`- Available scripts: ${scripts.length}`);
+      parts.push('');
+      parts.push('Use this profile to choose the appropriate plan and verification strategy.');
+
+      return parts.join('\n');
+    },
   };
 }
 

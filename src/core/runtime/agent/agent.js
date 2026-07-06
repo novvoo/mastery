@@ -1224,6 +1224,18 @@ export class ReActAgent {
       priority: SessionManager.LAYER.MEMORY + 1,
     });
 
+    // Eager Todo Write prelude: 对多步任务，提示模型先分解用户原始指令再用 TodoWrite 跟踪
+    const hasMultipleSteps = /(?:then|after\s+(?:that|which)|next|and\s+then|首先|然后|接着|之后|第一步|第二步|步骤)/i.test(
+      userInput,
+    ) || /\d+\s*(?:step|phase|stage|阶段|步)/i.test(userInput) || /(?:\n|[,;、，；])\s*(?:implement|create|fix|add|write|test|build|run|deploy|实现|创建|修复|添加|编写|测试|构建|运行|部署)/i.test(
+      userInput,
+    );
+    if (hasMultipleSteps) {
+      this.#sessionManager.addSystemMessage(
+        `[SYSTEM REMINDER] The user provided a multi-step request. Before beginning work, call TodoWrite to capture the full breakdown of ALL steps. This ensures you do not lose track of any requirement as you work. Each distinct step should be its own todo item. Mark the first actionable step as in_progress and execute it. Update the todo list as you progress.`,
+      );
+    }
+
     // 路由提示
     const routingPrompt = this.#intentClassifier?.buildRoutingPrompt(intent);
     if (routingPrompt) {
@@ -1802,12 +1814,39 @@ export class ReActAgent {
   /**
    * 挂起 agent 循环，等待用户输入（替代原来的硬中断 return）
    * 通过 Promise 机制，不退出循环，不丢失任何内部状态
+   *
+   * 增强逻辑：有活跃计划 + 空泛问题 → 注入计划延续引导，不挂起。
+   * 防止 Agent 在迷茫时反复问用户，而是回到已有计划继续执行。
    */
   async #suspendForUserInput(askResult) {
     const normalizedAskResult = this.#normalizeAskUserResult(askResult);
     const reason = normalizedAskResult.reason || '需要用户补充信息';
     const questions = normalizedAskResult.questions;
     const answer = normalizedAskResult.answer || this.#formatAskUserPrompt({ reason, questions });
+
+    // 检测：有活跃计划且存在待办子任务，但 ask_user 没有具体问题
+    // 这意味着 agent 只是迷茫了，而不是真正需要用户决策
+    const hasPlanWithPendingTasks =
+      this.#planner &&
+      this.#planner.activePlan &&
+      this.#planner.activePlan.status === TaskStatus.RUNNING &&
+      !this.#planner.isCompleted();
+    const hasGenericQuestion =
+      questions.length === 0 || questions.every((q) => q.length < 10);
+
+    if (hasPlanWithPendingTasks && hasGenericQuestion) {
+      this.#debugEvent('Plan-continuation nudge (skipped suspend)', {
+        reason,
+        planStatus: this.#planner.activePlan?.status,
+      });
+      const planSummary = this.#planner.activePlan
+        ? this.#summarizePlanStatus()
+        : '(no plan)';
+      return {
+        userInput: `[Plan-continuation nudge] I asked the user a generic question "${reason}" but I have an active plan with pending tasks. Continue with the current plan. Plan status: ${planSummary}. Do not ask the user again unless you have specific, answerable questions.`,
+        askResult: normalizedAskResult,
+      };
+    }
 
     // 存储待处理的用户输入请求，供外部（如 session-state）获取
     this.#pendingUserInputRequest = {
@@ -1862,6 +1901,17 @@ export class ReActAgent {
       reason: normalizedAskResult.reason,
       questions: normalizedAskResult.questions || [],
     });
+    // 通知 UI adapter 发射 status:update 事件，使前端胶囊展开
+    // 与 #suspendForUserInput 保持一致
+    if (typeof this.#ui.waitingForUserInput === 'function') {
+      this.#ui.waitingForUserInput({
+        reason: normalizedAskResult.reason,
+        questions: normalizedAskResult.questions || [],
+        blockingFacts: normalizedAskResult.blockingFacts || [],
+        suggestions: normalizedAskResult.suggestions || [],
+        answer,
+      });
+    }
     this.#ui.finalAnswer(answer);
     this.#sessionManager.addAssistantMessage(`FINAL_ANSWER: ${answer}`);
     return this.#completeRun({

@@ -50,7 +50,7 @@ export function readStoredPreviewUrl() {
 
 export function readStoredInspectorTab() {
   const tab = readDesktopLayout().activeInspectorTab;
-  return ['rag', 'preview'].includes(tab) ? tab : 'rag';
+  return ['plan', 'history', 'rag', 'preview'].includes(tab) ? tab : 'plan';
 }
 
 export function clampInspectorWidth(width) {

@@ -151,6 +151,7 @@ function App() {
     handleRestoreHistory,
     handleSelectSession,
     handleDeleteSession,
+    handleDeleteSessions,
     handleRenameSession,
     handleForkSession,
     handleRefreshSessions,
@@ -586,6 +587,7 @@ function App() {
             onAddDocuments={handleAddRagDocuments}
             onClearHistory={handleClearHistory(window.confirm, clearInput)}
             onDeleteSession={handleDeleteSession}
+            onDeleteSessions={handleDeleteSessions}
             onExpandToggle={handleInspectorExpandToggle}
             onForkSession={handleForkSession}
             onInitializeIndex={handleInitializeRagIndex}

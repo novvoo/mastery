@@ -51,14 +51,35 @@ export function useSessionManager(runtime, workingDirectory) {
         result = await readAgentSessions({ limit: PAGE_SIZE, offset: currentOffset });
       }
       const sessionList = Array.isArray(result) ? result : (result?.sessions || []);
+
+      // 按 session id 去重，防止同一会话出现多次
+      const dedupedList = [];
+      const seenIds = new Set();
+      for (const session of sessionList) {
+        const id = session?.id || session?.sessionId;
+        if (id && seenIds.has(id)) continue;
+        if (id) seenIds.add(id);
+        dedupedList.push(session);
+      }
+
       if (reset) {
-        setSessions(sessionList.slice(0, PAGE_SIZE));
+        setSessions(dedupedList.slice(0, PAGE_SIZE));
         setOffset(PAGE_SIZE);
-        setHasMore(sessionList.length > PAGE_SIZE);
+        setHasMore(dedupedList.length > PAGE_SIZE);
       } else {
-        const newSessions = sessionList.slice(0, currentOffset + PAGE_SIZE);
-        setSessions(newSessions);
-        setHasMore(sessionList.length > currentOffset + PAGE_SIZE);
+        setSessions((prev) => {
+          const merged = [...prev];
+          const existingIds = new Set(merged.map((s) => s?.id || s?.sessionId));
+          for (const session of dedupedList) {
+            const id = session?.id || session?.sessionId;
+            if (id && !existingIds.has(id)) {
+              existingIds.add(id);
+              merged.push(session);
+            }
+          }
+          return merged;
+        });
+        setHasMore(dedupedList.length > PAGE_SIZE);
         setOffset(currentOffset + PAGE_SIZE);
       }
     } catch (err) {
@@ -177,6 +198,18 @@ export function useSessionManager(runtime, workingDirectory) {
     }
   }, [activeAgentSessionId, runtime]);
 
+  const handleDeleteSessions = useCallback(async (sessionIds) => {
+    if (!Array.isArray(sessionIds) || sessionIds.length === 0) return;
+    for (const sessionId of sessionIds) {
+      await deleteAgentSession(sessionId);
+    }
+    if (sessionIds.includes(activeAgentSessionId)) {
+      skipNextSessionPersistRef.current = true;
+      setActiveAgentSessionId(createAgentSessionId());
+      runtime.clearMessages();
+    }
+  }, [activeAgentSessionId, runtime]);
+
   const handleRenameSession = useCallback(async (sessionId, title) => {
     await renameAgentSession(sessionId, title);
   }, []);
@@ -205,6 +238,7 @@ export function useSessionManager(runtime, workingDirectory) {
     handleSelectSession,
     handleRestoreHistory,
     handleDeleteSession,
+    handleDeleteSessions,
     handleRenameSession,
     handleForkSession,
     handleRefreshSessions,

@@ -844,7 +844,7 @@ export class ExecutionPlanManager {
       id: 'profile_project',
       name: 'Profile existing project',
       description:
-        'Identify package/config files, available scripts, test modules, framework conventions, and the narrowest useful verification command before planning edits.',
+        'Scan project config files (package.json, tsconfig, test configs) and discover scripts and test modules with a single project_profile call, before planning edits.',
       dependencies: [anchor.id],
       phase: ExecutionPlanManager.PHASE.EXPLORATION,
       allowedTools: [
@@ -2462,7 +2462,7 @@ export class ExecutionPlanManager {
     }
 
     if (taskId === 'profile_project') {
-      return `${prefix} Identify package/config files, scripts, test modules, framework conventions, and the narrowest useful verification command.${quality} Use project_profile when available, or read/list/search config and test files.`;
+      return `${prefix} Call project_profile once to scan all config files, scripts, and test modules in a single pass.${quality} Do not read config files individually — project_profile reads them all at once and returns a structured summary.`;
     }
 
     if (taskId === 'plan_solution') {

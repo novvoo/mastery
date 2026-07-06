@@ -785,7 +785,8 @@ export function createFileSystemTools() {
                     `Error: old_text not found in file. The file may have been modified since you last read it.\n` +
                     `1) Re-read the file with read_file to see current content\n` +
                     `2) Retry with exact text from the latest read\n` +
-                    `3) Use line/startLine/endLine for line-based editing`
+                    `3) Use line/startLine/endLine for line-based editing\n` +
+                    `4) If you just called write_file on this file, the old content was replaced. Use read_file to get the new content before editing.`
                   );
                 }
               }
@@ -836,6 +837,12 @@ export function createFileSystemTools() {
             if (orchestrator && typeof orchestrator.editViaHashline === 'function') {
               const result = await orchestrator.editViaHashline(patchText);
               if (result.success) {
+                if (ctx.snapshotStore && typeof ctx.snapshotStore.record === 'function') {
+                  try {
+                    const diskContent = await readFile(fullPath, 'utf-8');
+                    ctx.snapshotStore.record(path, diskContent);
+                  } catch {}
+                }
                 const parts = [
                   `File edited successfully: ${path}`,
                   `Strategy: ${strategy} (via EditOrchestrator)`,
@@ -869,6 +876,12 @@ export function createFileSystemTools() {
                 if (!fatalSection) {
                   const applyResult = await patcher.apply(parsedPatch);
                   if (applyResult.ok) {
+                    if (ctx.snapshotStore && typeof ctx.snapshotStore.record === 'function') {
+                      try {
+                        const diskContent = await readFile(fullPath, 'utf-8');
+                        ctx.snapshotStore.record(path, diskContent);
+                      } catch {}
+                    }
                     return (
                       `File edited successfully: ${path}\n` +
                       `Strategy: ${strategy} (via Hashline patcher)\n` +

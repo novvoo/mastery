@@ -574,6 +574,16 @@ export function useRuntime() {
           }
 
           setStatus(needsUserInput ? 'needs_user_input' : 'completed');
+          if (needsUserInput && result?.userInputRequest) {
+            setAskUserInfo({
+              message: result.answer || result.userInputRequest.answer || '',
+              answer: result.answer || result.userInputRequest.answer || '',
+              reason: result.userInputRequest.reason || '',
+              questions: result.userInputRequest.questions || [],
+              blockingFacts: result.userInputRequest.blockingFacts || [],
+              suggestions: result.userInputRequest.suggestions || [],
+            });
+          }
           setStats((prev) => ({
             ...prev,
             endTime: Date.now(),

@@ -389,6 +389,39 @@ function shouldRequireWorkspaceObservationBeforeMutation(name, _args, context = 
   );
 }
 
+/**
+ * 在 mutation 前检查 profile_project 任务是否已完成。
+ * 如果 plan 中包含 profile_project 任务但尚未完成，阻止 mutation。
+ * 这样确保 Agent 在写代码前先理解项目配置。
+ */
+function shouldRequireProjectProfileBeforeMutation(name, _args, context = {}) {
+  if (!MUTATION_TOOLS.has(name)) {
+    return null;
+  }
+  if (!context.activePlanManager) {
+    return null;
+  }
+  const plan = context.activePlanManager.activePlan;
+  if (!plan) {
+    return null;
+  }
+  const profileTask = plan.getTask('profile_project');
+  if (!profileTask) {
+    return null;
+  }
+  if (profileTask.status === 'completed' || profileTask.status === 'skipped') {
+    return null;
+  }
+  if (plan.context?.createFromScratch) {
+    return null;
+  }
+  return (
+    `PROFILE_PROJECT_REQUIRED: Before ${name}, you must complete the "Profile existing project" step. ` +
+    `Call project_profile({"task": "..."}) once to scan config files, scripts, and test modules. ` +
+    `This gives you all the project context you need in a single call.`
+  );
+}
+
 function isWorkspaceRootObservation(name, args, context = {}) {
   if (name !== 'list_dir') {
     return false;
@@ -742,6 +775,25 @@ export class ToolExecutor {
         error: workspaceObservationRequired,
         skipped: true,
         workspaceContextRequired: true,
+      };
+    }
+
+    // profile_project 完成检查：如果 plan 中包含 profile_project 尚未完成，阻止 mutation
+    const profileProjectRequired = shouldRequireProjectProfileBeforeMutation(name, args, {
+      ...context,
+      activePlanManager: context.activePlanManager,
+    });
+    if (profileProjectRequired) {
+      options.emitObservation?.(id, name, profileProjectRequired, resultMode);
+      this.#recordEvent(name, args, false, profileProjectRequired);
+      this.#ui.warn?.(`Project profile required before ${name}`);
+      return {
+        name,
+        result: profileProjectRequired,
+        args,
+        error: profileProjectRequired,
+        skipped: true,
+        profileProjectRequired: true,
       };
     }
 

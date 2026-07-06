@@ -223,6 +223,17 @@ export class DesktopCore {
         };
         eventBus.emit(RuntimeEvent.STATUS_UPDATE, eventData);
       },
+      waitingForUserInput(info) {
+        if (isDebug) {
+          console.log('[UiAdapter] waitingForUserInput');
+        }
+        eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
+          message: '需要你补充一点信息后继续',
+          level: 'info',
+          status: 'needs_user_input',
+          data: info,
+        });
+      },
       finalAnswer(answer) {
         if (isDebug) {
           console.log('[UiAdapter] agent:complete');

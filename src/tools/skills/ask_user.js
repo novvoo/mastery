@@ -31,6 +31,11 @@ export default function askUser() {
           'One to three concise questions. Only ask what you genuinely cannot figure out—answerable questions will be auto-resolved by the engine.',
         items: { type: 'string', description: 'Question to ask the user.' },
       },
+      question: {
+        type: 'string',
+        description:
+          'A single detailed question for the user (alternative to questions array).',
+      },
       blocking_facts: {
         type: 'array',
         description: 'Facts that are missing and block a reliable answer or action.',
@@ -44,7 +49,11 @@ export default function askUser() {
     },
     required: [],
     handler: async (params) => {
-      const questions = normalizeList(params.questions).slice(0, 3);
+      let questions = normalizeList(params.questions).slice(0, 3);
+      // Fallback: accept singular "question" as a single-element questions array
+      if (questions.length === 0 && params.question && String(params.question).trim()) {
+        questions = [String(params.question).trim()];
+      }
       const blockingFacts = normalizeList(params.blocking_facts);
       const suggestions = normalizeList(params.suggestions);
       const reason = String(params.reason || '').trim() || 'Need user input before continuing.';

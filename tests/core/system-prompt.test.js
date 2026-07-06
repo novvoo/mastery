@@ -24,6 +24,17 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('"startLine": 20, "endLine": 23');
     expect(prompt).not.toContain('"old_text": "async function processPayment(amount)');
   });
+
+  test('includes Decompose Multi-Step principle (#0) with TodoWrite guidance', () => {
+    const prompt = buildSystemPrompt(null, null, '/workspace/project', '');
+
+    expect(prompt).toContain('Principle 0: Decompose Multi-Step Requests');
+    expect(prompt).toContain('TodoWrite');
+    expect(prompt).toContain("capture the user's COMPLETE request");
+    expect(prompt).toContain('gets its own todo item');
+    expect(prompt).toContain('check the todo list to remind yourself');
+    expect(prompt).toContain('Do NOT use TodoWrite for trivial');
+  });
 });
 
 describe('buildTaskConstraintPrompt', () => {

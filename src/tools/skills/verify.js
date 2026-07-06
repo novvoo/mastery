@@ -62,6 +62,15 @@ export default function verify() {
         evidence = 'Task completed';
       }
 
+      // Enforce: calling verify with empty args is not useful
+      const isEmptyCall = !params.claim && !params.criteria && !params.evidence
+        && !params.task && !params.changes && !params.verification_passed;
+      if (isEmptyCall) {
+        claim = 'Task completed (no specific claim provided)';
+        criteria = 'Provide a specific claim about what was completed and what verification was run';
+        evidence = 'Agent called verify without providing claim, criteria, or evidence. Re-run verify with concrete information.';
+      }
+
       const criteriaList = (criteria || '')
         .split(',')
         .map((c) => c.trim())

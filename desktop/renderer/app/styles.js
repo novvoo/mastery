@@ -792,7 +792,7 @@ export const styles = {
     alignItems: 'flex-end',
     position: 'relative',
     zIndex: 50,
-    padding: '10px 12px',
+    padding: '12px 14px',
     backgroundColor: 'var(--surface-card)',
     border: '1px solid var(--glass-border-strong)',
     borderRadius: 'var(--radius-lg)',
@@ -870,9 +870,9 @@ export const styles = {
   
   inputTextarea: {
     flex: 1,
-    minHeight: '48px',
-    maxHeight: '200px',
-    padding: '12px 14px',
+    minHeight: '72px',
+    maxHeight: '280px',
+    padding: '14px 16px',
     borderRadius: 'var(--radius-md)',
     border: '1px solid var(--border-subtle)',
     backgroundColor: 'var(--surface-input)',
@@ -881,7 +881,7 @@ export const styles = {
     fontFamily: 'inherit',
     resize: 'none',
     outline: 'none',
-    lineHeight: 1.5,
+    lineHeight: 1.55,
     boxShadow: 'none',
     transition: 'all var(--transition-fast)'
   },

@@ -19,8 +19,8 @@
   --surface-color: #141719;
   --surface-raised: #1B2022;
   --surface-hover: #24292C;
-  --surface-input: #0B0D10;
-  --surface-input-focused: #101316;
+  --surface-input: #1E2428;
+  --surface-input-focused: #252C30;
   --surface-base: #101315;
   --surface-card: #0B0D10;
   --surface-modal-body: #0E1113;
@@ -209,7 +209,7 @@
   --surface-color: #FFFFFF;
   --surface-raised: #F2F6F7;
   --surface-hover: #E7EEF0;
-  --surface-input: #FFFFFF;
+  --surface-input: #F6F9FA;
   --surface-input-focused: #FFFFFF;
   --surface-base: #F6F9FA;
   --surface-card: #FFFFFF;
@@ -330,8 +330,8 @@
   --surface-color: #11161C;
   --surface-raised: #171D24;
   --surface-hover: #202832;
-  --surface-input: #0D1117;
-  --surface-input-focused: #111821;
+  --surface-input: #1C2430;
+  --surface-input-focused: #232C38;
   --surface-base: #0B0F14;
   --surface-card: #10151B;
   --surface-modal-body: #11161C;
@@ -423,7 +423,7 @@
   --surface-color: #FFFFFF;
   --surface-raised: #F7FAFB;
   --surface-hover: #EEF3F5;
-  --surface-input: #FFFFFF;
+  --surface-input: #F4F7F9;
   --surface-input-focused: #FFFFFF;
   --surface-base: #F7FAFB;
   --surface-card: #FFFFFF;

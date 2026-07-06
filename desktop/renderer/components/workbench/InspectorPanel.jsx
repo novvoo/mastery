@@ -103,6 +103,48 @@ const historyStyles = {
     gap: '8px',
     marginBottom: '4px',
   },
+  checkbox: {
+    width: '16px',
+    height: '16px',
+    cursor: 'pointer',
+    flexShrink: 0,
+    accentColor: 'var(--ds-brand)',
+  },
+  bulkActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 'var(--spacing-sm)',
+    padding: 'var(--spacing-sm) var(--spacing-md)',
+    borderBottom: '1px solid var(--ds-border-l1)',
+    backgroundColor: 'var(--ds-bg-secondary)',
+    flexShrink: 0,
+    fontSize: 'var(--font-size-sm)',
+    color: 'var(--ds-text-secondary)',
+  },
+  bulkActionsText: {
+    flex: 1,
+    fontSize: 'var(--font-size-sm)',
+  },
+  bulkDeleteButton: {
+    padding: '4px 10px',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--ds-status-error)',
+    backgroundColor: 'transparent',
+    color: 'var(--ds-status-error)',
+    cursor: 'pointer',
+    fontSize: 'var(--font-size-xs)',
+    transition: 'all var(--transition-fast)',
+  },
+  selectAllButton: {
+    padding: '4px 10px',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--ds-border-l1)',
+    backgroundColor: 'var(--ds-bg-secondary)',
+    color: 'var(--ds-text-secondary)',
+    cursor: 'pointer',
+    fontSize: 'var(--font-size-xs)',
+    transition: 'all var(--transition-fast)',
+  },
   statusDot: {
     width: '8px',
     height: '8px',
@@ -216,17 +258,60 @@ function HistoryTab({
   onSwitchSession,
   onNewSession,
   onDeleteSession,
+  onDeleteSessions,
   onForkSession,
   onClearHistory,
   onLoadMore,
 }) {
   const [hoveredItem, setHoveredItem] = useState(null);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
 
   const getSessionStatusColor = (session) => {
     const status = session?.status || 'unknown';
     return SESSION_STATUS_COLORS[status] || SESSION_STATUS_COLORS.unknown;
   };
+
+  const selectableIds = sessions.map((s) => s.id).filter(Boolean);
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
+
+  const toggleSelect = (sessionId) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) {
+        next.delete(sessionId);
+      } else {
+        next.add(sessionId);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(selectableIds));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (typeof onDeleteSessions === 'function') {
+      await onDeleteSessions(ids);
+    } else {
+      for (const id of ids) {
+        await onDeleteSession?.(id);
+      }
+    }
+    setSelectedIds(new Set());
+  };
+
+  // 切换会话或会话列表变化时清除选择
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [activeSessionId, searchQuery]);
 
   return (
     <div style={historyStyles.container}>
@@ -263,6 +348,30 @@ function HistoryTab({
         </button>
       </div>
 
+      {sessions.length > 0 && (
+        <div style={historyStyles.bulkActions}>
+          <input
+            type="checkbox"
+            style={historyStyles.checkbox}
+            checked={allSelected}
+            onChange={toggleSelectAll}
+            title={allSelected ? '取消全选' : '全选'}
+          />
+          <span style={historyStyles.bulkActionsText}>
+            已选 {selectedIds.size} 项
+          </span>
+          {selectedIds.size > 0 && (
+            <button
+              style={historyStyles.bulkDeleteButton}
+              onClick={handleBulkDelete}
+              title="删除选中的会话"
+            >
+              删除所选
+            </button>
+          )}
+        </div>
+      )}
+
       <div style={historyStyles.listContainer}>
         {loading && sessions.length === 0 ? (
           <div style={historyStyles.loadingSkeleton}>
@@ -275,6 +384,7 @@ function HistoryTab({
             {sessions.map((session) => {
               const isActive = session.id === activeSessionId;
               const isHovered = hoveredItem === session.id;
+              const isSelected = selectedIds.has(session.id);
               return (
                 <div
                   key={session.id}
@@ -284,6 +394,7 @@ function HistoryTab({
                     ...historyStyles.sessionItem,
                     ...(isActive ? historyStyles.sessionItemActive : {}),
                     ...(isHovered && !isActive ? historyStyles.sessionItemHover : {}),
+                    ...(isSelected && !isActive ? { backgroundColor: 'var(--ds-brand-soft)' } : {}),
                   }}
                   onClick={() => onSwitchSession?.(session.id)}
                   onMouseEnter={() => setHoveredItem(session.id)}
@@ -297,6 +408,14 @@ function HistoryTab({
                   title={'切换到会话: ' + (session.title || session.id)}
                 >
                   <div style={historyStyles.sessionItemHeader}>
+                    <input
+                      type="checkbox"
+                      style={historyStyles.checkbox}
+                      checked={isSelected}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => toggleSelect(session.id)}
+                      title="选择会话"
+                    />
                     <span
                       style={{
                         ...historyStyles.statusDot,
@@ -319,7 +438,7 @@ function HistoryTab({
                   <div
                     style={{
                       ...historyStyles.sessionActions,
-                      ...(isHovered || isActive ? historyStyles.sessionActionsVisible : {}),
+                      ...(isHovered || isActive || isSelected ? historyStyles.sessionActionsVisible : {}),
                     }}
                   >
                     <button
@@ -996,6 +1115,7 @@ export function InspectorPanel({
   onAddDocuments,
   onClearHistory,
   onDeleteSession,
+  onDeleteSessions,
   onExpandToggle,
   onForkSession,
   onInitializeIndex,
@@ -1067,6 +1187,7 @@ export function InspectorPanel({
           onSwitchSession={onSwitchSession}
           onNewSession={onNewSession}
           onDeleteSession={onDeleteSession}
+          onDeleteSessions={onDeleteSessions}
           onForkSession={onForkSession}
           onClearHistory={onClearHistory}
           onLoadMore={onLoadMoreSessions}

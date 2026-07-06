@@ -1,10 +1,10 @@
 export const LAYOUT = {
-  activityRailWidth: 52,
-  sidebarWidth: 300,
-  inspectorPanelWidth: 380,
-  inspectorMinWidth: 320,
-  inspectorMaxWidth: 860,
-  inspectorExpandedWidth: 720,
+  activityRailWidth: 48,
+  sidebarWidth: 260,
+  inspectorPanelWidth: 340,
+  inspectorMinWidth: 280,
+  inspectorMaxWidth: 780,
+  inspectorExpandedWidth: 580,
   headerHeight: 44,           // legacy: 旧 TopBar 高度，保留以防遗漏引用
   dragRegionHeight: 32,
   capsuleTop: 8,

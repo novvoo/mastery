@@ -1272,6 +1272,18 @@ export class AgentEngine {
     this.#sessionManager.addSystemMessage(
       `[CURRENT TASK] You MUST complete this user request: ${userInput}`,
     );
+
+    // Eager Todo Write prelude: 对多步任务，提示模型先分解用户原始指令再用 TodoWrite 跟踪
+    const hasMultipleSteps = /(?:then|after\s+(?:that|which)|next|and\s+then|首先|然后|接着|之后|第一步|第二步|步骤)/i.test(
+      userInput,
+    ) || /\d+\s*(?:step|phase|stage|阶段|步)/i.test(userInput) || /(?:\n|[,;、，；])\s*(?:implement|create|fix|add|write|test|build|run|deploy|实现|创建|修复|添加|编写|测试|构建|运行|部署)/i.test(
+      userInput,
+    );
+    if (hasMultipleSteps) {
+      this.#sessionManager.addSystemMessage(
+        `[SYSTEM REMINDER] The user provided a multi-step request. Before beginning work, call TodoWrite to capture the full breakdown of ALL steps. This ensures you do not lose track of any requirement as you work. Each distinct step should be its own todo item. Mark the first actionable step as in_progress and execute it. Update the todo list as you progress.`,
+      );
+    }
     this.#persistSessionContext({
       phase: 'run_started',
       runId,

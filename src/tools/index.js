@@ -2,6 +2,7 @@ import { createFileSystemTools } from './filesystem/filesystem-tools.js';
 import { createShellTool } from './system/shell.js';
 import { createPtyTools } from './system/pty.js';
 import { createPlanTools } from './system/plan-tools.js';
+import { createTodoWriteTool } from './system/todo-write.js';
 import { createWorkspaceKnowledgeTools } from './system/workspace-knowledge.js';
 import { createStateCentricTools } from './harness/state-centric-tools.js';
 import { createStateGraphTools } from './harness/state-graph-tools.js';
@@ -87,6 +88,7 @@ export function createCoreTools({
     ...createFileSystemTools(),
     createShellTool(),
     ...createPlanTools(),
+    createTodoWriteTool(),
     ...createWorkspaceKnowledgeTools(null),
     ...createContextExpansionTools(workingDirectory),
     ...createPtyTools(),

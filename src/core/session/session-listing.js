@@ -127,22 +127,9 @@ async function runWithConcurrency(items, concurrency, fn) {
 async function listJsonlFiles(sessionsDir) {
   try {
     const entries = await fs.promises.readdir(sessionsDir, { withFileTypes: true });
-    const files = [];
-
-    const walk = async (currentDir, dirEntries) => {
-      for (const entry of dirEntries) {
-        const fullPath = path.join(currentDir, entry.name);
-        if (entry.isDirectory()) {
-          const subEntries = await fs.promises.readdir(fullPath, { withFileTypes: true });
-          await walk(fullPath, subEntries);
-        } else if (entry.isFile() && entry.name.endsWith('.jsonl')) {
-          files.push(fullPath);
-        }
-      }
-    };
-
-    await walk(sessionsDir, entries);
-    return files;
+    return entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.jsonl'))
+      .map((entry) => path.join(sessionsDir, entry.name));
   } catch (error) {
     if (error.code === 'ENOENT') {
       return [];
