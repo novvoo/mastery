@@ -898,7 +898,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       const hasContent = Boolean(displayText.trim());
 
       return (
-        <div style={{ ...styles.actionCard, border: '1px solid var(--ds-status-success-s2)' }}>
+        <div style={{ ...styles.actionCard, borderColor: 'var(--ds-status-success-s2)' }}>
           <div style={styles.actionCardHeader}>
             <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxResult }}>
               <Icon name="success" size={16} />
@@ -934,7 +934,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       const displayMsg = safeStringify(errorMsg, t('tool.failed'));
 
       return (
-        <div style={{ ...styles.actionCard, border: '1px solid var(--ds-status-error-s2)' }}>
+        <div style={{ ...styles.actionCard, borderColor: 'var(--ds-status-error-s2)' }}>
           <div style={styles.actionCardHeader}>
             <div style={{ ...styles.actionIconBox, ...styles.actionIconBoxError }}>
               <Icon name="error" size={16} />
