@@ -311,7 +311,11 @@ export function normalizeToolArgumentAliases(name, args = {}) {
 function getAllowedToolSet(context = {}) {
   const taskAllowed = context.currentTask?.allowedTools;
   if (Array.isArray(taskAllowed) && taskAllowed.length > 0) {
-    const baseTools = new Set([...taskAllowed, ...PLAN_CONTROL_TOOLS]);
+    const baseTools = new Set([
+      ...READ_ONLY_TOOLS,
+      ...taskAllowed,
+      ...PLAN_CONTROL_TOOLS,
+    ]);
     return baseTools;
   }
   return null;
