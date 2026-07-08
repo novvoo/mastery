@@ -1,6 +1,6 @@
 import { execSync } from 'child_process';
 import { resolve, join } from 'path';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync } from 'fs';
 import { ToolCategory } from '../../core/types/index.js';
 
 const CHECKPOINT_DIR = '.checkpoints';
@@ -260,7 +260,7 @@ Restore to a previous checkpoint:
 
         try {
           const checkpoints = [];
-          const files = require('fs').readdirSync(dir);
+          const files = readdirSync(dir);
 
           for (const file of files) {
             if (!file.endsWith('.json')) continue;

@@ -1,4 +1,4 @@
-import { mkdir, writeFile, access } from 'fs/promises';
+import { mkdir, writeFile, access, readFile } from 'fs/promises';
 import { join, resolve } from 'path';
 import { ToolCategory } from '../../core/types/index.js';
 
@@ -61,16 +61,69 @@ export default function setup() {
       },
     },
     handler: async (params, ctx) => {
+      async function detectProjectInfo(baseDir) {
+        const manifestFiles = ['package.json', 'pyproject.toml', 'Cargo.toml', 'go.mod', 'Makefile'];
+        let projectName = 'unknown';
+        let testFramework = 'unknown';
+
+        for (const file of manifestFiles) {
+          const filePath = join(baseDir, file);
+          if (await exists(filePath)) {
+            const content = await readFile(filePath, 'utf-8');
+            if (file === 'package.json') {
+              try {
+                const pkg = JSON.parse(content);
+                projectName = pkg.name || 'unknown';
+                if (pkg.scripts) {
+                  if (pkg.scripts.test) {
+                    testFramework = pkg.scripts.test;
+                  } else if (pkg.devDependencies) {
+                    if (pkg.devDependencies.jest) testFramework = 'jest';
+                    else if (pkg.devDependencies.vitest) testFramework = 'vitest';
+                    else if (pkg.devDependencies['@jest/globals']) testFramework = 'jest';
+                  }
+                }
+              } catch {}
+            } else if (file === 'pyproject.toml') {
+              if (content.includes('[tool.pytest.ini_options]')) {
+                testFramework = 'pytest';
+              }
+              const nameMatch = content.match(/name\s*=\s*["']([^"']+)["']/);
+              if (nameMatch) projectName = nameMatch[1];
+            } else if (file === 'Cargo.toml') {
+              testFramework = 'cargo test';
+              const nameMatch = content.match(/name\s*=\s*["']([^"']+)["']/);
+              if (nameMatch) projectName = nameMatch[1];
+            } else if (file === 'go.mod') {
+              testFramework = 'go test';
+              const moduleMatch = content.match(/module\s+(\S+)/);
+              if (moduleMatch) projectName = moduleMatch[1].split('/').pop();
+            }
+            break;
+          }
+        }
+
+        return { projectName, testFramework };
+      }
+
       const {
         project_path,
-        project_name = 'AI Engineering Mastery Project',
-        issue_tracker = 'GitHub Issues',
+        project_name: providedProjectName,
+        issue_tracker: providedIssueTracker,
         docs_path = 'docs',
-        test_framework = 'bun test',
+        test_framework: providedTestFramework,
         code_style = '',
         overwrite = false,
       } = params;
       const baseDir = resolve(project_path || ctx.workingDirectory || process.cwd());
+
+      const { projectName: detectedProjectName, testFramework: detectedTestFramework } =
+        await detectProjectInfo(baseDir);
+
+      const project_name = providedProjectName || detectedProjectName;
+      const test_framework = providedTestFramework || detectedTestFramework;
+      const issue_tracker = providedIssueTracker || 'unknown';
+
       const docsDir = resolve(baseDir, docs_path);
       const adrDir = join(docsDir, 'adr');
       const contextPath = join(baseDir, 'CONTEXT.md');
@@ -169,6 +222,31 @@ export default function setup() {
         } catch {
           // Memory update is best-effort.
         }
+      }
+
+      const hasChanges = created.length > 0;
+
+      if (!hasChanges) {
+        return {
+          success: true,
+          changed: false,
+          progress: 'none',
+          reason: 'context already exists',
+          content: [
+            `# Setup Complete (no changes)`,
+            ``,
+            `Project: ${project_name}`,
+            `Base directory: ${baseDir}`,
+            ``,
+            `## Created`,
+            `- None (context already exists)`,
+            ``,
+            `## Skipped`,
+            skipped.length > 0
+              ? skipped.map((path) => `- ${path} (already exists)`).join('\n')
+              : '- None',
+          ].join('\n'),
+        };
       }
 
       return [

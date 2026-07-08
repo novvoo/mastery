@@ -47,6 +47,33 @@ function isInteractiveCommand(command) {
   );
 }
 
+function looksLikeNaturalLanguage(command) {
+  const trimmed = command.trim();
+  if (trimmed.length === 0) return false;
+
+  const hasCapitalStart = /^[A-Z\u4e00-\u9fa5]/.test(trimmed);
+  const hasPeriodEnd = trimmed.endsWith('.');
+  const hasQuestionMark = trimmed.includes('?');
+  const hasSentencePattern =
+    /^(?:To|The|This|That|We|I|You|They|It|He|She|Let|Can|Should|Would|Could|May|Must|Need|Want)\s/.test(
+      trimmed,
+    );
+  const hasChinesePattern =
+    /(?:处理|解决|搞定|弄好|修一下|改好|检查|看看|分析|研究|实现|添加|删除|修改|优化|创建|编写)\b/.test(
+      trimmed,
+    );
+  const hasNoExecutablePattern = !/^\s*(?:\w[\w.-]*|["'][^"']+["']|\`[^`]+\`)\s*(?:\||&&|;|\n|\$|\(|\{)/.test(
+    trimmed,
+  );
+
+  return (
+    (hasCapitalStart && (hasPeriodEnd || hasQuestionMark)) ||
+    hasSentencePattern ||
+    hasChinesePattern ||
+    (hasCapitalStart && hasNoExecutablePattern && trimmed.length > 20)
+  );
+}
+
 function addNonInteractiveFlags(command) {
   const normalized = command.toLowerCase();
 
@@ -374,6 +401,28 @@ export function createShellTool(options = {}) {
       const timeoutInfo = normalizeTimeout(timeout);
       const ms = timeoutInfo.timeoutMs;
       const startedAt = Date.now();
+
+      if (looksLikeNaturalLanguage(cmd)) {
+        if (ctx.debug && ctx.ui?.debugEvent) {
+          ctx.ui.debugEvent('Shell command rejected', {
+            command: cmd,
+            reason: 'looks like natural language, not a shell command',
+          });
+        }
+        return [
+          'Error: This looks like natural language, not a shell command.',
+          '',
+          'Please provide a valid shell command. For example:',
+          '- `ls -la` to list files',
+          '- `npm test` to run tests',
+          '- `cat package.json` to read a file',
+          '',
+          'If you need to understand the project structure first, use:',
+          '- `list_dir({\"path\": \".\"})`',
+          '- `read_file({\"filePath\": \"package.json\"})`',
+          '- `project_profile()`',
+        ].join('\n');
+      }
 
       if (ctx.debug && ctx.ui?.debugEvent) {
         ctx.ui.debugEvent('Shell command prepared', {

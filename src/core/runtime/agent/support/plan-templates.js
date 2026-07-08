@@ -529,8 +529,31 @@ export const PLAN_TEMPLATES = Object.freeze({
           'grep_search',
           'file_search',
           'shell',
+          'project_profile',
         ],
         outputArtifacts: ['bug_report', 'reproduction_steps'],
+        completionPredicate: ({ toolName, args, result }) => {
+          if (toolName === 'shell') {
+            const command = String(args?.command || '').toLowerCase();
+            const hasTestOrRun = /\b(test|npm|yarn|pnpm|bun|node|npx|jest|vitest|mocha)\b/.test(
+              command,
+            );
+            if (hasTestOrRun && result?.success === false) {
+              return true;
+            }
+          }
+          if (toolName === 'read_file') {
+            const path = String(args?.filePath || args?.path || '').toLowerCase();
+            if (
+              path.includes('package.json') ||
+              path.includes('pyproject.toml') ||
+              path.includes('cargo.toml')
+            ) {
+              return false;
+            }
+          }
+          return false;
+        },
       },
       {
         id: 'write_failing_test',

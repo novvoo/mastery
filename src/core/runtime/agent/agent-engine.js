@@ -1220,44 +1220,57 @@ export class AgentEngine {
     }
   }
 
-  /** 在工具调用解析后检查是否调用了要求的工具，并处理强制升级 */
+  /** 在工具调用解析后检查是否调用了要求的工具 */
   #checkSoftToolRequirement(allToolCalls) {
     if (!this.#softToolRequired) return;
     const requiredName = this.#softToolRequired.toolName;
     const hasRequired = allToolCalls.some((tc) => (tc.name || tc.function?.name) === requiredName);
 
-    if (hasRequired) {
-      this.#softToolRequired = null;
-      this.#toolEmptyArgFailures.delete(requiredName);
-      this.#ui.debugEvent?.('Soft tool requirement satisfied', { toolName: requiredName });
-      return { shouldExecute: true };
-    }
+    if (!hasRequired) {
+      this.#softToolRequired.escalations++;
 
-    this.#softToolRequired.escalations++;
+      if (this.#softToolRequired.escalations >= 3) {
+        this.#ui.debugEvent?.('Soft tool requirement exceeded max escalations', {
+          toolName: requiredName,
+          escalations: this.#softToolRequired.escalations,
+        });
+        return {
+          shouldExecute: false,
+          skipReason: `Soft tool requirement '${requiredName}' was not satisfied after 3 forced turns; aborting to avoid an unbounded force loop.`,
+        };
+      }
 
-    if (this.#softToolRequired.escalations >= 3) {
-      this.#ui.debugEvent?.('Soft tool requirement exceeded max escalations', {
-        toolName: requiredName,
-        escalations: this.#softToolRequired.escalations,
-      });
-      return {
-        shouldExecute: false,
-        skipReason: `Soft tool requirement '${requiredName}' was not satisfied after 3 forced turns; aborting to avoid an unbounded force loop.`,
-      };
-    }
-
-    if (this.#softToolRequired.escalations >= 1) {
-      this.#ui.debugEvent?.('Soft tool requirement escalated', {
-        toolName: requiredName,
-        escalations: this.#softToolRequired.escalations,
-      });
-    } else {
-      this.#ui.debugEvent?.('Soft tool requirement reminder sent', {
-        toolName: requiredName,
-      });
+      if (this.#softToolRequired.escalations >= 1) {
+        this.#ui.debugEvent?.('Soft tool requirement escalated', {
+          toolName: requiredName,
+          escalations: this.#softToolRequired.escalations,
+        });
+      } else {
+        this.#ui.debugEvent?.('Soft tool requirement reminder sent', {
+          toolName: requiredName,
+        });
+      }
     }
 
     return { shouldExecute: true };
+  }
+
+  /** 在工具执行后检查是否成功完成了要求的工具调用 */
+  #checkSoftToolRequirementAfterExecution(execResults) {
+    if (!this.#softToolRequired) return;
+    const requiredName = this.#softToolRequired.toolName;
+
+    const executedResult = execResults.find(
+      (result) => result.name === requiredName && result.success === true,
+    );
+
+    if (executedResult) {
+      this.#softToolRequired = null;
+      this.#toolEmptyArgFailures.delete(requiredName);
+      this.#ui.debugEvent?.('Soft tool requirement satisfied after successful execution', {
+        toolName: requiredName,
+      });
+    }
   }
 
   #resetSoftToolRequirement() {
@@ -2559,6 +2572,8 @@ export class AgentEngine {
 
         execResults.push(execResult);
       }
+
+      this.#checkSoftToolRequirementAfterExecution(execResults);
 
       // 如果这一轮因为 ask_user 挂起后恢复了，直接进入下一轮迭代（不再做进展检查等）
       if (userInputResolved) {

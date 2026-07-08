@@ -311,23 +311,7 @@ export function normalizeToolArgumentAliases(name, args = {}) {
 function getAllowedToolSet(context = {}) {
   const taskAllowed = context.currentTask?.allowedTools;
   if (Array.isArray(taskAllowed) && taskAllowed.length > 0) {
-    // All registered tools are available; route-blocking only filters out
-    // tools that are not registered. This prevents the LLM from being blocked
-    // when it uses a registered tool (e.g. verify) that wasn't pre-selected
-    // by selectToolsForRequest for the current phase.
-    const allRegisteredToolNames = Array.from(
-      context.toolRegistry?.getAll?.()?.map((t) => t.name) || [],
-    );
-    const routed = normalizeToolNameSet(context.activeRoutedToolNames);
-
-    const baseTools = new Set([...allRegisteredToolNames, ...PLAN_CONTROL_TOOLS]);
-
-    if (routed && routed.size > 0) {
-      routed.forEach((toolName) => baseTools.add(toolName));
-    }
-
-    taskAllowed.forEach((toolName) => baseTools.add(toolName));
-
+    const baseTools = new Set([...taskAllowed, ...PLAN_CONTROL_TOOLS]);
     return baseTools;
   }
   return null;

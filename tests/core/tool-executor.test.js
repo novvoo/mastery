@@ -80,14 +80,11 @@ describe('ToolExecutor', () => {
     expect(result.result).toContain('not registered');
   });
 
-  test('registered tools are allowed even when not in activeRoutedToolNames', async () => {
-    // Regression: verify (and other registered methodology tools) were blocked
-    // because getAllowedToolSet didn't receive toolRegistry. Registered tools
-    // should always be available; route-blocking only filters unregistered ones.
+  test('registered tools not in allowedTools should be blocked', async () => {
     const browserHandler = mock(async () => 'opened');
     const browserTool = makeTool('browser_open', { handler: browserHandler });
     const writeTool = makeTool('write_file', { required: ['path', 'content'] });
-    const { executor, ui } = makeMockExecutor({ tools: [browserTool, writeTool] });
+    const { executor } = makeMockExecutor({ tools: [browserTool, writeTool] });
 
     const result = await executor.execute(
       { id: '1', name: 'browser_open', arguments: {} },
@@ -97,10 +94,27 @@ describe('ToolExecutor', () => {
       },
     );
 
+    expect(result.routeBlocked).toBe(true);
+    expect(result.error).toBeDefined();
+    expect(browserHandler).not.toHaveBeenCalled();
+  });
+
+  test('registered tools in allowedTools should be allowed', async () => {
+    const writeHandler = mock(async () => 'written');
+    const writeTool = makeTool('write_file', { handler: writeHandler, required: ['path', 'content'] });
+    const { executor } = makeMockExecutor({ tools: [writeTool] });
+
+    const result = await executor.execute(
+      { id: '1', name: 'write_file', arguments: { path: 'test.txt', content: 'test' } },
+      {
+        activeRoutedToolNames: new Set(['write_file', 'change_plan']),
+        currentTask: { id: 'write_step', allowedTools: ['write_file'] },
+      },
+    );
+
     expect(result.routeBlocked).toBeUndefined();
     expect(result.error).toBeUndefined();
-    expect(browserHandler).toHaveBeenCalled();
-    expect(ui.toolCall).toHaveBeenCalled();
+    expect(writeHandler).toHaveBeenCalled();
   });
 
   test('does not treat an empty routed tool set as a deny-all policy', async () => {

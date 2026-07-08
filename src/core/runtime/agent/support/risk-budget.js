@@ -185,26 +185,38 @@ export function quickAssess(userInput) {
     riskLevel = RISK_LEVEL.LOW;
   }
 
-  // === 新增：结构化任务分类 (TaskProfile) ===
-  // 使用 classifyTask 进行精确的意图分类，与风险评分分离
+  // === 结构化任务分类 (TaskProfile) ===
+  // classifyTask 做更精确的意图分类（包括中文隐式修复表达），
+  // 它的结果应覆盖 quickAssess 的粗粒度判断。
   const taskProfile = classifyTask(userInput);
+
+  // taskProfile 的分类更精确，覆盖 quickAssess 的粗粒度结果
+  const finalIsModificationTask =
+    isModificationTask || taskProfile.mode === TaskMode.MUTATE;
+  const finalIsCodingTask =
+    isCodingTask ||
+    taskProfile.mode === TaskMode.MUTATE ||
+    taskProfile.mode === TaskMode.VERIFY ||
+    taskProfile.mode === TaskMode.DIAGNOSE;
+  const finalIsBugTask =
+    isBugTask || taskProfile.intent === TaskIntent.CODE_MODIFICATION;
 
   return {
     riskLevel,
     score,
     reasons,
     semanticDomains,
-    isCodingTask,
-    isModificationTask,
-    isBugTask,
+    isCodingTask: finalIsCodingTask,
+    isModificationTask: finalIsModificationTask,
+    isBugTask: finalIsBugTask,
     isDocumentationTask,
     isAnalysisTask,
     isResearchTask,
     isLikelyTrivial,
     requiresPlanning,
     inPlanBlacklist,
-    isInformationalQuery: !isCodingTask,
-    // === 新增的结构化字段 ===
+    isInformationalQuery: !finalIsCodingTask,
+    // === 结构化字段 ===
     taskProfile,
   };
 }
@@ -349,10 +361,26 @@ export function mergeIntentProfile(quickResult, intent, userInput = '') {
     riskLevel = RISK_LEVEL.LOW;
   }
 
+  // 合并 taskProfile：保留 quickResult 中的 taskProfile（已由 classifyTask 计算）
+  const taskProfile = quickResult?.taskProfile;
+
+  // taskProfile 的判断更精确，覆盖 LLM 和 quickAssess 的结果
+  const finalIsModificationWithProfile =
+    finalIsModification || taskProfile?.mode === TaskMode.MUTATE;
+  const finalIsCodingWithProfile =
+    finalIsCoding ||
+    taskProfile?.mode === TaskMode.MUTATE ||
+    taskProfile?.mode === TaskMode.VERIFY ||
+    taskProfile?.mode === TaskMode.DIAGNOSE;
+  const finalIsBugTask =
+    (quickResult?.isBugTask || false) ||
+    taskProfile?.intent === TaskIntent.CODE_MODIFICATION;
+
   return {
     ...quickResult,
-    isCodingTask: finalIsCoding,
-    isModificationTask: finalIsModification,
+    isCodingTask: finalIsCodingWithProfile,
+    isModificationTask: finalIsModificationWithProfile,
+    isBugTask: finalIsBugTask,
     riskLevel,
     score,
     reasons,
@@ -362,7 +390,8 @@ export function mergeIntentProfile(quickResult, intent, userInput = '') {
     isInformationalQuery:
       intentName === 'explanation' || intentName === 'general_chat'
         ? true
-        : (quickResult.isInformationalQuery ?? !finalIsCoding),
+        : (quickResult.isInformationalQuery ?? !finalIsCodingWithProfile),
+    taskProfile,
   };
 }
 

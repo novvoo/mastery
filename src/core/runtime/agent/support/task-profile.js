@@ -42,6 +42,27 @@ const EXPLICIT_MUTATION_PATTERNS = [
   /\b(configure|deploy|install|upgrade|downgrade|setup)\b/i,
 ];
 
+// 排除"只分析/不要修改"等明确只读意图
+const READ_ONLY_OVERRIDE_PATTERNS = [
+  /(?:只|仅|不要|别|勿)(?:分析|看|诊断|调查|了解|检查|修改|改|动|碰)/i,
+  /(?:分析|诊断|调查|了解)(?:一下|下)?\s*(?:原因|问题|根因|是什么|为什么)/i,
+  /(?:帮我|麻烦)?(?:看看|看一下|查一下|了解一下)\s*(?:是什么|什么|为什么|有没有)/i,
+  /\b(?:analyze|diagnose|investigate)\s+(?:only|just)\b/i,
+  /\b(?:do\s+not|don't|readonly|read\s+only)\s+(?:modify|change|edit|write)\b/i,
+];
+
+const IMPLICIT_FIX_PATTERNS = [
+  // bug/错误/问题/故障/报错/坏了 + 处置动词
+  /(?:有|出现|遇到|报了|报了|出了|发生).*(?:bug|错误|问题|故障|报错|坏了|失败|崩溃|异常).*(?:处理|解决|搞定|弄好|弄一下|修一下|改好|看一下|看下|搞)/i,
+  /(?:bug|错误|问题|故障|报错|坏了|失败|崩溃|异常).*(?:处理|解决|搞定|弄好|弄一下|修一下|改好|处理下|解决下|搞)/i,
+  // 处置动词 + bug/错误/问题
+  /(?:处理|解决|搞定|弄好|修一下|修好|改好|处理下|解决下|弄一下).*(?:bug|错误|问题|故障|报错|坏了)/i,
+  // 单独的处置表达（无明确 bug 词，但隐含修复意图）
+  /(?:帮我|麻烦)?(?:处理|解决|搞定|弄好|修好|改好|修一下|弄一下)(?:一下|下|它|这个|那个)?/i,
+  // "搞" + 它/这个
+  /(?:搞|弄)(?:定|好|一下|下)?(?:它|这个|那个|了)?/i,
+];
+
 const PROJECT_INFO_PATTERNS = [
   /(是什么|做什么|介绍|说明|解释|what is|what does|explain|introduce|describe)/i,
   /(怎么运行|怎么用|如何运行|怎么启动|如何启动|how to run|how to use|usage|start|launch)/i,
@@ -94,6 +115,8 @@ export function classifyTask(userInput, llmIntent = null) {
     .trim();
 
   const hasExplicitMutationIntent = EXPLICIT_MUTATION_PATTERNS.some((p) => p.test(text));
+  const hasImplicitFixIntent = IMPLICIT_FIX_PATTERNS.some((p) => p.test(text));
+  const hasReadOnlyOverride = READ_ONLY_OVERRIDE_PATTERNS.some((p) => p.test(text));
   const hasQuestionIntent = PROJECT_INFO_PATTERNS.some((p) => p.test(text));
   const hasDiagnosticIntent = DIAGNOSTIC_PATTERNS.some((p) => p.test(text));
   const hasVerifyIntent = VERIFY_PATTERNS.some((p) => p.test(text));
@@ -113,6 +136,18 @@ export function classifyTask(userInput, llmIntent = null) {
         expectedDeliverable: 'answer',
       });
     }
+  }
+
+  // 只读覆盖：即使用户说了"修改"等词，但如果明确说"只分析/不要修改"，降级为诊断
+  if (hasReadOnlyOverride) {
+    return buildProfile(TaskIntent.DIAGNOSIS, TaskMode.DIAGNOSE, {
+      requiresRepoRead: true,
+      allowsMutation: false,
+      requiresPlan: false,
+      requiresMethodology: 'optional',
+      requiresVerification: false,
+      expectedDeliverable: 'report',
+    });
   }
 
   // 修改型任务（最高优先级）
@@ -139,6 +174,18 @@ export function classifyTask(userInput, llmIntent = null) {
       });
     }
     return buildProfile(TaskIntent.FEATURE_IMPLEMENTATION, TaskMode.MUTATE, {
+      requiresRepoRead: true,
+      allowsMutation: true,
+      requiresPlan: true,
+      requiresMethodology: true,
+      requiresVerification: true,
+      expectedDeliverable: 'patch',
+    });
+  }
+
+  // 隐式修复意图：有 bug/问题 + 处理/解决/搞定 → 视为修改任务
+  if (hasImplicitFixIntent) {
+    return buildProfile(TaskIntent.CODE_MODIFICATION, TaskMode.MUTATE, {
       requiresRepoRead: true,
       allowsMutation: true,
       requiresPlan: true,

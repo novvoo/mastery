@@ -170,7 +170,13 @@ export class IntentClassifier {
       '',
       'Important:',
       '- Set isCodingRelated=true if the message asks about source code, programming, scripts, files containing code, tests, builds, code quality, or any programming-related topic.',
-      '- Set requiresCodeModification=true only if the message explicitly asks to CREATE, EDIT, MODIFY, FIX, REFACTOR, OPTIMIZE, ADD, REMOVE, DELETE, INSERT, REPLACE, UPDATE, WRITE, DEVELOP, IMPLEMENT, BUILD, or otherwise CHANGE source code, files, programs, scripts, functions, modules, features, or components. Pure reading, checking, viewing, inspecting, or asking about existing code does NOT require modification.',
+      '- Set requiresCodeModification=true if the message asks to CREATE, EDIT, MODIFY, FIX, REFACTOR, OPTIMIZE, ADD, REMOVE, DELETE, INSERT, REPLACE, UPDATE, WRITE, DEVELOP, IMPLEMENT, BUILD, or otherwise CHANGE source code, files, programs, scripts, functions, modules, features, or components. Pure reading, checking, viewing, inspecting, or asking about existing code does NOT require modification.',
+      '',
+      'Chinese implicit fix intent (CRITICAL):',
+      '- Chinese users often express fix/modify intent without using explicit verbs like 修复/修改.',
+      '- Expressions like 处理下, 解决下, 搞定, 弄好, 修一下, 改好, 帮我处理, 看看并处理 all mean "please fix it".',
+      '- When the message mentions a bug/error/problem (bug, 错误, 问题, 故障, 报错, 失败) AND any action verb (处理, 解决, 搞定, 弄好, 修一下, 改好, 看), set requiresCodeModification=true.',
+      '- Only set requiresCodeModification=false if the user explicitly says 只分析/不要修改/帮我看看是什么问题 (analyze only, do not modify).',
       '',
       'Important examples:',
       '- "上海天气" means a weather_query for location 上海, likely today/current weather.',
@@ -180,6 +186,11 @@ export class IntentClassifier {
       '- "index.html 中 init() 没有调用，帮我修复" → coding_task, isCodingRelated=true, requiresCodeModification=true',
       '- "创建一个 index.html 页面" → coding_task, isCodingRelated=true, requiresCodeModification=true',
       '- "检查一下项目的 js 文件是否正确" → local_file_task or coding_task, isCodingRelated=true, requiresCodeModification=false (reading only)',
+      '- "这个游戏有bug，处理下" → coding_task, isCodingRelated=true, requiresCodeModification=true (处理下 = fix it)',
+      '- "登录页面有问题，帮忙解决下" → coding_task, isCodingRelated=true, requiresCodeModification=true (解决下 = fix it)',
+      '- "报错了，搞定它" → coding_task, isCodingRelated=true, requiresCodeModification=true (搞定 = fix it)',
+      '- "这个功能坏了，弄一下" → coding_task, isCodingRelated=true, requiresCodeModification=true (弄一下 = fix it)',
+      '- "看看是什么问题" → coding_task or explanation, isCodingRelated=true, requiresCodeModification=false (analyze only)',
       '- File, terminal, coding, git, and schedule requests should be routed to the matching tool family when available.',
     ];
 
@@ -427,6 +438,9 @@ export class IntentClassifier {
       ? mergeIntentProfile(quickAssess(userInput), intent, userInput)
       : quickAssess(userInput);
 
+    // taskProfile 来自 classifyTask()，做更精确的意图分类（包括中文隐式修复表达）
+    const taskProfile = risk.taskProfile;
+
     // ==== 反馈闭环：根据历史成功率调整自动化规划置信度 ====
     let requiresPlanning = risk.requiresPlanning;
     if (feedbackContext?.automationConfidenceAdjustment != null) {
@@ -440,17 +454,23 @@ export class IntentClassifier {
 
     const explicitPlanType = extractExplicitPlanType(userInput);
     const taskSignals = inferTaskSignals(userInput);
+
+    // taskProfile 的分类更精确，优先使用
+    const isModificationTask = risk.isModificationTask;
+    const isBugTask = risk.isBugTask;
+    const isCodingTask = risk.isCodingTask;
+
     const profile = {
-      isCodingTask: risk.isCodingTask,
-      isModificationTask: risk.isModificationTask,
-      isBugTask: risk.isBugTask,
+      isCodingTask,
+      isModificationTask,
+      isBugTask,
       isDocumentationTask: risk.isDocumentationTask,
       isAnalysisTask: risk.isAnalysisTask,
       isResearchTask: risk.isResearchTask,
       isLikelyTrivial: risk.isLikelyTrivial,
-      isInformationalQuery: risk.isInformationalQuery ?? !risk.isCodingTask,
+      isInformationalQuery: risk.isInformationalQuery ?? !isCodingTask,
       requiresAutomaticPlanning: requiresPlanning,
-      requiresSemanticRiskReview: risk.semanticDomains.length > 0 && risk.isModificationTask,
+      requiresSemanticRiskReview: risk.semanticDomains.length > 0 && isModificationTask,
       semanticRiskDomains: risk.semanticDomains,
       riskLevel: risk.riskLevel,
       riskScore: risk.score,
@@ -459,6 +479,8 @@ export class IntentClassifier {
       taskSignals,
       explicitPlanType,
       availablePlanTypes: PLAN_TYPE_OPTIONS,
+      // 透传 taskProfile，供下游使用
+      taskProfile,
     };
     profile.planType = selectPlanType(profile, userInput);
     profile.planSelection = getPlanTypeSelection(profile, userInput);
