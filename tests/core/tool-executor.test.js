@@ -38,6 +38,7 @@ function makeMockExecutor({
     toolCall: mock(() => {}),
     toolResult: mock(() => {}),
     toolError: mock(() => {}),
+    toolWarning: mock(() => {}),
     warn: mock(() => {}),
     debug: mock(() => {}),
     debugEvent: mock(() => {}),
@@ -84,7 +85,7 @@ describe('ToolExecutor', () => {
     const browserHandler = mock(async () => 'opened');
     const browserTool = makeTool('browser_open', { handler: browserHandler });
     const writeTool = makeTool('write_file', { required: ['path', 'content'] });
-    const { executor } = makeMockExecutor({ tools: [browserTool, writeTool] });
+    const { executor, ui } = makeMockExecutor({ tools: [browserTool, writeTool] });
 
     const result = await executor.execute(
       { id: '1', name: 'browser_open', arguments: {} },
@@ -98,6 +99,107 @@ describe('ToolExecutor', () => {
     expect(result.error).toBeUndefined();
     expect(result.result).toBe('opened');
     expect(browserHandler).toHaveBeenCalled();
+    expect(ui.toolWarning).toHaveBeenCalledWith(
+      'browser_open',
+      expect.stringContaining('not recommended'),
+    );
+  });
+
+  test('read_file is always available as safe base tool', async () => {
+    const readHandler = mock(async () => 'file content');
+    const readTool = makeTool('read_file', { handler: readHandler });
+    const writeTool = makeTool('write_file', { required: ['path', 'content'] });
+    const { executor } = makeMockExecutor({ tools: [readTool, writeTool] });
+
+    const result = await executor.execute(
+      { id: '1', name: 'read_file', arguments: { path: 'test.txt' } },
+      {
+        currentTask: { id: 'write_step', allowedTools: ['write_file'] },
+      },
+    );
+
+    expect(result.routeBlocked).toBeUndefined();
+    expect(result.error).toBeUndefined();
+    expect(result.result).toBe('file content');
+    expect(readHandler).toHaveBeenCalled();
+  });
+
+  test('list_dir is always available as safe base tool', async () => {
+    const listHandler = mock(async () => ['file1.txt', 'file2.txt']);
+    const listTool = makeTool('list_dir', { handler: listHandler });
+    const writeTool = makeTool('write_file', { required: ['path', 'content'] });
+    const { executor } = makeMockExecutor({ tools: [listTool, writeTool] });
+
+    const result = await executor.execute(
+      { id: '1', name: 'list_dir', arguments: { path: '.' } },
+      {
+        currentTask: { id: 'write_step', allowedTools: ['write_file'] },
+      },
+    );
+
+    expect(result.routeBlocked).toBeUndefined();
+    expect(result.error).toBeUndefined();
+    expect(result.result).toEqual(['file1.txt', 'file2.txt']);
+    expect(listHandler).toHaveBeenCalled();
+  });
+
+  test('no restriction when currentTask has no allowedTools', async () => {
+    const browserHandler = mock(async () => 'opened');
+    const browserTool = makeTool('browser_open', { handler: browserHandler });
+    const { executor, ui } = makeMockExecutor({ tools: [browserTool] });
+
+    const result = await executor.execute(
+      { id: '1', name: 'browser_open', arguments: {} },
+      {
+        currentTask: { id: 'test_step' },
+      },
+    );
+
+    expect(result.routeBlocked).toBeUndefined();
+    expect(result.error).toBeUndefined();
+    expect(result.result).toBe('opened');
+    expect(browserHandler).toHaveBeenCalled();
+    expect(ui.toolWarning).not.toHaveBeenCalled();
+  });
+
+  test('no restriction when no currentTask', async () => {
+    const browserHandler = mock(async () => 'opened');
+    const browserTool = makeTool('browser_open', { handler: browserHandler });
+    const { executor, ui } = makeMockExecutor({ tools: [browserTool] });
+
+    const result = await executor.execute(
+      { id: '1', name: 'browser_open', arguments: {} },
+      {},
+    );
+
+    expect(result.routeBlocked).toBeUndefined();
+    expect(result.error).toBeUndefined();
+    expect(result.result).toBe('opened');
+    expect(browserHandler).toHaveBeenCalled();
+    expect(ui.toolWarning).not.toHaveBeenCalled();
+  });
+
+  test('warning message includes suggested tools', async () => {
+    const browserHandler = mock(async () => 'opened');
+    const browserTool = makeTool('browser_open', { handler: browserHandler });
+    const writeTool = makeTool('write_file', { required: ['path', 'content'] });
+    const { executor, ui } = makeMockExecutor({ tools: [browserTool, writeTool] });
+
+    await executor.execute(
+      { id: '1', name: 'browser_open', arguments: {} },
+      {
+        currentTask: { id: 'write_step', allowedTools: ['write_file', 'edit_file'] },
+      },
+    );
+
+    expect(ui.toolWarning).toHaveBeenCalledWith(
+      'browser_open',
+      expect.stringContaining('Suggested tools:'),
+    );
+    expect(ui.toolWarning).toHaveBeenCalledWith(
+      'browser_open',
+      expect.stringContaining('write_file'),
+    );
   });
 
   test('registered tools in allowedTools should be allowed', async () => {
