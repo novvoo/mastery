@@ -246,6 +246,13 @@ function summarizeTestOutput(stdout, stderr) {
   let summaryLines = [];
   let failuresCount = 0;
   const MAX_FAILURES = 15;
+  const MAX_CONTEXT_LINES = 20;
+
+  // 错误行特征：包含错误类型名或堆栈帧
+  const isErrorLine = (l) =>
+    /\b(Error|Exception|ReferenceError|TypeError|SyntaxError|RangeError|AssertionError|expected|received|not defined|is not a function|is not defined)\b/i.test(
+      l,
+    ) || /^\s+at\s/.test(l) || /^\s+✗|^\s+●|^\s+→/.test(l);
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -261,20 +268,62 @@ function summarizeTestOutput(stdout, stderr) {
     }
 
     // 失败测试标题 — 保留
-    // 检测条件：行包含 ❯/FAILED 失败标记，且要么行自身含失败关键词，要么后续行有 → 错误详情
-    const hasNextLineError = i + 1 < lines.length && /→/.test(lines[i + 1]);
-    if (
+    // 检测条件：行包含 ❯/FAILED 失败标记，且要么行自身含失败关键词，要么后续行有错误详情
+    const looksLikeFailureHeader =
       (/❯|✗|✕|●|×|FAIL/.test(line) &&
-        (/failed|Error|not defined|is not/.test(line) || hasNextLineError)) ||
-      /FAIL(ED)?\s/.test(line)
-    ) {
+        (/failed|Error|not defined|is not/.test(line) ||
+          lines.slice(i + 1, i + 6).some((l) => isErrorLine(l)))) ||
+      /FAIL(ED)?\s/.test(line);
+
+    if (looksLikeFailureHeader) {
       if (failuresCount < MAX_FAILURES) {
         kept.push(line.trimEnd());
-        // 保留后续 5 行错误上下文
-        for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
+        // 保留后续错误上下文：最多 MAX_CONTEXT_LINES 行，直到遇到下一个失败标题或摘要行
+        let foundRealError = false;
+        for (let j = i + 1; j < Math.min(i + MAX_CONTEXT_LINES, lines.length); j++) {
           const ctx = lines[j].trimEnd();
-          if (!ctx || /^(✓|✔|√|○|PASS|Test Files|Tests:|❯|✗|✕|\s*$)/.test(ctx)) break;
+          const isNextHeader =
+            /❯|✗|✕|●|×|FAIL/.test(ctx) ||
+            /^\s*(Test Files|Tests|Test Suites|Snapshots|Time:|Duration)/.test(ctx);
+          if (isNextHeader) break;
+          if (isErrorLine(ctx)) foundRealError = true;
+          // 空行也保留（除非是开头连续空行），但不因为空行而停止
+          if (ctx.trim() === '' && kept[kept.length - 1]?.trim() === '') continue;
           kept.push(ctx);
+        }
+        // 如果没找到真实错误，再往下多找一些（最多 30 行），专门找错误
+        if (!foundRealError) {
+          for (
+            let j = i + MAX_CONTEXT_LINES;
+            j < Math.min(i + 40, lines.length);
+            j++
+          ) {
+            const ctx = lines[j].trimEnd();
+            const isNextHeader =
+              /❯|✗|✕|●|×|FAIL/.test(ctx) ||
+              /^\s*(Test Files|Tests|Test Suites|Snapshots|Time:|Duration)/.test(ctx);
+            if (isNextHeader) break;
+            if (isErrorLine(ctx)) {
+              kept.push(ctx);
+              foundRealError = true;
+              // 找到错误后，再保留几行堆栈
+              for (
+                let k = j + 1;
+                k < Math.min(j + 8, lines.length);
+                k++
+              ) {
+                const stackLine = lines[k].trimEnd();
+                if (/^\s+at\s/.test(stackLine) || isErrorLine(stackLine)) {
+                  kept.push(stackLine);
+                } else if (stackLine.trim() === '') {
+                  continue;
+                } else {
+                  break;
+                }
+              }
+              break;
+            }
+          }
         }
         kept.push('---');
         failuresCount++;

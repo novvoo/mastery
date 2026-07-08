@@ -26,7 +26,16 @@ import { normalizeToolResult } from './tool-result.js';
 const TOOL_RESULT_CACHE_MAX = 500;
 const TOOL_RESULT_CACHE_TTL_MS = 5 * 60 * 1000;
 const DIR_TOOL_CACHE_TTL_MS = 5 * 60 * 1000;
-const NON_CACHEABLE_TOOLS = new Set(['ask_user', 'request_user_input']);
+const NON_CACHEABLE_TOOLS = new Set([
+  'ask_user',
+  'request_user_input',
+  'shell',
+  'verify',
+  'review',
+  'preview',
+  'lsp_diagnostics',
+  'git_commit',
+]);
 const READ_ONLY_TOOLS = new Set([
   'list_dir',
   'read_file',
@@ -123,6 +132,17 @@ function isPlanTaskPseudoTool(name) {
 // 以下工具的目标路径必须在 scopeFiles 范围内，否则直接拦截。
 
 const SCOPE_READ_TOOLS = new Set(['read_file', 'list_dir', 'tree']);
+const SCOPE_WRITE_TOOLS = new Set([
+  'write_file',
+  'write_file_with_hashline',
+  'edit_file',
+  'update_file',
+  'delete_file',
+  'move_file',
+  'rename_file',
+  'apply_hashline_patch',
+  'hashline_apply',
+]);
 const PLAN_CONTROL_TOOLS = new Set(['change_plan']);
 
 /**
@@ -326,6 +346,48 @@ function isCreateOrImplementationTask(task, activePlan) {
   );
 }
 
+// 从错误结果中提取失败指纹的关键部分
+function extractFailureFingerprint(name, args, result) {
+  const resultStr = String(result ?? '');
+  // 提取第一个有意义的错误行（跳过前缀的 "Error:" 等通用前缀）
+  const errorLines = resultStr
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  let keyErrorLine = '';
+  let firstStackFrame = '';
+
+  for (const line of errorLines) {
+    // 找第一个堆栈帧
+    if (/^\s*at\s+/.test(line) && !firstStackFrame) {
+      firstStackFrame = line.replace(/\s+/g, ' ').trim();
+      break;
+    }
+    // 找包含错误类型的行
+    if (
+      /\b(ReferenceError|TypeError|SyntaxError|RangeError|AssertionError|Error|Exception|FAIL|failed)\b/i.test(
+        line,
+      ) &&
+      line.length < 300
+    ) {
+      if (!keyErrorLine) {
+        keyErrorLine = line;
+      }
+    }
+  }
+
+  // 如果没找到具体错误行，用前 200 个字符
+  if (!keyErrorLine) {
+    keyErrorLine = resultStr.substring(0, 200);
+  }
+
+  // 指纹：工具名 + 关键错误行 + 第一个堆栈帧
+  const fingerprintBase = `${name}:${keyErrorLine}:${firstStackFrame}`;
+  // 简单 hash（截断 + 去空格）
+  return fingerprintBase.replace(/\s+/g, ' ').trim().substring(0, 300);
+}
+
 function shouldBlockContradictingRead(name, args, context = {}) {
   if (name !== 'read_file') {
     return null;
@@ -486,6 +548,7 @@ export class ToolExecutor {
   #lspManager;
   #editOrchestrator;
   #fileFreshnessCache = new Map();
+  #failureFingerprints = new Map();
 
   constructor({
     toolRegistry,
@@ -551,6 +614,7 @@ export class ToolExecutor {
     this.#resultCache = new Map();
     this.#dirToolCache = new Map();
     this.#fileFreshnessCache = new Map();
+    this.#failureFingerprints = new Map();
     this.#events = [];
     this.#cacheLoaded = false;
   }
@@ -700,6 +764,32 @@ export class ToolExecutor {
           cached: hasCachedMutationResult,
         };
       }
+    }
+
+    // ============ 重复失败检测：相同失败指纹 + 工作区未改变时阻止重试 ============
+    const failureFingerprint = `${name}:${JSON.stringify(args)}`;
+    const prevFailure = this.#failureFingerprints.get(failureFingerprint);
+    if (prevFailure && prevFailure.count >= 2) {
+      const blockedMsg =
+        `REPEATED_FAILURE_BLOCKED: "${name}" has failed with the same error pattern ${prevFailure.count} times without any workspace mutation.\n` +
+        `Last error:\n${prevFailure.lastError}\n\n` +
+        `Do not repeat this exact call. Instead:\n` +
+        `1. Gather more diagnostic information first (read relevant files, check config)\n` +
+        `2. Change the command/arguments meaningfully\n` +
+        `3. Make a code change that could fix the underlying cause\n` +
+        `4. Use a different approach or tool`;
+      options.emitObservation?.(id, name, blockedMsg, resultMode);
+      this.#recordEvent(name, args, false, blockedMsg);
+      this.#ui.warn?.(`Repeated failure blocked: ${name}`);
+      return {
+        name,
+        result: blockedMsg,
+        args,
+        error: `Repeated failure blocked after ${prevFailure.count} attempts`,
+        skipped: true,
+        repeatedFailure: true,
+        errorCode: ObservationErrorCode.REPEATED_FAILURE,
+      };
     }
 
     // ============ 基于工作区状态的智能预测（若提供） ============
@@ -955,6 +1045,35 @@ ${paramDesc || '无参数定义'}
       }
     }
 
+    // ============ 文件作用域强制（工程级：硬拦截越界写入） ============
+    if (SCOPE_WRITE_TOOLS.has(name) && context.scopeFiles && context.scopeFiles.length > 0) {
+      const targetPath = getScopeTargetPath(name, effectiveArgs);
+      if (
+        targetPath &&
+        !isPathInScope(
+          targetPath,
+          context.scopeFiles,
+          this.#config.workingDirectory || process.cwd(),
+        )
+      ) {
+        const scopeList = context.scopeFiles.join(', ');
+        const blockedMsg =
+          `SCOPE_BLOCKED_WRITE: "${targetPath}" 不在当前子任务的作用域内 [${scopeList}]。\n` +
+          `当前执行计划已限定修改范围，不允许创建或编辑此文件。\n` +
+          `如果这是计划内的修改，请先推进计划到对应的子任务阶段。`;
+        options.emitObservation?.(id, name, blockedMsg, resultMode);
+        this.#recordEvent(name, effectiveArgs, false, blockedMsg);
+        this.#ui.warn?.(`Scope blocked write: ${name} → ${targetPath}`);
+        return {
+          name,
+          result: blockedMsg,
+          skipped: true,
+          scopeBlocked: true,
+          errorCode: ObservationErrorCode.SCOPE_BLOCKED,
+        };
+      }
+    }
+
     // ============ 执行工具 ============
     const planContextExtension =
       context.activePlanManager &&
@@ -1086,6 +1205,32 @@ ${paramDesc || '无参数定义'}
 
       if (normalizedResult.success && MUTATION_TOOLS.has(name)) {
         this.#invalidateReadOnlyHistory();
+        // 工作区发生变更，清空所有失败指纹（之前的失败可能因代码改变而不再适用）
+        this.#failureFingerprints.clear();
+      }
+
+      // 成功调用：如果之前有相同指纹的失败记录，清除它（状态改变了）
+      if (normalizedResult.success) {
+        this.#failureFingerprints.delete(failureFingerprint);
+      } else {
+        // 失败调用：记录失败指纹
+        const errorFingerprint = extractFailureFingerprint(name, effectiveArgs, finalResult);
+        const prev = this.#failureFingerprints.get(failureFingerprint);
+        if (prev && prev.errorPattern === errorFingerprint) {
+          prev.count += 1;
+          prev.lastError = String(finalResult ?? '').substring(0, 500);
+        } else {
+          this.#failureFingerprints.set(failureFingerprint, {
+            count: 1,
+            errorPattern: errorFingerprint,
+            lastError: String(finalResult ?? '').substring(0, 500),
+          });
+        }
+        // 限制失败指纹缓存大小
+        if (this.#failureFingerprints.size > 100) {
+          const firstKey = this.#failureFingerprints.keys().next().value;
+          this.#failureFingerprints.delete(firstKey);
+        }
       }
 
       // 仅成功执行的调用才加入历史，避免失败后无法重试

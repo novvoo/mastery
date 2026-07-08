@@ -80,7 +80,9 @@ import {
   EXPLORATION_BUDGET,
   FORCE_ACTION_GRACE_TURNS,
 } from '../../agent/constants.js';
-import { getToolEffect, isMeaningfulProgress, ToolEffect } from './support/tool-semantics.js';
+
+const MAX_PAUSED_TURN_CONTINUATIONS = 8;
+import { getToolEffect, isMeaningfulProgress, isProgressFromResult, isLandedMutation, ToolEffect } from './support/tool-semantics.js';
 import { analyzeHashlinePatchResult } from './support/hashline-plan-policy.js';
 import { loadRuntimeEnv } from '../runtime-config.js';
 import { createConfiguredModelProvider } from '../../../cli/model-provider-factory.js';
@@ -823,6 +825,10 @@ export class AgentEngine {
   #softToolRequired = null; // { toolName: string, escalations: number }
   #toolEmptyArgFailures = new Map(); // toolName → consecutive failure count
 
+  // ask_user suspend/resume: Promise 挂起机制，替代硬中断
+  #userInputResolve = null;
+  #pendingUserInputRequest = null;
+
   constructor({ modelProvider, toolRegistry, memoryManager, config, ui, fileStore, sessionId }) {
     this.#modelProvider = modelProvider;
     this.#toolRegistry = toolRegistry || createEmptyToolRegistry();
@@ -1055,27 +1061,41 @@ export class AgentEngine {
     }
   }
 
-  /** 在工具调用解析后检查是否调用了要求的工具 */
+  /** 在工具调用解析后检查是否调用了要求的工具，并处理强制升级 */
   #checkSoftToolRequirement(allToolCalls) {
     if (!this.#softToolRequired) return;
     const requiredName = this.#softToolRequired.toolName;
     const hasRequired = allToolCalls.some((tc) => (tc.name || tc.function?.name) === requiredName);
+    
     if (hasRequired) {
       this.#softToolRequired = null;
       this.#toolEmptyArgFailures.delete(requiredName);
       this.#ui.debugEvent?.('Soft tool requirement satisfied', { toolName: requiredName });
-    } else if (this.#softToolRequired.escalations >= 1) {
-      this.#softToolRequired.escalations++;
+      return { shouldExecute: true };
+    }
+    
+    this.#softToolRequired.escalations++;
+    
+    if (this.#softToolRequired.escalations >= 3) {
+      this.#ui.debugEvent?.('Soft tool requirement exceeded max escalations', {
+        toolName: requiredName,
+        escalations: this.#softToolRequired.escalations,
+      });
+      return { shouldExecute: false, skipReason: `Soft tool requirement '${requiredName}' was not satisfied after 3 forced turns; aborting to avoid an unbounded force loop.` };
+    }
+    
+    if (this.#softToolRequired.escalations >= 1) {
       this.#ui.debugEvent?.('Soft tool requirement escalated', {
         toolName: requiredName,
         escalations: this.#softToolRequired.escalations,
       });
     } else {
-      this.#softToolRequired.escalations++;
       this.#ui.debugEvent?.('Soft tool requirement reminder sent', {
         toolName: requiredName,
       });
     }
+    
+    return { shouldExecute: true };
   }
 
   #resetSoftToolRequirement() {
@@ -1412,6 +1432,8 @@ export class AgentEngine {
     // 主循环：Thought → Action → Observation
     // ============================================================
     let iteration = 0;
+    let pausedTurnContinuations = 0;
+    const deadline = this.#config.deadline;
 
     while (iteration < maxIterations) {
       iteration++;
@@ -1422,6 +1444,17 @@ export class AgentEngine {
           status: 'cancelled',
           answer: '',
           reason: 'user_stop',
+          iterations: iteration,
+          startedAt: runStartedAt,
+        });
+      }
+
+      if (deadline && Date.now() >= deadline) {
+        return this.#completeRun({
+          success: false,
+          status: 'error',
+          answer: '',
+          reason: 'deadline_exceeded',
           iterations: iteration,
           startedAt: runStartedAt,
         });
@@ -1763,7 +1796,17 @@ export class AgentEngine {
       const allToolCalls = [...nativeToolCalls, ...parsedToolCalls];
 
       // Check soft tool requirement: if a required tool was called, clear it; otherwise escalate.
-      this.#checkSoftToolRequirement(allToolCalls);
+      const softReqResult = this.#checkSoftToolRequirement(allToolCalls);
+      if (softReqResult && !softReqResult.shouldExecute) {
+        return this.#completeRun({
+          success: false,
+          status: 'error',
+          answer: '',
+          reason: softReqResult.skipReason,
+          iterations: iteration,
+          startedAt: runStartedAt,
+        });
+      }
 
       if (allToolCalls.length > 0) {
         this.#ui.debugEvent?.('Tool calls detected', {
@@ -1974,6 +2017,25 @@ export class AgentEngine {
         continue;
       }
 
+      // -------- 短路 5：暂停轮次保护（pause_turn）--------
+      // 当 provider 返回 stop 但没有工具调用且是暂停轮次时，允许重新采样
+      // 但限制连续暂停次数，防止无限循环
+      if (
+        allToolCalls.length === 0 &&
+        response.finishReason === 'stop' &&
+        response.text?.trim() &&
+        response.stopDetails?.type === 'pause_turn' &&
+        pausedTurnContinuations < MAX_PAUSED_TURN_CONTINUATIONS
+      ) {
+        pausedTurnContinuations++;
+        this.#ui.debugEvent?.('Paused turn continuation', {
+          iteration,
+          continuations: pausedTurnContinuations,
+          maxContinuations: MAX_PAUSED_TURN_CONTINUATIONS,
+        });
+        continue;
+      }
+
       // -------- plan-only detection: 模型只列计划不执行 → nudge 继续 --------
       // 纯信息型问题（解释/聊天/知识查询）不拦截——文本回答本身就是完整交付物
       // isInformationalQuery 由 LLM 意图分类判定（语言无关），非响应文本关键词匹配
@@ -2047,69 +2109,15 @@ export class AgentEngine {
       // ================================================================
       // Progress-Aware 探索预算 + 零调用硬约束（仅编码任务）
       //
-      // 不再简单地"有 mutation 就清零，无 mutation 就累加"，而是区分：
-      //   - MUTATION / VERIFICATION → 清零（直接改代码或验证变更）
-      //   - TARGETED_INSPECTION + inScope → 不累加（有价值的有目标读取）
-      //   - TARGETED_INSPECTION (无上下文) / BROAD_EXPLORATION → 累加
+      // 注意：有工具调用的进展判断移到工具执行之后（基于真实执行结果）。
+      // 这里只处理零工具调用的情况。
       // ================================================================
       if (taskProfile.isCodingTask) {
-        // 获取当前 RUNNING 任务的文件范围，用于判断操作是否在范围内
-        const planTasks = executionPlan ? Array.from(executionPlan.tasks?.values() || []) : [];
-        const runningTask = planTasks.find((t) => t.status === TaskStatus.RUNNING);
-        const scopeFiles = new Set(runningTask?.scopeFiles || []);
-
         if (allToolCalls.length === 0) {
           zeroToolCallStreak++;
           explorationIterations++;
         } else {
           zeroToolCallStreak = 0;
-
-          // 使用统一的 tool-semantics 模块判断每个工具调用的效果
-          let hasMeaningfulProgress = false;
-          let allPartial = true; // 是否所有调用都是 "partial" 进展
-
-          for (const tc of allToolCalls) {
-            const name = tc?.name || tc?.function?.name || '';
-            const args = tc?.arguments || tc?.args || {};
-
-            // 判断工具调用是否在当前子任务文件范围内
-            const filePath = args?.filePath || args?.path || args?.file || '';
-            const isInScope =
-              scopeFiles.size > 0 &&
-              (scopeFiles.has(filePath) ||
-                Array.from(scopeFiles).some((sf) => filePath.includes(sf)));
-
-            // 判断搜索是否有命中（基于 result 中是否有内容）
-            const hasSearchHit =
-              tc?._result != null &&
-              ((typeof tc._result === 'string' && tc._result.length > 50) ||
-                (typeof tc._result === 'object' &&
-                  ((Array.isArray(tc._result) && tc._result.length > 0) ||
-                    (!Array.isArray(tc._result) && Object.keys(tc._result).length > 0))));
-
-            const progress = isMeaningfulProgress(name, args, { isInScope, hasSearchHit });
-
-            if (progress === true) {
-              hasMeaningfulProgress = true;
-              allPartial = false;
-            } else if (progress !== 'partial') {
-              allPartial = false;
-            }
-          }
-
-          if (hasMeaningfulProgress) {
-            // 有明确进展：完全重置探索计数
-            explorationIterations = 0;
-            forceActionTriggered = false;
-            forceActionIgnored = 0;
-          } else if (allPartial) {
-            // 所有调用都是 partial（targeted_inspection 但无法确认在范围内）：
-            // 不增加也不减少，保持当前计数，给 agent 更多定位空间
-            // 这样读多个相关文件不会被误杀
-          } else {
-            // 无进展或广泛探索
-            explorationIterations++;
-          }
         }
 
         // 连续 5+ 零工具调用回合：强打断
@@ -2136,88 +2144,11 @@ export class AgentEngine {
           }
           continue;
         }
-
-        // 探索预算超出：先警告并进入 progress-check mode. Do not
-        // block read-only tools; a safe edit may require one last focused read.
-        // 引擎已在任务开始时预注入 WorkspaceIndex + ImportGraph +
-        // AgentMemory + LSP diagnostics + plan context，agent 不应需要探索阶段
-
-        // 中期作用域提醒：预算过半 + 有执行计划 → 提醒只读当前子任务的文件
-        if (
-          executionPlan &&
-          explorationIterations >= Math.ceil(effectiveExplorationBudget * 0.5) &&
-          !forceActionTriggered
-        ) {
-          const planTasks = Array.from(executionPlan.tasks?.values() || []);
-          const runningTask = planTasks.find((t) => t.status === TaskStatus.RUNNING);
-          const scopeHint =
-            runningTask && runningTask.scopeFiles?.length
-              ? `Current subtask scope: ${runningTask.scopeFiles.join(', ')}. Only read files within this scope.`
-              : 'Focus on the CURRENT subtask only — do not pre-read files for future subtasks. The plan DAG shows which files belong to each subtask.';
-          this.#sessionManager.addSystemMessage(
-            `[SCOPE REMINDER] You have read for ${explorationIterations} round(s) without producing decisive progress. ` +
-              `${scopeHint} The engine has pre-indexed the workspace — trust the pre-computed context. ` +
-              `Prefer precise symbol/diagnostic/context tools over broad exploration. ` +
-              `When ready to edit, read only the specific section with offset+limit or apply the scoped change.`,
-          );
-          this.#ui.debugEvent?.('Scope reminder injected', {
-            iteration,
-            explorationIterations,
-            budget: effectiveExplorationBudget,
-            runningTask: runningTask?.name,
-            scopeFiles: runningTask?.scopeFiles,
-          });
-        }
-
-        if (explorationIterations >= effectiveExplorationBudget && !forceActionTriggered) {
-          forceActionTriggered = true;
-          this.#sessionManager.addAssistantMessage(response.text);
-          this.#sessionManager.addUserMessage(
-            `[IMPLEMENTATION PROGRESS CHECK] ` +
-              `You have spent ${explorationIterations} iterations reading/exploring without producing decisive progress.\n` +
-              `(Budget: ${effectiveExplorationBudget} iterations — the engine already pre-injected workspace structure, diagnostics, project memory, and execution plan for you)\n\n` +
-              `No tools are blocked by this checkpoint; routing and security still decide what is callable. ` +
-              `The next step must be narrow and evidence-based.\n\n` +
-              `You have ${FORCE_ACTION_GRACE_TURNS} chances left. If you produce ${FORCE_ACTION_GRACE_TURNS} more rounds without decisive progress, ` +
-              `you will be TERMINATED with reason "exploration_budget_exhausted".\n\n` +
-              'Choose one: apply the scoped edit; gather the single missing fact; run a focused diagnostic/verification command; call change_plan/ask_user; or provide FINAL_ANSWER explaining the blocker.',
-          );
-          continue;
-        }
-
-        if (forceActionTriggered && explorationIterations > effectiveExplorationBudget) {
-          forceActionIgnored++;
-          const remaining = FORCE_ACTION_GRACE_TURNS - forceActionIgnored;
-          // 计划任务结束只有一个条件：所有阶段性任务已经结束，并且已经对完成的任务做了总结
-          // 如果计划正在执行中，不允许因为探索预算耗尽而直接返回错误状态
-          if (
-            forceActionIgnored >= FORCE_ACTION_GRACE_TURNS &&
-            !this.#executionPlanManager.isActive
-          ) {
-            return this.#completeRun({
-              success: false,
-              status: 'error',
-              answer:
-                `Agent spent ${explorationIterations} iterations exploring without decisive progress, ` +
-                `and ignored the implementation progress checkpoint (${FORCE_ACTION_GRACE_TURNS} warnings given).`,
-              reason: 'exploration_budget_exhausted',
-              iterations: iteration,
-              startedAt: runStartedAt,
-            });
-          }
-          this.#sessionManager.addAssistantMessage(response.text);
-          this.#sessionManager.addUserMessage(
-            `[FINAL WARNING ${forceActionIgnored}/${FORCE_ACTION_GRACE_TURNS}] ` +
-              `You have ignored the implementation progress checkpoint for ${forceActionIgnored} iteration(s). ` +
-              `You will be TERMINATED in ${remaining} more iteration(s) without decisive progress. ` +
-              `Take a concrete evidence-based step now: scoped edit, focused read/diagnostic, change_plan, ask_user, or FINAL_ANSWER with the blocker.`,
-          );
-          continue;
-        }
       }
 
       // -------- 常规路径：执行工具调用 --------
       if (allToolCalls.length > 0) {
+        pausedTurnContinuations = 0;
         const visibleText = stripActionBlocks(response.text, { toolRegistry: this.#toolRegistry });
         if (visibleText) {
           this.#sessionManager.addAssistantMessage(visibleText);
@@ -2247,6 +2178,8 @@ export class AgentEngine {
       }
 
       // 执行每个工具调用（ToolExecutor 统一处理：安全策略、缓存、规范化）
+      const execResults = [];
+      let userInputResolved = false;
       for (const toolCall of allToolCalls) {
         const toolStart = Date.now();
         const toolName = toolCall.name || toolCall.function?.name || 'unknown';
@@ -2342,23 +2275,12 @@ export class AgentEngine {
         }
 
         // 记录到停滞检测
+        // 使用 isLandedMutation：只有执行成功且真正有内容变更的才算 mutation
         this.#stagnationDetector.recordTool(
           execResult.name,
           execResult.args || toolCall.arguments,
           iteration,
-          (name, _args) => {
-            const mutationNames = new Set([
-              'write_file',
-              'edit_file',
-              'delete_file',
-              'rename_file',
-              'git_apply_patch',
-              'git_commit',
-              'git_add',
-              'git_push',
-            ]);
-            return mutationNames.has(name);
-          },
+          () => isLandedMutation(execResult),
         );
 
         // 工具空参失败跟踪：为软工具要求机制积累证据
@@ -2412,12 +2334,150 @@ export class AgentEngine {
 
         // ========== 反馈闭环 L2: Hashline 冲突检测 → 动态重规划 ==========
         this.#detectAndHandleHashlineConflict(execResult);
+
+        // ========== ask_user 挂起检测：如果工具返回需要用户输入，挂起主循环等待 ==========
+        if (execResult.name === 'ask_user' && this.#isUserInputRequired(execResult.result)) {
+          const userInput = await this.#suspendForUserInput(execResult.result);
+          // 恢复后，将用户回答作为 observation 注入会话
+          const answerText = typeof userInput === 'string' ? userInput : JSON.stringify(userInput);
+          this.#sessionManager.addUserMessage(
+            `[User input provided] ${answerText}\n\n(This is the answer to your previous ask_user call. Use this information and continue working on the task.)`,
+          );
+          this.#ui.debugEvent?.('User input received, resuming', {
+            preview: this.#preview(answerText, 200),
+          });
+          // 标记用户输入已处理，跳过剩余工具调用，直接进入下一轮迭代
+          userInputResolved = true;
+          break;
+        }
+
+        execResults.push(execResult);
+      }
+
+      // 如果这一轮因为 ask_user 挂起后恢复了，直接进入下一轮迭代（不再做进展检查等）
+      if (userInputResolved) {
+        iteration++;
+        continue;
+      }
+
+      // ================================================================
+      // 基于真实执行结果的进展判断 + 探索预算检查（仅编码任务）
+      //
+      // 之前这里是基于工具名 + 参数的预判断（在执行前），现在移到执行后，
+      // 依据真实的 execResult（成功/失败、结果内容）来判断，避免：
+      // 1. 失败的编辑也被算作进展
+      // 2. hasSearchHit 依赖尚不存在的 _result
+      // ================================================================
+      if (taskProfile.isCodingTask && execResults.length > 0) {
+        const planTasks = executionPlan ? Array.from(executionPlan.tasks?.values() || []) : [];
+        const runningTask = planTasks.find((t) => t.status === TaskStatus.RUNNING);
+        const scopeFiles = new Set(runningTask?.scopeFiles || []);
+
+        let hasMeaningfulProgress = false;
+        let allPartial = true;
+
+        for (const execResult of execResults) {
+          const filePath =
+            execResult.args?.filePath || execResult.args?.path || execResult.args?.file || '';
+          const isInScope =
+            scopeFiles.size > 0 &&
+            (scopeFiles.has(filePath) ||
+              Array.from(scopeFiles).some((sf) => filePath.includes(sf)));
+
+          const progress = isProgressFromResult(execResult, { isInScope });
+
+          if (progress === true) {
+            hasMeaningfulProgress = true;
+            allPartial = false;
+          } else if (progress !== 'partial') {
+            allPartial = false;
+          }
+        }
+
+        if (hasMeaningfulProgress) {
+          explorationIterations = 0;
+          forceActionTriggered = false;
+          forceActionIgnored = 0;
+        } else if (allPartial) {
+          // 保持当前计数
+        } else {
+          explorationIterations++;
+        }
+
+        // 中期作用域提醒：预算过半 + 有执行计划
+        if (
+          executionPlan &&
+          explorationIterations >= Math.ceil(effectiveExplorationBudget * 0.5) &&
+          !forceActionTriggered
+        ) {
+          const scopeHint =
+            runningTask && runningTask.scopeFiles?.length
+              ? `Current subtask scope: ${runningTask.scopeFiles.join(', ')}. Only read files within this scope.`
+              : 'Focus on the CURRENT subtask only — do not pre-read files for future subtasks. The plan DAG shows which files belong to each subtask.';
+          this.#sessionManager.addSystemMessage(
+            `[SCOPE REMINDER] You have read for ${explorationIterations} round(s) without producing decisive progress. ` +
+              `${scopeHint} The engine has pre-indexed the workspace — trust the pre-computed context. ` +
+              `Prefer precise symbol/diagnostic/context tools over broad exploration. ` +
+              `When ready to edit, read only the specific section with offset+limit or apply the scoped change.`,
+          );
+          this.#ui.debugEvent?.('Scope reminder injected', {
+            iteration,
+            explorationIterations,
+            budget: effectiveExplorationBudget,
+            runningTask: runningTask?.name,
+            scopeFiles: runningTask?.scopeFiles,
+          });
+        }
+
+        // 预算耗尽：触发 progress check
+        if (explorationIterations >= effectiveExplorationBudget && !forceActionTriggered) {
+          forceActionTriggered = true;
+          this.#sessionManager.addUserMessage(
+            `[IMPLEMENTATION PROGRESS CHECK] ` +
+              `You have spent ${explorationIterations} iterations reading/exploring without producing decisive progress.\n` +
+              `(Budget: ${effectiveExplorationBudget} iterations — the engine already pre-injected workspace structure, diagnostics, project memory, and execution plan for you)\n\n` +
+              `No tools are blocked by this checkpoint; routing and security still decide what is callable. ` +
+              `The next step must be narrow and evidence-based.\n\n` +
+              `You have ${FORCE_ACTION_GRACE_TURNS} chances left. If you produce ${FORCE_ACTION_GRACE_TURNS} more rounds without decisive progress, ` +
+              `you will be TERMINATED with reason "exploration_budget_exhausted".\n\n` +
+              'Choose one: apply the scoped edit; gather the single missing fact; run a focused diagnostic/verification command; call change_plan/ask_user; or provide FINAL_ANSWER explaining the blocker.',
+          );
+          this.#ui.debugEvent?.('Force action triggered', {
+            iteration,
+            explorationIterations,
+            budget: effectiveExplorationBudget,
+          });
+        } else if (forceActionTriggered && explorationIterations > effectiveExplorationBudget) {
+          forceActionIgnored++;
+          const remaining = FORCE_ACTION_GRACE_TURNS - forceActionIgnored;
+          if (
+            forceActionIgnored >= FORCE_ACTION_GRACE_TURNS &&
+            !this.#executionPlanManager.isActive
+          ) {
+            return this.#completeRun({
+              success: false,
+              status: 'error',
+              answer:
+                `Agent spent ${explorationIterations} iterations exploring without decisive progress, ` +
+                `and ignored the implementation progress checkpoint (${FORCE_ACTION_GRACE_TURNS} warnings given).`,
+              reason: 'exploration_budget_exhausted',
+              iterations: iteration,
+              startedAt: runStartedAt,
+            });
+          }
+          this.#sessionManager.addUserMessage(
+            `[FINAL WARNING ${forceActionIgnored}/${FORCE_ACTION_GRACE_TURNS}] ` +
+              `You have ignored the implementation progress checkpoint for ${forceActionIgnored} iteration(s). ` +
+              `You will be TERMINATED in ${remaining} more iteration(s) without decisive progress. ` +
+              `Take a concrete evidence-based step now: scoped edit, focused read/diagnostic, change_plan, ask_user, or FINAL_ANSWER with the blocker.`,
+          );
+        }
       }
 
       // ========== Closed-Loop Memory Refresh ==========
       // edit → addEpisodic() → refresh layer4_memory → 下一轮 LLM 看到更新后的记忆
       // 这修复了之前记忆闭环的断裂点：memory 在 run 内可见，而非仅跨 run 可见。
-      this.#refreshMemoryAfterTools(allToolCalls);
+      this.#refreshMemoryAfterTools(execResults);
     }
 
     // 达到迭代上限仍未完成
@@ -2508,6 +2568,31 @@ export class AgentEngine {
     if (this.#sessionManager && typeof this.#sessionManager.flush === 'function') {
       await this.#sessionManager.flush();
     }
+  }
+
+  /** 是否处于等待用户输入状态（ask_user 挂起中） */
+  get isWaitingForUserInput() {
+    return this.#pendingUserInputRequest !== null;
+  }
+
+  /** 获取待处理的用户输入请求（如果有） */
+  get pendingUserInputRequest() {
+    return this.#pendingUserInputRequest;
+  }
+
+  /**
+   * 恢复被 ask_user 挂起的执行循环。
+   * 注入用户回答作为 observation，继续下一轮迭代。
+   */
+  resumeWithUserInput(userInput) {
+    if (!this.#userInputResolve) {
+      return false;
+    }
+    const resolve = this.#userInputResolve;
+    this.#userInputResolve = null;
+    this.#pendingUserInputRequest = null;
+    resolve(userInput);
+    return true;
   }
 
   /** 最近一次 run 的结果 */
@@ -2751,35 +2836,22 @@ export class AgentEngine {
   }
 
   /**
-   * 闭环记忆刷新：每轮工具执行后，检测是否有突变操作，
+   * 闭环记忆刷新：每轮工具执行后，检测是否有实际落地的突变操作，
    * 若有则刷新 layer4_memory，让下一轮 LLM 看到编辑产生的最新记忆。
    *
    * 这修复了记忆闭环的核心断裂点：
    *   编辑 → addEpisodic() ✅
    *   记忆 → refresh layer4_memory ✅ (NEW)
    *   下一轮 LLM → 读取更新后的 memory ✅
+   *
+   * 注意：使用 isLandedMutation 判断，只有成功执行且真正有内容变更的才算。
    */
-  #refreshMemoryAfterTools(allToolCalls) {
-    if (!allToolCalls || allToolCalls.length === 0) {
+  #refreshMemoryAfterTools(execResults) {
+    if (!execResults || execResults.length === 0) {
       return;
     }
 
-    const mutationNames = new Set([
-      'write_file',
-      'edit_file',
-      'delete_file',
-      'rename_file',
-      'apply_hashline_patch',
-      'git_apply_patch',
-      'git_commit',
-      'lsp_rename',
-      'lsp_workspace_edit',
-    ]);
-
-    const hasMutation = allToolCalls.some((tc) => {
-      const name = tc?.name || tc?.function?.name || '';
-      return mutationNames.has(name);
-    });
+    const hasMutation = execResults.some((er) => isLandedMutation(er));
 
     if (hasMutation) {
       try {
@@ -3259,6 +3331,84 @@ export class AgentEngine {
   // ============================================================
   // 内部辅助
   // ============================================================
+
+  /**
+   * 检查工具结果是否表示需要用户输入（ask_user 挂起信号）
+   */
+  #isUserInputRequired(result) {
+    if (!result) return false;
+    if (typeof result === 'object') {
+      return (
+        result.requiresUserInput === true ||
+        result.type === 'user_input_required' ||
+        result.status === 'needs_user_input'
+      );
+    }
+    return result === 'needs_user_input';
+  }
+
+  /**
+   * 挂起主循环等待用户输入。
+   * 通过 Promise + resolve 的方式，不退出循环，不丢失任何内部状态。
+   */
+  async #suspendForUserInput(askResult) {
+    const normalized = this.#normalizeAskUserResult(askResult);
+    const reason = normalized.reason || '需要用户补充信息';
+    const questions = normalized.questions || [];
+    const answer =
+      normalized.answer ||
+      questions.map((q, i) => `${i + 1}. ${q}`).join('\n') ||
+      reason;
+
+    // 存储待处理的用户输入请求，供外部（如 session-state / UI）获取
+    this.#pendingUserInputRequest = {
+      requiresUserInput: true,
+      reason,
+      questions,
+      blockingFacts: normalized.blockingFacts || [],
+      suggestions: normalized.suggestions || [],
+      answer,
+    };
+
+    this.#ui.debugEvent?.('User input requested (suspended)', {
+      reason,
+      questions,
+    });
+
+    // 通知 UI 层（如果支持）
+    this.#ui.userInputRequested?.(this.#pendingUserInputRequest);
+
+    // 返回一个 Promise，等待外部调用 resumeWithUserInput 来 resolve
+    return new Promise((resolve) => {
+      this.#userInputResolve = resolve;
+    });
+  }
+
+  /**
+   * 规范化 ask_user 工具的返回结果
+   */
+  #normalizeAskUserResult(result) {
+    if (!result || typeof result !== 'object') {
+      return {
+        reason: String(result || '需要用户补充信息'),
+        questions: [],
+        blockingFacts: [],
+        suggestions: [],
+        answer: String(result || ''),
+      };
+    }
+    return {
+      reason: result.reason || '',
+      questions: Array.isArray(result.questions) ? result.questions : [],
+      blockingFacts: Array.isArray(result.blocking_facts)
+        ? result.blocking_facts
+        : Array.isArray(result.blockingFacts)
+          ? result.blockingFacts
+          : [],
+      suggestions: Array.isArray(result.suggestions) ? result.suggestions : [],
+      answer: result.answer || '',
+    };
+  }
 
   async #completeRun({
     success,

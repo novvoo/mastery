@@ -1209,6 +1209,86 @@ describe('ToolExecutor', () => {
     expect(result.result).toBe('long ');
   });
 
+  test('does not cache shell tool results even when caching is enabled', async () => {
+    const shellHandler = mock(async (args) => `output: ${args.command}`);
+    const tool = makeTool('shell', { handler: shellHandler });
+    const { executor } = makeMockExecutor({
+      tools: [tool],
+      config: { toolResultCacheEnabled: true },
+    });
+
+    const result1 = await executor.execute({
+      id: '1',
+      name: 'shell',
+      arguments: { command: 'npm test' },
+    });
+    const result2 = await executor.execute({
+      id: '2',
+      name: 'shell',
+      arguments: { command: 'npm test' },
+    });
+
+    expect(result1.result).toBe('output: npm test');
+    expect(result2.cached).toBeUndefined();
+    expect(result2.result).toBe('output: npm test');
+    expect(shellHandler).toHaveBeenCalledTimes(2);
+  });
+
+  test('does not cache verify tool results', async () => {
+    const verifyHandler = mock(async () => 'verification passed');
+    const tool = makeTool('verify', { handler: verifyHandler });
+    const { executor } = makeMockExecutor({
+      tools: [tool],
+      config: { toolResultCacheEnabled: true },
+    });
+
+    const result1 = await executor.execute({ id: '1', name: 'verify', arguments: {} });
+    const result2 = await executor.execute({ id: '2', name: 'verify', arguments: {} });
+
+    expect(result2.cached).toBeUndefined();
+    expect(verifyHandler).toHaveBeenCalledTimes(2);
+  });
+
+  test('blocks repeated failures after 2 attempts', async () => {
+    let callCount = 0;
+    const failHandler = mock(async () => {
+      callCount++;
+      return { success: false, error: 'Persistent error' };
+    });
+    const tool = makeTool('fail_tool', { handler: failHandler });
+    const { executor } = makeMockExecutor({ tools: [tool] });
+
+    const result1 = await executor.execute({ id: '1', name: 'fail_tool', arguments: { key: 'val' } });
+    const result2 = await executor.execute({ id: '2', name: 'fail_tool', arguments: { key: 'val' } });
+    const result3 = await executor.execute({ id: '3', name: 'fail_tool', arguments: { key: 'val' } });
+
+    expect(result1.error).toContain('Persistent error');
+    expect(result2.error).toContain('Persistent error');
+    expect(result3.skipped).toBe(true);
+    expect(result3.result).toContain('REPEATED_FAILURE_BLOCKED');
+    expect(result3.repeatedFailure).toBe(true);
+    expect(callCount).toBe(2);
+  });
+
+  test('allows retry after successful mutation', async () => {
+    let callCount = 0;
+    const failHandler = mock(async () => {
+      callCount++;
+      throw new Error('Error');
+    });
+    const failTool = makeTool('fail_tool', { handler: failHandler });
+    const writeTool = makeTool('write_file', { handler: async () => 'written' });
+    const { executor } = makeMockExecutor({ tools: [failTool, writeTool] });
+
+    await executor.execute({ id: '1', name: 'fail_tool', arguments: { key: 'val' } });
+    await executor.execute({ id: '2', name: 'fail_tool', arguments: { key: 'val' } });
+    await executor.execute({ id: '3', name: 'write_file', arguments: { path: '/a.txt', content: 'test' } });
+    const result = await executor.execute({ id: '4', name: 'fail_tool', arguments: { key: 'val' } });
+
+    expect(result.skipped).toBeUndefined();
+    expect(callCount).toBe(3);
+  });
+
   // —— edit_file 参数别名兜底测试 ——
   test('edit_file accepts old_string/new_string (claude-code convention)', async () => {
     const root = mkdtempSync(join(tmpdir(), 'tool-executor-old-string-alias-'));

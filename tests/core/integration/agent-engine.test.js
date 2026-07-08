@@ -544,4 +544,20 @@ describe('createAgentEngine', () => {
     const engine = createAgentEngine(makeEngineOptions());
     expect(typeof engine.dispose).toBe('function');
   });
+
+  test('isWaitingForUserInput returns false initially', () => {
+    const engine = new AgentEngine(makeEngineOptions());
+    expect(engine.isWaitingForUserInput).toBe(false);
+  });
+
+  test('pendingUserInputRequest returns null initially', () => {
+    const engine = new AgentEngine(makeEngineOptions());
+    expect(engine.pendingUserInputRequest).toBeNull();
+  });
+
+  test('resumeWithUserInput returns false when not waiting', () => {
+    const engine = new AgentEngine(makeEngineOptions());
+    const result = engine.resumeWithUserInput('test input');
+    expect(result).toBe(false);
+  });
 });

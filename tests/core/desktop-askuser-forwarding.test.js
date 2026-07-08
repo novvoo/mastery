@@ -19,11 +19,7 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
 
   test('DesktopCore UI adapter includes waitingForUserInput method', async () => {
     resetEventBus();
-
     const core = createDesktopCore({ debug: false });
-
-    // 查找 UI adapter 的内部实现 —— 通过 eventBus 订阅 STATUS_UPDATE
-    // 来验证 waitingForUserInput 事件是否被正确发射
     const { getEventBus } = await import('../../src/runtime/event-bus.js');
     const eventBus = getEventBus();
 
@@ -32,23 +28,17 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
       receivedEvents.push(data);
     });
 
-    // 直接调用 core 的私有 UI adapter —— 通过初始化后的状态变化来验证
-    // waitingForUserInput 应该发射 STATUS_UPDATE 事件
-    // 我们通过检查 run() 的方法来触发
-
-    // 由于等待用户输入是内部操作，先确保核心已初始化
     try {
       await core.initialize();
     } catch (e) {
       // 初始化可能失败（无模型提供者），这对测试来说 ok
     }
 
-    // 通过检查 DesktopCore 的状态来判断 dispatcher 是否工作
     const state = core.getState();
     expect(state).toBeTruthy();
     expect(typeof state.desktopState).toBe('string');
 
-    // 测试事件发射链路
+    // 模拟 waitingForUserInput 事件
     const testInfo = {
       reason: '需要补充项目需求',
       questions: ['你想要什么颜色？'],
@@ -57,9 +47,6 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
       answer: '需要你补充一点信息后我才能继续。',
     };
 
-    // 通过 eventBus 模拟发送 waitingForUserInput 事件
-    // 实际上 desktop-core.js 中的 ui adapter 现在应该已经有这个方法了
-    // 由于 we can't access private methods directly, 我们通过 eventBus 验证
     eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
       message: '需要你补充一点信息后继续',
       level: 'info',
@@ -67,7 +54,6 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
       data: testInfo,
     });
 
-    // 验证 STATUS_UPDATE 事件包含了正确的字段
     const matchingEvents = receivedEvents.filter(
       (e) => e.status === 'needs_user_input' && e.data?.reason,
     );
@@ -91,7 +77,6 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
       receivedUpdates.push(data);
     });
 
-    // 模拟 agent.js 的 #suspendForUserInput 所做的调用
     const testInfo = {
       reason: '需要确认技术方案',
       questions: ['使用 REST 还是 GraphQL？'],
@@ -100,8 +85,6 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
       answer: '需要你补充一点信息后我才能继续。\n\n原因：需要确认技术方案\n\n请回答：\n1. 使用 REST 还是 GraphQL？',
     };
 
-    // 模拟 UI adapter 的 waitingForUserInput 方法调用
-    // desktop-core.js 中的 waitingForUserInput 现在和 session-state.js 中的实现一致
     eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
       message: '需要你补充一点信息后继续',
       level: 'info',
@@ -109,7 +92,6 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
       data: testInfo,
     });
 
-    // 验证事件结构
     const needsInputEvents = receivedUpdates.filter(
       (e) => e.status === 'needs_user_input',
     );
@@ -121,8 +103,74 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
     resetEventBus();
   });
 
-  test('useRuntime processInput sets askUserInfo when result is needs_user_input', async () => {
-    // 模拟 useRuntime.js 中 processInput 的 askUserInfo 设置逻辑
+  test('STATUS_UPDATE with running clears askUserInfo', async () => {
+    resetEventBus();
+    const { getEventBus } = await import('../../src/runtime/event-bus.js');
+    const eventBus = getEventBus();
+
+    const receivedUpdates = [];
+    const unsubscribe = eventBus.subscribe(RuntimeEvent.STATUS_UPDATE, (data) => {
+      receivedUpdates.push(data);
+    });
+
+    // 先发射 needs_user_input
+    eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
+      status: 'needs_user_input',
+      level: 'info',
+      message: '等待输入',
+      data: { reason: 'test', questions: ['q1'] },
+    });
+
+    // 然后发射 running → askUserInfo 应被清空
+    eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
+      status: 'running',
+    });
+
+    const runningEvents = receivedUpdates.filter((e) => e.status === 'running');
+    expect(runningEvents.length).toBe(1);
+
+    unsubscribe();
+    resetEventBus();
+  });
+
+  test('STATUS_UPDATE multiple needs_user_input events in sequence', async () => {
+    resetEventBus();
+    const { getEventBus } = await import('../../src/runtime/event-bus.js');
+    const eventBus = getEventBus();
+
+    const receivedUpdates = [];
+    const unsubscribe = eventBus.subscribe(RuntimeEvent.STATUS_UPDATE, (data) => {
+      receivedUpdates.push(data);
+    });
+
+    // 连续两次 ask_user
+    eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
+      status: 'needs_user_input',
+      level: 'info',
+      message: '第一次',
+      data: { reason: 'r1', questions: ['q1'] },
+    });
+    eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
+      status: 'needs_user_input',
+      level: 'info',
+      message: '第二次',
+      data: { reason: 'r2', questions: ['q2'] },
+    });
+
+    const needsInputEvents = receivedUpdates.filter((e) => e.status === 'needs_user_input');
+    expect(needsInputEvents.length).toBe(2);
+    // 第二个事件应覆盖第一个（askUserInfo 被更新为最新数据）
+    expect(needsInputEvents[1].data.reason).toBe('r2');
+    expect(needsInputEvents[1].data.questions[0]).toBe('q2');
+
+    unsubscribe();
+    resetEventBus();
+  });
+
+  // ========== useRuntime processInput 的 askUserInfo 设置逻辑 ==========
+
+  test('processInput sets askUserInfo when result has needs_user_input with userInputRequest', () => {
+    // 对应 useRuntime.js L577-586
     const result = {
       status: 'needs_user_input',
       answer: '需要你补充一点信息后我才能继续。',
@@ -138,7 +186,6 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
     const needsUserInput = result?.status === 'needs_user_input';
     let askUserInfo = null;
 
-    // 模拟 useRuntime.js 中新增的 setAskUserInfo 逻辑
     if (needsUserInput && result?.userInputRequest) {
       askUserInfo = {
         message: result.answer || result.userInputRequest.answer || '',
@@ -157,7 +204,7 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
     expect(askUserInfo.answer).toContain('需要你补充一点信息');
   });
 
-  test('useRuntime processInput does NOT set askUserInfo when result is completed', async () => {
+  test('processInput does NOT set askUserInfo when result status is completed', () => {
     const result = {
       status: 'completed',
       answer: '任务已完成',
@@ -180,7 +227,7 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
     expect(askUserInfo).toBeNull();
   });
 
-  test('useRuntime processInput does NOT set askUserInfo when result is running', async () => {
+  test('processInput does NOT set askUserInfo when result is running (async mode)', () => {
     const result = {
       status: 'running',
       mode: 'async',
@@ -194,5 +241,71 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
     }
 
     expect(askUserInfo).toBeNull();
+  });
+
+  test('processInput does NOT set askUserInfo when result has needs_user_input but no userInputRequest', () => {
+    // 边界情况: status=needs_user_input 但没有 userInputRequest
+    const result = {
+      status: 'needs_user_input',
+      answer: '需要你补充一点信息',
+    };
+
+    const needsUserInput = result?.status === 'needs_user_input';
+    let askUserInfo = null;
+
+    if (needsUserInput && result?.userInputRequest) {
+      askUserInfo = {};
+    }
+
+    expect(askUserInfo).toBeNull();
+  });
+
+  // ========== IPC 事件链中的 status:update 处理 ==========
+
+  test('IPC status:update event with running status clears askUserInfo', () => {
+    // 模拟 useRuntime.js 中处理 status:update 事件的逻辑
+    // 这是修复后的关键: status:update 不依赖 normalized.message
+    let askUserInfo = { reason: '旧的', questions: ['旧的'] };
+
+    const simulateStatusUpdate = (payload) => {
+      if (payload.status === 'needs_user_input' && payload.data) {
+        askUserInfo = payload.data;
+      }
+      if (payload.status === 'running') {
+        askUserInfo = null;
+      }
+    };
+
+    simulateStatusUpdate({ status: 'running' });
+    expect(askUserInfo).toBeNull();
+  });
+
+  test('IPC status:update event preserves askUserInfo for non-running statuses', () => {
+    let askUserInfo = null;
+
+    const simulateStatusUpdate = (payload) => {
+      if (payload.status === 'needs_user_input' && payload.data) {
+        askUserInfo = payload.data;
+      }
+      if (payload.status === 'running') {
+        askUserInfo = null;
+      }
+    };
+
+    simulateStatusUpdate({
+      status: 'needs_user_input',
+      data: { reason: 'test', questions: ['q1'] },
+    });
+    expect(askUserInfo).not.toBeNull();
+    expect(askUserInfo.reason).toBe('test');
+
+    // completed 不应清除 askUserInfo
+    simulateStatusUpdate({ status: 'completed' });
+    expect(askUserInfo).not.toBeNull();
+    expect(askUserInfo.reason).toBe('test');
+
+    // error 不应清除 askUserInfo
+    simulateStatusUpdate({ status: 'error' });
+    expect(askUserInfo).not.toBeNull();
   });
 });

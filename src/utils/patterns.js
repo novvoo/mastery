@@ -1,11 +1,11 @@
 export const TERMINATION_KEYWORDS = ['FINAL_ANSWER:', 'Answer:', 'TASK_COMPLETE'];
 
 export const CODING_CONTEXT_KEYWORDS = [
-  /代码|程序|脚本|html|css|javascript|typescript|js|单元测试|集成测试|函数|模块|功能|框架|库|接口|游戏引擎|游戏开发/,
+  /代码|程序|脚本|html|css|javascript|typescript|js|单元测试|集成测试|函数|模块|功能|框架|库|接口|游戏引擎|游戏开发|测试|报错|错误|bug|修复|调试/,
   /文件|文档|文本|路径|目录|文件夹|读写|编辑|修改|删除|创建|新增|保存|读取|写入|复制|移动|重命名|替换|查找|搜索|解析|格式化/,
   /\b(html|css|javascript|typescript|jsx|tsx|python|java|go|golang|rust|c\+\+|c#|ruby|php|shell|bash|sql|json|yaml|yml|markdown|nodejs|node\.js|react|vue|angular|django|flask|spring|express|pygame|pandas|numpy|tensorflow|pytorch|api|cli|sdk|library|framework)\b/,
   /\b(file|files|document|text|path|directory|folder|read|write|edit|delete|create|add|save|load|copy|move|rename|replace|find|search|parse|format|filesystem|file system)\b/,
-  /\b(code|coding|refactor|unit test|integration test|write tests?|add tests?|debug|compile|build|deploy)\b/,
+  /\b(code|coding|refactor|test|debug|compile|build|deploy|fix|error|bug|crash|fail|failing)\b/,
 ];
 
 export const MODIFICATION_VERB_PATTERNS = [
@@ -25,13 +25,20 @@ export const READ_ONLY_PATTERNS = [
 ];
 
 export const PLAN_BLACKLIST_PATTERNS = [
-  /\b(是什么|什么是|how to|how do i|what is|explain|解释|说明|介绍)\b/i,
-  /\b(帮助|help|命令|command|怎么用|how to use|usage)\b/i,
-  /\b(状态|status|当前|current|现在|now|版本|version)\b/i,
-  /\b(列出|list|显示|show|查看|view|看看|看看有哪些)\b/i,
-  /\b(搜索|search|查找|find|grep|locate)\b/i,
-  /\b(阅读|read|分析|analyze|审查|review|检查|check)\b/i,
-  /\b(统计|count|数量|number|多少|how many)\b/i,
+  /\b(how to|how do i|what is|explain)\b/i,
+  /(是什么|什么是|解释|说明|介绍)/,
+  /\b(help|command|how to use|usage)\b/i,
+  /(帮助|命令|怎么用)/,
+  /\b(status|current|now|version)\b/i,
+  /(状态|当前|现在|版本)/,
+  /\b(list|show|view)\b/i,
+  /(列出|显示|查看|看看|看看有哪些)/,
+  /\b(search|find|grep|locate)\b/i,
+  /(搜索|查找)/,
+  /\b(read|analyze|review|check)\b/i,
+  /(阅读|分析|审查|检查)/,
+  /\b(count|number|how many)\b/i,
+  /(统计|数量|多少)/,
 ];
 
 export const SEMANTIC_RISK_DOMAINS = [
@@ -95,8 +102,10 @@ export const LOW_RISK_FILE_PATTERNS = [
 ];
 
 export const TRIVIAL_TEXT_PATTERNS = [
-  /\b(typo|拼写|文案|注释|comment|rename only|只改名)\b/i,
-  /\b(simple|standalone|single[- ]file|demo|示例|quick|小)\b/i,
+  /\b(typo|comment|rename only)\b/i,
+  /(拼写|文案|注释|只改名)/,
+  /\b(simple|standalone|single[- ]file|demo|quick)\b/i,
+  /(示例|小)/,
   /(创建|新建|写)\s*(一个|单个|独立)?\s*(html|\.html)\s*(文件)?/i,
 ];
 

@@ -61,9 +61,15 @@ const TEXT_RISK_FACTORS = [
   {
     id: 'bug_keywords',
     weight: 3,
-    test: (t) => /\b(bug|error|crash|hang|stuck|broken|fail|报错|错误|崩溃|卡住|修复)\b/.test(t),
+    test: (t) =>
+      /\b(bug|error|crash|hang|stuck|broken|fail)\b/.test(t) ||
+      /(报错|错误|崩溃|卡住|修复)/.test(t),
   },
-  { id: 'explicit_refactor', weight: 3, test: (t) => /\b(refactor|重构|重写|rewrite)\b/.test(t) },
+  {
+    id: 'explicit_refactor',
+    weight: 3,
+    test: (t) => /\b(refactor|rewrite)\b/.test(t) || /(重构|重写)/.test(t),
+  },
   {
     id: 'multi_artifact_keywords',
     weight: 2,
@@ -96,21 +102,25 @@ export function quickAssess(userInput) {
 
   const isBugTask =
     !cliCommand &&
-    /\b(bug|error|exception|failed|failing|broken|hang|stuck|报错|错误|失败|崩溃|卡住|没响应|修复)\b/.test(
-      text,
-    );
+    (/\b(bug|error|exception|failed|failing|broken|hang|stuck)\b/.test(text) ||
+      /(报错|错误|失败|崩溃|卡住|没响应|修复)/.test(text));
 
   const isLikelyTrivial = isCodingTask && TRIVIAL_TEXT_PATTERNS.some((p) => p.test(text));
 
   const isDocumentationTask =
     !cliCommand &&
-    /\b(文档|readme|说明|指南|教程|docs?|document|guide|tutorial|manual)\b/i.test(text);
+    (/\b(readme|docs?|document|guide|tutorial|manual)\b/i.test(text) ||
+      /(文档|说明|指南|教程)/.test(text));
 
   const isAnalysisTask =
-    !cliCommand && /\b(分析|审计|审查|评估|review|audit|analyze|evaluate|inspect)\b/i.test(text);
+    !cliCommand &&
+    (/\b(review|audit|analyze|evaluate|inspect)\b/i.test(text) ||
+      /(分析|审计|审查|评估)/.test(text));
 
   const isResearchTask =
-    !cliCommand && /\b(研究|调研|探索|搜索|查找|research|explore|search|investigate)\b/i.test(text);
+    !cliCommand &&
+    (/\b(research|explore|search|investigate)\b/i.test(text) ||
+      /(研究|调研|探索|搜索|查找)/.test(text));
 
   const inPlanBlacklist = isInPlanBlacklist(userInput);
   const requiresPlanning = !cliCommand && !inPlanBlacklist;

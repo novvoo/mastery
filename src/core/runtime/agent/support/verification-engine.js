@@ -23,6 +23,17 @@ export function verifyTestResults(toolEvents) {
     (e) => e?.name === 'shell' && isRuntimeVerificationEvent(e),
   );
 
+  // 如果根本没有任何测试事件，不能算通过
+  if (testEvents.length === 0) {
+    return {
+      passed: false,
+      failedEvents: [],
+      noTestEvents: true,
+      summary:
+        'No runtime verification commands (test/build/lint) found in event history. Run the test suite before claiming completion.',
+    };
+  }
+
   /** 从事件中提取 shell 命令文本 */
   function getCommand(e) {
     if (!e) return '';
@@ -71,7 +82,7 @@ export function verifyTestResults(toolEvents) {
     failedEvents,
     summary:
       failedEvents.length === 0
-        ? 'All test commands appear to pass (no failures detected in event history).'
+        ? `All ${testEvents.length} test command(s) appear to pass (no failures detected in event history).`
         : `Verification detected ${failedEvents.length} test command(s) with failures:\n` +
           failedEvents
             .map((f) => `  - ${f.command}: exit code ${f.exitCode > 0 ? f.exitCode : 'unknown'}`)
@@ -170,10 +181,34 @@ export function verifyCompletion({ toolEvents, planSteps }) {
   const testResult = verifyTestResults(toolEvents);
   const planResult = planSteps ? verifyPlanCoverage(planSteps, toolEvents) : null;
 
+  // 检查验证新鲜度：最后一个 mutation 之后必须有至少一个验证事件
+  const events = toolEvents || [];
+  let lastMutationIndex = -1;
+  let lastVerificationIndex = -1;
+  for (let i = 0; i < events.length; i++) {
+    if (isMutationEvent(events[i])) {
+      lastMutationIndex = i;
+    }
+    if (events[i]?.name === 'shell' && isRuntimeVerificationEvent(events[i])) {
+      lastVerificationIndex = i;
+    }
+  }
+  const verificationIsFresh =
+    lastMutationIndex >= 0 &&
+    lastVerificationIndex >= 0 &&
+    lastVerificationIndex > lastMutationIndex;
+
   const issues = [];
 
   if (!testResult.passed) {
     issues.push(testResult.summary);
+  }
+
+  if (hasMutation && !verificationIsFresh) {
+    issues.push(
+      'Last modification was not followed by a verification command (test/build/lint). ' +
+        'Run the test suite after making changes to confirm they work.',
+    );
   }
 
   if (planResult && !planResult.matched) {
@@ -186,7 +221,11 @@ export function verifyCompletion({ toolEvents, planSteps }) {
     ? ''
     : `[VERIFICATION FAILED] The task appears incomplete based on actual test output.\n${issues.join('\n')}\n\nDo NOT use FINAL_ANSWER or claim completion. Re-run the failing commands, fix the issues, then verify again.`;
 
-  return { passed, guidance, details: { testResult, planResult, repeatCheck } };
+  return {
+    passed,
+    guidance,
+    details: { testResult, planResult, repeatCheck, verificationIsFresh },
+  };
 }
 
 /**

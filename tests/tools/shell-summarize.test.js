@@ -99,4 +99,47 @@ describe('summarizeTestOutput', () => {
     expect(result).toContain('Tests');
     expect(result).not.toContain('test_a'); // individual passes stripped
   });
+
+  test('preserves full error context across empty lines (Jest style)', () => {
+    const jestOutputWithEmptyLines =
+      ' FAIL  src/utils.test.js\n' +
+      '  ● Utils › formatDate should handle null\n' +
+      '    \n' +
+      '    TypeError: Cannot read properties of null (reading \'getFullYear\')\n' +
+      '    \n' +
+      '      at formatDate (src/utils.js:15:22)\n' +
+      '      at Object.<anonymous> (src/utils.test.js:45:12)\n' +
+      '      at TestScheduler.scheduleTests (node_modules/jest/build/index.js:1157:13)\n' +
+      '    \n' +
+      ' Test Suites: 1 failed, 0 passed, 1 total\n' +
+      ' Tests:       1 failed, 0 passed, 1 total\n';
+
+    const result = summarizeTestOutput(jestOutputWithEmptyLines, '');
+    expect(result).not.toBeNull();
+    expect(result).toContain('formatDate should handle null');
+    expect(result).toContain('TypeError: Cannot read properties of null');
+    expect(result).toContain('at formatDate (src/utils.js:15:22)');
+    expect(result).toContain('at Object.<anonymous> (src/utils.test.js:45:12)');
+    expect(result).toContain('Test Suites');
+  });
+
+  test('preserves stack trace with multiple frames separated by empty lines', () => {
+    const output =
+      ' ❯ src/app.js > init fails\n' +
+      '     → Error: Database connection failed\n' +
+      '\n' +
+      '       at connectDb (src/db.js:42:15)\n' +
+      '       at initApp (src/app.js:28:10)\n' +
+      '\n' +
+      '       at Object.<anonymous> (src/app.test.js:12:5)\n' +
+      '\n' +
+      ' Test Files  1 failed (1)\n';
+
+    const result = summarizeTestOutput(output, '');
+    expect(result).not.toBeNull();
+    expect(result).toContain('Database connection failed');
+    expect(result).toContain('at connectDb (src/db.js:42:15)');
+    expect(result).toContain('at initApp (src/app.js:28:10)');
+    expect(result).toContain('at Object.<anonymous> (src/app.test.js:12:5)');
+  });
 });

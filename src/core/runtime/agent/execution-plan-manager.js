@@ -1259,6 +1259,10 @@ export class ExecutionPlanManager {
             'tree',
             'stat_file',
             'shell',
+            'project_profile',
+            'test_strategy',
+            'web_search',
+            'web_fetch',
           ];
         }
         if (!task.completionPredicate) {
@@ -1348,6 +1352,8 @@ export class ExecutionPlanManager {
             'list_dir',
             'glob',
             'search',
+            'search_codebase',
+            'grep_search',
             'shell',
             'review',
             'risk_check',
@@ -1356,6 +1362,9 @@ export class ExecutionPlanManager {
             'security_review',
             'data_contract_check',
             'ui_acceptance',
+            'edit_file',
+            'write_file',
+            'apply_hashline_patch',
           ];
         }
         if (!task.completionPredicate) {
@@ -1376,6 +1385,13 @@ export class ExecutionPlanManager {
             'data_contract_check',
             'ui_acceptance',
             'risk_check',
+            'read_file',
+            'search',
+            'search_codebase',
+            'grep_search',
+            'edit_file',
+            'write_file',
+            'apply_hashline_patch',
           ];
         }
         if (!task.completionPredicate) {

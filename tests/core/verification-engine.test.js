@@ -30,7 +30,7 @@ function editEvent(path, extra = {}) {
   return {
     name: 'edit_file',
     success: true,
-    args: { path },
+    args: { path, old_string: '', new_string: 'modified' },
     ...extra,
   };
 }
@@ -40,6 +40,15 @@ function readEvent(path, extra = {}) {
     name: 'read_file',
     success: true,
     args: { path },
+    ...extra,
+  };
+}
+
+function writeEvent(path, extra = {}) {
+  return {
+    name: 'write_file',
+    success: true,
+    args: { path, content: 'test content' },
     ...extra,
   };
 }
@@ -167,8 +176,8 @@ describe('verifyCompletion: 日志复现场景', () => {
 
 describe('isMutationEvent', () => {
   test('detects mutation tools', () => {
-    expect(isMutationEvent({ name: 'edit_file' })).toBe(true);
-    expect(isMutationEvent({ name: 'write_file' })).toBe(true);
+    expect(isMutationEvent({ name: 'edit_file', success: true, args: { path: 'test.js', old_string: 'a', new_string: 'b' } })).toBe(true);
+    expect(isMutationEvent({ name: 'write_file', success: true, args: { path: 'test.js', content: 'hello' } })).toBe(true);
   });
 
   test('ignores read tools', () => {
@@ -221,14 +230,17 @@ describe('verifyTestResults', () => {
     ];
     const r = verifyTestResults(events);
     // ls 不是测试命令，所以 isRuntimeVerificationEvent 返回 false
-    expect(r.passed).toBe(true);
-    expect(r.failedEvents).toHaveLength(0);
+    // 没有任何测试事件 → 验证不通过（有 mutation 时必须有测试）
+    expect(r.passed).toBe(false);
+    expect(r.noTestEvents).toBe(true);
   });
 
-  test('returns passed when no test events', () => {
+  test('returns failed when no test events', () => {
     const events = [readEvent('a.txt')];
     const r = verifyTestResults(events);
-    expect(r.passed).toBe(true);
+    // 没有任何测试事件 → 验证不通过（不能声称验证通过）
+    expect(r.passed).toBe(false);
+    expect(r.noTestEvents).toBe(true);
   });
 
   test('passes "all tests passed" text', () => {
@@ -295,5 +307,34 @@ describe('verifyCompletion', () => {
     ];
     const r = verifyCompletion({ toolEvents: events });
     expect(r.passed).toBe(true);
+  });
+
+  test('blocks when verification is not fresh (mutation after test)', () => {
+    const events = [
+      shellEvent('Tests passed', { args: { command: 'npm test' } }),
+      writeEvent('src/app.js'),
+    ];
+    const r = verifyCompletion({ toolEvents: events });
+    expect(r.passed).toBe(false);
+    expect(r.guidance).toContain('Last modification was not followed by a verification command');
+  });
+
+  test('passes when verification follows mutation', () => {
+    const events = [
+      writeEvent('src/app.js'),
+      shellEvent('Tests passed', { args: { command: 'npm test' } }),
+    ];
+    const r = verifyCompletion({ toolEvents: events });
+    expect(r.passed).toBe(true);
+  });
+
+  test('blocks when no verification events after mutations', () => {
+    const events = [
+      writeEvent('src/app.js'),
+      readEvent('src/config.js'),
+    ];
+    const r = verifyCompletion({ toolEvents: events });
+    expect(r.passed).toBe(false);
+    expect(r.guidance).toContain('No runtime verification commands');
   });
 });

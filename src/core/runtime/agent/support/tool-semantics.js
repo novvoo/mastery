@@ -93,8 +93,42 @@ export function getToolEffect(toolName, args = {}) {
  * @returns {boolean}
  */
 export function isMutation(toolName, args = {}) {
+  const name = (toolName || '').toLowerCase().trim();
+
+  // 显式 mutation 工具：宽松定义，但排除明确的 no-op
+  if (isExplicitMutationTool(name) || isLspEditTool(name) || isGitMutationTool(name)) {
+    // edit_file: old_string 和 new_string 都提供了且相等 → no-op
+    if (name === 'edit_file') {
+      const oldStr = String(args?.old_string ?? '');
+      const newStr = String(args?.new_string ?? '');
+      if (args && 'old_string' in args && 'new_string' in args && oldStr === newStr) {
+        return false;
+      }
+    }
+    // apply_hashline_patch: patch 提供了但没有实际 diff 行 → no-op
+    if (name === 'apply_hashline_patch') {
+      const patch = String(args?.patch ?? args?.content ?? '');
+      if (args && ('patch' in args || 'content' in args)) {
+        const lines = patch.split(/\r?\n/);
+        let hasDiff = false;
+        for (const line of lines) {
+          if (
+            (line.startsWith('+') && !line.startsWith('+++')) ||
+            (line.startsWith('-') && !line.startsWith('---'))
+          ) {
+            hasDiff = true;
+            break;
+          }
+        }
+        if (!hasDiff) return false;
+      }
+    }
+    return true;
+  }
+
+  // 其他工具（如 shell）使用 getToolEffect 判断
   const effect = getToolEffect(toolName, args);
-  return effect === ToolEffect.MUTATION;
+  return effect === ToolEffect.MUTATION || effect === ToolEffect.VERIFICATION;
 }
 
 /**
@@ -353,6 +387,133 @@ function hasActualContentChange(toolName, args) {
 
   // delete_file / rename_file / mkdir: 总是算有变化
   return true;
+}
+
+// ============================================================
+// 执行结果感知的进展判断（工具执行后使用）
+// ============================================================
+
+/**
+ * 判断工具执行是否成功（没有 error、没有 skipped、结果不是错误文本）。
+ *
+ * @param {object} execResult - 工具执行结果（来自 ToolExecutor.execute）
+ * @returns {boolean}
+ */
+export function isSuccessfulResult(execResult) {
+  if (!execResult) return false;
+  if (execResult.error) return false;
+  if (execResult.skipped) return false;
+  const resultStr = String(execResult.result ?? '');
+  if (resultStr.startsWith('Error:')) return false;
+  if (resultStr.startsWith('FACT_BLOCKED:')) return false;
+  return true;
+}
+
+/**
+ * 判断搜索/检查类工具的结果是否有实质内容（有效命中）。
+ * 用于替代之前基于不存在的 _result 的判断。
+ *
+ * @param {string} toolName - 工具名称
+ * @param {*} result - 工具执行结果的 result 字段
+ * @returns {boolean}
+ */
+export function hasMeaningfulResult(toolName, result) {
+  const name = (toolName || '').toLowerCase().trim();
+
+  if (result == null) return false;
+
+  if (typeof result === 'string') {
+    if (!result.trim()) return false;
+    if (result.startsWith('Error:')) return false;
+    if (result.startsWith('FACT_BLOCKED:')) return false;
+    if (result.startsWith('File not found:')) return false;
+    if (/^No such file or directory/i.test(result)) return false;
+    return result.length > 20;
+  }
+
+  if (Array.isArray(result)) {
+    return result.length > 0;
+  }
+
+  if (typeof result === 'object') {
+    const keys = Object.keys(result);
+    if (keys.length === 0) return false;
+    if (result.error) return false;
+    if (result.found != null) return Boolean(result.found) || result.count > 0;
+    if (result.matches != null) return Array.isArray(result.matches) ? result.matches.length > 0 : Boolean(result.matches);
+    if (result.results != null) return Array.isArray(result.results) ? result.results.length > 0 : Boolean(result.results);
+    return keys.length > 0;
+  }
+
+  return Boolean(result);
+}
+
+/**
+ * 基于完整的工具执行结果，判断这次调用是否算"有意义的进展"。
+ *
+ * 与 isMeaningfulProgress 的区别：
+ * - isMeaningfulProgress: 仅基于工具名 + args，工具执行前使用（预判断）
+ * - isProgressFromResult: 基于执行结果，工具执行后使用（真实判断）
+ *
+ * 规则：
+ * 1. 执行失败的工具 → 永远不算进展
+ * 2. MUTATION + 成功 → true
+ * 3. VERIFICATION + 成功 → true
+ * 4. TARGETED_INSPECTION + 成功 + (inScope || hasMeaningfulResult) → true
+ * 5. TARGETED_INSPECTION + 成功（无上下文） → 'partial'
+ * 6. 其他 → false
+ *
+ * @param {object} execResult - 工具执行结果
+ * @param {object} [context={}]
+ * @param {boolean} [context.isInScope=false]
+ * @returns {boolean|string} true=有进展, false=无进展, 'partial'=部分进展
+ */
+export function isProgressFromResult(execResult, context = {}) {
+  if (!execResult) return false;
+
+  const name = execResult.name || '';
+  const args = execResult.args || {};
+  const result = execResult.result;
+
+  if (!isSuccessfulResult(execResult)) {
+    return false;
+  }
+
+  const effect = getToolEffect(name, args);
+  const meaningfulResult = hasMeaningfulResult(name, result);
+
+  switch (effect) {
+    case ToolEffect.MUTATION:
+      return true;
+
+    case ToolEffect.VERIFICATION:
+      return true;
+
+    case ToolEffect.TARGETED_INSPECTION:
+      if (context.isInScope || meaningfulResult) {
+        return true;
+      }
+      return 'partial';
+
+    case ToolEffect.BROAD_EXPLORATION:
+    case ToolEffect.NO_PROGRESS:
+    default:
+      return false;
+  }
+}
+
+/**
+ * 基于执行结果判断是否为一次"实际落地的变异"。
+ * 用于停滞检测：只有成功且真正改变了内容的才算。
+ *
+ * @param {object} execResult - 工具执行结果
+ * @returns {boolean}
+ */
+export function isLandedMutation(execResult) {
+  if (!isSuccessfulResult(execResult)) return false;
+  const name = execResult.name || '';
+  const args = execResult.args || {};
+  return getToolEffect(name, args) === ToolEffect.MUTATION;
 }
 
 // ============================================================

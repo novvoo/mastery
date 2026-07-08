@@ -561,7 +561,7 @@ describe('ExecutionPlanManager', () => {
       },
       { ok: true },
     );
-    manager.advance('write_file', { path: 'app.js' }, 'OK');
+    manager.advance('write_file', { path: 'app.js', content: 'code' }, 'OK');
     manager.advance('read_file', { path: 'app.js' }, 'OK');
 
     const result = manager.advance('shell', { command: 'bun test' }, { exitCode: 1 });
@@ -635,7 +635,7 @@ describe('ExecutionPlanManager', () => {
     const implementTask = manager.plan.getTask('implement_changes');
     expect(implementTask.status).toBe('running');
 
-    manager.advance('write_file', { path: 'app.js' }, 'success: written');
+    manager.advance('write_file', { path: 'app.js', content: 'updated greeting' }, 'success: written');
 
     expect(implementTask.status).toBe('completed');
   });
@@ -1088,7 +1088,7 @@ describe('ExecutionPlanManager', () => {
       },
       { ok: true },
     );
-    manager.advance('write_file', { path: 'app.js' }, 'OK');
+    manager.advance('write_file', { path: 'app.js', content: 'fixed code' }, 'OK');
     manager.advance('read_file', { path: 'app.js' }, 'OK');
     manager.advance('shell', { command: 'bun test' }, { exitCode: 1 });
 

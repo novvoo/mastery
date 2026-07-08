@@ -159,7 +159,7 @@ describe('AgentPlanner', () => {
       },
       { ok: true },
     );
-    planner.advance('write_file', { path: 'auth.js' }, 'success: written');
+    planner.advance('write_file', { path: 'auth.js', content: 'auth code' }, 'success: written');
     planner.advance('security_review', { surface: 'auth token' }, 'reviewed changed auth surface');
     planner.advance('security_review', { surface: 'auth token' }, 'reviewed semantic risk');
 
@@ -365,7 +365,7 @@ describe('AgentPlanner', () => {
     expect(plan.getTask('plan_solution').status).toBe(TaskStatus.COMPLETED);
 
     // Phase 5: implement_changes — 工件存在后 mutation 工具放行
-    planner.advance('write_file', { path: 'app.js' }, 'success: written');
+    planner.advance('write_file', { path: 'app.js', content: 'greeting code' }, 'success: written');
     // implement_changes may still be running if requiredMutationPaths not met
     // With no file paths in input, it completes
     expect(plan.getTask('implement_changes').status).toBe(TaskStatus.COMPLETED);
@@ -389,7 +389,7 @@ describe('AgentPlanner', () => {
       },
       { ok: true },
     );
-    planner.advance('write_file', { path: 'app.js' }, 'success: written');
+    planner.advance('write_file', { path: 'app.js', content: 'updated app' }, 'success: written');
     planner.advance('read_file', { path: 'app.js' }, 'file content');
     planner.advance('shell', { command: 'bun test' }, 'all tests passed');
 

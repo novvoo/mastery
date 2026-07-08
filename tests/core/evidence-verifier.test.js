@@ -13,11 +13,11 @@ import {
 describe('evidence-verifier', () => {
   describe('isMutationEvent', () => {
     test('write_file is a mutation', () => {
-      expect(isMutationEvent({ name: 'write_file', success: true })).toBe(true);
+      expect(isMutationEvent({ name: 'write_file', success: true, args: { content: 'hello' } })).toBe(true);
     });
 
     test('edit_file is a mutation', () => {
-      expect(isMutationEvent({ name: 'edit_file', success: true })).toBe(true);
+      expect(isMutationEvent({ name: 'edit_file', success: true, args: { old_string: 'a', new_string: 'b' } })).toBe(true);
     });
 
     test('failed mutation does not count', () => {
@@ -133,7 +133,7 @@ describe('evidence-verifier', () => {
   describe('summarizeEvidence', () => {
     test('summarizes tool events correctly', () => {
       const events = [
-        { name: 'write_file', success: true },
+        { name: 'write_file', success: true, args: { content: 'hello' } },
         { name: 'shell', args: { command: 'bun test' }, success: true },
         { name: 'review', success: true },
       ];
@@ -163,7 +163,7 @@ describe('evidence-verifier', () => {
 
     test('blocks when verification missing after mutation', () => {
       const result = checkCompletionGates(
-        [{ name: 'write_file', success: true }],
+        [{ name: 'write_file', success: true, args: { content: 'hello' } }],
         { requireMutation: true, requireRuntimeVerification: true },
         { isModificationTask: true },
       );
@@ -174,7 +174,7 @@ describe('evidence-verifier', () => {
     test('passes when all gates satisfied', () => {
       const result = checkCompletionGates(
         [
-          { name: 'write_file', success: true },
+          { name: 'write_file', success: true, args: { content: 'hello' } },
           { name: 'shell', args: { command: 'bun test' }, success: true },
           { name: 'review', success: true },
         ],
@@ -192,7 +192,7 @@ describe('evidence-verifier', () => {
     test('does not require methodology evidence when the gate is disabled', () => {
       const result = checkCompletionGates(
         [
-          { name: 'write_file', success: true },
+          { name: 'write_file', success: true, args: { content: 'hello' } },
           { name: 'shell', args: { command: 'bun test' }, success: true },
         ],
         {
