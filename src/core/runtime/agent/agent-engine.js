@@ -92,6 +92,8 @@ import { LoopWatchdog } from './support/loop-watchdog.js';
 import { SessionRollbackManager } from './support/session-rollback.js';
 import { ContextCompactionManager } from './support/context-compaction.js';
 import { parseTokenBudget, stripTokenBudgetAnnotations } from './support/token-budget-parser.js';
+import { AutonomyEngine } from './support/autonomy-engine.js';
+import { FlowPlanCoordinator, WorkflowType } from './support/workflow-coordinator.js';
 
 const MAX_PAUSED_TURN_CONTINUATIONS = 8;
 import {
@@ -835,6 +837,8 @@ export class AgentEngine {
   #loopWatchdog;
   #sessionRollbackManager;
   #contextCompactionManager;
+  #autonomyEngine;
+  #workflowCoordinator;
 
   // ============ 运行态 ============
   #stopRequested = false;
@@ -1080,9 +1084,106 @@ export class AgentEngine {
       }
     });
 
+    // ============ Autonomy 工作流引擎 ============
+    this.#autonomyEngine = new AutonomyEngine({
+      persistenceDir: this.#config.autonomyPersistenceDir,
+      tickIntervalMs: this.#config.autonomyTickIntervalMs || 5000,
+      onExecuteStep: async (flow, step) => {
+        this.#ui.debugEvent?.('Autonomy step executing', {
+          flowId: flow.flowId,
+          stepName: step.name,
+          stepPrompt: this.#preview(step.prompt, 100),
+        });
+        // Execute the step by creating a sub-run with the step prompt
+        try {
+          const result = await this.run(step.prompt, {
+            maxIterations: this.#config.maxIterations || 10,
+            isAutonomyStep: true,
+            parentFlowId: flow.flowId,
+          });
+          this.#autonomyEngine.advanceFlow(flow.flowId, result);
+        } catch (err) {
+          this.#autonomyEngine.markStepFailed(flow.flowId, err);
+        }
+      },
+      onStateChange: (flow) => {
+        this.#ui.debugEvent?.('Autonomy flow state changed', {
+          flowId: flow.flowId,
+          status: flow.status,
+          progress: flow.progress,
+          currentStep: flow.currentStep?.name,
+        });
+      },
+    });
+    this.#autonomyEngine.load();
+
+    // ============ 统一工作流协调器 ============
+    this.#workflowCoordinator = new FlowPlanCoordinator({
+      onExecuteStep: async (workflow, step) => {
+        this.#ui.debugEvent?.('Coordinator executing step', {
+          workflowId: workflow.id,
+          workflowType: workflow.type,
+          stepId: step?.id,
+          stepName: step?.name,
+        });
+        if (workflow.type === WorkflowType.FLOW) {
+          return this.run(step.prompt, { isAutonomyStep: true, parentWorkflowId: workflow.id });
+        }
+        return null;
+      },
+      onExecutePlan: async (workflow, planStep) => {
+        this.#ui.debugEvent?.('Coordinator executing plan step', {
+          workflowId: workflow.id,
+          stepId: planStep?.id,
+        });
+        return null;
+      },
+    });
+
+    // 监听工作流事件，实现跨工作流协同
+    this.#workflowCoordinator.on('workflow:completed', (data) => {
+      this.#ui.debugEvent?.('Workflow completed', {
+        workflowId: data.workflowId,
+        type: data.workflow?.type,
+      });
+    });
+    this.#workflowCoordinator.on('workflow:triggered', (data) => {
+      this.#ui.debugEvent?.('Workflow triggered', {
+        source: data.sourceWorkflowId,
+        targetType: data.targetType,
+      });
+    });
+
     // ============ 公共 getter ============
     this.getLSPManager = () => this.#lspManager;
     this.getEditOrchestrator = () => this.#editOrchestrator;
+
+    // ============ Autonomy 工作流公共 API ============
+    this.createAutonomyFlow = (options) => {
+      const flow = this.#autonomyEngine.createFlow(options);
+      // 将 Flow 注册到统一工作流协调器
+      const flowWorkflow = this.#workflowCoordinator.registerFlow(flow, {
+        context: options.context || {},
+      });
+      this.#ui.debugEvent?.('Flow registered to coordinator', {
+        workflowId: flowWorkflow.id,
+        workflowType: flowWorkflow.type,
+      });
+      return flow;
+    };
+    this.queueAutonomyFlow = (flowOrId) => this.#autonomyEngine.queueFlow(flowOrId);
+    this.cancelAutonomyFlow = (flowId) => this.#autonomyEngine.cancelFlow(flowId);
+    this.getAutonomyStatus = () => this.#autonomyEngine.getStatus();
+    this.startAutonomyEngine = () => this.#autonomyEngine.start();
+    this.stopAutonomyEngine = () => this.#autonomyEngine.stop();
+
+    // ============ 统一工作流协调器公共 API ============
+    this.getWorkflowCoordinator = () => this.#workflowCoordinator;
+    this.getWorkflowStatus = () => this.#workflowCoordinator.getStatus();
+    this.shareWorkflowContext = (fromId, toId, keys) =>
+      this.#workflowCoordinator.shareContext(fromId, toId, keys);
+    this.registerWorkflowTrigger = (sourceId, pattern, targetType, targetOptions) =>
+      this.#workflowCoordinator.registerTrigger(sourceId, pattern, targetType, targetOptions);
   }
 
   // ============== 软工具要求：检测 + 升级 + 强制 ==============
@@ -1174,7 +1275,8 @@ export class AgentEngine {
    * @param {string} userInput
    * @returns {Promise<{success:boolean,status:string,answer:string,reason:string|null,iterations:number,durationMs:number,toolEvents:object[],error?:string,userInputRequest?:string}>}
    */
-  async run(userInput) {
+  async run(userInput, options = {}) {
+    const { isAutonomyStep = false, parentFlowId = null } = options;
     const runStartedAt = Date.now();
     // —— Metrics: 会话级标记（每次 run 都有独立的 runId）——
     const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -1241,8 +1343,11 @@ export class AgentEngine {
       /* 忽略 */
     }
     this.#stopRequested = false;
-    this.#loopWatchdog?.start?.();
+    if (!isAutonomyStep) {
+      this.#loopWatchdog?.start?.();
+    }
     this.#ui.debugEvent?.('Agent run started', {
+      isAutonomyStep,
       inputPreview: this.#preview(userInput, 240),
       workingDirectory: this.#config.workingDirectory,
       maxIterations: this.#config.maxIterations,
@@ -1490,6 +1595,17 @@ export class AgentEngine {
         summary: this.#planSummary(executionPlan),
       });
       this.#sessionManager.addUserMessage(this.#executionPlanManager.buildPrompt());
+
+      // 将 Plan 注册到统一工作流协调器
+      const planWorkflow = this.#workflowCoordinator.registerPlan(
+        this.#executionPlanManager,
+        executionPlan,
+        { context: { userInput, taskProfile } },
+      );
+      this.#ui.debugEvent?.('Plan registered to coordinator', {
+        workflowId: planWorkflow.id,
+        workflowType: planWorkflow.type,
+      });
     }
 
     // ============================================================
@@ -2840,6 +2956,9 @@ export class AgentEngine {
     } catch {}
     try {
       this.#advisorRuntime?.dispose?.();
+    } catch {}
+    try {
+      this.#autonomyEngine?.stop?.();
     } catch {}
   }
 

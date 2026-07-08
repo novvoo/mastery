@@ -1955,7 +1955,9 @@ export class ReActAgent {
       ...value,
       questions: Array.isArray(value.questions)
         ? value.questions.map((question) => String(question || '').trim()).filter(Boolean)
-        : [],
+        : typeof value.question === 'string' && value.question.trim()
+          ? [value.question.trim()]
+          : [],
       blockingFacts: value.blockingFacts || value.blocking_facts || [],
       suggestions: value.suggestions || [],
     };
