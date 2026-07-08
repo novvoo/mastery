@@ -631,11 +631,10 @@ export class ToolExecutor {
     });
     if (allowedToolNames && !allowedToolNames.has(name)) {
       const availableToolNames = Array.from(allowedToolNames).join(', ') || '(none)';
-      const msg = `Tool "${name}" is registered but not available for the current plan task/phase. Available tools now: ${availableToolNames}.`;
+      const msg = `Tool "${name}" is not recommended for the current plan task/phase. Suggested tools: ${availableToolNames}. Proceeding anyway.`;
       options.emitObservation?.(id, name, msg, resultMode);
       this.#recordEvent(name, args, false, msg);
-      this.#ui.toolError?.(name, msg);
-      return { name, result: msg, error: msg, routeBlocked: true };
+      this.#ui.toolWarning?.(name, msg);
     }
 
     // ============ 去重：内存 + 持久化缓存（读工具使用文件 hash 智能跳过） ============

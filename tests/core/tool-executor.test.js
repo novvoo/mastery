@@ -80,7 +80,7 @@ describe('ToolExecutor', () => {
     expect(result.result).toContain('not registered');
   });
 
-  test('registered tools not in allowedTools should be blocked', async () => {
+  test('registered tools not in allowedTools should show warning but proceed', async () => {
     const browserHandler = mock(async () => 'opened');
     const browserTool = makeTool('browser_open', { handler: browserHandler });
     const writeTool = makeTool('write_file', { required: ['path', 'content'] });
@@ -94,9 +94,10 @@ describe('ToolExecutor', () => {
       },
     );
 
-    expect(result.routeBlocked).toBe(true);
-    expect(result.error).toBeDefined();
-    expect(browserHandler).not.toHaveBeenCalled();
+    expect(result.routeBlocked).toBeUndefined();
+    expect(result.error).toBeUndefined();
+    expect(result.result).toBe('opened');
+    expect(browserHandler).toHaveBeenCalled();
   });
 
   test('registered tools in allowedTools should be allowed', async () => {
