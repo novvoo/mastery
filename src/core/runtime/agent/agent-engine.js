@@ -80,6 +80,7 @@ import {
   EXPLORATION_BUDGET,
   FORCE_ACTION_GRACE_TURNS,
 } from '../../agent/constants.js';
+import { SteeringQueue, createUserInterjection } from './support/steering-queue.js';
 
 const MAX_PAUSED_TURN_CONTINUATIONS = 8;
 import { getToolEffect, isMeaningfulProgress, isProgressFromResult, isLandedMutation, ToolEffect } from './support/tool-semantics.js';
@@ -814,6 +815,7 @@ export class AgentEngine {
 
   // ============ 运行态 ============
   #stopRequested = false;
+  #steeringQueue = null;
   #lastRunResult = null;
   #lastUserInput = null;
   #conversationJournal;
@@ -899,6 +901,15 @@ export class AgentEngine {
     }
     this.#retryStrategy = new RetryStrategy();
     this.#textToolParser = new TextToolParser(this.#toolRegistry);
+    this.#steeringQueue = new SteeringQueue({
+      maxQueueSize: 10,
+      onSteerQueued: (steer) => {
+        this.#ui.debugEvent?.('Steer message queued', {
+          type: steer.type,
+          preview: this.#preview(steer.message, 100),
+        });
+      },
+    });
     this.#intentClassifier = this.#config.intentClassification
       ? new IntentClassifier(modelProvider, this.#toolRegistry, this.#config.intentClassifier || {})
       : null;
@@ -1460,6 +1471,16 @@ export class AgentEngine {
         });
       }
       this.#ui.iteration?.(iteration, maxIterations);
+
+      // ========== Steering 消息处理：检查用户中途输入 ==========
+      const steerContent = this.#steeringQueue.drainAndMerge();
+      if (steerContent) {
+        this.#sessionManager.addUserMessage(steerContent);
+        this.#ui.debugEvent?.('Steering message injected', {
+          iteration,
+          queueLength: this.#steeringQueue.length,
+        });
+      }
 
       // 停滞检测：注入 nudge 或进度检查点
       const planSummary = executionPlan ? this.#planSummary(executionPlan) : null;
@@ -2497,6 +2518,26 @@ export class AgentEngine {
   /** 中断当前 run（在下一次 while 循环检查时退出） */
   stop() {
     this.#stopRequested = true;
+  }
+
+  /**
+   * 注入 steering 消息（用户中途输入）。
+   * 消息会在下一轮迭代开始时被注入到对话中。
+   *
+   * @param {string} message - 用户消息内容
+   * @param {object} options - 选项
+   * @returns {boolean} 是否成功注入
+   */
+  steer(message, options = {}) {
+    if (!this.#steeringQueue) {
+      return false;
+    }
+    return this.#steeringQueue.queueSteer(message, options);
+  }
+
+  /** 检查是否有待处理的 steering 消息 */
+  hasPendingSteer() {
+    return this.#steeringQueue?.hasPendingSteer() || false;
   }
 
   /** 挂载 modelProvider（支持两步初始化：先构造引擎，再连模型） */
