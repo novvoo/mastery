@@ -421,8 +421,7 @@ export function selectPlanType(profile = {}, userInput = '') {
     const readOnlyBug =
       best.type === PlanType.BUG_FIX &&
       profile?.allowsMutation === false &&
-      !profile?.isCodingTask &&
-      !profile?.isModificationTask;
+      profile?.mode !== 'mutate';
     return readOnlyBug ? PlanType.ANALYSIS : best.type;
   }
 

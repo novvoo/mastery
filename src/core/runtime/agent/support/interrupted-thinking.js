@@ -129,7 +129,6 @@ Interrupted at: ${new Date(metadata.interruptedAt || Date.now()).toISOString()}
 </status>
 </interrupted_thinking>`;
 
-
     return {
       type: 'interrupted_thinking',
       content: template,
@@ -234,9 +233,7 @@ export function hasIncompleteThinking(message) {
   // 检查是否有未签名的 thinking 块
   return content.some(
     (block) =>
-      block?.type === 'thinking' &&
-      block?.thinking?.trim().length > 0 &&
-      !block?.thinkingSignature
+      block?.type === 'thinking' && block?.thinking?.trim().length > 0 && !block?.thinkingSignature,
   );
 }
 

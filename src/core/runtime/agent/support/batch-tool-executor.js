@@ -116,12 +116,7 @@ export class ToolCallDependencyAnalyzer {
     const args2 = call2.arguments || call2.function?.arguments || {};
 
     // mutation 工具对任何后续工具都有依赖
-    const mutationTools = new Set([
-      'write_file',
-      'edit_file',
-      'delete_file',
-      'rename_file',
-    ]);
+    const mutationTools = new Set(['write_file', 'edit_file', 'delete_file', 'rename_file']);
 
     if (mutationTools.has(name1)) {
       return true;

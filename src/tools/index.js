@@ -11,6 +11,7 @@ import { createSemanticSearchTool } from './memory/semantic-search.js';
 import { createDocumentRagTools } from './memory/document-rag.js';
 import { createStructuredMemoryTools } from './memory/structured-memory-tools.js';
 import { createGitTools } from './git/git-tools.js';
+import { createCheckpointTools } from './git/checkpoint-tools.js';
 import { createWebTools } from './web/web-tools.js';
 import { createPreviewTools } from './web/preview-tools.js';
 import { createMCPTools } from './mcp/mcp-tools.js';
@@ -96,6 +97,7 @@ export function createCoreTools({
     ...createDocumentRagTools(),
     ...createStructuredMemoryTools(),
     ...createGitTools(),
+    ...createCheckpointTools(),
     ...createWebTools(),
     ...createPreviewTools(),
     ...(mcpClient ? createMCPTools(mcpClient) : []),

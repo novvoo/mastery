@@ -440,8 +440,10 @@ export function hasMeaningfulResult(toolName, result) {
     if (keys.length === 0) return false;
     if (result.error) return false;
     if (result.found != null) return Boolean(result.found) || result.count > 0;
-    if (result.matches != null) return Array.isArray(result.matches) ? result.matches.length > 0 : Boolean(result.matches);
-    if (result.results != null) return Array.isArray(result.results) ? result.results.length > 0 : Boolean(result.results);
+    if (result.matches != null)
+      return Array.isArray(result.matches) ? result.matches.length > 0 : Boolean(result.matches);
+    if (result.results != null)
+      return Array.isArray(result.results) ? result.results.length > 0 : Boolean(result.results);
     return keys.length > 0;
   }
 

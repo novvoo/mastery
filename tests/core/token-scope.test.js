@@ -21,9 +21,11 @@ describe('TokenScope', () => {
     expect(stats.totalCost).toBeGreaterThan(0);
   });
 
-  test('calculateCost returns 0 for unknown model', () => {
+  test('calculateCost uses fallback for unknown model', () => {
     const scope = new TokenScope();
-    expect(scope.calculateCost('unknown-model', 1000, 500)).toBe(0);
+    const cost = scope.calculateCost('unknown-model', 1_000_000, 1_000_000);
+    expect(cost).toBeGreaterThan(0);
+    expect(scope.getUnknownModels()).toContain('unknown-model');
   });
 
   test('calculateCost computes correct cost for gpt-4o', () => {

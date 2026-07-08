@@ -81,9 +81,26 @@ import {
   FORCE_ACTION_GRACE_TURNS,
 } from '../../agent/constants.js';
 import { SteeringQueue, createUserInterjection } from './support/steering-queue.js';
+import {
+  AdviseTool,
+  isInterruptingSeverity,
+  resolveAdvisorDeliveryChannel,
+} from './support/advise-tool.js';
+import { AdvisorEmissionGuard } from './support/emission-guard.js';
+import { AdvisorRuntime } from './support/advisor-runtime.js';
+import { LoopWatchdog } from './support/loop-watchdog.js';
+import { SessionRollbackManager } from './support/session-rollback.js';
+import { ContextCompactionManager } from './support/context-compaction.js';
+import { parseTokenBudget, stripTokenBudgetAnnotations } from './support/token-budget-parser.js';
 
 const MAX_PAUSED_TURN_CONTINUATIONS = 8;
-import { getToolEffect, isMeaningfulProgress, isProgressFromResult, isLandedMutation, ToolEffect } from './support/tool-semantics.js';
+import {
+  getToolEffect,
+  isMeaningfulProgress,
+  isProgressFromResult,
+  isLandedMutation,
+  ToolEffect,
+} from './support/tool-semantics.js';
 import { analyzeHashlinePatchResult } from './support/hashline-plan-policy.js';
 import { loadRuntimeEnv } from '../runtime-config.js';
 import { createConfiguredModelProvider } from '../../../cli/model-provider-factory.js';
@@ -812,6 +829,12 @@ export class AgentEngine {
   #tokenScope;
   #contextProjection;
   #onDemandContext;
+  #advisorRuntime;
+  #advisorEmissionGuard;
+  #adviseTool;
+  #loopWatchdog;
+  #sessionRollbackManager;
+  #contextCompactionManager;
 
   // ============ 运行态 ============
   #stopRequested = false;
@@ -1033,6 +1056,30 @@ export class AgentEngine {
     this.#contextManager = null; // 在 run() 中懒创建（需要 sessionManager 就绪）
     this.#stagnationDetector = new StagnationDetector();
 
+    // ============ 新机制子系统初始化 ============
+    this.#loopWatchdog = new LoopWatchdog({
+      intervalMs: 250,
+      thresholdMs: 250,
+      onBlocked: (blockedMs, phase) => {
+        this.#ui.debugEvent?.('Loop blocked detected', { blockedMs, phase });
+      },
+    });
+    this.#sessionRollbackManager = new SessionRollbackManager(this.#sessionManager);
+    this.#contextCompactionManager = new ContextCompactionManager({
+      targetTokens: this.#config.maxTokens ? this.#config.maxTokens * 0.8 : 10000,
+      minTokens: 5000,
+      maxMessages: 50,
+      onCompaction: (info) => {
+        this.#ui.debugEvent?.('Context compacted', info);
+      },
+    });
+    this.#advisorEmissionGuard = new AdvisorEmissionGuard();
+    this.#adviseTool = new AdviseTool((note, severity) => {
+      if (this.#advisorEmissionGuard.accept(note)) {
+        this.#enqueueAdvisorAdvice(note, severity);
+      }
+    });
+
     // ============ 公共 getter ============
     this.getLSPManager = () => this.#lspManager;
     this.getEditOrchestrator = () => this.#editOrchestrator;
@@ -1077,24 +1124,27 @@ export class AgentEngine {
     if (!this.#softToolRequired) return;
     const requiredName = this.#softToolRequired.toolName;
     const hasRequired = allToolCalls.some((tc) => (tc.name || tc.function?.name) === requiredName);
-    
+
     if (hasRequired) {
       this.#softToolRequired = null;
       this.#toolEmptyArgFailures.delete(requiredName);
       this.#ui.debugEvent?.('Soft tool requirement satisfied', { toolName: requiredName });
       return { shouldExecute: true };
     }
-    
+
     this.#softToolRequired.escalations++;
-    
+
     if (this.#softToolRequired.escalations >= 3) {
       this.#ui.debugEvent?.('Soft tool requirement exceeded max escalations', {
         toolName: requiredName,
         escalations: this.#softToolRequired.escalations,
       });
-      return { shouldExecute: false, skipReason: `Soft tool requirement '${requiredName}' was not satisfied after 3 forced turns; aborting to avoid an unbounded force loop.` };
+      return {
+        shouldExecute: false,
+        skipReason: `Soft tool requirement '${requiredName}' was not satisfied after 3 forced turns; aborting to avoid an unbounded force loop.`,
+      };
     }
-    
+
     if (this.#softToolRequired.escalations >= 1) {
       this.#ui.debugEvent?.('Soft tool requirement escalated', {
         toolName: requiredName,
@@ -1105,7 +1155,7 @@ export class AgentEngine {
         toolName: requiredName,
       });
     }
-    
+
     return { shouldExecute: true };
   }
 
@@ -1129,6 +1179,21 @@ export class AgentEngine {
     // —— Metrics: 会话级标记（每次 run 都有独立的 runId）——
     const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
     this.#lastUserInput = userInput;
+
+    // ========== Token Budget 解析 ==========
+    const parsedBudget = parseTokenBudget(userInput);
+    if (parsedBudget && parsedBudget > 0) {
+      const strippedInput = stripTokenBudgetAnnotations(userInput);
+      if (strippedInput !== userInput) {
+        this.#lastUserInput = strippedInput;
+        userInput = strippedInput;
+      }
+      this.#config.maxTokens = Math.min(parsedBudget, this.#config.maxTokens || parsedBudget);
+      this.#ui.debugEvent?.('Token budget parsed from input', {
+        budget: parsedBudget,
+        effectiveMaxTokens: this.#config.maxTokens,
+      });
+    }
 
     if (!this.#sessionId) {
       this.#sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -1176,6 +1241,7 @@ export class AgentEngine {
       /* 忽略 */
     }
     this.#stopRequested = false;
+    this.#loopWatchdog?.start?.();
     this.#ui.debugEvent?.('Agent run started', {
       inputPreview: this.#preview(userInput, 240),
       workingDirectory: this.#config.workingDirectory,
@@ -1305,11 +1371,14 @@ export class AgentEngine {
     );
 
     // Eager Todo Write prelude: 对多步任务，提示模型先分解用户原始指令再用 TodoWrite 跟踪
-    const hasMultipleSteps = /(?:then|after\s+(?:that|which)|next|and\s+then|首先|然后|接着|之后|第一步|第二步|步骤)/i.test(
-      userInput,
-    ) || /\d+\s*(?:step|phase|stage|阶段|步)/i.test(userInput) || /(?:\n|[,;、，；])\s*(?:implement|create|fix|add|write|test|build|run|deploy|实现|创建|修复|添加|编写|测试|构建|运行|部署)/i.test(
-      userInput,
-    );
+    const hasMultipleSteps =
+      /(?:then|after\s+(?:that|which)|next|and\s+then|首先|然后|接着|之后|第一步|第二步|步骤)/i.test(
+        userInput,
+      ) ||
+      /\d+\s*(?:step|phase|stage|阶段|步)/i.test(userInput) ||
+      /(?:\n|[,;、，；])\s*(?:implement|create|fix|add|write|test|build|run|deploy|实现|创建|修复|添加|编写|测试|构建|运行|部署)/i.test(
+        userInput,
+      );
     if (hasMultipleSteps) {
       this.#sessionManager.addSystemMessage(
         `[SYSTEM REMINDER] The user provided a multi-step request. Before beginning work, call TodoWrite to capture the full breakdown of ALL steps. This ensures you do not lose track of any requirement as you work. Each distinct step should be its own todo item. Mark the first actionable step as in_progress and execute it. Update the todo list as you progress.`,
@@ -2499,6 +2568,14 @@ export class AgentEngine {
       // edit → addEpisodic() → refresh layer4_memory → 下一轮 LLM 看到更新后的记忆
       // 这修复了之前记忆闭环的断裂点：memory 在 run 内可见，而非仅跨 run 可见。
       this.#refreshMemoryAfterTools(execResults);
+
+      // ========== 上下文维护：自动压缩与检查点 ==========
+      this.#compactContextIfNeeded();
+
+      // 每 5 轮创建一个检查点
+      if (iteration % 5 === 0) {
+        this.#createCheckpoint(`iteration_${iteration}`);
+      }
     }
 
     // 达到迭代上限仍未完成
@@ -2757,6 +2834,12 @@ export class AgentEngine {
     } catch {}
     try {
       this.#workspaceIndex?.stopPeriodicSync?.();
+    } catch {}
+    try {
+      this.#loopWatchdog?.stop?.();
+    } catch {}
+    try {
+      this.#advisorRuntime?.dispose?.();
     } catch {}
   }
 
@@ -3397,9 +3480,7 @@ export class AgentEngine {
     const reason = normalized.reason || '需要用户补充信息';
     const questions = normalized.questions || [];
     const answer =
-      normalized.answer ||
-      questions.map((q, i) => `${i + 1}. ${q}`).join('\n') ||
-      reason;
+      normalized.answer || questions.map((q, i) => `${i + 1}. ${q}`).join('\n') || reason;
 
     // 存储待处理的用户输入请求，供外部（如 session-state / UI）获取
     this.#pendingUserInputRequest = {
@@ -3638,6 +3719,77 @@ export class AgentEngine {
   #preview(value, maxLength = 200) {
     const text = value === null || value === undefined ? '' : String(value);
     return text.length > maxLength ? text.substring(0, maxLength) + '... (truncated)' : text;
+  }
+
+  #enqueueAdvisorAdvice(note, severity) {
+    const channel = resolveAdvisorDeliveryChannel({
+      severity,
+      autoResumeSuppressed: false,
+      streaming: false,
+      aborting: false,
+      interruptImmuneTurnActive: false,
+    });
+
+    if (channel === 'steer') {
+      this.#steeringQueue?.queueSteer(`[ADVISOR ${severity?.toUpperCase() || 'NOTE'}] ${note}`);
+    } else {
+      this.#sessionManager.addSystemMessage(
+        `[ADVISOR ${severity?.toUpperCase() || 'NOTE'}] ${note}`,
+      );
+    }
+
+    this.#ui.debugEvent?.('Advisor advice enqueued', {
+      note: this.#preview(note, 100),
+      severity,
+      channel,
+    });
+  }
+
+  #createCheckpoint(reason) {
+    try {
+      const checkpointId = this.#sessionRollbackManager?.createCheckpoint(reason);
+      this.#ui.debugEvent?.('Checkpoint created', { checkpointId, reason });
+      return checkpointId;
+    } catch (err) {
+      this.#ui.debugEvent?.('Checkpoint creation failed', { err: String(err) });
+      return null;
+    }
+  }
+
+  #rollbackToCheckpoint(checkpointId) {
+    try {
+      const checkpoint = this.#sessionRollbackManager?.rollbackToCheckpoint(checkpointId);
+      this.#ui.debugEvent?.('Rollback to checkpoint', { checkpointId });
+      return checkpoint;
+    } catch (err) {
+      this.#ui.debugEvent?.('Rollback failed', { checkpointId, err: String(err) });
+      return null;
+    }
+  }
+
+  #compactContextIfNeeded() {
+    try {
+      const history = this.#sessionManager?.getHistory?.() || [];
+      const tokenCount = ContextCompactionManager.estimateTokens(history);
+
+      if (this.#contextCompactionManager?.shouldCompact(history, tokenCount)) {
+        const compacted = this.#contextCompactionManager.compact(
+          history,
+          ContextCompactionManager.estimateTokens,
+        );
+        if (compacted.length !== history.length) {
+          this.#sessionManager?.setHistory?.(compacted);
+          this.#ui.debugEvent?.('Context compacted', {
+            originalCount: history.length,
+            compactedCount: compacted.length,
+            originalTokens: tokenCount,
+            compactedTokens: ContextCompactionManager.estimateTokens(compacted),
+          });
+        }
+      }
+    } catch (err) {
+      this.#ui.debugEvent?.('Context compaction failed', { err: String(err) });
+    }
   }
 
   #phaseFromIteration(iteration, maxIterations) {

@@ -8,18 +8,20 @@
  */
 
 const DEFAULT_PRICING = {
-  'gpt-4o': { input: 5.0, output: 15.0 },
-  'gpt-4o-mini': { input: 0.15, output: 0.6 },
-  'gpt-4-turbo': { input: 10.0, output: 30.0 },
-  'gpt-4': { input: 30.0, output: 60.0 },
-  'claude-3-opus': { input: 15.0, output: 75.0 },
-  'claude-3-sonnet': { input: 3.0, output: 15.0 },
-  'claude-3-haiku': { input: 0.25, output: 1.25 },
-  'claude-3.5-sonnet': { input: 3.0, output: 15.0 },
-  'claude-3.5-haiku': { input: 0.8, output: 4.0 },
-  'gemini-1.5-pro': { input: 3.5, output: 10.5 },
-  'gemini-1.5-flash': { input: 0.075, output: 0.3 },
+  'gpt-4o': { input: 5.0, output: 15.0, cacheRead: 1.25, cacheWrite: 5.0 },
+  'gpt-4o-mini': { input: 0.15, output: 0.6, cacheRead: 0.0375, cacheWrite: 0.15 },
+  'gpt-4-turbo': { input: 10.0, output: 30.0, cacheRead: 2.5, cacheWrite: 10.0 },
+  'gpt-4': { input: 30.0, output: 60.0, cacheRead: 7.5, cacheWrite: 30.0 },
+  'claude-3-opus': { input: 15.0, output: 75.0, cacheRead: 1.5, cacheWrite: 18.75 },
+  'claude-3-sonnet': { input: 3.0, output: 15.0, cacheRead: 0.3, cacheWrite: 3.75 },
+  'claude-3-haiku': { input: 0.25, output: 1.25, cacheRead: 0.025, cacheWrite: 0.3125 },
+  'claude-3.5-sonnet': { input: 3.0, output: 15.0, cacheRead: 0.3, cacheWrite: 3.75 },
+  'claude-3.5-haiku': { input: 0.8, output: 4.0, cacheRead: 0.08, cacheWrite: 1.0 },
+  'gemini-1.5-pro': { input: 3.5, output: 10.5, cacheRead: 0.875, cacheWrite: 3.5 },
+  'gemini-1.5-flash': { input: 0.075, output: 0.3, cacheRead: 0.01875, cacheWrite: 0.075 },
 };
+
+const DEFAULT_UNKNOWN_MODEL_COST = { input: 3.0, output: 15.0, cacheRead: 0.3, cacheWrite: 3.75 };
 
 export class TokenScope {
   #sessionStats;
@@ -52,20 +54,24 @@ export class TokenScope {
       model,
       inputTokens,
       outputTokens,
+      cacheReadTokens = 0,
+      cacheWriteTokens = 0,
       userId,
       timestamp = Date.now(),
       requestId,
       metadata = {},
     } = request;
 
-    const cost = this.calculateCost(model, inputTokens, outputTokens);
+    const cost = this.calculateCost(model, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens);
 
     const record = {
       requestId: requestId || this.generateId(),
       model,
       inputTokens,
       outputTokens,
-      totalTokens: inputTokens + outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
+      totalTokens: inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens,
       cost,
       userId,
       timestamp,
@@ -112,16 +118,38 @@ export class TokenScope {
     return record;
   }
 
-  calculateCost(model, inputTokens, outputTokens) {
+  calculateCost(model, inputTokens, outputTokens, cacheReadTokens = 0, cacheWriteTokens = 0) {
     const pricing = this.#pricing[model];
     if (!pricing) {
-      return 0;
+      // Unknown model: use default cost and track it
+      this.#trackUnknownModel(model);
+      const fallback = DEFAULT_UNKNOWN_MODEL_COST;
+      const inputCost = (inputTokens / 1_000_000) * fallback.input;
+      const outputCost = (outputTokens / 1_000_000) * fallback.output;
+      const cacheReadCost = (cacheReadTokens / 1_000_000) * fallback.cacheRead;
+      const cacheWriteCost = (cacheWriteTokens / 1_000_000) * fallback.cacheWrite;
+      return inputCost + outputCost + cacheReadCost + cacheWriteCost;
     }
 
     const inputCost = (inputTokens / 1_000_000) * pricing.input;
     const outputCost = (outputTokens / 1_000_000) * pricing.output;
+    const cacheReadCost = pricing.cacheRead !== undefined ? (cacheReadTokens / 1_000_000) * pricing.cacheRead : 0;
+    const cacheWriteCost = pricing.cacheWrite !== undefined ? (cacheWriteTokens / 1_000_000) * pricing.cacheWrite : 0;
 
-    return inputCost + outputCost;
+    return inputCost + outputCost + cacheReadCost + cacheWriteCost;
+  }
+
+  #unknownModels = new Set();
+
+  #trackUnknownModel(model) {
+    if (!this.#unknownModels.has(model)) {
+      this.#unknownModels.add(model);
+      console.warn(`[TokenScope] Unknown model "${model}" — using default pricing fallback`);
+    }
+  }
+
+  getUnknownModels() {
+    return [...this.#unknownModels];
   }
 
   #checkBudget(userId, currentCost) {

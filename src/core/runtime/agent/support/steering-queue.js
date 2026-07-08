@@ -211,9 +211,11 @@ export function createUserInterjection(message) {
  * @returns {boolean}
  */
 export function isSteeringMessage(message) {
-  return message.includes('<user_interjection>') ||
-         message.includes('<system_reminder>') ||
-         message.includes('<collab_message>');
+  return (
+    message.includes('<user_interjection>') ||
+    message.includes('<system_reminder>') ||
+    message.includes('<collab_message>')
+  );
 }
 
 /**
@@ -230,7 +232,9 @@ export function extractSteerContent(message) {
   }
 
   // 匹配纯文本转向消息
-  const interjectionMatch = message.match(/<user_interjection>[\s\S]*?<message>([\s\S]*?)<\/message>[\s\S]*?<\/user_interjection>/);
+  const interjectionMatch = message.match(
+    /<user_interjection>[\s\S]*?<message>([\s\S]*?)<\/message>[\s\S]*?<\/user_interjection>/,
+  );
   if (interjectionMatch) {
     return interjectionMatch[1].trim();
   }
