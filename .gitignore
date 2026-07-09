@@ -46,3 +46,4 @@ desktop/renderer/dist/
 .test-e2e-write-file/
 .agent-memory/
 ./uploads/
+.checkpoints/
