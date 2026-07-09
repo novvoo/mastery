@@ -14,7 +14,9 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
   });
 
   afterAll(() => {
-    try { resetEventBus(); } catch {}
+    try {
+      resetEventBus();
+    } catch {}
   });
 
   test('DesktopCore UI adapter includes waitingForUserInput method', async () => {
@@ -63,7 +65,9 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
     expect(matchingEvents[0].data.questions).toContain('你想要什么颜色？');
 
     unsubscribe();
-    try { await core.dispose(); } catch {}
+    try {
+      await core.dispose();
+    } catch {}
     resetEventBus();
   });
 
@@ -82,7 +86,8 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
       questions: ['使用 REST 还是 GraphQL？'],
       blockingFacts: [],
       suggestions: ['REST for simplicity', 'GraphQL for flexibility'],
-      answer: '需要你补充一点信息后我才能继续。\n\n原因：需要确认技术方案\n\n请回答：\n1. 使用 REST 还是 GraphQL？',
+      answer:
+        '需要你补充一点信息后我才能继续。\n\n原因：需要确认技术方案\n\n请回答：\n1. 使用 REST 还是 GraphQL？',
     };
 
     eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
@@ -92,9 +97,7 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
       data: testInfo,
     });
 
-    const needsInputEvents = receivedUpdates.filter(
-      (e) => e.status === 'needs_user_input',
-    );
+    const needsInputEvents = receivedUpdates.filter((e) => e.status === 'needs_user_input');
     expect(needsInputEvents.length).toBe(1);
     expect(needsInputEvents[0].data.questions[0]).toContain('REST');
     expect(needsInputEvents[0].data.suggestions).toContain('REST for simplicity');
@@ -311,37 +314,81 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
 
   // ========== AskUserFloatingCapsule 自动展开/折叠逻辑 ==========
 
-  test('capsule isExpanded reflects askUserInfo state', () => {
-    // 模拟 AskUserFloatingCapsule 内部 isExpanded 计算
+  test('capsule isExpanded treats structured ask_user fields as active requests', () => {
+    // Mirrors AskUserFloatingCapsule's observable expand/collapse contract.
     const computeIsExpanded = (askUserInfo, manuallyExpanded) => {
-      const hasActiveRequest = !!(askUserInfo?.message || askUserInfo?.answer);
+      const questions = Array.isArray(askUserInfo?.questions)
+        ? askUserInfo.questions
+        : askUserInfo?.question
+          ? [askUserInfo.question]
+          : [];
+      const blockingFacts = askUserInfo?.blockingFacts || askUserInfo?.blocking_facts || [];
+      const suggestions = askUserInfo?.suggestions || [];
+      const hasActiveRequest = !!(
+        String(askUserInfo?.message || askUserInfo?.answer || '').trim() ||
+        String(askUserInfo?.reason || '').trim() ||
+        questions.some((question) => String(question || '').trim()) ||
+        blockingFacts.some((fact) => String(fact || '').trim()) ||
+        suggestions.some((suggestion) => String(suggestion || '').trim())
+      );
       return hasActiveRequest || manuallyExpanded;
     };
 
-    // 无 ask_user + 无手动展开 → 折叠
     expect(computeIsExpanded(null, false)).toBe(false);
-
-    // ask_user 激活 → 自动展开
-    expect(
-      computeIsExpanded({ message: '请回答', answer: '请回答' }, false),
-    ).toBe(true);
-    expect(
-      computeIsExpanded({ message: '请回答' }, false),
-    ).toBe(true);
-    expect(
-      computeIsExpanded({ answer: '请回答' }, false),
-    ).toBe(true);
-
-    // 无 ask_user + 手动展开 → 展开
+    expect(computeIsExpanded({ message: '请回答' }, false)).toBe(true);
+    expect(computeIsExpanded({ answer: '请回答' }, false)).toBe(true);
+    expect(computeIsExpanded({ questions: ['使用 REST 还是 GraphQL？'] }, false)).toBe(true);
+    expect(computeIsExpanded({ question: '确认部署到生产环境吗？' }, false)).toBe(true);
     expect(computeIsExpanded(null, true)).toBe(true);
-
-    // ask_user 激活 + 手动展开 → 展开
-    expect(computeIsExpanded({ message: 'q' }, true)).toBe(true);
   });
 
-  test('capsule auto-collapses when askUserInfo becomes null', () => {
-    // 模拟 useEffect：askUserInfo 由有变无时清空 manuallyExpanded
-    let askUserInfo = { message: 'q' };
+  test('capsule display includes actual question text from structured askUserInfo', () => {
+    const renderCapsuleText = (askUserInfo) => {
+      const normalizeStringList = (value) => {
+        if (!Array.isArray(value)) return [];
+        return value.map((item) => String(item || '').trim()).filter(Boolean);
+      };
+      const questions = normalizeStringList(
+        Array.isArray(askUserInfo?.questions)
+          ? askUserInfo.questions
+          : askUserInfo?.question
+            ? [askUserInfo.question]
+            : [],
+      );
+      const reason = String(askUserInfo?.reason || '').trim();
+      const displayMessage = String(askUserInfo?.message || askUserInfo?.answer || '').trim();
+
+      const lines = ['需要你的回答'];
+      if (reason) lines.push(`原因：${reason}`);
+      if (questions.length > 0) {
+        lines.push('请回答：');
+        questions.forEach((question, index) => {
+          lines.push(`${index + 1}. ${question}`);
+        });
+      } else if (displayMessage) {
+        lines.push(displayMessage);
+      } else {
+        lines.push('暂无待回答的问题，等待 Agent 提问...');
+      }
+      return lines.join('\n');
+    };
+
+    const renderedFromQuestions = renderCapsuleText({
+      message: '需要你补充一点信息后我才能继续。',
+      questions: ['请选择部署区域？'],
+    });
+    expect(renderedFromQuestions).toContain('请回答：');
+    expect(renderedFromQuestions).toContain('1. 请选择部署区域？');
+
+    const renderedFromSingularQuestion = renderCapsuleText({
+      question: '确认使用 SQLite 吗？',
+    });
+    expect(renderedFromSingularQuestion).toContain('请回答：');
+    expect(renderedFromSingularQuestion).toContain('1. 确认使用 SQLite 吗？');
+  });
+
+  test('capsule auto-collapses only after structured ask_user data is gone', () => {
+    let askUserInfo = { questions: ['请选择数据库？'] };
     let manuallyExpanded = true; // 用户曾手动展开
 
     const onHasActiveRequestChange = (newHasActiveRequest) => {
@@ -350,17 +397,29 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
       }
     };
 
-    const hasActiveRequest = (info) => !!(info?.message || info?.answer);
+    const hasActiveRequest = (info) => {
+      const questions = Array.isArray(info?.questions)
+        ? info.questions
+        : info?.question
+          ? [info.question]
+          : [];
+      const blockingFacts = info?.blockingFacts || info?.blocking_facts || [];
+      const suggestions = info?.suggestions || [];
+      return !!(
+        String(info?.message || info?.answer || '').trim() ||
+        String(info?.reason || '').trim() ||
+        questions.some((question) => String(question || '').trim()) ||
+        blockingFacts.some((fact) => String(fact || '').trim()) ||
+        suggestions.some((suggestion) => String(suggestion || '').trim())
+      );
+    };
 
-    // 初始: ask_user 激活
-    expect(manuallyExpanded).toBe(true);
     onHasActiveRequestChange(hasActiveRequest(askUserInfo));
-    expect(manuallyExpanded).toBe(true); // 有 ask_user，保持手动展开
+    expect(manuallyExpanded).toBe(true); // 仅 questions 存在时仍是激活的 ask_user
 
-    // ask_user 结束（askUserInfo 清空）→ 立即清空 manuallyExpanded
     askUserInfo = null;
     onHasActiveRequestChange(hasActiveRequest(askUserInfo));
-    expect(manuallyExpanded).toBe(false); // 自动折叠回去
+    expect(manuallyExpanded).toBe(false); // ask_user 结束后自动折叠回去
   });
 
   test('handleSubmit clears askUserInfo only after continuation is accepted', async () => {
@@ -463,9 +522,7 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
 
     await handleContinueAgentInput('继续信息');
 
-    expect(calls).toEqual([
-      { input: '继续信息', options: { model: 'test', continuation: true } },
-    ]);
+    expect(calls).toEqual([{ input: '继续信息', options: { model: 'test', continuation: true } }]);
     expect(historyWrites).toEqual([]);
   });
 
