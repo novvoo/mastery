@@ -355,28 +355,28 @@ export function shouldBlockCodingFinal(userInput, responseText, { taskProfile, t
     };
   }
 
-  // 2) 有工具调用但只有读操作/测试命令（没有代码修改）→ 如果尝试完成，必须阻塞
+  // 2) 有工具调用但没有代码修改 → 如果尝试完成，必须阻塞。
+  // A bug-fix task may explore with read/search tools, but exploration is not
+  // completion evidence. Finishing after only reading code is the exact failure
+  // mode this gate exists to prevent.
   const hasMutation = successfulEvents.some((e) => isMutationEvent(e));
   if (!hasMutation) {
-    // 检测是否是测试/验证命令循环（shell 跑测试但没有编辑）
     const hasOnlyTestShell = successfulEvents.every((e) => {
       if (e.name !== 'shell') return false;
       const cmd = String(e.args?.command || e.args?.cmd || '').toLowerCase();
       return /test|check|lint|build|run/.test(cmd);
     });
-    if (hasOnlyTestShell) {
-      return {
-        block: true,
-        reason: 'missing_code_change',
-        evidence: {
-          hasMutation: false,
-          hasVerification: true,
-          details: 'Only test/verification commands were executed; no code was modified.',
-        },
-      };
-    }
-    // 纯读操作，不阻塞（Agent 可能仍在探索）
-    return { block: false };
+    return {
+      block: true,
+      reason: 'missing_code_change',
+      evidence: {
+        hasMutation: false,
+        hasVerification: hasOnlyTestShell,
+        details: hasOnlyTestShell
+          ? 'Only test/verification commands were executed; no code was modified.'
+          : 'Only read/analysis tools were executed; no code was modified.',
+      },
+    };
   }
 
   // 3) 有代码修改 → 允许通过

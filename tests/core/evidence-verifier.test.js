@@ -13,11 +13,29 @@ import {
 describe('evidence-verifier', () => {
   describe('isMutationEvent', () => {
     test('write_file is a mutation', () => {
-      expect(isMutationEvent({ name: 'write_file', success: true, args: { content: 'hello' } })).toBe(true);
+      expect(
+        isMutationEvent({ name: 'write_file', success: true, args: { content: 'hello' } }),
+      ).toBe(true);
     });
 
     test('edit_file is a mutation', () => {
-      expect(isMutationEvent({ name: 'edit_file', success: true, args: { old_string: 'a', new_string: 'b' } })).toBe(true);
+      expect(
+        isMutationEvent({
+          name: 'edit_file',
+          success: true,
+          args: { old_string: 'a', new_string: 'b' },
+        }),
+      ).toBe(true);
+    });
+
+    test('apply_hashline_patch with a real diff is a mutation', () => {
+      expect(
+        isMutationEvent({
+          name: 'apply_hashline_patch',
+          success: true,
+          args: { patch: '[app.js#abc]\nSWAP 1.=1:\n-fixed();\n+fixed();' },
+        }),
+      ).toBe(true);
     });
 
     test('failed mutation does not count', () => {

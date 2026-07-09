@@ -8,7 +8,7 @@ function makeMockDeps() {
       get: () => null,
       getAll: () => [],
       has: () => false,
-      validateAndCoerceArgs: () => ({ valid: true, coercedArgs: {} }),
+      validateAndCoerceArgs: (_name, args) => ({ valid: true, coercedArgs: args || {} }),
     },
     textToolParser: { parse: () => [] },
     ui: { toolCall: () => {}, toolResult: () => {}, toolError: () => {}, warn: () => {} },
@@ -65,6 +65,35 @@ describe('AgentRouter', () => {
     });
     // Should resolve to the tool or return error depending on routing
     expect(result).toBeDefined();
+  });
+
+  test('executeToolCall returns effective args for downstream planning evidence', async () => {
+    const deps = makeMockDeps();
+    deps.toolRegistry.get = (name) => {
+      if (name === 'apply_hashline_patch') {
+        return {
+          handler: async () => 'Hashline patch applied successfully',
+          category: 'filesystem',
+        };
+      }
+      return null;
+    };
+    deps.toolRegistry.has = (name) => name === 'apply_hashline_patch';
+    deps.toolRegistry.validateAndCoerceArgs = (_name, args) => ({
+      valid: true,
+      coercedArgs: { ...args, normalized: true },
+    });
+
+    const router = new AgentRouter(deps);
+    const result = await router.executeToolCall({
+      name: 'apply_hashline_patch',
+      arguments: { patch: '[app.js#abc]\\nSWAP 1.=1:\\n+fixed();' },
+    });
+
+    expect(result.args).toEqual({
+      patch: '[app.js#abc]\\nSWAP 1.=1:\\n+fixed();',
+      normalized: true,
+    });
   });
 
   test('executeToolCall returns cached result for duplicate calls', async () => {

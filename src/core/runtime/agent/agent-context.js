@@ -295,7 +295,7 @@ export class AgentContext {
       return;
     }
     const isMutation = isMutationFn ? isMutationFn(toolResult.name, toolResult) : false;
-    const args = toolResult.result?.args || toolResult.args || {};
+    const args = toolResult.args || toolResult.result?.args || {};
     const isExploration = isWorkspaceInspectionTool(toolResult.name, args);
     const isVerification = isVerificationTool(toolResult.name, args);
     const isPlanning = isPlanningTool(toolResult.name);

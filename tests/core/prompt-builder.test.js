@@ -227,10 +227,23 @@ describe('shouldBlockCodingFinal', () => {
     expect(result.block).toBe(true);
   });
 
-  test('does not block when tool evidence exists', () => {
+  test('blocks modification task after read-only evidence without a code change', () => {
     const result = shouldBlockCodingFinal('fix bug', 'FINAL_ANSWER: done', {
       taskProfile: { isModificationTask: true },
-      toolEvents: [{ success: true, name: 'write_file' }],
+      toolEvents: [
+        { success: true, name: 'read_file', args: { path: 'app.js' } },
+        { success: true, name: 'search', args: { query: 'bug' } },
+      ],
+    });
+    expect(result.block).toBe(true);
+    expect(result.reason).toBe('missing_code_change');
+    expect(result.evidence.details).toContain('no code was modified');
+  });
+
+  test('does not block when mutation evidence exists', () => {
+    const result = shouldBlockCodingFinal('fix bug', 'FINAL_ANSWER: done', {
+      taskProfile: { isModificationTask: true },
+      toolEvents: [{ success: true, name: 'write_file', args: { content: 'fixed' } }],
     });
     expect(result.block).toBe(false);
   });

@@ -2089,7 +2089,6 @@ export class AgentEngine {
       // -------- 短路 4：编码任务完成门（还没工具证据 / 没走完 plan 就说完成） --------
       const shouldBlockFinal =
         allToolCalls.length === 0 &&
-        codingGateCorrections < 3 &&
         shouldBlockCodingFinal(userInput, response.text, {
           taskProfile,
           toolEvents: this.#toolExecutor.events,

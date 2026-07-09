@@ -306,11 +306,13 @@ export class ReActAgent {
             reason: 'user_pause',
             iterations: iteration,
             startedAt: runStartedAt,
-            plan: this.#planner.activePlan ? {
-              status: this.#planner.activePlan.status,
-              tasks: this.#planner.activePlan.tasks,
-              currentTaskIndex: this.#planner.activePlan.currentTaskIndex,
-            } : null,
+            plan: this.#planner.activePlan
+              ? {
+                  status: this.#planner.activePlan.status,
+                  tasks: this.#planner.activePlan.tasks,
+                  currentTaskIndex: this.#planner.activePlan.currentTaskIndex,
+                }
+              : null,
           });
         } else {
           return this.#completeRun({
@@ -654,7 +656,7 @@ export class ReActAgent {
 
         // 编码完成门控
         const gateResult =
-          allToolCalls.length === 0 && codingGateCorrections < 3
+          allToolCalls.length === 0
             ? this.#verifier.shouldBlockCodingFinal({
                 responseText: response.text,
                 taskProfile: this.#activeTaskProfile,
@@ -824,8 +826,9 @@ export class ReActAgent {
             );
             this.#planner.advance(
               toolResult.name,
-              toolResult.result?.args || {},
+              toolResult.args || toolCall.arguments || {},
               toolResult.result,
+              toolResult,
             );
             // ask_user 智能自答：先尝试 LLM 自行回答，只有无法回答时才挂起等待用户
             if (toolResult.name === 'ask_user' || this.#isUserInputRequest(toolResult?.result)) {
@@ -877,7 +880,7 @@ export class ReActAgent {
 
           this.#planner.advance(
             toolResult.name,
-            toolCall.arguments || {},
+            toolResult.args || toolCall.arguments || {},
             toolResult.result,
             toolResult,
           );
@@ -1225,11 +1228,14 @@ export class ReActAgent {
     });
 
     // Eager Todo Write prelude: 对多步任务，提示模型先分解用户原始指令再用 TodoWrite 跟踪
-    const hasMultipleSteps = /(?:then|after\s+(?:that|which)|next|and\s+then|首先|然后|接着|之后|第一步|第二步|步骤)/i.test(
-      userInput,
-    ) || /\d+\s*(?:step|phase|stage|阶段|步)/i.test(userInput) || /(?:\n|[,;、，；])\s*(?:implement|create|fix|add|write|test|build|run|deploy|实现|创建|修复|添加|编写|测试|构建|运行|部署)/i.test(
-      userInput,
-    );
+    const hasMultipleSteps =
+      /(?:then|after\s+(?:that|which)|next|and\s+then|首先|然后|接着|之后|第一步|第二步|步骤)/i.test(
+        userInput,
+      ) ||
+      /\d+\s*(?:step|phase|stage|阶段|步)/i.test(userInput) ||
+      /(?:\n|[,;、，；])\s*(?:implement|create|fix|add|write|test|build|run|deploy|实现|创建|修复|添加|编写|测试|构建|运行|部署)/i.test(
+        userInput,
+      );
     if (hasMultipleSteps) {
       this.#sessionManager.addSystemMessage(
         `[SYSTEM REMINDER] The user provided a multi-step request. Before beginning work, call TodoWrite to capture the full breakdown of ALL steps. This ensures you do not lose track of any requirement as you work. Each distinct step should be its own todo item. Mark the first actionable step as in_progress and execute it. Update the todo list as you progress.`,
@@ -1831,17 +1837,14 @@ export class ReActAgent {
       this.#planner.activePlan &&
       this.#planner.activePlan.status === TaskStatus.RUNNING &&
       !this.#planner.isCompleted();
-    const hasGenericQuestion =
-      questions.length === 0 || questions.every((q) => q.length < 10);
+    const hasGenericQuestion = questions.length === 0 || questions.every((q) => q.length < 10);
 
     if (hasPlanWithPendingTasks && hasGenericQuestion) {
       this.#debugEvent('Plan-continuation nudge (skipped suspend)', {
         reason,
         planStatus: this.#planner.activePlan?.status,
       });
-      const planSummary = this.#planner.activePlan
-        ? this.#summarizePlanStatus()
-        : '(no plan)';
+      const planSummary = this.#planner.activePlan ? this.#summarizePlanStatus() : '(no plan)';
       return {
         userInput: `[Plan-continuation nudge] I asked the user a generic question "${reason}" but I have an active plan with pending tasks. Continue with the current plan. Plan status: ${planSummary}. Do not ask the user again unless you have specific, answerable questions.`,
         askResult: normalizedAskResult,

@@ -119,11 +119,12 @@ export class AgentRouter {
           cachedResult: true,
           currentTaskId: options.currentTask?.id,
         });
-        return { name, result: cachedResult, cached: true, reused: true };
+        return { name, args, result: cachedResult, cached: true, reused: true };
       }
       this.#ui.warn(`Duplicate tool call detected: ${name}. No cached result available.`);
       return {
         name,
+        args,
         result: `Duplicate ${name} blocked: no cached result available. Change arguments or move to the next task.`,
         skipped: true,
         duplicate: true,
@@ -152,6 +153,7 @@ export class AgentRouter {
         });
         return {
           name,
+          args,
           result: prediction.predicted || { error: prediction.reason },
           skipped: true,
           predicted: true,
@@ -167,7 +169,7 @@ export class AgentRouter {
       const errorMsg = this.#formatToolNotFoundError(name, options.activeRoutedToolNames);
       this.#debugEvent('Tool lookup failed', { tool: name, arguments: args });
       this.#ui.toolError(name, errorMsg);
-      return { name, result: errorMsg, error: errorMsg };
+      return { name, args, result: errorMsg, error: errorMsg };
     }
 
     // 路由检查：当 currentTask 存在时，由任务的 allowedTools 和安全策略决定，不做 phase 限制
@@ -186,7 +188,7 @@ export class AgentRouter {
               arguments: args,
             });
             this.#ui.toolError(name, errorMsg);
-            return { name, result: errorMsg, error: errorMsg };
+            return { name, args, result: errorMsg, error: errorMsg };
           }
         }
         // 安全策略允许，则放行
@@ -196,7 +198,7 @@ export class AgentRouter {
         const errorMsg = `Tool "${name}" is registered but not available in the current request phase. Available tools now: ${availableToolNames}.`;
         this.#debugEvent('Tool call blocked by routing', { tool: name, arguments: args });
         this.#ui.toolError(name, errorMsg);
-        return { name, result: errorMsg, error: errorMsg };
+        return { name, args, result: errorMsg, error: errorMsg };
       }
     }
 
@@ -235,7 +237,7 @@ ${paramDesc || '无参数定义'}
 
         this.#ui.warn?.(`[Tool args blocked] ${name}: ${v.errors.join('; ')}`);
         this.#debugEvent('Tool call blocked by param validation', { tool: name, errors: v.errors });
-        return { name, result: errorMsg, error: errorMsg };
+        return { name, args: effectiveArgs, result: errorMsg, error: errorMsg };
       }
       effectiveArgs = v.coercedArgs;
     }
@@ -250,7 +252,7 @@ ${paramDesc || '无参数定义'}
         const errorMsg = `Missing required parameter(s): ${missing.join(', ')}. The "${name}" tool requires: ${tool.required.join(', ')}.`;
         this.#debugEvent('Tool call missing required params', { tool: name, missing });
         this.#ui.warn?.(errorMsg);
-        return { name, result: errorMsg, error: errorMsg };
+        return { name, args: effectiveArgs, result: errorMsg, error: errorMsg };
       }
     }
 
@@ -264,6 +266,7 @@ ${paramDesc || '无参数定义'}
       this.#ui.toolError(name, securityBlock);
       return {
         name,
+        args: effectiveArgs,
         result: `Error: Security policy blocked ${name}: ${securityBlock}`,
         error: securityBlock,
       };
@@ -308,6 +311,7 @@ ${paramDesc || '无参数定义'}
         if (approved === false) {
           return {
             name,
+            args: effectiveArgs,
             result: 'write_file: 用户取消了本次写入（diff 预览阶段拒绝）。',
             skipped: true,
           };
@@ -348,7 +352,7 @@ ${paramDesc || '无参数定义'}
         this.#flushToolResultCacheEntry(callSignature, this.#toolResultCache.get(callSignature));
       }
 
-      return { name, result: finalResult };
+      return { name, args: effectiveArgs, result: finalResult };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       this.#debugEvent('Tool call failed', {
@@ -357,7 +361,7 @@ ${paramDesc || '无参数定义'}
         error: errorMsg,
       });
       this.#ui.toolError(name, errorMsg);
-      return { name, result: `Error: ${errorMsg}`, error: errorMsg };
+      return { name, args: effectiveArgs, result: `Error: ${errorMsg}`, error: errorMsg };
     }
   }
 
