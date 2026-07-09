@@ -421,6 +421,25 @@ describe('session-storage dual mode', () => {
       expect(createCalls.length).toBe(2);
     });
 
+    test('migrateLocalStorageSessions counts existing sessions as skipped', async () => {
+      setupIPCMode();
+      const { saveAgentSession, migrateLocalStorageSessions } = sessionStorageModule;
+      await saveAgentSession({ id: 'existing1', title: 'Existing 1' });
+      await saveAgentSession({ id: 'new1', title: 'New 1' });
+      mockElectronAPI._setHandler('session:create', (session) => {
+        if (session.id === 'existing1') {
+          return { success: true, sessionId: session.id, skipped: true };
+        }
+        return { success: true, sessionId: session.id };
+      });
+      const result = await migrateLocalStorageSessions();
+      expect(result.migrated).toBe(1);
+      expect(result.skipped).toBe(1);
+      expect(result.failed).toBe(0);
+      expect(result.total).toBe(2);
+    });
+
+
     test('migrateLocalStorageSessions 迁移统计正确 - 部分失败', async () => {
       setupIPCMode();
       const { saveAgentSession, migrateLocalStorageSessions } = sessionStorageModule;

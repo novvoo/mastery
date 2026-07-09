@@ -363,31 +363,102 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
     expect(manuallyExpanded).toBe(false); // 自动折叠回去
   });
 
-  test('handleSubmit should call onDismiss to immediately clear askUserInfo', () => {
-    // 模拟 AskUserFloatingCapsule.handleSubmit 流程
+  test('handleSubmit clears askUserInfo only after continuation is accepted', async () => {
     let onContinueCalled = false;
     let onDismissCalled = false;
 
-    const onContinue = (text) => {
+    const onContinue = async (text) => {
       onContinueCalled = true;
       expect(text).toBe('我的回答');
+      return true;
     };
     const onDismiss = () => {
       onDismissCalled = true;
     };
 
     const inputValue = '我的回答';
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
       if (!inputValue.trim()) return;
       const submitted = inputValue.trim();
-      onContinue(submitted);
-      onDismiss?.(); // ask_user 结束后立即折叠
+      const accepted = await onContinue(submitted);
+      if (accepted === false) return;
+      onDismiss?.();
     };
 
-    handleSubmit();
+    await handleSubmit();
 
     expect(onContinueCalled).toBe(true);
     expect(onDismissCalled).toBe(true);
+  });
+
+  test('handleSubmit keeps askUserInfo open when continuation is rejected', async () => {
+    let onDismissCalled = false;
+    const inputValue = '我的回答';
+    const handleSubmit = async () => {
+      if (!inputValue.trim()) return;
+      const accepted = await Promise.resolve(false);
+      if (accepted === false) return;
+      onDismissCalled = true;
+    };
+
+    await handleSubmit();
+
+    expect(onDismissCalled).toBe(false);
+  });
+
+  test('ChatWorkspace continuation forwards capsule answer argument', async () => {
+    const calls = [];
+    const onContinue = async (value) => {
+      calls.push(value);
+      return true;
+    };
+    let continuationInput = '';
+    const setContinuationInput = (value) => {
+      continuationInput = value;
+    };
+    const handleContinue = async (submittedValue) => {
+      const value = String(submittedValue || continuationInput).trim();
+      if (!value) {
+        return false;
+      }
+      setContinuationInput('');
+      try {
+        await onContinue?.(value);
+        return true;
+      } catch {
+        setContinuationInput(value);
+        return false;
+      }
+    };
+
+    const accepted = await handleContinue('胶囊里的回答');
+
+    expect(accepted).toBe(true);
+    expect(calls).toEqual(['胶囊里的回答']);
+    expect(continuationInput).toBe('');
+  });
+
+  test('ask_user continuation uses runtime processInput continuation option', async () => {
+    const calls = [];
+    const runtime = {
+      processInput: async (input, options) => {
+        calls.push({ input, options });
+        return { success: true, status: 'running', mode: 'async', continuation: true };
+      },
+    };
+    const agentOptions = { model: 'test' };
+    const executeInput = async (input, processOptions = {}) =>
+      runtime.processInput(input, { ...agentOptions, ...processOptions });
+    const handleContinueAgentInput = async (input) => {
+      if (!input?.trim()) return;
+      await executeInput(input, { continuation: true });
+    };
+
+    await handleContinueAgentInput('继续信息');
+
+    expect(calls).toEqual([
+      { input: '继续信息', options: { model: 'test', continuation: true } },
+    ]);
   });
 
   test('handleSubmit with empty input does NOT call onDismiss', () => {
@@ -412,9 +483,9 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
     expect(onDismissCalled).toBe(false);
   });
 
-  test('useRuntime exposes dismissAskUser method to clear askUserInfo', () => {
+  test('useRuntime exposes dismissAskUser method to clear askUserInfo', async () => {
     // 验证 useRuntime hook 模块可加载，且 stripActionBlocks 函数存在
-    const { stripActionBlocks } = require('../../desktop/renderer/hooks/useRuntime.js');
+    const { stripActionBlocks } = await import('../../desktop/renderer/hooks/useRuntime.js');
 
     expect(typeof stripActionBlocks).toBe('function');
 

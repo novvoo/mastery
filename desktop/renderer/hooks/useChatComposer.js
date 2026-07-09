@@ -102,7 +102,7 @@ export function useChatComposer(runtime, agentOptions, activeAgentSessionId, pre
   }, []);
 
   const executeInput = useCallback(
-    async (input) => {
+    async (input, processOptions = {}) => {
       if (!input?.trim()) return;
 
       let sessionId = activeAgentSessionId;
@@ -111,7 +111,7 @@ export function useChatComposer(runtime, agentOptions, activeAgentSessionId, pre
       }
 
       saveAgentInputHistory(input, sessionId);
-      const result = await runtime.processInput(input, agentOptions);
+      const result = await runtime.processInput(input, { ...agentOptions, ...processOptions });
       if (result?.command === '/debug' && typeof result.debug === 'boolean') {
         // debug 模式切换由外部 handleDebugToggle 处理
       }
@@ -211,9 +211,10 @@ export function useChatComposer(runtime, agentOptions, activeAgentSessionId, pre
 
   const handleContinueAgentInput = useCallback(
     async (input) => {
-      await handleSubmitAgentInput(input, { clearInput: false, updateComposer: false });
+      if (!input?.trim()) return;
+      await executeInput(input, { continuation: true });
     },
-    [handleSubmitAgentInput],
+    [executeInput],
   );
 
   const clearInput = useCallback((value = '') => {

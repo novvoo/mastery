@@ -38,13 +38,18 @@ export function AskUserFloatingCapsule({ askUserInfo, onContinue, onDismiss }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [hasActiveRequest, manuallyExpanded]);
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     if (!inputValue.trim()) return;
     const submitted = inputValue.trim();
     setInputValue('');
+    const accepted = await onContinue(submitted);
+    if (accepted === false) {
+      setInputValue(submitted);
+      inputRef.current?.focus();
+      return;
+    }
     setManuallyExpanded(false);
-    onContinue(submitted);
-    // ask_user 结束后自动折叠：立即清空 askUserInfo，无需等待 status:update
+    // ask_user 结束后自动折叠：提交成功后清空 askUserInfo，无需等待 status:update
     onDismiss?.();
   }, [inputValue, onContinue, onDismiss]);
 

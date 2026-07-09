@@ -34,16 +34,18 @@ export function ChatWorkspace({
   const askInfo = runtime.askUserInfo;
   const queuePreview = queueCount > 0 ? getQueuePreview(3, 80) : [];
 
-  const handleContinue = async () => {
-    const value = continuationInput.trim();
+  const handleContinue = async (submittedValue) => {
+    const value = String(submittedValue || continuationInput).trim();
     if (!value) {
-      return;
+      return false;
     }
     setContinuationInput('');
     try {
       await onContinue?.(value);
+      return true;
     } catch {
       setContinuationInput(value);
+      return false;
     }
   };
   return (

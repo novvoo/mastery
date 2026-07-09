@@ -189,6 +189,32 @@ describe('evidence-verifier', () => {
       expect(result.missing).toContain('no_runtime_verification');
     });
 
+    test('blocks when verification happened before latest mutation', () => {
+      const result = checkCompletionGates(
+        [
+          { name: 'shell', args: { command: 'bun test' }, success: true },
+          { name: 'write_file', success: true, args: { content: 'hello' } },
+        ],
+        { requireMutation: true, requireRuntimeVerification: true },
+        { isModificationTask: true },
+      );
+      expect(result.block).toBe(true);
+      expect(result.missing).toContain('no_runtime_verification_after_last_mutation');
+    });
+
+    test('uses event sequence when available for verification ordering', () => {
+      const result = checkCompletionGates(
+        [
+          { name: 'shell', args: { command: 'bun test' }, success: true, sequence: 2 },
+          { name: 'write_file', success: true, args: { content: 'hello' }, sequence: 1 },
+        ],
+        { requireMutation: true, requireRuntimeVerification: true },
+        { isModificationTask: true },
+      );
+      expect(result.block).toBe(false);
+    });
+
+
     test('passes when all gates satisfied', () => {
       const result = checkCompletionGates(
         [

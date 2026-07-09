@@ -71,6 +71,39 @@ describe('ToolExecutor', () => {
     expect(result.error).toBeUndefined();
   });
 
+  test('normalizes virtual /workspace absolute file paths to workspace-relative paths', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'agent-tool-path-'));
+    try {
+      writeFileSync(join(tempDir, 'package.json'), '{"name":"demo"}');
+      const readHandler = mock(async (args) => `read:${args.path}`);
+      const tool = makeTool('read_file', {
+        handler: readHandler,
+        required: ['path'],
+        params: { path: { type: 'string' } },
+      });
+      const { executor } = makeMockExecutor({
+        tools: [tool],
+        config: { workingDirectory: tempDir },
+      });
+
+      const result = await executor.execute({
+        id: 'virtual-workspace-read',
+        name: 'read_file',
+        arguments: { path: '/workspace/snake-game/package.json' },
+      });
+
+      expect(result.error).toBeUndefined();
+      expect(result.result).toBe('read:package.json');
+      expect(readHandler).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'package.json' }),
+        expect.any(Object),
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+
   test('returns error for unregistered tool', async () => {
     const { executor } = makeMockExecutor({ tools: [] });
 

@@ -1735,7 +1735,7 @@ export class AgentEngine {
       const functions = this.#toolRegistry.toFunctionDefinitions(routedTools);
       const routedToolPrompt = [
         this.#textToolParser.generateToolPrompt(routedTools),
-        `Workspace: all relative paths resolve from ${this.#config.workingDirectory}. ` +
+        `Workspace root is ${this.#config.workingDirectory}; file tool paths MUST be relative to that root (for example "package.json" or "src/index.js"), never absolute paths such as "/workspace/...". ` +
           `Shell cwd is ${this.#config.workingDirectory}.`,
       ].join('\n\n');
       const messages = withRoutedToolContext(
@@ -2926,9 +2926,20 @@ export class AgentEngine {
     return this;
   }
 
-  /** 与旧 API 兼容：processInput 等价于 run */
+  /** 与旧 API 兼容：processInput 等价于 run；continuation 用于恢复 ask_user 挂起的主循环 */
   async processInput(input, options = {}) {
     const text = typeof input === 'string' ? input : input?.text || JSON.stringify(input);
+    if (options?.continuation && this.isWaitingForUserInput) {
+      const resumed = this.resumeWithUserInput(text);
+      return {
+        success: resumed,
+        status: resumed ? 'running' : 'error',
+        mode: resumed ? 'async' : 'sync',
+        continuation: true,
+        answer: '',
+        reason: resumed ? 'ask_user_resumed' : 'no_pending_user_input',
+      };
+    }
     return this.run(text);
   }
 

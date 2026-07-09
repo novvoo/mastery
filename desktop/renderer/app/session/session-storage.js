@@ -236,8 +236,12 @@ export async function migrateLocalStorageSessions() {
 
   for (const session of sessions) {
     try {
-      await invokeElectronAPI('session:create', session);
-      result.migrated++;
+      const createResult = await invokeElectronAPI('session:create', session);
+      if (createResult?.skipped) {
+        result.skipped++;
+      } else {
+        result.migrated++;
+      }
     } catch (err) {
       console.warn('migrate session failed:', session?.id, err);
       result.failed++;

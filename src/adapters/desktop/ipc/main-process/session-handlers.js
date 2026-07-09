@@ -365,6 +365,19 @@ export function registerSessionHandlers(ctx) {
     async ({ sessionId, title, messages, workingDirectory, forkedFrom, parentSession } = {}) => {
       try {
         const wd = workingDirectory || ctx.config.workingDirectory;
+        if (sessionId) {
+          const existing = await store.loadSession(sessionId, wd);
+          if (existing) {
+            return {
+              success: true,
+              sessionId,
+              skipped: true,
+              reason: 'session_already_exists',
+              meta: sessionToMeta(formatSessionObject(existing, wd)),
+            };
+          }
+        }
+
         const now = Date.now();
 
         const newMeta = {

@@ -166,6 +166,15 @@ describe('coding-prompts', () => {
       expect(result).toContain('not verified the result');
     });
 
+    test('maps verification before latest mutation reason', () => {
+      const result = buildCodingCompletionGatePrompt({
+        userInput: 'test',
+        gate: { reason: 'no_runtime_verification_after_last_mutation', evidence: [] },
+      });
+      expect(result).toContain('not after it');
+    });
+
+
     test('maps missing_semantic_risk_review reason', () => {
       const result = buildCodingCompletionGatePrompt({
         userInput: 'test',

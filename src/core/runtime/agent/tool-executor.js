@@ -308,6 +308,59 @@ export function normalizeToolArgumentAliases(name, args = {}) {
   return normalized;
 }
 
+function normalizeVirtualWorkspaceAbsolutePath(value, workingDirectory) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+  const trimmed = value.trim();
+  if (!path.isAbsolute(trimmed)) {
+    return value;
+  }
+
+  const root = path.resolve(workingDirectory || process.cwd());
+  const resolved = path.resolve(trimmed);
+  const relativeToRoot = path.relative(root, resolved);
+  if (relativeToRoot && !relativeToRoot.startsWith('..') && !path.isAbsolute(relativeToRoot)) {
+    return relativeToRoot;
+  }
+  if (resolved === root) {
+    return '.';
+  }
+
+  const normalized = trimmed.replace(/\\/g, '/');
+  const match = normalized.match(/^\/workspace\/[^/]+\/(.+)$/);
+  if (match?.[1]) {
+    return match[1];
+  }
+  return value;
+}
+
+function normalizeWorkspacePathArgs(name, args = {}, workingDirectory) {
+  if (!args || typeof args !== 'object') {
+    return args;
+  }
+  const pathKeys = [];
+  if (['read_file', 'write_file', 'edit_file', 'list_dir', 'tree', 'stat_file'].includes(name)) {
+    pathKeys.push('path', 'file_path', 'file', 'filename', 'filePath');
+  }
+  if (pathKeys.length === 0) {
+    return args;
+  }
+  let changed = false;
+  const next = { ...args };
+  for (const key of pathKeys) {
+    if (typeof next[key] !== 'string') {
+      continue;
+    }
+    const normalized = normalizeVirtualWorkspaceAbsolutePath(next[key], workingDirectory);
+    if (normalized !== next[key]) {
+      next[key] = normalized;
+      changed = true;
+    }
+  }
+  return changed ? normalizeToolArgumentAliases(name, next) : args;
+}
+
 function getAllowedToolSet(context = {}) {
   const taskAllowed = context.currentTask?.allowedTools;
   if (Array.isArray(taskAllowed) && taskAllowed.length > 0) {
@@ -932,6 +985,12 @@ ${paramDesc || '无参数定义'}
       }
       effectiveArgs = v.coercedArgs;
     }
+
+    effectiveArgs = normalizeWorkspacePathArgs(
+      name,
+      effectiveArgs,
+      this.#config.workingDirectory || process.cwd(),
+    );
 
     // ============ 必填参数检查（兜底，对没定义 schema 的工具） ============
     if (Array.isArray(tool.required) && tool.required.length > 0) {

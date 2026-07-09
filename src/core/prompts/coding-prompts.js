@@ -79,6 +79,8 @@ export function buildCodingCompletionGatePrompt({
       missing_code_change: 'You have not produced a successful code/file change yet.',
       missing_verification:
         'You changed code/files but have not verified the result with fresh evidence.',
+      no_runtime_verification_after_last_mutation:
+        'You ran verification before the latest code/file change, but not after it.',
       missing_semantic_risk_review:
         'This task touches high-risk behavior semantics but has no semantic/API risk review evidence yet.',
       final_answer_missing_verification_summary:

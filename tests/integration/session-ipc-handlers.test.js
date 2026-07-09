@@ -374,6 +374,31 @@ describe('Session IPC Handlers', () => {
     });
   });
 
+  describe('session:create', () => {
+    test('does not append duplicate messages when creating an existing session id', async () => {
+      const message = { role: 'user', content: 'history dup' };
+
+      const first = await ipc.invoke('session:create', {
+        sessionId: 'sess-dup',
+        title: 'Duplicate guard',
+        messages: [message],
+      });
+      expect(first.success).toBe(true);
+      expect(first.skipped).toBeUndefined();
+
+      const second = await ipc.invoke('session:create', {
+        sessionId: 'sess-dup',
+        title: 'Duplicate guard',
+        messages: [message],
+      });
+      expect(second.success).toBe(true);
+      expect(second.skipped).toBe(true);
+
+      const loaded = await ipc.invoke('session:load', { sessionId: 'sess-dup' });
+      expect(loaded.messages).toEqual([message]);
+    });
+  });
+
   describe('session:count', () => {
     test('returns correct session count', async () => {
       const result0 = await ipc.invoke('session:count', {});

@@ -148,6 +148,45 @@ export function isSemanticRiskReviewEvent(event) {
   return semanticKeywords.some((k) => focusAreas.includes(k));
 }
 
+function eventOrder(event) {
+  return Number.isFinite(event?.sequence)
+    ? event.sequence
+    : Number.isFinite(event?.iteration)
+      ? event.iteration
+      : Number.isFinite(event?.timestamp)
+        ? event.timestamp
+        : -1;
+}
+
+function hasRuntimeVerificationAfterLastMutation(events) {
+  let lastMutationIndex = -1;
+  let lastMutationOrder = -1;
+
+  events.forEach((event, index) => {
+    if (!isMutationEvent(event)) {
+      return;
+    }
+    lastMutationIndex = index;
+    lastMutationOrder = Math.max(lastMutationOrder, eventOrder(event));
+  });
+
+  if (lastMutationIndex < 0) {
+    return false;
+  }
+
+  return events.some((event, index) => {
+    if (!isRuntimeVerificationEvent(event)) {
+      return false;
+    }
+    const order = eventOrder(event);
+    if (lastMutationOrder >= 0 && order >= 0) {
+      return order > lastMutationOrder;
+    }
+    return index > lastMutationIndex;
+  });
+}
+
+
 export function summarizeEvidence(toolEvents = []) {
   const events = Array.isArray(toolEvents) ? toolEvents : [];
 
@@ -168,6 +207,7 @@ export function summarizeEvidence(toolEvents = []) {
     semanticRiskReviewEvents: semanticRiskReviews.map((e) => ({ name: e.name })),
     hasMutation: mutations.length > 0,
     hasRuntimeVerification: runtimeVerifications.length > 0,
+    hasRuntimeVerificationAfterLastMutation: hasRuntimeVerificationAfterLastMutation(successful),
     hasMethodologyTool: methodologyEvents.length > 0,
     hasSemanticRiskReview: semanticRiskReviews.length > 0,
     verificationCommands: [
@@ -189,6 +229,8 @@ export function checkCompletionGates(toolEvents, gates, profile = {}) {
   if (gates.requireRuntimeVerification && summary.hasMutation) {
     if (!summary.hasRuntimeVerification) {
       missing.push('no_runtime_verification');
+    } else if (!summary.hasRuntimeVerificationAfterLastMutation) {
+      missing.push('no_runtime_verification_after_last_mutation');
     }
   }
 
