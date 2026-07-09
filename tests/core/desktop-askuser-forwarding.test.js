@@ -438,8 +438,9 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
     expect(continuationInput).toBe('');
   });
 
-  test('ask_user continuation uses runtime processInput continuation option', async () => {
+  test('ask_user continuation uses runtime processInput continuation option without saving history', async () => {
     const calls = [];
+    const historyWrites = [];
     const runtime = {
       processInput: async (input, options) => {
         calls.push({ input, options });
@@ -447,8 +448,14 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
       },
     };
     const agentOptions = { model: 'test' };
-    const executeInput = async (input, processOptions = {}) =>
-      runtime.processInput(input, { ...agentOptions, ...processOptions });
+    const activeAgentSessionId = 's1';
+    const saveAgentInputHistory = (input, sessionId) => historyWrites.push({ input, sessionId });
+    const executeInput = async (input, processOptions = {}) => {
+      if (!processOptions.continuation) {
+        saveAgentInputHistory(input, activeAgentSessionId);
+      }
+      return runtime.processInput(input, { ...agentOptions, ...processOptions });
+    };
     const handleContinueAgentInput = async (input) => {
       if (!input?.trim()) return;
       await executeInput(input, { continuation: true });
@@ -459,6 +466,44 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
     expect(calls).toEqual([
       { input: '继续信息', options: { model: 'test', continuation: true } },
     ]);
+    expect(historyWrites).toEqual([]);
+  });
+
+  test('useRuntime continuation path does not append main conversation messages', async () => {
+    const messages = [];
+    const statusChanges = [];
+    const statsChanges = [];
+    const windowRef = {
+      electronAPI: {
+        processInput: async (input, options) => ({ input, options, mode: 'async' }),
+      },
+    };
+    const processInput = async (input, options = {}) => {
+      if (!input) {
+        messages.push({ type: 'warning', content: '请输入任务描述' });
+        return;
+      }
+      if (options?.continuation) {
+        if (windowRef.electronAPI) {
+          return await windowRef.electronAPI.processInput(input, options);
+        }
+        return { success: false, status: 'error', continuation: true };
+      }
+      statusChanges.push('running');
+      statsChanges.push('reset');
+      messages.push({ type: 'user', content: input });
+    };
+
+    const result = await processInput('胶囊回答', { continuation: true });
+
+    expect(result).toEqual({
+      input: '胶囊回答',
+      options: { continuation: true },
+      mode: 'async',
+    });
+    expect(messages).toEqual([]);
+    expect(statusChanges).toEqual([]);
+    expect(statsChanges).toEqual([]);
   });
 
   test('handleSubmit with empty input does NOT call onDismiss', () => {

@@ -470,6 +470,18 @@ export function useRuntime() {
         return;
       }
 
+      if (options?.continuation) {
+        if (typeof window !== 'undefined' && window != null && window.electronAPI) {
+          return await window.electronAPI.processInput(input, options);
+        }
+        return {
+          success: false,
+          status: 'error',
+          error: 'Continuation requires electronAPI',
+          continuation: true,
+        };
+      }
+
       // 设置运行状态
       setStatus('running');
       setStats((prev) => ({

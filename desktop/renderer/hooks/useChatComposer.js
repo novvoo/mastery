@@ -105,12 +105,13 @@ export function useChatComposer(runtime, agentOptions, activeAgentSessionId, pre
     async (input, processOptions = {}) => {
       if (!input?.trim()) return;
 
-      let sessionId = activeAgentSessionId;
-      if (!sessionId) {
-        sessionId = createAgentSessionId();
+      if (!processOptions.continuation) {
+        let sessionId = activeAgentSessionId;
+        if (!sessionId) {
+          sessionId = createAgentSessionId();
+        }
+        saveAgentInputHistory(input, sessionId);
       }
-
-      saveAgentInputHistory(input, sessionId);
       const result = await runtime.processInput(input, { ...agentOptions, ...processOptions });
       if (result?.command === '/debug' && typeof result.debug === 'boolean') {
         // debug 模式切换由外部 handleDebugToggle 处理
