@@ -51,6 +51,7 @@ export function ChatWorkspace({
       <AskUserFloatingCapsule
         askUserInfo={askInfo}
         onContinue={handleContinue}
+        onDismiss={runtime.dismissAskUser}
       />
       <div style={styles.chatHeader}>
         <div style={styles.chatTitle}>

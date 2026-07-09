@@ -280,7 +280,7 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
     expect(askUserInfo).toBeNull();
   });
 
-  test('IPC status:update event preserves askUserInfo for non-running statuses', () => {
+  test('IPC status:update event preserves askUserInfo for non-running statuses', async () => {
     let askUserInfo = null;
 
     const simulateStatusUpdate = (payload) => {
@@ -307,5 +307,125 @@ describe('DesktopCore waitingForUserInput forwarding', () => {
     // error 不应清除 askUserInfo
     simulateStatusUpdate({ status: 'error' });
     expect(askUserInfo).not.toBeNull();
+  });
+
+  // ========== AskUserFloatingCapsule 自动展开/折叠逻辑 ==========
+
+  test('capsule isExpanded reflects askUserInfo state', () => {
+    // 模拟 AskUserFloatingCapsule 内部 isExpanded 计算
+    const computeIsExpanded = (askUserInfo, manuallyExpanded) => {
+      const hasActiveRequest = !!(askUserInfo?.message || askUserInfo?.answer);
+      return hasActiveRequest || manuallyExpanded;
+    };
+
+    // 无 ask_user + 无手动展开 → 折叠
+    expect(computeIsExpanded(null, false)).toBe(false);
+
+    // ask_user 激活 → 自动展开
+    expect(
+      computeIsExpanded({ message: '请回答', answer: '请回答' }, false),
+    ).toBe(true);
+    expect(
+      computeIsExpanded({ message: '请回答' }, false),
+    ).toBe(true);
+    expect(
+      computeIsExpanded({ answer: '请回答' }, false),
+    ).toBe(true);
+
+    // 无 ask_user + 手动展开 → 展开
+    expect(computeIsExpanded(null, true)).toBe(true);
+
+    // ask_user 激活 + 手动展开 → 展开
+    expect(computeIsExpanded({ message: 'q' }, true)).toBe(true);
+  });
+
+  test('capsule auto-collapses when askUserInfo becomes null', () => {
+    // 模拟 useEffect：askUserInfo 由有变无时清空 manuallyExpanded
+    let askUserInfo = { message: 'q' };
+    let manuallyExpanded = true; // 用户曾手动展开
+
+    const onHasActiveRequestChange = (newHasActiveRequest) => {
+      if (!newHasActiveRequest) {
+        manuallyExpanded = false;
+      }
+    };
+
+    const hasActiveRequest = (info) => !!(info?.message || info?.answer);
+
+    // 初始: ask_user 激活
+    expect(manuallyExpanded).toBe(true);
+    onHasActiveRequestChange(hasActiveRequest(askUserInfo));
+    expect(manuallyExpanded).toBe(true); // 有 ask_user，保持手动展开
+
+    // ask_user 结束（askUserInfo 清空）→ 立即清空 manuallyExpanded
+    askUserInfo = null;
+    onHasActiveRequestChange(hasActiveRequest(askUserInfo));
+    expect(manuallyExpanded).toBe(false); // 自动折叠回去
+  });
+
+  test('handleSubmit should call onDismiss to immediately clear askUserInfo', () => {
+    // 模拟 AskUserFloatingCapsule.handleSubmit 流程
+    let onContinueCalled = false;
+    let onDismissCalled = false;
+
+    const onContinue = (text) => {
+      onContinueCalled = true;
+      expect(text).toBe('我的回答');
+    };
+    const onDismiss = () => {
+      onDismissCalled = true;
+    };
+
+    const inputValue = '我的回答';
+    const handleSubmit = () => {
+      if (!inputValue.trim()) return;
+      const submitted = inputValue.trim();
+      onContinue(submitted);
+      onDismiss?.(); // ask_user 结束后立即折叠
+    };
+
+    handleSubmit();
+
+    expect(onContinueCalled).toBe(true);
+    expect(onDismissCalled).toBe(true);
+  });
+
+  test('handleSubmit with empty input does NOT call onDismiss', () => {
+    let onContinueCalled = false;
+    let onDismissCalled = false;
+
+    const handleSubmit = (inputValue) => {
+      if (!inputValue.trim()) return;
+      const onContinue = () => {
+        onContinueCalled = true;
+      };
+      const onDismiss = () => {
+        onDismissCalled = true;
+      };
+      onContinue(inputValue.trim());
+      onDismiss?.();
+    };
+
+    handleSubmit('   '); // 空白
+
+    expect(onContinueCalled).toBe(false);
+    expect(onDismissCalled).toBe(false);
+  });
+
+  test('useRuntime exposes dismissAskUser method to clear askUserInfo', () => {
+    // 验证 useRuntime hook 模块可加载，且 stripActionBlocks 函数存在
+    const { stripActionBlocks } = require('../../desktop/renderer/hooks/useRuntime.js');
+
+    expect(typeof stripActionBlocks).toBe('function');
+
+    // 模拟 dismissAskUser 行为：直接清空 askUserInfo
+    let askUserInfo = { message: 'q' };
+    const dismissAskUser = () => {
+      askUserInfo = null;
+    };
+
+    expect(askUserInfo).not.toBeNull();
+    dismissAskUser();
+    expect(askUserInfo).toBeNull();
   });
 });

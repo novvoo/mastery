@@ -970,6 +970,10 @@ export function useRuntime() {
     };
   }, [addMessage, flushMessageDeltas, isDuplicateRuntimeEvent, queueMessageDelta]);
 
+  const dismissAskUser = useCallback(() => {
+    setAskUserInfo(null);
+  }, []);
+
   return {
     // 状态
     status,
@@ -987,6 +991,7 @@ export function useRuntime() {
     refreshState,
     processInput,
     stop,
+    dismissAskUser,
   };
 }
 

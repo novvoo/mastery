@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { styles } from '../app/styles.js';
 
-export function AskUserFloatingCapsule({ askUserInfo, onContinue }) {
+export function AskUserFloatingCapsule({ askUserInfo, onContinue, onDismiss }) {
   const [inputValue, setInputValue] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [manuallyExpanded, setManuallyExpanded] = useState(false);
@@ -10,6 +10,13 @@ export function AskUserFloatingCapsule({ askUserInfo, onContinue }) {
 
   const hasActiveRequest = !!(askUserInfo?.message || askUserInfo?.answer);
   const isExpanded = hasActiveRequest || manuallyExpanded;
+
+  // ask_user 结束后自动折叠：askUserInfo 由有变无时清空手动展开标记
+  useEffect(() => {
+    if (!hasActiveRequest) {
+      setManuallyExpanded(false);
+    }
+  }, [hasActiveRequest]);
 
   useEffect(() => {
     if (isExpanded) {
@@ -33,10 +40,13 @@ export function AskUserFloatingCapsule({ askUserInfo, onContinue }) {
 
   const handleSubmit = useCallback(() => {
     if (!inputValue.trim()) return;
-    onContinue(inputValue.trim());
+    const submitted = inputValue.trim();
     setInputValue('');
     setManuallyExpanded(false);
-  }, [inputValue, onContinue]);
+    onContinue(submitted);
+    // ask_user 结束后自动折叠：立即清空 askUserInfo，无需等待 status:update
+    onDismiss?.();
+  }, [inputValue, onContinue, onDismiss]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
