@@ -574,15 +574,15 @@ export function useRuntime() {
           }
 
           setStatus(needsUserInput ? 'needs_user_input' : 'completed');
-          if (needsUserInput && result?.userInputRequest) {
-            setAskUserInfo({
+          if (needsUserInput) {
+            setAskUserInfo(result?.userInputRequest ? {
               message: result.answer || result.userInputRequest.answer || '',
               answer: result.answer || result.userInputRequest.answer || '',
               reason: result.userInputRequest.reason || '',
               questions: result.userInputRequest.questions || [],
               blockingFacts: result.userInputRequest.blockingFacts || [],
               suggestions: result.userInputRequest.suggestions || [],
-            });
+            } : { message: result.answer || '需要你的回答', answer: '' });
           }
           setStats((prev) => ({
             ...prev,
@@ -823,8 +823,9 @@ export function useRuntime() {
       // status:update 事件不依赖 normalized.message，必须放在守卫外
       if (eventName === 'status:update' && typeof payload?.status === 'string') {
         setStatus(payload.status);
-        if (payload.status === 'needs_user_input' && payload.data) {
-          setAskUserInfo(payload.data);
+        if (payload.status === 'needs_user_input') {
+          // 无论 payload.data 是否存在，都设置 askUserInfo 以展开浮动胶囊
+          setAskUserInfo(payload.data || { message: '需要你的回答', answer: '' });
         }
         if (payload.status === 'running') {
           setAskUserInfo(null);

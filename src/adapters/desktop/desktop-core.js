@@ -234,6 +234,10 @@ export class DesktopCore {
           data: info,
         });
       },
+      // agent-engine 调用 #ui.userInputRequested()，这里做别名映射
+      userInputRequested: function(info) {
+        return this.waitingForUserInput(info);
+      },
       finalAnswer(answer) {
         if (isDebug) {
           console.log('[UiAdapter] agent:complete');
