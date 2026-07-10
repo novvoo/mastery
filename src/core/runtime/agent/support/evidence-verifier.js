@@ -65,6 +65,53 @@ function extractCommand(event) {
   ).toLowerCase();
 }
 
+const MANAGED_CONFIG_PATH_RE =
+  /(^|\/)(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lock|go\.mod|go\.sum|Cargo\.toml|Cargo\.lock|pyproject\.toml|poetry\.lock|requirements(?:-[\w.-]+)?\.txt)$/i;
+
+const MANAGED_CONFIG_SYNC_COMMAND_RE =
+  /\b((npm|pnpm|yarn|bun)\s+(install|i|add|remove|uninstall|update)|go\s+(mod\s+tidy|get|mod\s+download)|cargo\s+(update|add|remove|fetch|build|test)|poetry\s+(install|add|remove|update)|uv\s+sync|pipenv\s+install|pip\s+install)\b/i;
+
+function extractPathCandidates(event) {
+  const args = event?.args || {};
+  const candidates = [
+    args.path,
+    args.file_path,
+    args.file,
+    args.filename,
+    args.filePath,
+    args.target,
+  ].filter(Boolean);
+
+  const patchText = String(args.patch || args.content || '');
+  for (const match of patchText.matchAll(/^\[([^#\]\r\n]+)#/gm)) {
+    candidates.push(match[1]);
+  }
+
+  return candidates.map((candidate) => String(candidate).replace(/\\/g, '/'));
+}
+
+export function isManagedConfigMutationEvent(event) {
+  if (!isMutationEvent(event)) {
+    return false;
+  }
+  return extractPathCandidates(event).some((candidate) => MANAGED_CONFIG_PATH_RE.test(candidate));
+}
+
+export function isManagedConfigSyncEvent(event) {
+  if (!event || event.success === false) {
+    return false;
+  }
+  if (
+    event.name !== 'shell' &&
+    event.name !== 'pty_start' &&
+    event.name !== 'pty_write' &&
+    event.name !== 'pty_read'
+  ) {
+    return false;
+  }
+  return MANAGED_CONFIG_SYNC_COMMAND_RE.test(extractCommand(event));
+}
+
 export function isMutationEvent(event) {
   if (!event || !event.name) {
     return false;
@@ -186,6 +233,33 @@ function hasRuntimeVerificationAfterLastMutation(events) {
   });
 }
 
+function hasManagedConfigSyncAfterLastMutation(events) {
+  let lastManagedConfigMutationIndex = -1;
+  let lastManagedConfigMutationOrder = -1;
+
+  events.forEach((event, index) => {
+    if (!isManagedConfigMutationEvent(event)) {
+      return;
+    }
+    lastManagedConfigMutationIndex = index;
+    lastManagedConfigMutationOrder = Math.max(lastManagedConfigMutationOrder, eventOrder(event));
+  });
+
+  if (lastManagedConfigMutationIndex < 0) {
+    return false;
+  }
+
+  return events.some((event, index) => {
+    if (!isManagedConfigSyncEvent(event)) {
+      return false;
+    }
+    const order = eventOrder(event);
+    if (lastManagedConfigMutationOrder >= 0 && order >= 0) {
+      return order > lastManagedConfigMutationOrder;
+    }
+    return index > lastManagedConfigMutationIndex;
+  });
+}
 
 export function summarizeEvidence(toolEvents = []) {
   const events = Array.isArray(toolEvents) ? toolEvents : [];
@@ -195,6 +269,8 @@ export function summarizeEvidence(toolEvents = []) {
   const runtimeVerifications = successful.filter(isRuntimeVerificationEvent);
   const methodologyEvents = successful.filter(isMethodologyEvent);
   const semanticRiskReviews = successful.filter(isSemanticRiskReviewEvent);
+  const managedConfigMutations = successful.filter(isManagedConfigMutationEvent);
+  const managedConfigSyncEvents = successful.filter(isManagedConfigSyncEvent);
 
   return {
     totalSuccessfulEvents: successful.length,
@@ -208,6 +284,9 @@ export function summarizeEvidence(toolEvents = []) {
     hasMutation: mutations.length > 0,
     hasRuntimeVerification: runtimeVerifications.length > 0,
     hasRuntimeVerificationAfterLastMutation: hasRuntimeVerificationAfterLastMutation(successful),
+    hasManagedConfigMutation: managedConfigMutations.length > 0,
+    hasManagedConfigSync: managedConfigSyncEvents.length > 0,
+    hasManagedConfigSyncAfterLastMutation: hasManagedConfigSyncAfterLastMutation(successful),
     hasMethodologyTool: methodologyEvents.length > 0,
     hasSemanticRiskReview: semanticRiskReviews.length > 0,
     verificationCommands: [
@@ -234,6 +313,13 @@ export function checkCompletionGates(toolEvents, gates, profile = {}) {
     }
   }
 
+  if (
+    gates.requireManagedConfigSync !== false &&
+    summary.hasManagedConfigMutation &&
+    !summary.hasManagedConfigSyncAfterLastMutation
+  ) {
+    missing.push('managed_config_sync_missing');
+  }
   if (gates.requireMethodologyTool && !summary.hasMethodologyTool) {
     missing.push('no_methodology_tool');
   }

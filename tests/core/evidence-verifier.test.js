@@ -166,6 +166,26 @@ describe('evidence-verifier', () => {
       expect(summary.hasMutation).toBe(false);
       expect(summary.hasRuntimeVerification).toBe(false);
     });
+
+    test('tracks managed manifest edits and later sync commands', () => {
+      const summary = summarizeEvidence([
+        {
+          name: 'edit_file',
+          success: true,
+          args: {
+            path: 'package.json',
+            old_string: '"left-pad": "1.0.0"',
+            new_string: '"left-pad": "1.1.0"',
+          },
+          sequence: 1,
+        },
+        { name: 'shell', success: true, args: { command: 'npm install' }, sequence: 2 },
+      ]);
+
+      expect(summary.hasManagedConfigMutation).toBe(true);
+      expect(summary.hasManagedConfigSync).toBe(true);
+      expect(summary.hasManagedConfigSyncAfterLastMutation).toBe(true);
+    });
   });
 
   describe('checkCompletionGates', () => {
@@ -214,7 +234,6 @@ describe('evidence-verifier', () => {
       expect(result.block).toBe(false);
     });
 
-
     test('passes when all gates satisfied', () => {
       const result = checkCompletionGates(
         [
@@ -231,6 +250,94 @@ describe('evidence-verifier', () => {
         { isModificationTask: true },
       );
       expect(result.block).toBe(false);
+    });
+
+    test('blocks completion after manual package.json mutations until ecosystem sync', () => {
+      const cases = [
+        {
+          tool: 'edit_file',
+          event: {
+            name: 'edit_file',
+            success: true,
+            args: {
+              path: 'package.json',
+              old_string: '"vitest": "1.0.0"',
+              new_string: '"vitest": "1.1.0"',
+            },
+          },
+        },
+        {
+          tool: 'write_file',
+          event: {
+            name: 'write_file',
+            success: true,
+            args: { path: 'package.json', content: '{"dependencies":{"vitest":"1.1.0"}}' },
+          },
+        },
+        {
+          tool: 'apply_hashline_patch',
+          event: {
+            name: 'apply_hashline_patch',
+            success: true,
+            args: {
+              patch: '[package.json#ABCD]\nSWAP 3.=3:\n+"vitest": "1.1.0"\n-"vitest": "1.0.0"',
+            },
+          },
+        },
+      ];
+
+      for (const { tool, event } of cases) {
+        const result = checkCompletionGates(
+          [event],
+          { requireMutation: true, requireRuntimeVerification: false },
+          { isModificationTask: true },
+        );
+
+        expect(result.block, tool).toBe(true);
+        expect(result.missing, tool).toContain('managed_config_sync_missing');
+        expect(result.reason, tool).toContain('managed_config_sync_missing');
+      }
+    });
+
+    test('accepts package-manager install commands as managed-config sync evidence', () => {
+      for (const command of ['npm install', 'pnpm install', 'bun install']) {
+        const result = checkCompletionGates(
+          [
+            {
+              name: 'write_file',
+              success: true,
+              args: { path: 'package.json', content: '{"dependencies":{"vitest":"1.1.0"}}' },
+              sequence: 1,
+            },
+            { name: 'shell', success: true, args: { command }, sequence: 2 },
+          ],
+          { requireMutation: true, requireRuntimeVerification: false },
+          { isModificationTask: true },
+        );
+
+        expect(result.block, command).toBe(false);
+        expect(result.missing, command).not.toContain('managed_config_sync_missing');
+        expect(result.summary.hasManagedConfigSyncAfterLastMutation, command).toBe(true);
+      }
+    });
+
+    test('does not accept a failed package-manager command as managed-config sync evidence', () => {
+      const result = checkCompletionGates(
+        [
+          {
+            name: 'write_file',
+            success: true,
+            args: { path: 'package.json', content: '{"dependencies":{"vitest":"1.1.0"}}' },
+            sequence: 1,
+          },
+          { name: 'shell', success: false, args: { command: 'npm install' }, sequence: 2 },
+        ],
+        { requireMutation: true, requireRuntimeVerification: false },
+        { isModificationTask: true },
+      );
+
+      expect(result.block).toBe(true);
+      expect(result.missing).toContain('managed_config_sync_missing');
     });
 
     test('does not require methodology evidence when the gate is disabled', () => {

@@ -45,6 +45,8 @@ export function buildCodingTaskOperatingPrompt({
     `CODE EDITING STRATEGY:\n` +
     `- For existing single-file changes: prefer edit_file or apply_hashline_patch after reading the relevant code. Use write_file only for new files, or for intentional full-file replacement with overwrite=true and overwrite_reason.\n` +
     `- For multi-file atomic patches: use apply_hashline_patch (includes preflight+diagnostics-gate).\n` +
+    `- For managed project configuration and dependency manifests, prefer the ecosystem tool over hand-editing when a command exists: use the detected package manager (npm/pnpm/yarn/bun) to add/remove dependencies and update lockfiles instead of manually editing package.json, package-lock.json, pnpm-lock.yaml, yarn.lock, or bun.lock.\n` +
+    `- If you must edit a managed config/manifest directly, run the corresponding apply/sync command before verification or completion when the ecosystem requires it (for example npm install, pnpm install, yarn install, bun install, go mod tidy, cargo update, or the framework's config-generation command). Do not claim the config change is active until that command succeeds or you report why it could not be run.\n` +
     `- When the user asked for a code change, make the smallest useful change and verify it; when a required fact is missing, gather that fact before editing.\n` +
     `\n` +
     bugFixGuidance +
@@ -81,6 +83,8 @@ export function buildCodingCompletionGatePrompt({
         'You changed code/files but have not verified the result with fresh evidence.',
       no_runtime_verification_after_last_mutation:
         'You ran verification before the latest code/file change, but not after it.',
+      managed_config_sync_missing:
+        'A managed config or dependency manifest was edited manually, but no later ecosystem install/sync command succeeded.',
       missing_semantic_risk_review:
         'This task touches high-risk behavior semantics but has no semantic/API risk review evidence yet.',
       final_answer_missing_verification_summary:
@@ -94,8 +98,9 @@ export function buildCodingCompletionGatePrompt({
     `Coding completion gate blocked the final answer.\n` +
     `Original user request: ${userInput}\n` +
     `Reason: ${reasonText}\n` +
+    `Reason code: ${gate?.reason || 'unknown'}\n` +
     `Evidence so far: ${JSON.stringify(gate?.evidence || [])}\n\n` +
     `${requiresSemanticRiskReview ? `${semanticRiskGuidance}\n` : ''}` +
-    `Continue working now. Choose the next evidence-producing step: make a scoped edit if the target is clear, inspect one missing fact if it is not, update the plan if the approach changed, or run relevant runtime verification after a mutation. Only answer with FINAL_ANSWER after the evidence supports what changed, what was verified, and any caveats.`
+    `Continue working now. Choose the next evidence-producing step: make a scoped edit if the target is clear, inspect one missing fact if it is not, update the plan if the approach changed, run the required ecosystem install/sync command after managed config or manifest edits (for example npm install, pnpm install, yarn install, bun install), or run relevant runtime verification after a mutation. Only answer with FINAL_ANSWER after the evidence supports what changed, what was verified, and any caveats.`
   );
 }

@@ -58,17 +58,49 @@ describe('coding-prompts', () => {
       expect(result).toContain('implement auth module');
     });
 
-    test('defaults to medium risk level when profile is empty', () => {
-      const result = buildCodingTaskOperatingPrompt({ userInput: 'test', profile: {} });
-      expect(result).toContain('medium');
-    });
-
     test('uses profile risk level', () => {
       const result = buildCodingTaskOperatingPrompt({
         userInput: 'test',
         profile: { riskLevel: 'high' },
       });
       expect(result).toContain('high');
+    });
+
+    test('defaults to medium risk level when profile is empty', () => {
+      const result = buildCodingTaskOperatingPrompt({ userInput: 'test', profile: {} });
+      expect(result).toContain('medium');
+    });
+
+    test('directs managed dependency changes through ecosystem commands when available', () => {
+      const result = buildCodingTaskOperatingPrompt({
+        userInput: 'add eslint config and install vite',
+      });
+
+      expect(result).toContain('prefer the ecosystem tool over hand-editing when a command exists');
+      expect(result).toContain(
+        'use the detected package manager (npm/pnpm/yarn/bun) to add/remove dependencies',
+      );
+      expect(result).toContain(
+        'instead of manually editing package.json, package-lock.json, ' +
+          'pnpm-lock.yaml, yarn.lock, or bun.lock',
+      );
+    });
+
+    test('requires install or sync command after manual manifest edits', () => {
+      const result = buildCodingTaskOperatingPrompt({
+        userInput: 'manually update package.json and cargo manifest',
+      });
+
+      expect(result).toContain(
+        'If you must edit a managed config/manifest directly, run the corresponding ' +
+          'apply/sync command before verification or completion',
+      );
+      expect(result).toContain(
+        'npm install, pnpm install, yarn install, bun install, go mod tidy, cargo update',
+      );
+      expect(result).toContain(
+        'Do not claim the config change is active until that command succeeds',
+      );
     });
 
     test('includes selective methodology guidance when hasMethodologyTools is true', () => {
@@ -112,15 +144,6 @@ describe('coding-prompts', () => {
       const result = buildCodingTaskOperatingPrompt({ userInput: 'test' });
       expect(result).toContain('Verification expectations');
       expect(result).toContain('runtime verification');
-    });
-
-    test('defaults semanticRiskGuidance to empty string', () => {
-      const result = buildCodingTaskOperatingPrompt({
-        userInput: 'test',
-        profile: { requiresSemanticRiskReview: true },
-      });
-      // Should not throw, guidance defaults to ''
-      expect(typeof result).toBe('string');
     });
   });
 
@@ -174,6 +197,18 @@ describe('coding-prompts', () => {
       expect(result).toContain('not after it');
     });
 
+    test('maps managed_config_sync_missing reason to actionable package-manager guidance', () => {
+      const result = buildCodingCompletionGatePrompt({
+        userInput: 'update package.json dependency',
+        gate: { reason: 'managed_config_sync_missing', evidence: [] },
+      });
+
+      expect(result).toContain('managed_config_sync_missing');
+      expect(result).toContain('npm install');
+      expect(result).toContain('pnpm install');
+      expect(result).toContain('bun install');
+      expect(result.toLowerCase()).toContain('run');
+    });
 
     test('maps missing_semantic_risk_review reason', () => {
       const result = buildCodingCompletionGatePrompt({

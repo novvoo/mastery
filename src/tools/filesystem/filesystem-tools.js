@@ -317,6 +317,37 @@ function normalizeComparableBlock(text) {
     .trim();
 }
 
+function stripReadFileLinePrefixes(text) {
+  if (typeof text !== 'string' || !text.trim()) {
+    return null;
+  }
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const sourceLines = normalized.split('\n');
+  const strippedLines = [];
+  let previousLineNumber = null;
+  let sawNumberedLine = false;
+
+  for (const sourceLine of sourceLines) {
+    const match = sourceLine.match(/^\s*(\d+): ?(.*)$/);
+    if (!match) {
+      return null;
+    }
+    const lineNumber = Number.parseInt(match[1], 10);
+    if (previousLineNumber !== null && lineNumber !== previousLineNumber + 1) {
+      return null;
+    }
+    previousLineNumber = lineNumber;
+    sawNumberedLine = true;
+    strippedLines.push(match[2]);
+  }
+
+  if (!sawNumberedLine) {
+    return null;
+  }
+  const stripped = strippedLines.join('\n');
+  return stripped.trim() ? stripped : null;
+}
+
 // 跟踪编辑循环检测：path -> { count, lastContentHash }
 const noopEditTracker = new Map();
 const NOOP_EDIT_LIMIT = 3;
@@ -684,7 +715,7 @@ export function createFileSystemTools() {
             return {
               offset,
               length: text.length,
-              line: content.substring(0, offset).split('\n').length + 1,
+              line: content.substring(0, offset).split('\n').length,
             };
           };
 
@@ -756,7 +787,7 @@ export function createFileSystemTools() {
             const result = findExactMatch(old_text);
             if (result?.multiple) {
               const firstIdx = content.indexOf(old_text);
-              const firstLine = content.substring(0, firstIdx).split('\n').length + 1;
+              const firstLine = content.substring(0, firstIdx).split('\n').length;
               return `Error: old_text matches multiple locations (first at line ${firstLine}). Use line/startLine/endLine for unambiguous edits.`;
             } else if (result) {
               matchOffset = result.offset;
@@ -781,13 +812,40 @@ export function createFileSystemTools() {
                   firstMatchLine = normalized.line;
                   strategy = 'normalized';
                 } else {
-                  return (
-                    `Error: old_text not found in file. The file may have been modified since you last read it.\n` +
-                    `1) Re-read the file with read_file to see current content\n` +
-                    `2) Retry with exact text from the latest read\n` +
-                    `3) Use line/startLine/endLine for line-based editing\n` +
-                    `4) If you just called write_file on this file, the old content was replaced. Use read_file to get the new content before editing.`
-                  );
+                  const strippedOldText = stripReadFileLinePrefixes(old_text);
+                  const readOutputMatch = strippedOldText ? findExactMatch(strippedOldText) : null;
+                  if (readOutputMatch?.multiple) {
+                    const firstIdx = content.indexOf(strippedOldText);
+                    const firstLine = content.substring(0, firstIdx).split('\n').length;
+                    return `Error: old_text with read_file line prefixes matches multiple locations after stripping prefixes (first at line ${firstLine}). Use line/startLine/endLine for unambiguous edits.`;
+                  }
+                  if (readOutputMatch) {
+                    matchOffset = readOutputMatch.offset;
+                    matchLength = readOutputMatch.length;
+                    firstMatchLine = readOutputMatch.line;
+                    strategy = 'read-file-output';
+                  } else {
+                    const readOutputNormalized = strippedOldText
+                      ? findNormalizedUniqueMatch(strippedOldText)
+                      : null;
+                    if (readOutputNormalized?.multiple) {
+                      return `Error: old_text with read_file line prefixes matches multiple normalized locations after stripping prefixes (first at line ${readOutputNormalized.firstLine}). Use line/startLine/endLine for unambiguous edits.`;
+                    }
+                    if (readOutputNormalized) {
+                      matchOffset = readOutputNormalized.offset;
+                      matchLength = readOutputNormalized.length;
+                      firstMatchLine = readOutputNormalized.line;
+                      strategy = 'read-file-output-normalized';
+                    } else {
+                      return (
+                        `Error: old_text not found in file. The file may have been modified since you last read it.\n` +
+                        `1) Re-read the file with read_file to see current content\n` +
+                        `2) Retry with raw file text from the latest read, without leading "N: " line-number prefixes\n` +
+                        `3) Use line/startLine/endLine for line-based editing\n` +
+                        `4) If you just called write_file on this file, the old content was replaced. Use read_file to get the new content before editing.`
+                      );
+                    }
+                  }
                 }
               }
             }

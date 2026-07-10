@@ -191,15 +191,13 @@ export function quickAssess(userInput) {
   const taskProfile = classifyTask(userInput);
 
   // taskProfile 的分类更精确，覆盖 quickAssess 的粗粒度结果
-  const finalIsModificationTask =
-    isModificationTask || taskProfile.mode === TaskMode.MUTATE;
+  const finalIsModificationTask = isModificationTask || taskProfile.mode === TaskMode.MUTATE;
   const finalIsCodingTask =
     isCodingTask ||
     taskProfile.mode === TaskMode.MUTATE ||
     taskProfile.mode === TaskMode.VERIFY ||
     taskProfile.mode === TaskMode.DIAGNOSE;
-  const finalIsBugTask =
-    isBugTask || taskProfile.intent === TaskIntent.CODE_MODIFICATION;
+  const finalIsBugTask = isBugTask || taskProfile.intent === TaskIntent.CODE_MODIFICATION;
 
   return {
     riskLevel,
@@ -373,8 +371,7 @@ export function mergeIntentProfile(quickResult, intent, userInput = '') {
     taskProfile?.mode === TaskMode.VERIFY ||
     taskProfile?.mode === TaskMode.DIAGNOSE;
   const finalIsBugTask =
-    (quickResult?.isBugTask || false) ||
-    taskProfile?.intent === TaskIntent.CODE_MODIFICATION;
+    quickResult?.isBugTask || false || taskProfile?.intent === TaskIntent.CODE_MODIFICATION;
 
   return {
     ...quickResult,
@@ -406,6 +403,7 @@ export function getCompletionGates(riskLevel, profile = {}) {
   const gates = {
     requireMutation: profile.isModificationTask !== false,
     requireRuntimeVerification: true,
+    requireManagedConfigSync: true,
     requireMethodologyTool: false,
     requireSemanticRiskReview: (profile.semanticDomains || []).length > 0,
   };
