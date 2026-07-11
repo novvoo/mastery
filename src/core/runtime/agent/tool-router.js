@@ -202,9 +202,8 @@ const PHASE_CANDIDATE_TOOLS = {
     'capture_requirements',
     'resolve_test_contract',
   ],
-  [PHASE.IMPLEMENTATION]: ['ask_user', 'diagnose', 'risk_check'],
+  [PHASE.IMPLEMENTATION]: ['diagnose', 'risk_check'],
   [PHASE.INSPECTION]: [
-    'ask_user',
     'review',
     'diagnose',
     'impact_map',
@@ -214,18 +213,18 @@ const PHASE_CANDIDATE_TOOLS = {
     'ui_acceptance',
   ],
   [PHASE.VERIFICATION]: [
-    'ask_user',
     'review',
     'verify',
     'diagnose',
     'coverage_check',
     'auto_research',
     'test_strategy',
+    'migration_plan',
     'release_checklist',
-    'security_review',
-    'data_contract_check',
     'ui_acceptance',
-    'browser_open',
+    'data_contract_check',
+    'security_review',
+    'resolve_test_contract',
   ],
 };
 

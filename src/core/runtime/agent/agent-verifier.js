@@ -24,6 +24,8 @@ import {
   isMutationEvent as evIsMutationEvent,
   checkCompletionGates as evCheckCompletionGates,
   finalAnswerMentionsVerification,
+  hasPassingVerification,
+  hasSuspiciousAutoCompletedTasks,
 } from './support/evidence-verifier.js';
 import { METHODOLOGY_TOOLS, MAX_ITERATIONS_DEFAULT } from '../../agent/constants.js';
 import { TaskStatus } from '../../../planner/graph-planner.js';
@@ -123,6 +125,38 @@ export class AgentVerifier {
         reason: checkSummary.reason,
         evidence: gateResult.summary,
       };
+    }
+
+    // 验证质量检查：有验证命令但最后一个失败了 → 必须阻塞
+    const hasAnyVerEvents = runToolEvents.some(
+      (e) => e.success !== false && e.name === 'shell' && /\b(test|lint|build|typecheck|tsc)\b/i.test(String(e.args?.command || '')),
+    );
+    const hasPassedVer = hasPassingVerification(runToolEvents);
+    if (hasAnyVerEvents && !hasPassedVer) {
+      return {
+        block: true,
+        reason: 'verification_failed',
+        evidence: {
+          ...gateResult.summary,
+          hasPassingVerification: false,
+          detail: 'Verification commands were executed but the last one did not pass (exit code > 0 or failure text detected).',
+        },
+      };
+    }
+
+    // 可疑自动完成任务检查：plan 中有任务被工具类型自动标记完成但缺乏实际证据
+    if (activePlan) {
+      const suspicious = hasSuspiciousAutoCompletedTasks(activePlan);
+      if (suspicious.hasSuspicious) {
+        return {
+          block: true,
+          reason: 'tasks_auto_completed_without_evidence',
+          evidence: {
+            ...gateResult.summary,
+            suspiciousTasks: suspicious.details,
+          },
+        };
+      }
     }
 
     return { block: false, evidence: gateResult.summary };

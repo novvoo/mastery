@@ -504,6 +504,65 @@ export function finalAnswerMentionsVerification(finalAnswerText, hasMutation) {
   return { ok: mentions, reason: mentions ? null : 'final_answer_missing_verification_summary' };
 }
 
+/**
+ * 检查工具事件中最近的验证命令是否真正通过（exit code = 0）。
+ * 用于"有验证命令但失败了"的场景，防止弱证据通过完成门控。
+ *
+ * @param {Array} toolEvents - [{ name, success, resultPreview, args }]
+ * @returns {boolean} true = 至少有一个通过的验证
+ */
+export function hasPassingVerification(toolEvents) {
+  const events = Array.isArray(toolEvents) ? toolEvents : [];
+  const verEvents = events.filter(
+    (e) => e.success !== false && isRuntimeVerificationEvent(e),
+  );
+  if (verEvents.length === 0) return false;
+
+  // 检查最后一个验证命令的 exit code
+  const lastVer = verEvents[verEvents.length - 1];
+  const preview = String(lastVer?.resultPreview || lastVer?.result || '');
+  const exitMatch = preview.match(/exit code (\d+)/i);
+  if (exitMatch) {
+    return parseInt(exitMatch[1], 10) === 0;
+  }
+
+  // 兜底：无显式 exit code 时，检查失败关键词
+  if (/[Ff]ail(?:ed|ure|s)?\b/i.test(preview) && !/0 failed|0 failures|all tests passed/i.test(preview)) {
+    return false;
+  }
+
+  // 无显式失败信号 → 认为通过
+  return true;
+}
+
+/**
+ * 检查计划中是否有任务被工具类型自动标记完成但缺乏实际证据。
+ * 用于防止"调用一次 write_file 就自动完成实现阶段"导致的虚假完成。
+ *
+ * @param {object|null} activePlan - 从 execution-plan-manager 获取的 plan 对象
+ * @returns {{ hasSuspicious: boolean, details: string[] }}
+ */
+export function hasSuspiciousAutoCompletedTasks(activePlan) {
+  if (!activePlan) return { hasSuspicious: false, details: [] };
+
+  const tasks = Array.from(activePlan.tasks?.values?.() || []);
+  const suspicious = tasks.filter(
+    (t) =>
+      t.status === 'completed' &&
+      t.result?.completedBy === 'tool-observation' &&
+      !t.result?.evidencedByUser,
+  );
+
+  if (suspicious.length === 0) return { hasSuspicious: false, details: [] };
+
+  return {
+    hasSuspicious: true,
+    details: suspicious.map(
+      (t) => `Task "${t.id || t.name}" auto-completed by tool-observation without explicit evidence.`,
+    ),
+  };
+}
+
 export default {
   isMutationEvent,
   isRuntimeVerificationEvent,
@@ -513,6 +572,8 @@ export default {
   checkCompletionGates,
   crossCheckVerifyClaim,
   finalAnswerMentionsVerification,
+  hasPassingVerification,
+  hasSuspiciousAutoCompletedTasks,
   RUNTIME_VERIFICATION_TOOL_NAMES,
   MUTATION_TOOL_NAMES,
   METHODOLOGY_TOOL_NAMES,

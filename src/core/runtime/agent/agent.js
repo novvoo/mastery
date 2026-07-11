@@ -589,54 +589,6 @@ export class ReActAgent {
           continue;
         }
 
-        // Plan 完成 + provider stop + 无工具调用 → 先检查 completion gate
-        if (
-          allToolCalls.length === 0 &&
-          response.finishReason === 'stop' &&
-          response.text?.trim() &&
-          this.#planner.activePlan?.status === TaskStatus.COMPLETED
-        ) {
-          // 即使 plan 标记为完成，也要检查是否有真实的验证证据
-          const gateForCompletedPlan = this.#verifier.shouldBlockCodingFinal({
-            responseText: response.text,
-            taskProfile: this.#activeTaskProfile,
-            runToolEvents: this.#runToolEvents,
-            activePlan: this.#planner.activePlan,
-            activePlanManager: this.#planner,
-          });
-          if (gateForCompletedPlan.block) {
-            codingGateCorrections++;
-            this.#ui.debugEvent?.('Coding completion gate requested (completed plan)', {
-              iteration,
-              correction: codingGateCorrections,
-              reason: gateForCompletedPlan.reason,
-              evidence: gateForCompletedPlan.evidence,
-            });
-            this.#sessionManager.addAssistantMessage(response.text);
-            this.#sessionManager.addUserMessage(
-              this.#verifier.buildCodingCompletionGatePrompt(
-                userInput,
-                gateForCompletedPlan,
-                this.#activeTaskProfile,
-              ),
-            );
-            continue;
-          }
-
-          const answer = isTerminationResponse(response.text)
-            ? extractFinalAnswer(response.text)
-            : response.text.trim();
-          this.#ui.finalAnswer(answer);
-          this.#sessionManager.addAssistantMessage(response.text);
-          return this.#completeRun({
-            success: true,
-            status: 'completed',
-            answer,
-            reason: 'completed_plan_provider_stop_without_marker',
-            iterations: iteration,
-            startedAt: runStartedAt,
-          });
-        }
 
         // 工具使用纠正（refusal correction）
         if (
@@ -1698,8 +1650,21 @@ export class ReActAgent {
   #isLocalTermination(response) {
     if (this.#lastResponse === response) {
       this.#repeatCount++;
-      if (this.#repeatCount >= 3) {
-        this.#ui.warn?.('Detected repeated response loop. Terminating.');
+      // 3-5 次重复：注入 nudge 打破循环，不终止
+      if (this.#repeatCount >= 3 && this.#repeatCount < 6) {
+        if (this.#repeatCount === 3) {
+          this.#ui.warn?.('Detected repeated response loop. Attempting recovery.');
+          this.#sessionManager.addUserMessage(
+            '[RECOVERY] You appear to be repeating the same response. ' +
+            'Take a completely different action: call a tool, ask_user, ' +
+            'or provide FINAL_ANSWER with the actual blocker.'
+          );
+        }
+        return false;
+      }
+      // 6 次及以上：真正终止
+      if (this.#repeatCount >= 6) {
+        this.#ui.warn?.('Detected persistent repeated response loop. Terminating.');
         return true;
       }
     } else {

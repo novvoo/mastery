@@ -17,7 +17,7 @@ import {
   buildSemanticRiskGuidance as buildSemanticRiskGuidanceText,
 } from '../../../prompts/coding-prompts.js';
 import { TERMINATION_KEYWORDS } from '../../../../utils/patterns.js';
-import { checkCompletionGates, isMutationEvent } from './evidence-verifier.js';
+import { checkCompletionGates, isMutationEvent, hasPassingVerification, hasSuspiciousAutoCompletedTasks } from './evidence-verifier.js';
 import { getCompletionGates } from './risk-budget.js';
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
@@ -339,7 +339,7 @@ export function shouldCorrectToolRefusal(toolRegistry, userInput, responseText) 
 
 // ============== 编码任务 completion gate ==============
 
-export function shouldBlockCodingFinal(userInput, responseText, { taskProfile, toolEvents } = {}) {
+export function shouldBlockCodingFinal(userInput, responseText, { taskProfile, toolEvents, activePlan } = {}) {
   if (!taskProfile?.isModificationTask) {
     return { block: false };
   }
@@ -394,6 +394,40 @@ export function shouldBlockCodingFinal(userInput, responseText, { taskProfile, t
       evidence: gateResult.summary,
     };
   }
+
+  // 4) 验证质量检查：如果有验证命令但最后一个失败了，阻塞完成
+  const hasPassedVer = hasPassingVerification(events);
+  const hasAnyVerEvents = events.some(
+    (e) => e.success !== false && e.name === 'shell' && /\b(test|lint|build|typecheck|tsc)\b/i.test(String(e.args?.command || '')),
+  );
+  if (hasAnyVerEvents && !hasPassedVer) {
+    return {
+      block: true,
+      reason: 'verification_failed',
+      evidence: {
+        hasMutation,
+        hasPassingVerification: false,
+        detail: 'Verification commands were executed but the last one did not pass (exit code > 0 or failure text detected). Run the failing command again, fix the issues, then re-verify before claiming completion.',
+      },
+    };
+  }
+
+  // 5) 可疑自动完成任务检查：plan 中有任务被工具类型自动标记完成但缺乏实际证据
+  if (activePlan) {
+    const suspicious = hasSuspiciousAutoCompletedTasks(activePlan);
+    if (suspicious.hasSuspicious) {
+      return {
+        block: true,
+        reason: 'tasks_auto_completed_without_evidence',
+        evidence: {
+          hasMutation,
+          hasPassingVerification: hasPassedVer,
+          suspiciousTasks: suspicious.details,
+        },
+      };
+    }
+  }
+
   return { block: false, evidence: gateResult.summary };
 }
 

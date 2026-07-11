@@ -3,21 +3,27 @@ import { ToolCategory } from '../../core/types/index.js';
 /**
  * ask_user - Structured clarification/request-for-input gate.
  *
- * IMPORTANT (self-answer first): Before calling this tool, try to reason through
- * and answer the questions yourself using your knowledge and context. The engine
- * will also attempt auto-answering before interrupting the user.
+ * LAST RESORT ONLY. Do NOT call this tool until you have exhausted ALL of these:
+ *   1. read_file — read the relevant code/config/docs yourself
+ *   2. grep/search — search the codebase for the answer
+ *   3. shell — run a command to inspect state (ls, cat, git log, etc.)
+ *   4. web_search/web_fetch — look up public APIs, docs, or known patterns
+ *   5. Your own reasoning — many questions can be answered by reading more code
  *
  * Only call this tool when you TRULY cannot determine the answer and need:
  * - User's personal preferences or subjective choices
  * - Credentials, API keys, or secrets
  * - Organization-specific business rules not deducible from context
  * - Ambiguous requirements with multiple valid interpretations
+ *
+ * The engine will also attempt auto-answering before interrupting the user.
+ * If the engine can self-answer, the user will never see your question.
  */
 export default function askUser() {
   return {
     name: 'ask_user',
     description:
-      'Ask the user for missing information. ONLY use as last resort when you cannot reason through the answer yourself. First try to answer using your knowledge and context. The engine will also attempt to auto-answer before interrupting the user. Use only for user preferences, credentials, org-specific business rules, or truly ambiguous requirements.',
+      'LAST RESORT: Ask the user for missing information. Do NOT call this until you have exhausted read_file, grep, shell, web_search, and your own reasoning. Use only for user preferences, credentials, org-specific business rules, or truly ambiguous requirements that no tool can resolve.',
     category: ToolCategory.skill_engineering,
     params: {
       reason: {

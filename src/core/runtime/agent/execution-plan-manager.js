@@ -1449,7 +1449,10 @@ export class ExecutionPlanManager {
     return this.#plan;
   }
   get isActive() {
-    return !!this.#plan && this.#plan.status === TaskStatus.RUNNING;
+    return (
+      !!this.#plan &&
+      (this.#plan.status === TaskStatus.RUNNING || !!this.#plan.completionPending)
+    );
   }
   get isCompleted() {
     return !!this.#plan && this.#plan.status === TaskStatus.COMPLETED;
@@ -1818,6 +1821,9 @@ export class ExecutionPlanManager {
     if (allDone) {
       plan.status = TaskStatus.COMPLETED;
       plan.completedAt = Date.now();
+      // completionPending 标记 plan 已完成但等待 FINAL_ANSWER 确认。
+      // 使 isActive 保持 true，防止 provider_stop_no_tools 路径自动结束 run。
+      plan.completionPending = true;
     }
 
     const after = this.#summarizeProgress(plan);

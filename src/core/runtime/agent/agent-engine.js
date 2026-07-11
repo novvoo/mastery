@@ -1649,6 +1649,7 @@ export class AgentEngine {
     // ============================================================
     let iteration = 0;
     let pausedTurnContinuations = 0;
+    let askUserNudgeCount = 0;
     const deadline = this.#config.deadline;
 
     while (iteration < maxIterations) {
@@ -2101,6 +2102,7 @@ export class AgentEngine {
           toolEvents: this.#toolExecutor.events,
           executionPlanIsCompleted: this.#executionPlanManager.isCompleted,
           planSummary,
+          activePlan: this.#executionPlanManager.activePlan,
         });
 
       if (shouldBlockFinal.block) {
@@ -2288,12 +2290,24 @@ export class AgentEngine {
       // -------- 短路 6：无工具调用但 provider 说 stop → 视作最终回答 --------
       // 计划任务结束只有一个条件：所有阶段性任务已经结束，并且已经对完成的任务做了总结
       // 如果计划正在执行中，即使 provider 说 stop 也不能直接结束
+      // 如果是编码/修改任务，必须通过 FINAL_ANSWER 标记才能结束
       if (
         allToolCalls.length === 0 &&
         response.finishReason === 'stop' &&
         response.text?.trim() &&
         !this.#executionPlanManager.isActive
       ) {
+        // 修改任务：provider 自然停止不是完成的信号，要求 FINAL_ANSWER
+        if (taskProfile.isModificationTask) {
+          this.#sessionManager.addAssistantMessage(response.text);
+          this.#sessionManager.addUserMessage(
+            'Provider stopped without FINAL_ANSWER. ' +
+            'If you have completed the task, output FINAL_ANSWER: followed by your summary of what changed and what was verified. ' +
+            'If you still need to make changes, call a tool now.',
+          );
+          continue;
+        }
+
         const answer = normalizeFinalAnswer(response.text);
 
         // 程序化验证：检查测试是否真的通过
@@ -2559,11 +2573,39 @@ export class AgentEngine {
 
         // ========== 反馈闭环 L2: Hashline 冲突检测 → 动态重规划 ==========
         this.#detectAndHandleHashlineConflict(execResult);
-
-        // ========== ask_user 挂起检测：如果工具返回需要用户输入，挂起主循环等待 ==========
+        // ========== ask_user 挂起检测 ==========
+        // 拦截 ask_user: 把问题塞回主会话，让 LLM 用真实工具（read_file/grep/shell）
+        // 自行查找答案。前 2 次 nudge，第 3 次起才真正挂起（防止无限循环）。
         if (execResult.name === 'ask_user' && this.#isUserInputRequired(execResult.result)) {
+          const normalized = this.#normalizeAskUserResult(execResult.result);
+          const questions = normalized.questions || [];
+          const reason = normalized.reason || '';
+          askUserNudgeCount++;
+
+          if (askUserNudgeCount <= 2) {
+            // 注入主会话 nudge，让 LLM 用真实工具查找
+            const questionList = questions.map((q, i) => `${i + 1}. ${q}`).join('\n');
+            this.#sessionManager.addAssistantMessage(
+              `[ask_user attempted] Reason: ${reason}\nQuestions:\n${questionList}`,
+            );
+            this.#sessionManager.addUserMessage(
+              `[SELF-SOLVE] You tried to ask the user. Before interrupting them, ` +
+              `use your available tools (read_file, grep, search, shell, web_search) ` +
+              `to find the answers yourself.\n\n` +
+              `Questions to research:\n${questionList}\n\n` +
+              `Once you have the answers, continue working. ` +
+              `Only call ask_user again if no tool can provide the information.`,
+            );
+            this.#ui.debugEvent?.('ask_user intercepted — nudge to self-solve with tools', {
+              questions,
+              nudgeCount: askUserNudgeCount,
+            });
+            userInputResolved = true;
+            break;
+          }
+
+          // 第 3 次起：真正挂起等待用户
           const userInput = await this.#suspendForUserInput(execResult.result);
-          // 恢复后，将用户回答作为 observation 注入会话
           const answerText = typeof userInput === 'string' ? userInput : JSON.stringify(userInput);
           this.#sessionManager.addUserMessage(
             `[User input provided] ${answerText}\n\n(This is the answer to your previous ask_user call. Use this information and continue working on the task.)`,
@@ -2571,7 +2613,6 @@ export class AgentEngine {
           this.#ui.debugEvent?.('User input received, resuming', {
             preview: this.#preview(answerText, 200),
           });
-          // 标记用户输入已处理，跳过剩余工具调用，直接进入下一轮迭代
           userInputResolved = true;
           break;
         }
@@ -3681,6 +3722,104 @@ export class AgentEngine {
       suggestions: Array.isArray(result.suggestions) ? result.suggestions : [],
       answer: result.answer || '',
     };
+  }
+
+  /**
+   * 智能自问自答：在被 ask_user 中断之前，先让 LLM 尝试自行回答。
+   * 只有 LLM 明确表示"无法回答"（需要用户偏好/凭据/业务规则等），
+   * 才返回 autoAnswered: false 触发真正的用户中断。
+   */
+  async #tryAutoAnswerAskUser(askResult) {
+    const normalized = this.#normalizeAskUserResult(askResult);
+    const questions = normalized.questions || [];
+    if (questions.length === 0) {
+      return { autoAnswered: false };
+    }
+
+    const reason = normalized.reason || '';
+    const questionList = questions.map((q, i) => `${i + 1}. ${q}`).join('\n');
+
+    // 取最近一条用户消息作为最小任务上下文
+    const history = this.#sessionManager.getHistory?.() || [];
+    const lastUserMsg =
+      [...history]
+        .reverse()
+        .find((m) => m.role === 'user')
+        ?.content?.slice(0, 600) || '';
+
+    const prompt = [
+      {
+        role: 'user',
+        content:
+          `Task context: ${lastUserMsg || '(no prior context)'}\n\n` +
+          `You want to ask the user these questions because: ${reason}\n\n` +
+          `Questions:\n${questionList}\n\n` +
+          `Before actually interrupting the user, try answering these yourself. ` +
+          `Use your knowledge, reasoning, and the task context above to provide the best answers.\n\n` +
+          `For each question, respond with exactly one of:\n` +
+          `- "ANSWER: <your answer>" if you can provide a reasonable answer\n` +
+          `- "NEEDS_USER: <reason>" if you genuinely cannot answer ` +
+          `(only for user preferences, credentials, org-specific business rules, or truly ambiguous requirements)\n\n` +
+          `End your response with a single line containing either "ALL_ANSWERED" or "NEEDS_USER_INPUT".`,
+      },
+    ];
+
+    try {
+      const response = await withTimeout(
+        () => this.#modelProvider.chat(prompt, { maxTokens: 1000 }),
+        30000,
+        'Auto-answer attempt',
+      );
+
+      const text = response.text || '';
+
+      if (/\bNEEDS_USER_INPUT\b/i.test(text)) {
+        this.#ui.debugEvent?.('Auto-answer: LLM cannot answer, will ask user', { questions });
+        return { autoAnswered: false };
+      }
+
+      const answerLines = text
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => /^ANSWER:\s*/.test(l))
+        .map((l) => l.replace(/^ANSWER:\s*/, '').trim());
+
+      if (answerLines.length > 0) {
+        this.#ui.debugEvent?.('Auto-answer: LLM self-answered', {
+          questionCount: questions.length,
+          answerCount: answerLines.length,
+        });
+        return { autoAnswered: true, answers: answerLines };
+      }
+
+      const cleaned = text.trim();
+      if (cleaned && !/NEEDS_USER/i.test(cleaned)) {
+        return { autoAnswered: true, answers: [cleaned] };
+      }
+
+      return { autoAnswered: false };
+    } catch (error) {
+      this.#ui.debugEvent?.('Auto-answer attempt failed, falling back to user', {
+        error: error.message,
+      });
+      return { autoAnswered: false };
+    }
+  }
+
+  /**
+   * 将 LLM 自答结果注入为 Observation，避免中断用户。
+   */
+  #injectAutoAnswerAsObservation(askResult, answers) {
+    const normalized = this.#normalizeAskUserResult(askResult);
+    const questions = normalized.questions || [];
+    const questionText = questions.map((q, i) => `${i + 1}. ${q}`).join('; ');
+    const answerText = Array.isArray(answers) ? answers.join('\n') : String(answers);
+    this.#sessionManager.addUserMessage(
+      `[Self-answered ask_user — no user interruption needed]\n` +
+        `Questions: ${questionText}\n\n` +
+        `Intelligent answers (reasoned by LLM):\n${answerText}\n\n` +
+        `Continue with the task incorporating these answers. Do not ask the same questions again.`,
+    );
   }
 
   async #completeRun({
