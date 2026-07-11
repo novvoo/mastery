@@ -155,6 +155,7 @@ export function isPlanningTool(toolName) {
     'data_contract_check',
     'security_review',
     'capture_requirements',
+    'resolve_test_contract',
   ].includes(toolName);
 }
 
@@ -379,6 +380,7 @@ export class ExecutionPlanManager {
   #useExternalPlan = false;
   #verificationRepairCount = 0;
   #capturedRequirements = null; // 结构化需求工件，null 表示尚未捕获
+  #testContractDecision = null; // 测试运行器冲突的结构化裁决工件
   #actionHistory = new ActionHistory(); // 动作历史追踪，用于循环检测
   #loopDetected = false; // 是否已检测到循环
 
@@ -1286,6 +1288,7 @@ export class ExecutionPlanManager {
             'ui_acceptance',
             'project_profile',
             'capture_requirements',
+            'resolve_test_contract',
           ];
         }
         if (!task.completionPredicate) {
@@ -1476,6 +1479,7 @@ export class ExecutionPlanManager {
     this.#graphPlanner = null;
     this.#verificationRepairCount = 0;
     this.#capturedRequirements = null;
+    this.#testContractDecision = null;
     if (!preserveExternalPlan) {
       this.#useExternalPlan = false;
     }
@@ -1496,6 +1500,7 @@ export class ExecutionPlanManager {
       completedMutationPaths: Array.from(this.#completedMutationPaths),
       mutationCallCount: this.#mutationCallCount,
       capturedRequirements: this.#capturedRequirements,
+      testContractDecision: this.#testContractDecision,
       plan: {
         ...this.#plan.toJSON(),
         tasks: this.#plan.toJSON().tasks.map((task) => ({
@@ -1546,6 +1551,7 @@ export class ExecutionPlanManager {
     this.#completedMutationPaths = new Set(snapshot.completedMutationPaths || []);
     this.#mutationCallCount = Number(snapshot.mutationCallCount || 0);
     this.#capturedRequirements = snapshot.capturedRequirements || null;
+    this.#testContractDecision = snapshot.testContractDecision || null;
     this.#hardenPlanQuality(plan, plan.context?.planType, this.#profile, {
       decomposition: plan.context?.decomposition || 'restored',
     });
@@ -1726,6 +1732,8 @@ export class ExecutionPlanManager {
       if (artifact) {
         this.#onRequirementsCaptured(artifact);
       }
+    } else if (toolName === 'resolve_test_contract') {
+      this.#captureTestContractDecision(args);
     } else if (!this.#hasCapturedRequirements() && isPlanningTool(toolName)) {
       const artifact = this.#buildArtifactFromPlanningEvidence(args, result);
       if (artifact) {
@@ -3058,7 +3066,47 @@ export class ExecutionPlanManager {
     return {
       onRequirementsCaptured: this.#onRequirementsCaptured,
       getCapturedRequirements: () => this.#capturedRequirements,
+      getTestContractDecision: () => this.#testContractDecision,
     };
+  }
+
+  #captureTestContractDecision(args) {
+    const runners = Array.isArray(args?.declared_runners)
+      ? [
+          ...new Set(
+            args.declared_runners
+              .map((runner) => String(runner).trim().toLowerCase())
+              .filter(Boolean),
+          ),
+        ]
+      : [];
+    const authoritativeRunner = String(args?.authoritative_runner || '')
+      .trim()
+      .toLowerCase();
+    const rationale = String(args?.rationale || '').trim();
+    const syncTargets = Array.isArray(args?.sync_targets)
+      ? args.sync_targets.map((target) => String(target).trim()).filter(Boolean)
+      : null;
+    if (
+      runners.length < 2 ||
+      !runners.includes(authoritativeRunner) ||
+      rationale.length < 12 ||
+      !syncTargets
+    ) {
+      return false;
+    }
+    this.#testContractDecision = {
+      declaredRunners: runners,
+      authoritativeRunner,
+      rationale,
+      syncTargets,
+      decidedAt: Date.now(),
+    };
+    return true;
+  }
+
+  getTestContractDecision() {
+    return this.#testContractDecision;
   }
 
   /** 从 capture_requirements 的 args 中提取结构化工件。 */

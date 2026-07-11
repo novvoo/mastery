@@ -52,6 +52,7 @@ const METHODOLOGY_TOOL_NAMES = new Set([
   'security_review',
   'caveman',
   'handoff',
+  'resolve_test_contract',
 ]);
 
 const SEMANTIC_REVIEW_TOOL_NAMES = new Set(['review']);
@@ -63,6 +64,34 @@ function extractCommand(event) {
   return String(
     event.args.command || event.args.input || event.args.text || event.args.cmd || '',
   ).toLowerCase();
+}
+
+function isVerificationCommandEvent(event) {
+  if (!event || !event.name) return false;
+  if (!['shell', 'pty_start', 'pty_write', 'pty_read'].includes(event.name)) return false;
+  const command = extractCommand(event);
+  return Boolean(command) && isRuntimeVerificationCommand(command);
+}
+
+function normalizeVerificationCommand(event) {
+  return extractCommand(event).replace(/\s+/g, ' ').trim();
+}
+
+function commandRunner(command) {
+  return (
+    normalizeVerificationCommand({ args: { command } })
+      .match(/^(npm|bun|pnpm|yarn)\b/i)?.[1]
+      ?.toLowerCase() || null
+  );
+}
+
+function isObservedFailure(event) {
+  if (event?.success === false) return true;
+  const preview = String(event?.resultPreview || event?.result || '');
+  return (
+    /"?(exitCode|exit_code)"?\s*[:=]\s*[1-9]\d*/i.test(preview) ||
+    /\b(?:tests? failed|failures?:|referenceerror|typeerror|assertionerror)\b/i.test(preview)
+  );
 }
 
 const MANAGED_CONFIG_PATH_RE =
@@ -233,6 +262,62 @@ function hasRuntimeVerificationAfterLastMutation(events) {
   });
 }
 
+function strictRepairEvidence(events) {
+  const firstMutationIndex = events.findIndex(isMutationEvent);
+  let lastMutationIndex = -1;
+  events.forEach((event, index) => {
+    if (isMutationEvent(event)) lastMutationIndex = index;
+  });
+
+  const baselineEvents = events.filter(
+    (event, index) =>
+      index < firstMutationIndex && isVerificationCommandEvent(event) && isObservedFailure(event),
+  );
+  const postMutationEvents = events.filter(
+    (event, index) =>
+      index > lastMutationIndex && event.success !== false && isRuntimeVerificationEvent(event),
+  );
+  const postMutationCommands = [
+    ...new Set(postMutationEvents.map(normalizeVerificationCommand).filter(Boolean)),
+  ];
+  const postMutationRunners = [...new Set(postMutationCommands.map(commandRunner).filter(Boolean))];
+  const decisionIndex = events.findIndex(
+    (event) => event.name === 'resolve_test_contract' && event.success !== false,
+  );
+  const decisionEvent = decisionIndex >= 0 ? events[decisionIndex] : null;
+  const selectedRunner = String(decisionEvent?.args?.authoritative_runner || '')
+    .trim()
+    .toLowerCase();
+  const declaredRunners = Array.isArray(decisionEvent?.args?.declared_runners)
+    ? decisionEvent.args.declared_runners.map((runner) => String(runner).trim().toLowerCase())
+    : [];
+  const hasValidContractDecision = Boolean(
+    decisionEvent &&
+    decisionIndex < firstMutationIndex &&
+    declaredRunners.length >= 2 &&
+    declaredRunners.includes(selectedRunner) &&
+    String(decisionEvent.args?.rationale || '').trim().length >= 12 &&
+    Array.isArray(decisionEvent.args?.sync_targets),
+  );
+  const syncTargets = hasValidContractDecision
+    ? decisionEvent.args.sync_targets.map((target) => String(target).replace(/\\/g, '/'))
+    : [];
+  const mutatedPaths = new Set(events.filter(isMutationEvent).flatMap(extractPathCandidates));
+  const missingContractSyncTargets = syncTargets.filter((target) => !mutatedPaths.has(target));
+
+  return {
+    hasPreMutationBaseline: firstMutationIndex > 0 && baselineEvents.length > 0,
+    baselineCommands: [...new Set(baselineEvents.map(normalizeVerificationCommand))],
+    postMutationVerificationCount: postMutationCommands.length,
+    postMutationVerificationCommands: postMutationCommands,
+    postMutationRunners,
+    hasValidContractDecision,
+    authoritativeTestRunner: hasValidContractDecision ? selectedRunner : null,
+    contractDecisionSyncTargets: syncTargets,
+    missingContractSyncTargets,
+  };
+}
+
 function hasManagedConfigSyncAfterLastMutation(events) {
   let lastManagedConfigMutationIndex = -1;
   let lastManagedConfigMutationOrder = -1;
@@ -292,6 +377,7 @@ export function summarizeEvidence(toolEvents = []) {
     verificationCommands: [
       ...new Set(runtimeVerifications.map((e) => extractCommand(e)).filter(Boolean)),
     ].slice(0, 10),
+    ...strictRepairEvidence(events),
   };
 }
 
@@ -326,6 +412,40 @@ export function checkCompletionGates(toolEvents, gates, profile = {}) {
 
   if (gates.requireSemanticRiskReview && !summary.hasSemanticRiskReview) {
     missing.push('no_semantic_risk_review');
+  }
+
+  if (gates.requirePreMutationBaseline && summary.hasMutation && !summary.hasPreMutationBaseline) {
+    missing.push('no_pre_mutation_failure_baseline');
+  }
+
+  const requiredPostMutationVerifications = Number(gates.requiredPostMutationVerifications || 0);
+  if (
+    summary.hasMutation &&
+    requiredPostMutationVerifications > 0 &&
+    summary.postMutationVerificationCount < requiredPostMutationVerifications
+  ) {
+    missing.push('insufficient_post_mutation_verification_matrix');
+  }
+
+  const requiredRunners = Array.isArray(gates.requiredTestRunners) ? gates.requiredTestRunners : [];
+  if (gates.requireTestContractDecision && !summary.hasValidContractDecision) {
+    missing.push('test_contract_decision_missing_or_late');
+  }
+  if (
+    gates.requireTestContractDecision &&
+    summary.hasValidContractDecision &&
+    summary.missingContractSyncTargets.length > 0
+  ) {
+    missing.push(`test_contract_sync_missing:${summary.missingContractSyncTargets.join(',')}`);
+  }
+  const effectiveRequiredRunners = summary.hasValidContractDecision
+    ? [summary.authoritativeTestRunner]
+    : requiredRunners;
+  const missingRunners = effectiveRequiredRunners.filter(
+    (runner) => !summary.postMutationRunners.includes(String(runner).toLowerCase()),
+  );
+  if (summary.hasMutation && missingRunners.length > 0) {
+    missing.push(`declared_test_runners_not_verified:${missingRunners.join(',')}`);
   }
 
   return {

@@ -167,6 +167,22 @@ describe('evidence-verifier', () => {
       expect(summary.hasRuntimeVerification).toBe(false);
     });
 
+    test('keeps a failed test command as pre-mutation baseline evidence', () => {
+      const summary = summarizeEvidence([
+        {
+          name: 'shell',
+          args: { command: 'bun test tests/game.test.js' },
+          success: false,
+        },
+        { name: 'edit_file', args: { path: 'game.js', new_string: 'fixed' }, success: true },
+        { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: true },
+      ]);
+
+      expect(summary.hasPreMutationBaseline).toBe(true);
+      expect(summary.baselineCommands).toEqual(['bun test tests/game.test.js']);
+      expect(summary.postMutationVerificationCount).toBe(1);
+    });
+
     test('tracks managed manifest edits and later sync commands', () => {
       const summary = summarizeEvidence([
         {
@@ -185,6 +201,176 @@ describe('evidence-verifier', () => {
       expect(summary.hasManagedConfigMutation).toBe(true);
       expect(summary.hasManagedConfigSync).toBe(true);
       expect(summary.hasManagedConfigSyncAfterLastMutation).toBe(true);
+    });
+  });
+
+  describe('strict repair gates', () => {
+    const gates = {
+      requireMutation: true,
+      requireRuntimeVerification: true,
+      requirePreMutationBaseline: true,
+      requiredPostMutationVerifications: 2,
+    };
+
+    test('blocks a high-risk repair that only runs one test after editing', () => {
+      const result = checkCompletionGates(
+        [
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: false },
+          { name: 'edit_file', args: { path: 'game.js', new_string: 'fixed' }, success: true },
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: true },
+        ],
+        gates,
+        { isModificationTask: true },
+      );
+
+      expect(result.block).toBe(true);
+      expect(result.missing).toContain('insufficient_post_mutation_verification_matrix');
+    });
+
+    test('accepts baseline plus focused and full post-mutation verification', () => {
+      const result = checkCompletionGates(
+        [
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: false },
+          { name: 'edit_file', args: { path: 'game.js', new_string: 'fixed' }, success: true },
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: true },
+          { name: 'shell', args: { command: 'bun test' }, success: true },
+        ],
+        gates,
+        { isModificationTask: true },
+      );
+
+      expect(result.block).toBe(false);
+      expect(result.summary.postMutationVerificationCount).toBe(2);
+    });
+
+    test('blocks editing before any reproducible baseline', () => {
+      const result = checkCompletionGates(
+        [
+          { name: 'read_file', args: { path: 'game.js' }, success: true },
+          { name: 'edit_file', args: { path: 'game.js', new_string: 'fixed' }, success: true },
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: true },
+          { name: 'shell', args: { command: 'bun test' }, success: true },
+        ],
+        gates,
+        { isModificationTask: true },
+      );
+
+      expect(result.missing).toContain('no_pre_mutation_failure_baseline');
+    });
+
+    test('does not treat an already-passing pre-change test as a failure baseline', () => {
+      const result = checkCompletionGates(
+        [
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: true },
+          { name: 'edit_file', args: { path: 'game.js', new_string: 'fixed' }, success: true },
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: true },
+          { name: 'shell', args: { command: 'bun test' }, success: true },
+        ],
+        gates,
+        { isModificationTask: true },
+      );
+
+      expect(result.missing).toContain('no_pre_mutation_failure_baseline');
+    });
+
+    test('requires every declared conflicting runner after the last mutation', () => {
+      const result = checkCompletionGates(
+        [
+          { name: 'shell', args: { command: 'bun test' }, success: false },
+          { name: 'edit_file', args: { path: 'game.js', new_string: 'fixed' }, success: true },
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: true },
+          { name: 'shell', args: { command: 'bun test' }, success: true },
+        ],
+        { ...gates, requiredTestRunners: ['bun', 'npm'] },
+        { isModificationTask: true },
+      );
+
+      expect(result.missing).toContain('declared_test_runners_not_verified:npm');
+    });
+
+    test('accepts an explicit pre-mutation contract decision and verifies its selected runner', () => {
+      const result = checkCompletionGates(
+        [
+          { name: 'shell', args: { command: 'bun test' }, success: false },
+          {
+            name: 'resolve_test_contract',
+            success: true,
+            args: {
+              declared_runners: ['bun', 'npm'],
+              authoritative_runner: 'bun',
+              rationale: 'CI and the package script both execute Bun directly.',
+              sync_targets: ['CONTEXT.md'],
+            },
+          },
+          { name: 'edit_file', args: { path: 'game.js', new_string: 'fixed' }, success: true },
+          {
+            name: 'edit_file',
+            args: { path: 'CONTEXT.md', new_string: 'Use bun test.' },
+            success: true,
+          },
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: true },
+          { name: 'shell', args: { command: 'bun test' }, success: true },
+        ],
+        {
+          ...gates,
+          requireTestContractDecision: true,
+          requiredTestRunners: ['bun', 'npm'],
+        },
+        { isModificationTask: true },
+      );
+
+      expect(result.block).toBe(false);
+      expect(result.summary.authoritativeTestRunner).toBe('bun');
+      expect(result.summary.contractDecisionSyncTargets).toEqual(['CONTEXT.md']);
+    });
+
+    test('requires every declared contract synchronization target to be updated', () => {
+      const result = checkCompletionGates(
+        [
+          { name: 'shell', args: { command: 'bun test' }, success: false },
+          {
+            name: 'resolve_test_contract',
+            success: true,
+            args: {
+              declared_runners: ['bun', 'npm'],
+              authoritative_runner: 'bun',
+              rationale: 'CI and the package script both execute Bun directly.',
+              sync_targets: ['CONTEXT.md'],
+            },
+          },
+          { name: 'edit_file', args: { path: 'game.js', new_string: 'fixed' }, success: true },
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: true },
+          { name: 'shell', args: { command: 'bun test' }, success: true },
+        ],
+        { ...gates, requireTestContractDecision: true, requiredTestRunners: ['bun', 'npm'] },
+        { isModificationTask: true },
+      );
+      expect(result.missing).toContain('test_contract_sync_missing:CONTEXT.md');
+    });
+
+    test('rejects a contract decision recorded after mutation', () => {
+      const result = checkCompletionGates(
+        [
+          { name: 'shell', args: { command: 'bun test' }, success: false },
+          { name: 'edit_file', args: { path: 'game.js', new_string: 'fixed' }, success: true },
+          {
+            name: 'resolve_test_contract',
+            success: true,
+            args: {
+              declared_runners: ['bun', 'npm'],
+              authoritative_runner: 'bun',
+              rationale: 'CI and the package script both execute Bun directly.',
+              sync_targets: ['CONTEXT.md'],
+            },
+          },
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: true },
+          { name: 'shell', args: { command: 'bun test' }, success: true },
+        ],
+        { ...gates, requireTestContractDecision: true, requiredTestRunners: ['bun', 'npm'] },
+        { isModificationTask: true },
+      );
+
+      expect(result.missing).toContain('test_contract_decision_missing_or_late');
     });
   });
 

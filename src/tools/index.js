@@ -38,6 +38,7 @@ import createToIssuesTool from './skills/to_issues.js';
 import createSetupTool from './skills/setup.js';
 import createCaptureRequirementsTool from './skills/capture-requirements.js';
 import createModuleSystemCheckTool from './skills/module_system_check.js';
+import createResolveTestContractTool from './skills/resolve-test-contract.js';
 import {
   createDataContractCheckTool,
   createImpactMapTool,
@@ -78,6 +79,7 @@ export const SKILL_TOOL_CREATORS = [
   createSecurityReviewTool,
   createCaptureRequirementsTool,
   createModuleSystemCheckTool,
+  createResolveTestContractTool,
 ];
 
 export function createCoreTools({

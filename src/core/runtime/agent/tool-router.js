@@ -200,6 +200,7 @@ const PHASE_CANDIDATE_TOOLS = {
     'security_review',
     'setup',
     'capture_requirements',
+    'resolve_test_contract',
   ],
   [PHASE.IMPLEMENTATION]: ['ask_user', 'diagnose', 'risk_check'],
   [PHASE.INSPECTION]: [

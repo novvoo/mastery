@@ -165,6 +165,17 @@ describe('risk-budget', () => {
       const gates = getCompletionGates(RISK_LEVEL.LOW, { isModificationTask: true });
       expect(gates.requireMethodologyTool).toBe(false);
     });
+
+    test('high-risk bug fixes require baseline and a two-command verification matrix', () => {
+      const gates = getCompletionGates(RISK_LEVEL.HIGH, {
+        isModificationTask: true,
+        isBugTask: true,
+        repairContract: { hasRunnerConflict: true, runners: ['bun', 'npm'] },
+      });
+      expect(gates.requirePreMutationBaseline).toBe(true);
+      expect(gates.requiredPostMutationVerifications).toBe(2);
+      expect(gates.requiredTestRunners).toEqual(['bun', 'npm']);
+    });
   });
 
   describe('getMethodologyGuidance', () => {

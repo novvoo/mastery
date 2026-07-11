@@ -635,7 +635,11 @@ describe('ExecutionPlanManager', () => {
     const implementTask = manager.plan.getTask('implement_changes');
     expect(implementTask.status).toBe('running');
 
-    manager.advance('write_file', { path: 'app.js', content: 'updated greeting' }, 'success: written');
+    manager.advance(
+      'write_file',
+      { path: 'app.js', content: 'updated greeting' },
+      'success: written',
+    );
 
     expect(implementTask.status).toBe('completed');
   });
@@ -1075,6 +1079,17 @@ describe('ExecutionPlanManager', () => {
       allowsMutation: true,
     });
 
+    manager.advance(
+      'resolve_test_contract',
+      {
+        declared_runners: ['bun', 'npm'],
+        authoritative_runner: 'bun',
+        rationale: 'The release workflow executes Bun as its shipping test authority.',
+        sync_targets: ['CONTEXT.md'],
+      },
+      { ok: true },
+    );
+
     manager.advance('list_dir', {}, 'OK');
     manager.advance('project_profile', {}, 'package.json scripts test');
     manager.advance('test_strategy', {}, 'targeted check');
@@ -1099,5 +1114,9 @@ describe('ExecutionPlanManager', () => {
     expect(restored.plan.getTask('verify_result').result.displayStatus).toBe('needs_repair');
     expect(restored.plan.getTask('repair_after_verification_failure_1_diagnose')).toBeDefined();
     expect(restored.buildPrompt()).toContain('repair_after_verification_failure_1_diagnose');
+    expect(restored.getTestContractDecision()).toMatchObject({
+      authoritativeRunner: 'bun',
+      syncTargets: ['CONTEXT.md'],
+    });
   });
 });

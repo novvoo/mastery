@@ -106,6 +106,7 @@ import {
 import { analyzeHashlinePatchResult } from './support/hashline-plan-policy.js';
 import { loadRuntimeEnv } from '../runtime-config.js';
 import { createConfiguredModelProvider } from '../../../cli/model-provider-factory.js';
+import { discoverRepairContract, formatRepairContract } from './support/repair-contract.js';
 
 /**
  * AgentEngine 工厂函数。供 CLI/Desktop 调用。
@@ -1479,6 +1480,9 @@ export class AgentEngine {
     const taskProfile =
       this.#intentClassifier?.classifyTask?.(userInput, intent, classificationFeedback) ??
       quickAssess(userInput);
+    if (taskProfile?.isBugTask) {
+      taskProfile.repairContract = await discoverRepairContract(this.#config.workingDirectory);
+    }
 
     // ========== Step 3：准备运行上下文 ==========
     // 原始任务以 DECISION 优先级写入，确保上下文裁剪时不被丢弃
@@ -1596,7 +1600,10 @@ export class AgentEngine {
       const strategy = await suggestVerificationStrategy(userInput, {
         workingDirectory: this.#config.workingDirectory,
       });
-      this.#sessionManager.addUserMessage(`${basePrompt}\n\nVerification strategy:\n${strategy}`);
+      const repairContract = formatRepairContract(taskProfile.repairContract);
+      this.#sessionManager.addUserMessage(
+        `${basePrompt}\n\nVerification strategy:\n${strategy}${repairContract ? `\n\n${repairContract}` : ''}`,
+      );
     }
 
     if (executionPlan) {

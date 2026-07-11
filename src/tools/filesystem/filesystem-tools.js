@@ -1369,17 +1369,21 @@ export function createFileSystemTools() {
 
     {
       name: 'list_dir',
-      description: 'List files and directories at a given path. For full tree, use tree tool.',
+      description:
+        'List files and directories at a given path. This is NOT a shell command — do NOT pass flags like -la, -l, -a. For full recursive tree, use tree tool. For shell commands, use shell tool.',
       category: ToolCategory.FILESYSTEM,
       params: {
         path: {
           type: 'string',
-          description: 'Directory path relative to working directory (default: root)',
+          description:
+            'Directory path relative to working directory (default: root). Only a path — no flags like -la.',
         },
       },
       required: [],
       handler: async ({ path }, ctx) => {
-        const safe = safeResolvePath(ctx.workingDirectory, path || '.');
+        // Strip common shell flags that LLMs may accidentally prepend (e.g. "-la tests/" → "tests/")
+        let cleanPath = String(path || '.').replace(/^(-[a-zA-Z]+\s+)/, '').trim() || '.';
+        const safe = safeResolvePath(ctx.workingDirectory, cleanPath);
         if (!safe.ok) {
           return safe.error;
         }

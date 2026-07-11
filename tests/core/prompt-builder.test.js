@@ -240,10 +240,13 @@ describe('shouldBlockCodingFinal', () => {
     expect(result.evidence.details).toContain('no code was modified');
   });
 
-  test('does not block when mutation evidence exists', () => {
+  test('does not block when mutation and post-change verification evidence exist', () => {
     const result = shouldBlockCodingFinal('fix bug', 'FINAL_ANSWER: done', {
       taskProfile: { isModificationTask: true },
-      toolEvents: [{ success: true, name: 'write_file', args: { content: 'fixed' } }],
+      toolEvents: [
+        { success: true, name: 'write_file', args: { content: 'fixed' } },
+        { success: true, name: 'shell', args: { command: 'bun test' } },
+      ],
     });
     expect(result.block).toBe(false);
   });

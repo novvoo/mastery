@@ -400,12 +400,22 @@ export function computeIterationBudget(
 }
 
 export function getCompletionGates(riskLevel, profile = {}) {
+  const strictRepair =
+    profile.isBugTask === true &&
+    (riskLevel === RISK_LEVEL.HIGH || riskLevel === RISK_LEVEL.CRITICAL);
   const gates = {
     requireMutation: profile.isModificationTask !== false,
     requireRuntimeVerification: true,
     requireManagedConfigSync: true,
     requireMethodologyTool: false,
     requireSemanticRiskReview: (profile.semanticDomains || []).length > 0,
+    requirePreMutationBaseline: strictRepair,
+    requiredPostMutationVerifications: strictRepair ? 2 : 1,
+    requiredTestRunners:
+      strictRepair && profile.repairContract?.hasRunnerConflict
+        ? profile.repairContract.runners
+        : [],
+    requireTestContractDecision: Boolean(strictRepair && profile.repairContract?.hasRunnerConflict),
   };
 
   return gates;

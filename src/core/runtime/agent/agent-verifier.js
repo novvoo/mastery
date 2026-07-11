@@ -79,7 +79,9 @@ export class AgentVerifier {
 
     // evidence-verifier 评估
     const gates = getCompletionGates(taskProfile.riskLevel, taskProfile);
-    const gateResult = evCheckCompletionGates(successfulEvents, gates, taskProfile);
+    // Failed test commands are meaningful pre-mutation baseline evidence, so the
+    // evidence verifier receives the complete ordered event stream.
+    const gateResult = evCheckCompletionGates(runToolEvents, gates, taskProfile);
 
     // 执行计划未完成
     if (activePlan && activePlan.status !== TaskStatus.COMPLETED) {

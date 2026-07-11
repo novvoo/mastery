@@ -27,6 +27,7 @@ import { withRoutedToolContext } from '../../tools/routed-tool-context.js';
 import { TokenScope } from './support/token-scope.js';
 import { MAX_ITERATIONS_DEFAULT, METHODOLOGY_TOOLS } from '../../agent/constants.js';
 import { TaskStatus } from '../../../planner/graph-planner.js';
+import { discoverRepairContract, formatRepairContract } from './support/repair-contract.js';
 import { isMutationTool, isSemanticRiskReviewTool } from './execution-plan-manager.js';
 import { metricsSink } from '../metrics-sink.js';
 import {
@@ -1214,6 +1215,9 @@ export class ReActAgent {
    * @returns {{ executionPlan: object|null, maxIterations: number }}
    */
   async #prepareRunContext(userInput, intent, taskProfile) {
+    if (taskProfile?.isBugTask) {
+      taskProfile.repairContract = await discoverRepairContract(this.#config.workingDirectory);
+    }
     // 添加用户消息
     this.#sessionManager.addUserMessage(userInput);
 
@@ -1295,7 +1299,10 @@ export class ReActAgent {
         userInput,
         this.#config.workingDirectory,
       );
-      this.#sessionManager.addUserMessage(`${basePrompt}\n\nVerification strategy:\n${strategy}`);
+      const repairContract = formatRepairContract(taskProfile.repairContract);
+      this.#sessionManager.addUserMessage(
+        `${basePrompt}\n\nVerification strategy:\n${strategy}${repairContract ? `\n\n${repairContract}` : ''}`,
+      );
     }
 
     if (executionPlan) {

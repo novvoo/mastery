@@ -17,7 +17,8 @@ import {
   buildSemanticRiskGuidance as buildSemanticRiskGuidanceText,
 } from '../../../prompts/coding-prompts.js';
 import { TERMINATION_KEYWORDS } from '../../../../utils/patterns.js';
-import { isMutationEvent } from './evidence-verifier.js';
+import { checkCompletionGates, isMutationEvent } from './evidence-verifier.js';
+import { getCompletionGates } from './risk-budget.js';
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 
@@ -379,10 +380,21 @@ export function shouldBlockCodingFinal(userInput, responseText, { taskProfile, t
     };
   }
 
-  // 3) 有代码修改 → 允许通过
-  //    更严格的验证（runtime verification / semantic review evidence）由 agent-verifier.js 负责
-  //    prompt-builder.js 只做基础证据检查
-  return { block: false, evidence: { hasMutation: true } };
+  // 3) 统一执行证据门禁。保留失败事件，因为严格 bug 修复需要记录修改前失败基线。
+  const gateResult = checkCompletionGates(
+    events,
+    getCompletionGates(taskProfile.riskLevel, taskProfile),
+    taskProfile,
+  );
+  if (gateResult.block) {
+    return {
+      block: true,
+      reason: gateResult.reason,
+      missing: gateResult.missing,
+      evidence: gateResult.summary,
+    };
+  }
+  return { block: false, evidence: gateResult.summary };
 }
 
 // ============== 工厂：便于按名称调用 ==============
