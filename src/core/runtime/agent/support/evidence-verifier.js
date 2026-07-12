@@ -53,6 +53,8 @@ const METHODOLOGY_TOOL_NAMES = new Set([
   'caveman',
   'handoff',
   'resolve_test_contract',
+  'analyze_test_failure',
+  'decide_repair_plan',
 ]);
 
 const SEMANTIC_REVIEW_TOOL_NAMES = new Set(['review']);
@@ -273,6 +275,53 @@ function strictRepairEvidence(events) {
     (event, index) =>
       index < firstMutationIndex && isVerificationCommandEvent(event) && isObservedFailure(event),
   );
+  const baselineCommands = [...new Set(baselineEvents.map(normalizeVerificationCommand))];
+  const analysisIndex = events.findIndex(
+    (event) => event.name === 'analyze_test_failure' && event.success !== false,
+  );
+  const analysisEvent = analysisIndex >= 0 ? events[analysisIndex] : null;
+  const analysisHypotheses = Array.isArray(analysisEvent?.args?.hypotheses)
+    ? analysisEvent.args.hypotheses
+    : [];
+  const hasValidFailureAnalysis = Boolean(
+    analysisEvent &&
+    analysisIndex < firstMutationIndex &&
+    baselineCommands.includes(
+      String(analysisEvent.args?.command || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase(),
+    ) &&
+    String(analysisEvent.args?.primary_error || '').trim() &&
+    String(analysisEvent.args?.failure_location || '').trim() &&
+    Array.isArray(analysisEvent.args?.observed_facts) &&
+    analysisEvent.args.observed_facts.length > 0 &&
+    analysisHypotheses.length > 0 &&
+    analysisHypotheses.every(
+      (entry) =>
+        String(entry?.cause || '').trim() &&
+        Array.isArray(entry?.evidence) &&
+        entry.evidence.length > 0 &&
+        ['low', 'medium', 'high'].includes(String(entry?.confidence || '').toLowerCase()),
+    ),
+  );
+  const repairDecisionIndex = events.findIndex(
+    (event) => event.name === 'decide_repair_plan' && event.success !== false,
+  );
+  const repairDecisionEvent = repairDecisionIndex >= 0 ? events[repairDecisionIndex] : null;
+  const hasValidRepairDecision = Boolean(
+    hasValidFailureAnalysis &&
+    repairDecisionEvent &&
+    repairDecisionIndex > analysisIndex &&
+    repairDecisionIndex < firstMutationIndex &&
+    Array.isArray(repairDecisionEvent.args?.root_causes) &&
+    repairDecisionEvent.args.root_causes.length > 0 &&
+    String(repairDecisionEvent.args?.selected_approach || '').trim().length >= 12 &&
+    Array.isArray(repairDecisionEvent.args?.changes) &&
+    repairDecisionEvent.args.changes.length > 0 &&
+    Array.isArray(repairDecisionEvent.args?.verification) &&
+    repairDecisionEvent.args.verification.length > 0,
+  );
   const postMutationEvents = events.filter(
     (event, index) =>
       index > lastMutationIndex && event.success !== false && isRuntimeVerificationEvent(event),
@@ -307,7 +356,9 @@ function strictRepairEvidence(events) {
 
   return {
     hasPreMutationBaseline: firstMutationIndex > 0 && baselineEvents.length > 0,
-    baselineCommands: [...new Set(baselineEvents.map(normalizeVerificationCommand))],
+    baselineCommands,
+    hasValidFailureAnalysis,
+    hasValidRepairDecision,
     postMutationVerificationCount: postMutationCommands.length,
     postMutationVerificationCommands: postMutationCommands,
     postMutationRunners,
@@ -417,6 +468,12 @@ export function checkCompletionGates(toolEvents, gates, profile = {}) {
   if (gates.requirePreMutationBaseline && summary.hasMutation && !summary.hasPreMutationBaseline) {
     missing.push('no_pre_mutation_failure_baseline');
   }
+  if (gates.requireFailureAnalysis && summary.hasMutation && !summary.hasValidFailureAnalysis) {
+    missing.push('test_failure_analysis_missing_invalid_or_late');
+  }
+  if (gates.requireRepairDecision && summary.hasMutation && !summary.hasValidRepairDecision) {
+    missing.push('repair_decision_missing_invalid_or_late');
+  }
 
   const requiredPostMutationVerifications = Number(gates.requiredPostMutationVerifications || 0);
   if (
@@ -513,9 +570,7 @@ export function finalAnswerMentionsVerification(finalAnswerText, hasMutation) {
  */
 export function hasPassingVerification(toolEvents) {
   const events = Array.isArray(toolEvents) ? toolEvents : [];
-  const verEvents = events.filter(
-    (e) => e.success !== false && isRuntimeVerificationEvent(e),
-  );
+  const verEvents = events.filter((e) => e.success !== false && isRuntimeVerificationEvent(e));
   if (verEvents.length === 0) return false;
 
   // 检查最后一个验证命令的 exit code
@@ -527,7 +582,10 @@ export function hasPassingVerification(toolEvents) {
   }
 
   // 兜底：无显式 exit code 时，检查失败关键词
-  if (/[Ff]ail(?:ed|ure|s)?\b/i.test(preview) && !/0 failed|0 failures|all tests passed/i.test(preview)) {
+  if (
+    /[Ff]ail(?:ed|ure|s)?\b/i.test(preview) &&
+    !/0 failed|0 failures|all tests passed/i.test(preview)
+  ) {
     return false;
   }
 
@@ -558,7 +616,8 @@ export function hasSuspiciousAutoCompletedTasks(activePlan) {
   return {
     hasSuspicious: true,
     details: suspicious.map(
-      (t) => `Task "${t.id || t.name}" auto-completed by tool-observation without explicit evidence.`,
+      (t) =>
+        `Task "${t.id || t.name}" auto-completed by tool-observation without explicit evidence.`,
     ),
   };
 }

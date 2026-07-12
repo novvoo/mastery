@@ -56,6 +56,34 @@ describe('DesktopCore - UI 适配器与事件流', () => {
       await desktopCore.dispose();
     }
   });
+
+  test('answer-only agent complete does not mark DesktopCore ready before run result', async () => {
+    const desktopCore = createDesktopCore({
+      workingDirectory: process.cwd(),
+      debug: false,
+    });
+    try {
+      await desktopCore.initialize();
+      const bus = desktopCore.getEventBus();
+
+      bus.emit(RuntimeEvent.AGENT_START, { timestamp: Date.now() });
+      expect(desktopCore.getState().desktopState).toBe('running');
+
+      bus.emit(RuntimeEvent.AGENT_COMPLETE, {
+        answer: 'final answer text',
+        phase: 'final_answer',
+        terminal: false,
+      });
+      expect(desktopCore.getState().desktopState).toBe('running');
+
+      bus.emit(RuntimeEvent.AGENT_COMPLETE, {
+        result: { status: 'completed', answer: 'final answer text' },
+      });
+      expect(desktopCore.getState().desktopState).toBe('ready');
+    } finally {
+      await desktopCore.dispose();
+    }
+  });
 });
 
 describe('runtime-bootstrap - ui 适配器桥接', () => {

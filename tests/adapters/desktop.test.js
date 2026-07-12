@@ -338,6 +338,33 @@ describe('MainProcessIPCAdapter', () => {
     expect(adapter.getStats()).toBeDefined();
   });
 
+  test('处理输入前使用渲染层会话 ID 同步引擎，避免生成重复历史会话', async () => {
+    await adapter.initialize();
+    const calls = [];
+    const mockEngine = {
+      setSessionId: (sessionId) => calls.push(['setSessionId', sessionId]),
+      processInput: async (input, options) => {
+        calls.push(['processInput', input, options.sessionId]);
+        return { result: 'ok' };
+      },
+      stop: () => {},
+      getState: () => ({ status: 'idle' }),
+      getTools: () => [],
+    };
+    adapter.attachEngine(mockEngine);
+
+    await mockIpcMain.simulateHandle(
+      'agent:processInput',
+      { sender: { id: 123, send: () => {} } },
+      { input: 'fix the bug', options: { sessionId: 'session-ui-123' } },
+    );
+
+    expect(calls).toEqual([
+      ['setSessionId', 'session-ui-123'],
+      ['processInput', 'fix the bug', 'session-ui-123'],
+    ]);
+  });
+
   test('应该在 Desktop IPC 中本地处理 /doc search 命令', async () => {
     await adapter.initialize();
 

@@ -154,7 +154,7 @@ export class BatchToolExecutor {
    * @param {object} context - 执行上下文
    * @returns {Promise<Array>} 执行结果列表
    */
-  async executeBatch(toolCalls, context = {}) {
+  async executeBatch(toolCalls, context = {}, options = {}) {
     if (!toolCalls || toolCalls.length === 0) {
       return [];
     }
@@ -166,13 +166,13 @@ export class BatchToolExecutor {
     for (const group of groups) {
       // 单个工具直接执行
       if (group.length === 1) {
-        const result = await this.#executeSingle(group[0], context);
+        const result = await this.#executeSingle(group[0], context, options);
         results.push(result);
         continue;
       }
 
       // 多个工具并行执行
-      const groupResults = await this.#executeParallel(group, context);
+      const groupResults = await this.#executeParallel(group, context, options);
       results.push(...groupResults);
     }
 
@@ -182,41 +182,60 @@ export class BatchToolExecutor {
   /**
    * 执行单个工具调用
    */
-  async #executeSingle(call, context) {
+  async #executeSingle(call, context, options = {}) {
     const name = call.name || call.function?.name || '';
     const args = call.arguments || call.function?.arguments || {};
+    const observations = [];
+    const startedAt = Date.now();
 
     if (this.#onProgress) {
       this.#onProgress({ type: 'start', toolName: name, args });
     }
 
     try {
-      const result = await this.#toolExecutor.execute(name, args, context);
+      const result = await this.#toolExecutor.execute(call, context, {
+        ...options,
+        emitObservation: (id, toolName, observation, mode) => {
+          observations.push({ id, name: toolName, observation, mode });
+          if (!options.deferObservations) {
+            options.emitObservation?.(id, toolName, observation, mode);
+          }
+        },
+      });
+      const durationMs = Date.now() - startedAt;
+      if (result && typeof result === 'object' && result.durationMs == null) {
+        result.durationMs = durationMs;
+      }
 
       if (this.#onProgress) {
         this.#onProgress({ type: 'complete', toolName: name, result });
       }
 
       return {
-        name,
-        args,
-        result: result.result,
-        error: result.error,
-        success: !result.error && !result.skipped,
-        skipped: result.skipped,
+        toolCall: call,
+        execResult: result,
+        durationMs,
+        observations,
       };
     } catch (e) {
+      const durationMs = Date.now() - startedAt;
       if (this.#onProgress) {
         this.#onProgress({ type: 'error', toolName: name, error: e });
       }
 
       return {
-        name,
-        args,
-        result: null,
-        error: e.message || String(e),
-        success: false,
-        skipped: false,
+        toolCall: call,
+        execResult: {
+          name,
+          args,
+          result: null,
+          error: e.message || String(e),
+          success: false,
+          skipped: false,
+          durationMs,
+        },
+        durationMs,
+        observations,
       };
     }
   }
@@ -224,7 +243,7 @@ export class BatchToolExecutor {
   /**
    * 并行执行一组工具调用
    */
-  async #executeParallel(group, context) {
+  async #executeParallel(group, context, options = {}) {
     // 限制并发数
     const batches = [];
     for (let i = 0; i < group.length; i += this.#maxConcurrency) {
@@ -233,7 +252,7 @@ export class BatchToolExecutor {
 
     const results = [];
     for (const batch of batches) {
-      const promises = batch.map((call) => this.#executeSingle(call, context));
+      const promises = batch.map((call) => this.#executeSingle(call, context, options));
       const batchResults = await Promise.all(promises);
       results.push(...batchResults);
     }
@@ -262,6 +281,7 @@ export function canParallelize(toolName) {
     'glob',
     'grep',
     'search',
+    'search_codebase',
     'semantic_search',
     'web_fetch',
     'web_search',

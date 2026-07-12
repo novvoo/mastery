@@ -87,4 +87,47 @@ describe('filesystem edit_file read_file numbered old_text regression', () => {
       ['3: changed the literal prefix', 'keep the literal prefix'].join('\n'),
     );
   });
+
+  test('returns current file content when stale old_text is not found', async () => {
+    const current = ['alpha', 'beta current', 'gamma'].join('\n');
+    await writeFile(join(workDir, 'stale.txt'), current, 'utf-8');
+
+    const editResult = await editTool.handler(
+      {
+        path: 'stale.txt',
+        old_text: 'beta stale',
+        new_text: 'beta edited',
+      },
+      ctx,
+    );
+
+    expect(editResult).toContain('Error: old_text not found in file');
+    expect(editResult).toContain('The tool read the current file before failing');
+    expect(editResult).toContain('Current file content from this edit attempt:');
+    expect(editResult).toContain('1: alpha');
+    expect(editResult).toContain('2: beta current');
+    expect(editResult).toContain('3: gamma');
+    expect(await readFile(join(workDir, 'stale.txt'), 'utf-8')).toBe(current);
+  });
+
+  test('returns current requested line context for stale numbered read_file old_text', async () => {
+    const current = ['one', 'two current', 'three', 'four', 'five'].join('\n');
+    await writeFile(join(workDir, 'stale-numbered.txt'), current, 'utf-8');
+
+    const editResult = await editTool.handler(
+      {
+        path: 'stale-numbered.txt',
+        old_text: '2: two stale',
+        new_text: 'two edited',
+      },
+      ctx,
+    );
+
+    expect(editResult).toContain('Error: old_text not found in file');
+    expect(editResult).toContain('Current content near requested line(s) 2-2:');
+    expect(editResult).toContain('1: one');
+    expect(editResult).toContain('2: two current');
+    expect(editResult).toContain('5: five');
+    expect(await readFile(join(workDir, 'stale-numbered.txt'), 'utf-8')).toBe(current);
+  });
 });

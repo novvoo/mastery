@@ -26,9 +26,13 @@ export function buildCodingTaskOperatingPrompt({
     ? getMethodologyGuidance(riskLevel, profile)
     : 'Methodology tools are not registered in this runtime; rely on direct repository evidence, focused edits, and runtime verification.';
 
-  const bugFixGuidance = profile.isBugTask
-    ? `BUG FIX TASK: Your job is to FIX the bug, not to write a diagnostic report. Read the code where the bug resides, identify the root cause, apply the fix, then verify. Do NOT spend iterations generating analysis reports — the user wants the bug fixed, not documented. A fixed bug with verification evidence is the only acceptable outcome.\n`
-    : '';
+  const strictRepair =
+    profile.isBugTask && (riskLevel === RISK_LEVEL.HIGH || riskLevel === RISK_LEVEL.CRITICAL);
+  const bugFixGuidance = strictRepair
+    ? `STRICT BUG FIX TASK: Reproduce the failure first. Before any mutation, call analyze_test_failure to separate observed facts from evidence-backed hypotheses, then call decide_repair_plan to record supported root causes, the smallest complete approach, concrete changes, verification paths, and exclusions. These are engine-state artifacts, not report files. Only then implement and verify.\n`
+    : profile.isBugTask
+      ? `BUG FIX TASK: Read the relevant code, identify the root cause, apply the smallest complete fix, then verify. Do not create standalone report files unless requested.\n`
+      : '';
 
   return (
     `Coding task mode is active for the previous user request:\n${userInput}\n\n` +
@@ -85,6 +89,10 @@ export function buildCodingCompletionGatePrompt({
         'You ran verification before the latest code/file change, but not after it.',
       managed_config_sync_missing:
         'A managed config or dependency manifest was edited manually, but no later ecosystem install/sync command succeeded.',
+      test_failure_analysis_missing_invalid_or_late:
+        'A strict bug fix requires a structured failure analysis tied to the observed failing command before code mutation.',
+      repair_decision_missing_invalid_or_late:
+        'A strict bug fix requires an evidence-based repair decision after failure analysis and before code mutation.',
       missing_semantic_risk_review:
         'This task touches high-risk behavior semantics but has no semantic/API risk review evidence yet.',
       final_answer_missing_verification_summary:

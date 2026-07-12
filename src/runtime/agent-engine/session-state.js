@@ -417,7 +417,12 @@ export function createDefaultUIFacade(ctx) {
       eventBus.emit(RuntimeEvent.TOOL_ERROR, { toolName: name, args, error, activity });
       eventBus.emit(RuntimeEvent.TOOL_ACTIVITY, activity);
     },
-    finalAnswer: (answer) => eventBus.emit(RuntimeEvent.AGENT_COMPLETE, { answer }),
+    finalAnswer: (answer) =>
+      eventBus.emit(RuntimeEvent.AGENT_COMPLETE, {
+        answer,
+        phase: 'final_answer',
+        terminal: false,
+      }),
     iteration: (current, max) =>
       eventBus.emit(RuntimeEvent.STATUS_UPDATE, {
         message: `迭代 ${current}/${max}`,

@@ -173,6 +173,8 @@ describe('risk-budget', () => {
         repairContract: { hasRunnerConflict: true, runners: ['bun', 'npm'] },
       });
       expect(gates.requirePreMutationBaseline).toBe(true);
+      expect(gates.requireFailureAnalysis).toBe(true);
+      expect(gates.requireRepairDecision).toBe(true);
       expect(gates.requiredPostMutationVerifications).toBe(2);
       expect(gates.requiredTestRunners).toEqual(['bun', 'npm']);
     });

@@ -606,6 +606,21 @@ describe('ExecutionPlanManager', () => {
     expect(manager.plan.getTask('implement_changes').status).toBe('running');
   });
 
+  test('high-risk bug plans require failure analysis and repair decision before implementation', () => {
+    manager.createIfNeeded('Fix the failing game test', {
+      requiresPlan: true,
+      mode: 'mutate',
+      allowsMutation: true,
+      isBugTask: true,
+      riskLevel: 'high',
+    });
+    expect(manager.plan.getTask('analyze_test_failure')).toBeDefined();
+    expect(manager.plan.getTask('decide_repair_plan')).toBeDefined();
+    expect(manager.plan.getTask('implement_changes').dependencies.has('decide_repair_plan')).toBe(
+      true,
+    );
+  });
+
   test('structured planning evidence satisfies implementation requirement gate', () => {
     manager.createIfNeeded('Update app.js greeting behavior', {
       requiresPlan: true,
@@ -1089,6 +1104,32 @@ describe('ExecutionPlanManager', () => {
       },
       { ok: true },
     );
+    manager.advance(
+      'analyze_test_failure',
+      {
+        command: 'bun test',
+        primary_error: 'TypeError: null.getContext',
+        failure_location: 'js/main.js:12',
+        observed_facts: ['canvas lookup returned null'],
+        hypotheses: [
+          { cause: 'missing canvas id', evidence: ['test', 'constructor'], confidence: 'high' },
+        ],
+        downstream_risks: ['start may be missing'],
+      },
+      { ok: true },
+    );
+    manager.advance(
+      'decide_repair_plan',
+      {
+        root_causes: ['constructor contract mismatch'],
+        selected_approach: 'Inject canvas and isolate browser bootstrap.',
+        alternatives: [],
+        changes: [{ target: 'js/main.js', behavior: 'guard DOM access' }],
+        verification: ['bun test'],
+        scope_exclusions: [],
+      },
+      { ok: true },
+    );
 
     manager.advance('list_dir', {}, 'OK');
     manager.advance('project_profile', {}, 'package.json scripts test');
@@ -1117,6 +1158,12 @@ describe('ExecutionPlanManager', () => {
     expect(restored.getTestContractDecision()).toMatchObject({
       authoritativeRunner: 'bun',
       syncTargets: ['CONTEXT.md'],
+    });
+    expect(restored.getTestFailureAnalysis()).toMatchObject({
+      primaryError: 'TypeError: null.getContext',
+    });
+    expect(restored.getRepairDecision()).toMatchObject({
+      selectedApproach: 'Inject canvas and isolate browser bootstrap.',
     });
   });
 });

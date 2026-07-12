@@ -2,7 +2,7 @@
  * Integration tests: real ToolRegistry + scripted model provider → full ReAct loop.
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, mock, beforeEach, afterEach } from 'bun:test';
 import { createAgentEngine } from '../../src/core/runtime/agent/agent-engine.js';
 import { ToolRegistry } from '../../src/core/runtime/agent/tool-registry.js';
 
@@ -56,7 +56,12 @@ function buildEngine(registry, modelProvider, ui) {
     modelProvider,
     toolRegistry: registry,
     memoryManager: makeFakeMemoryManager(),
-    config: { workingDirectory: process.cwd(), maxIterations: 5, maxTokens: 64 },
+    config: {
+      workingDirectory: process.cwd(),
+      maxIterations: 5,
+      maxTokens: 64,
+      toolResultCacheEnabled: false,
+    },
     ui,
   });
 }
@@ -162,6 +167,58 @@ describe('ReAct loop: real ToolRegistry + scripted model provider', () => {
     expect(String(echoEvent.resultPreview || '')).toMatch(/ping/);
   });
 
+  test('parallelizes independent read-only tool calls in one model turn', async () => {
+    const events = [];
+    registry.register({
+      name: 'web_fetch',
+      description: 'delayed fetch',
+      category: 'all',
+      permissionLevel: 'none',
+      params: { url: { type: 'string' } },
+      required: ['url'],
+      async handler(args) {
+        events.push(`${args.url}:start`);
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        events.push(`${args.url}:end`);
+        return `fetch:${args.url}`;
+      },
+    });
+    registry.register({
+      name: 'web_search',
+      description: 'delayed web search',
+      category: 'all',
+      permissionLevel: 'none',
+      params: { query: { type: 'string' } },
+      required: ['query'],
+      async handler(args) {
+        events.push(`${args.query}:start`);
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        events.push(`${args.query}:end`);
+        return `search:${args.query}`;
+      },
+    });
+    const model = makeScriptedModelProvider([
+      {
+        text: 'I will inspect.',
+        finishReason: 'tool_calls',
+        toolCalls: [
+          { id: 'fetch_1', name: 'web_fetch', arguments: { url: 'https://example.test/a' } },
+          { id: 'search_1', name: 'web_search', arguments: { query: 'beta' } },
+        ],
+      },
+      'FINAL_ANSWER: inspected successfully.',
+    ]);
+
+    engine = buildEngine(registry, model, ui);
+    const result = await engine.run('run two safe tools');
+
+    const firstEndIndex = events.findIndex((event) => event.endsWith(':end'));
+    expect(result.success).toBe(true);
+    expect(events.slice(0, firstEndIndex)).toEqual(
+      expect.arrayContaining(['https://example.test/a:start', 'beta:start']),
+    );
+  });
+
   test('Native tool call with numeric args: sum tool computes correctly', async () => {
     const model = makeScriptedModelProvider([
       {
@@ -203,5 +260,119 @@ describe('ReAct loop: real ToolRegistry + scripted model provider', () => {
     const result = await engine.run('something strange');
     expect(result).toBeTruthy();
     expect(Array.isArray(result.toolEvents)).toBe(true);
+  });
+
+  test('toFunctionDefinitions is called once across multiple same-tool iterations', async () => {
+    const originalFn = registry.toFunctionDefinitions.bind(registry);
+    let callCount = 0;
+    registry.toFunctionDefinitions = (tools) => {
+      callCount++;
+      return originalFn(tools);
+    };
+
+    const model = makeScriptedModelProvider([
+      {
+        text: 'echo once.',
+        finishReason: 'tool_calls',
+        toolCalls: [{ id: 'c1', name: 'echo', arguments: { message: 'ping' } }],
+      },
+      {
+        text: 'echo twice.',
+        finishReason: 'tool_calls',
+        toolCalls: [{ id: 'c2', name: 'echo', arguments: { message: 'pong' } }],
+      },
+      'FINAL_ANSWER: all done.',
+    ]);
+
+    engine = buildEngine(registry, model, ui);
+    const result = await engine.run('do two echoes');
+    expect(result.success).toBe(true);
+    expect(callCount).toBe(1);
+  });
+
+  test('toFunctionDefinitions is called fresh for each run() call', async () => {
+    const originalFn = registry.toFunctionDefinitions.bind(registry);
+    let callCount = 0;
+    registry.toFunctionDefinitions = (tools) => {
+      callCount++;
+      return originalFn(tools);
+    };
+
+    const model = makeScriptedModelProvider([
+      // Run 1: one tool call + final answer
+      {
+        text: 'echo.',
+        finishReason: 'tool_calls',
+        toolCalls: [{ id: 'c1', name: 'echo', arguments: { message: 'a' } }],
+      },
+      'FINAL_ANSWER: run 1 done.',
+      // Run 2: one tool call + final answer (model index continues)
+      {
+        text: 'echo again.',
+        finishReason: 'tool_calls',
+        toolCalls: [{ id: 'c2', name: 'echo', arguments: { message: 'b' } }],
+      },
+      'FINAL_ANSWER: run 2 done.',
+    ]);
+
+    engine = buildEngine(registry, model, ui);
+    const result1 = await engine.run('run 1');
+    expect(result1.success).toBe(true);
+    const afterRun1 = callCount;
+    expect(afterRun1).toBe(1);
+
+    const result2 = await engine.run('run 2');
+    expect(result2.success).toBe(true);
+    expect(callCount).toBe(afterRun1 + 1);
+  });
+
+  test('tool execution works correctly with cached function definitions', async () => {
+    const model = makeScriptedModelProvider([
+      {
+        text: 'sum 40 and 2.',
+        finishReason: 'tool_calls',
+        toolCalls: [{ id: 's1', name: 'sum', arguments: { a: 40, b: 2 } }],
+      },
+      {
+        text: 'sum 10 and 5.',
+        finishReason: 'tool_calls',
+        toolCalls: [{ id: 's2', name: 'sum', arguments: { a: 10, b: 5 } }],
+      },
+      'FINAL_ANSWER: sums computed.',
+    ]);
+
+    engine = buildEngine(registry, model, ui);
+    const result = await engine.run('compute two sums');
+    expect(result.success).toBe(true);
+    const sumEvents = result.toolEvents.filter((e) => e.name === 'sum');
+    expect(sumEvents).toHaveLength(2);
+    expect(String(sumEvents[0].resultPreview || '')).toMatch(/42/);
+    expect(String(sumEvents[1].resultPreview || '')).toMatch(/15/);
+  });
+
+  test('three consecutive same-tool iterations use cached definitions', async () => {
+    const originalFn = registry.toFunctionDefinitions.bind(registry);
+    let callCount = 0;
+    registry.toFunctionDefinitions = (tools) => {
+      callCount++;
+      return originalFn(tools);
+    };
+
+    const script = [];
+    for (let i = 0; i < 3; i++) {
+      script.push({
+        text: `echo ${i}.`,
+        finishReason: 'tool_calls',
+        toolCalls: [{ id: `c${i}`, name: 'echo', arguments: { message: `msg${i}` } }],
+      });
+    }
+    script.push('FINAL_ANSWER: all echoes done.');
+
+    const model = makeScriptedModelProvider(script);
+    engine = buildEngine(registry, model, ui);
+    const result = await engine.run('echo three times');
+    expect(result.success).toBe(true);
+    expect(callCount).toBe(1);
+    expect(result.toolEvents).toHaveLength(3);
   });
 });

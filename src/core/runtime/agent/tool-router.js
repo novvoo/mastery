@@ -201,6 +201,8 @@ const PHASE_CANDIDATE_TOOLS = {
     'setup',
     'capture_requirements',
     'resolve_test_contract',
+    'analyze_test_failure',
+    'decide_repair_plan',
   ],
   [PHASE.IMPLEMENTATION]: ['diagnose', 'risk_check'],
   [PHASE.INSPECTION]: [

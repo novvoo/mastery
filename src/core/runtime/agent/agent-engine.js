@@ -94,6 +94,7 @@ import { ContextCompactionManager } from './support/context-compaction.js';
 import { parseTokenBudget, stripTokenBudgetAnnotations } from './support/token-budget-parser.js';
 import { AutonomyEngine } from './support/autonomy-engine.js';
 import { FlowPlanCoordinator, WorkflowType } from './support/workflow-coordinator.js';
+import { BatchToolExecutor, canParallelize } from './support/batch-tool-executor.js';
 
 const MAX_PAUSED_TURN_CONTINUATIONS = 8;
 import {
@@ -813,6 +814,7 @@ export class AgentEngine {
   #feedbackLoop;
   #lastIntent = null;
   #toolExecutor;
+  #batchToolExecutor;
   #contextManager;
   #stagnationDetector;
   #workspaceIndex;
@@ -854,6 +856,10 @@ export class AgentEngine {
   #sessionMetaWritten = false;
   #softToolRequired = null; // { toolName: string, escalations: number }
   #toolEmptyArgFailures = new Map(); // toolName → consecutive failure count
+  #cachedRoutedToolKey = null;
+  #cachedActiveRoutedToolNames = null;
+  #cachedFunctions = null;
+  #cachedRoutedToolPrompt = null;
 
   // ask_user suspend/resume: Promise 挂起机制，替代硬中断
   #userInputResolve = null;
@@ -1057,6 +1063,10 @@ export class AgentEngine {
       hashlinePatcher: this.#hashlinePatcher,
       lspManager: this.#lspManager,
       editOrchestrator: this.#editOrchestrator,
+    });
+    this.#batchToolExecutor = new BatchToolExecutor({
+      toolExecutor: this.#toolExecutor,
+      maxConcurrency: this.#config.maxConcurrentToolCalls || 5,
     });
     this.#contextManager = null; // 在 run() 中懒创建（需要 sessionManager 就绪）
     this.#stagnationDetector = new StagnationDetector();
@@ -1518,6 +1528,10 @@ export class AgentEngine {
     if (routingPrompt) {
       this.#sessionManager.addUserMessage(routingPrompt);
     }
+    this.#cachedRoutedToolKey = null;
+    this.#cachedActiveRoutedToolNames = null;
+    this.#cachedFunctions = null;
+    this.#cachedRoutedToolPrompt = null;
 
     this.#stagnationDetector.reset();
     this.#toolExecutor.reset();
@@ -1739,13 +1753,29 @@ export class AgentEngine {
           `or call change_plan/ask_user when the plan is wrong or blocked. ` +
           `Do not repeat broad exploration or create report files. -->`;
       }
-      const activeRoutedToolNames = new Set(routedTools.map((tool) => tool.name));
-      const functions = this.#toolRegistry.toFunctionDefinitions(routedTools);
-      const routedToolPrompt = [
-        this.#textToolParser.generateToolPrompt(routedTools),
-        `Workspace root is ${this.#config.workingDirectory}; file tool paths MUST be relative to that root (for example "package.json" or "src/index.js"), never absolute paths such as "/workspace/...". ` +
-          `Shell cwd is ${this.#config.workingDirectory}.`,
-      ].join('\n\n');
+      // 路由结果平坦化 + 缓存：同级工具连续时避免重复生成 definitions 和 prompt
+      const routedToolKey = routedTools
+        .map((t) => t.name)
+        .sort()
+        .join(',');
+      let activeRoutedToolNames, functions, routedToolPrompt;
+      if (this.#cachedRoutedToolKey === routedToolKey) {
+        activeRoutedToolNames = this.#cachedActiveRoutedToolNames;
+        functions = this.#cachedFunctions;
+        routedToolPrompt = this.#cachedRoutedToolPrompt;
+      } else {
+        activeRoutedToolNames = new Set(routedTools.map((tool) => tool.name));
+        functions = this.#toolRegistry.toFunctionDefinitions(routedTools);
+        routedToolPrompt = [
+          this.#textToolParser.generateToolPrompt(routedTools),
+          `Workspace root is ${this.#config.workingDirectory}; file tool paths MUST be relative to that root (for example "package.json" or "src/index.js"), never absolute paths such as "/workspace/...". ` +
+            `Shell cwd is ${this.#config.workingDirectory}.`,
+        ].join('\n\n');
+        this.#cachedRoutedToolKey = routedToolKey;
+        this.#cachedActiveRoutedToolNames = activeRoutedToolNames;
+        this.#cachedFunctions = functions;
+        this.#cachedRoutedToolPrompt = routedToolPrompt;
+      }
       const messages = withRoutedToolContext(
         this.#sessionManager.getMessages(),
         routedToolPrompt,
@@ -2302,8 +2332,8 @@ export class AgentEngine {
           this.#sessionManager.addAssistantMessage(response.text);
           this.#sessionManager.addUserMessage(
             'Provider stopped without FINAL_ANSWER. ' +
-            'If you have completed the task, output FINAL_ANSWER: followed by your summary of what changed and what was verified. ' +
-            'If you still need to make changes, call a tool now.',
+              'If you have completed the task, output FINAL_ANSWER: followed by your summary of what changed and what was verified. ' +
+              'If you still need to make changes, call a tool now.',
           );
           continue;
         }
@@ -2416,14 +2446,26 @@ export class AgentEngine {
         continue;
       }
 
-      // 执行每个工具调用（ToolExecutor 统一处理：安全策略、缓存、规范化）
+      // 执行工具调用（纯 inspection 批次并发；其他路径保持顺序语义）
       const execResults = [];
       let userInputResolved = false;
-      for (const toolCall of allToolCalls) {
-        const toolStart = Date.now();
-        const toolName = toolCall.name || toolCall.function?.name || 'unknown';
-        let toolArgs = toolCall.arguments || toolCall.function?.arguments || {};
+      const toolExecutionContext = {
+        memoryManager: this.#memoryManager,
+        sessionManager: this.#sessionManager,
+        modelProvider: this.#modelProvider,
+        debug: this.#config.debug || false,
+        activePlanManager: this.#executionPlanManager,
+        activePlan: this.#executionPlanManager.plan,
+        currentTask: this.#executionPlanManager.currentTask,
+        activeRoutedToolNames,
+        scopeFiles: this.#executionPlanManager.currentTask?.scopeFiles || [],
+        workspaceState: this.#workspaceState,
+      };
+      const executionEntries = [];
 
+      for (const toolCall of allToolCalls) {
+        const toolName = toolCall.name || toolCall.function?.name || 'unknown';
+        const toolArgs = toolCall.arguments || toolCall.function?.arguments || {};
         if (this.#fileStore && this.#sessionId) {
           this.#fileStore
             .appendToolCall(this.#sessionId, toolName, toolArgs, this.#config.workingDirectory)
@@ -2431,29 +2473,46 @@ export class AgentEngine {
               console.error('[AgentEngine] Failed to write tool call:', error.message);
             });
         }
+      }
 
-        const execResult = await this.#toolExecutor.execute(
-          toolCall,
-          {
-            memoryManager: this.#memoryManager,
-            sessionManager: this.#sessionManager,
-            modelProvider: this.#modelProvider,
-            debug: this.#config.debug || false,
-            activePlanManager: this.#executionPlanManager,
-            activePlan: this.#executionPlanManager.plan,
-            currentTask: this.#executionPlanManager.currentTask,
-            activeRoutedToolNames,
-            scopeFiles: this.#executionPlanManager.currentTask?.scopeFiles || [],
-            workspaceState: this.#workspaceState,
-          },
-          {
+      const canBatchToolCalls =
+        allToolCalls.length > 1 &&
+        allToolCalls.every((call) => canParallelize(call.name || call.function?.name || ''));
+
+      if (canBatchToolCalls) {
+        this.#ui.debugEvent?.('Batch tool execution started', {
+          count: allToolCalls.length,
+          tools: allToolCalls.map((call) => call.name || call.function?.name || 'unknown'),
+        });
+        executionEntries.push(
+          ...(await this.#batchToolExecutor.executeBatch(allToolCalls, toolExecutionContext, {
             resultMode: 'tool',
-            emitObservation: (id, name, observation, _mode) => {
-              this.#sessionManager.addUserMessage(`[Tool ${name}] ${observation}`);
-            },
-          },
+            deferObservations: true,
+          })),
         );
-        const toolDuration = Date.now() - toolStart;
+      } else {
+        for (const toolCall of allToolCalls) {
+          const toolStart = Date.now();
+          const observations = [];
+          const execResult = await this.#toolExecutor.execute(toolCall, toolExecutionContext, {
+            resultMode: 'tool',
+            emitObservation: (id, name, observation, mode) => {
+              observations.push({ id, name, observation, mode });
+            },
+          });
+          const durationMs = Date.now() - toolStart;
+          executionEntries.push({ toolCall, execResult, durationMs, observations });
+        }
+      }
+
+      for (const executionEntry of executionEntries) {
+        const { toolCall, execResult, observations = [] } = executionEntry;
+        const toolDuration = executionEntry.durationMs ?? execResult?.durationMs ?? 0;
+        for (const observation of observations) {
+          this.#sessionManager.addUserMessage(
+            `[Tool ${observation.name}] ${observation.observation}`,
+          );
+        }
         if (typeof execResult === 'object' && execResult !== null) {
           execResult.durationMs = toolDuration;
         }
@@ -2495,7 +2554,7 @@ export class AgentEngine {
         }
 
         // —— Supersede：写入后使旧的 read_file 结果失效 ——
-        toolArgs = execResult.args || toolCall.arguments || {};
+        const toolArgs = execResult.args || toolCall.arguments || {};
         const filePath = toolArgs.path || toolArgs.file_path || '';
         if (!execResult.error && !execResult.skipped) {
           if (execResult.name === 'read_file' && filePath && toolCall.id) {
@@ -2590,11 +2649,11 @@ export class AgentEngine {
             );
             this.#sessionManager.addUserMessage(
               `[SELF-SOLVE] You tried to ask the user. Before interrupting them, ` +
-              `use your available tools (read_file, grep, search, shell, web_search) ` +
-              `to find the answers yourself.\n\n` +
-              `Questions to research:\n${questionList}\n\n` +
-              `Once you have the answers, continue working. ` +
-              `Only call ask_user again if no tool can provide the information.`,
+                `use your available tools (read_file, grep, search, shell, web_search) ` +
+                `to find the answers yourself.\n\n` +
+                `Questions to research:\n${questionList}\n\n` +
+                `Once you have the answers, continue working. ` +
+                `Only call ask_user again if no tool can provide the information.`,
             );
             this.#ui.debugEvent?.('ask_user intercepted — nudge to self-solve with tools', {
               questions,

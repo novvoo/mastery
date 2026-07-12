@@ -17,7 +17,9 @@ import { useState, useCallback, useEffect, useRef } from 'react';
  * @returns {string} 过滤后的文本
  */
 export function stripActionBlocks(text = '') {
-  if (typeof text !== 'string') {return text;}
+  if (typeof text !== 'string') {
+    return text;
+  }
 
   let out = text
     // 1) <action> 标签包裹的工具调用
@@ -71,7 +73,9 @@ export function stripActionBlocks(text = '') {
  */
 function looksLikeProtocolStart(text) {
   const t = text.trim();
-  if (!t.startsWith('{')) {return false;}
+  if (!t.startsWith('{')) {
+    return false;
+  }
   // 检查前 200 字符内是否有协议特征字段
   const head = t.slice(0, Math.min(t.length, 200));
   return (
@@ -213,11 +217,11 @@ export function useRuntime() {
   const recentRuntimeEventSignaturesRef = useRef(new Map());
   const pendingMessageDeltasRef = useRef(new Map());
   const pendingMessageDeltaTimerRef = useRef(null);
-    /**
-     * 当 tool:result 比 tool:call 先到达 React commit 时，暂存结果数据。
-     * Map<toolName, { result, exitCode, duration, isError }>
-     */
-    const pendingToolResultsRef = useRef(new Map());
+  /**
+   * 当 tool:result 比 tool:call 先到达 React commit 时，暂存结果数据。
+   * Map<toolName, { result, exitCode, duration, isError }>
+   */
+  const pendingToolResultsRef = useRef(new Map());
 
   const flushMessageDeltas = useCallback(() => {
     if (pendingMessageDeltaTimerRef.current) {
@@ -235,7 +239,9 @@ export function useRuntime() {
     setMessages((prev) =>
       prev.map((msg) => {
         const delta = pending.get(msg.id);
-        if (!delta) {return msg;}
+        if (!delta) {
+          return msg;
+        }
         return {
           ...msg,
           type: delta.type || msg.type,
@@ -248,11 +254,15 @@ export function useRuntime() {
 
   const queueMessageDelta = useCallback(
     (messageId, textToAppend, updates = {}) => {
-      if (!messageId || !textToAppend) {return;}
+      if (!messageId || !textToAppend) {
+        return;
+      }
 
       // 过滤掉内部控制 JSON 块
       const filteredText = stripActionBlocks(textToAppend);
-      if (!filteredText) {return;}
+      if (!filteredText) {
+        return;
+      }
 
       if (messageId === streamingMessageIdRef.current) {
         streamingTextRef.current += filteredText;
@@ -453,7 +463,9 @@ export function useRuntime() {
   // 追加到指定消息内容（流式增量）
   const appendToMessage = useCallback(
     (messageId, textToAppend, newType) => {
-      if (!textToAppend) {return;}
+      if (!textToAppend) {
+        return;
+      }
       queueMessageDelta(messageId, textToAppend, newType ? { type: newType } : {});
     },
     [queueMessageDelta],
@@ -587,14 +599,18 @@ export function useRuntime() {
 
           setStatus(needsUserInput ? 'needs_user_input' : 'completed');
           if (needsUserInput) {
-            setAskUserInfo(result?.userInputRequest ? {
-              message: result.answer || result.userInputRequest.answer || '',
-              answer: result.answer || result.userInputRequest.answer || '',
-              reason: result.userInputRequest.reason || '',
-              questions: result.userInputRequest.questions || [],
-              blockingFacts: result.userInputRequest.blockingFacts || [],
-              suggestions: result.userInputRequest.suggestions || [],
-            } : { message: result.answer || '需要你的回答', answer: '' });
+            setAskUserInfo(
+              result?.userInputRequest
+                ? {
+                    message: result.answer || result.userInputRequest.answer || '',
+                    answer: result.answer || result.userInputRequest.answer || '',
+                    reason: result.userInputRequest.reason || '',
+                    questions: result.userInputRequest.questions || [],
+                    blockingFacts: result.userInputRequest.blockingFacts || [],
+                    suggestions: result.userInputRequest.suggestions || [],
+                  }
+                : { message: result.answer || '需要你的回答', answer: '' },
+            );
           }
           setStats((prev) => ({
             ...prev,
@@ -665,12 +681,16 @@ export function useRuntime() {
 
   // 订阅 IPC 事件
   useEffect(() => {
-    if (!(typeof window !== 'undefined' && window != null && window.electronAPI)) {return;}
+    if (!(typeof window !== 'undefined' && window != null && window.electronAPI)) {
+      return;
+    }
 
     // ===== 切断当前流式消息（让下一个 delta 创建新的消息气泡）=====
     const cutoffStream = (messageIdRef, newType) => {
       const msgId = messageIdRef.current;
-      if (!msgId) {return null;}
+      if (!msgId) {
+        return null;
+      }
 
       // flush 已有增量
       if (pendingMessageDeltasRef.current.size > 0) {
@@ -679,7 +699,9 @@ export function useRuntime() {
         setMessages((prev) =>
           prev.map((msg) => {
             const delta = pending.get(msg.id);
-            if (!delta) {return msg;}
+            if (!delta) {
+              return msg;
+            }
             return {
               ...msg,
               type: delta.type || msg.type,
@@ -698,7 +720,9 @@ export function useRuntime() {
         // 有内容：关闭 isStreaming 标记，并更新类型（如从 assistant_stream -> agent）
         setMessages((prev) =>
           prev.map((msg) => {
-            if (msg.id !== msgId) {return msg;}
+            if (msg.id !== msgId) {
+              return msg;
+            }
             return {
               ...msg,
               isStreaming: false,
@@ -768,7 +792,9 @@ export function useRuntime() {
         if (payload?.text) {
           // 过滤掉内部控制 JSON 块
           const filteredText = stripActionBlocks(payload.text);
-          if (!filteredText) {return;}
+          if (!filteredText) {
+            return;
+          }
 
           if (!msgId) {
             // 当前没有活跃的流消息 → 创建新的消息气泡
@@ -859,6 +885,7 @@ export function useRuntime() {
             payload?.result?.status === 'needs_user_input' ||
             payload?.status === 'needs_user_input';
           const completeStatus = needsUserInput ? 'needs_user_input' : 'completed';
+          const isTerminalCompletion = isTerminalAgentCompletePayload(payload);
           const markComplete = () => {
             completedByEventRef.current = true;
             setStatus(completeStatus);
@@ -866,6 +893,17 @@ export function useRuntime() {
               ...prev,
               endTime: Date.now(),
             }));
+          };
+          const recordAnswerOnly = () => {
+            if (!answer || answer === lastAnswerRef.current) {
+              return;
+            }
+            lastAnswerRef.current = answer;
+            addMessage({
+              type: needsUserInput ? 'warning' : 'result',
+              content: answer,
+              resultMeta: payload,
+            });
           };
           // 场景A：有流式消息 + 有答案 → 原地收口为 agent 消息（不额外添加 result 消息）
           if (answer && closedTextStream?.id) {
@@ -883,21 +921,32 @@ export function useRuntime() {
                   : msg,
               ),
             );
-            markComplete();
+            if (isTerminalCompletion) {
+              markComplete();
+            }
             return;
           }
           // 场景B：有流式消息 + 无答案 + 无内容 → 删除空的流式消息
           if (!answer && closedTextStream?.id && !closedTextStream.text?.trim()) {
             setMessages((prev) => prev.filter((msg) => msg.id !== closedTextStream.id));
-            markComplete();
+            if (isTerminalCompletion) {
+              markComplete();
+            }
             return;
           }
           // 场景C：重复答案 → 忽略
           if (answer && answer === lastAnswerRef.current) {
+            if (isTerminalCompletion) {
+              markComplete();
+            }
             return;
           }
-          // 场景D：无流式消息（通常已被 tool:call/tool:result 切断）
-          // async/background 模式下 processInput 不会再返回最终结果，所以这里必须落一条主消息。
+          // 场景D：answer-only agent:complete 只是最终答案收口事件，run/processInput 完成事件稍后到达。
+          if (!isTerminalCompletion) {
+            recordAnswerOnly();
+            return;
+          }
+          // 场景E：terminal completion（通常来自 processInput/runPromise result）才设置 completed。
           if (answer) {
             lastAnswerRef.current = answer;
             addMessage({
@@ -905,11 +954,8 @@ export function useRuntime() {
               content: answer,
               resultMeta: payload,
             });
-            markComplete();
-          } else {
-            markComplete();
           }
-          return;
+          markComplete();
         }
 
         // status:update 事件仅更新状态，不添加消息（避免与 agent:complete/processInput 的 result 消息重复）
@@ -934,7 +980,11 @@ export function useRuntime() {
         }
 
         // plan 事件：合并为一个动态 plan 消息，并保留每次更新的历史快照
-        if (eventName === 'plan:created' || eventName === 'plan:decomposed' || eventName === 'plan:updated') {
+        if (
+          eventName === 'plan:created' ||
+          eventName === 'plan:decomposed' ||
+          eventName === 'plan:updated'
+        ) {
           setMessages((prev) => mergePlanMessageList(prev, normalized.message));
           return;
         }
@@ -1316,6 +1366,19 @@ export function safeStringify(value, { space = 0, maxChars = 20000 } = {}) {
   return text;
 }
 
+export function isTerminalAgentCompletePayload(data) {
+  if (!data || typeof data !== 'object') {
+    return false;
+  }
+  if (data.terminal === true) {
+    return true;
+  }
+  if (data.terminal === false || data.phase === 'final_answer') {
+    return false;
+  }
+  return Boolean(data.result);
+}
+
 function createThinkingSummary(text = '') {
   const clean = String(text).replace(/\s+/g, ' ').trim();
   if (!clean) {
@@ -1328,7 +1391,9 @@ function createThinkingSummary(text = '') {
 }
 
 function extractAgentAnswer(data) {
-  if (!data) {return '';}
+  if (!data) {
+    return '';
+  }
 
   if (typeof data === 'string') {
     return stripActionBlocks(data);

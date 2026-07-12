@@ -156,6 +156,8 @@ export function isPlanningTool(toolName) {
     'security_review',
     'capture_requirements',
     'resolve_test_contract',
+    'analyze_test_failure',
+    'decide_repair_plan',
   ].includes(toolName);
 }
 
@@ -381,6 +383,8 @@ export class ExecutionPlanManager {
   #verificationRepairCount = 0;
   #capturedRequirements = null; // 结构化需求工件，null 表示尚未捕获
   #testContractDecision = null; // 测试运行器冲突的结构化裁决工件
+  #testFailureAnalysis = null; // 失败事实、假设和后续风险
+  #repairDecision = null; // 根因、选定方案、改动和验证路径
   #actionHistory = new ActionHistory(); // 动作历史追踪，用于循环检测
   #loopDetected = false; // 是否已检测到循环
 
@@ -538,6 +542,7 @@ export class ExecutionPlanManager {
     if (!createFromScratch) {
       this.#ensureProjectProfileTask(plan, planType, taskProfile);
       this.#ensureTddGate(plan, planType, taskProfile);
+      this.#ensureDiagnosticArtifactGates(plan, taskProfile);
     }
 
     // 语义风险审查（两种模式通用）
@@ -1213,6 +1218,50 @@ export class ExecutionPlanManager {
     }
   }
 
+  #ensureDiagnosticArtifactGates(plan, taskProfile) {
+    const strictRepair = Boolean(
+      taskProfile?.isBugTask &&
+      (taskProfile?.riskLevel === 'high' || taskProfile?.riskLevel === 'critical'),
+    );
+    if (!strictRepair || plan.getTask('analyze_test_failure')) return;
+    const implementationTasks = Array.from(plan.tasks.values()).filter(
+      (task) => task.phase === ExecutionPlanManager.PHASE.IMPLEMENTATION,
+    );
+    if (implementationTasks.length === 0) return;
+    plan.addTask({
+      id: 'analyze_test_failure',
+      name: 'Analyze reproduced test failure',
+      description:
+        'After observing the failing command, call analyze_test_failure. Separate direct facts from evidence-backed hypotheses and list downstream errors hidden by the first failure.',
+      dependencies: plan.getTask('tdd_reproduce') ? ['tdd_reproduce'] : [],
+      phase: ExecutionPlanManager.PHASE.PLANNING,
+      allowedTools: ['analyze_test_failure', 'read_file', 'search', 'shell', 'ask_user'],
+      completionPredicate: ({ toolName, args, result }) =>
+        toolName === 'analyze_test_failure' &&
+        isSuccessfulToolResult(result) &&
+        Boolean(String(args?.primary_error || '').trim()),
+    });
+    plan.addTask({
+      id: 'decide_repair_plan',
+      name: 'Decide evidence-based repair plan',
+      description:
+        'Call decide_repair_plan after the failure analysis. Record supported root causes, selected approach, rejected alternatives, exact changes, verification paths, and scope exclusions.',
+      dependencies: ['analyze_test_failure'],
+      phase: ExecutionPlanManager.PHASE.PLANNING,
+      allowedTools: ['decide_repair_plan', 'ask_user', 'read_file', 'search'],
+      completionPredicate: ({ toolName, args, result }) =>
+        toolName === 'decide_repair_plan' &&
+        isSuccessfulToolResult(result) &&
+        Array.isArray(args?.root_causes) &&
+        args.root_causes.length > 0,
+    });
+    for (const task of implementationTasks) task.dependencies.add('decide_repair_plan');
+    this.#reorderTasks(plan, {
+      after: plan.getTask('tdd_reproduce') ? 'tdd_reproduce' : null,
+      ids: ['analyze_test_failure', 'decide_repair_plan'],
+    });
+  }
+
   #normalizeTaskExecutionConstraints(plan) {
     for (const task of plan.tasks.values()) {
       if (task.id === 'semantic_risk_review') {
@@ -1289,6 +1338,8 @@ export class ExecutionPlanManager {
             'project_profile',
             'capture_requirements',
             'resolve_test_contract',
+            'analyze_test_failure',
+            'decide_repair_plan',
           ];
         }
         if (!task.completionPredicate) {
@@ -1336,6 +1387,12 @@ export class ExecutionPlanManager {
                 return false;
               }
               if (this.#isRequirementAlreadyComplete()) {
+                return false;
+              }
+              if (
+                this.#requiresStrictDiagnosticArtifacts() &&
+                (!this.#testFailureAnalysis || !this.#repairDecision)
+              ) {
                 return false;
               }
             }
@@ -1450,8 +1507,7 @@ export class ExecutionPlanManager {
   }
   get isActive() {
     return (
-      !!this.#plan &&
-      (this.#plan.status === TaskStatus.RUNNING || !!this.#plan.completionPending)
+      !!this.#plan && (this.#plan.status === TaskStatus.RUNNING || !!this.#plan.completionPending)
     );
   }
   get isCompleted() {
@@ -1483,6 +1539,8 @@ export class ExecutionPlanManager {
     this.#verificationRepairCount = 0;
     this.#capturedRequirements = null;
     this.#testContractDecision = null;
+    this.#testFailureAnalysis = null;
+    this.#repairDecision = null;
     if (!preserveExternalPlan) {
       this.#useExternalPlan = false;
     }
@@ -1504,6 +1562,8 @@ export class ExecutionPlanManager {
       mutationCallCount: this.#mutationCallCount,
       capturedRequirements: this.#capturedRequirements,
       testContractDecision: this.#testContractDecision,
+      testFailureAnalysis: this.#testFailureAnalysis,
+      repairDecision: this.#repairDecision,
       plan: {
         ...this.#plan.toJSON(),
         tasks: this.#plan.toJSON().tasks.map((task) => ({
@@ -1555,6 +1615,8 @@ export class ExecutionPlanManager {
     this.#mutationCallCount = Number(snapshot.mutationCallCount || 0);
     this.#capturedRequirements = snapshot.capturedRequirements || null;
     this.#testContractDecision = snapshot.testContractDecision || null;
+    this.#testFailureAnalysis = snapshot.testFailureAnalysis || null;
+    this.#repairDecision = snapshot.repairDecision || null;
     this.#hardenPlanQuality(plan, plan.context?.planType, this.#profile, {
       decomposition: plan.context?.decomposition || 'restored',
     });
@@ -1737,6 +1799,10 @@ export class ExecutionPlanManager {
       }
     } else if (toolName === 'resolve_test_contract') {
       this.#captureTestContractDecision(args);
+    } else if (toolName === 'analyze_test_failure') {
+      this.#captureTestFailureAnalysis(args);
+    } else if (toolName === 'decide_repair_plan') {
+      this.#captureRepairDecision(args);
     } else if (!this.#hasCapturedRequirements() && isPlanningTool(toolName)) {
       const artifact = this.#buildArtifactFromPlanningEvidence(args, result);
       if (artifact) {
@@ -3073,6 +3139,8 @@ export class ExecutionPlanManager {
       onRequirementsCaptured: this.#onRequirementsCaptured,
       getCapturedRequirements: () => this.#capturedRequirements,
       getTestContractDecision: () => this.#testContractDecision,
+      getTestFailureAnalysis: () => this.#testFailureAnalysis,
+      getRepairDecision: () => this.#repairDecision,
     };
   }
 
@@ -3113,6 +3181,90 @@ export class ExecutionPlanManager {
 
   getTestContractDecision() {
     return this.#testContractDecision;
+  }
+
+  #requiresStrictDiagnosticArtifacts() {
+    return Boolean(
+      this.#profile?.isBugTask &&
+      (this.#profile?.riskLevel === 'high' || this.#profile?.riskLevel === 'critical'),
+    );
+  }
+
+  #captureTestFailureAnalysis(args) {
+    const observedFacts = Array.isArray(args?.observed_facts)
+      ? args.observed_facts.map((value) => String(value).trim()).filter(Boolean)
+      : [];
+    const hypotheses = Array.isArray(args?.hypotheses)
+      ? args.hypotheses.filter(
+          (entry) =>
+            String(entry?.cause || '').trim() &&
+            Array.isArray(entry?.evidence) &&
+            entry.evidence.length > 0 &&
+            ['low', 'medium', 'high'].includes(String(entry?.confidence || '').toLowerCase()),
+        )
+      : [];
+    if (
+      !String(args?.command || '').trim() ||
+      !String(args?.primary_error || '').trim() ||
+      !String(args?.failure_location || '').trim() ||
+      observedFacts.length === 0 ||
+      hypotheses.length === 0
+    ) {
+      return false;
+    }
+    this.#testFailureAnalysis = {
+      command: String(args.command).trim(),
+      primaryError: String(args.primary_error).trim(),
+      failureLocation: String(args.failure_location).trim(),
+      observedFacts,
+      hypotheses,
+      downstreamRisks: Array.isArray(args.downstream_risks)
+        ? args.downstream_risks.map((value) => String(value).trim()).filter(Boolean)
+        : [],
+      analyzedAt: Date.now(),
+    };
+    return true;
+  }
+
+  #captureRepairDecision(args) {
+    if (!this.#testFailureAnalysis) return false;
+    const rootCauses = Array.isArray(args?.root_causes)
+      ? args.root_causes.map((value) => String(value).trim()).filter(Boolean)
+      : [];
+    const changes = Array.isArray(args?.changes)
+      ? args.changes.filter(
+          (entry) => String(entry?.target || '').trim() && String(entry?.behavior || '').trim(),
+        )
+      : [];
+    const verification = Array.isArray(args?.verification)
+      ? args.verification.map((value) => String(value).trim()).filter(Boolean)
+      : [];
+    if (
+      rootCauses.length === 0 ||
+      String(args?.selected_approach || '').trim().length < 12 ||
+      changes.length === 0 ||
+      verification.length === 0
+    ) {
+      return false;
+    }
+    this.#repairDecision = {
+      rootCauses,
+      selectedApproach: String(args.selected_approach).trim(),
+      alternatives: Array.isArray(args.alternatives) ? args.alternatives : [],
+      changes,
+      verification,
+      scopeExclusions: Array.isArray(args.scope_exclusions) ? args.scope_exclusions : [],
+      decidedAt: Date.now(),
+    };
+    return true;
+  }
+
+  getTestFailureAnalysis() {
+    return this.#testFailureAnalysis;
+  }
+
+  getRepairDecision() {
+    return this.#repairDecision;
   }
 
   /** 从 capture_requirements 的 args 中提取结构化工件。 */

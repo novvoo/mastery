@@ -64,6 +64,25 @@ const MUTATION_TOOLS = new Set([
   'apply_hashline_patch',
 ]);
 
+function normalizeForSignature(value) {
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeForSignature(item));
+  }
+
+  const sorted = {};
+  for (const key of Object.keys(value).sort()) {
+    sorted[key] = normalizeForSignature(value[key]);
+  }
+  return sorted;
+}
+
+function getToolCallSignature(name, args) {
+  return `${name}:${JSON.stringify(normalizeForSignature(args ?? {}))}`;
+}
+
 function hasRangeArg(args) {
   return (
     (args && Object.prototype.hasOwnProperty.call(args, 'offset')) ||
@@ -364,11 +383,7 @@ function normalizeWorkspacePathArgs(name, args = {}, workingDirectory) {
 function getAllowedToolSet(context = {}) {
   const taskAllowed = context.currentTask?.allowedTools;
   if (Array.isArray(taskAllowed) && taskAllowed.length > 0) {
-    const baseTools = new Set([
-      ...READ_ONLY_TOOLS,
-      ...taskAllowed,
-      ...PLAN_CONTROL_TOOLS,
-    ]);
+    const baseTools = new Set([...READ_ONLY_TOOLS, ...taskAllowed, ...PLAN_CONTROL_TOOLS]);
     return baseTools;
   }
   return null;
@@ -590,6 +605,7 @@ export class ToolExecutor {
   #editOrchestrator;
   #fileFreshnessCache = new Map();
   #failureFingerprints = new Map();
+  #persistedCacheEntries = new Map();
 
   constructor({
     toolRegistry,
@@ -656,6 +672,7 @@ export class ToolExecutor {
     this.#dirToolCache = new Map();
     this.#fileFreshnessCache = new Map();
     this.#failureFingerprints = new Map();
+    this.#persistedCacheEntries = new Map();
     this.#events = [];
     this.#cacheLoaded = false;
   }
@@ -676,7 +693,7 @@ export class ToolExecutor {
     const { id, name, arguments: args } = rewritten;
     const resultMode = options.resultMode || 'tool';
     const startedAt = Date.now();
-    const callSignature = `${name}:${JSON.stringify(args)}`;
+    const callSignature = getToolCallSignature(name, args);
 
     const allowedToolNames = getAllowedToolSet({
       ...context,
@@ -807,7 +824,7 @@ export class ToolExecutor {
     }
 
     // ============ 重复失败检测：相同失败指纹 + 工作区未改变时阻止重试 ============
-    const failureFingerprint = `${name}:${JSON.stringify(args)}`;
+    const failureFingerprint = getToolCallSignature(name, args);
     const prevFailure = this.#failureFingerprints.get(failureFingerprint);
     if (prevFailure && prevFailure.count >= 2) {
       const blockedMsg =
@@ -937,6 +954,7 @@ export class ToolExecutor {
       } else {
         msg = `Tool "${name}" is not registered.`;
       }
+      this.#recordFailureFingerprint(failureFingerprint, 'tool_not_registered', msg);
       options.emitObservation?.(id, name, msg, resultMode);
       this.#recordEvent(name, args, false, msg);
       this.#ui.toolError?.(name, msg);
@@ -1259,24 +1277,8 @@ ${paramDesc || '无参数定义'}
       if (normalizedResult.success) {
         this.#failureFingerprints.delete(failureFingerprint);
       } else {
-        // 失败调用：记录失败指纹
         const errorFingerprint = extractFailureFingerprint(name, effectiveArgs, finalResult);
-        const prev = this.#failureFingerprints.get(failureFingerprint);
-        if (prev && prev.errorPattern === errorFingerprint) {
-          prev.count += 1;
-          prev.lastError = String(finalResult ?? '').substring(0, 500);
-        } else {
-          this.#failureFingerprints.set(failureFingerprint, {
-            count: 1,
-            errorPattern: errorFingerprint,
-            lastError: String(finalResult ?? '').substring(0, 500),
-          });
-        }
-        // 限制失败指纹缓存大小
-        if (this.#failureFingerprints.size > 100) {
-          const firstKey = this.#failureFingerprints.keys().next().value;
-          this.#failureFingerprints.delete(firstKey);
-        }
+        this.#recordFailureFingerprint(failureFingerprint, errorFingerprint, finalResult);
       }
 
       // 仅成功执行的调用才加入历史，避免失败后无法重试
@@ -1291,8 +1293,11 @@ ${paramDesc || '无参数定义'}
       if (normalizedResult.success && canUseCache && !isReadOnly) {
         const cachedValue =
           typeof finalResult === 'string' ? finalResult : JSON.stringify(finalResult);
+        const previousCachedValue = this.#resultCache.get(callSignature);
         this.#resultCache.set(callSignature, cachedValue);
-        this.#flushCacheEntry(callSignature, cachedValue);
+        if (previousCachedValue !== cachedValue) {
+          await this.#flushCacheEntry(callSignature, cachedValue);
+        }
 
         // 写工具成功后更新文件新鲜度缓存
         const mutationTarget = getScopeTargetPath(name, effectiveArgs);
@@ -1340,7 +1345,9 @@ ${paramDesc || '无参数定义'}
                 // 预填充带行号的结果缓存（模拟 read_file 的输出格式）
                 const lines = content.split('\n');
                 const numberedResult = lines.map((line, i) => `${i + 1}: ${line}`).join('\n');
-                const readSignature = `read_file:${JSON.stringify({ path: effectiveArgs.path || effectiveArgs.file })}`;
+                const readSignature = getToolCallSignature('read_file', {
+                  path: effectiveArgs.path || effectiveArgs.file,
+                });
                 this.#resultCache.set(readSignature, { result: numberedResult, fileTag });
               }
             }
@@ -1436,6 +1443,25 @@ ${paramDesc || '无参数定义'}
     return result;
   }
 
+  #recordFailureFingerprint(failureFingerprint, errorPattern, errorValue) {
+    const errorKey = String(errorPattern ?? errorValue ?? 'unknown_error');
+    const prev = this.#failureFingerprints.get(failureFingerprint);
+    if (prev && prev.errorPattern === errorKey) {
+      prev.count += 1;
+      prev.lastError = String(errorValue ?? '').substring(0, 500);
+    } else {
+      this.#failureFingerprints.set(failureFingerprint, {
+        count: 1,
+        errorPattern: errorKey,
+        lastError: String(errorValue ?? '').substring(0, 500),
+      });
+    }
+
+    if (this.#failureFingerprints.size > 100) {
+      const firstKey = this.#failureFingerprints.keys().next().value;
+      this.#failureFingerprints.delete(firstKey);
+    }
+  }
   // ============== 内部：缓存与历史 ==============
 
   async #loadResultCache() {
@@ -1457,6 +1483,7 @@ ${paramDesc || '无参数定义'}
         try {
           const { signature, result, createdAt } = JSON.parse(line);
           if (signature && typeof result === 'string') {
+            this.#persistedCacheEntries.set(signature, result);
             // 超过 TTL 的条目忽略
             if (!createdAt || now - createdAt < TOOL_RESULT_CACHE_TTL_MS) {
               this.#resultCache.set(signature, result);
@@ -1475,6 +1502,9 @@ ${paramDesc || '无参数定义'}
     if (!this.#toolResultCachePath) {
       return;
     }
+    if (this.#persistedCacheEntries.get(signature) === result) {
+      return;
+    }
     try {
       const dir = this.#toolResultCachePath.substring(
         0,
@@ -1488,6 +1518,7 @@ ${paramDesc || '无参数定义'}
         JSON.stringify({ signature, result, createdAt: Date.now() }) + '\n',
         'utf8',
       );
+      this.#persistedCacheEntries.set(signature, result);
     } catch {
       /* ignore */
     }

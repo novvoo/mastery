@@ -212,6 +212,89 @@ describe('evidence-verifier', () => {
       requiredPostMutationVerifications: 2,
     };
 
+    const diagnosticEvents = [
+      {
+        name: 'analyze_test_failure',
+        success: true,
+        args: {
+          command: 'bun test tests/game.test.js',
+          primary_error: 'TypeError: null.getContext',
+          failure_location: 'js/main.js:12',
+          observed_facts: ['Game received no canvas id.'],
+          hypotheses: [
+            {
+              cause: 'Constructor queried an undefined id.',
+              evidence: ['tests/game.test.js', 'js/main.js'],
+              confidence: 'high',
+            },
+          ],
+          downstream_risks: ['start may still be missing'],
+        },
+      },
+      {
+        name: 'decide_repair_plan',
+        success: true,
+        args: {
+          root_causes: ['Constructor and test contracts disagree.'],
+          selected_approach: 'Inject canvas and isolate browser bootstrap.',
+          alternatives: [],
+          changes: [{ target: 'js/main.js', behavior: 'Guard DOM access.' }],
+          verification: ['bun test tests/game.test.js', 'bun test'],
+          scope_exclusions: [],
+        },
+      },
+    ];
+
+    test('requires failure analysis and repair decision before mutation', () => {
+      const strictGates = { ...gates, requireFailureAnalysis: true, requireRepairDecision: true };
+      const result = checkCompletionGates(
+        [
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: false },
+          { name: 'edit_file', args: { path: 'game.js', new_string: 'fixed' }, success: true },
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: true },
+          { name: 'shell', args: { command: 'bun test' }, success: true },
+        ],
+        strictGates,
+        { isModificationTask: true },
+      );
+      expect(result.missing).toContain('test_failure_analysis_missing_invalid_or_late');
+      expect(result.missing).toContain('repair_decision_missing_invalid_or_late');
+    });
+
+    test('accepts ordered baseline, analysis, decision, mutation, and verification', () => {
+      const result = checkCompletionGates(
+        [
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: false },
+          ...diagnosticEvents,
+          { name: 'edit_file', args: { path: 'game.js', new_string: 'fixed' }, success: true },
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: true },
+          { name: 'shell', args: { command: 'bun test' }, success: true },
+        ],
+        { ...gates, requireFailureAnalysis: true, requireRepairDecision: true },
+        { isModificationTask: true },
+      );
+      expect(result.block).toBe(false);
+      expect(result.summary.hasValidFailureAnalysis).toBe(true);
+      expect(result.summary.hasValidRepairDecision).toBe(true);
+    });
+
+    test('rejects an analysis that does not reference the observed failing command', () => {
+      const wrongAnalysis = JSON.parse(JSON.stringify(diagnosticEvents));
+      wrongAnalysis[0].args.command = 'npm test';
+      const result = checkCompletionGates(
+        [
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: false },
+          ...wrongAnalysis,
+          { name: 'edit_file', args: { path: 'game.js', new_string: 'fixed' }, success: true },
+          { name: 'shell', args: { command: 'bun test tests/game.test.js' }, success: true },
+          { name: 'shell', args: { command: 'bun test' }, success: true },
+        ],
+        { ...gates, requireFailureAnalysis: true, requireRepairDecision: true },
+        { isModificationTask: true },
+      );
+      expect(result.missing).toContain('test_failure_analysis_missing_invalid_or_late');
+    });
+
     test('blocks a high-risk repair that only runs one test after editing', () => {
       const result = checkCompletionGates(
         [

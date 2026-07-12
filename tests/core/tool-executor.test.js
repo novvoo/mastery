@@ -1,5 +1,5 @@
 import { describe, test, expect, mock } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ToolExecutor } from '../../src/core/runtime/agent/tool-executor.js';
@@ -103,7 +103,6 @@ describe('ToolExecutor', () => {
     }
   });
 
-
   test('returns error for unregistered tool', async () => {
     const { executor } = makeMockExecutor({ tools: [] });
 
@@ -112,6 +111,21 @@ describe('ToolExecutor', () => {
     expect(result.name).toBe('unknown_tool');
     expect(result.error).toContain('not registered');
     expect(result.result).toContain('not registered');
+  });
+
+  test('blocks repeated unregistered tool calls after feedback', async () => {
+    const { executor, registry } = makeMockExecutor({ tools: [] });
+
+    const result1 = await executor.execute({ id: '1', name: 'unknown_tool', arguments: {} });
+    const result2 = await executor.execute({ id: '2', name: 'unknown_tool', arguments: {} });
+    const result3 = await executor.execute({ id: '3', name: 'unknown_tool', arguments: {} });
+
+    expect(result1.error).toContain('not registered');
+    expect(result2.error).toContain('not registered');
+    expect(result3.skipped).toBe(true);
+    expect(result3.repeatedFailure).toBe(true);
+    expect(result3.result).toContain('REPEATED_FAILURE_BLOCKED');
+    expect(registry.get).toHaveBeenCalledTimes(2);
   });
 
   test('registered tools not in allowedTools should show warning but proceed', async () => {
@@ -200,10 +214,7 @@ describe('ToolExecutor', () => {
     const browserTool = makeTool('browser_open', { handler: browserHandler });
     const { executor, ui } = makeMockExecutor({ tools: [browserTool] });
 
-    const result = await executor.execute(
-      { id: '1', name: 'browser_open', arguments: {} },
-      {},
-    );
+    const result = await executor.execute({ id: '1', name: 'browser_open', arguments: {} }, {});
 
     expect(result.routeBlocked).toBeUndefined();
     expect(result.error).toBeUndefined();
@@ -237,7 +248,10 @@ describe('ToolExecutor', () => {
 
   test('registered tools in allowedTools should be allowed', async () => {
     const writeHandler = mock(async () => 'written');
-    const writeTool = makeTool('write_file', { handler: writeHandler, required: ['path', 'content'] });
+    const writeTool = makeTool('write_file', {
+      handler: writeHandler,
+      required: ['path', 'content'],
+    });
     const { executor } = makeMockExecutor({ tools: [writeTool] });
 
     const result = await executor.execute(
@@ -410,6 +424,67 @@ describe('ToolExecutor', () => {
     expect(result2.duplicateMutation).toBe(true);
     expect(result2.result.message).toContain('Duplicate mutation write_file skipped');
     expect(result2.result.message).not.toContain('blocked');
+  });
+
+  test('mutation duplicate detection ignores argument key order', async () => {
+    const writeHandler = mock(async () => 'written');
+    const tool = makeTool('write_file', { handler: writeHandler });
+    const { executor } = makeMockExecutor({ tools: [tool] });
+
+    const result1 = await executor.execute({
+      id: '1',
+      name: 'write_file',
+      arguments: { path: '/a.txt', content: 'hello' },
+    });
+    const result2 = await executor.execute({
+      id: '2',
+      name: 'write_file',
+      arguments: { content: 'hello', path: '/a.txt' },
+    });
+
+    expect(result1.skipped).toBeUndefined();
+    expect(result2.skipped).toBe(true);
+    expect(result2.duplicateMutation).toBe(true);
+    expect(writeHandler).toHaveBeenCalledTimes(1);
+  });
+
+  test('persistent cache does not append identical stale entries', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tool-executor-cache-dedupe-'));
+    try {
+      const cacheDir = join(root, '.agent-data');
+      const cachePath = join(cacheDir, 'tool-cache.jsonl');
+      const signature = 'write_file:{"content":"hello","path":"new.txt"}';
+      mkdirSync(cacheDir, { recursive: true });
+      writeFileSync(
+        cachePath,
+        JSON.stringify({
+          signature,
+          result: 'written',
+          createdAt: Date.now() - 10 * 60 * 1000,
+        }) + '\n',
+        'utf-8',
+      );
+
+      const writeHandler = mock(async () => 'written');
+      const tool = makeTool('write_file', { handler: writeHandler });
+      const { executor } = makeMockExecutor({
+        tools: [tool],
+        config: { workingDirectory: root, toolResultCacheEnabled: true },
+      });
+
+      const result = await executor.execute({
+        id: '1',
+        name: 'write_file',
+        arguments: { path: 'new.txt', content: 'hello' },
+      });
+
+      expect(result.result).toBe('written');
+      expect(writeHandler).toHaveBeenCalledTimes(1);
+      const lines = readFileSync(cachePath, 'utf-8').trim().split('\n');
+      expect(lines).toHaveLength(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test('requires workspace root observation before first create-task mutation', async () => {
@@ -1408,9 +1483,21 @@ describe('ToolExecutor', () => {
     const tool = makeTool('fail_tool', { handler: failHandler });
     const { executor } = makeMockExecutor({ tools: [tool] });
 
-    const result1 = await executor.execute({ id: '1', name: 'fail_tool', arguments: { key: 'val' } });
-    const result2 = await executor.execute({ id: '2', name: 'fail_tool', arguments: { key: 'val' } });
-    const result3 = await executor.execute({ id: '3', name: 'fail_tool', arguments: { key: 'val' } });
+    const result1 = await executor.execute({
+      id: '1',
+      name: 'fail_tool',
+      arguments: { key: 'val' },
+    });
+    const result2 = await executor.execute({
+      id: '2',
+      name: 'fail_tool',
+      arguments: { key: 'val' },
+    });
+    const result3 = await executor.execute({
+      id: '3',
+      name: 'fail_tool',
+      arguments: { key: 'val' },
+    });
 
     expect(result1.error).toContain('Persistent error');
     expect(result2.error).toContain('Persistent error');
@@ -1432,8 +1519,16 @@ describe('ToolExecutor', () => {
 
     await executor.execute({ id: '1', name: 'fail_tool', arguments: { key: 'val' } });
     await executor.execute({ id: '2', name: 'fail_tool', arguments: { key: 'val' } });
-    await executor.execute({ id: '3', name: 'write_file', arguments: { path: '/a.txt', content: 'test' } });
-    const result = await executor.execute({ id: '4', name: 'fail_tool', arguments: { key: 'val' } });
+    await executor.execute({
+      id: '3',
+      name: 'write_file',
+      arguments: { path: '/a.txt', content: 'test' },
+    });
+    const result = await executor.execute({
+      id: '4',
+      name: 'fail_tool',
+      arguments: { key: 'val' },
+    });
 
     expect(result.skipped).toBeUndefined();
     expect(callCount).toBe(3);
@@ -1444,10 +1539,16 @@ describe('ToolExecutor', () => {
     const root = mkdtempSync(join(tmpdir(), 'tool-executor-old-string-alias-'));
     try {
       writeFileSync(join(root, 'test.js'), 'old code\n', 'utf-8');
-      const editHandler = mock(async ({ old_text, new_text }) => `replaced ${old_text} → ${new_text}`);
+      const editHandler = mock(
+        async ({ old_text, new_text }) => `replaced ${old_text} → ${new_text}`,
+      );
       const editTool = makeTool('edit_file', {
         required: ['path', 'new_text'],
-        params: { path: { type: 'string' }, old_text: { type: 'string' }, new_text: { type: 'string', allowEmpty: true } },
+        params: {
+          path: { type: 'string' },
+          old_text: { type: 'string' },
+          new_text: { type: 'string', allowEmpty: true },
+        },
         paramAliases: {
           file_path: 'path',
           old_str: 'old_text',
@@ -1458,7 +1559,10 @@ describe('ToolExecutor', () => {
         handler: editHandler,
       });
       const readTool = makeTool('read_file', { handler: async () => 'old code' });
-      const { executor } = makeMockExecutor({ tools: [editTool, readTool], config: { workingDirectory: root } });
+      const { executor } = makeMockExecutor({
+        tools: [editTool, readTool],
+        config: { workingDirectory: root },
+      });
 
       // Read the file first to satisfy write-before-read guardrail
       await executor.execute({ id: '1', name: 'read_file', arguments: { path: 'test.js' } });
@@ -1486,7 +1590,11 @@ describe('ToolExecutor', () => {
       const editHandler = mock(async ({ old_text, new_text }) => `deleted ${old_text}`);
       const editTool = makeTool('edit_file', {
         required: ['path', 'new_text'],
-        params: { path: { type: 'string' }, old_text: { type: 'string' }, new_text: { type: 'string', allowEmpty: true } },
+        params: {
+          path: { type: 'string' },
+          old_text: { type: 'string' },
+          new_text: { type: 'string', allowEmpty: true },
+        },
         paramAliases: {
           file_path: 'path',
           old_str: 'old_text',
@@ -1497,7 +1605,10 @@ describe('ToolExecutor', () => {
         handler: editHandler,
       });
       const readTool = makeTool('read_file', { handler: async () => 'content' });
-      const { executor } = makeMockExecutor({ tools: [editTool, readTool], config: { workingDirectory: root } });
+      const { executor } = makeMockExecutor({
+        tools: [editTool, readTool],
+        config: { workingDirectory: root },
+      });
 
       // Read the file first to satisfy write-before-read guardrail
       await executor.execute({ id: '1', name: 'read_file', arguments: { path: 'test.js' } });

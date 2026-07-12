@@ -235,16 +235,21 @@ export class DesktopCore {
         });
       },
       // agent-engine 调用 #ui.userInputRequested()，这里做别名映射
-      userInputRequested: function(info) {
+      userInputRequested: function (info) {
         return this.waitingForUserInput(info);
       },
       finalAnswer(answer) {
         if (isDebug) {
           console.log('[UiAdapter] agent:complete');
         }
-        // 只发 AGENT_COMPLETE 用于流式消息收口，不设 status='completed'
-        // status 由 processInput 返回后才变为 completed，避免运行时详情面板提前折叠
-        eventBus.emit(RuntimeEvent.AGENT_COMPLETE, { answer, timestamp: Date.now() });
+        // 只发 AGENT_COMPLETE 用于流式消息收口，不设 status='completed'。
+        // terminal=false 明确表示这不是 run/processInput 完成事件；status 由 processInput 返回后才变为 completed。
+        eventBus.emit(RuntimeEvent.AGENT_COMPLETE, {
+          answer,
+          phase: 'final_answer',
+          terminal: false,
+          timestamp: Date.now(),
+        });
       },
       warn(message) {
         // Warnings are not errors — they are expected skip/block observations
@@ -384,8 +389,10 @@ export class DesktopCore {
     });
     this.#subscriptions.push(unsub1);
 
-    const unsub2 = this.#eventBus.subscribe(RuntimeEvent.AGENT_COMPLETE, () => {
-      self.#setState(DesktopState.READY);
+    const unsub2 = this.#eventBus.subscribe(RuntimeEvent.AGENT_COMPLETE, (event = {}) => {
+      if (event.terminal === true || event.result) {
+        self.#setState(DesktopState.READY);
+      }
     });
     this.#subscriptions.push(unsub2);
 

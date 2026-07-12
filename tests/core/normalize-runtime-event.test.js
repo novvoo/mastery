@@ -2,10 +2,12 @@ import { describe, test, expect } from 'bun:test';
 
 // Import the function we're testing
 let normalizeRuntimeEventMessage;
+let isTerminalAgentCompletePayload;
 
 try {
   const mod = await import('../../desktop/renderer/hooks/useRuntime.js');
   normalizeRuntimeEventMessage = mod.normalizeRuntimeEventMessage;
+  isTerminalAgentCompletePayload = mod.isTerminalAgentCompletePayload;
 } catch {
   // Fallback: define inline if import fails in test runner
 }
@@ -122,6 +124,17 @@ describe('normalizeRuntimeEventMessage', () => {
     expect(result.message).toBeDefined();
     expect(result.message.type).toBe('result');
     expect(result.message.content).toContain('任务已全部完成');
+  });
+
+  test('agent:complete answer-only payload is not terminal completion', () => {
+    expect(
+      isTerminalAgentCompletePayload({
+        answer: '任务已全部完成',
+        phase: 'final_answer',
+        terminal: false,
+      }),
+    ).toBe(false);
+    expect(isTerminalAgentCompletePayload({ result: { status: 'completed' } })).toBe(true);
   });
 
   test('agent:complete with no answer returns success type with default text', () => {

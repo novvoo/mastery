@@ -410,6 +410,8 @@ export function getCompletionGates(riskLevel, profile = {}) {
     requireMethodologyTool: false,
     requireSemanticRiskReview: (profile.semanticDomains || []).length > 0,
     requirePreMutationBaseline: strictRepair,
+    requireFailureAnalysis: strictRepair,
+    requireRepairDecision: strictRepair,
     requiredPostMutationVerifications: strictRepair ? 2 : 1,
     requiredTestRunners:
       strictRepair && profile.repairContract?.hasRunnerConflict

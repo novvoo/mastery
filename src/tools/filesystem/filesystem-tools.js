@@ -348,6 +348,60 @@ function stripReadFileLinePrefixes(text) {
   return stripped.trim() ? stripped : null;
 }
 
+function extractReadFileLineRange(text) {
+  if (typeof text !== 'string' || !text.trim()) {
+    return null;
+  }
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const numbers = [];
+  for (const sourceLine of normalized.split('\n')) {
+    const match = sourceLine.match(/^\s*(\d+): ?/);
+    if (!match) {
+      return null;
+    }
+    numbers.push(Number.parseInt(match[1], 10));
+  }
+  if (numbers.length === 0) {
+    return null;
+  }
+  return {
+    start: Math.min(...numbers),
+    end: Math.max(...numbers),
+  };
+}
+
+function formatNumberedLines(lines, startLine, endLine) {
+  const safeStart = Math.max(1, startLine);
+  const safeEnd = Math.min(lines.length, endLine);
+  if (safeStart > safeEnd) {
+    return '';
+  }
+  return lines
+    .slice(safeStart - 1, safeEnd)
+    .map((line, index) => `${safeStart + index}: ${line}`)
+    .join('\n');
+}
+
+function formatCurrentContentForEditFailure(lines, oldText) {
+  const numberedRange = extractReadFileLineRange(oldText);
+  if (numberedRange) {
+    const start = Math.max(1, numberedRange.start - 3);
+    const end = Math.min(lines.length, numberedRange.end + 3);
+    return (
+      `\n\nCurrent content near requested line(s) ${numberedRange.start}-${numberedRange.end}:\n` +
+      formatNumberedLines(lines, start, end)
+    );
+  }
+
+  const maxPreviewLines = 120;
+  const end = Math.min(lines.length, maxPreviewLines);
+  const suffix =
+    lines.length > maxPreviewLines
+      ? `\n... (${lines.length - maxPreviewLines} more line(s); call read_file with offset/limit for the rest)`
+      : '';
+  return `\n\nCurrent file content from this edit attempt:\n${formatNumberedLines(lines, 1, end)}${suffix}`;
+}
+
 // 跟踪编辑循环检测：path -> { count, lastContentHash }
 const noopEditTracker = new Map();
 const NOOP_EDIT_LIMIT = 3;
@@ -839,10 +893,11 @@ export function createFileSystemTools() {
                     } else {
                       return (
                         `Error: old_text not found in file. The file may have been modified since you last read it.\n` +
-                        `1) Re-read the file with read_file to see current content\n` +
-                        `2) Retry with raw file text from the latest read, without leading "N: " line-number prefixes\n` +
-                        `3) Use line/startLine/endLine for line-based editing\n` +
-                        `4) If you just called write_file on this file, the old content was replaced. Use read_file to get the new content before editing.`
+                        `The tool read the current file before failing and included the latest content below.\n` +
+                        `1) Retry using the current numbered line(s) shown below with line/startLine/endLine\n` +
+                        `2) Or retry with raw file text from the current content, without leading "N: " line-number prefixes\n` +
+                        `3) If you just called write_file on this file, the old content was replaced.\n` +
+                        formatCurrentContentForEditFailure(lines, old_text)
                       );
                     }
                   }
@@ -1382,7 +1437,10 @@ export function createFileSystemTools() {
       required: [],
       handler: async ({ path }, ctx) => {
         // Strip common shell flags that LLMs may accidentally prepend (e.g. "-la tests/" → "tests/")
-        let cleanPath = String(path || '.').replace(/^(-[a-zA-Z]+\s+)/, '').trim() || '.';
+        let cleanPath =
+          String(path || '.')
+            .replace(/^(-[a-zA-Z]+\s+)/, '')
+            .trim() || '.';
         const safe = safeResolvePath(ctx.workingDirectory, cleanPath);
         if (!safe.ok) {
           return safe.error;

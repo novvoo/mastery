@@ -173,6 +173,10 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
             return this.createResponse(message, { success: false, error: '引擎未初始化' });
           }
           const input = message.payload?.input || message.payload;
+          const processOptions = message.payload?.options || {};
+          if (processOptions.sessionId && typeof this.#engine.setSessionId === 'function') {
+            this.#engine.setSessionId(processOptions.sessionId);
+          }
           const handlerContext = this.#createHandlerContext();
           const debugCommandResult = handleDebugCommand(input, handlerContext);
           if (debugCommandResult) {
@@ -185,10 +189,10 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
 
           const result =
             input === 'init_rag' && Array.isArray(message.payload?.options?.docs)
-              ? await handleDocumentBatchAdd(message.payload.options.docs, { engine: this.#engine })
+              ? await handleDocumentBatchAdd(processOptions.docs, { engine: this.#engine })
               : parseDocumentCommand(input)
                 ? await handleDocumentCommand(input, { engine: this.#engine })
-                : await this.#engine.processInput(input, message.payload?.options || {});
+                : await this.#engine.processInput(input, processOptions);
           return this.createResponse(message, result);
 
         case 'agent:stop':
