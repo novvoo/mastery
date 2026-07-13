@@ -73,7 +73,7 @@ export class DesktopCore {
     this.#setState(DesktopState.INITIALIZING);
 
     try {
-      this.#engine = createOmpAdapter({
+      this.#engine = this.#config.engine || createOmpAdapter({
         workingDirectory: this.#config.workingDirectory,
         debug: !!this.#config.debug,
       });

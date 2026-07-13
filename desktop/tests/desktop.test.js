@@ -51,6 +51,25 @@ function createMockEvent(senderId = 1) {
   return { sender: createMockSender(senderId) };
 }
 
+/**
+ * DesktopCore contract tests exercise lifecycle and IPC wiring, not the OMP
+ * subprocess. Inject a deterministic engine so these tests remain portable
+ * across GitHub-hosted runners and do not depend on local provider config.
+ */
+function createMockEngine() {
+  return {
+    async initialize() {},
+    async dispose() {},
+    stop() {},
+    getState() { return { status: 'ready' }; },
+    getTools() { return []; },
+  };
+}
+
+function createTestCore(createDesktopCore, config = {}) {
+  return createDesktopCore({ ...config, engine: createMockEngine() });
+}
+
 // ── 测试套件 ──────────────────────────────────────────────────────
 
 describe('Desktop IPC Initialization Order', () => {
@@ -142,7 +161,7 @@ describe('Desktop IPC Initialization Order', () => {
 
     resetEventBus();
 
-    const core = createDesktopCore({ debug: false });
+    const core = createTestCore(createDesktopCore, { debug: false });
     expect(core.getState().desktopState).toBe(DesktopState.IDLE);
 
     // 初始化 DesktopCore
@@ -182,7 +201,7 @@ describe('Desktop IPC Initialization Order', () => {
     const eventBus = getEventBus();
 
     // Step 1: 初始化 DesktopCore
-    const core = createDesktopCore({ debug: false });
+    const core = createTestCore(createDesktopCore, { debug: false });
     await core.initialize();
 
     // Step 2: 创建 IPC adapter（模拟 attachConfiguredModelProvider 后的 IPC 初始化）
@@ -269,7 +288,7 @@ describe('Desktop IPC Initialization Order', () => {
       const bus = getEventBus();
       const mockIpcMain = { handle: () => {}, on: () => {} };
 
-      const core = createDesktopCore({ workingDirectory: '/tmp', debug: false });
+      const core = createTestCore(createDesktopCore, { workingDirectory: '/tmp', debug: false });
       await core.initialize();
       const adapter = core.attachIPCAdapter(mockIpcMain);
       let broadcastCount = 0;
@@ -296,7 +315,7 @@ describe('Desktop IPC Initialization Order', () => {
       const { createDesktopCore, DesktopState } =
         await import('../../src/adapters/desktop/desktop-core.js');
 
-      const core = createDesktopCore({ workingDirectory: '/tmp', debug: false });
+      const core = createTestCore(createDesktopCore, { workingDirectory: '/tmp', debug: false });
 
       // Initial state idle
       const initialState = core.getState();
@@ -323,7 +342,7 @@ describe('Desktop IPC Initialization Order', () => {
       const { createDesktopCore, DesktopState } =
         await import('../../src/adapters/desktop/desktop-core.js');
 
-      const core = createDesktopCore({ workingDirectory: '/tmp', debug: false });
+      const core = createTestCore(createDesktopCore, { workingDirectory: '/tmp', debug: false });
       await core.initialize();
 
       const state = core.getState();
@@ -354,7 +373,7 @@ describe('Desktop IPC Initialization Order', () => {
     test('DesktopCore can attach and access IPC adapter', async () => {
       const { createDesktopCore } = await import('../../src/adapters/desktop/desktop-core.js');
 
-      const core = createDesktopCore({ workingDirectory: '/tmp', debug: false });
+      const core = createTestCore(createDesktopCore, { workingDirectory: '/tmp', debug: false });
       await core.initialize();
 
       const mockIpcMain = { handle: () => {}, on: () => {} };
