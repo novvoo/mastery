@@ -449,7 +449,7 @@ function HistoryTab({
                       }}
                       title="分叉会话"
                     >
-                      🔀
+                      <Icon name="timeline" size={13} />
                     </button>
                     {onDeleteSession && (
                       <button
@@ -460,7 +460,7 @@ function HistoryTab({
                         }}
                         title="删除会话"
                       >
-                        🗑️
+                        <Icon name="trash" size={13} />
                       </button>
                     )}
                   </div>
@@ -470,7 +470,7 @@ function HistoryTab({
 
             {sessions.length === 0 && !loading && (
               <div style={historyStyles.emptyState}>
-                <div style={historyStyles.emptyIcon}>📜</div>
+                <Icon name="timeline" size={22} style={{ opacity: 0.35, marginBottom: '8px' }} />
                 <div>暂无会话</div>
                 <div style={{ fontSize: 'var(--font-size-xs)', marginTop: '4px' }}>
                   发送一条消息后会自动创建
@@ -663,6 +663,50 @@ function PlanTab({ messages }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function ExecutionTab({ messages }) {
+  const toolMessages = (messages || []).filter((message) => message.type === 'tool');
+  const thinkingCount = (messages || []).filter((message) => message.type === 'thinking').length;
+  const completed = toolMessages.filter((message) => message.toolResult && !message.isError).length;
+  const failed = toolMessages.filter((message) => message.isError).length;
+  const running = toolMessages.filter((message) => !message.toolResult).length;
+  const recentTools = toolMessages.slice(-8).reverse();
+
+  return (
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '12px' }}>
+        {[
+          ['运行中', running, 'var(--warning-color)'],
+          ['已完成', completed, 'var(--success-color)'],
+          ['失败', failed, 'var(--error-color)'],
+        ].map(([label, value, color]) => (
+          <div key={label} style={{ padding: '9px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', background: 'var(--surface-raised)' }}>
+            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>{label}</div>
+            <div style={{ marginTop: '3px', color, fontSize: '17px', fontWeight: 700 }}>{value}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', color: 'var(--text-muted)', fontSize: '11px' }}>
+        <span>最近工具调用</span>
+        <span>{thinkingCount > 0 ? `${thinkingCount} 条推理记录` : '暂无推理记录'}</span>
+      </div>
+      {recentTools.length === 0 ? (
+        <div style={{ padding: '32px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px', lineHeight: 1.6 }}>
+          开始任务后，这里会汇总 OMP 的工具执行状态。
+        </div>
+      ) : recentTools.map((message) => (
+        <div key={message.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 8px', borderBottom: '1px solid var(--border-divider)' }}>
+          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: message.isError ? 'var(--error-color)' : message.toolResult ? 'var(--success-color)' : 'var(--warning-color)', flexShrink: 0 }} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ color: 'var(--text-color)', fontSize: '12px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{message.toolName || '工具调用'}</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{message.progressText || message.statusText || (message.toolResult ? '执行完成' : '执行中')}</div>
+          </div>
+          {message.duration != null && <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>{message.duration}ms</span>}
+        </div>
+      ))}
     </div>
   );
 }
@@ -1154,11 +1198,11 @@ export function InspectorPanel({
         aria-orientation="vertical"
       />
       <div style={styles.inspectorHeader}>
+        <div className="codex-inspector-heading">环境信息</div>
         <TabGroup activeTab={activeInspectorTab} onChange={onTabChange}>
-          <TabItem id="plan">Plan</TabItem>
-          <TabItem id="history">History</TabItem>
-          <TabItem id="rag">RAG</TabItem>
-          <TabItem id="preview">Preview</TabItem>
+          <TabItem id="activity">环境</TabItem>
+          <TabItem id="history">会话</TabItem>
+          <TabItem id="preview">预览</TabItem>
         </TabGroup>
         <Button
           variant="icon"
@@ -1172,8 +1216,8 @@ export function InspectorPanel({
       </div>
 
       <div style={styles.inspectorTabContent}>
-      {activeInspectorTab === 'plan' && (
-        <PlanTab messages={messages} />
+      {activeInspectorTab === 'activity' && (
+        <ExecutionTab messages={messages} />
       )}
 
       {activeInspectorTab === 'history' && (
@@ -1191,21 +1235,6 @@ export function InspectorPanel({
           onForkSession={onForkSession}
           onClearHistory={onClearHistory}
           onLoadMore={onLoadMoreSessions}
-        />
-      )}
-      {activeInspectorTab === 'rag' && (
-        <RagTab
-          ipc={ipc}
-          fileServerUrl={fileServerUrl}
-          ragDocs={ragDocs}
-          ragStatus={ragStatus}
-          workingDirectory={workingDirectory}
-          onAddDocuments={onAddDocuments}
-          onInitializeIndex={onInitializeIndex}
-          onInsertDocSearch={onInsertDocSearch}
-          onOpenExternal={onOpenExternal}
-          onRemoveDocument={onRemoveDocument}
-          onResetRag={onResetRag}
         />
       )}
       {activeInspectorTab === 'preview' && (

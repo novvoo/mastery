@@ -7,27 +7,24 @@
  *   - 将预览服务的方法暴露到 ctx 中，供 IPC 处理器调用
  */
 
-import {
-  listPreviews as _listPreviews,
-  startPreview as _startPreview,
-  stopAllPreviews as _stopAllPreviews,
-  stopPreview as _stopPreview
-} from '../../src/core/runtime/preview-server.js';
+const previews = new Map();
 
 export function listPreviews() {
-  return _listPreviews();
+  return [...previews.values()];
 }
 
 export async function startPreview(options) {
-  return _startPreview(options);
+  return { success: false, error: '旧预览运行器已移除，请让 OMP 启动开发服务器后在预览栏输入本地 URL', options };
 }
 
 export async function stopPreview(sessionId) {
-  return _stopPreview(sessionId);
+  const stopped = previews.delete(sessionId);
+  return { success: stopped, sessionId };
 }
 
 export function stopAllPreviews() {
-  return _stopAllPreviews();
+  previews.clear();
+  return { success: true };
 }
 
 /**

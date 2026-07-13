@@ -7,13 +7,16 @@ export function createEventRecord(
   data = {},
   { source = 'unknown', async = false, idFactory },
 ) {
+  // 排除 data 中可能覆盖顶层字段的属性
+  // (特别是 OMP 消息自带的 type, timestamp, source, id)
+  const { type: _type, timestamp: _ts, source: _src, id: _id, ...cleanData } = data;
   return {
     type: event,
     timestamp: Date.now(),
     source,
     id: idFactory(),
     ...(async ? { async: true } : {}),
-    ...data,
+    ...cleanData,
   };
 }
 

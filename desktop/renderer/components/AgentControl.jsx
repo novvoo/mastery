@@ -1,6 +1,5 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React from 'react';
 import { getRuntimeStatusMeta } from '../runtime/runtime-status.js';
-import { useIPC } from '../hooks/useIPC.js';
 import { ProjectTree } from './workbench/ProjectTree.jsx';
 
 const ACTIVE_AGENT_SESSION_STORAGE_KEY = 'activeAgentConversationSessionId';
@@ -370,87 +369,15 @@ const styles = {
 
 };
 
-const INPUT_TEMPLATES = [
-  {
-    icon: 'BUG',
-    name: 'Bug修复',
-    desc: '描述并修复bug',
-    template:
-      '发现一个bug:\n位置: {file}\n描述: {description}\n预期行为: {expected}\n请帮我修复这个问题',
-  },
-  {
-    icon: 'NEW',
-    name: '功能开发',
-    desc: '开发新功能',
-    template: '开发新功能:\n功能名称: {name}\n需求: {requirements}\n请帮我实现这个功能',
-  },
-  {
-    icon: 'REF',
-    name: '代码重构',
-    desc: '重构现有代码',
-    template: '重构代码:\n目标文件: {file}\n重构目标: {goal}\n请帮我重构这段代码',
-  },
-  {
-    icon: 'REV',
-    name: '代码审查',
-    desc: '审查代码质量',
-    template: '审查代码:\n文件: {file}\n请检查代码质量、潜在问题和改进建议',
-  },
-  {
-    icon: 'TST',
-    name: '测试编写',
-    desc: '编写单元测试',
-    template: '编写测试:\n目标: {target}\n请为这个功能编写单元测试',
-  },
-];
-
 function AgentControl({
   runtime,
   workingDirectory,
   onWorkingDirectoryChange,
   workingDirectorySyncMessage,
-  agentOptions,
-  onOptionsChange,
-  onInsertText,
   projectTree,
   onOpenFile,
   activeOpenFile,
 }) {
-  const ipc = useIPC();
-
-  const [showTemplates, setShowTemplates] = useState(false);
-
-  const handleQuickCommandClick = useCallback(
-    (cmd) => {
-      if (onInsertText) {
-        onInsertText(cmd.template);
-      }
-    },
-    [onInsertText],
-  );
-
-  const handleTemplateClick = useCallback(
-    (template) => {
-      if (onInsertText) {
-        onInsertText(template.template);
-      }
-      setShowTemplates(false);
-    },
-    [onInsertText],
-  );
-
-  const handleOptionChange = useCallback(
-    (key, value) => {
-      if (onOptionsChange) {
-        onOptionsChange((prev) => ({
-          ...prev,
-          [key]: value,
-        }));
-      }
-    },
-    [onOptionsChange],
-  );
-
   const getStatusStyle = () => {
     const statusMeta = getRuntimeStatusMeta(runtime.status);
     switch (runtime.status) {
@@ -478,10 +405,6 @@ function AgentControl({
   const getStatusText = () => {
     return getRuntimeStatusMeta(runtime.status).text;
   };
-
-  const rootName = workingDirectory
-    ? workingDirectory.split(/[\\/]/).filter(Boolean).pop() || workingDirectory
-    : '未设置';
 
   return (
     <div style={styles.container}>
@@ -540,81 +463,6 @@ function AgentControl({
             onOpenFile={onOpenFile}
             activeOpenFile={activeOpenFile}
           />
-        </div>
-      </div>
-
-      <div style={styles.section}>
-        <div style={styles.sectionTitle}>
-          <span>输入任务</span>
-          <button
-            style={styles.clearButton}
-            onClick={() => setShowTemplates(!showTemplates)}
-            title="显示输入模板"
-          >
-            {showTemplates ? '隐藏模板' : '模板'}
-          </button>
-        </div>
-
-        {showTemplates && (
-          <div style={styles.templatesPanel}>
-            <div style={styles.templatesHeader}>
-              <span style={styles.templatesTitle}>输入模板</span>
-            </div>
-            <div style={styles.templatesList}>
-              {INPUT_TEMPLATES.map((template, index) => (
-                <div
-                  key={index}
-                  style={styles.templateItem}
-                  onClick={() => handleTemplateClick(template)}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.backgroundColor = 'var(--glass-bg-strong)')
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.backgroundColor = 'var(--glass-bg-light)')
-                  }
-                >
-                  <span style={styles.templateIcon}>{template.icon}</span>
-                  <span style={styles.templateName}>{template.name}</span>
-                  <span style={styles.templateDesc}>{template.desc}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div style={styles.section}>
-        <div style={styles.sectionTitle}>
-          <span>执行选项</span>
-        </div>
-
-        <div style={styles.optionsContainer}>
-          <div style={styles.optionRow}>
-            <input
-              type="checkbox"
-              style={styles.checkbox}
-              checked={agentOptions.autoSave}
-              onChange={(e) => handleOptionChange('autoSave', e.target.checked)}
-            />
-            <label
-              style={styles.label}
-              onClick={() => handleOptionChange('autoSave', !agentOptions.autoSave)}
-            >
-              自动保存结果
-            </label>
-          </div>
-
-          <div style={styles.optionRow}>
-            <label style={{ ...styles.label, width: '100px' }}>最大迭代:</label>
-            <input
-              type="number"
-              style={styles.numberInput}
-              value={agentOptions.maxIterations}
-              onChange={(e) => handleOptionChange('maxIterations', parseInt(e.target.value) || 60)}
-              min={1}
-              max={500}
-            />
-          </div>
         </div>
       </div>
 

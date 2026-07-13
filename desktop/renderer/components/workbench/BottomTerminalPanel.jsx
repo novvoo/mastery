@@ -312,9 +312,9 @@ export function BottomTerminalPanel({
   };
 
   const tabs = [
-    { id: 'terminal', label: 'Terminal', meta: isStreaming ? 'run' : '' },
-    { id: 'problems', label: 'Problems', meta: problems.length ? String(problems.length) : '' },
-    { id: 'output', label: 'Output', meta: '' },
+    { id: 'terminal', label: promptForDirectory(workingDirectory), meta: isStreaming ? 'run' : '' },
+    { id: 'problems', label: '问题', meta: problems.length ? String(problems.length) : '' },
+    { id: 'output', label: '输出', meta: '' },
   ];
 
   const handleClear = () => {
@@ -447,14 +447,14 @@ const styles = {
     backgroundColor: 'transparent',
   },
   header: {
-    minHeight: '32px',
+    minHeight: '42px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: '8px',
     padding: '0 8px',
     borderBottom: '1px solid var(--border-color)',
-    backgroundColor: 'var(--surface-raised)',
+    backgroundColor: 'var(--surface-color)',
   },
   headerLeft: {
     minWidth: 0,
@@ -466,7 +466,7 @@ const styles = {
   tabs: {
     display: 'flex',
     alignItems: 'center',
-    gap: '0',
+    gap: '6px',
     minWidth: 0,
     padding: 0,
     borderRadius: 0,
@@ -474,11 +474,11 @@ const styles = {
     backgroundColor: 'transparent',
   },
   tab: {
-    height: '32px',
-    borderRadius: 0,
+    height: '28px',
+    borderRadius: '9px',
     border: 'none',
-    borderRight: '1px solid var(--border-subtle)',
-    backgroundColor: 'var(--surface-raised)',
+    borderRight: 'none',
+    backgroundColor: 'transparent',
     color: 'var(--text-muted)',
     padding: '0 12px',
     fontSize: '11px',
@@ -486,11 +486,11 @@ const styles = {
     display: 'inline-flex',
     alignItems: 'center',
     gap: '6px',
-    fontFamily: 'var(--font-mono)',
+    fontFamily: 'var(--font-family)',
   },
   tabActive: {
     color: 'var(--text-color)',
-    backgroundColor: 'var(--surface-color)',
+    backgroundColor: 'var(--surface-raised)',
   },
   tabMeta: {
     minWidth: '18px',

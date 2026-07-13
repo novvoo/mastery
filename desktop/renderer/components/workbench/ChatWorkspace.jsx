@@ -7,6 +7,8 @@ import { getSendButtonMotionClass } from '../../app/interaction/animation-system
 import { getQueuePreview } from '../../app/message-queue.js';
 import { styles } from '../../app/styles.js';
 import { t } from '../../i18n.js';
+import { RuntimeSelector } from './RuntimeSelector.jsx';
+import { Icon } from '../ui/index.js';
 
 export function ChatWorkspace({
   runtime,
@@ -33,15 +35,29 @@ export function ChatWorkspace({
   const needsUserInput = runtime.status === 'needs_user_input';
   const askInfo = runtime.askUserInfo;
   const queuePreview = queueCount > 0 ? getQueuePreview(3, 80) : [];
+  const workspaceName = String(workingDirectory || '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter(Boolean)
+    .at(-1) || '';
+  const firstUserMessage = runtime.messages.find((message) => message?.type === 'user');
+  const firstUserText = typeof firstUserMessage?.content === 'string'
+    ? firstUserMessage.content
+    : typeof firstUserMessage?.message === 'string'
+      ? firstUserMessage.message
+      : '';
+  const taskTitle = firstUserText.trim()
+    ? `${firstUserText.trim().slice(0, 46)}${firstUserText.trim().length > 46 ? '…' : ''}`
+    : workspaceName || '新任务';
 
-  const handleContinue = async (submittedValue) => {
+  const handleContinue = async (submittedValue, extra = {}) => {
     const value = String(submittedValue || continuationInput).trim();
     if (!value) {
       return false;
     }
     setContinuationInput('');
     try {
-      await onContinue?.(value);
+      await onContinue?.(value, extra);
       return true;
     } catch {
       setContinuationInput(value);
@@ -49,29 +65,26 @@ export function ChatWorkspace({
     }
   };
   return (
-    <div style={styles.chatArea}>
+    <div className="mastery-chat" style={styles.chatArea}>
       <AskUserFloatingCapsule
         askUserInfo={askInfo}
         onContinue={handleContinue}
+        onCancel={runtime.cancelInteraction}
         onDismiss={runtime.dismissAskUser}
       />
-      <div style={styles.chatHeader}>
+      <div className="mastery-chat-header" style={styles.chatHeader}>
         <div style={styles.chatTitle}>
-          <span style={styles.chatTitleMark}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M8 2.5C5.51472 2.5 3.5 4.51472 3.5 7C3.5 7.88564 3.74512 8.71387 4.16602 9.41602L3.91699 11.083L5.58496 10.834C6.28711 11.2549 7.11436 11.5 8 11.5C10.4853 11.5 12.5 9.48528 12.5 7C12.5 4.51472 10.4853 2.5 8 2.5Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-              <path d="M8 5.5V8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-              <path d="M6.5 7H9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-            </svg>
-          </span>
-          <span>{t('chat.title')}</span>
-          <span style={styles.chatMessageCount}>
+          <span className="mastery-chat-title-mark" style={styles.chatTitleMark}><Icon name="folder" size={17} /></span>
+          <span title={firstUserText || workspaceName || '新任务'}>{taskTitle}</span>
+          <span className="codex-message-count" style={styles.chatMessageCount}>
             {t('chat.message_count', { count: runtime.messages.length })}
           </span>
+          <button type="button" className="codex-title-menu" aria-label="任务菜单"><Icon name="list" size={15} /></button>
         </div>
       </div>
 
       <div
+        className="mastery-message-stage"
         style={styles.messageContainer}
         role="log"
         aria-label={t('ui.root')}
@@ -88,7 +101,7 @@ export function ChatWorkspace({
         />
       </div>
 
-      <div style={styles.inputArea}>
+      <div className="mastery-composer-area" style={styles.inputArea}>
         {queueCount > 0 && (
           <div
             style={{
@@ -150,7 +163,7 @@ export function ChatWorkspace({
           inputNotice={inputNotice}
           inputValue={chatInput}
         />
-        <div style={styles.inputWrapper}>
+        <div className="mastery-composer" style={styles.inputWrapper}>
           {showSuggestions && (
             <CommandSuggestions
               input={chatInput}
@@ -175,6 +188,11 @@ export function ChatWorkspace({
             placeholder={needsUserInput ? '请在上方浮动胶囊中回答问题...' : t('chat.placeholder')}
             disabled={needsUserInput}
           />
+          <div className="codex-composer-tools">
+            <button type="button" className="codex-composer-plus" title="添加上下文" aria-label="添加上下文"><Icon name="plus" size={17} /></button>
+            <span className="codex-access-mode"><Icon name="lock" size={13} />完全访问</span>
+            <RuntimeSelector runtime={runtime} />
+          </div>
           {runtime.status === 'running' && chatInput.trim() ? (
             <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-end' }}>
               <button

@@ -11,7 +11,7 @@ export function ActivityRail({
   onToggleSettings,
 }) {
   return (
-    <nav style={styles.activityRail} aria-label="workspace-nav">
+    <nav className="mastery-activity-rail" style={styles.activityRail} aria-label="workspace-nav">
       <Button
         variant="icon"
         size="md"

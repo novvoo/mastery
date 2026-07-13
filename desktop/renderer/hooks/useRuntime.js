@@ -2,7 +2,7 @@
  * Runtime Hook
  * 提供 Agent Runtime 的状态管理和操作方法
  */
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 
 /**
  * 过滤掉内部控制 JSON 块（工具协议文本不应作为用户可见内容展示）
@@ -64,7 +64,7 @@ export function stripActionBlocks(text = '') {
     return '';
   }
 
-  return out.trim();
+  return out.trimEnd();
 }
 
 /**
@@ -199,6 +199,7 @@ export function useRuntime() {
   const [tools, setTools] = useState([]);
   const [loading, setLoading] = useState(false);
   const [askUserInfo, setAskUserInfo] = useState(null);
+  const [runtimeInfo, setRuntimeInfo] = useState(null);
   const [stats, setStats] = useState({
     messageCount: 0,
     toolCalls: 0,
@@ -222,6 +223,9 @@ export function useRuntime() {
    * Map<toolName, { result, exitCode, duration, isError }>
    */
   const pendingToolResultsRef = useRef(new Map());
+  // 连续重复 delta 去重：OMP 有时会发送重复的 text_delta
+  const lastDeltaTextRef = useRef('');
+  const lastReasoningDeltaRef = useRef('');
 
   const flushMessageDeltas = useCallback(() => {
     if (pendingMessageDeltaTimerRef.current) {
@@ -320,7 +324,8 @@ export function useRuntime() {
     // 检查是否有暂存的 tool:result 待合并（处理 tool:result 先于 tool:call commit 问题）
     let mergedMessage = { ...message };
     if (message.type === 'tool' && message.toolName) {
-      const pending = pendingToolResultsRef.current.get(message.toolName);
+      const pendingKey = message.toolCallId || message.toolName;
+      const pending = pendingToolResultsRef.current.get(pendingKey);
       if (pending) {
         mergedMessage = {
           ...mergedMessage,
@@ -329,8 +334,10 @@ export function useRuntime() {
           exitCode: pending.exitCode,
           duration: pending.duration,
           isError: pending.isError,
+          error: pending.error,
+          completedAt: pending.completedAt,
         };
-        pendingToolResultsRef.current.delete(message.toolName);
+        pendingToolResultsRef.current.delete(pendingKey);
       }
     }
 
@@ -449,7 +456,17 @@ export function useRuntime() {
     try {
       if (typeof window !== 'undefined' && window != null && window.electronAPI) {
         const state = await window.electronAPI.getState();
+        setRuntimeInfo(state);
         setStatus(state.status || 'idle');
+        if (state.pendingInteraction) {
+          setAskUserInfo({
+            ...state.pendingInteraction,
+            requestId: state.pendingInteraction.id,
+            message: state.pendingInteraction.message || state.pendingInteraction.placeholder || state.pendingInteraction.title,
+            suggestions: state.pendingInteraction.options || [],
+          });
+          setStatus('needs_user_input');
+        }
         setStats((prev) => ({
           ...prev,
           ...state.stats,
@@ -796,6 +813,12 @@ export function useRuntime() {
             return;
           }
 
+          // 连续重复 delta 去重：跳过与上一次完全相同的文本
+          if (filteredText === lastDeltaTextRef.current) {
+            return;
+          }
+          lastDeltaTextRef.current = filteredText;
+
           if (!msgId) {
             // 当前没有活跃的流消息 → 创建新的消息气泡
             const now = Date.now();
@@ -821,6 +844,12 @@ export function useRuntime() {
       if (eventName === 'agent:reasoning_delta') {
         const reasonId = streamingReasoningIdRef.current;
         if (payload?.text) {
+          const filteredText = stripActionBlocks(payload.text);
+          if (!filteredText) return;
+
+          if (filteredText === lastReasoningDeltaRef.current) return;
+          lastReasoningDeltaRef.current = filteredText;
+
           if (!reasonId) {
             const now = Date.now();
             const newId = `msg_reason_${now}_${Math.random().toString(36).substr(2, 9)}`;
@@ -830,13 +859,13 @@ export function useRuntime() {
               {
                 id: newId,
                 type: 'thinking',
-                content: payload.text,
+                content: filteredText,
                 timestamp: now,
                 isStreaming: true,
               },
             ]);
           } else {
-            queueMessageDelta(reasonId, payload.text);
+            queueMessageDelta(reasonId, filteredText, { type: 'thinking' });
           }
         }
         return;
@@ -844,6 +873,26 @@ export function useRuntime() {
       if (eventName === 'agent:tool_call_delta') {
         // Tool-call deltas are partial protocol frames. The formal tool:call event
         // renders the visible card, so showing deltas here creates duplicate tools.
+        return;
+      }
+
+      if (eventName === 'agent:interaction_request') {
+        setAskUserInfo({
+          ...payload,
+          requestId: payload?.requestId || payload?.id,
+          message: payload?.message || payload?.placeholder || payload?.title || '需要你的回答',
+          suggestions: payload?.options || payload?.suggestions || [],
+        });
+        setStatus('needs_user_input');
+        return;
+      }
+
+      if (eventName === 'agent:interaction_cancel') {
+        setAskUserInfo((current) => {
+          const cancelledId = payload?.requestId || payload?.targetId;
+          return !cancelledId || current?.requestId === cancelledId ? null : current;
+        });
+        setStatus('running');
         return;
       }
 
@@ -989,33 +1038,28 @@ export function useRuntime() {
           return;
         }
 
-        // tool:result → 合并到上一个 tool 消息（claude-code 风格：call+result 一个视觉单元）
-        // 注意：这里直接 return 不走到 runtimeDetail 分支
-        if (eventName === 'tool:result') {
+        // OMP tool lifecycle → 按 toolCallId 合并成一个视觉单元。
+        if (['tool:result', 'tool:error', 'tool:progress'].includes(eventName)) {
           if (normalized.message) {
             const resultMsg = normalized.message;
             setMessages((prev) => {
-              const idx = findLastToolCall(prev, resultMsg.toolName);
+              const idx = findLastToolCall(prev, resultMsg.toolName, resultMsg.toolCallId);
               if (idx === -1) {
-                // React state 还未 commit → 暂存到 pendingToolResultsRef，
-                // 等 tool:call 通过 addMessage 时自动合并
-                pendingToolResultsRef.current.set(resultMsg.toolName, {
-                  result: resultMsg.result || resultMsg.content,
-                  exitCode: resultMsg.exitCode ?? payload?.exitCode ?? null,
-                  duration: payload?.duration ?? resultMsg.duration ?? null,
-                  isError: resultMsg.isError ?? false,
-                });
+                if (eventName !== 'tool:progress') {
+                  const pendingKey = resultMsg.toolCallId || resultMsg.toolName;
+                  pendingToolResultsRef.current.set(pendingKey, {
+                    result: resultMsg.result || resultMsg.content,
+                    error: resultMsg.error,
+                    exitCode: resultMsg.exitCode ?? payload?.exitCode ?? null,
+                    duration: payload?.duration ?? resultMsg.duration ?? null,
+                    isError: eventName === 'tool:error' || resultMsg.isError === true,
+                    completedAt: resultMsg.timestamp || Date.now(),
+                  });
+                }
                 return prev;
               }
               const updated = [...prev];
-              updated[idx] = {
-                ...updated[idx],
-                result: resultMsg.result || resultMsg.content,
-                toolResult: true,
-                exitCode: resultMsg.exitCode ?? payload?.exitCode ?? null,
-                duration: payload?.duration ?? resultMsg.duration ?? null,
-                isError: resultMsg.isError ?? false,
-              };
+              updated[idx] = mergeToolLifecycleMessage(updated[idx], resultMsg, eventName, payload);
               return updated;
             });
           }
@@ -1037,6 +1081,52 @@ export function useRuntime() {
     setAskUserInfo(null);
   }, []);
 
+  const respondToInteraction = useCallback(async (value, extra = {}) => {
+    const requestId = askUserInfo?.requestId;
+    if (!requestId) return false;
+    await window.electronAPI.invoke('agent:respondInteraction', {
+      requestId,
+      response: askUserInfo.method === 'confirm'
+        ? { confirmed: extra.confirmed ?? /^(y|yes|是|确认|同意)$/i.test(String(value).trim()) }
+        : { value, ...extra },
+    });
+    setAskUserInfo(null);
+    setStatus('running');
+    return true;
+  }, [askUserInfo]);
+
+  const cancelInteraction = useCallback(async () => {
+    const requestId = askUserInfo?.requestId;
+    if (!requestId || !window.electronAPI) return false;
+    await window.electronAPI.invoke('agent:respondInteraction', {
+      requestId,
+      response: { cancelled: true },
+    });
+    setAskUserInfo(null);
+    setStatus('running');
+    return true;
+  }, [askUserInfo]);
+
+  const getAvailableModels = useCallback(async () => {
+    if (!window.electronAPI) return [];
+    const result = await window.electronAPI.invoke('omp:getAvailableModels');
+    return Array.isArray(result) ? result : (result?.models || []);
+  }, []);
+
+  const setModel = useCallback(async (provider, modelId) => {
+    if (!window.electronAPI || !modelId) return false;
+    await window.electronAPI.invoke('omp:setModel', { provider, modelId });
+    await refreshState();
+    return true;
+  }, [refreshState]);
+
+  const setThinkingLevel = useCallback(async (level) => {
+    if (!window.electronAPI || !level) return false;
+    await window.electronAPI.invoke('omp:setThinkingLevel', { level });
+    await refreshState();
+    return true;
+  }, [refreshState]);
+
   return {
     // 状态
     status,
@@ -1045,6 +1135,7 @@ export function useRuntime() {
     loading,
     stats,
     askUserInfo,
+    runtimeInfo,
 
     // 方法
     addMessage,
@@ -1055,6 +1146,11 @@ export function useRuntime() {
     processInput,
     stop,
     dismissAskUser,
+    respondToInteraction,
+    cancelInteraction,
+    getAvailableModels,
+    setModel,
+    setThinkingLevel,
   };
 }
 
@@ -1119,8 +1215,13 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
             payload?.activity?.statusText ||
             `调用工具: ${payload?.toolName || payload?.name || 'unknown'}`,
           toolName: payload?.toolName || payload?.name,
-          args: payload?.args,
+          toolCallId: payload?.toolCallId || payload?.id,
+          args: payload?.args || payload?.arguments,
           activity: payload?.activity,
+          startedAt: payload?.timestamp || Date.now(),
+          depth: 0,
+          collapsible: true,
+          collapsed: false,
         },
       };
     case 'tool:result':
@@ -1132,9 +1233,14 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
             payload?.activity?.statusText ||
             `工具结果: ${payload?.toolName || payload?.name || 'unknown'}`,
           toolName: payload?.toolName || payload?.name,
-          args: payload?.args,
+          toolCallId: payload?.toolCallId || payload?.id,
+          args: payload?.args || payload?.arguments,
           result: payload?.result,
           activity: payload?.activity,
+          completedAt: payload?.timestamp || Date.now(),
+          depth: 1,
+          parentType: 'tool',
+          collapsible: false,
         },
       };
     case 'tool:error':
@@ -1146,8 +1252,15 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
             payload?.activity?.statusText ||
             `工具错误: ${payload?.toolName || payload?.name || 'unknown'} ${payload?.error || ''}`.trim(),
           toolName: payload?.toolName || payload?.name,
-          args: payload?.args,
+          toolCallId: payload?.toolCallId || payload?.id,
+          args: payload?.args || payload?.arguments,
           activity: payload?.activity,
+          error: payload?.error || payload?.message,
+          isError: true,
+          completedAt: payload?.timestamp || Date.now(),
+          depth: 1,
+          parentType: 'tool',
+          collapsible: false,
         },
       };
     case 'tool:activity':
@@ -1168,19 +1281,23 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
           type: 'event',
           runtimeDetail: true,
           content: payload?.statusText || `进度: ${payload?.progress ?? 0}%`,
-          toolName: payload?.toolName,
+          toolName: payload?.toolName || payload?.name,
+          toolCallId: payload?.toolCallId || payload?.id,
           activity: {
             kind: 'tool_activity',
             id: payload?.id || `progress:${payload?.toolName}`,
             phase: 'running',
             intent: 'tool',
-            toolName: payload?.toolName,
+            toolName: payload?.toolName || payload?.name,
             progress: payload?.progress,
             statusText: payload?.statusText || `进度: ${payload?.progress ?? 0}%`,
             target: payload?.target,
             detail: payload?.detail,
             timestamp: Date.now(),
           },
+          depth: 2,
+          parentType: 'tool_result',
+          collapsible: false,
         },
       };
     case 'plan:created':
@@ -1283,14 +1400,58 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
  * 在消息列表中查找最后一个与指定工具名匹配的 tool 消息。
  * 用于 tool:result 合并到 tool:call。
  */
-function findLastToolCall(messages, toolName) {
+function findLastToolCall(messages, toolName, toolCallId) {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
-    if (msg.type === 'tool' && msg.toolName === toolName && !msg.toolResult) {
+    const idMatches = toolCallId && msg.toolCallId === toolCallId;
+    const fallbackMatches = !toolCallId && msg.toolName === toolName && !msg.toolResult;
+    if (msg.type === 'tool' && (idMatches || fallbackMatches)) {
       return i;
     }
   }
   return -1;
+}
+
+export function mergeToolLifecycleMessage(toolMessage, lifecycleMessage, eventName, payload = {}) {
+  const completedAt = lifecycleMessage.completedAt || lifecycleMessage.timestamp || Date.now();
+  const startedAt = toolMessage.startedAt || toolMessage.timestamp || completedAt;
+  const duration = payload?.duration ?? lifecycleMessage.duration ?? Math.max(0, completedAt - startedAt);
+
+  if (eventName === 'tool:progress') {
+    return {
+      ...toolMessage,
+      progress: lifecycleMessage.activity?.progress ?? payload?.progress,
+      progressText: lifecycleMessage.activity?.statusText || lifecycleMessage.content,
+      partialResult: payload?.result,
+      phase: 'running',
+      statusText: lifecycleMessage.activity?.statusText || lifecycleMessage.content,
+      activity: { ...toolMessage.activity, ...lifecycleMessage.activity, phase: 'running' },
+    };
+  }
+
+  const isError = eventName === 'tool:error' || lifecycleMessage.isError === true;
+  return {
+    ...toolMessage,
+    result: lifecycleMessage.result || lifecycleMessage.error || lifecycleMessage.content,
+    error: isError ? (lifecycleMessage.error || lifecycleMessage.content) : null,
+    toolResult: true,
+    exitCode: lifecycleMessage.exitCode ?? payload?.exitCode ?? (isError ? 1 : 0),
+    duration,
+    durationMs: duration,
+    completedAt,
+    isError,
+    phase: isError ? 'failed' : 'completed',
+    statusText: isError ? '执行失败' : '执行完成',
+    progress: 100,
+    progressText: isError ? '执行失败' : '执行完成',
+    activity: {
+      ...toolMessage.activity,
+      ...lifecycleMessage.activity,
+      phase: isError ? 'failed' : 'completed',
+      durationMs: duration,
+      error: isError ? (lifecycleMessage.error || lifecycleMessage.content) : null,
+    },
+  };
 }
 
 function normalizePlanTasks(tasks) {
@@ -1564,3 +1725,136 @@ async function simulateExecution(input, addMessage, setStatus, setStats) {
 }
 
 export default useRuntime;
+
+// ─── Tree Structure Utilities ─────────────────────────────────────────
+
+/**
+ * Build a tree structure from a flat messages array.
+ * Groups messages by parent-child relationships based on depth/parentType.
+ *
+ * Tree hierarchy:
+ *   depth=0: Agent turn, plan, tool call  ← collapsible root nodes
+ *   depth=1: Tool result/error            ← children of tool call
+ *   depth=2: Progress updates             ← children of tool result
+ *
+ * @param {Array} messages - Flat message list
+ * @returns {Array} Tree nodes with `children` arrays
+ */
+export function buildMessageTree(messages) {
+  if (!Array.isArray(messages)) return [];
+
+  const tree = [];
+  // stack tracks { depth, children } for nesting.
+  // Root frame at depth=-1.
+  const stack = [{ depth: -1, children: tree }];
+
+  for (const msg of messages) {
+    const node = { ...msg, children: [] };
+    const depth = msg.depth ?? 0;
+
+    // Pop stack until we find a frame at a shallower depth
+    while (stack.length > 1 && stack[stack.length - 1].depth >= depth) {
+      stack.pop();
+    }
+
+    // Attach to current stack top
+    stack[stack.length - 1].children.push(node);
+
+    // Push node as a new frame if it can have children (depth 0 or 1)
+    if (depth < 2) {
+      stack.push({ depth, children: node.children });
+    }
+  }
+
+  return tree;
+}
+
+/**
+ * Get the total count of all nodes in a tree (including children).
+ */
+export function countTreeNodes(nodes) {
+  if (!Array.isArray(nodes)) return 0;
+  let count = 0;
+  for (const node of nodes) {
+    count += 1 + countTreeNodes(node.children || []);
+  }
+  return count;
+}
+
+/**
+ * Flatten a tree back to an ordered list (DFS pre-order).
+ * Each node gets a `treeDepth` reflecting its nesting level.
+ */
+export function flattenTree(nodes, options = {}) {
+  const { collapsed = new Set() } = options;
+  const result = [];
+
+  for (const node of nodes) {
+    const treeDepth = node.depth ?? 0;
+    result.push({ ...node, treeDepth, children: undefined });
+
+    if (!collapsed.has(node.id) && node.children?.length > 0) {
+      result.push(...flattenTree(node.children, { collapsed }));
+    }
+  }
+
+  return result;
+}
+
+/**
+ * React hook: manage message tree collapse/expand state.
+ *
+ * @param {Array} messages - Flat message list
+ * @returns {{ tree, collapsed, toggleCollapse, expandAll, collapseAll }}
+ */
+export function useMessageTree(messages = []) {
+  const [collapsed, setCollapsed] = useState(new Set());
+
+  const tree = useMemo(() => buildMessageTree(messages), [messages]);
+
+  const toggleCollapse = useCallback((id) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const expandAll = useCallback(() => setCollapsed(new Set()), []);
+  const collapseAll = useCallback(() => {
+    const allCollapsible = new Set();
+    const collect = (nodes) => {
+      for (const node of nodes) {
+        if (node.collapsible && node.id) allCollapsible.add(node.id);
+        if (node.children) collect(node.children);
+      }
+    };
+    collect(tree);
+    setCollapsed(allCollapsible);
+  }, [tree]);
+
+  // Auto-collapse tool calls when they accumulate
+  useEffect(() => {
+    const toolCalls = messages.filter((m) => m.type === 'tool' && m.id);
+    if (toolCalls.length > 3) {
+      setCollapsed((prev) => {
+        const next = new Set(prev);
+        for (let i = 0; i < toolCalls.length - 1; i++) {
+          next.add(toolCalls[i].id);
+        }
+        return next;
+      });
+    }
+  }, [messages]);
+
+  const flattened = useMemo(
+    () => flattenTree(tree, { collapsed }),
+    [tree, collapsed],
+  );
+
+  return { tree, flattened, collapsed, toggleCollapse, expandAll, collapseAll };
+}

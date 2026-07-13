@@ -35,7 +35,6 @@ import { usePreview } from './hooks/usePreview.js';
 import { useRagDocuments } from './hooks/useRagDocuments.js';
 import { useSessionManager } from './hooks/useSessionManager.js';
 import { useChatComposer } from './hooks/useChatComposer.js';
-import { getRuntimeStatusMeta } from './runtime/runtime-status.js';
 import { LLM_PROVIDER_OPTIONS } from './app/config/index.js';
 import {
   ACTIVE_AGENT_SESSION_STORAGE_KEY,
@@ -63,7 +62,6 @@ function App() {
 
   // ── Runtime / IPC ────────────────────────────────────────
   const runtime = useRuntime();
-  const runtimeStatusMeta = getRuntimeStatusMeta(runtime.status);
   const ipc = useIPC();
 
   // ── 布局状态 (sidebar / inspector / terminal) ───────────
@@ -278,9 +276,15 @@ function App() {
             ? ipc.diagnose()
             : { hasElectronAPI: false, url: typeof window !== 'undefined' ? window.location?.href : null };
           console.warn('[App] IPC 诊断:', diag);
-          setIpcDiagnostic(diag);
+          const isElectronShell = typeof navigator !== 'undefined'
+            && /Electron/i.test(navigator.userAgent || '');
+          setIpcDiagnostic(isElectronShell ? diag : null);
         } catch (_) {
-          setIpcDiagnostic({ hasElectronAPI: false, reason: 'preload 未暴露 electronAPI' });
+          const isElectronShell = typeof navigator !== 'undefined'
+            && /Electron/i.test(navigator.userAgent || '');
+          setIpcDiagnostic(isElectronShell
+            ? { hasElectronAPI: false, reason: 'preload 未暴露 electronAPI' }
+            : null);
         }
         return;
       }
@@ -436,13 +440,10 @@ function App() {
 
   // ── 渲染 ─────────────────────────────────────────────────
   return (
-    <div style={styles.container}>
+    <div className="mastery-shell" style={styles.container}>
       <ChromeCapsules
         platformInfo={platformInfo}
         windowState={windowState}
-        runtimeStatusMeta={runtimeStatusMeta}
-        runtimeStatus={runtime.status}
-        isConnected={ipc.isConnected}
         toolCount={runtime.tools.length}
         stats={runtime.stats}
         appVersion={pkg.version}
@@ -468,7 +469,7 @@ function App() {
         onClearMessages={runtime.clearMessages}
       />
 
-      <div style={styles.mainContentWrapper}>
+      <div className="mastery-workbench" style={styles.mainContentWrapper}>
         <ActivityRail
           activeTab={activeTab}
           sidebarCollapsed={sidebarCollapsed}
@@ -510,6 +511,11 @@ function App() {
               onRenameItem: renameItem,
               workingDirectory,
             }}
+            sessions={sessions}
+            activeSessionId={activeAgentSessionId}
+            onSelectSession={(id) => handleSelectSession(id, clearInput)}
+            onShowTools={() => setActiveTab('tools')}
+            onSettings={() => setShowManagement(true)}
           />
         )}
 
@@ -527,7 +533,7 @@ function App() {
           />
         )}
 
-        <div style={styles.chatAreaWrapper}>
+        <div className="mastery-chat-frame" style={styles.chatAreaWrapper}>
           <ChatWorkspace
             runtime={runtime}
             chatInput={chatInput}
@@ -564,6 +570,7 @@ function App() {
         </div>
 
         {summaryPanelVisible && (
+          <div className="mastery-inspector-overlay">
           <InspectorPanel
             activeInspectorTab={activeInspectorTab}
             activePreviewUrl={activePreviewUrl}
@@ -607,6 +614,7 @@ function App() {
             onSwitchSession={(id) => handleSelectSession(id, clearInput)}
             onTabChange={setActiveInspectorTab}
           />
+          </div>
         )}
       </div>
 

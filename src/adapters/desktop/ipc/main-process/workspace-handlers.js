@@ -2,7 +2,15 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import fs from 'node:fs';
 import path from 'node:path';
-import { computeDiff, isNoop } from '../../../../core/diff-preview.js';
+import { createTwoFilesPatch } from 'diff';
+
+const isNoop = ({ oldContent, newContent }) => oldContent === newContent;
+const computeDiff = ({ path: filePath, oldContent = '', newContent = '' }) => ({
+  path: filePath,
+  oldContent,
+  newContent,
+  diff: createTwoFilesPatch(filePath, filePath, oldContent, newContent),
+});
 
 const execFileAsync = promisify(execFile);
 

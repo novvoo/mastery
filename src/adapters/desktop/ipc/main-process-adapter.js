@@ -1,9 +1,3 @@
-import { buildSlashCommandSuggestions } from '../../../cli/slash-command-suggestions.js';
-import {
-  handleDocumentBatchAdd,
-  handleDocumentCommand,
-  parseDocumentCommand,
-} from '../../../runtime/document-command.js';
 import { IPCMessage, IPCMessageType } from '../protocol/ipc-protocol.js';
 import { IPCAdapterBase } from './base-adapter.js';
 import {
@@ -28,6 +22,11 @@ import {
   handleWriteWorkspaceFile,
 } from './main-process/workspace-handlers.js';
 
+const buildSlashCommandSuggestions = () => [];
+const parseDocumentCommand = () => null;
+const handleDocumentCommand = async () => ({ success: false, error: 'OMP 请直接使用内置文件工具读取文档' });
+const handleDocumentBatchAdd = handleDocumentCommand;
+
 /**
  * 主进程 IPC 适配器
  * 用于 Electron 主进程
@@ -35,6 +34,7 @@ import {
 export class MainProcessIPCAdapter extends IPCAdapterBase {
   #ipcMain;
   #eventBus;
+  #eventBusUnsub;
   #engine;
   #windows;
   #windowSenders;
@@ -58,6 +58,22 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     this.#setupIPCHandlers();
     this.isConnected = true;
     this.startHeartbeat();
+
+    if (this.#eventBus) {
+      this.#eventBusUnsub = this.#eventBus.subscribe('*', (eventData) => {
+        const eventName = eventData?.type;
+        if (!eventName) {
+          return;
+        }
+        try {
+          this.broadcast(eventName, eventData);
+        } catch (err) {
+          if (this.config.debug) {
+            console.warn('[MainProcessIPC] 转发事件失败:', eventName, err);
+          }
+        }
+      });
+    }
 
     if (this.config.debug) {
       console.log('[MainProcessIPC] 适配器已初始化');
@@ -200,6 +216,33 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
             this.#engine.stop();
           }
           return this.createResponse(message, { success: true });
+
+        case 'agent:steer':
+          return this.createResponse(message, await this.#engine.steer(message.payload?.message || message.payload, message.payload?.images));
+
+        case 'agent:followUp':
+          return this.createResponse(message, await this.#engine.followUp(message.payload?.message || message.payload, message.payload?.images));
+
+        case 'agent:respondInteraction':
+          return this.createResponse(message, this.#engine.respondToInteraction(message.payload?.requestId, message.payload?.response));
+
+        case 'omp:getState':
+          return this.createResponse(message, this.#engine.getState());
+
+        case 'omp:getAvailableModels':
+          return this.createResponse(message, await this.#engine.getAvailableModels());
+
+        case 'omp:setModel':
+          return this.createResponse(message, await this.#engine.setModel(message.payload?.provider, message.payload?.modelId));
+
+        case 'omp:cycleModel':
+          return this.createResponse(message, await this.#engine.cycleModel());
+
+        case 'omp:setThinkingLevel':
+          return this.createResponse(message, await this.#engine.setThinkingLevel(message.payload?.level));
+
+        case 'omp:cycleThinkingLevel':
+          return this.createResponse(message, await this.#engine.cycleThinkingLevel());
 
         case 'agent:getState':
           if (!this.#engine) {
@@ -420,6 +463,11 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     if (this.config.debug) {
       console.log('[MainProcessIPC] 引擎已附加');
     }
+  }
+
+  attachDesktopCore(core) {
+    this.attachEngine(core?.getEngine?.() || core?.engine || core);
+    return this;
   }
 
   /**

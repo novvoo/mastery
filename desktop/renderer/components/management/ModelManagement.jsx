@@ -53,6 +53,8 @@ export default function ModelManagement({
   toggleError = null,
   toggleSuccess = null,
 }) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
   const [expandedProviders, setExpandedProviders] = useState(() => {
     const init = {};
     PROVIDER_ORDER.forEach(p => { init[p] = true; });
@@ -60,8 +62,20 @@ export default function ModelManagement({
   });
   const [editingId, setEditingId] = useState(null);
 
-  const grouped = groupByProvider(modelConfigs);
+  const filteredConfigs = modelConfigs.filter(config => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) { return true; }
+    const name = (config.name || '').toLowerCase();
+    const model = (config.model || '').toLowerCase();
+    const provider = (config.provider || '').toLowerCase();
+    return name.includes(q) || model.includes(q) || provider.includes(q);
+  });
+
+  const grouped = groupByProvider(filteredConfigs);
   const activeModel = modelConfigs.find(c => c.enabled);
+  const hasSearch = searchQuery.trim().length > 0;
+  const totalCount = modelConfigs.length;
+  const filteredCount = filteredConfigs.length;
 
   const toggleProvider = useCallback((provider) => {
     setExpandedProviders(prev => ({ ...prev, [provider]: !prev[provider] }));
@@ -94,6 +108,26 @@ export default function ModelManagement({
         <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
           {t('management.models_desc')}
         </p>
+      </div>
+
+      <div style={styles.searchBox}>
+        <input
+          style={{
+            ...styles.searchInput,
+            ...(searchFocused ? { borderColor: 'var(--ds-brand)' } : {}),
+          }}
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
+          placeholder={t('management.search_placeholder')}
+        />
+        {hasSearch && (
+          <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--ds-text-tertiary)' }}>
+            {t('management.search_result', { count: filteredCount, total: totalCount })}
+          </div>
+        )}
       </div>
 
       {activeModel && (
@@ -142,10 +176,20 @@ export default function ModelManagement({
         </div>
       )}
 
+      {hasSearch && filteredCount === 0 && (
+        <div style={styles.searchEmptyHint}>
+          {t('management.search_no_result')}
+        </div>
+      )}
+
       {PROVIDER_ORDER.map(provider => {
         const option = LLM_PROVIDER_OPTIONS[provider];
         const configs = grouped[provider] || [];
-        const isExpanded = expandedProviders[provider];
+        const isExpanded = expandedProviders[provider] || hasSearch;
+
+        if (hasSearch && configs.length === 0) {
+          return null;
+        }
 
         return (
           <div key={provider} style={styles.modelGroup}>

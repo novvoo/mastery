@@ -36,11 +36,13 @@ export function InteractionConsole({ status, messages, tools, inputNotice, input
   const activeStage = stages.find(stage => ['active', 'attention', 'error'].includes(stage.state))
     || [...stages].reverse().find(stage => stage.state === 'done')
     || stages[0];
-  const shouldShow = status !== 'idle'
-    || Boolean(inputNotice)
-    || risk.level !== 'low'
-    || Boolean(inputValue?.trim())
-    || messages.length > 0;
+  const hasPrompt = Boolean(inputValue?.trim());
+  const hasActiveRun = messages.length > 0 && !['idle', 'ready', 'completed'].includes(status);
+  const shouldShow = messages.length > 0
+    || hasPrompt
+    || hasActiveRun
+    || (Boolean(inputNotice) && hasPrompt)
+    || (risk.level !== 'low' && hasPrompt);
 
   if (!shouldShow) {
     return null;
@@ -64,32 +66,32 @@ export function InteractionConsole({ status, messages, tools, inputNotice, input
           <span className="interactionStageDot" style={styles.interactionStageDot} />
           <span style={styles.interactionStageLabel}>{activeStage?.label || status}</span>
         </span>
-        {status !== 'idle' && (
+        {status !== 'idle' && toolSummary.latestTool && (
           <span style={styles.interactionMetaPill}>{toolSummary.latestTool}</span>
         )}
-        {tools?.length > 0 && status === 'running' && (
-          <span style={styles.interactionMetaPill}>{tools.length} tools</span>
+        {hasPrompt && status !== 'running' && risk.level !== 'low' && (
+          <span
+            style={{
+              ...styles.interactionRiskPill,
+              ...(risk.level === 'high' ? styles.interactionRiskHigh : {}),
+              ...(risk.level === 'medium' ? styles.interactionRiskMedium : {}),
+            }}
+            title={risk.reasons.join(', ')}
+          >
+            {risk.label}
+          </span>
         )}
-        <span
-          style={{
-            ...styles.interactionRiskPill,
-            ...(risk.level === 'high' ? styles.interactionRiskHigh : {}),
-            ...(risk.level === 'medium' ? styles.interactionRiskMedium : {}),
-            ...(risk.level === 'low' ? styles.interactionRiskLow : {}),
-          }}
-          title={risk.reasons.join(', ')}
-        >
-          {risk.label}
-        </span>
         <span style={styles.interactionRunNarrative}>{narrative}</span>
-        <span
-          style={{
-            ...styles.interactionAssistText,
-            ...(inputNotice?.tone === 'warning' ? styles.interactionAssistWarning : {}),
-          }}
-        >
-          {assistText}
-        </span>
+        {assistText && inputNotice && (
+          <span
+            style={{
+              ...styles.interactionAssistText,
+              ...(inputNotice?.tone === 'warning' ? styles.interactionAssistWarning : {}),
+            }}
+          >
+            {assistText}
+          </span>
+        )}
       </div>
     </div>
   );

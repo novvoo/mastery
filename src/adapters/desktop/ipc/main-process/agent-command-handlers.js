@@ -1,9 +1,4 @@
 import { RuntimeEvent } from '../../../../runtime/types.js';
-import {
-  listPreviews,
-  startPreview,
-  stopPreview,
-} from '../../../../core/runtime/preview-server.js';
 import { parsePreviewArgs } from '../../protocol/ipc-protocol.js';
 
 export function serializeTools(tools) {
@@ -66,43 +61,13 @@ export async function handlePreviewCommand(input, { engine, broadcast }) {
     return null;
   }
 
-  const args = parsePreviewArgs(trimmedInput.slice('/preview'.length).trim());
-  const subcommand = (args[0] || 'start').toLowerCase();
-
-  if (subcommand === 'list') {
-    return {
-      success: true,
-      localCommand: true,
-      command: '/preview',
-      content: 'Active preview sessions',
-      previews: listPreviews(),
-    };
-  }
-
-  if (subcommand === 'stop') {
-    const result = stopPreview(args[1]);
-    return {
-      ...result,
-      localCommand: true,
-      command: '/preview',
-      content: result.success ? `Preview stopped: ${args[1]}` : result.error,
-    };
-  }
-
-  const kind = ['static', 'node', 'auto'].includes(subcommand) ? subcommand : 'auto';
-  const target = ['static', 'node', 'auto'].includes(subcommand) ? args[1] || '.' : args[0] || '.';
-  const command = kind === 'node' && args.length > 2 ? args.slice(2).join(' ') : undefined;
-  const preview = await startPreview({
-    workingDirectory: engine?.getConfig?.().workingDirectory,
-    target,
-    kind,
-    command,
-  });
+  parsePreviewArgs(trimmedInput.slice('/preview'.length).trim());
+  const preview = { success: false, error: '请使用桌面端预览面板启动或停止预览' };
   broadcast('preview:started', preview);
   return {
     ...preview,
     localCommand: true,
     command: '/preview',
-    content: `Preview ready: ${preview.url}`,
+    content: preview.error,
   };
 }

@@ -1,18 +1,4 @@
-import {
-  createLocalStorageAdapter,
-  createAgentSessionId as _createAgentSessionId,
-  getAgentSessionTitle as _getAgentSessionTitle,
-  findAgentSession as _findAgentSession,
-  upsertAgentSession as _upsertAgentSession,
-  saveAgentInputHistory as _saveAgentInputHistory,
-  normalizeRagDocuments,
-  mergeRagDocuments,
-  getDocumentDisplayName,
-  createAgentErrorPrompt,
-  MAX_AGENT_HISTORY_ITEMS,
-  MAX_AGENT_SESSIONS,
-} from '../../../../src/core/session/session-store.js';
-import { normalizePreviewUrlInput } from '../../../../src/core/runtime/preview-url.js';
+import { normalizePreviewUrlInput } from '../../runtime/preview-url.js';
 import { LAYOUT } from '../config/index.js';
 import { hasElectronAPI, invokeElectronAPI } from '../../hooks/useIPC.js';
 
@@ -25,9 +11,32 @@ export const ACTIVE_AGENT_SESSION_STORAGE_KEY = 'activeAgentConversationSessionI
 export const DESKTOP_LAYOUT_STORAGE_KEY = 'desktopWorkbenchLayout';
 export const AGENT_SESSIONS_UPDATED_EVENT = 'agent-sessions-updated';
 export const PREVIEW_URL_STORAGE_KEY = 'desktopPreviewUrl';
-export { MAX_AGENT_HISTORY_ITEMS, MAX_AGENT_SESSIONS };
+export const MAX_AGENT_HISTORY_ITEMS = 100;
+export const MAX_AGENT_SESSIONS = 100;
 
-const adapter = createLocalStorageAdapter(null, AGENT_SESSIONS_STORAGE_KEY, AGENT_HISTORY_STORAGE_KEY);
+const readJson = (key, fallback) => {
+  try { return JSON.parse(localStorage.getItem(key) || '') || fallback; } catch { return fallback; }
+};
+const adapter = {
+  readHistory: () => readJson(AGENT_HISTORY_STORAGE_KEY, []),
+  writeHistory: (value) => localStorage.setItem(AGENT_HISTORY_STORAGE_KEY, JSON.stringify(value)),
+  readSessions: () => readJson(AGENT_SESSIONS_STORAGE_KEY, []),
+  writeSessions: (value) => localStorage.setItem(AGENT_SESSIONS_STORAGE_KEY, JSON.stringify(value)),
+};
+const _createAgentSessionId = () => `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+const _findAgentSession = (sessions, id) => sessions.find((session) => session?.id === id) || null;
+const _upsertAgentSession = (sessions, session) => [session, ...sessions.filter((item) => item?.id !== session.id)].slice(0, MAX_AGENT_SESSIONS);
+const _saveAgentInputHistory = (history, input, sessionId) => [
+  { input: String(input), sessionId, timestamp: Date.now() },
+  ...history.filter((item) => item?.input !== input),
+].slice(0, MAX_AGENT_HISTORY_ITEMS);
+const _getAgentSessionTitle = (input, messages) => String(input || messages?.find((item) => item?.type === 'user')?.content || '新会话').trim().slice(0, 48);
+
+export const normalizeRagDocuments = (documents = []) => documents.filter(Boolean).map((doc) => typeof doc === 'string' ? { path: doc, name: getDocumentDisplayName(doc) } : doc);
+export const mergeRagDocuments = (current = [], incoming = []) => Array.from(new Map([...normalizeRagDocuments(current), ...normalizeRagDocuments(incoming)].map((doc) => [doc.path || doc.name, doc])).values());
+export const getDocumentDisplayName = (document) => String(document?.name || document?.path || document || '').split(/[\\/]/).pop();
+export const createAgentErrorPrompt = (error) => `请分析并修复这个错误：\n${error?.message || error}`;
+
 
 export function readDesktopLayout() {
   try {
@@ -50,7 +59,9 @@ export function readStoredPreviewUrl() {
 
 export function readStoredInspectorTab() {
   const tab = readDesktopLayout().activeInspectorTab;
-  return ['plan', 'history', 'rag', 'preview'].includes(tab) ? tab : 'plan';
+  if (tab === 'plan') return 'activity';
+  if (tab === 'rag') return 'history';
+  return ['activity', 'history', 'preview'].includes(tab) ? tab : 'activity';
 }
 
 export function clampInspectorWidth(width) {
@@ -60,10 +71,6 @@ export function clampInspectorWidth(width) {
   const numericWidth = Number(width) || LAYOUT.inspectorPanelWidth;
   return Math.max(LAYOUT.inspectorMinWidth, Math.min(viewportLimit, numericWidth));
 }
-
-export {
-  createAgentErrorPrompt, normalizeRagDocuments, mergeRagDocuments, getDocumentDisplayName,
-};
 
 export function createAgentSessionId() {
   return _createAgentSessionId();

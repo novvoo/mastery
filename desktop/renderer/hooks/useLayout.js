@@ -23,8 +23,9 @@ export function useLayout() {
     return stored === undefined ? true : Boolean(stored);
   });
   const [summaryPanelVisible, setSummaryPanelVisible] = useState(() => {
-    const stored = readDesktopLayout().summaryPanelVisible;
-    return stored === undefined ? false : Boolean(stored);
+    // The inspector is an on-demand drawer in the conversation-first layout.
+    // Do not restore the legacy permanent-panel state across app launches.
+    return false;
   });
   const [activeInspectorTab, setActiveInspectorTab] = useState(readStoredInspectorTab);
   const [inspectorPanelWidth, setInspectorPanelWidth] = useState(() =>
@@ -35,9 +36,12 @@ export function useLayout() {
   );
 
   const [terminalClosed, setTerminalClosed] = useState(() =>
-    Boolean(readTerminalPanelLayout().closed),
+    readTerminalPanelLayout().closed === undefined ? false : readTerminalPanelLayout().closed === true,
   );
-  const [terminalOpen, setTerminalOpen] = useState(() => readTerminalPanelLayout().open !== false);
+  const [terminalOpen, setTerminalOpen] = useState(() => {
+    const stored = readTerminalPanelLayout().open;
+    return stored === undefined ? true : stored === true;
+  });
   const [terminalPanelHeight, setTerminalPanelHeight] = useState(() =>
     clampTerminalHeight(readTerminalPanelLayout().height),
   );

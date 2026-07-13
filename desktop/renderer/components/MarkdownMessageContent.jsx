@@ -140,23 +140,25 @@ export const MarkdownMessageContent = React.memo(function MarkdownMessageContent
   markdownComponents,
   onLinkClick,
 }) {
+  const textStr = typeof text === 'string' ? text : String(text ?? '');
+
   const markupBlock = useMemo(() => {
     if (isCollapsed) {return null;}
-    if (!looksLikeMarkupBlock(text)) {return null;}
+    if (!looksLikeMarkupBlock(textStr)) {return null;}
     return {
-      language: guessMarkupLanguage(text),
-      content: String(text || '').trim(),
+      language: guessMarkupLanguage(textStr),
+      content: textStr.trim(),
     };
-  }, [text, isCollapsed]);
+  }, [textStr, isCollapsed]);
 
   const markdownText = useMemo(() => {
-    const stableText = isStreaming ? stabilizeStreamingMarkdown(text || '') : (text || '');
+    const stableText = isStreaming ? stabilizeStreamingMarkdown(textStr || '') : (textStr || '');
     const visibleMarkupText = escapeXmlLikeMarkup(stableText);
     const linked = preprocessTextForLinks(visibleMarkupText);
     return preprocessImagePaths(linked, workingDirectory, fileServerUrl);
-  }, [text, isStreaming, workingDirectory, fileServerUrl]);
+  }, [textStr, isStreaming, workingDirectory, fileServerUrl]);
 
-  if (!text) {
+  if (!textStr) {
     return null;
   }
 

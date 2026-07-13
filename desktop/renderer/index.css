@@ -316,6 +316,318 @@
   --bg-depth-4: #F8FAFB;
 }
 
+/* ── Calm Conversation workbench ─────────────────────────────
+   The desktop product intentionally uses one stable dark canvas. Light mode
+   remains available in settings, but the structural hierarchy stays flat. */
+.mastery-shell {
+  --window-tint: #ffffff;
+  --surface-card: #ffffff;
+  --surface-base: #ffffff;
+  --surface-raised: #f3f4f6;
+  --surface-hover: #eef1f4;
+  --surface-input: #ffffff;
+  --surface-input-focused: #ffffff;
+  --border-card: #e8e9eb;
+  --border-divider: #ececee;
+  --border-subtle: #e3e4e7;
+  --glass-border: #e5e6e8;
+  --glass-border-strong: #dadcdf;
+  --text-color: #27282b;
+  --text-muted: #70747a;
+  --text-dark: #a1a4a9;
+  --primary-color: #3578d4;
+  --primary-soft: rgba(53,120,212,.08);
+  --primary-border: rgba(53,120,212,.15);
+  --success-color: #16a05d;
+  --error-color: #df4242;
+  --warning-color: #f05a28;
+  background: #ffffff !important;
+  border: 1px solid #dfe1e4 !important;
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(28, 32, 38, .10);
+}
+
+.mastery-workbench {
+  padding: 0 !important;
+  gap: 0 !important;
+  border-radius: 0 !important;
+  background: #ffffff;
+}
+
+.mastery-activity-rail {
+  display: none !important;
+  width: 0 !important;
+  padding: 12px 8px 10px !important;
+  gap: 8px !important;
+  border: 0 !important;
+  border-right: 0 !important;
+  border-radius: 0 !important;
+  background: #f3f4f6 !important;
+  box-shadow: none !important;
+}
+
+.mastery-activity-rail button {
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 7px !important;
+}
+
+.mastery-sidebar {
+  width: 320px;
+  flex: 0 0 320px;
+  min-width: 320px;
+  max-width: 40vw;
+  display: flex;
+  overflow: hidden;
+  background: #eff2f5;
+  border-right: 1px solid #e2e4e7;
+}
+
+.codex-task-sidebar {
+  width: 320px; flex: 0 0 320px; min-width: 0; height: 100%; display: flex; flex-direction: column;
+  padding-top: 50px; box-sizing: border-box; overflow: hidden; color: #292b2e; background: #eff2f5;
+}
+.codex-sidebar-brand { height: 62px; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; background: #f5f4f3; }
+.codex-sidebar-brand strong { font-size: 20px; letter-spacing: -.02em; }
+.codex-sidebar-brand button { width: 32px; height: 32px; border: 0; background: transparent; color: #4f545a; cursor: pointer; }
+.codex-primary-nav { padding: 6px 14px 14px; display: grid; gap: 2px; border-bottom: 0; background: #f5f4f3; }
+.codex-primary-nav button { height: 42px !important; font-size: 14px !important; }
+.codex-primary-nav button:hover { background: rgba(47,54,61,.055) !important; }
+.codex-nav-trailing { margin-left: auto; color: #777c82; font-size: 18px; }
+.codex-session-region { flex: 1; min-height: 0; padding: 18px 12px 12px; display: flex; flex-direction: column; }
+.codex-section-label { padding: 0 10px 10px; color: #969ba2; font-size: 13px; font-weight: 600; }
+.codex-session-list { overflow-y: auto; display: grid; gap: 2px; }
+.codex-session-list button { height: 42px; padding: 0 12px; border: 0; border-radius: 9px; background: transparent; color: #35383c; text-align: left; font: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.codex-session-list button:hover { background: rgba(31,35,40,.055); }
+.codex-session-list button.is-active { background: #dce4eb; color: #25282c; font-weight: 600; }
+.codex-session-empty { padding: 10px 12px; color: #a0a4aa; font-size: 12px; }
+.codex-sidebar-body { flex: 1; min-height: 0; display: flex; overflow: hidden; border-top: 1px solid #e4e6e9; }
+.codex-sidebar-footer { padding: 10px 12px 12px; }
+.codex-sidebar-footer > button { width: 100%; min-height: 52px; padding: 7px 10px; border: 1px solid rgba(214,218,222,.9); border-radius: 12px; display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,.78); color: #33373b; cursor: pointer; text-align: left; box-shadow: 0 1px 2px rgba(36,40,45,.03); }
+.codex-sidebar-footer > button > span:nth-child(2) { flex: 1; display: grid; }
+.codex-sidebar-footer small { margin-top: 2px; color: #92979d; font-size: 11px; font-weight: 400; }
+.codex-avatar { width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #a36fd1; color: white; font-size: 12px; }
+
+.mastery-sidebar > * {
+  width: 100% !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.mastery-sidebar [role="tree"] {
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.mastery-sidebar input {
+  border-color: #dfe2e6 !important;
+  background: #ffffff !important;
+}
+
+.mastery-chat {
+  border-radius: 0 !important;
+  background: #ffffff;
+}
+
+.mastery-chat-frame {
+  padding-top: 50px;
+  box-sizing: border-box;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+  transition: margin-right 180ms ease;
+}
+
+.mastery-workbench:has(.mastery-inspector-overlay) .mastery-chat-frame {
+  margin-right: 410px;
+}
+
+.mastery-chat-header {
+  min-height: 52px;
+  padding: 0 22px !important;
+  background: rgba(255,255,255,.96) !important;
+  border-bottom: 1px solid #ededee !important;
+}
+
+.mastery-chat-header > div {
+  width: 100%;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
+.mastery-chat-title-mark { display: inline-flex !important; width: auto !important; height: auto !important; border: 0 !important; background: transparent !important; color: #34383d !important; }
+.codex-message-count { display: none !important; }
+.codex-title-menu { width: 30px; height: 28px; margin-left: 2px; border: 0; background: transparent; color: #8b9096; cursor: pointer; font-size: 13px; letter-spacing: 1px; }
+
+.mastery-message-stage {
+  padding: 0 !important;
+  background: #ffffff;
+}
+
+.mastery-message-stage > * {
+  max-width: 1080px;
+  width: calc(100% - 220px);
+  margin-inline: auto;
+}
+
+.mastery-message-stage p,
+.mastery-message-stage li {
+  font-size: 14px !important;
+  line-height: 1.72 !important;
+}
+
+.mastery-message-stage pre {
+  border: 1px solid #e3e5e8 !important;
+  border-radius: 12px !important;
+  background: #f7f8f9 !important;
+}
+
+.mastery-message-stage [role="log"] {
+  padding-inline: 18px !important;
+}
+
+.mastery-message-stage button {
+  border-radius: 6px !important;
+}
+
+.mastery-composer-area button {
+  border-radius: 999px !important;
+}
+
+.mastery-message-stage [data-message-role="assistant"],
+.mastery-message-stage [data-message-role="user"] {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.mastery-composer-area {
+  margin: 0 !important;
+  padding: 12px 16px 14px !important;
+  border-top: 0 !important;
+  background: #ffffff !important;
+  max-width: 1080px;
+  width: calc(100% - 220px);
+  margin-inline: auto !important;
+  box-sizing: border-box;
+}
+
+.mastery-composer {
+  min-height: 118px;
+  padding: 12px 14px !important;
+  border: 1px solid #e0e1e3 !important;
+  border-radius: 24px !important;
+  background: #ffffff !important;
+  box-shadow: 0 12px 32px rgba(36,39,44,.08), 0 2px 6px rgba(36,39,44,.045) !important;
+  box-sizing: border-box;
+  flex-wrap: wrap;
+  row-gap: 4px !important;
+}
+
+.mastery-composer textarea {
+  flex: 1 0 100% !important;
+  width: 100% !important;
+  min-height: 58px !important;
+  padding: 8px 10px !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.codex-composer-tools { order: 2; flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.codex-composer-plus { width: 28px !important; height: 28px !important; border: 0 !important; background: transparent !important; color: #454a50 !important; font-size: 22px !important; }
+.codex-access-mode { color: #f05a28; font-size: 12px; font-weight: 600; }
+.codex-access-mode { display: inline-flex; align-items: center; gap: 5px; }
+.codex-composer-tools details { margin-left: auto !important; }
+.mastery-composer > button, .mastery-composer > div:not(.codex-composer-tools) { order: 3; }
+
+.mastery-top-controls {
+  top: 10px !important;
+  right: 16px !important;
+  padding-left: 14px !important;
+  border-left: 1px solid #e4e6e9 !important;
+  border-radius: 0 !important;
+}
+
+.mastery-top-controls button {
+  color: #666b72 !important;
+}
+
+.mastery-inspector-overlay {
+  position: absolute;
+  z-index: 80;
+  top: 76px;
+  right: 18px;
+  width: min(388px, 38vw);
+  height: min(760px, calc(100% - 96px));
+  display: flex;
+  overflow: hidden;
+  border: 1px solid #e2e3e5;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 12px 34px rgba(31,35,40,.10), 0 2px 8px rgba(31,35,40,.04);
+}
+
+.mastery-inspector-overlay > * {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  border: 0 !important;
+  border-radius: inherit !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.codex-inspector-heading {
+  flex: 1;
+  min-width: 0;
+  color: #858a90;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+[aria-label="inspector-panel"] > div:nth-child(2) {
+  min-height: 54px;
+  padding: 0 16px !important;
+  border-bottom-color: #ececee !important;
+  background: #ffffff !important;
+}
+
+[aria-label="inspector-panel"] > div:last-child {
+  background: #ffffff !important;
+  border-top: 0 !important;
+}
+
+[aria-label="Bottom terminal panel"] {
+  border-top: 1px solid #ececee !important;
+  background: #ffffff !important;
+}
+
+[aria-label="Bottom terminal panel"] > div:not(:first-child) {
+  background: #ffffff !important;
+}
+
+details > summary::-webkit-details-marker { display: none; }
+
+@media (max-width: 980px) {
+  .codex-task-sidebar { width: 270px; flex-basis: 270px; }
+  .mastery-chat-header { padding: 0 14px !important; }
+  .mastery-message-stage > *,
+  .mastery-composer-area { width: calc(100% - 48px); }
+  .mastery-workbench:has(.mastery-inspector-overlay) .mastery-chat-frame { margin-right: 0; }
+}
+
+@media (max-width: 760px) {
+  .codex-task-sidebar { display: none; }
+  .mastery-activity-rail { width: 50px !important; }
+  .mastery-inspector-overlay { left: 18px; width: auto; }
+}
+
 /* Professional workbench theme overrides */
 :root {
   --primary-color: #39A58F;
@@ -479,6 +791,205 @@
   --bg-secondary: var(--surface-raised);
   --bg-tertiary: var(--surface-hover);
   --window-border-color: rgba(42, 61, 70, 0.1);
+}
+
+/* 暗色主题 — 深色专业工作台 */
+[data-theme="dark"] {
+  /* 窗口/面板底色使用 :root 暗色变量，但此处覆盖 .mastery-shell 的硬编码 */
+}
+
+[data-theme="dark"] .mastery-shell {
+  --window-tint: #080B0F;
+  --surface-card: #10151B;
+  --surface-base: #0B0F14;
+  --surface-raised: #171D24;
+  --surface-hover: #202832;
+  --surface-input: #1C2430;
+  --surface-input-focused: #232C38;
+  --border-card: rgba(216,226,230,.1);
+  --border-divider: rgba(216,226,230,.075);
+  --border-subtle: rgba(216,226,230,.09);
+  --glass-border: rgba(216,226,230,.105);
+  --glass-border-strong: rgba(216,226,230,.18);
+  --text-color: #EEF3F5;
+  --text-muted: #AAB7BE;
+  --text-dark: #73818A;
+  --primary-color: #39A58F;
+  --primary-soft: rgba(57,165,143,.12);
+  --primary-border: rgba(57,165,143,.22);
+  --success-color: #7BD3B8;
+  --error-color: #E88A9A;
+  --warning-color: #E8C46A;
+  background: #11161C !important;
+  border-color: rgba(216,226,230,.16) !important;
+  box-shadow: 0 18px 48px rgba(0,0,0,.24) !important;
+}
+
+[data-theme="dark"] .mastery-workbench {
+  background: #11161C;
+}
+
+[data-theme="dark"] .mastery-activity-rail {
+  background: #171D24 !important;
+}
+
+[data-theme="dark"] .mastery-sidebar {
+  background: #0B0F14;
+  border-right-color: rgba(216,226,230,.09);
+}
+
+[data-theme="dark"] .codex-task-sidebar {
+  color: #EEF3F5;
+  background: #0B0F14;
+}
+
+[data-theme="dark"] .codex-sidebar-brand {
+  background: #171D24;
+}
+
+[data-theme="dark"] .codex-sidebar-brand strong {
+  color: #EEF3F5;
+}
+
+[data-theme="dark"] .codex-sidebar-brand button {
+  color: #AAB7BE;
+}
+
+[data-theme="dark"] .codex-primary-nav {
+  background: #171D24;
+}
+
+[data-theme="dark"] .codex-primary-nav button:hover {
+  background: rgba(238,244,246,.08) !important;
+}
+
+[data-theme="dark"] .codex-nav-trailing {
+  color: #73818A;
+}
+
+[data-theme="dark"] .codex-section-label {
+  color: #73818A;
+}
+
+[data-theme="dark"] .codex-session-list button {
+  color: #EEF3F5;
+}
+
+[data-theme="dark"] .codex-session-list button:hover {
+  background: rgba(238,244,246,.06);
+}
+
+[data-theme="dark"] .codex-session-list button.is-active {
+  background: #202832;
+  color: #EEF3F5;
+}
+
+[data-theme="dark"] .codex-session-empty {
+  color: #73818A;
+}
+
+[data-theme="dark"] .codex-sidebar-body {
+  border-top-color: rgba(216,226,230,.075);
+}
+
+[data-theme="dark"] .codex-sidebar-footer > button {
+  border-color: rgba(216,226,230,.16);
+  background: rgba(17,22,28,.88);
+  color: #EEF3F5;
+  box-shadow: 0 1px 2px rgba(0,0,0,.12);
+}
+
+[data-theme="dark"] .codex-sidebar-footer small {
+  color: #73818A;
+}
+
+[data-theme="dark"] .mastery-sidebar input {
+  border-color: rgba(216,226,230,.16) !important;
+  background: #1C2430 !important;
+}
+
+[data-theme="dark"] .mastery-chat {
+  background: #11161C;
+}
+
+[data-theme="dark"] .mastery-chat-frame {
+  background: #11161C !important;
+}
+
+[data-theme="dark"] .mastery-chat-header {
+  background: rgba(17,22,28,.96) !important;
+  border-bottom-color: rgba(216,226,230,.075) !important;
+}
+
+[data-theme="dark"] .mastery-chat-title-mark {
+  color: #EEF3F5 !important;
+}
+
+[data-theme="dark"] .codex-title-menu {
+  color: #73818A;
+}
+
+[data-theme="dark"] .mastery-message-stage {
+  background: #11161C;
+}
+
+[data-theme="dark"] .mastery-message-stage pre {
+  border-color: rgba(216,226,230,.1) !important;
+  background: #171D24 !important;
+}
+
+[data-theme="dark"] .mastery-composer-area {
+  background: #11161C !important;
+}
+
+[data-theme="dark"] .mastery-composer {
+  border-color: rgba(216,226,230,.16) !important;
+  background: #1C2430 !important;
+  box-shadow: 0 12px 32px rgba(0,0,0,.18), 0 2px 6px rgba(0,0,0,.12) !important;
+}
+
+[data-theme="dark"] .codex-composer-plus {
+  color: #AAB7BE !important;
+}
+
+[data-theme="dark"] .mastery-top-controls {
+  border-left-color: rgba(216,226,230,.075) !important;
+}
+
+[data-theme="dark"] .mastery-top-controls button {
+  color: #73818A !important;
+}
+
+[data-theme="dark"] .mastery-inspector-overlay {
+  border-color: rgba(216,226,230,.1);
+  background: #10151B;
+  box-shadow: 0 12px 34px rgba(0,0,0,.18), 0 2px 8px rgba(0,0,0,.1);
+}
+
+[data-theme="dark"] .mastery-inspector-overlay > * {
+  background: #10151B !important;
+}
+
+[data-theme="dark"] .codex-inspector-heading {
+  color: #73818A;
+}
+
+[data-theme="dark"] [aria-label="inspector-panel"] > div:nth-child(2) {
+  border-bottom-color: rgba(216,226,230,.075) !important;
+  background: #10151B !important;
+}
+
+[data-theme="dark"] [aria-label="inspector-panel"] > div:last-child {
+  background: #10151B !important;
+}
+
+[data-theme="dark"] [aria-label="Bottom terminal panel"] {
+  border-top-color: rgba(216,226,230,.075) !important;
+  background: #11161C !important;
+}
+
+[data-theme="dark"] [aria-label="Bottom terminal panel"] > div:not(:first-child) {
+  background: #11161C !important;
 }
 
 /* ================== 全局重置与基础样式 ================== */

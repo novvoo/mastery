@@ -607,11 +607,12 @@ export const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
-    marginBottom: '7px',
-    padding: '4px 6px',
-    borderRadius: 'var(--radius-md)',
+    marginBottom: '8px',
+    padding: '0 12px',
+    minHeight: '34px',
+    borderRadius: '12px',
     border: '1px solid var(--border-subtle)',
-    backgroundColor: 'var(--surface-base)',
+    backgroundColor: 'var(--surface-raised)',
     boxShadow: 'none'
   },
 
@@ -623,39 +624,39 @@ export const styles = {
 
   interactionStage: {
     minWidth: 0,
-    minHeight: '24px',
+    minHeight: '22px',
     display: 'inline-flex',
     alignItems: 'center',
     gap: '5px',
-    padding: '0 8px',
-    borderRadius: 'var(--radius-sm)',
-    border: '1px solid var(--border-subtle)',
-    backgroundColor: 'var(--neutral-faint)',
+    padding: '0',
+    borderRadius: '0',
+    border: '0',
+    backgroundColor: 'transparent',
     color: 'var(--text-muted)',
     transition: 'all var(--transition-fast)'
   },
 
   interactionStageActive: {
-    border: '1px solid var(--warning-strong)',
-    backgroundColor: 'var(--warning-faint)',
+    border: '0',
+    backgroundColor: 'transparent',
     color: 'var(--warning-color)'
   },
 
   interactionStageDone: {
-    border: '1px solid var(--primary-border)',
-    backgroundColor: 'var(--success-faint)',
+    border: '0',
+    backgroundColor: 'transparent',
     color: 'var(--success-color)'
   },
 
   interactionStageAttention: {
-    border: '1px solid var(--warning-strong)',
-    backgroundColor: 'var(--warning-soft)',
+    border: '0',
+    backgroundColor: 'transparent',
     color: 'var(--warning-color)'
   },
 
   interactionStageError: {
-    border: '1px solid var(--error-soft)',
-    backgroundColor: 'var(--error-faint)',
+    border: '0',
+    backgroundColor: 'transparent',
     color: 'var(--error-color)'
   },
 
@@ -673,7 +674,7 @@ export const styles = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     fontSize: '11px',
-    fontWeight: 800
+    fontWeight: 650
   },
 
   interactionStageDetail: {
@@ -695,16 +696,16 @@ export const styles = {
 
   interactionMetaPill: {
     flex: '0 0 auto',
-    minHeight: '24px',
+    minHeight: '22px',
     display: 'inline-flex',
     alignItems: 'center',
     padding: '0 7px',
-    borderRadius: 'var(--radius-sm)',
-    border: '1px solid var(--glass-border)',
-    backgroundColor: 'var(--glass-bg)',
+    borderRadius: '6px',
+    border: '0',
+    backgroundColor: 'var(--surface-hover)',
     color: 'var(--text-muted)',
     fontSize: '11px',
-    fontWeight: 700
+    fontWeight: 550
   },
 
   interactionRiskPill: {
@@ -919,9 +920,9 @@ export const styles = {
 
   /* 运行时停止按钮 */
   sendButtonRunning: {
-    backgroundColor: 'var(--ds-status-error)',
+    backgroundColor: 'var(--surface-hover)',
     border: 'none',
-    color: '#fff',
+    color: 'var(--text-color)',
     cursor: 'pointer',
   },
 
@@ -929,9 +930,9 @@ export const styles = {
   sendButtonRunningSecondary: {
     width: '32px',
     height: '32px',
-    borderRadius: 'var(--radius-md)',
-    border: '1px solid var(--ds-border-l1)',
-    backgroundColor: 'var(--ds-bg-raised)',
+    borderRadius: '999px',
+    border: '1px solid var(--border-card)',
+    backgroundColor: 'var(--surface-color)',
     color: 'var(--ds-text-primary)',
     cursor: 'pointer',
     fontSize: '14px',
@@ -972,18 +973,18 @@ export const styles = {
 
   askUserFloatingCapsule: {
     position: 'fixed',
-    top: '80px',
+    top: '76px',
     left: '50%',
     zIndex: 1000,
-    minWidth: '320px',
-    maxWidth: '480px',
-    borderRadius: '24px',
-    border: '1px solid var(--glass-border)',
-    backgroundColor: 'rgba(20, 20, 24, 0.85)',
-    backdropFilter: 'blur(20px) saturate(180%)',
-    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), var(--glass-inner-hl)',
-    padding: '14px 18px',
+    minWidth: '360px',
+    maxWidth: '520px',
+    borderRadius: '18px',
+    border: '1px solid var(--border-card)',
+    backgroundColor: 'var(--surface-color)',
+    backdropFilter: 'none',
+    WebkitBackdropFilter: 'none',
+    boxShadow: '0 14px 38px rgba(31,35,40,.12), 0 2px 8px rgba(31,35,40,.05)',
+    padding: '16px',
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
@@ -1000,11 +1001,11 @@ export const styles = {
   },
 
   askUserIconWrapper: {
-    width: '40px',
-    height: '40px',
-    borderRadius: '12px',
-    backgroundColor: 'var(--primary-soft)',
-    border: '1px solid var(--primary-border)',
+    width: '36px',
+    height: '36px',
+    borderRadius: '10px',
+    backgroundColor: 'var(--surface-hover)',
+    border: '1px solid var(--border-subtle)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1018,11 +1019,11 @@ export const styles = {
   },
 
   askUserTitle: {
-    fontSize: '12px',
-    fontWeight: '700',
-    color: 'var(--text-muted)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.04em',
+    fontSize: '13px',
+    fontWeight: '650',
+    color: 'var(--text-color)',
+    textTransform: 'none',
+    letterSpacing: '0',
     marginBottom: '2px'
   },
 

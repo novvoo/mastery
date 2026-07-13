@@ -18,7 +18,6 @@ import {
   writeUserEnv,
   applyRuntimeValues
 } from '../../src/core/runtime/runtime-config.js';
-import { createConfiguredModelProvider } from '../../src/cli/model-provider-factory.js';
 import { createDesktopCore as _createDesktopCore } from '../../src/adapters/desktop/desktop-core.js';
 
 /**
@@ -64,6 +63,7 @@ export async function initializeDesktopCore(ctx) {
     hookTimeout: ctx.config.runtime.hookTimeout,
     ipc: ctx.config.ipc,
     writeFileApproval,
+    useOmp: process.env.MASTERY_USE_OMP === '1' || process.env.MASTERY_USE_OMP === 'true',
   });
 
   await ctx.desktopCore.initialize();
@@ -79,55 +79,38 @@ export function createDesktopCore(options) {
  * 返回 { configured, provider, model, baseUrl, missingVars, ... }
  */
 export async function attachConfiguredModelProvider(ctx) {
-  let missingVars = getMissingRequiredConfig();
-  if (missingVars.length > 0) {
-    const activeConfig = findEnabledModelConfig(ctx);
-    if (activeConfig) {
-      const syncResult = syncActiveModelToEnv(ctx, activeConfig);
-      if (syncResult.success) {
-        missingVars = getMissingRequiredConfig();
-      }
-    }
-
-    if (missingVars.length > 0) {
-      console.warn(`⚠️  未配置 LLM: 缺少 ${missingVars.join(', ')}。可在 ${ctx.userEnvPath} 或项目 .env 中配置。`);
-      return getLLMConfigStatus(ctx);
-    }
+  const engine = ctx.desktopCore?.getEngine?.();
+  if (engine?.getAvailableModels) {
+    // OMP loads credentials and the active model from its own configuration.
+    return getLLMConfigStatus(ctx);
   }
-
-  const provider = process.env.MODEL_PROVIDER || 'openai';
-  const model = getProviderModel(provider);
-  const baseURL = getProviderBaseUrl(provider);
-
-  const modelProvider = await createConfiguredModelProvider({
-    provider,
-    model,
-    apiUrl: baseURL,
-    apiKey: process.env.OPENAI_API_KEY,
-    temperature: Number(process.env.TEMPERATURE || 0.7)
-  }, { debug: ctx.config.debug });
-
-  attachModelProvider(ctx, modelProvider);
-  console.log(`✅ LLM 已配置: ${provider}:${model}`);
+  const activeConfig = findEnabledModelConfig(ctx);
+  if (activeConfig) syncActiveModelToEnv(ctx, activeConfig);
+  if (activeConfig && typeof ctx.desktopCore?.attachModelProvider === 'function') {
+    ctx.desktopCore.attachModelProvider({
+      provider: activeConfig.provider,
+      model: activeConfig.model,
+      managedBy: 'omp',
+    });
+  }
   return getLLMConfigStatus(ctx);
 }
 
-export function attachModelProvider(ctx, modelProvider) {
-  if (ctx.desktopCore) {
-    ctx.desktopCore.attachModelProvider(modelProvider);
-    console.log('✅ 模型提供者已附加');
-  }
+export function attachModelProvider() {
+  // OMP owns model providers; kept as a compatibility no-op for the Electron facade.
 }
 
 export function getLLMConfigStatus(ctx) {
+  const ompState = ctx.desktopCore?.getDetailedState?.()?.engine || {};
+  const ompModel = ompState.model;
   const provider = process.env.MODEL_PROVIDER || 'openai';
   const requirement = getProviderRequirement(provider);
   const missingVars = getMissingRequiredConfig();
 
   return {
-    configured: missingVars.length === 0,
-    provider,
-    model: getProviderModel(provider),
+    configured: Boolean(ompModel) || missingVars.length === 0,
+    provider: ompModel?.provider || provider,
+    model: ompModel?.id || getProviderModel(provider),
     baseUrl: getProviderBaseUrl(provider),
     missingVars,
     userEnvPath: ctx.userEnvPath,
@@ -186,7 +169,11 @@ export async function saveLLMConfig(ctx, config = {}) {
   // 同步到 models.json，确保模型设置管理页面也能看到这个配置
   syncConfigToModelsJson(ctx, { provider, apiKey, model, baseUrl });
 
-  const status = await attachConfiguredModelProvider(ctx);
+  const engine = ctx.desktopCore?.getEngine?.();
+  if (engine?.setModel) {
+    await engine.setModel(provider, model).catch(() => null);
+  }
+  const status = getLLMConfigStatus(ctx);
 
   return {
     success: true,

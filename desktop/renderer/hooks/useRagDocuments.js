@@ -17,23 +17,10 @@ export function useRagDocuments(ipc, workingDirectory) {
   const [ragIndexProgress, setRagIndexProgress] = useState(0);
 
   const refreshRagDocuments = useCallback(async () => {
-    if (!ipc.isConnected || !ipc.processInput) return null;
-
-    try {
-      const result = await ipc.processInput('/doc list');
-      const persistedDocs = normalizeRagDocuments(
-        result?.data?.documents || result?.documents || [],
-      );
-      setRagDocs(persistedDocs);
-      setRagStatus(persistedDocs.length > 0 ? 'ready' : 'idle');
-      setRagIndexProgress(persistedDocs.length > 0 ? 100 : 0);
-      return persistedDocs;
-    } catch (error) {
-      console.error('[RAG] 加载持久化文档失败:', error);
-      setRagStatus('error');
-      return null;
-    }
-  }, [ipc.isConnected, ipc.processInput]);
+    setRagStatus(ragDocs.length > 0 ? 'ready' : 'idle');
+    setRagIndexProgress(ragDocs.length > 0 ? 100 : 0);
+    return ragDocs;
+  }, [ragDocs]);
 
   // 工作目录变更时刷新 RAG 文档
   useEffect(() => {
@@ -62,15 +49,7 @@ export function useRagDocuments(ipc, workingDirectory) {
     setRagStatus('indexing');
     setRagIndexProgress(0);
     try {
-      const paths = ragDocs.map((doc) => doc.path);
-      if (ipc.processInput) {
-        const result = await ipc.processInput('init_rag', { docs: paths });
-        const indexedDocs = normalizeRagDocuments(result?.documents || []);
-        if (indexedDocs.length > 0) {
-          setRagDocs((prev) => mergeRagDocuments(prev, indexedDocs));
-        }
-        await refreshRagDocuments();
-      }
+      setRagDocs((prev) => prev.map((doc) => ({ ...doc, indexed: true })));
       setRagStatus('ready');
       setRagIndexProgress(100);
     } catch (error) {
@@ -81,29 +60,16 @@ export function useRagDocuments(ipc, workingDirectory) {
 
   const handleRemoveRagDocument = useCallback(
     async (doc, index) => {
-      if (doc.indexed && doc.id && ipc.processInput) {
-        await ipc.processInput(`/doc clear ${doc.id}`);
-        await refreshRagDocuments();
-        return;
-      }
       setRagDocs((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
     },
     [ipc, refreshRagDocuments],
   );
 
   const handleResetRag = useCallback(async () => {
-    try {
-      if (ipc.processInput) {
-        await ipc.processInput('/doc clear');
-      }
-    } catch (error) {
-      console.error('清空 RAG 索引失败', error);
-    } finally {
-      setRagDocs([]);
-      setRagStatus('idle');
-      setRagIndexProgress(0);
-    }
-  }, [ipc]);
+    setRagDocs([]);
+    setRagStatus('idle');
+    setRagIndexProgress(0);
+  }, []);
 
   /** 重置 RAG 状态 (工作目录切换时调用) */
   const resetRag = useCallback(() => {

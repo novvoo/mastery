@@ -158,8 +158,8 @@ export function getQueuePreview(maxItems = 3, maxLength = 60) {
   return queue.slice(0, maxItems).map((item) => ({
     id: item.id,
     preview:
-      item.input.length > maxLength
+      typeof item.input === 'string' && item.input.length > maxLength
         ? item.input.slice(0, maxLength) + '...'
-        : item.input,
+        : String(item.input ?? ''),
   }));
 }

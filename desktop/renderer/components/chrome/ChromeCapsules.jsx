@@ -1,45 +1,12 @@
 import React from 'react';
 import { Button } from '../ui/index.js';
 import { t } from '../../i18n.js';
-import {
-  DRAG_REGION,
-  CAPSULE_POSITIONS,
-  CAPSULE_PRIMARY,
-  CAPSULE_SECONDARY,
-  CAPSULE_CHROMELESS,
-  getCapsuleTone,
-  STATUS_TONE,
-  statusDotStyle,
-  connectionDotStyle,
-} from './styles/capsule-styles.js';
+import { DRAG_REGION, CAPSULE_SECONDARY, CAPSULE_CHROMELESS, CAPSULE_POSITIONS } from './styles/capsule-styles.js';
 
 function DragRegion() {
   return <div style={DRAG_REGION} />;
 }
 
-function StatusCapsule({ runtimeStatusMeta, runtimeStatus, isConnected, isMac }) {
-  const tone = getCapsuleTone(runtimeStatusMeta);
-  const statusKey = `status.${runtimeStatus}`;
-  const translatedStatus = t(statusKey);
-  const statusText = translatedStatus === statusKey
-    ? runtimeStatusMeta?.text || runtimeStatus
-    : translatedStatus;
-  const statusColor = (STATUS_TONE[tone] || STATUS_TONE.muted).color;
-
-  return (
-    <div
-      style={{ ...CAPSULE_PRIMARY, ...CAPSULE_CHROMELESS, ...CAPSULE_POSITIONS.status(isMac) }}
-      title={t('status.ipc', { state: isConnected ? t('status.connected') : t('status.disconnected') })}
-    >
-      <span style={statusDotStyle(tone, runtimeStatus)} />
-      <span style={{ color: statusColor, fontWeight: 600, whiteSpace: 'nowrap' }}>
-        {runtimeStatusMeta?.icon ? `${runtimeStatusMeta.icon} ` : ''}{statusText}
-      </span>
-      <span style={{ opacity: 0.28 }}>│</span>
-      <span style={connectionDotStyle(isConnected)} />
-    </div>
-  );
-}
 
 function StatsCapsule({ toolCount, stats, appVersion }) {
   const messageCount = stats?.messageCount || 0;
@@ -98,9 +65,6 @@ function WindowControls({ isMac, windowState, onMinimize, onMaximize, onClose })
 export function ChromeCapsules({
   platformInfo,
   windowState,
-  runtimeStatusMeta,
-  runtimeStatus,
-  isConnected,
   toolCount,
   stats,
   appVersion,
@@ -110,16 +74,9 @@ export function ChromeCapsules({
 }) {
   const platformKnown = Boolean(platformInfo);
   const isMac = platformInfo?.isMac === true;
-  const statusUsesMacPosition = platformKnown ? isMac : true;
   return (
     <>
       <DragRegion />
-      <StatusCapsule
-        runtimeStatusMeta={runtimeStatusMeta}
-        runtimeStatus={runtimeStatus}
-        isConnected={isConnected}
-        isMac={statusUsesMacPosition}
-      />
       <StatsCapsule toolCount={toolCount} stats={stats} appVersion={appVersion} />
       {platformKnown && (
         <WindowControls

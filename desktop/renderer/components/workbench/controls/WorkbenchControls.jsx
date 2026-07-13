@@ -25,6 +25,10 @@ export function WorkbenchControls({
     fontSize: '12px',
     fontFamily: 'var(--font-mono)',
   };
+  const textButton = {
+    height: '32px', padding: '0 12px', borderRadius: '10px', fontSize: '12px', gap: '7px',
+    border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-card)',
+  };
   const activeButton = {
     backgroundColor: 'var(--primary-faint)',
     borderColor: 'var(--primary-border)',
@@ -32,12 +36,13 @@ export function WorkbenchControls({
   };
 
   return (
-    <div style={styles.workspaceControls}>
-      <Button variant="ghost" size="sm" style={iconButton} onClick={onExport} title={i18nT('chat.export')} ariaLabel={i18nT('chat.export')}>
-        <Icon name="download" size={15} />
+    <div className="mastery-top-controls" style={styles.workspaceControls}>
+      <Button variant="ghost" size="sm" style={textButton} onClick={onOpenPreview} title={i18nT('chat.preview')} ariaLabel={i18nT('chat.preview')}>
+        <Icon name="preview" size={14} />
+        <span>打开预览</span>
       </Button>
-      <Button variant="ghost" size="sm" style={iconButton} onClick={onOpenPreview} title={i18nT('chat.preview')} ariaLabel={i18nT('chat.preview')}>
-        <Icon name="preview" size={15} />
+      <Button variant="ghost" size="sm" style={iconButton} onClick={onExport} title={i18nT('chat.export')} ariaLabel={i18nT('chat.export')}>
+        <Icon name="download" size={14} />
       </Button>
       <span style={styles.chatHeaderActionDivider} />
       <Button
@@ -55,8 +60,8 @@ export function WorkbenchControls({
         size="sm"
         style={{ ...iconButton, ...(isTerminalVisible ? activeButton : {}) }}
         onClick={onToggleTerminal}
-        title="Bottom terminal"
-        ariaLabel="Bottom terminal"
+        title={isTerminalVisible ? '收起终端' : '打开终端'}
+        ariaLabel={isTerminalVisible ? '收起终端' : '打开终端'}
       >
         <Icon name="terminal" size={15} />
       </Button>
@@ -65,14 +70,12 @@ export function WorkbenchControls({
         size="sm"
         style={{ ...iconButton, ...(summaryPanelVisible ? activeButton : {}) }}
         onClick={onToggleInspector}
-        title="toggle-inspector"
-        ariaLabel="toggle-inspector"
+        title={summaryPanelVisible ? '收起详情面板' : '打开详情面板'}
+        ariaLabel={summaryPanelVisible ? '收起详情面板' : '打开详情面板'}
       >
         <Icon name="inspector" size={15} />
       </Button>
-      <Button variant="ghost" size="sm" style={iconButton} onClick={onClearMessages} title={i18nT('chat.clear_messages')} ariaLabel={i18nT('chat.clear_messages')}>
-        <Icon name="close" size={15} />
-      </Button>
+      <Button variant="ghost" size="sm" style={iconButton} onClick={onClearMessages} title={i18nT('chat.clear_messages')} ariaLabel={i18nT('chat.clear_messages')}><Icon name="close" size={14} /></Button>
     </div>
   );
 }

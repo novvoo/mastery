@@ -5,7 +5,7 @@ export const styles = {
     flexDirection: 'column',
     height: '100%',
     overflow: 'visible',
-    backgroundColor: 'var(--surface-hover)',
+    backgroundColor: 'transparent',
     borderWidth: '0',
     borderStyle: 'none',
     borderColor: 'transparent',
@@ -16,123 +16,123 @@ export const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    minHeight: '42px',
-    padding: '7px 10px',
-    gap: '10px',
+    minHeight: '32px',
+    padding: '0 4px',
+    gap: '6px',
     flexWrap: 'wrap',
     borderBottom: 'none',
     backgroundColor: 'transparent'
   },
   
   title: {
-    minHeight: '28px',
-    padding: '0 4px',
+    minHeight: '24px',
+    padding: '0 6px',
     borderRadius: 'var(--radius-sm)',
     borderWidth: '1px',
     borderStyle: 'solid',
     borderColor: 'transparent',
     backgroundColor: 'transparent',
     boxShadow: 'none',
-    fontSize: '12px',
-    fontWeight: '800',
-    color: 'var(--ds-text-primary)',
+    fontSize: '11px',
+    fontWeight: '700',
+    color: 'var(--ds-text-tertiary)',
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: '6px',
     textTransform: 'uppercase',
-    letterSpacing: '0.04em'
+    letterSpacing: '0.06em'
   },
   
   headerButtons: {
     display: 'flex',
-    gap: '6px',
+    gap: '3px',
     alignItems: 'center',
     justifyContent: 'flex-end',
     flexWrap: 'wrap',
     maxWidth: '100%',
-    minHeight: '30px',
+    minHeight: '26px',
     padding: '2px',
     borderRadius: 'var(--radius-md)',
-    borderWidth: '1px',
-    borderStyle: 'solid',
-    borderColor: 'var(--ds-border-l2)',
-    backgroundColor: 'var(--surface-base)',
+    borderWidth: '0',
+    borderStyle: 'none',
+    borderColor: 'transparent',
+    backgroundColor: 'transparent',
     boxShadow: 'none'
   },
 
   searchContainer: {
     display: 'flex',
     alignItems: 'center',
-    gap: '4px',
+    gap: '3px',
     minWidth: 0
   },
   
   searchInput: {
-    width: 'min(180px, 32vw)',
-    minWidth: '120px',
-    height: '28px',
-    padding: '0 9px',
-    borderRadius: 'var(--radius-md)',
+    width: 'min(160px, 28vw)',
+    minWidth: '100px',
+    height: '26px',
+    padding: '0 8px',
+    borderRadius: 'var(--radius-sm)',
     borderWidth: '1px',
     borderStyle: 'solid',
     borderColor: 'var(--ds-border-l2)',
     backgroundColor: 'var(--surface-input)',
     color: 'var(--ds-text-primary)',
-    fontSize: '12px',
+    fontSize: '11px',
     transition: 'width 0.2s ease'
   },
   
   searchInputExpanded: {
-    width: 'min(240px, 42vw)'
+    width: 'min(220px, 38vw)'
   },
   
   button: {
-    height: '28px',
-    padding: '0 9px',
-    borderRadius: 'var(--radius-md)',
+    height: '26px',
+    padding: '0 7px',
+    borderRadius: 'var(--radius-sm)',
     borderWidth: '1px',
     borderStyle: 'solid',
-    borderColor: 'var(--ds-border-l2)',
-    backgroundColor: 'var(--ds-bg-raised)',
-    color: 'var(--ds-text-primary)',
+    borderColor: 'var(--ds-border-l1)',
+    backgroundColor: 'transparent',
+    color: 'var(--ds-text-secondary)',
     cursor: 'pointer',
-    fontSize: '12px',
-    transition: 'all 0.2s',
+    fontSize: '11px',
+    transition: 'all 0.15s',
     display: 'flex',
     alignItems: 'center',
-    gap: '4px'
+    gap: '3px'
   },
   
   buttonActive: {
     backgroundColor: 'var(--ds-brand-soft)',
     color: 'var(--ds-brand)',
-    borderWidth: '0',
-    borderStyle: 'none',
-    borderColor: 'transparent'
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: 'var(--ds-brand-s2)'
   },
   
   viewToggle: {
     display: 'flex',
-    gap: '2px',
+    gap: '1px',
     padding: '2px',
-    borderRadius: 'var(--radius-md)',
-    backgroundColor: 'var(--surface-base)',
-    borderWidth: '1px',
-    borderStyle: 'solid',
-    borderColor: 'var(--ds-border-l2)',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'var(--ds-bg-overlay-l1)',
+    borderWidth: '0',
+    borderStyle: 'none',
+    borderColor: 'transparent',
     flex: '0 0 auto'
   },
   
   viewButton: {
-    width: '28px',
-    height: '24px',
+    width: '24px',
+    height: '22px',
     padding: 0,
     borderRadius: 'var(--radius-sm)',
     borderWidth: '0',
     borderStyle: 'none',
     borderColor: 'transparent',
     backgroundColor: 'transparent',
-    color: 'var(--ds-text-secondary)',
+    color: 'var(--ds-text-tertiary)',
     cursor: 'pointer',
     fontSize: '11px',
     display: 'inline-flex',
@@ -142,24 +142,25 @@ export const styles = {
   },
   
   viewButtonActive: {
-    backgroundColor: 'var(--ds-bg-overlay-l2)',
-    color: 'var(--ds-text-primary)'
+    backgroundColor: 'var(--ds-bg-raised)',
+    color: 'var(--ds-text-primary)',
+    boxShadow: 'var(--shadow-sm)'
   },
   
   messageList: {
     flex: 1,
     overflowY: 'auto',
-    padding: '10px 8px 14px',
+    padding: '4px 4px 12px',
     scrollBehavior: 'auto',
     display: 'flex',
     flexDirection: 'column'
   },
 
   runtimeDetailsPanel: {
-    marginBottom: '12px',
-    borderRadius: 'var(--radius-lg)',
-    border: '1px solid var(--ds-border-l2)',
-    backgroundColor: 'var(--ds-bg-raised)',
+    margin: '8px 6px 12px',
+    borderRadius: '14px',
+    border: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-color)',
     overflow: 'visible',
     position: 'relative',
     zIndex: 2
@@ -169,12 +170,12 @@ export const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    minHeight: '42px',
-    padding: '0 12px',
-    borderBottom: '1px solid var(--border-divider)',
-    borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0',
+    minHeight: '36px',
+    padding: '0 10px',
+    borderBottom: '1px solid #ececee',
+    borderRadius: '14px 14px 0 0',
     color: 'var(--ds-text-secondary)',
-    fontSize: '12px',
+    fontSize: '11px',
     fontWeight: '600'
   },
 
@@ -186,21 +187,22 @@ export const styles = {
   runtimeDetailsTitle: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px'
+    gap: '6px'
   },
 
   runtimeDetailsActions: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px'
+    gap: '6px'
   },
 
   runtimeStatusChip: {
-    maxWidth: '220px',
+    maxWidth: '200px',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     color: 'var(--ds-text-secondary)',
+    fontSize: '11px',
     fontWeight: 500
   },
 
@@ -210,19 +212,19 @@ export const styles = {
     borderColor: 'var(--ds-border-l2)',
     backgroundColor: 'var(--ds-bg-raised)',
     color: 'var(--ds-text-secondary)',
-    borderRadius: '6px',
-    width: '24px',
-    height: '24px',
+    borderRadius: 'var(--radius-sm)',
+    width: '22px',
+    height: '22px',
     padding: 0,
     cursor: 'pointer',
-    fontSize: '12px',
+    fontSize: '11px',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center'
   },
 
   runtimeProgress: {
-    padding: '8px 10px 10px',
+    padding: '6px 10px 8px',
     borderBottom: '1px solid var(--ds-border-l2)'
   },
 
@@ -230,8 +232,8 @@ export const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: '8px',
-    fontSize: '11px',
+    gap: '6px',
+    fontSize: '10px',
     color: 'var(--ds-text-secondary)'
   },
 
@@ -243,10 +245,10 @@ export const styles = {
 
   runtimeDetailsList: {
     overflowY: 'auto',
-    padding: '8px',
+    padding: '6px',
     display: 'flex',
     flexDirection: 'column',
-    gap: '6px',
+    gap: '4px',
     scrollBehavior: 'smooth'
   },
 
@@ -266,10 +268,10 @@ export const styles = {
     borderRadius: '6px',
     border: '1px solid var(--ds-border-l1)',
     backgroundColor: 'var(--ds-bg-secondary)',
-    padding: '8px',
+    padding: '6px 8px',
     color: 'var(--ds-text-secondary)',
-    fontSize: '12px',
-    lineHeight: '1.5'
+    fontSize: '11px',
+    lineHeight: '1.45'
   },
 
   runtimeDetailItemInteractive: {
@@ -290,10 +292,10 @@ export const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: '8px',
-    marginBottom: '4px',
+    gap: '6px',
+    marginBottom: '2px',
     color: 'var(--ds-text-tertiary)',
-    fontSize: '11px'
+    fontSize: '10px'
   },
 
   runtimeDetailContent: {
@@ -702,16 +704,17 @@ export const styles = {
   },
 
   activityPanel: {
-    padding: '10px',
+    padding: '8px 10px',
     borderBottom: '1px solid var(--ds-border-l1)',
-    backgroundColor: 'var(--ds-bg-secondary)',
+    backgroundColor: 'var(--ds-bg-overlay-l1)',
+    borderRadius: 'var(--radius-md)'
   },
 
   activitySummaryRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
-    marginBottom: '8px',
+    gap: '5px',
+    marginBottom: '4px',
     color: 'var(--ds-text-secondary)',
     fontSize: '11px',
     flexWrap: 'wrap'
@@ -821,32 +824,32 @@ export const styles = {
   },
 
   activityItem: {
-    minHeight: '34px',
+    minHeight: '38px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: '8px',
-    padding: '6px 8px',
-    borderRadius: '6px',
-    backgroundColor: 'var(--ds-bg-secondary)',
-    borderWidth: '1px',
+    padding: '7px 4px',
+    borderRadius: '0',
+    backgroundColor: 'var(--surface-color)',
+    borderWidth: '0 0 1px',
     borderStyle: 'solid',
-    borderColor: 'var(--ds-border-l2)'
+    borderColor: 'var(--border-divider)',
   },
 
   activityItemCompleted: {
-    backgroundColor: 'var(--ds-status-success-s1)',
-    borderColor: 'var(--ds-status-success-s1)'
+    backgroundColor: 'var(--surface-color)',
+    borderColor: 'var(--border-divider)',
   },
 
   activityItemFailed: {
-    backgroundColor: 'var(--ds-status-error-s1)',
-    borderColor: 'var(--ds-status-error-s1)'
+    backgroundColor: 'var(--error-faint)',
+    borderColor: 'var(--error-soft)',
   },
 
   activityItemWaiting: {
-    backgroundColor: 'var(--ds-brand-soft)',
-    borderColor: 'var(--ds-brand-soft)'
+    backgroundColor: 'var(--warning-faint)',
+    borderColor: 'var(--warning-soft)',
   },
 
   activityMain: {
@@ -926,20 +929,24 @@ export const styles = {
   
   // 消息项外层容器
   messageItem: {
-    marginBottom: '10px',
+    marginBottom: '4px',
     display: 'flex',
     flexDirection: 'column',
     border: 'none',
-    transition: 'all 0.2s ease',
+    transition: 'all 0.15s ease',
     position: 'relative',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    borderRadius: 'var(--radius-lg)',
+    padding: '4px 6px'
   },
   
   messageItemHover: {
-    backgroundColor: 'transparent'
+    backgroundColor: 'var(--ds-bg-overlay-l1)',
+    borderRadius: 'var(--radius-lg)'
   },
   
   messageItemCollapsed: {
+    opacity: '0.85'
   },
 
   messageItemUser: {
@@ -959,7 +966,7 @@ export const styles = {
     boxShadow: 'var(--message-shadow)',
     color: 'var(--ds-text-primary)',
     maxWidth: '82%',
-    lineHeight: 1.45
+    lineHeight: 1.5
   },
 
   messageBubbleUser: {
@@ -980,18 +987,20 @@ export const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '4px',
-    cursor: 'pointer'
+    marginBottom: '2px',
+    cursor: 'pointer',
+    minHeight: '16px'
   },
   
   messageType: {
     display: 'inline-flex',
     alignItems: 'center',
-    padding: '2px 0',
+    padding: '1px 0',
     borderRadius: 'var(--radius-sm)',
-    fontSize: '11px',
-    fontWeight: '500',
-    gap: '4px'
+    fontSize: '10px',
+    fontWeight: '600',
+    gap: '3px',
+    letterSpacing: '0.02em'
   },
   
   typeInfo: {
@@ -1061,8 +1070,8 @@ export const styles = {
   },
 
   thinkingPanel: {
-    margin: '0 0 10px 0',
-    borderRadius: '8px',
+    margin: '0 0 6px 0',
+    borderRadius: 'var(--radius-md)',
     borderWidth: '1px',
     borderStyle: 'solid',
     borderColor: 'var(--ds-brand-s2)',
@@ -1072,11 +1081,11 @@ export const styles = {
 
   thinkingHeader: {
     width: '100%',
-    minHeight: '36px',
+    minHeight: '32px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: '8px',
+    gap: '6px',
     padding: '0 10px',
     border: 'none',
     borderBottom: '1px solid var(--ds-brand-soft)',
@@ -1084,7 +1093,7 @@ export const styles = {
     backgroundColor: 'var(--ds-brand-soft)',
     color: 'var(--ds-text-primary)',
     cursor: 'pointer',
-    fontSize: '12px',
+    fontSize: '11px',
     fontWeight: 700
   },
 
@@ -1092,12 +1101,12 @@ export const styles = {
     minWidth: 0,
     display: 'flex',
     alignItems: 'center',
-    gap: '7px'
+    gap: '6px'
   },
 
   thinkingPulse: {
-    width: '24px',
-    height: '18px',
+    width: '22px',
+    height: '16px',
     borderRadius: '5px',
     display: 'inline-flex',
     alignItems: 'center',
@@ -1126,27 +1135,27 @@ export const styles = {
   },
 
   thinkingSummaryText: {
-    padding: '8px 10px',
+    padding: '6px 10px',
     color: 'var(--ds-text-secondary)',
-    fontSize: '12px',
-    lineHeight: 1.45,
+    fontSize: '11px',
+    lineHeight: 1.4,
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis'
   },
 
   thinkingScroll: {
-    maxHeight: '220px',
+    maxHeight: '200px',
     overflowY: 'auto',
-    padding: '8px',
+    padding: '6px 8px',
     display: 'flex',
     flexDirection: 'column',
-    gap: '6px',
+    gap: '4px',
     scrollBehavior: 'smooth'
   },
 
   thinkingStep: {
-    padding: '8px',
+    padding: '6px 8px',
     borderRadius: '6px',
     backgroundColor: 'var(--ds-bg-secondary)',
     borderWidth: '1px',
@@ -1158,38 +1167,39 @@ export const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: '8px',
-    marginBottom: '4px',
+    gap: '6px',
+    marginBottom: '2px',
     color: 'var(--ds-text-tertiary)',
-    fontSize: '11px',
+    fontSize: '10px',
     fontWeight: 700
   },
 
   thinkingStepContent: {
     color: 'var(--ds-text-secondary)',
-    fontSize: '12px',
+    fontSize: '11px',
     lineHeight: 1.5,
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word'
   },
   
   messageTime: {
-    fontSize: '11px',
-    color: 'var(--ds-text-secondary)',
+    fontSize: '10px',
+    color: 'var(--ds-text-tertiary)',
     display: 'flex',
     alignItems: 'center',
-    gap: '8px'
+    gap: '6px',
+    fontVariantNumeric: 'tabular-nums'
   },
   
   messageContent: {
     fontSize: '13px',
     color: 'var(--ds-text-primary)',
-    lineHeight: '1.45',
+    lineHeight: '1.55',
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
     maxHeight: '400px',
     overflowY: 'auto',
-    transition: 'max-height 0.3s ease'
+    transition: 'max-height 0.25s ease'
   },
   
   messageContentCollapsed: {
@@ -1200,18 +1210,18 @@ export const styles = {
   },
   
   messageMeta: {
-    marginTop: '8px',
-    fontSize: '11px',
-    color: 'var(--ds-text-secondary)',
+    marginTop: '4px',
+    fontSize: '10px',
+    color: 'var(--ds-text-tertiary)',
     display: 'flex',
-    gap: '12px',
+    gap: '8px',
     flexWrap: 'wrap'
   },
   
   messageActions: {
     display: 'flex',
-    gap: '4px',
-    marginTop: '8px',
+    gap: '3px',
+    marginTop: '4px',
     opacity: '0',
     transition: 'opacity 0.2s'
   },
@@ -1221,49 +1231,50 @@ export const styles = {
   },
   
   actionButton: {
-    height: '24px',
-    padding: '0 8px',
-    borderRadius: 'var(--radius-sm, 4px)',
+    height: '22px',
+    padding: '0 6px',
+    borderRadius: 'var(--radius-sm)',
     border: '1px solid transparent',
     backgroundColor: 'transparent',
-    color: 'var(--ds-text-secondary)',
+    color: 'var(--ds-text-tertiary)',
     cursor: 'pointer',
-    fontSize: '11px',
-    fontWeight: 500,
+    fontSize: '10px',
+    fontWeight: '500',
     lineHeight: 1,
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '4px',
+    gap: '3px',
     transition: 'all 0.12s ease'
   },
 
   emptyChip: {
-    padding: '5px 12px',
-    backgroundColor: 'var(--ds-border-l1)',
-    border: 'none',
-    borderRadius: 'var(--radius-md)',
-    fontSize: '12px',
-    color: 'var(--ds-text-secondary)'
+    padding: '4px 10px',
+    backgroundColor: 'var(--ds-bg-overlay-l1)',
+    border: '1px solid var(--ds-border-l1)',
+    borderRadius: 'var(--radius-full)',
+    fontSize: '11px',
+    color: 'var(--ds-text-secondary)',
+    fontWeight: '500'
   },
   
   // 详情面板
   detailPanel: {
-    marginTop: '8px',
-    padding: '12px',
+    marginTop: '4px',
+    padding: '8px 10px',
     backgroundColor: 'var(--ds-bg-raised)',
-    borderRadius: '6px',
+    borderRadius: 'var(--radius-md)',
     borderWidth: '1px',
     borderStyle: 'solid',
     borderColor: 'var(--ds-border-l1)',
-    fontSize: '12px',
-    maxHeight: '300px',
+    fontSize: '11px',
+    maxHeight: '220px',
     overflowY: 'auto'
   },
   
   detailTitle: {
     color: 'var(--ds-text-primary)',
     fontWeight: '600',
-    marginBottom: '8px'
+    marginBottom: '4px'
   },
   
   detailRow: {
@@ -1291,13 +1302,13 @@ export const styles = {
     color: 'var(--ds-text-secondary)',
     textAlign: 'center',
     padding: '40px 24px',
-    gap: '12px',
-    background: 'var(--gradient-primary)'
+    gap: '10px',
+    background: 'var(--surface-card)'
   },
   
   emptyIcon: {
-    width: '36px',
-    height: '36px',
+    width: '32px',
+    height: '32px',
     borderRadius: 'var(--radius-md)',
     display: 'flex',
     alignItems: 'center',
@@ -1308,15 +1319,15 @@ export const styles = {
   },
   
   emptyText: {
-    fontSize: '16px',
-    marginBottom: '8px',
+    fontSize: '14px',
+    marginBottom: '4px',
     color: 'var(--ds-text-primary)'
   },
   
   emptyHint: {
-    fontSize: '13px',
+    fontSize: '12px',
     color: 'var(--ds-text-tertiary)',
-    maxWidth: '300px'
+    maxWidth: '280px'
   },
   
   // 运行指示器
@@ -1358,28 +1369,28 @@ export const styles = {
   groupHeader: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    padding: '6px 10px',
-    backgroundColor: 'var(--ds-border-l2)',
-    borderRadius: '4px',
-    marginBottom: '4px',
-    marginTop: '8px',
+    gap: '5px',
+    padding: '3px 6px',
+    backgroundColor: 'var(--ds-bg-overlay-l1)',
+    borderRadius: 'var(--radius-sm)',
+    marginBottom: '1px',
+    marginTop: '4px',
     cursor: 'pointer'
   },
   
   groupIcon: {
-    fontSize: '12px',
-    color: 'var(--ds-text-secondary)'
+    fontSize: '11px',
+    color: 'var(--ds-text-tertiary)'
   },
   
   groupTitle: {
-    fontSize: '12px',
+    fontSize: '11px',
     color: 'var(--ds-text-secondary)',
-    fontWeight: '500'
+    fontWeight: '600'
   },
   
   groupCount: {
-    fontSize: '11px',
+    fontSize: '10px',
     color: 'var(--ds-text-tertiary)'
   },
   
@@ -1407,7 +1418,7 @@ export const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '0',
-    padding: '12px',
+    padding: '8px 10px',
     borderRadius: 'var(--radius-lg)',
     backgroundColor: 'var(--message-tool-bg)',
     borderWidth: '1px',
@@ -1415,27 +1426,27 @@ export const styles = {
     borderColor: 'var(--message-tool-border)',
     boxShadow: 'var(--message-shadow)',
     overflow: 'hidden',
-    maxWidth: '82%',
+    maxWidth: '88%',
     transition: 'border-color 0.15s ease'
   },
 
   actionCardHeader: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
-    minHeight: '30px',
+    gap: '6px',
+    minHeight: '26px',
     paddingBottom: '0',
     borderBottom: 'none'
   },
 
   actionIconBox: {
-    width: '28px',
-    height: '28px',
-    borderRadius: 'var(--radius-md)',
+    width: '24px',
+    height: '24px',
+    borderRadius: 'var(--radius-sm)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '15px',
+    fontSize: '12px',
     flexShrink: 0
   },
 
@@ -1460,37 +1471,37 @@ export const styles = {
   },
 
   actionName: {
-    fontSize: '14px',
+    fontSize: '13px',
     fontWeight: 600,
     color: 'var(--ds-text-primary)',
     lineHeight: 1.3,
-    marginBottom: '2px'
+    marginBottom: '1px'
   },
 
   actionSubtitle: {
-    fontSize: '12px',
+    fontSize: '11px',
     color: 'var(--ds-text-secondary)',
     fontWeight: 400
   },
 
   actionDurationBadge: {
-    fontSize: '11px',
+    fontSize: '10px',
     color: 'var(--ds-text-secondary)',
     backgroundColor: 'var(--ds-bg-raised)',
     borderWidth: '1px',
     borderStyle: 'solid',
     borderColor: 'var(--ds-border-l1)',
-    padding: '3px 8px',
+    padding: '2px 6px',
     borderRadius: 'var(--radius-sm)',
     fontWeight: 500,
     flexShrink: 0
   },
 
   actionExitCode: {
-    fontSize: '11px',
+    fontSize: '10px',
     fontWeight: 600,
     fontFamily: 'var(--font-mono)',
-    padding: '2px 7px',
+    padding: '1px 6px',
     borderRadius: 'var(--radius-sm)',
     backgroundColor: 'var(--ds-bg-raised)',
     border: '1px solid var(--ds-border-l1)',
@@ -1514,22 +1525,22 @@ export const styles = {
   actionArgs: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '6px',
-    fontSize: '12px',
-    lineHeight: 1.55
+    gap: '4px',
+    fontSize: '11px',
+    lineHeight: 1.5
   },
 
   actionArgRow: {
     display: 'flex',
     alignItems: 'flex-start',
-    gap: '8px',
-    padding: '4px 0'
+    gap: '6px',
+    padding: '2px 0'
   },
 
   actionArgKey: {
-    minWidth: '72px',
+    minWidth: '68px',
     color: 'var(--ds-text-secondary)',
-    fontSize: '11px',
+    fontSize: '10px',
     fontWeight: 500,
     flexShrink: 0,
     paddingTop: '1px'
@@ -1537,7 +1548,7 @@ export const styles = {
 
   actionArgValue: {
     color: 'var(--ds-text-primary)',
-    fontSize: '12px',
+    fontSize: '11px',
     flex: 1,
     wordBreak: 'break-word',
     fontFamily: 'var(--font-mono)',
@@ -1557,8 +1568,8 @@ export const styles = {
     fontSize: '12px',
     color: 'var(--ds-text-secondary)',
     lineHeight: 1.6,
-    padding: '8px 10px',
-    marginTop: '10px',
+    padding: '6px 8px',
+    marginTop: '6px',
     backgroundColor: 'var(--message-result-bg)',
     border: '1px solid var(--message-result-border)',
     borderRadius: 'var(--radius-md)'
@@ -1569,8 +1580,8 @@ export const styles = {
     fontSize: '12px',
     color: 'var(--ds-status-error)',
     lineHeight: 1.6,
-    padding: '8px 10px',
-    marginTop: '10px',
+    padding: '6px 8px',
+    marginTop: '6px',
     backgroundColor: 'var(--ds-status-error-s1)',
     borderRadius: 'var(--radius-md)',
     borderLeft: '3px solid var(--ds-status-error)'
@@ -1580,55 +1591,55 @@ export const styles = {
   thinkingCard: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '8px',
-    padding: '12px 14px',
-    borderRadius: 'var(--radius-lg)',
-    backgroundColor: 'var(--ds-brand-soft)',
-    border: '1px solid var(--ds-brand-s2)',
-    fontSize: '13px',
+    gap: '6px',
+    padding: '8px 10px',
+    borderRadius: '0',
+    backgroundColor: 'transparent',
+    border: '0',
+    fontSize: '12px',
     color: 'var(--ds-text-secondary)',
-    lineHeight: 1.7
+    lineHeight: 1.6
   },
 
   thinkingCardHeader: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: '6px',
     color: 'var(--ds-brand)',
-    fontSize: '12px',
-    fontWeight: 600
+    fontSize: '11px',
+    fontWeight: '600'
   },
 
   // Agent 普通文本气泡增强
   enhancedMessageBubble: {
-    padding: '12px 14px',
+    padding: '8px 12px',
     borderRadius: 'var(--radius-lg)',
     border: '1px solid var(--message-agent-border)',
     backgroundColor: 'var(--message-agent-bg)',
     boxShadow: 'var(--message-shadow)',
-    fontSize: '14px',
-    lineHeight: 1.7,
-    maxWidth: '82%',
-    minWidth: '120px'
+    fontSize: '13px',
+    lineHeight: 1.6,
+    maxWidth: '88%',
+    minWidth: '60px'
   },
 
   enhancedMessageBubbleAgent: {
-    borderRadius: 'var(--radius-lg)'
+    borderRadius: 'var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-sm)'
   },
 
   assistantMarkdownBubble: {
-    width: 'min(780px, 86%)',
-    maxWidth: '86%',
+    width: 'min(780px, 88%)',
+    maxWidth: '88%',
     backgroundColor: 'var(--message-agent-bg)',
     borderColor: 'var(--message-agent-border)',
-    boxShadow: 'var(--message-shadow)',
+    boxShadow: 'var(--message-shadow)'
   },
 
   enhancedMessageBubbleUser: {
     backgroundColor: 'var(--message-user-bg)',
     borderColor: 'var(--message-user-border)',
     color: 'var(--message-user-text)',
-    borderRadius: 'var(--radius-lg)',
+    borderRadius: 'var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-sm)',
     textAlign: 'left'
   },
 
@@ -1652,40 +1663,40 @@ export const styles = {
   },
 
   streamingBubble: {
-    width: 'min(780px, 86%)',
-    minWidth: '220px',
-    padding: '11px 13px',
-    borderRadius: 'var(--radius-lg)',
-    border: '1px solid var(--message-agent-border)',
-    backgroundColor: 'var(--message-agent-bg)',
-    boxShadow: 'var(--message-shadow)',
-    fontSize: '14px',
-    lineHeight: 1.68,
-    animation: 'streamingEdge 1.8s ease-in-out infinite'
+    width: 'min(780px, 88%)',
+    minWidth: '0',
+    padding: '6px 0',
+    borderRadius: '0',
+    border: '0',
+    backgroundColor: 'transparent',
+    boxShadow: 'none',
+    fontSize: '13px',
+    lineHeight: 1.6,
+    animation: 'none'
   },
 
   streamingBubbleActive: {
-    backgroundColor: 'var(--message-agent-bg)',
-    borderColor: 'var(--ds-brand-s2)'
+    backgroundColor: 'transparent',
+    borderColor: 'transparent'
   },
 
   streamingStatus: {
     display: 'flex',
     alignItems: 'center',
-    gap: '7px',
-    marginBottom: '10px',
+    gap: '6px',
+    marginBottom: '4px',
     color: 'var(--ds-text-secondary)',
     fontSize: '11px',
-    fontWeight: 700,
+    fontWeight: 550,
     letterSpacing: 0
   },
 
   streamingStatusDot: {
-    width: '7px',
-    height: '7px',
+    width: '6px',
+    height: '6px',
     borderRadius: '50%',
-    backgroundColor: 'var(--ds-brand)',
-    boxShadow: '0 0 0 4px var(--ds-brand-soft)'
+    backgroundColor: 'var(--warning-color)',
+    boxShadow: 'none'
   },
 
   streamingDots: {
@@ -1722,7 +1733,7 @@ export const styles = {
   subtleDivider: {
     height: '1px',
     backgroundColor: 'var(--ds-border-l1)',
-    margin: '8px 0'
+    margin: '4px 0'
   },
 
   // 小型芯片样式

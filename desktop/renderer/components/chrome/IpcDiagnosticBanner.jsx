@@ -8,11 +8,19 @@ export function IpcDiagnosticBanner({ diagnostic, onDismiss }) {
 
   return (
     <div style={{
-      background: 'linear-gradient(90deg, #8a6d3b, #b98b3c)',
-      color: '#f8f4e8',
-      padding: '8px 16px',
-      fontSize: 13,
-      borderBottom: '1px solid rgba(0,0,0,0.15)',
+      position: 'fixed',
+      right: 18,
+      bottom: 18,
+      zIndex: 1200,
+      width: 'min(380px, calc(100vw - 36px))',
+      background: 'var(--surface-color)',
+      color: 'var(--text-color)',
+      padding: '12px 14px',
+      fontSize: 12,
+      lineHeight: 1.5,
+      border: '1px solid var(--border-card)',
+      borderRadius: 12,
+      boxShadow: '0 10px 30px rgba(0,0,0,.2), 0 2px 8px rgba(0,0,0,.12)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -20,17 +28,7 @@ export function IpcDiagnosticBanner({ diagnostic, onDismiss }) {
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <strong>{t('diagnostic.ipc_unavailable_title', {}, 'IPC 连接不可用：')}</strong>{' '}
-        {t('diagnostic.ipc_unavailable_body', {}, 'preload 脚本未能成功暴露')} <code>window.electronAPI</code>
-        {t('diagnostic.ipc_unavailable_suffix', {}, '，所有与主进程的通信功能将不可用。')}
-        <div style={{
-          marginTop: 4,
-          fontSize: 12,
-          opacity: 0.9,
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-          wordBreak: 'break-all',
-        }}>
-          {t('diagnostic.detail', {}, '诊断')}: {JSON.stringify(diagnostic)}
-        </div>
+        当前是浏览器预览模式，Agent、文件和终端功能仅在桌面应用中可用。
       </div>
       <button
         type="button"
@@ -38,9 +36,9 @@ export function IpcDiagnosticBanner({ diagnostic, onDismiss }) {
         style={{
           flex: '0 0 auto',
           background: 'transparent',
-          border: '1px solid rgba(255,255,255,0.4)',
-          color: 'inherit',
-          padding: '4px 10px',
+          border: '1px solid var(--border-card)',
+          color: 'var(--text-muted)',
+          padding: '3px 9px',
           borderRadius: 6,
           fontSize: 12,
           cursor: 'pointer',

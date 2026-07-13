@@ -22,6 +22,31 @@ import {
 
 const PAGE_SIZE = 20;
 
+function extractOmpMessageText(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter((part) => part?.type === 'text' || typeof part?.text === 'string')
+    .map((part) => part?.text || '')
+    .join('');
+}
+
+export function normalizeOmpSessionMessages(messages = []) {
+  if (!Array.isArray(messages)) return [];
+  return messages.map((message, index) => {
+    if (message?.type && typeof message?.content === 'string') return message;
+    const role = message?.role || 'assistant';
+    const content = extractOmpMessageText(message?.content) || String(message?.text || '');
+    return {
+      id: message?.id || `omp_session_${index}_${Date.now()}`,
+      type: role === 'user' ? 'input' : role === 'assistant' ? 'result' : 'event',
+      content: role === 'user' ? `用户输入: ${content}` : content,
+      timestamp: Date.parse(message?.timestamp || '') || Date.now() + index,
+      role,
+    };
+  }).filter((message) => message.content.trim());
+}
+
 export function useSessionManager(runtime, workingDirectory) {
   const [activeAgentSessionId, setActiveAgentSessionId] = useState(
     () => localStorage.getItem(ACTIVE_AGENT_SESSION_STORAGE_KEY) || createAgentSessionId(),
@@ -152,11 +177,23 @@ export function useSessionManager(runtime, workingDirectory) {
     });
   }, [activeAgentSessionId, runtime.messages, workingDirectory]);
 
-  const handleNewSession = useCallback((clearInputCallback) => {
-    setActiveAgentSessionId(createAgentSessionId());
+  const handleNewSession = useCallback(async (clearInputCallback) => {
+    let nextSessionId = createAgentSessionId();
+    if (window.electronAPI) {
+      try {
+        const created = await window.electronAPI.invoke('session:create', {});
+        nextSessionId = created?.sessionId || created?.result?.sessionId || nextSessionId;
+      } catch (err) {
+        console.warn('session:create failed:', err);
+      }
+    }
+    skipNextSessionPersistRef.current = true;
+    setActiveAgentSessionId(nextSessionId);
     runtime.clearMessages();
+    await runtime.refreshState();
+    await loadSessions({ reset: true, search: '' });
     clearInputCallback?.();
-  }, [runtime]);
+  }, [loadSessions, runtime]);
 
   const handleClearHistory = useCallback((confirmFn, clearInputCallback) => {
     return async () => {
@@ -181,11 +218,13 @@ export function useSessionManager(runtime, workingDirectory) {
     const session = await readAgentSession(sessionId);
     if (!session?.messages?.length) {
       clearInputCallback?.('');
-      setActiveAgentSessionId(sessionId);
+      setActiveAgentSessionId(session?.id || sessionId);
+      await runtime.refreshState();
       return;
     }
     setActiveAgentSessionId(session.id);
-    runtime.restoreMessages(session.messages);
+    runtime.restoreMessages(normalizeOmpSessionMessages(session.messages));
+    await runtime.refreshState();
     clearInputCallback?.('');
   }, [runtime]);
 

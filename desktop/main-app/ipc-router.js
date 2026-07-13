@@ -14,10 +14,6 @@
  *   - IPC 事件监听（window-connected/disconnected/error）
  */
 
-import { commandCatalog } from '../../src/core/tools/command-catalog.js';
-import { metricsSink } from '../../src/core/runtime/metrics-sink.js';
-import { getMissingRequiredConfig } from '../../src/core/runtime/runtime-config.js';
-import { createConfiguredModelProvider } from '../../src/cli/model-provider-factory.js';
 import {
   handleCreateWorkspaceDirectory,
   handleCreateWorkspaceFile,
@@ -28,6 +24,22 @@ import { registerSessionHandlers } from '../../src/adapters/desktop/ipc/main-pro
 import fs from 'fs';
 import { exec } from 'child_process';
 import { resolve, extname } from 'path';
+
+const paletteCommands = new Map();
+const commandCatalog = {
+  register(command) { paletteCommands.set(command.id, command); },
+  filter(query = '') {
+    const needle = String(query).toLowerCase();
+    return [...paletteCommands.values()].filter((command) =>
+      [command.id, command.title, command.category, ...(command.keywords || [])]
+        .some((value) => String(value || '').toLowerCase().includes(needle)));
+  },
+  async run(id, payload) {
+    const command = paletteCommands.get(id);
+    if (!command) throw new Error(`未知命令: ${id}`);
+    return command.handler(payload);
+  },
+};
 
 async function fileExists(filePath) {
   try {
@@ -54,7 +66,7 @@ export async function initializeIPCAdapter(ctx) {
   console.log('🔗 初始化 IPC 适配器...');
 
   ctx.ipcAdapter = ctx.desktopCore.attachIPCAdapter(ctx.electron.ipcMain);
-  await ctx.ipcAdapter.initialize();
+  if (!ctx.ipcAdapter.isConnected) await ctx.ipcAdapter.initialize();
 
   registerCustomHandlers(ctx);
   registerCommandPalette(ctx);
@@ -369,6 +381,20 @@ export function registerCustomHandlers(ctx) {
 
   // 多模型管理
   ipc.registerHandler('llm:list-models', async () => {
+    const engine = ctx.desktopCore?.getEngine?.();
+    if (engine?.getAvailableModels) {
+      const result = await engine.getAvailableModels();
+      const current = engine.getCurrentModel?.();
+      return (result?.models || result || []).map((model) => ({
+        id: `${model.provider}/${model.id}`,
+        provider: model.provider,
+        model: model.id,
+        name: model.name || model.id,
+        enabled: current?.provider === model.provider && current?.id === model.id,
+        reasoning: Boolean(model.reasoning),
+        contextWindow: model.contextWindow,
+      }));
+    }
     if (typeof ctx.readAllModelConfigsForRenderer === 'function') {
       return ctx.readAllModelConfigsForRenderer();
     }
@@ -388,6 +414,27 @@ export function registerCustomHandlers(ctx) {
   });
 
   ipc.registerHandler('llm:toggle-model', async ({ id, enabled }) => {
+    const engine = ctx.desktopCore?.getEngine?.();
+    if (enabled && engine?.setModel) {
+      const [provider, ...modelParts] = String(id).split('/');
+      const model = modelParts.join('/');
+      await engine.setModel(provider, model);
+      const modelsResult = await engine.getAvailableModels();
+      return {
+        success: true,
+        provider,
+        model,
+        configs: (modelsResult?.models || modelsResult || []).map((item) => ({
+          id: `${item.provider}/${item.id}`,
+          provider: item.provider,
+          model: item.id,
+          name: item.name || item.id,
+          enabled: item.provider === provider && item.id === model,
+          reasoning: Boolean(item.reasoning),
+          contextWindow: item.contextWindow,
+        })),
+      };
+    }
     return typeof ctx.toggleModelConfig ? await ctx.toggleModelConfig(id, enabled) : { success: false };
   });
 
@@ -618,7 +665,7 @@ export function registerCommandPalette(ctx) {
     });
     ctx.ipcAdapter.registerHandler('metrics:snapshot', async () => {
       try {
-        return { success: true, data: metricsSink.latestSnapshot() };
+        return { success: true, data: ctx.desktopCore?.getDetailedState?.() || {} };
       } catch (e) {
         return { success: false, message: e.message };
       }

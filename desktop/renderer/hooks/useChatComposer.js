@@ -213,11 +213,15 @@ export function useChatComposer(runtime, agentOptions, activeAgentSessionId, pre
   }, [chatInput, handleSubmitAgentInput]);
 
   const handleContinueAgentInput = useCallback(
-    async (input) => {
+    async (input, extra = {}) => {
       if (!input?.trim()) return;
-      await executeInput(input, { continuation: true });
+      if (runtime.askUserInfo?.requestId) {
+        await runtime.respondToInteraction(input, extra);
+      } else {
+        await executeInput(input, { continuation: true, mode: 'follow_up' });
+      }
     },
-    [executeInput],
+    [executeInput, runtime],
   );
 
   const clearInput = useCallback((value = '') => {

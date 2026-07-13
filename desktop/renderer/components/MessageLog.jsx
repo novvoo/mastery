@@ -88,6 +88,7 @@ import {
   groupPlanTasksByPhase,
 } from './message-log/utils/plan-display.js';
 
+import { buildMessageTree, flattenTree } from '../hooks/useRuntime.js';
 // 样式定义
 /**
  * 消息日志组件
@@ -99,6 +100,8 @@ import {
  */
 function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear, onAskAgent }) {
   const ipc = useIPC();
+
+  // Tree utilities available but rendering integration deferred
 
   // 在消息容器上用事件委托捕获所有 <a> 标签的点击
   // 这样无论链接是 ReactMarkdown 生成的，还是嵌入的 HTML 结构，都能被正确拦截
@@ -319,7 +322,6 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   const runtimeDetailMessages = useMemo(() => (
     messages.filter(msg => isRuntimeDetailMessage(msg) && messageMatchesSearch(msg))
   ), [messages, searchQuery]);
-
   const primaryMessages = useMemo(() => (
     filteredMessages.filter(isPrimaryMessage)
   ), [filteredMessages]);
@@ -334,13 +336,10 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       if (group.runtimeDetails.length === 0) {
         continue;
       }
-      // 运行时详情面板 — 仅当用户在底部附近时才跟随滚动
       const panelRef = runtimeDetailsRefs.current.get(group.id);
       if (panelRef && isNearBottom(panelRef)) {
         panelRef.scrollTop = panelRef.scrollHeight;
       }
-
-      // 思考面板 — 同样策略
       const thinkingRef = thinkingPanelRefs.current.get(group.id);
       if (thinkingRef && isNearBottom(thinkingRef)) {
         thinkingRef.scrollTop = thinkingRef.scrollHeight;
@@ -763,7 +762,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         : 'tool';
 
       const isWaiting = !msg.toolResult && !msg.isError;
-      const hasResult = !!msg.result || !!msg.content;
+      const hasResult = msg.result != null || Boolean(msg.content);
       const hasError = msg.isError || msg.type === 'error';
       const borderColor = hasError
         ? 'var(--ds-status-error-s2)'
@@ -781,7 +780,12 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         } catch (e) {}
       }
 
-      const resultText = msg.result || msg.content || '';
+      const rawResult = msg.result ?? msg.content ?? '';
+      const resultText = typeof rawResult === 'string' ? rawResult : safeStringify(rawResult);
+      const progress = Number.isFinite(Number(msg.progress)) ? Math.max(0, Math.min(100, Number(msg.progress))) : null;
+      const argumentSummary = args
+        ? args.command || args.path || args.file || args.query || args.pattern || args.url
+        : '';
 
       return (
         <div style={{ ...styles.actionCard, borderColor }}>
@@ -798,7 +802,11 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             <div style={styles.actionTitleWrap}>
               <div style={styles.actionName}>{toolName}</div>
               <div style={styles.actionSubtitle}>
-                {isWaiting ? t('tool.executing') : hasError ? t('tool.error_occurred') : (msg.duration ? `${msg.duration}ms` : t('tool.completed'))}
+                {isWaiting
+                  ? (msg.progressText || argumentSummary || t('tool.executing'))
+                  : hasError
+                    ? t('tool.error_occurred')
+                    : (msg.duration != null ? `${msg.duration}ms` : t('tool.completed'))}
               </div>
             </div>
             {msg.duration && !isWaiting && (
@@ -813,6 +821,18 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
               </span>
             )}
           </div>
+
+          {isWaiting && progress != null && (
+            <div
+              role="progressbar"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow={progress}
+              style={{ height: '3px', background: 'var(--border-subtle)', overflow: 'hidden' }}
+            >
+              <div style={{ width: `${progress}%`, height: '100%', background: 'var(--primary-color)', transition: 'width 160ms ease' }} />
+            </div>
+          )}
 
           {/* 工具参数 */}
           {args && !isCollapsed && (
@@ -836,7 +856,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           )}
 
           {/* 加载动画（等待中） */}
-          {isWaiting && (
+          {isWaiting && progress == null && (
             <div style={{
               display: 'flex',
               flexDirection: 'column',
@@ -850,7 +870,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           )}
 
           {/* 结果内容 */}
-          {hasResult && !isCollapsed && (
+          {hasResult && !hasError && !isCollapsed && (
             <div style={{
               ...styles.actionResultSummary,
               borderColor: hasError ? 'var(--ds-status-error-s2)' : 'var(--message-result-border)',
@@ -1020,13 +1040,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
               markdownComponents={markdownComponents}
               onLinkClick={handleMessageContainerClick}
             />
-          ) : (
-            <div style={styles.streamingSkeleton}>
-              <span style={{ ...styles.streamingSkeletonLine, width: '72%' }} />
-              <span style={{ ...styles.streamingSkeletonLine, width: '92%' }} />
-              <span style={{ ...styles.streamingSkeletonLine, width: '48%' }} />
-            </div>
-          )}
+          ) : null}
         </div>
       );
     };
@@ -1380,7 +1394,6 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         </div>
       );
     };
-    
     return (
       <div 
         key={msgId}
@@ -1391,12 +1404,13 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           ...(isUser ? styles.messageItemUser : {}),
           ...(isAgent ? styles.messageItemAgent : {}),
           ...(isTimeline && !isUser ? { marginLeft: '16px' } : {}),
-          ...(isTimeline && isUser ? { marginRight: '16px' } : {})
+          ...(isTimeline && isUser ? { marginRight: '16px' } : {}),
+          // Tree structure indentation based on depth
+          ...(msg.treeDepth > 0 ? { paddingLeft: `${Math.min(msg.treeDepth, 4) * 20}px` } : {}),
         }}
         onMouseEnter={() => handleMouseEnter(msgId)}
         onMouseLeave={handleMouseLeave}
       >
-        {/* 时间线指示器 */}
         {isTimeline && (
           <div style={{
             ...styles.timelineDot,
@@ -1405,25 +1419,24 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           }} />
         )}
         
-        {/* 消息头部 - 在气泡外面 */}
+        {/* 消息头部 - 轻量内联 */}
         <div 
           style={{
             ...styles.messageHeader,
-            ...(isUser ? { flexDirection: 'row-reverse' } : {})
+            ...(isUser ? { flexDirection: 'row-reverse' } : {}),
+            opacity: isSelected ? 1 : 0.6,
+            transition: 'opacity 0.15s ease'
           }}
           onClick={() => handleToggleCollapse(msgId)}
         >
           <span style={getTypeStyle(msg.type)}>
-            <Icon name={typeDisplay.iconName} size={14} style={{ marginRight: '4px' }} />
+            <Icon name={typeDisplay.iconName} size={12} style={{ marginRight: '3px' }} />
             <span>{typeDisplay.text}</span>
           </span>
           
           <div style={styles.messageTime}>
             <span>
               {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
-            </span>
-            <span style={{ fontSize: '10px', cursor: 'pointer' }}>
-              {isCollapsed ? t('plan.expand') : t('plan.collapse')}
             </span>
           </div>
         </div>
@@ -1433,9 +1446,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
 
         {/* 对于事件类型，在消息流中显示简要负载，方便直接查看 */}
         {!isCollapsed && msg.type === 'event' && msg.payloadSummary && (
-          <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--ds-text-secondary)' }}>
-            <div style={{ marginBottom: '6px', color: 'var(--ds-text-secondary)' }}>{t('msg.payload')}</div>
-            <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--ds-text-primary)', backgroundColor: 'transparent', borderRadius: '4px' }}>{msg.payloadSummary}</pre>
+          <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--ds-text-secondary)' }}>
+            <div style={{ marginBottom: '2px', color: 'var(--ds-text-secondary)' }}>{t('msg.payload')}</div>
+            <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '11px', color: 'var(--ds-text-primary)', backgroundColor: 'transparent', borderRadius: '4px' }}>{msg.payloadSummary}</pre>
           </div>
         )}
 
@@ -1656,9 +1669,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           <div style={styles.emptyIcon}>
             <span style={{ width: '18px', height: '18px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ds-brand)' }}>{MsgIcons.brain}</span>
           </div>
-          <div style={styles.emptyText}>{t('ui.root')}</div>
+          <div style={{ ...styles.emptyText, fontSize: '15px', fontWeight: 650 }}>从一个具体任务开始</div>
           <div style={styles.emptyHint}>
-            {t('chat.placeholder')}
+            描述你想查看、修改或验证的内容，Agent 会在当前工作区内完成它。
           </div>
           
           {/* 快捷提示 */}
@@ -1669,9 +1682,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             flexWrap: 'wrap',
             justifyContent: 'center'
           }}>
-            <span style={styles.emptyChip}>{t('ui.root')}</span>
-            <span style={styles.emptyChip}>{t('msg.tool')}</span>
-            <span style={styles.emptyChip}>{t('msg.result')}</span>
+            <span style={styles.emptyChip}>解释这个项目</span>
+            <span style={styles.emptyChip}>修复一个问题</span>
+            <span style={styles.emptyChip}>运行并检查测试</span>
           </div>
         </div>
       </div>
@@ -1845,11 +1858,11 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         <div style={styles.title}>
           <span>{t('msg.message_details')}</span>
           <span style={{
-            fontSize: '12px',
-            color: 'var(--ds-text-secondary)',
-            marginLeft: '4px'
+            fontSize: '10px',
+            color: 'var(--ds-text-tertiary)',
+            fontVariantNumeric: 'tabular-nums'
           }}>
-            ({filteredMessages.length}/{messages.length})
+            {filteredMessages.length}{filteredMessages.length !== messages.length ? `/${messages.length}` : ''}
           </span>
         </div>
         

@@ -1,4 +1,4 @@
-import { RuntimeEvent } from '../../../runtime/index.js';
+import { RuntimeEvent } from '../../../runtime/types.js';
 import { createRendererProcessIPCAdapter } from '../ipc-adapter.js';
 
 /**
@@ -63,17 +63,46 @@ export class UIBridge {
 
     // 监听所有运行时事件
     const events = [
+      // 代理生命周期
       RuntimeEvent.AGENT_START,
       RuntimeEvent.AGENT_STOP,
       RuntimeEvent.AGENT_COMPLETE,
       RuntimeEvent.AGENT_ERROR,
       RuntimeEvent.AGENT_THINKING,
+
+      // 流式输出由 useRuntime 直接处理，UIBridge 不重复订阅
+      // (AGENT_TEXT_DELTA, AGENT_REASONING_DELTA, AGENT_TOOL_CALL_DELTA)
+
+      // 工具调用
       RuntimeEvent.TOOL_CALL,
       RuntimeEvent.TOOL_RESULT,
       RuntimeEvent.TOOL_ERROR,
       RuntimeEvent.TOOL_ACTIVITY,
+      RuntimeEvent.TOOL_PROGRESS,
+
+      // 状态与配置
       RuntimeEvent.STATUS_UPDATE,
       RuntimeEvent.CONFIG_CHANGE,
+
+      // 执行计划（右侧 Plan 面板）
+      RuntimeEvent.EXECUTION_PLAN_CREATED,
+      RuntimeEvent.EXECUTION_PLAN_UPDATED,
+      RuntimeEvent.PLAN_DECOMPOSED,
+      RuntimeEvent.PLAN_EXECUTED,
+
+      // 子代理与交互
+      RuntimeEvent.SUBAGENT_UPDATE,
+      RuntimeEvent.AGENT_INTERACTION_REQUEST,
+      RuntimeEvent.AGENT_INTERACTION_CANCEL,
+
+      // 记忆更新
+      RuntimeEvent.MEMORY_UPDATE,
+      RuntimeEvent.MEMORY_CLEAR,
+
+      // 用户输入与会话
+      RuntimeEvent.MESSAGE_RECEIVED,
+      RuntimeEvent.MESSAGE_SENT,
+      RuntimeEvent.SESSION_CHANGE,
     ];
 
     for (const eventName of events) {

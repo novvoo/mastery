@@ -6,7 +6,16 @@ function normalizeStringList(value) {
   return value.map((item) => String(item || '').trim()).filter(Boolean);
 }
 
-export function AskUserFloatingCapsule({ askUserInfo, onContinue, onDismiss }) {
+function normalizeOptions(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    if (typeof item === 'string') return { label: item, value: item };
+    const label = item?.label || item?.title || item?.name || item?.value;
+    return label ? { label: String(label), value: String(item?.value ?? label) } : null;
+  }).filter(Boolean);
+}
+
+export function AskUserFloatingCapsule({ askUserInfo, onContinue, onCancel, onDismiss }) {
   const [inputValue, setInputValue] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [manuallyExpanded, setManuallyExpanded] = useState(false);
@@ -23,7 +32,9 @@ export function AskUserFloatingCapsule({ askUserInfo, onContinue, onDismiss }) {
   const blockingFacts = normalizeStringList(
     askUserInfo?.blockingFacts || askUserInfo?.blocking_facts,
   );
-  const suggestions = normalizeStringList(askUserInfo?.suggestions);
+  const options = normalizeOptions(askUserInfo?.options || askUserInfo?.suggestions);
+  const suggestions = options.map((option) => option.label);
+  const isConfirm = askUserInfo?.method === 'confirm';
   const reason = String(askUserInfo?.reason || '').trim();
   const displayMessage = String(askUserInfo?.message || askUserInfo?.answer || '').trim();
   const hasActiveRequest = !!(
@@ -77,6 +88,18 @@ export function AskUserFloatingCapsule({ askUserInfo, onContinue, onDismiss }) {
     onDismiss?.();
   }, [inputValue, onContinue, onDismiss]);
 
+  const handleChoice = useCallback(async (value, extra = {}) => {
+    const accepted = await onContinue(value, extra);
+    if (accepted === false) return;
+    setManuallyExpanded(false);
+    onDismiss?.();
+  }, [onContinue, onDismiss]);
+
+  const handleCancel = useCallback(async () => {
+    await onCancel?.();
+    setManuallyExpanded(false);
+  }, [onCancel]);
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -84,38 +107,11 @@ export function AskUserFloatingCapsule({ askUserInfo, onContinue, onDismiss }) {
     }
   };
 
-  const handleCollapsedClick = () => {
-    setManuallyExpanded(true);
-  };
-
   const handleCollapse = () => {
     setManuallyExpanded(false);
   };
 
-  if (!isExpanded) {
-    return (
-      <div
-        style={styles.askUserFloatingCapsuleCollapsed}
-        title={hasActiveRequest ? 'Agent 正在等待你的回答' : '点击展开交互面板'}
-        onClick={handleCollapsedClick}
-      >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <circle cx="12" cy="12" r="10" />
-          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-          <line x1="12" y1="17" x2="12.01" y2="17" />
-        </svg>
-      </div>
-    );
-  }
+  if (!isExpanded) return null;
 
   return (
     <div
@@ -214,13 +210,41 @@ export function AskUserFloatingCapsule({ askUserInfo, onContinue, onDismiss }) {
             }}
           >
             <div style={{ fontWeight: 700, marginBottom: '4px' }}>可选参考：</div>
-            {suggestions.map((suggestion, index) => (
-              <div key={`${index}:${suggestion}`}>- {suggestion}</div>
-            ))}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {options.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => handleChoice(option.value)}
+                  style={{
+                    padding: '6px 9px',
+                    border: '1px solid var(--primary-border)',
+                    borderRadius: '999px',
+                    background: 'var(--primary-soft)',
+                    color: 'var(--primary-color)',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                  }}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
-        {hasActiveRequest && (
+        {hasActiveRequest && isConfirm && (
+          <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+            <button type="button" onClick={() => handleChoice('确认', { confirmed: true })} style={{ ...styles.askUserButton, width: 'auto', padding: '7px 14px' }}>
+              确认
+            </button>
+            <button type="button" onClick={() => handleChoice('拒绝', { confirmed: false })} style={{ ...styles.askUserButton, width: 'auto', padding: '7px 14px', background: 'var(--surface-raised)', color: 'var(--text-secondary)' }}>
+              拒绝
+            </button>
+          </div>
+        )}
+
+        {hasActiveRequest && !isConfirm && (
           <div
             style={{
               ...styles.askUserInputWrapper,
@@ -261,6 +285,11 @@ export function AskUserFloatingCapsule({ askUserInfo, onContinue, onDismiss }) {
               </svg>
             </button>
           </div>
+        )}
+        {hasActiveRequest && onCancel && (
+          <button type="button" onClick={handleCancel} style={{ marginTop: '8px', padding: 0, border: 0, background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '11px' }}>
+            取消本次请求
+          </button>
         )}
       </div>
     </div>

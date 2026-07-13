@@ -245,6 +245,40 @@ mgmtContentHeader: {
   borderBottom: 'none',
 },
 
+searchBox: {
+  marginBottom: '12px',
+},
+
+searchInput: {
+  width: '100%',
+  height: '36px',
+  padding: '0 12px 0 36px',
+  borderRadius: '8px',
+  border: '1px solid var(--ds-border-l2)',
+  backgroundColor: 'var(--ds-bg-secondary)',
+  color: 'var(--ds-text-primary)',
+  fontSize: '13px',
+  outline: 'none',
+  transition: 'all 0.15s ease',
+  backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E\")",
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: '12px center',
+  backdropFilter: 'blur(8px) saturate(140%)',
+  WebkitBackdropFilter: 'blur(8px) saturate(140%)',
+  boxShadow: 'var(--glass-inner-hl)',
+},
+
+searchInputFocus: {
+  borderColor: 'var(--ds-brand)',
+},
+
+searchEmptyHint: {
+  padding: '24px 16px',
+  textAlign: 'center',
+  fontSize: '13px',
+  color: 'var(--ds-text-tertiary)',
+},
+
 mgmtSection: {
   marginBottom: '16px',
 },

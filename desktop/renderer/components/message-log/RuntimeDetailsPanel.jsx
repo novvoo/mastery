@@ -608,7 +608,7 @@ export function RuntimeDetailsPanel({
         )}
 
         {/* 视图切换：结构化 checklist | 原始日志 */}
-        <div style={localStyles.activityViewSwitcher}>
+        {!isRunningGroup && <div style={localStyles.activityViewSwitcher}>
           <button
             type="button"
             style={{
@@ -635,13 +635,13 @@ export function RuntimeDetailsPanel({
           >
             ☰ 原始日志 ({visibleRuntimeDetails.length})
           </button>
-        </div>
+        </div>}
       </div>
 
       {/* 结构化视图：搜索 + 过滤 + checklist */}
       {activityViewMode === 'structured' && (
         <>
-          <div style={localStyles.activityFilterBar}>
+          {!isRunningGroup && <div style={localStyles.activityFilterBar}>
             <input
               type="text"
               style={localStyles.activitySearch}
@@ -691,7 +691,7 @@ export function RuntimeDetailsPanel({
                 </button>
               ))}
             </div>
-          </div>
+          </div>}
 
           <div style={localStyles.activityList}>
             {displayedActivities.map((activity, index) => {
@@ -1123,7 +1123,7 @@ export function RuntimeDetailsPanel({
       >
         <span style={styles.runtimeDetailsTitle}>
           {isRunningGroup && <span style={styles.spinner}></span>}
-          <span>{isRunningGroup ? t('exec.activity_log') : t('exec.summary')}</span>
+          <span>{isRunningGroup ? '正在处理' : t('exec.summary')}</span>
         </span>
         <span style={styles.runtimeDetailsActions}>
           <span style={styles.runtimeStatusChip} title={statusText}>
@@ -1198,10 +1198,7 @@ export function RuntimeDetailsPanel({
         </span>
       </div>
 
-      {/* Tab 栏 - 始终显示 */}
-      {renderTabs()}
-
-      {/* Tab 内容 - 始终显示（修复 P3: 不再依赖 isRunningGroup） */}
+      {/* 单一活动流直接呈现；完成后仍可在详情内切换高级视图。 */}
       <div style={localStyles.tabContent}>{renderTabContent()}</div>
       {renderChangeDrawer()}
     </div>

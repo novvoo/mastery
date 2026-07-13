@@ -7,13 +7,11 @@
 import React, { useState } from 'react';
 import { t, getI18n, SupportedLanguages } from '../../i18n.js';
 import ModelManagement from './ModelManagement.jsx';
-import McpManagement from './McpManagement.jsx';
 import { styles } from '../../app/styles.js';
 
 const TABS = [
-  { key: 'general', label: 'management.general', icon: '⚙' },
-  { key: 'models', label: 'management.models', icon: '🤖' },
-  { key: 'mcp', label: 'management.mcp', icon: '🔌' },
+  { key: 'general', label: 'management.general' },
+  { key: 'models', label: 'management.models' },
 ];
 
 export function ManagementPage({
@@ -30,11 +28,6 @@ export function ManagementPage({
   onToggleModel,
   toggleError = null,
   toggleSuccess = null,
-  mcpServers,
-  onAddMcpServer,
-  onDeleteMcpServer,
-  onToggleMcpServer,
-  onConnectMcpServer,
   onClose,
 }) {
   const [activeTab, setActiveTab] = useState('general');
@@ -61,7 +54,7 @@ export function ManagementPage({
 
       {/* 基本 Agent 选项 */}
       <div style={styles.mgmtSection}>
-        <div style={styles.mgmtSectionTitle}>{t('ui.root')}</div>
+        <div style={styles.mgmtSectionTitle}>对话体验</div>
 
         <label style={styles.mgmtCheckboxRow} {...rowHover}>
           <input type="checkbox" checked={agentOptions.autoSave}
@@ -77,30 +70,6 @@ export function ManagementPage({
           <span>{t('ui.auto_scroll')}</span>
         </label>
 
-        <label style={styles.mgmtCheckboxRow} {...rowHover}>
-          <input type="checkbox" checked={agentOptions.debug || false}
-            onChange={(e) => setAgentOptions(p => ({ ...p, debug: e.target.checked }))}
-            style={styles.mgmtCheckbox} />
-          <span>{t('ui.developer_mode')}</span>
-        </label>
-
-        <label style={styles.mgmtCheckboxRow} {...rowHover}>
-          <input type="checkbox" checked={agentOptions.verbose || false}
-            onChange={(e) => setAgentOptions(p => ({ ...p, verbose: e.target.checked }))}
-            style={styles.mgmtCheckbox} />
-          <span>{t('ui.verbose_logging')}</span>
-        </label>
-      </div>
-
-      {/* 最大迭代 */}
-      <div style={styles.mgmtSection}>
-        <div style={styles.mgmtSectionTitle}>{t('ui.max_iterations')}</div>
-        <div style={{ padding: '8px 12px' }}>
-          <input type="number" value={agentOptions.maxIterations}
-            onChange={(e) => setAgentOptions(p => ({ ...p, maxIterations: parseInt(e.target.value) || 60 }))}
-            style={styles.formInput}
-            min={1} max={500} />
-        </div>
       </div>
 
       {/* 语言 */}
@@ -159,16 +128,6 @@ export function ManagementPage({
             toggleSuccess={toggleSuccess}
           />
         );
-      case 'mcp':
-        return (
-          <McpManagement
-            mcpServers={mcpServers}
-            onAddServer={onAddMcpServer}
-            onDeleteServer={onDeleteMcpServer}
-            onToggleServer={onToggleMcpServer}
-            onConnectServer={onConnectMcpServer}
-          />
-        );
       case 'general':
       default:
         return renderGeneralSettings();
@@ -181,7 +140,6 @@ export function ManagementPage({
         {/* Sidebar */}
         <nav style={styles.managementSidebar}>
           <div style={styles.managementSidebarHeader}>
-            <span style={{ fontSize: '14px' }}>⚙</span>
             <span style={{ fontWeight: 700, fontSize: '13px' }}>{t('management.title')}</span>
           </div>
           {TABS.map(tab => (
@@ -193,7 +151,6 @@ export function ManagementPage({
               }}
               onClick={() => setActiveTab(tab.key)}
             >
-              <span style={{ fontSize: '14px' }}>{tab.icon}</span>
               <span>{t(tab.label)}</span>
             </button>
           ))}
