@@ -742,7 +742,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           ) : (
             <div style={styles.emptyAssistantMessage}>
             <span style={styles.emptyAssistantPulse} />
-            <span style={{ color: 'var(--ds-text-tertiary)', fontSize: '12px' }}>暂无回复内容</span>
+            <span style={{ color: 'var(--ds-text-tertiary)', fontSize: '11px' }}>暂无回复内容</span>
           </div>
           )}
         </div>
@@ -861,11 +861,11 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: '8px',
-              padding: '20px',
+              gap: '6px',
+              padding: '12px',
             }}>
               <span style={styles.actionLoader} />
-              <span style={{ fontSize: '11px', color: 'var(--ds-text-tertiary)', fontWeight: 500 }}>{t('tool.executing')}</span>
+              <span style={{ fontSize: '10px', color: 'var(--ds-text-tertiary)', fontWeight: 500 }}>{t('tool.executing')}</span>
             </div>
           )}
 
@@ -893,8 +893,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
                 margin: 0,
-                fontSize: '12px',
-                lineHeight: 1.6,
+                fontSize: '11px',
+                lineHeight: 1.5,
                 color: 'var(--ds-status-error)'
               }}>
                 {(msg.error || msg.result || msg.content || '').length > 500
@@ -993,11 +993,11 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       return (
         <div style={styles.thinkingCard}>
           <div style={styles.thinkingCardHeader}>
-            <span style={{ width: '16px', height: '16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{MsgIcons.brain}</span>
+            <span style={{ width: '14px', height: '14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{MsgIcons.brain}</span>
             <span>{t('msg.thinking_in_progress')}</span>
           </div>
           {!isCollapsed && (
-            <div style={{ fontSize: '13px', color: 'var(--ds-text-tertiary)', lineHeight: 1.7 }}>
+            <div style={{ fontSize: '12px', color: 'var(--ds-text-tertiary)', lineHeight: 1.5 }}>
               <MarkdownMessageContent
                 text={content}
                 isCollapsed={isCollapsed}
@@ -1406,7 +1406,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           ...(isTimeline && !isUser ? { marginLeft: '16px' } : {}),
           ...(isTimeline && isUser ? { marginRight: '16px' } : {}),
           // Tree structure indentation based on depth
-          ...(msg.treeDepth > 0 ? { paddingLeft: `${Math.min(msg.treeDepth, 4) * 20}px` } : {}),
+          ...(msg.treeDepth > 0 ? { paddingLeft: `${Math.min(msg.treeDepth, 4) * 16}px` } : {}),
         }}
         onMouseEnter={() => handleMouseEnter(msgId)}
         onMouseLeave={handleMouseLeave}
@@ -1539,15 +1539,15 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             </div>
           )}
           {msg.payload && (
-            <div style={{ marginTop: '8px' }}>
-              <div style={{ fontSize: '12px', color: 'var(--ds-text-secondary)', marginBottom: '6px' }}>{t('msg.payload')}</div>
-              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--ds-text-primary)', backgroundColor: 'transparent', borderRadius: '4px' }}>{safeStringify(msg.payload)}</pre>
+            <div style={{ marginTop: '4px' }}>
+              <div style={{ fontSize: '10px', color: 'var(--ds-text-tertiary)', marginBottom: '2px' }}>{t('msg.payload')}</div>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '10px', color: 'var(--ds-text-secondary)', backgroundColor: 'transparent', borderRadius: '4px' }}>{safeStringify(msg.payload)}</pre>
             </div>
           )}
           {msg.raw && (
-            <div style={{ marginTop: '8px' }}>
-              <div style={{ fontSize: '12px', color: 'var(--ds-text-secondary)', marginBottom: '6px' }}>{t('msg.raw_data')}</div>
-              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: 'var(--ds-text-primary)', backgroundColor: 'transparent', borderRadius: '4px' }}>{safeStringify(msg.raw)}</pre>
+            <div style={{ marginTop: '4px' }}>
+              <div style={{ fontSize: '10px', color: 'var(--ds-text-tertiary)', marginBottom: '2px' }}>{t('msg.raw_data')}</div>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '10px', color: 'var(--ds-text-secondary)', backgroundColor: 'transparent', borderRadius: '4px' }}>{safeStringify(msg.raw)}</pre>
             </div>
           )}
         </div>
@@ -1710,19 +1710,19 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         }
         .markdown code {
           background-color: var(--surface-color);
-          border-radius: 4px;
-          padding: 2px 6px;
-          font-size: 12px;
+          border-radius: 3px;
+          padding: 1px 5px;
+          font-size: 11px;
           color: var(--text-color);
         }
         .markdown pre {
           background-color: var(--surface-color);
           border: 1px solid var(--border-subtle);
           border-radius: 6px;
-          padding: 12px;
+          padding: 8px 10px;
           overflow-x: auto;
-          font-size: 12px;
-          margin: 10px 0;
+          font-size: 11px;
+          margin: 6px 0;
         }
         .markdown pre code {
           background: transparent;
@@ -1731,26 +1731,26 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         .markdown .markup-block {
           position: relative;
           margin: 0;
-          padding: 28px 12px 12px;
+          padding: 22px 10px 8px;
           overflow-x: auto;
           white-space: pre;
           word-break: normal;
           border: 1px solid var(--border-subtle);
-          border-radius: 7px;
+          border-radius: 6px;
           background-color: var(--surface-color);
           color: var(--text-color);
           font-family: var(--font-mono);
-          font-size: 12px;
-          line-height: 1.22;
+          font-size: 11px;
+          line-height: 1.3;
         }
         .markdown .markup-block::before {
           content: attr(data-language);
           position: absolute;
-          top: 7px;
-          right: 10px;
+          top: 5px;
+          right: 8px;
           color: var(--text-muted);
           font-family: var(--font-family);
-          font-size: 10px;
+          font-size: 9px;
           font-weight: 700;
           text-transform: uppercase;
         }
@@ -1761,8 +1761,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         }
         .markdown p {
           margin: 1px 0;
-          line-height: 1.05;
-          font-size: 12px;
+          line-height: 1.45;
+          font-size: 13px;
           color: var(--text-color);
           padding: 0;
         }
@@ -1781,50 +1781,51 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           margin-bottom: 0;
         }
         .markdown blockquote {
-          margin: 8px 0;
-          padding: 4px 6px;
-          border-left: 3px solid var(--primary-color);
+          margin: 4px 0;
+          padding: 3px 6px;
+          border-left: 2px solid var(--primary-color);
           background-color: var(--surface-subtle);
-          border-radius: 0 6px 6px 0;
+          border-radius: 0 4px 4px 0;
           color: var(--text-muted);
           font-size: 12px;
-          line-height: 1.1;
+          line-height: 1.4;
         }
         .markdown h1, .markdown h2, .markdown h3, .markdown h4 {
-          margin: 14px 0 8px;
-          padding-bottom: 6px;
+          margin: 8px 0 4px;
+          padding-bottom: 4px;
           border-bottom: 1px solid var(--border-subtle);
           font-weight: 600;
           color: var(--text-color);
+          line-height: 1.3;
         }
-        .markdown h1 { font-size: 14px; }
-        .markdown h2 { font-size: 12px; }
-        .markdown h3 { font-size: 10px; }
-        .markdown h4 { font-size: 8px; border-bottom: none; }
+        .markdown h1 { font-size: 15px; }
+        .markdown h2 { font-size: 13px; }
+        .markdown h3 { font-size: 12px; }
+        .markdown h4 { font-size: 11px; border-bottom: none; }
         .markdown ul, .markdown ol {
-          margin: 4px 0;
-          padding-left: 20px;
-          font-size: 12px;
-          line-height: 1.05;
+          margin: 2px 0;
+          padding-left: 18px;
+          font-size: 13px;
+          line-height: 1.45;
         }
         .markdown li {
           margin: 1px 0;
-          line-height: 1.05;
+          line-height: 1.4;
         }
         .markdown hr {
           border: none;
           border-top: 1px dashed var(--border-subtle);
-          margin: 14px 0;
+          margin: 6px 0;
         }
         .markdown table {
           border-collapse: collapse;
-          margin: 10px 0;
+          margin: 6px 0;
           font-size: 12px;
           width: 100%;
         }
         .markdown th, .markdown td {
           border: 1px solid var(--border-subtle);
-          padding: 6px 10px;
+          padding: 4px 8px;
           text-align: left;
         }
         .markdown th {

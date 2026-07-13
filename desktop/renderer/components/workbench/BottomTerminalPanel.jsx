@@ -4,38 +4,106 @@ import { useIPC } from '../../hooks/useIPC.js';
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const promptForDirectory = (workingDirectory) => {
-  if (!workingDirectory) {return 'workspace';}
+  if (!workingDirectory) { return '~'; }
   const normalized = workingDirectory.replace(/\\/g, '/');
-  return normalized.split('/').filter(Boolean).slice(-1)[0] || normalized;
+  return normalized.split('/').filter(Boolean).slice(-1)[0] || '~';
 };
 
 const INITIAL_LINES = [
-  { type: 'system', text: 'Mastery Terminal v1.0.0' },
+  { type: 'system', text: 'Mastery Terminal' },
   { type: 'blank', text: '' },
 ];
 
+/* ── ANSI → 内联 style 映射 ── */
+const ANSI_CODES = {
+  '0':  { color: 'var(--ds-text-primary)', fontWeight: 400, textDecoration: 'none', fontStyle: 'normal', opacity: 1 },
+  '1':  { fontWeight: 700 },
+  '2':  { opacity: 0.55 },
+  '3':  { fontStyle: 'italic' },
+  '4':  { textDecoration: 'underline' },
+  '7':  { color: '#E8F0F0', background: '#B0BDBD' },
+  '30': { color: '#3C3C3C' },
+  '31': { color: '#E88A9A' },
+  '32': { color: '#7BD3B8' },
+  '33': { color: '#E8C46A' },
+  '34': { color: '#7FB8D9' },
+  '35': { color: '#C9A0DC' },
+  '36': { color: '#5CC4BE' },
+  '37': { color: '#D4D4D4' },
+  '90': { color: '#6E7681' },
+  '91': { color: '#F47067' },
+  '92': { color: '#57AB5A' },
+  '93': { color: '#C69026' },
+  '94': { color: '#539BF5' },
+  '95': { color: '#B083F0' },
+  '96': { color: '#39D2C0' },
+  '97': { color: '#ADBAC7' },
+};
+
+function parseAnsi(text) {
+  const parts = [];
+  const regex = /\x1b\[([0-9;]*)m/g;
+  let lastIndex = 0;
+  let currentStyle = { ...ANSI_CODES['0'] };
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ text: text.slice(lastIndex, match.index), style: { ...currentStyle } });
+    }
+    const codes = match[1].split(';').filter(Boolean);
+    for (const code of codes) {
+      if (code === '0') {
+        currentStyle = { ...ANSI_CODES['0'] };
+      } else if (ANSI_CODES[code]) {
+        currentStyle = { ...currentStyle, ...ANSI_CODES[code] };
+      }
+    }
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push({ text: text.slice(lastIndex), style: { ...currentStyle } });
+  }
+
+  return parts.length > 0 ? parts : [{ text, style: { ...ANSI_CODES['0'] } }];
+}
+
+function stripAnsi(text) {
+  return text.replace(/\x1b\[[0-9;]*m/g, '');
+}
+
+function isUrl(text) {
+  return /^https?:\/\//i.test(text);
+}
+
+function renderAnsiLine(text, baseStyle) {
+  const parts = parseAnsi(text);
+  return (
+    <span style={baseStyle}>
+      {parts.map((part, i) => (
+        <span key={i} style={part.style}>{part.text}</span>
+      ))}
+    </span>
+  );
+}
+
 async function createCommandOutput(command, workingDirectory, ipcInvoke) {
   const normalized = command.trim();
-  if (!normalized) {return [];}
-  
+  if (!normalized) { return []; }
+
   try {
     const result = await ipcInvoke('terminal:execute', {
       command: normalized,
       cwd: workingDirectory,
     });
-    
+
     const output = [];
     if (result.stdout) {
-      const stdoutLines = result.stdout.trim().split('\n');
-      stdoutLines.forEach(line => {
-        if (line) {output.push({ text: line, isError: false });}
-      });
+      output.push({ text: result.stdout, isError: false, raw: true });
     }
     if (result.stderr) {
-      const stderrLines = result.stderr.trim().split('\n');
-      stderrLines.forEach(line => {
-        if (line) {output.push({ text: line, isError: true });}
-      });
+      output.push({ text: result.stderr, isError: true, raw: true });
     }
     if (!result.stdout && !result.stderr) {
       return [];
@@ -46,41 +114,67 @@ async function createCommandOutput(command, workingDirectory, ipcInvoke) {
   }
 }
 
+/* ── 终端行渲染 ── */
 function TerminalLine({ line }) {
-  const color = line.type === 'command'
-    ? 'var(--text-color)'
-    : line.type === 'error'
-      ? 'var(--error-color)'
-      : line.type === 'muted'
-        ? 'var(--text-muted)'
-        : line.type === 'system'
-          ? 'var(--info-color)'
-          : line.type === 'success'
-            ? 'var(--success-color)'
-            : 'var(--text-color)';
-
   if (line.type === 'blank') {
-    return <div style={styles.lineRow}>&nbsp;</div>;
+    return <div style={styles.lineRow}><span style={styles.lineEmpty}>&nbsp;</span></div>;
   }
 
+  const colorMap = {
+    command: 'var(--ds-text-primary)',
+    error: 'var(--ds-status-error)',
+    muted: 'var(--ds-text-tertiary)',
+    system: 'var(--ds-brand)',
+    success: 'var(--ds-status-success)',
+    output: 'var(--ds-text-secondary)',
+  };
+  const color = colorMap[line.type] || 'var(--ds-text-primary)';
+  const isCommand = line.type === 'command';
+
+  const baseTextStyle = {
+    color,
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    minWidth: 0,
+    fontFamily: 'var(--font-mono)',
+    fontSize: '12px',
+    lineHeight: '1.55',
+    cursor: 'text',
+    userSelect: 'text',
+  };
+
   return (
-    <div style={styles.lineRow}>
-      <span style={{
-        minHeight: '19px',
-        color,
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-word',
-        minWidth: 0,
-        fontFamily: 'var(--font-mono)',
-        fontSize: '12px',
-        lineHeight: '1.5',
-        cursor: 'text',
-        userSelect: 'text',
-      }}>
-        {line.text}
-      </span>
+    <div style={{
+      ...styles.lineRow,
+      ...(isCommand ? styles.lineRowCommand : {})
+    }}>
+      {line.raw ? (
+        <span style={baseTextStyle}>
+          {line.text.split('\n').map((seg, i) => {
+            if (!seg) return null;
+            return <span key={i}>{renderAnsiLine(seg, {})}{'\n'}</span>;
+          })}
+        </span>
+      ) : (
+        <span style={baseTextStyle}>{line.text}</span>
+      )}
     </div>
   );
+}
+
+/* ── 图标组件（内联 SVG，避免外部依赖） ── */
+function TermIcon({ name, size = 14 }) {
+  const icons = {
+    trash: <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5.5 5.5V3.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2"/><path d="M12.5 5.5v8a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-8"/><path d="M3.5 5.5h9"/><line x1="6.5" y1="8" x2="6.5" y2="12"/><line x1="9.5" y1="8" x2="9.5" y2="12"/></svg>,
+    minimize: <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><line x1="3" y1="8" x2="13" y2="8"/></svg>,
+    close: <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>,
+    terminal: <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="4,5 7,8 4,11"/><line x1="8" y1="11" x2="12" y2="11"/></svg>,
+    warn: <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3L2 13h12L8 3z"/><line x1="8" y1="7" x2="8" y2="9.5"/><circle cx="8" cy="11.5" r="0.5" fill="currentColor"/></svg>,
+    info: <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><circle cx="8" cy="8" r="6"/><line x1="8" y1="7" x2="8" y2="11"/><circle cx="8" cy="5" r="0.5" fill="currentColor"/></svg>,
+    copy: <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 11V3a1.5 1.5 0 0 1 1.5-1.5H11"/></svg>,
+    maxH: <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg>,
+  };
+  return <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{icons[name] || null}</span>;
 }
 
 export function BottomTerminalPanel({
@@ -99,7 +193,6 @@ export function BottomTerminalPanel({
   const [isStreaming, setIsStreaming] = useState(false);
   const [commandHistory, setCommandHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
-  const [showCursor, setShowCursor] = useState(true);
   const [currentDirectory, setCurrentDirectory] = useState(workingDirectory || '.');
   const [completionOptions, setCompletionOptions] = useState([]);
   const [completionIndex, setCompletionIndex] = useState(-1);
@@ -111,29 +204,15 @@ export function BottomTerminalPanel({
   const problems = useMemo(() => {
     const items = [];
     if (!ipc.isConnected) {
-      items.push({
-        level: 'warning',
-        file: 'terminal transport',
-        text: 'Electron IPC is disconnected; terminal commands are unavailable in browser-only preview.',
-      });
-    }
-    if (lines.length > INITIAL_LINES.length) {
-      items.push({
-        level: 'info',
-        file: 'terminal session',
-        text: `${lines.length - INITIAL_LINES.length} terminal events captured for this session.`,
-      });
+      items.push({ level: 'warning', file: 'transport', text: 'IPC disconnected; commands unavailable in browser preview.' });
     }
     return items;
-  }, [ipc.isConnected, lines.length]);
+  }, [ipc.isConnected]);
 
   const outputLines = useMemo(() => ([
-    'Architecture:',
-    'UI drawer -> terminal emulator -> terminal transport -> shell/container',
-    '',
-    `Workspace: ${workingDirectory || 'not selected'}`,
-    `Panel: ${isOpen ? `${height}px` : 'collapsed'}`,
-    `Context buffer: ${lines.length} terminal events captured`,
+    `workspace: ${workingDirectory || 'not selected'}`,
+    `panel: ${isOpen ? `${height}px` : 'collapsed'}`,
+    `buffer: ${lines.length} events`,
   ]), [height, isOpen, lines.length, workingDirectory]);
 
   useEffect(() => {
@@ -149,13 +228,6 @@ export function BottomTerminalPanel({
   }, [activeTab, isOpen]);
 
   useEffect(() => {
-    const cursorInterval = setInterval(() => {
-      setShowCursor(prev => !prev);
-    }, 530);
-    return () => clearInterval(cursorInterval);
-  }, []);
-
-  useEffect(() => {
     if (workingDirectory) {
       setCurrentDirectory(workingDirectory);
     }
@@ -164,18 +236,16 @@ export function BottomTerminalPanel({
   useEffect(() => {
     const handlePointerMove = (event) => {
       const resizeState = resizeStateRef.current;
-      if (!resizeState) {return;}
+      if (!resizeState) { return; }
       const delta = resizeState.startY - event.clientY;
-      onHeightChange(clamp(resizeState.startHeight + delta, 180, 520));
+      onHeightChange(clamp(resizeState.startHeight + delta, 160, 560));
     };
-
     const handlePointerUp = () => {
-      if (!resizeStateRef.current) {return;}
+      if (!resizeStateRef.current) { return; }
       resizeStateRef.current = null;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
     return () => {
@@ -186,12 +256,9 @@ export function BottomTerminalPanel({
 
   const getCommandCompletions = async (partialCommand) => {
     try {
-      const result = await ipc.invoke('terminal:complete', {
-        command: partialCommand,
-        cwd: currentDirectory,
-      });
+      const result = await ipc.invoke('terminal:complete', { command: partialCommand, cwd: currentDirectory });
       return result.completions || [];
-    } catch (error) {
+    } catch {
       return [];
     }
   };
@@ -205,31 +272,30 @@ export function BottomTerminalPanel({
     setIsStreaming(true);
     const output = await createCommandOutput(command, currentDirectory, ipc.invoke);
     for (const item of output) {
-      await new Promise(resolve => setTimeout(resolve, 40));
-      setLines(prev => [...prev, { type: item.isError ? 'error' : 'output', text: item.text }]);
+      await new Promise(resolve => setTimeout(resolve, 30));
+      const textLines = item.text.split('\n');
+      for (const tl of textLines) {
+        if (tl) {
+          setLines(prev => [...prev, { type: item.isError ? 'error' : 'output', text: tl, raw: item.raw }]);
+        }
+      }
     }
+    setLines(prev => [...prev, { type: 'blank', text: '' }]);
     setIsStreaming(false);
-    
+
     if (command.trim().startsWith('cd ')) {
       const newPath = command.trim().substring(3).trim();
       if (newPath) {
         try {
-          const resolvedPath = await ipc.invoke('terminal:resolvePath', {
-            path: newPath,
-            cwd: currentDirectory,
-          });
+          const resolvedPath = await ipc.invoke('terminal:resolvePath', { path: newPath, cwd: currentDirectory });
           if (resolvedPath && resolvedPath.exists) {
             setCurrentDirectory(resolvedPath.path);
           }
-        } catch (error) {
-          console.log('Failed to resolve cd path:', error);
-        }
+        } catch { /* ignore */ }
       }
     }
-    
-    setTimeout(() => {
-      inputRef.current?.focus();
-    }, 50);
+
+    setTimeout(() => inputRef.current?.focus(), 50);
   };
 
   const handleKeyDown = useCallback(async (event) => {
@@ -261,7 +327,6 @@ export function BottomTerminalPanel({
         const newIndex = (completionIndex + 1) % completionOptions.length;
         setCompletionIndex(newIndex);
         const parts = input.split(' ');
-        const lastPart = parts[parts.length - 1];
         const completion = completionOptions[newIndex];
         if (parts.length === 1) {
           setInput(completion);
@@ -276,18 +341,14 @@ export function BottomTerminalPanel({
           setCompletionIndex(0);
           const parts = input.split(' ');
           const completion = completions[0];
-          if (parts.length === 1) {
-            setInput(completion);
-          } else {
-            parts[parts.length - 1] = completion;
-            setInput(parts.join(' '));
-          }
+          if (parts.length === 1) { setInput(completion); }
+          else { parts[parts.length - 1] = completion; setInput(parts.join(' ')); }
         }
       }
     } else if (event.key === 'Enter') {
       event.preventDefault();
       const command = input.trim();
-      if (!command || isStreaming) {return;}
+      if (!command || isStreaming) { return; }
       setLines(prev => [...prev, { type: 'command', text: `${promptLabel} $ ${command}` }]);
       setCommandHistory(prev => [...prev, command]);
       setHistoryIndex(-1);
@@ -303,31 +364,27 @@ export function BottomTerminalPanel({
 
   const handleResizeStart = (event) => {
     event.preventDefault();
-    resizeStateRef.current = {
-      startY: event.clientY,
-      startHeight: height,
-    };
+    resizeStateRef.current = { startY: event.clientY, startHeight: height };
     document.body.style.cursor = 'row-resize';
     document.body.style.userSelect = 'none';
   };
 
   const tabs = [
-    { id: 'terminal', label: promptForDirectory(workingDirectory), meta: isStreaming ? 'run' : '' },
-    { id: 'problems', label: '问题', meta: problems.length ? String(problems.length) : '' },
-    { id: 'output', label: '输出', meta: '' },
+    { id: 'terminal', icon: 'terminal', label: promptForDirectory(workingDirectory), meta: isStreaming ? 'run' : '' },
+    { id: 'problems', icon: 'warn', label: '问题', meta: problems.length ? String(problems.length) : '' },
+    { id: 'output', icon: 'info', label: '输出', meta: '' },
   ];
 
-  const handleClear = () => {
-    setLines([]);
-  };
+  const handleClear = () => { setLines([]); };
 
-  if (!isOpen) {
-    return null;
-  }
+  if (!isOpen) { return null; }
 
   return (
     <section style={{ ...styles.panel, height }} aria-label="Bottom terminal panel">
+      {/* resize 拖拽条 */}
       <div style={styles.resizeHandle} onPointerDown={handleResizeStart} />
+
+      {/* 头部 */}
       <div style={styles.header}>
         <div style={styles.headerLeft}>
           <div style={styles.tabs} role="tablist">
@@ -343,41 +400,56 @@ export function BottomTerminalPanel({
                 }}
                 onClick={() => onActiveTabChange(tab.id)}
               >
+                <TermIcon name={tab.icon} size={12} />
                 <span>{tab.label}</span>
                 {tab.meta && (
-                  <span style={{
-                    ...styles.tabMeta,
-                    ...(activeTab === tab.id ? styles.tabMetaActive : {})
-                  }}>{tab.meta}</span>
+                  <span style={styles.tabMeta}>{tab.meta}</span>
                 )}
               </button>
             ))}
           </div>
         </div>
 
-        <div style={styles.headerMeta}>
-          <button type="button" style={styles.iconButton} title="Clear terminal" onClick={handleClear}>
-            C
+        <div style={styles.headerRight}>
+          <button type="button" style={styles.headerBtn} title="Clear" onClick={handleClear}>
+            <TermIcon name="trash" size={12} />
           </button>
-          <button type="button" style={styles.iconButton} title="Collapse terminal" onClick={() => onOpenChange(false)}>
-            _
+          <button type="button" style={styles.headerBtn} title="Maximize" onClick={() => onHeightChange(560)}>
+            <TermIcon name="maxH" size={12} />
           </button>
-          <button type="button" style={styles.iconButton} title="Close terminal" onClick={onClose}>
-            x
+          <button type="button" style={styles.headerBtn} title="Minimize" onClick={() => onOpenChange(false)}>
+            <TermIcon name="minimize" size={12} />
+          </button>
+          <div style={styles.headerSep} />
+          <button type="button" style={styles.headerBtnClose} title="Close" onClick={onClose}>
+            <TermIcon name="close" size={12} />
           </button>
         </div>
       </div>
 
+      {/* Terminal 标签页 */}
       {activeTab === 'terminal' && (
         <div style={styles.terminalSurface} onClick={() => inputRef.current?.focus()}>
           <div ref={terminalBodyRef} style={styles.terminalBody}>
             {lines.map((line, index) => (
-              <TerminalLine key={`${line.type}-${index}-${line.text}`} line={line} />
+              <TerminalLine key={`${index}-${line.type}`} line={line} />
             ))}
-            {isStreaming && <TerminalLine line={{ type: 'muted', text: '\u2588' }} />}
+            {isStreaming && (
+              <div style={styles.lineRow}>
+                <span style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '12px',
+                  color: 'var(--ds-brand)',
+                  animation: 'termBlink 1s step-end infinite'
+                }}>{'\u2588'}</span>
+              </div>
+            )}
           </div>
+
+          {/* 输入行 */}
           <div style={styles.inputRow}>
-            <span style={styles.prompt}>{promptLabel} $ </span>
+            <span style={styles.promptSymbol}>{'\u203A'}</span>
+            <span style={styles.prompt}>{promptLabel}</span>
             <input
               ref={inputRef}
               value={input}
@@ -390,29 +462,51 @@ export function BottomTerminalPanel({
               spellCheck={false}
               placeholder=""
             />
+            {completionOptions.length > 0 && (
+              <div style={styles.completionPopup}>
+                {completionOptions.map((opt, i) => (
+                  <div
+                    key={opt}
+                    style={{
+                      ...styles.completionItem,
+                      ...(i === completionIndex ? styles.completionItemActive : {})
+                    }}
+                  >{opt}</div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
 
+      {/* Problems 标签页 */}
       {activeTab === 'problems' && (
         <div style={styles.listSurface}>
-          {problems.map(problem => (
-            <div key={`${problem.file}-${problem.text}`} style={styles.problemRow}>
-              <span style={{
-                ...styles.problemBadge,
-                ...(problem.level === 'warning' ? styles.problemWarning : styles.problemInfo)
-              }}>
-                {problem.level}
-              </span>
-              <div style={styles.problemCopy}>
-                <strong>{problem.file}</strong>
-                <span>{problem.text}</span>
-              </div>
+          {problems.length === 0 ? (
+            <div style={styles.emptyList}>
+              <TermIcon name="info" size={16} />
+              <span>No problems detected.</span>
             </div>
-          ))}
+          ) : (
+            problems.map(problem => (
+              <div key={`${problem.file}-${problem.text}`} style={styles.problemRow}>
+                <span style={{
+                  ...styles.problemBadge,
+                  ...(problem.level === 'warning' ? styles.problemWarning : styles.problemInfo)
+                }}>
+                  {problem.level === 'warning' ? 'W' : 'I'}
+                </span>
+                <div style={styles.problemCopy}>
+                  <span style={styles.problemFile}>{problem.file}</span>
+                  <span style={styles.problemText}>{problem.text}</span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       )}
 
+      {/* Output 标签页 */}
       {activeTab === 'output' && (
         <div style={styles.outputSurface}>
           {outputLines.map((line, index) => (
@@ -420,164 +514,231 @@ export function BottomTerminalPanel({
           ))}
         </div>
       )}
+
+      {/* 动画 keyframes */}
+      <style>{`
+        @keyframes termBlink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
+        }
+      `}</style>
     </section>
   );
 }
 
+/* ═══════════════════════════════════════════
+   样式 — 对齐 TRAE Work 设计系统
+   ═══════════════════════════════════════════ */
 const styles = {
   panel: {
     flexShrink: 0,
-    minHeight: '180px',
-    maxHeight: '520px',
+    minHeight: '160px',
+    maxHeight: '560px',
     display: 'flex',
     flexDirection: 'column',
     position: 'relative',
-    borderTop: '1px solid var(--border-color)',
-    backgroundColor: 'var(--surface-color)',
-    boxShadow: 'none',
+    borderTop: '1px solid var(--ds-border-l1)',
+    backgroundColor: 'var(--ds-bg-default)',
+    boxShadow: '0 -1px 0 var(--ds-border-l1)',
   },
+
   resizeHandle: {
     position: 'absolute',
-    top: '-4px',
+    top: '-3px',
     left: 0,
     right: 0,
-    height: '8px',
+    height: '6px',
     cursor: 'row-resize',
     zIndex: 3,
     backgroundColor: 'transparent',
   },
+
+  /* ── 头部 ── */
   header: {
-    minHeight: '42px',
+    minHeight: '34px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: '8px',
-    padding: '0 8px',
-    borderBottom: '1px solid var(--border-color)',
-    backgroundColor: 'var(--surface-color)',
+    gap: '6px',
+    padding: '0 6px',
+    borderBottom: '1px solid var(--ds-border-l1)',
+    backgroundColor: 'var(--ds-bg-raised)',
+    flexShrink: 0,
   },
+
   headerLeft: {
     minWidth: 0,
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: '6px',
     flex: 1,
+    overflow: 'hidden',
   },
+
   tabs: {
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
+    gap: '2px',
     minWidth: 0,
-    padding: 0,
-    borderRadius: 0,
+    padding: '2px',
+    borderRadius: 'var(--radius-md)',
+    backgroundColor: 'var(--ds-bg-overlay-l1)',
     border: 'none',
-    backgroundColor: 'transparent',
   },
+
   tab: {
-    height: '28px',
-    borderRadius: '9px',
+    height: '24px',
+    borderRadius: 'var(--radius-sm)',
     border: 'none',
-    borderRight: 'none',
     backgroundColor: 'transparent',
-    color: 'var(--text-muted)',
-    padding: '0 12px',
+    color: 'var(--ds-text-tertiary)',
+    padding: '0 8px',
     fontSize: '11px',
-    fontWeight: 400,
+    fontWeight: 500,
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '6px',
+    gap: '4px',
     fontFamily: 'var(--font-family)',
+    cursor: 'pointer',
+    transition: 'all 0.12s ease',
+    whiteSpace: 'nowrap',
   },
+
   tabActive: {
-    color: 'var(--text-color)',
-    backgroundColor: 'var(--surface-raised)',
+    color: 'var(--ds-text-primary)',
+    backgroundColor: 'var(--ds-bg-raised)',
+    boxShadow: 'var(--shadow-sm)',
   },
+
   tabMeta: {
-    minWidth: '18px',
-    height: '16px',
+    minWidth: '16px',
+    height: '14px',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
     padding: '0 4px',
-    borderRadius: '3px',
-    backgroundColor: 'var(--warning-soft)',
-    color: 'var(--warning-color)',
-    fontSize: '10px',
-    fontWeight: 600,
+    borderRadius: 'var(--radius-full)',
+    backgroundColor: 'var(--ds-status-warning-s1)',
+    color: 'var(--ds-status-warning)',
+    fontSize: '9px',
+    fontWeight: 700,
+    lineHeight: 1,
   },
-  tabMetaActive: {
-    backgroundColor: 'var(--warning-soft)',
-    color: 'var(--warning-color)',
-  },
-  headerMeta: {
+
+  headerRight: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: '2px',
-    minWidth: 0,
-    color: 'var(--text-muted)',
-    fontSize: '11px',
-    whiteSpace: 'nowrap',
+    gap: '1px',
+    flexShrink: 0,
   },
-  iconButton: {
+
+  headerBtn: {
     width: '24px',
     height: '24px',
-    borderRadius: '3px',
+    borderRadius: 'var(--radius-sm)',
     border: '1px solid transparent',
     backgroundColor: 'transparent',
-    color: 'var(--text-muted)',
+    color: 'var(--ds-text-tertiary)',
     padding: 0,
-    fontFamily: 'var(--font-mono)',
-    fontSize: '11px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: 'all 0.1s ease',
   },
+
+  headerBtnClose: {
+    width: '24px',
+    height: '24px',
+    borderRadius: 'var(--radius-sm)',
+    border: '1px solid transparent',
+    backgroundColor: 'transparent',
+    color: 'var(--ds-text-tertiary)',
+    padding: 0,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: 'all 0.1s ease',
+  },
+
+  headerSep: {
+    width: '1px',
+    height: '14px',
+    backgroundColor: 'var(--ds-border-l1)',
+    margin: '0 3px',
+  },
+
+  /* ── 终端主体 ── */
   terminalSurface: {
     flex: 1,
     minHeight: 0,
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: 'var(--surface-color)',
-    overflowY: 'auto',
+    backgroundColor: 'var(--ds-bg-default)',
+    overflow: 'hidden',
+    position: 'relative',
   },
+
   terminalBody: {
-    padding: '8px 0',
-    fontFamily: '"SF Mono", "Monaco", "Inconsolata", "Roboto Mono", monospace',
-    fontSize: '13px',
-    lineHeight: 1.4,
+    flex: 1,
+    overflowY: 'auto',
+    padding: '6px 0',
+    fontFamily: 'var(--font-mono)',
     cursor: 'text',
     userSelect: 'text',
   },
+
   lineRow: {
     minHeight: '18px',
-    padding: '0 12px',
+    padding: '0 10px',
+    display: 'flex',
+    alignItems: 'center',
   },
+
+  lineRowCommand: {
+    backgroundColor: 'rgba(47, 143, 128, 0.04)',
+  },
+
+  lineEmpty: {
+    display: 'block',
+    minHeight: '18px',
+  },
+
+  /* ── 输入行 ── */
   inputRow: {
     flexShrink: 0,
     display: 'flex',
     alignItems: 'center',
     minHeight: '28px',
-    padding: '4px 12px',
-    backgroundColor: 'var(--surface-color)',
-    fontFamily: '"SF Mono", "Monaco", "Inconsolata", "Roboto Mono", monospace',
-    fontSize: '13px',
+    padding: '3px 10px 6px',
+    backgroundColor: 'var(--ds-bg-default)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '12px',
+    position: 'relative',
+    borderTop: '1px solid var(--ds-border-l1)',
   },
+
+  promptSymbol: {
+    color: 'var(--ds-brand)',
+    fontSize: '14px',
+    fontWeight: 700,
+    marginRight: '4px',
+    lineHeight: 1,
+  },
+
   prompt: {
     display: 'inline-flex',
     alignItems: 'center',
-    padding: 0,
-    borderRadius: 0,
-    backgroundColor: 'transparent',
-    color: 'var(--primary-color)',
-    fontSize: '13px',
-    fontWeight: 400,
+    color: 'var(--ds-text-tertiary)',
+    fontSize: '11px',
+    fontWeight: 600,
     whiteSpace: 'nowrap',
-    fontFamily: '"SF Mono", "Monaco", "Inconsolata", "Roboto Mono", monospace',
+    fontFamily: 'var(--font-mono)',
+    marginRight: '6px',
+    letterSpacing: '0.02em',
   },
-  inputContainer: {
-    flex: 1,
-    display: 'flex',
-    alignItems: 'center',
-    minWidth: 0,
-  },
+
   terminalInput: {
     flex: 1,
     minWidth: 0,
@@ -585,70 +746,138 @@ const styles = {
     borderRadius: 0,
     backgroundColor: 'transparent',
     boxShadow: 'none',
-    padding: '0',
-    color: 'var(--text-color)',
-    fontFamily: '"SF Mono", "Monaco", "Inconsolata", "Roboto Mono", monospace',
-    fontSize: '13px',
+    padding: 0,
+    color: 'var(--ds-text-primary)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '12px',
     outline: 'none',
+    lineHeight: '1.55',
+    caretColor: 'var(--ds-brand)',
   },
+
+  /* ── 补全弹出 ── */
+  completionPopup: {
+    position: 'absolute',
+    bottom: '100%',
+    left: '10px',
+    right: '10px',
+    backgroundColor: 'var(--ds-bg-raised)',
+    border: '1px solid var(--ds-border-l2)',
+    borderRadius: 'var(--radius-md)',
+    padding: '4px',
+    maxHeight: '120px',
+    overflowY: 'auto',
+    boxShadow: 'var(--shadow-md)',
+    zIndex: 10,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1px',
+  },
+
+  completionItem: {
+    padding: '3px 8px',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: '11px',
+    fontFamily: 'var(--font-mono)',
+    color: 'var(--ds-text-secondary)',
+    cursor: 'pointer',
+  },
+
+  completionItemActive: {
+    backgroundColor: 'var(--ds-brand-soft)',
+    color: 'var(--ds-brand)',
+  },
+
+  /* ── 列表（Problems / Output） ── */
   listSurface: {
     flex: 1,
     overflowY: 'auto',
-    padding: '8px 12px',
+    padding: '6px 10px',
     display: 'flex',
     flexDirection: 'column',
-    gap: '4px',
-    backgroundColor: 'var(--surface-color)',
+    gap: '2px',
+    backgroundColor: 'var(--ds-bg-default)',
   },
+
+  emptyList: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px',
+    color: 'var(--ds-text-tertiary)',
+    fontSize: '11px',
+  },
+
   problemRow: {
     display: 'flex',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: '8px',
-    padding: '6px 0',
-    borderRadius: 0,
+    padding: '5px 6px',
+    borderRadius: 'var(--radius-sm)',
     border: 'none',
-    borderBottom: '1px solid var(--border-subtle)',
     backgroundColor: 'transparent',
+    transition: 'background-color 0.1s ease',
+    cursor: 'default',
   },
+
   problemBadge: {
     flexShrink: 0,
-    minWidth: '50px',
-    textAlign: 'center',
-    padding: '2px 6px',
-    borderRadius: '3px',
+    width: '18px',
+    height: '18px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 'var(--radius-sm)',
     fontSize: '10px',
-    fontWeight: 600,
-    textTransform: 'uppercase',
+    fontWeight: 700,
     fontFamily: 'var(--font-mono)',
   },
+
   problemWarning: {
-    color: 'var(--warning-color)',
-    backgroundColor: 'var(--warning-soft)',
+    color: 'var(--ds-status-warning)',
+    backgroundColor: 'var(--ds-status-warning-s1)',
   },
+
   problemInfo: {
-    color: 'var(--primary-color)',
-    backgroundColor: 'var(--info-soft)',
+    color: 'var(--ds-brand)',
+    backgroundColor: 'var(--ds-brand-soft)',
   },
+
   problemCopy: {
     minWidth: 0,
     display: 'flex',
     flexDirection: 'column',
-    gap: '2px',
-    color: 'var(--text-muted)',
-    fontSize: '12px',
-    fontFamily: 'var(--font-mono)',
+    gap: '1px',
   },
+
+  problemFile: {
+    fontFamily: 'var(--font-mono)',
+    fontSize: '11px',
+    fontWeight: 600,
+    color: 'var(--ds-text-primary)',
+  },
+
+  problemText: {
+    fontSize: '11px',
+    color: 'var(--ds-text-tertiary)',
+    lineHeight: 1.4,
+  },
+
   outputSurface: {
     flex: 1,
     overflowY: 'auto',
-    padding: '12px',
-    fontFamily: '"SF Mono", "Monaco", "Inconsolata", "Roboto Mono", monospace',
-    fontSize: '12px',
-    color: 'var(--text-muted)',
-    backgroundColor: 'var(--surface-color)',
+    padding: '8px 10px',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '11px',
+    color: 'var(--ds-text-tertiary)',
+    backgroundColor: 'var(--ds-bg-default)',
+    lineHeight: 1.5,
   },
+
   outputLine: {
-    minHeight: '18px',
+    minHeight: '17px',
     whiteSpace: 'pre-wrap',
   },
 };
