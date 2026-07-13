@@ -26,7 +26,7 @@ export function WorkbenchControls({
     fontFamily: 'var(--font-mono)',
   };
   const textButton = {
-    height: '32px', padding: '0 12px', borderRadius: '10px', fontSize: '12px', gap: '7px',
+    height: '28px', padding: '0 10px', borderRadius: '8px', fontSize: '12px', gap: '6px',
     border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-card)',
   };
   const activeButton = {

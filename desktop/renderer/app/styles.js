@@ -108,7 +108,7 @@ export const styles = {
   // 必须设 WebkitAppRegion:'no-drag'，否则被拖拽带吞掉点击事件。
   workspaceControls: {
     position: 'absolute',
-    top: '8px',
+    top: '6px',
     right: '12px',
     display: 'flex',
     alignItems: 'center',
