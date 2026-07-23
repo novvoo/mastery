@@ -3,6 +3,7 @@
  * 提供 Agent Runtime 的状态管理和操作方法
  */
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { stripToolProtocolText } from '../app/content/content-pipeline.js';
 
 /**
  * 过滤掉内部控制 JSON 块（工具协议文本不应作为用户可见内容展示）
@@ -16,56 +17,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
  * @param {string} text - 原始文本
  * @returns {string} 过滤后的文本
  */
-export function stripActionBlocks(text = '') {
-  if (typeof text !== 'string') {
-    return text;
-  }
-
-  let out = text
-    // 1) <action> 标签包裹的工具调用
-    .replace(/<action>[\s\S]*?<\/action>/gi, '')
-    // 2) XML / DSML 工具协议
-    .replace(
-      /<[|｜]+\s*DSML\s*[|｜]+tool_calls\b[^>]*>[\s\S]*?<[|｜]+\s*DSML\s*[|｜]+tool_calls\s*>/gi,
-      '',
-    )
-    .replace(/<[|｜]+\s*DSML\s*[|｜]+invoke\b[^>]*>[\s\S]*?<[|｜]+\s*DSML\s*[|｜]+invoke\s*>/gi, '')
-    .replace(
-      /<[|｜]+\s*DSML\s*[|｜]+parameter\b[^>]*>[\s\S]*?<[|｜]+\s*DSML\s*[|｜]+parameter\s*>/gi,
-      '',
-    )
-    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
-    .replace(/<function_call>[\s\S]*?<\/function_call>/gi, '')
-    .replace(/<function=[^>]+>[\s\S]*?<\/function>/gi, '')
-    .replace(/<function\b[^>]*>[\s\S]*?<\/function>/gi, '')
-    .replace(/<tool=[^>]+>[\s\S]*?<\/tool>/gi, '')
-    .replace(/<tool\b[^>]*>[\s\S]*?<\/tool>/gi, '')
-    .replace(/<tool_code>[\s\S]*?<\/tool_code>/gi, '')
-    .replace(/<output\b[^>]*>\s*<\/output>/gi, '')
-    .replace(/<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi, '')
-    .replace(/<parameter\b[^>]*>[\s\S]*?<\/parameter>/gi, '')
-    .replace(/<arguments>[\s\S]*?<\/arguments>/gi, '')
-    .replace(/<args\b[^>]*>[\s\S]*?<\/args>/gi, '')
-    // 3) ```json / ```tool / ``` 代码块中的工具 JSON
-    .replace(/```(?:json|tool)?\s*\{[\s\S]*?\}\s*```/gi, '');
-
-  out = out
-    .split('\n')
-    .filter((line) => !/^\s*CALL\s+[A-Za-z_][\w.-]*\s*\(/.test(line))
-    .join('\n');
-
-  // 4) 裸 ReAct JSON（完整匹配）：{"action": ...} 或含 evaluation_previous_goal / next_goal / memory 的对象
-  const trimmed = out.trim();
-  if (
-    trimmed.startsWith('{') &&
-    (trimmed.endsWith('}') || trimmed.endsWith('}\n')) &&
-    /"action"\s*:|"evaluation_previous_goal"\s*:|"next_goal"\s*:|"memory"\s*:/.test(trimmed)
-  ) {
-    return '';
-  }
-
-  return out.trimEnd();
-}
+export const stripActionBlocks = stripToolProtocolText;
 
 /**
  * 判断一段累积的流式文本是否看起来像是工具协议的开头。

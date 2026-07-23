@@ -149,8 +149,8 @@ const fileStyles = {
   workbench: {
     width: '340px', flexShrink: 0, display: 'flex', flexDirection: 'column',
     minWidth: 0, overflow: 'hidden',
-    borderRight: '1px solid var(--border-color)',
-    backgroundColor: 'var(--surface-color)',
+    borderRight: '1px solid var(--ds-border-l1)',
+    backgroundColor: 'var(--ds-bg-default)',
   },
   header: {
     minHeight: '36px', display: 'flex', alignItems: 'center', gap: '8px',
@@ -158,28 +158,39 @@ const fileStyles = {
   },
   title: {
     minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap', color: 'var(--text-color)', fontSize: '12px', fontWeight: 800,
+    whiteSpace: 'nowrap', color: 'var(--ds-text-primary)', fontSize: '12px', fontWeight: 600,
   },
   meta: {
-    flexShrink: 0, color: 'var(--text-dark)', fontSize: '10px', fontWeight: 700,
+    flexShrink: 0, color: 'var(--ds-text-secondary)', fontSize: '10px', fontWeight: 700,
   },
   metaError: {
     flexShrink: 0, fontSize: '10px', fontWeight: 700,
-    color: 'var(--danger-color)',
+    color: 'var(--ds-status-error)',
   },
   metaWarn: {
     flexShrink: 0, fontSize: '10px', fontWeight: 700,
-    color: 'var(--warning-color)',
+    color: 'var(--ds-status-warning)',
   },
   actionButton: {
     height: '24px', padding: '0 6px', borderRadius: '4px',
     border: '1px solid transparent', backgroundColor: 'transparent',
-    color: 'var(--text-muted)', fontSize: '10px', fontWeight: 800, cursor: 'pointer',
+    color: 'var(--ds-text-tertiary)', fontSize: '10px', fontWeight: 600, cursor: 'pointer',
+  },
+  closeButton: {
+    width: '22px', height: '22px', lineHeight: '22px',
+    textAlign: 'center', fontSize: '14px', fontWeight: '500',
+    borderRadius: 'var(--radius-sm)',
+    border: 'none',
+    backgroundColor: 'transparent',
+    color: 'var(--ds-text-tertiary)',
+    cursor: 'pointer',
+    flexShrink: 0,
+    transition: 'all 0.1s ease',
   },
   editorBody: {
     flex: 1, minHeight: 0, overflow: 'auto',
     fontFamily: 'var(--font-mono)', fontSize: '11px', lineHeight: 1.55,
-    cursor: 'text', userSelect: 'text', backgroundColor: 'var(--surface-color)',
+    cursor: 'text', userSelect: 'text', backgroundColor: 'var(--ds-bg-default)',
   },
   codeLine: {
     display: 'grid', gridTemplateColumns: '34px minmax(0, 1fr)',
@@ -189,55 +200,55 @@ const fileStyles = {
     backgroundColor: 'rgba(255, 0, 0, 0.04)',
   },
   codeLineNumber: {
-    paddingRight: '8px', color: 'var(--text-dark)', textAlign: 'right',
+    paddingRight: '8px', color: 'var(--ds-text-secondary)', textAlign: 'right',
     userSelect: 'none', borderRight: '1px solid transparent',
   },
   codeLineContent: {
     padding: '0 8px 0 10px', whiteSpace: 'pre',
-    color: 'var(--text-muted)', border: 'none', borderRadius: 0,
+    color: 'var(--ds-text-tertiary)', border: 'none', borderRadius: 0,
     backgroundColor: 'transparent', cursor: 'text', userSelect: 'text',
     position: 'relative',
   },
-  codeKeyword: { color: 'var(--info-color)', fontWeight: 800 },
-  codeString: { color: 'var(--success-color)' },
-  codeComment: { color: 'var(--text-dark)', fontStyle: 'italic' },
-  codeNumber: { color: 'var(--warning-color)' },
+  codeKeyword: { color: 'var(--ds-brand)', fontWeight: 600 },
+  codeString: { color: 'var(--ds-status-success)' },
+  codeComment: { color: 'var(--ds-text-secondary)', fontStyle: 'italic' },
+  codeNumber: { color: 'var(--ds-status-warning)' },
   // Diagnostic wavy underline
   diagUnderline: {
     position: 'absolute', bottom: 0, height: '2px',
     backgroundImage: 'repeating-linear-gradient(90deg, currentColor, currentColor 2px, transparent 2px, transparent 4px)',
     pointerEvents: 'none',
   },
-  diagUnderlineError: { color: 'var(--danger-color)' },
-  diagUnderlineWarning: { color: 'var(--warning-color)' },
-  diagUnderlineInfo: { color: 'var(--info-color)' },
+  diagUnderlineError: { color: 'var(--ds-status-error)' },
+  diagUnderlineWarning: { color: 'var(--ds-status-warning)' },
+  diagUnderlineInfo: { color: 'var(--ds-brand)' },
   // Hover tooltip
   hoverTooltip: {
     position: 'fixed', zIndex: 10000,
-    maxWidth: '400px', backgroundColor: 'var(--surface-color)',
-    border: '1px solid var(--border-color)', borderRadius: '6px',
+    maxWidth: '400px', backgroundColor: 'var(--ds-bg-raised)',
+    border: '1px solid var(--ds-border-l1)', borderRadius: '6px',
     padding: '8px 10px', fontSize: '11px', lineHeight: 1.45,
-    color: 'var(--text-color)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+    color: 'var(--ds-text-primary)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
     whiteSpace: 'pre-wrap', wordBreak: 'break-word',
   },
   textarea: {
     width: '100%', height: '100%', border: 'none', borderRadius: 0,
-    backgroundColor: 'transparent', color: 'var(--text-color)',
+    backgroundColor: 'transparent', color: 'var(--ds-text-primary)',
     fontFamily: 'var(--font-mono)', fontSize: '11px', lineHeight: 1.55,
     padding: '10px', outline: 'none', resize: 'none',
   },
   empty: {
-    textAlign: 'center', padding: '24px', color: 'var(--text-dark)', fontSize: '12px',
+    textAlign: 'center', padding: '24px', color: 'var(--ds-text-secondary)', fontSize: '12px',
   },
   lspBadge: {
     fontSize: '9px', fontWeight: 700, padding: '0 4px', borderRadius: '3px',
     border: '1px solid',
   },
   lspBadgeActive: {
-    color: 'var(--success-color)', borderColor: 'var(--success-color)',
+    color: 'var(--ds-status-success)', borderColor: 'var(--ds-status-success)',
   },
   lspBadgeInactive: {
-    color: 'var(--text-dark)', borderColor: 'var(--text-dark)',
+    color: 'var(--ds-text-secondary)', borderColor: 'var(--ds-text-secondary)',
   },
 };
 
@@ -251,12 +262,12 @@ function DiagnosticTooltip({ diagnostic, anchorRect }) {
       left: Math.min(anchorRect.right + 6, window.innerWidth - 412),
       top: Math.min(anchorRect.bottom + 2, window.innerHeight - 120),
     }}>
-      <div style={{ fontWeight: 800, marginBottom: 2, color: diagnostic.severity === 1 ? 'var(--danger-color)' : 'var(--warning-color)' }}>
-        {diagnostic.severity === 1 ? '🔴 Error' : diagnostic.severity === 2 ? '🟡 Warning' : 'ℹ️ Info'}
+      <div style={{ fontWeight: 600, marginBottom: 2, color: diagnostic.severity === 1 ? 'var(--ds-status-error)' : 'var(--ds-status-warning)' }}>
+        {diagnostic.severity === 1 ? 'Error' : diagnostic.severity === 2 ? 'Warning' : 'Info'}
         {diagnostic.code ? ` [${diagnostic.code}]` : ''}
       </div>
       <div>{diagnostic.message}</div>
-      {diagnostic.source && <div style={{ color: 'var(--text-dark)', marginTop: 4, fontSize: 10 }}>source: {diagnostic.source}</div>}
+      {diagnostic.source && <div style={{ color: 'var(--ds-text-secondary)', marginTop: 4, fontSize: 10 }}>source: {diagnostic.source}</div>}
     </div>
   );
 }
@@ -375,7 +386,7 @@ function CodePreview({ openFile, useLSP }) {
           >
             <span style={fileStyles.codeLineNumber}>
               {hasError ? '●' : hasWarning ? '●' : ''}
-              <span style={{ opacity: hasError || hasWarning ? 1 : undefined, color: hasError ? 'var(--danger-color)' : hasWarning ? 'var(--warning-color)' : undefined }}>
+              <span style={{ opacity: hasError || hasWarning ? 1 : undefined, color: hasError ? 'var(--ds-status-error)' : hasWarning ? 'var(--ds-status-warning)' : undefined }}>
                 {hasError || hasWarning ? '' : lineIdx + 1}
               </span>
             </span>
@@ -489,6 +500,8 @@ export function FileWorkbench({
           style={fileStyles.actionButton}
           onClick={onModeToggle}
           disabled={isLoading || isSaving}
+          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--ds-bg-overlay-l1)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
         >
           {fileMode === 'edit' ? 'View' : 'Edit'}
         </button>
@@ -498,12 +511,21 @@ export function FileWorkbench({
             style={fileStyles.actionButton}
             onClick={onSave}
             disabled={!isDirty || isSaving}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--ds-bg-overlay-l1)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
           >
             {isSaving ? 'Saving' : 'Save'}
           </button>
         )}
-        <button type="button" style={fileStyles.actionButton} onClick={onClose}>
-          x
+        <button
+          type="button"
+          style={fileStyles.closeButton}
+          onClick={onClose}
+          title="Close file"
+          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--ds-text-primary)'; e.currentTarget.style.backgroundColor = 'var(--ds-bg-overlay-l1)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ds-text-tertiary)'; e.currentTarget.style.backgroundColor = 'transparent'; }}
+        >
+          &times;
         </button>
       </div>
       {isLoading && <div style={fileStyles.empty}>正在打开文件...</div>}

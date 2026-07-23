@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useIPC } from '../../hooks/useIPC.js';
-
-const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+import { TERMINAL_HEIGHT, clampTerminalHeight } from '../../app/layout/layout-state.js';
 
 const promptForDirectory = (workingDirectory) => {
   if (!workingDirectory) { return '~'; }
@@ -21,23 +20,23 @@ const ANSI_CODES = {
   '2':  { opacity: 0.55 },
   '3':  { fontStyle: 'italic' },
   '4':  { textDecoration: 'underline' },
-  '7':  { color: '#E8F0F0', background: '#B0BDBD' },
-  '30': { color: '#3C3C3C' },
-  '31': { color: '#E88A9A' },
-  '32': { color: '#7BD3B8' },
-  '33': { color: '#E8C46A' },
-  '34': { color: '#7FB8D9' },
-  '35': { color: '#C9A0DC' },
-  '36': { color: '#5CC4BE' },
-  '37': { color: '#D4D4D4' },
-  '90': { color: '#6E7681' },
-  '91': { color: '#F47067' },
-  '92': { color: '#57AB5A' },
-  '93': { color: '#C69026' },
-  '94': { color: '#539BF5' },
-  '95': { color: '#B083F0' },
-  '96': { color: '#39D2C0' },
-  '97': { color: '#ADBAC7' },
+  '7':  { color: 'var(--terminal-inverse-text)', background: 'var(--terminal-inverse-bg)' },
+  '30': { color: 'var(--terminal-ansi-black)' },
+  '31': { color: 'var(--terminal-ansi-red)' },
+  '32': { color: 'var(--terminal-ansi-green)' },
+  '33': { color: 'var(--terminal-ansi-yellow)' },
+  '34': { color: 'var(--terminal-ansi-blue)' },
+  '35': { color: 'var(--terminal-ansi-magenta)' },
+  '36': { color: 'var(--terminal-ansi-cyan)' },
+  '37': { color: 'var(--terminal-ansi-white)' },
+  '90': { color: 'var(--terminal-ansi-bright-black)' },
+  '91': { color: 'var(--terminal-ansi-bright-red)' },
+  '92': { color: 'var(--terminal-ansi-bright-green)' },
+  '93': { color: 'var(--terminal-ansi-bright-yellow)' },
+  '94': { color: 'var(--terminal-ansi-bright-blue)' },
+  '95': { color: 'var(--terminal-ansi-bright-magenta)' },
+  '96': { color: 'var(--terminal-ansi-bright-cyan)' },
+  '97': { color: 'var(--terminal-ansi-bright-white)' },
 };
 
 function parseAnsi(text) {
@@ -186,6 +185,7 @@ export function BottomTerminalPanel({
   onClose,
   onHeightChange,
   onOpenChange,
+  capability,
 }) {
   const ipc = useIPC();
   const [lines, setLines] = useState(INITIAL_LINES);
@@ -200,14 +200,22 @@ export function BottomTerminalPanel({
   const inputRef = useRef(null);
   const resizeStateRef = useRef(null);
   const promptLabel = promptForDirectory(currentDirectory);
+  const capabilityAvailable = capability?.enabled !== false;
 
   const problems = useMemo(() => {
     const items = [];
     if (!ipc.isConnected) {
       items.push({ level: 'warning', file: 'transport', text: 'IPC disconnected; commands unavailable in browser preview.' });
     }
+    if (!capabilityAvailable) {
+      items.push({
+        level: 'warning',
+        file: 'capability',
+        text: capability?.reason || 'terminal.execute capability is unavailable.',
+      });
+    }
     return items;
-  }, [ipc.isConnected]);
+  }, [capability?.reason, capabilityAvailable, ipc.isConnected]);
 
   const outputLines = useMemo(() => ([
     `workspace: ${workingDirectory || 'not selected'}`,
@@ -238,7 +246,7 @@ export function BottomTerminalPanel({
       const resizeState = resizeStateRef.current;
       if (!resizeState) { return; }
       const delta = resizeState.startY - event.clientY;
-      onHeightChange(clamp(resizeState.startHeight + delta, 160, 560));
+      onHeightChange(clampTerminalHeight(resizeState.startHeight + delta));
     };
     const handlePointerUp = () => {
       if (!resizeStateRef.current) { return; }
@@ -369,6 +377,14 @@ export function BottomTerminalPanel({
     document.body.style.userSelect = 'none';
   };
 
+  const handleResizeKeyDown = (event) => {
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') { return; }
+    event.preventDefault();
+    const direction = event.key === 'ArrowUp' ? 1 : -1;
+    const step = event.shiftKey ? TERMINAL_HEIGHT.keyboardLargeStep : TERMINAL_HEIGHT.keyboardStep;
+    onHeightChange(clampTerminalHeight(height + direction * step));
+  };
+
   const tabs = [
     { id: 'terminal', icon: 'terminal', label: promptForDirectory(workingDirectory), meta: isStreaming ? 'run' : '' },
     { id: 'problems', icon: 'warn', label: '问题', meta: problems.length ? String(problems.length) : '' },
@@ -382,7 +398,18 @@ export function BottomTerminalPanel({
   return (
     <section style={{ ...styles.panel, height }} aria-label="Bottom terminal panel">
       {/* resize 拖拽条 */}
-      <div style={styles.resizeHandle} onPointerDown={handleResizeStart} />
+      <div
+        style={styles.resizeHandle}
+        role="separator"
+        aria-label="调整终端高度"
+        aria-orientation="horizontal"
+        aria-valuemin={TERMINAL_HEIGHT.min}
+        aria-valuemax={TERMINAL_HEIGHT.max}
+        aria-valuenow={height}
+        tabIndex={0}
+        onKeyDown={handleResizeKeyDown}
+        onPointerDown={handleResizeStart}
+      />
 
       {/* 头部 */}
       <div style={styles.header}>
@@ -394,6 +421,7 @@ export function BottomTerminalPanel({
                 type="button"
                 role="tab"
                 aria-selected={activeTab === tab.id}
+                aria-controls={`terminal-panel-${tab.id}`}
                 style={{
                   ...styles.tab,
                   ...(activeTab === tab.id ? styles.tabActive : {})
@@ -411,17 +439,27 @@ export function BottomTerminalPanel({
         </div>
 
         <div style={styles.headerRight}>
-          <button type="button" style={styles.headerBtn} title="Clear" onClick={handleClear}>
+          <span style={styles.connectionStatus} data-connected={ipc.isConnected}>
+            <span style={{
+              ...styles.connectionDot,
+              backgroundColor: ipc.isConnected ? 'var(--ds-status-success)' : 'var(--ds-status-warning)',
+              boxShadow: ipc.isConnected
+                ? '0 0 0 2px var(--success-faint)'
+                : '0 0 0 2px var(--warning-faint)',
+            }} />
+            {ipc.isConnected && capabilityAvailable ? '可用' : '受限'}
+          </span>
+          <button type="button" style={styles.headerBtn} title="清空终端" aria-label="清空终端" onClick={handleClear}>
             <TermIcon name="trash" size={12} />
           </button>
-          <button type="button" style={styles.headerBtn} title="Maximize" onClick={() => onHeightChange(560)}>
+          <button type="button" style={styles.headerBtn} title="最大化终端" aria-label="最大化终端" onClick={() => onHeightChange(TERMINAL_HEIGHT.max)}>
             <TermIcon name="maxH" size={12} />
           </button>
-          <button type="button" style={styles.headerBtn} title="Minimize" onClick={() => onOpenChange(false)}>
+          <button type="button" style={styles.headerBtn} title="最小化终端" aria-label="最小化终端" onClick={() => onOpenChange(false)}>
             <TermIcon name="minimize" size={12} />
           </button>
           <div style={styles.headerSep} />
-          <button type="button" style={styles.headerBtnClose} title="Close" onClick={onClose}>
+          <button type="button" style={styles.headerBtnClose} title="关闭终端" aria-label="关闭终端" onClick={onClose}>
             <TermIcon name="close" size={12} />
           </button>
         </div>
@@ -429,7 +467,7 @@ export function BottomTerminalPanel({
 
       {/* Terminal 标签页 */}
       {activeTab === 'terminal' && (
-        <div style={styles.terminalSurface} onClick={() => inputRef.current?.focus()}>
+        <div id="terminal-panel-terminal" role="tabpanel" style={styles.terminalSurface} onClick={() => inputRef.current?.focus()}>
           <div ref={terminalBodyRef} style={styles.terminalBody}>
             {lines.map((line, index) => (
               <TerminalLine key={`${index}-${line.type}`} line={line} />
@@ -453,14 +491,14 @@ export function BottomTerminalPanel({
             <input
               ref={inputRef}
               value={input}
-              disabled={isStreaming}
+              disabled={isStreaming || !ipc.isConnected || !capabilityAvailable}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleKeyDown}
               style={styles.terminalInput}
               aria-label="Terminal command"
               autoComplete="off"
               spellCheck={false}
-              placeholder=""
+              placeholder={!capabilityAvailable ? '策略或能力状态禁止终端执行' : ipc.isConnected ? '' : '终端连接不可用'}
             />
             {completionOptions.length > 0 && (
               <div style={styles.completionPopup}>
@@ -481,11 +519,11 @@ export function BottomTerminalPanel({
 
       {/* Problems 标签页 */}
       {activeTab === 'problems' && (
-        <div style={styles.listSurface}>
+        <div id="terminal-panel-problems" role="tabpanel" style={styles.listSurface}>
           {problems.length === 0 ? (
             <div style={styles.emptyList}>
               <TermIcon name="info" size={16} />
-              <span>No problems detected.</span>
+              <span>未检测到问题</span>
             </div>
           ) : (
             problems.map(problem => (
@@ -508,20 +546,13 @@ export function BottomTerminalPanel({
 
       {/* Output 标签页 */}
       {activeTab === 'output' && (
-        <div style={styles.outputSurface}>
+        <div id="terminal-panel-output" role="tabpanel" style={styles.outputSurface}>
           {outputLines.map((line, index) => (
             <div key={`${line}-${index}`} style={styles.outputLine}>{line}</div>
           ))}
         </div>
       )}
 
-      {/* 动画 keyframes */}
-      <style>{`
-        @keyframes termBlink {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0; }
-        }
-      `}</style>
     </section>
   );
 }
@@ -632,6 +663,25 @@ const styles = {
     flexShrink: 0,
   },
 
+  connectionStatus: {
+    minWidth: '54px',
+    height: '20px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '5px',
+    marginRight: '4px',
+    color: 'var(--ds-text-tertiary)',
+    fontSize: '10px',
+    whiteSpace: 'nowrap',
+  },
+
+  connectionDot: {
+    width: '6px',
+    height: '6px',
+    borderRadius: '50%',
+  },
+
   headerBtn: {
     width: '24px',
     height: '24px',
@@ -697,7 +747,7 @@ const styles = {
   },
 
   lineRowCommand: {
-    backgroundColor: 'rgba(47, 143, 128, 0.04)',
+    backgroundColor: 'var(--primary-faint)',
   },
 
   lineEmpty: {

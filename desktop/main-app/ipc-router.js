@@ -113,9 +113,16 @@ export function registerCustomHandlers(ctx) {
         senderWindowDestroyed: senderWindow?.isDestroyed?.() || false
       },
       ipc: handlerStats,
+      runtime: ctx.desktopCore?.getRuntimeHealth?.() || null,
+      capabilities: ctx.capabilityRegistry?.list?.() || [],
       workingDirectory: ctx.config.workingDirectory
     };
   });
+
+  ipc.registerHandler('capabilities:list', async () => ({
+    schemaVersion: 1,
+    capabilities: ctx.capabilityRegistry?.list?.() || [],
+  }));
 
   ipc.registerHandler('window:minimize', async () => {
     if (ctx.mainWindow) {ctx.mainWindow.minimize();}

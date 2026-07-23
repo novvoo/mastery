@@ -53,7 +53,10 @@ function toUrl(src, workingDirectory, fileServerUrl) {
 
 function preprocessTextForLinks(text) {
   if (!text || typeof text !== 'string') {return text;}
-  return text.replace(AUTO_LINK_RE, (match) => `[${match}](${match})`);
+  return transformOutsideFencedBlocks(
+    text,
+    (part) => part.replace(AUTO_LINK_RE, (match) => `[${match}](${match})`),
+  );
 }
 
 function escapeMarkupToken(token) {
@@ -79,31 +82,40 @@ function escapeXmlLikeMarkup(text) {
     .join('');
 }
 
+function transformOutsideFencedBlocks(text, transform) {
+  return text
+    .split(FENCED_BLOCK_RE)
+    .map((part) => (/^(```|~~~)/.test(part) ? part : transform(part)))
+    .join('');
+}
+
 function preprocessImagePaths(text, workingDirectory, fileServerUrl) {
   if (!text || typeof text !== 'string') {return text;}
-  let next = text;
-  next = next.replace(
-    /(!\[[^\]]*\]\()(\s*)([^)\s]+)(\s*([^)]*)\))/g,
-    (match, prefix, sp1, src, sp2, rest) => {
-      const resolved = toUrl(src, workingDirectory, fileServerUrl);
-      return `${prefix}${sp1}${resolved}${sp2}${rest}`;
-    }
+  return transformOutsideFencedBlocks(
+    text,
+    (part) => part
+      .replace(
+        /(!\[[^\]]*\]\()(\s*)([^)\s]+)(\s*([^)]*)\))/g,
+        (match, prefix, sp1, src, sp2, rest) => {
+          const resolved = toUrl(src, workingDirectory, fileServerUrl);
+          return `${prefix}${sp1}${resolved}${sp2}${rest}`;
+        },
+      )
+      .replace(
+        /(<img\b[^>]*\bsrc=")([^"]+)("[^>]*>)/gi,
+        (match, prefix, src, suffix) => {
+          const resolved = toUrl(src, workingDirectory, fileServerUrl);
+          return `${prefix}${resolved}${suffix}`;
+        },
+      )
+      .replace(
+        /(<img\b[^>]*\bsrc=')([^']+)('[^>]*>)/gi,
+        (match, prefix, src, suffix) => {
+          const resolved = toUrl(src, workingDirectory, fileServerUrl);
+          return `${prefix}${resolved}${suffix}`;
+        },
+      ),
   );
-  next = next.replace(
-    /(<img\b[^>]*\bsrc=")([^"]+)("[^>]*>)/gi,
-    (match, prefix, src, suffix) => {
-      const resolved = toUrl(src, workingDirectory, fileServerUrl);
-      return `${prefix}${resolved}${suffix}`;
-    }
-  );
-  next = next.replace(
-    /(<img\b[^>]*\bsrc=')([^']+)('[^>]*>)/gi,
-    (match, prefix, src, suffix) => {
-      const resolved = toUrl(src, workingDirectory, fileServerUrl);
-      return `${prefix}${resolved}${suffix}`;
-    }
-  );
-  return next;
 }
 
 function stabilizeStreamingMarkdown(text) {
@@ -130,6 +142,17 @@ function guessMarkupLanguage(text) {
     : 'xml';
 }
 
+export function prepareMarkdownDisplay(
+  text,
+  { isStreaming = false, workingDirectory = '', fileServerUrl = '' } = {},
+) {
+  const source = typeof text === 'string' ? text : String(text ?? '');
+  const stableText = isStreaming ? stabilizeStreamingMarkdown(source) : source;
+  const visibleMarkupText = escapeXmlLikeMarkup(stableText);
+  const linkedText = preprocessTextForLinks(visibleMarkupText);
+  return preprocessImagePaths(linkedText, workingDirectory, fileServerUrl);
+}
+
 export const MarkdownMessageContent = React.memo(function MarkdownMessageContent({
   text,
   isCollapsed,
@@ -152,10 +175,11 @@ export const MarkdownMessageContent = React.memo(function MarkdownMessageContent
   }, [textStr, isCollapsed]);
 
   const markdownText = useMemo(() => {
-    const stableText = isStreaming ? stabilizeStreamingMarkdown(textStr || '') : (textStr || '');
-    const visibleMarkupText = escapeXmlLikeMarkup(stableText);
-    const linked = preprocessTextForLinks(visibleMarkupText);
-    return preprocessImagePaths(linked, workingDirectory, fileServerUrl);
+    return prepareMarkdownDisplay(textStr, {
+      isStreaming,
+      workingDirectory,
+      fileServerUrl,
+    });
   }, [textStr, isStreaming, workingDirectory, fileServerUrl]);
 
   if (!textStr) {

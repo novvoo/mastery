@@ -115,12 +115,14 @@ const styles = {
   },
   projectExplorer: {
     marginTop: '10px',
-    borderRadius: 'var(--radius-md)',
-    border: '1px solid var(--border-subtle)',
-    backgroundColor: 'var(--surface-hover)',
+    borderRadius: 'var(--radius-lg)',
+    border: '1px solid var(--ds-border-l1)',
+    backgroundColor: 'var(--ds-bg-raised)',
     overflow: 'hidden',
     flex: 1,
     minHeight: 0,
+    display: 'flex',
+    flexDirection: 'column',
   },
 
   inputContainer: {
@@ -376,6 +378,7 @@ function AgentControl({
   workingDirectorySyncMessage,
   projectTree,
   onOpenFile,
+  onCloseFile,
   activeOpenFile,
 }) {
   const getStatusStyle = () => {
@@ -461,6 +464,7 @@ function AgentControl({
             projectTree={projectTree}
             workingDirectory={workingDirectory}
             onOpenFile={onOpenFile}
+            onCloseFile={onCloseFile}
             activeOpenFile={activeOpenFile}
           />
         </div>

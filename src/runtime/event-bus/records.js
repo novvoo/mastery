@@ -5,7 +5,15 @@
 export function createEventRecord(
   event,
   data = {},
-  { source = 'unknown', async = false, idFactory },
+  {
+    source = 'unknown',
+    async = false,
+    idFactory,
+    schemaVersion = 1,
+    sequence,
+    correlationId = null,
+    causationId = null,
+  },
 ) {
   // 排除 data 中可能覆盖顶层字段的属性
   // (特别是 OMP 消息自带的 type, timestamp, source, id)
@@ -15,6 +23,10 @@ export function createEventRecord(
     timestamp: Date.now(),
     source,
     id: idFactory(),
+    schemaVersion,
+    ...(Number.isSafeInteger(sequence) ? { sequence } : {}),
+    ...(correlationId ? { correlationId } : {}),
+    ...(causationId ? { causationId } : {}),
     ...(async ? { async: true } : {}),
     ...cleanData,
   };
@@ -28,6 +40,10 @@ export function toHistoryRecord(eventData, historyConfig) {
         timestamp: eventData.timestamp,
         source: eventData.source,
         id: eventData.id,
+        schemaVersion: eventData.schemaVersion,
+        sequence: eventData.sequence,
+        correlationId: eventData.correlationId,
+        causationId: eventData.causationId,
       };
 }
 

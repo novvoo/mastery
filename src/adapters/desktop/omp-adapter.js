@@ -72,6 +72,7 @@ export class OmpAdapter {
   #lastAssistantText;
   #pendingInteractions;
   #availableCommands;
+  #supervisorHooks;
 
   constructor(config = {}) {
     this.#config = {
@@ -92,6 +93,7 @@ export class OmpAdapter {
     this.#lastAssistantText = '';
     this.#pendingInteractions = new Map();
     this.#availableCommands = [];
+    this.#supervisorHooks = null;
   }
 
   async initialize() {
@@ -208,6 +210,16 @@ export class OmpAdapter {
     }
     this.#pendingRequests.clear();
     this.#pendingInteractions.clear();
+    if (!this.#disposed && typeof this.#supervisorHooks?.onUnexpectedExit === 'function') {
+      Promise.resolve().then(() => this.#supervisorHooks.onUnexpectedExit({
+        code,
+        runtime: this,
+      }));
+    }
+  }
+
+  setSupervisorHooks(hooks) {
+    this.#supervisorHooks = hooks || null;
   }
 
   #onError(err) {

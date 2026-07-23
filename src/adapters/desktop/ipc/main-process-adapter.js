@@ -12,6 +12,19 @@ import {
 } from './main-process/agent-command-handlers.js';
 import { DIRECT_INVOKE_CHANNELS } from './main-process/channels.js';
 import {
+  CommandContractError,
+  ensureCommandContract,
+  ensureCommandContractCoverage,
+  getCommandContract,
+  listCommandContracts,
+  validateCommand,
+  validateCommandResult,
+} from '../protocol/command-contracts.js';
+import {
+  PolicyDeniedError,
+  createDesktopPolicyEngine,
+} from '../policy-engine.js';
+import {
   handleCreateWorkspaceDirectory,
   handleCreateWorkspaceFile,
   handleDeleteWorkspaceItem,
@@ -40,6 +53,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
   #windowSenders;
   #handlers;
   #handlersSetup;
+  #policyEngine;
 
   constructor(ipcMain, eventBus, config = {}) {
     super(config);
@@ -49,6 +63,10 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     this.#windowSenders = new Map();
     this.#handlers = new Map();
     this.#handlersSetup = false;
+    ensureCommandContractCoverage(DIRECT_INVOKE_CHANNELS);
+    this.#policyEngine = config.policyEngine || createDesktopPolicyEngine({
+      profile: config.securityPolicy || 'local-full',
+    });
   }
 
   /**
@@ -182,8 +200,20 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
     }
 
     try {
+      message.payload = validateCommand(channel, message.payload);
+      const contract = getCommandContract(channel);
+      this.#policyEngine.authorize({
+        channel,
+        risk: contract?.risk,
+        capability: channel?.split(':')[0] || null,
+        context: { actor: 'renderer', senderId: sender?.id },
+      });
+
       // 内置处理器
       switch (channel) {
+        case 'contracts:list':
+          return this.createResponse(message, listCommandContracts());
+
         case 'agent:processInput':
           if (!this.#engine) {
             return this.createResponse(message, { success: false, error: '引擎未初始化' });
@@ -356,14 +386,28 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
           });
       }
     } catch (error) {
-      console.error(`[MainProcessIPC] 处理请求时出错 (${channel}):`, error);
-      // 返回错误响应而不是抛出异常
+      if (!(error instanceof CommandContractError || error instanceof PolicyDeniedError)) {
+        console.error(`[MainProcessIPC] 处理请求时出错 (${channel}):`, error);
+      }
       return this.createResponse(message, {
         success: false,
         error: error.message,
+        code: error.code || 'HANDLER_ERROR',
+        ...(error instanceof CommandContractError || error instanceof PolicyDeniedError
+          ? { details: error.details }
+          : {}),
         channel,
       });
     }
+  }
+
+  createResponse(requestMessage, payload, status) {
+    const channel = requestMessage?.metadata?.channel;
+    return super.createResponse(
+      requestMessage,
+      validateCommandResult(channel, payload),
+      status,
+    );
   }
 
   #createHandlerContext() {
@@ -406,6 +450,7 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
    * 确保渲染进程可用 ipcRenderer.invoke(channel, ...args) 直接调用。
    */
   registerHandler(channel, handler) {
+    ensureCommandContract(channel);
     this.#handlers.set(channel, handler);
 
     if (this.#ipcMain && typeof this.#ipcMain.handle === 'function') {
@@ -419,12 +464,31 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
       try {
         this.#ipcMain.handle(channel, async (event, ...args) => {
           try {
-            const payload = args.length <= 1 ? (args[0] ?? {}) : args;
+            const rawPayload = args.length <= 1 ? (args[0] ?? {}) : args;
+            const payload = validateCommand(channel, rawPayload);
+            const contract = getCommandContract(channel);
+            this.#policyEngine.authorize({
+              channel,
+              risk: contract?.risk,
+              capability: channel.split(':')[0],
+              context: { actor: 'renderer', senderId: event.sender?.id },
+            });
             const result = await handler(payload, event.sender);
-            return result !== undefined ? result : { success: true };
+            return validateCommandResult(
+              channel,
+              result !== undefined ? result : { success: true },
+            );
           } catch (error) {
             console.error(`[MainProcessIPC] invoke ${channel} 失败:`, error);
-            throw error;
+            return {
+              success: false,
+              error: error.message,
+              code: error.code || 'HANDLER_ERROR',
+              ...(error instanceof CommandContractError || error instanceof PolicyDeniedError
+                ? { details: error.details }
+                : {}),
+              channel,
+            };
           }
         });
       } catch (registerError) {
@@ -468,6 +532,18 @@ export class MainProcessIPCAdapter extends IPCAdapterBase {
   attachDesktopCore(core) {
     this.attachEngine(core?.getEngine?.() || core?.engine || core);
     return this;
+  }
+
+  getPolicySnapshot() {
+    return this.#policyEngine.getSnapshot();
+  }
+
+  getStats() {
+    return {
+      ...super.getStats(),
+      commandContracts: listCommandContracts().length,
+      policy: this.#policyEngine.getSnapshot(),
+    };
   }
 
   /**

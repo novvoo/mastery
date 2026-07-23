@@ -28,7 +28,25 @@ describe('Records — createEventRecord', () => {
     expect(record.foo).toBe('bar');
     expect(record.source).toBe('test-src');
     expect(record.id).toBe('id-1');
+    expect(record.schemaVersion).toBe(1);
     expect(typeof record.timestamp).toBe('number');
+  });
+
+  test('adds ordering and distributed-causality metadata without polluting payload', () => {
+    const record = createEventRecord('test:event', { text: 'hello' }, {
+      source: 'runtime',
+      idFactory: () => 'event-2',
+      sequence: 42,
+      correlationId: 'run-7',
+      causationId: 'command-4',
+    });
+    expect(record).toMatchObject({
+      schemaVersion: 1,
+      sequence: 42,
+      correlationId: 'run-7',
+      causationId: 'command-4',
+      text: 'hello',
+    });
   });
 
   test('adds async flag when async=true', () => {

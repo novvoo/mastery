@@ -63,6 +63,19 @@ export async function initializeDesktopCore(ctx) {
     hookTimeout: ctx.config.runtime.hookTimeout,
     ipc: ctx.config.ipc,
     writeFileApproval,
+    onRuntimeHealthChange: (health) => {
+      if (!ctx.capabilityRegistry?.get?.('agent.runtime')) return;
+      const status = health?.state === 'healthy'
+        ? 'available'
+        : health?.state === 'failed'
+          ? 'unavailable'
+          : 'degraded';
+      ctx.capabilityRegistry.setStatus(
+        'agent.runtime',
+        status,
+        health?.lastError || null,
+      );
+    },
     useOmp: process.env.MASTERY_USE_OMP === '1' || process.env.MASTERY_USE_OMP === 'true',
   });
 

@@ -181,6 +181,7 @@ const TRANSLATIONS = {
     'inspector.open_external': 'Click to open in external browser',
     'inspector.expand': 'Enlarge Preview Area',
     'inspector.restore': 'Restore Preview Area',
+    'inspector.close_panel': 'Close Panel',
     'inspector.preview_url_placeholder': '127.0.0.1:41730',
     'inspector.panel': 'Inspector Panel',
     'inspector.drag_resize': 'Drag to resize Inspector',
@@ -504,6 +505,7 @@ const TRANSLATIONS = {
     'inspector.open_external': '点击在外部浏览器中打开',
     'inspector.expand': '放大预览区域',
     'inspector.restore': '还原预览区域',
+    'inspector.close_panel': '关闭面板',
     'inspector.preview_url_placeholder': '127.0.0.1:41730',
     'inspector.panel': 'Inspector 面板',
     'inspector.drag_resize': '拖拽调整 Inspector 宽度',
@@ -806,6 +808,7 @@ const TRANSLATIONS = {
     // ===== Inspector / 面板 =====
     'inspector.open_external': '點擊在外部瀏覽器中開啟',
     'inspector.expand': '放大預覽區域',
+    'inspector.close_panel': '關閉面板',
     'inspector.restore': '還原預覽區域',
     'inspector.preview_url_placeholder': '127.0.0.1:41730',
     'inspector.panel': 'Inspector 面板',

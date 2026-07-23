@@ -192,6 +192,13 @@ const icons = {
     </svg>
   ),
 
+  close: (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+      <line x1="4" y1="4" x2="12" y2="12" />
+      <line x1="12" y1="4" x2="4" y2="12" />
+    </svg>
+  ),
+
   loadingDir: (
     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.15" />
@@ -230,7 +237,7 @@ const FILE_ICON_MAP = {
 
 /* ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── */
 
-const INDENT_SIZE = 20;
+const INDENT_SIZE = 16;
 
 /* ── TreeNode sub-component ──────────────────────────────── */
 
@@ -271,27 +278,28 @@ function TreeNode({
   return (
     <div
       role="treeitem"
+      tabIndex={0}
       aria-expanded={isDirectory ? isExpanded : undefined}
       aria-selected={isActiveFile}
       style={{
         position: 'relative',
         display: 'flex',
         alignItems: 'center',
-        gap: 'var(--spacing-xs, 4px)',
-        height: '28px',
+        gap: '4px',
+        height: '26px',
         paddingLeft: depth > 0 ? `${8 + depth * INDENT_SIZE}px` : '8px',
         paddingRight: '8px',
-        borderRadius: 'var(--radius-sm, 4px)',
+        borderRadius: 'var(--radius-sm)',
         cursor: 'pointer',
-        fontSize: 'var(--font-size-sm, 12px)',
+        fontSize: '12px',
         color: isActiveFile
-          ? 'var(--primary-color)'
-          : 'var(--text-color)',
+          ? 'var(--ds-brand)'
+          : 'var(--ds-text-primary)',
         transition: 'background-color 0.12s ease, color 0.12s ease',
         backgroundColor: isActiveFile
-          ? 'var(--primary-faint)'
+          ? 'var(--ds-brand-soft)'
           : isHovered
-          ? 'var(--surface-hover)'
+          ? 'var(--ds-bg-overlay-l1)'
           : 'transparent',
         userSelect: 'none',
         ...(isLoading ? { opacity: 0.55 } : {}),
@@ -312,7 +320,7 @@ function TreeNode({
             bottom: '4px',
             width: '2px',
             borderRadius: '1px',
-            backgroundColor: 'var(--primary-color)',
+            backgroundColor: 'var(--ds-brand)',
           }}
         />
       )}
@@ -328,8 +336,8 @@ function TreeNode({
           justifyContent: 'center',
           color: isDirectory
             ? isExpanded
-              ? 'var(--text-color)'
-              : 'var(--text-muted)'
+              ? 'var(--ds-text-primary)'
+              : 'var(--ds-text-tertiary)'
             : 'transparent',
           transition: 'color 0.12s ease',
         }}
@@ -349,12 +357,12 @@ function TreeNode({
           alignItems: 'center',
           justifyContent: 'center',
           color: isActiveFile
-            ? 'var(--primary-color)'
+            ? 'var(--ds-brand)'
             : isDirectory
             ? isExpanded
-              ? 'var(--text-color)'
-              : 'var(--text-muted)'
-            : 'var(--text-muted)',
+              ? 'var(--ds-text-primary)'
+              : 'var(--ds-text-tertiary)'
+            : 'var(--ds-text-tertiary)',
         }}
       >
         {fileIcon}
@@ -387,9 +395,9 @@ function TreeNode({
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            borderRadius: 'var(--radius-full, 999px)',
-            backgroundColor: 'var(--primary-soft)',
-            color: 'var(--primary-color)',
+            borderRadius: 'var(--radius-full)',
+            backgroundColor: 'var(--ds-brand-soft)',
+            color: 'var(--ds-brand)',
             fontSize: '10px',
             fontWeight: 600,
             lineHeight: 1,
@@ -411,7 +419,7 @@ function TreeNode({
 
 /* ── Main ProjectTree component ───────────────────────────── */
 
-export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeOpenFile }) {
+export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeOpenFile, onCloseFile }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
 
@@ -625,10 +633,10 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 'var(--spacing-xs, 4px)',
-                height: '28px',
-                color: 'var(--text-muted)',
-                fontSize: 'var(--font-size-sm, 12px)',
+                gap: '4px',
+                height: '26px',
+                color: 'var(--ds-text-tertiary)',
+                fontSize: '12px',
                 opacity: 0.55,
               }}
             >
@@ -725,28 +733,61 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 'var(--spacing-sm, 8px)',
-          padding: '6px 10px',
-          borderBottom: '1px solid var(--border-subtle)',
+          gap: '8px',
+          padding: '4px 8px',
+          borderBottom: '1px solid var(--ds-border-l1)',
           flexShrink: 0,
         }}
       >
-        <span
-          style={{
-            minWidth: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            fontSize: 'var(--font-size-xs, 11px)',
-            fontWeight: 600,
-            color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
-          }}
-          title={workingDirectory || ''}
-        >
-          {rootName}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0, flex: 1 }}>
+          <span
+            style={{
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              fontSize: '11px',
+              fontWeight: 600,
+              color: 'var(--ds-text-tertiary)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+            title={workingDirectory || ''}
+          >
+            {rootName}
+          </span>
+          {activeOpenFile && onCloseFile && (
+            <button
+              type="button"
+              onClick={onCloseFile}
+              title="关闭文件"
+              style={{
+                width: '18px',
+                height: '18px',
+                borderRadius: 'var(--radius-sm)',
+                border: 'none',
+                backgroundColor: 'transparent',
+                color: 'var(--ds-text-tertiary)',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                transition: 'background-color 0.12s ease, color 0.12s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--ds-bg-overlay-l1)';
+                e.currentTarget.style.color = 'var(--ds-text-primary)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.color = 'var(--ds-text-tertiary)';
+              }}
+            >
+              {icons.close}
+            </button>
+          )}
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
           <button
             type="button"
@@ -756,24 +797,24 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
             style={{
               width: '22px',
               height: '22px',
-              borderRadius: 'var(--radius-sm, 4px)',
+              borderRadius: 'var(--radius-sm)',
               border: 'none',
               backgroundColor: 'transparent',
-              color: 'var(--text-muted)',
+              color: 'var(--ds-text-tertiary)',
               cursor: 'pointer',
-              fontSize: 'var(--font-size-xs, 11px)',
+              fontSize: '11px',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
               transition: 'background-color 0.12s ease, color 0.12s ease',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'var(--surface-hover)';
-              e.currentTarget.style.color = 'var(--text-color)';
+              e.currentTarget.style.backgroundColor = 'var(--ds-bg-overlay-l1)';
+              e.currentTarget.style.color = 'var(--ds-text-primary)';
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.backgroundColor = 'transparent';
-              e.currentTarget.style.color = 'var(--text-muted)';
+              e.currentTarget.style.color = 'var(--ds-text-tertiary)';
             }}
           >
             {icons.refresh}
@@ -785,7 +826,7 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
       <div
         style={{
           padding: '5px 10px',
-          borderBottom: '1px solid var(--border-subtle)',
+          borderBottom: '1px solid var(--ds-border-l1)',
           flexShrink: 0,
         }}
       >
@@ -793,13 +834,13 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 'var(--spacing-xs, 4px)',
-            height: '26px',
+            gap: '4px',
+            height: '24px',
             padding: '0 8px',
-            borderRadius: 'var(--radius-sm, 4px)',
+            borderRadius: 'var(--radius-sm)',
             backgroundColor: 'var(--surface-input)',
             border: '1px solid',
-            borderColor: searchFocused ? 'var(--primary-color)' : 'transparent',
+            borderColor: searchFocused ? 'var(--ds-brand)' : 'transparent',
             transition: 'border-color 0.15s ease, background-color 0.15s ease',
           }}
         >
@@ -808,7 +849,7 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
               flexShrink: 0,
               display: 'inline-flex',
               alignItems: 'center',
-              color: 'var(--text-muted)',
+              color: 'var(--ds-text-tertiary)',
             }}
           >
             {icons.search}
@@ -825,8 +866,8 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
               background: 'transparent',
               border: 'none',
               outline: 'none',
-              color: 'var(--text-color)',
-              fontSize: 'var(--font-size-sm, 12px)',
+              color: 'var(--ds-text-primary)',
+              fontSize: '12px',
               lineHeight: '1.4',
               fontFamily: 'inherit',
             }}
@@ -855,11 +896,11 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
             style={{
               margin: '4px 4px',
               padding: '8px 10px',
-              borderRadius: 'var(--radius-sm, 4px)',
-              fontSize: 'var(--font-size-sm, 12px)',
-              color: 'var(--error-color)',
-              backgroundColor: 'var(--error-faint)',
-              border: '1px solid var(--error-soft)',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: '12px',
+              color: 'var(--ds-status-error)',
+              backgroundColor: 'var(--ds-status-error-s1)',
+              border: '1px solid var(--ds-status-error-s2)',
             }}
           >
             {error}
@@ -872,10 +913,10 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 'var(--spacing-sm, 8px)',
+              gap: '8px',
               padding: '24px 16px',
-              color: 'var(--text-muted)',
-              fontSize: 'var(--font-size-sm, 12px)',
+              color: 'var(--ds-text-tertiary)',
+              fontSize: '12px',
             }}
           >
             <span style={{ opacity: 0.4 }}>{icons.loadingDir}</span>
@@ -889,10 +930,10 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 'var(--spacing-sm, 8px)',
+              gap: '8px',
               padding: '24px 16px',
-              color: 'var(--text-muted)',
-              fontSize: 'var(--font-size-sm, 12px)',
+              color: 'var(--ds-text-tertiary)',
+              fontSize: '12px',
             }}
           >
             <span style={{ opacity: 0.3 }}>{icons.folderEmpty}</span>
@@ -906,10 +947,10 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 'var(--spacing-sm, 8px)',
+              gap: '8px',
               padding: '24px 16px',
-              color: 'var(--text-muted)',
-              fontSize: 'var(--font-size-sm, 12px)',
+              color: 'var(--ds-text-tertiary)',
+              fontSize: '12px',
             }}
           >
             <span style={{ opacity: 0.3 }}>{icons.fileSearch}</span>

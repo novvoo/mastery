@@ -1,7 +1,8 @@
 node_modules/
 dist/
 release/
-docs/
+docs/*
+!docs/architecture.md
 .env
 logs/
 *.gguf

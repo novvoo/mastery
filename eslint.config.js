@@ -112,4 +112,13 @@ export default [
       },
     },
   },
+  {
+    files: ["examples/**/*.{js,mjs}"],
+    languageOptions: {
+      globals: {
+        performance: "readonly",
+        window: "readonly",
+      },
+    },
+  },
 ];

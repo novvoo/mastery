@@ -1,3 +1,5 @@
+import { stripToolProtocolText } from '../../../app/content/content-pipeline.js';
+
 export function getStableMessageId(msg = {}, index, scope = 'list') {
   if (msg.id) {return String(msg.id);}
   const timestamp = msg.timestamp || msg.createdAt || '';
@@ -30,23 +32,6 @@ export function safeStringify(value, fallback = '') {
   }
 }
 
-function stripVisibleToolProtocol(text) {
-  if (typeof text !== 'string') {
-    return text;
-  }
-
-  return text
-    .replace(/<action>[\s\S]*?<\/action>/gi, '')
-    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
-    .replace(/<function_call>[\s\S]*?<\/function_call>/gi, '')
-    .replace(/<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi, '')
-    .replace(/```(?:json|tool)?\s*\{[\s\S]*?\}\s*```/gi, '')
-    .split('\n')
-    .filter((line) => !/^\s*CALL\s+[A-Za-z_][\w.-]*\s*\(/.test(line))
-    .join('\n')
-    .trim();
-}
-
 export function getMessageDisplayText(msg = {}) {
   const candidates = [
     msg.content,
@@ -76,12 +61,21 @@ export function getMessageDisplayText(msg = {}) {
 
   for (const value of candidates) {
     if (typeof value === 'string' && value.trim()) {
-      return stripVisibleToolProtocol(value);
+      const visibleText = stripToolProtocolText(value).trim();
+      if (visibleText) {
+        return visibleText;
+      }
     }
   }
 
+
   if (msg.event === 'agent:complete' || msg.streamComplete) {
     return '任务执行完成';
+  }
+
+  // Event 消息: 显示事件名称
+  if (msg.event && typeof msg.event === 'string') {
+    return msg.event;
   }
 
   if (msg.isStreaming || msg.type === 'assistant_stream') {

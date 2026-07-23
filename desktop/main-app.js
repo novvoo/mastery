@@ -26,6 +26,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { getUserEnvPath, loadRuntimeEnv } from '../src/core/runtime/runtime-config.js';
+import { createDesktopCapabilityRegistry } from '../src/adapters/desktop/capability-registry.js';
 
 import {
   setupAppProperties,
@@ -79,6 +80,58 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function createMainAppConfig(config = {}, options = {}) {
+  const inputWindow = config.window || {};
+  const inputRuntime = config.runtime || {};
+  const inputIpc = config.ipc || {};
+  const preloadPath = options.preloadPath || path.join(__dirname, 'preload.cjs');
+  const {
+    window: _window,
+    runtime: _runtime,
+    ipc: _ipc,
+    ...rootConfig
+  } = config;
+
+  return {
+    ...rootConfig,
+    workingDirectory: config.workingDirectory || options.defaultWorkingDirectory,
+    debug:
+      config.debug ??
+      (process.env.NODE_ENV === 'development' || process.argv.includes('--dev')),
+    window: {
+      ...inputWindow,
+      width: inputWindow.width ?? config.windowWidth ?? 1400,
+      height: inputWindow.height ?? config.windowHeight ?? 900,
+      minWidth: inputWindow.minWidth ?? config.minWindowWidth ?? 800,
+      minHeight: inputWindow.minHeight ?? config.minWindowHeight ?? 600,
+      webPreferences: {
+        ...(inputWindow.webPreferences || {}),
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: preloadPath,
+        sandbox: true,
+        webSecurity: true,
+      },
+    },
+    runtime: {
+      maxIterations: inputRuntime.maxIterations ?? config.maxIterations ?? 60,
+      autoDownloadModels:
+        inputRuntime.autoDownloadModels ?? config.autoDownloadModels ?? true,
+      hookTimeout: inputRuntime.hookTimeout ?? config.hookTimeout ?? 5000,
+    },
+    ipc: {
+      enabled: true,
+      requestTimeout: 30000,
+      heartbeatInterval: 30000,
+      validateMessages: true,
+      ...inputIpc,
+    },
+    tray: config.tray ?? true,
+    notifications: config.notifications ?? true,
+    autoStart: config.autoStart ?? false,
+  };
+}
+
 class ElectronMainApp {
   #desktopCore = null;
   #ipcAdapter = null;
@@ -90,63 +143,15 @@ class ElectronMainApp {
   #workspaceWatcher = null;
   #fileServer = null;
   #fileServerUrl = null;
+  #capabilityRegistry = null;
 
   constructor(config = {}) {
     this.#userEnvPath = config.userEnvPath || getUserEnvPath();
-
-    // 解析传入 window 配置（来自 savedConfig 等）——深层合并以避免覆盖安全设置
-    const inputWindow = config.window || {};
-    const inputWebPrefs = inputWindow.webPreferences || {};
-
-    this.#config = {
-      workingDirectory: config.workingDirectory || this.#getDefaultWorkingDirectory(),
-      debug: config.debug || process.env.NODE_ENV === 'development' || process.argv.includes('--dev'),
-
-      window: {
-        width: inputWindow.width || config.windowWidth || 1400,
-        height: inputWindow.height || config.windowHeight || 900,
-        minWidth: inputWindow.minWidth || config.minWindowWidth || 800,
-        minHeight: inputWindow.minHeight || config.minWindowHeight || 600,
-        webPreferences: {
-          // 允许外部传入覆盖额外字段，但安全项会在下面强制固定。
-          ...inputWebPrefs,
-          nodeIntegration: false,
-          contextIsolation: true,
-          preload: path.join(__dirname, 'preload.cjs'),
-          sandbox: true,
-          webSecurity: true,
-        }
-      },
-
-      runtime: {
-        maxIterations: config.maxIterations || 60,
-        autoDownloadModels: config.autoDownloadModels !== false,
-        hookTimeout: config.hookTimeout || 5000
-      },
-
-      ipc: {
-        enabled: true,
-        requestTimeout: 30000,
-        heartbeatInterval: 30000,
-        validateMessages: true
-      },
-
-      tray: config.tray !== false,
-      notifications: config.notifications !== false,
-      autoStart: config.autoStart || false,
-
-      ...config
-    };
-
-    // 再次确保 window.webPreferences 的安全设置不被 ...config 覆盖
-    this.#config.window.webPreferences = {
-      ...(this.#config.window.webPreferences || {}),
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload.cjs'),
-      sandbox: true,
-      webSecurity: true
-    };
+    this.#config = createMainAppConfig(config, {
+      defaultWorkingDirectory: this.#getDefaultWorkingDirectory(),
+      preloadPath: path.join(__dirname, 'preload.cjs'),
+    });
+    this.#capabilityRegistry = createDesktopCapabilityRegistry();
   }
 
   #getDefaultWorkingDirectory() {
@@ -171,6 +176,7 @@ class ElectronMainApp {
       workspaceWatcher: this.#workspaceWatcher,
       fileServer: this.#fileServer,
       fileServerUrl: this.#fileServerUrl,
+      capabilityRegistry: this.#capabilityRegistry,
     };
 
     // 将工具函数绑定到 ctx，供其他子模块（例如 IPC 处理器）调用
@@ -268,7 +274,9 @@ class ElectronMainApp {
       ipcStats: this.#ipcAdapter?.getStats?.() || null,
       windowVisible: this.#mainWindow?.isVisible?.() || false,
       windowCount: electron.BrowserWindow.getAllWindows().length,
-      workingDirectory: this.#config.workingDirectory
+      workingDirectory: this.#config.workingDirectory,
+      runtimeHealth: this.#desktopCore?.getRuntimeHealth?.() || null,
+      capabilities: this.#capabilityRegistry.list(),
     };
   }
 
@@ -337,5 +345,5 @@ async function main() {
   }
 }
 
-export { ElectronMainApp, main };
+export { ElectronMainApp, createMainAppConfig, main };
 export default ElectronMainApp;

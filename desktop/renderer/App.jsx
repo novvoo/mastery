@@ -14,6 +14,7 @@ import pkg from '../../package.json';
 import { ManagementPage } from './components/management/ManagementPage.jsx';
 import { ChromeCapsules } from './components/chrome/ChromeCapsules.jsx';
 import { IpcDiagnosticBanner } from './components/chrome/IpcDiagnosticBanner.jsx';
+import { CapabilityStatusBar } from './components/chrome/CapabilityStatusBar.jsx';
 import { ActivityRail } from './components/workbench/ActivityRail.jsx';
 import { BottomTerminalPanel } from './components/workbench/BottomTerminalPanel.jsx';
 import { FileWorkbench } from './components/workbench/FileWorkbench.jsx';
@@ -24,6 +25,7 @@ import { ConfirmDialog } from './components/ui/index.js';
 import { ContextMenu } from './components/ui/ContextMenu.jsx';
 import { useRuntime } from './hooks/useRuntime.js';
 import { useIPC } from './hooks/useIPC.js';
+import { useCapabilities } from './hooks/useCapabilities.js';
 import { useTheme } from './hooks/useTheme.js';
 import { useModelConfig } from './hooks/useModelConfig.js';
 import { useMcpServers } from './hooks/useMcpServers.js';
@@ -54,6 +56,7 @@ import { styles } from './app/styles.js';
 import { WorkbenchControls } from './components/workbench/controls/WorkbenchControls.jsx';
 import { LLMSetupModal } from './components/LLMSetupModal.jsx';
 import { useFileOperations } from './hooks/useFileOperations.js';
+import { downloadConversationMarkdown } from './app/export-conversation.js';
 import './index.css';
 
 function App() {
@@ -63,6 +66,7 @@ function App() {
   // ── Runtime / IPC ────────────────────────────────────────
   const runtime = useRuntime();
   const ipc = useIPC();
+  const capabilities = useCapabilities(ipc);
 
   // ── 布局状态 (sidebar / inspector / terminal) ───────────
   const {
@@ -75,6 +79,7 @@ function App() {
     inspectorPanelWidth,
     inspectorExpanded,
     handleInspectorResizeStart,
+    handleInspectorResizeKeyDown,
     handleInspectorExpandToggle,
     terminalClosed,
     terminalOpen,
@@ -237,14 +242,11 @@ function App() {
     writeWorkspaceFile: handleSaveWorkspaceFile,
     closeFile: handleCloseFileWorkbench,
     handleFileModeToggle,
-    setAfterSaveCallback,
     createFile,
     createDirectory,
     deleteItem,
     renameItem,
-  } = useFileOperations({ ipc });
-
-  setAfterSaveCallback(handleProjectTreeRefresh);
+  } = useFileOperations({ ipc, onAfterSave: handleProjectTreeRefresh });
 
   // ── IPC 初始化 ───────────────────────────────────────────
   useEffect(() => {
@@ -253,6 +255,7 @@ function App() {
     let unsubscribeProjectCreated = null;
     let unsubscribeProjectOpened = null;
     let unsubscribeMenuAction = null;
+    let unsubscribeCapabilityRefresh = null;
 
     const syncWorkingDirectoryFromEvent = (payload = {}) => {
       const nextDirectory = payload?.path || payload?.workingDirectory || payload;
@@ -291,6 +294,10 @@ function App() {
 
       console.log('[App] 已连接到主进程');
       setPlatformInfo(ipc.getPlatform());
+      capabilities.refresh();
+      unsubscribeCapabilityRefresh = ipc.subscribe('agent:stop', () => {
+        setTimeout(() => capabilities.refresh(), 300);
+      });
 
       ipc.getWindowState().then((state) => {
         if (isMounted && state) setWindowState(state);
@@ -312,14 +319,20 @@ function App() {
           case 'clearConversation': runtime.clearMessages(); break;
           case 'insertDocSearch': handleInsertDocSearch(); chatInputRef.current?.focus(); break;
           case 'openModelConfig': setShowLLMSetup(true); break;
-          case 'toggleSidebar': setSidebarCollapsed((prev) => !prev); break;
-          case 'toggleSummary': setSummaryPanelVisible((prev) => !prev); break;
+          case 'saveSession': handleRefreshSessions(); break;
+          case 'exportConversation': handleExport(); break;
+          case 'refreshProjectTree': handleProjectTreeRefresh(); break;
+          case 'refreshRagDocs': refreshRagDocuments(); break;
+          case 'startPreview':
+            setSummaryPanelVisible(true);
+            setActiveInspectorTab('preview');
+            handleStartPreview();
+            break;
           case 'showAgent': setActiveTab('agent'); setSidebarCollapsed(false); break;
           case 'showTools': setActiveTab('tools'); setSidebarCollapsed(false); break;
           case 'insertCommand':
             if (payload?.value) { handleInsertText(payload.value); chatInputRef.current?.focus(); }
             break;
-          default: console.log('[App] Unhandled menu action:', command);
         }
       });
 
@@ -356,6 +369,7 @@ function App() {
       unsubscribeProjectCreated?.();
       unsubscribeProjectOpened?.();
       unsubscribeMenuAction?.();
+      unsubscribeCapabilityRefresh?.();
       ipc.disconnect();
     };
   }, []);
@@ -402,26 +416,7 @@ function App() {
 
   // ── 导出对话 ─────────────────────────────────────────────
   const handleExport = useCallback(() => {
-    const lines = [
-      '# 对话记录', '',
-      `- Exported: ${new Date().toISOString()}`,
-      `- Working directory: ${workingDirectory || '未设置'}`, '',
-      ...runtime.messages.map((message, index) =>
-        [
-          `## ${index + 1}. ${message.type || 'message'}`, '',
-          String(message.content || message.result || message.details || '').trim() || '(empty)', '',
-        ].join('\n'),
-      ),
-    ];
-    const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `ai-agent-conversation-${new Date().toISOString().slice(0, 10)}.md`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    downloadConversationMarkdown(runtime.messages, workingDirectory);
   }, [runtime.messages, workingDirectory]);
 
   // ── Ask agent from message ────────────────────────────────
@@ -453,6 +448,7 @@ function App() {
       />
 
       <IpcDiagnosticBanner diagnostic={ipcDiagnostic} onDismiss={() => setIpcDiagnostic(null)} />
+      <CapabilityStatusBar capabilityState={capabilities} />
 
       <WorkbenchControls
         sidebarCollapsed={sidebarCollapsed}
@@ -467,6 +463,7 @@ function App() {
         onToggleTerminal={toggleTerminalPanel}
         onToggleInspector={() => setSummaryPanelVisible((prev) => !prev)}
         onClearMessages={runtime.clearMessages}
+        capabilityGraph={capabilities.graph}
       />
 
       <div className="mastery-workbench" style={styles.mainContentWrapper}>
@@ -496,6 +493,7 @@ function App() {
             onWorkingDirectoryChange={handleWorkingDirectoryChange}
             workingDirectorySyncMessage={workingDirectorySyncMessage}
             onOpenFile={handleOpenWorkspaceFile}
+            onCloseFile={handleCloseFileWorkbench}
             activeOpenFile={openFile}
             projectTree={{
               directoryChildren,
@@ -540,7 +538,8 @@ function App() {
             chatInputRef={chatInputRef}
             inputNotice={inputNotice}
             inputFocused={inputFocused}
-            inputEditable={canEditComposer}
+            inputEditable={canEditComposer && capabilities.graph.ui.agent.enabled}
+            capability={capabilities.graph.ui.agent}
             showSuggestions={showSuggestions}
             queueCount={queueCount}
             onAskAgentFromMessage={handleAskAgentFromMessage}
@@ -565,6 +564,7 @@ function App() {
               onClose={handleTerminalClose}
               onHeightChange={setTerminalPanelHeight}
               onOpenChange={handleTerminalOpenChange}
+              capability={capabilities.graph.ui.terminal}
             />
           )}
         </div>
@@ -592,6 +592,7 @@ function App() {
             workingDirectory={workingDirectory}
             fileServerUrl={fileServerUrl}
             onAddDocuments={handleAddRagDocuments}
+            onClose={() => setSummaryPanelVisible(false)}
             onClearHistory={handleClearHistory(window.confirm, clearInput)}
             onDeleteSession={handleDeleteSession}
             onDeleteSessions={handleDeleteSessions}
@@ -608,6 +609,7 @@ function App() {
             onRemoveDocument={handleRemoveRagDocument}
             onResetRag={handleResetRag}
             onResizeStart={handleInspectorResizeStart}
+            onResizeKeyDown={handleInspectorResizeKeyDown}
             onSearchSessions={setSearchQuery}
             onStartPreview={handleStartPreview}
             onStopPreview={handleStopPreview}

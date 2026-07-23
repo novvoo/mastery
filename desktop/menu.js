@@ -80,6 +80,9 @@ export function createApplicationMenu({
     {
       label: '视图',
       submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { type: 'separator' },
         { label: '切换侧边栏', accelerator: 'CmdOrCtrl+B', click: () => sendMenuAction('toggleSidebar') },
         { label: '切换 Inspector', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendMenuAction('toggleSummary') },
         { label: 'Agent 面板', click: () => sendMenuAction('showAgent') },
@@ -89,16 +92,7 @@ export function createApplicationMenu({
         { label: '刷新 RAG 文档', click: () => sendMenuAction('refreshRagDocs') },
         { label: '预览当前项目', click: () => sendMenuAction('startPreview') },
         { type: 'separator' },
-        { role: 'toggleDevTools' },
-        { role: 'togglefullscreen' }
-      ]
-    },
-    {
-      label: '视图',
-      submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
+        { label: '开发者工具', accelerator: 'CmdOrCtrl+Shift+I', role: 'toggleDevTools' },
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },

@@ -356,13 +356,14 @@ describe('Desktop IPC Initialization Order', () => {
         throw new Error('Expected ipcConnected to be a boolean, got ' + typeof state.ipcConnected);
       }
 
-      // After attach with mock, adapter gets initialized automatically
+      // Attachment and asynchronous initialization are explicit phases.
       const mockIpcMain = { handle: () => {}, on: () => {} };
-      core.attachIPCAdapter(mockIpcMain);
+      const adapter = core.attachIPCAdapter(mockIpcMain);
+      await adapter.initialize();
       const afterAttach = core.getState();
       if (afterAttach.ipcConnected !== true) {
         throw new Error(
-          'Expected ipcConnected to be true after attach (initialized), got ' +
+          'Expected ipcConnected to be true after explicit initialize, got ' +
             afterAttach.ipcConnected,
         );
       }
@@ -386,11 +387,15 @@ describe('Desktop IPC Initialization Order', () => {
         throw new Error('Expected adapter to have initialize method');
       }
 
-      // Adapter gets initialized automatically on attach
-      if (adapter.isConnected !== true) {
+      // Attachment alone must not hide initialization errors or mutate readiness.
+      if (adapter.isConnected !== false) {
         throw new Error(
-          'Expected adapter isConnected to be true after attach, got ' + adapter.isConnected,
+          'Expected adapter to remain disconnected before initialize, got ' + adapter.isConnected,
         );
+      }
+      await adapter.initialize();
+      if (adapter.isConnected !== true) {
+        throw new Error('Expected adapter to connect after explicit initialize');
       }
 
       await core.dispose();
@@ -399,6 +404,43 @@ describe('Desktop IPC Initialization Order', () => {
   });
 
   describe('Desktop App Config Persistence', () => {
+    test('main app config deep-merges nested runtime, IPC, and security defaults', async () => {
+      const { createMainAppConfig } = await import('../main-app.js');
+      const config = createMainAppConfig(
+        {
+          debug: false,
+          runtime: { hookTimeout: 0 },
+          ipc: { requestTimeout: 1234 },
+          window: {
+            width: 1200,
+            webPreferences: { nodeIntegration: true, sandbox: false },
+          },
+        },
+        {
+          defaultWorkingDirectory: '/workspace',
+          preloadPath: '/safe/preload.cjs',
+        },
+      );
+
+      expect(config.debug).toBe(false);
+      expect(config.runtime).toEqual({
+        maxIterations: 60,
+        autoDownloadModels: true,
+        hookTimeout: 0,
+      });
+      expect(config.ipc.requestTimeout).toBe(1234);
+      expect(config.ipc.validateMessages).toBe(true);
+      expect(config.window.width).toBe(1200);
+      expect(config.window.height).toBe(900);
+      expect(config.window.webPreferences).toMatchObject({
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        webSecurity: true,
+        preload: '/safe/preload.cjs',
+      });
+    });
+
     test('saveAppConfig persists and readAppConfig restores workingDirectory', async () => {
       const os = await import('os');
       const fs = await import('fs');

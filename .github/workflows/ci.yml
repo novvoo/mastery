@@ -50,14 +50,11 @@ jobs:
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
-      - name: Lint
-        run: bun run lint
+      - name: Quality gate
+        run: bun run verify:quality
 
       - name: Verify public API
         run: bun -e "import('./src/index.js').then(m => console.log('exports:', Object.keys(m).sort().join(', ')))"
-
-      - name: Build renderer
-        run: bun run desktop:renderer:build
 
       - name: Verify package contents
         run: npm pack --dry-run

@@ -4,6 +4,11 @@
   "description": "AI Engineering Mastery Agent - A standalone ReAct agent with 12 professional coding skills, sandbox execution, graph planning, 3-layer memory, and MCP protocol support",
   "author": "novvoo",
   "type": "module",
+  "packageManager": "bun@1.3.14",
+  "engines": {
+    "node": ">=20",
+    "bun": ">=1.3.14"
+  },
   "main": "src/index.js",
   "bin": {
     "agent": "src/index.js"
@@ -19,8 +24,11 @@
     "test:debug": "bun --inspect-brk test tests/unit/",
     "test:desktop": "bun test --isolate --timeout 15000 desktop/tests/desktop.test.js",
     "test:unit": "bun test --isolate --timeout 15000 tests/unit/",
+    "test:architecture": "bun test --isolate tests/unit/architecture-contract.test.js",
     "test:coverage": "bun test --isolate --coverage tests/unit/",
-    "lint": "eslint src tests desktop/main-app desktop/main-app.js desktop/renderer desktop/tests",
+    "verify:quality": "bun run lint && bun run desktop:renderer:build",
+    "verify": "bun run verify:quality && bun run test:unit && bun run test:desktop",
+    "lint": "eslint src tests examples desktop/main-app desktop/main-app.js desktop/renderer desktop/tests",
     "lint:src": "eslint src",
     "lint:tests": "eslint tests",
     "lint:desktop": "eslint desktop/main-app desktop/main-app.js desktop/renderer desktop/tests",

@@ -78,6 +78,7 @@ import {
   isRuntimeDetailMessage,
 } from '../runtime/runtime-details.js';
 import { getMessageDisplayText, getMessageSerializableText, getStableMessageId, safeStringify } from './message-log/utils/message-utils.js';
+import { createCollapsedContentPreview } from '../app/content/content-pipeline.js';
 import {
   PLAN_ARCHITECTURE_LABELS,
   PLAN_PHASE_LABELS,
@@ -138,16 +139,25 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     }
   }, [ipc]);
 
-  // ReactMarkdown 自定义组件：为 <img> 设置安全策略
+  // ReactMarkdown 只负责输出语义结构；视觉规则统一由 index.css 管理。
   const markdownComponents = useMemo(() => ({
-    img: ({ src, alt, ...rest }) => (
+    img: ({ node: _node, src, alt, ...rest }) => (
       <img
         src={src}
         alt={alt || ''}
         referrerPolicy="no-referrer"
-        style={{ maxWidth: '100%', height: 'auto', borderRadius: '6px' }}
         {...rest}
       />
+    ),
+    table: ({ node: _node, children, ...rest }) => (
+      <div
+        className="markdown-table-scroll"
+        role="region"
+        aria-label="Scrollable content table"
+        tabIndex={0}
+      >
+        <table {...rest}>{children}</table>
+      </div>
     ),
   }), []);
 
@@ -165,6 +175,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   const [expandedRuntimeDetails, setExpandedRuntimeDetails] = useState(new Set());
   const [expandedThinkingPanels, setExpandedThinkingPanels] = useState(new Set());
   const [planFrameSelections, setPlanFrameSelections] = useState({});
+  // 消息组折叠状态 — 同一阶段的工具/事件/思维过程折叠在组内
+  const [groupCollapsed, setGroupCollapsed] = useState(() => new Set());
   
   // 引用
   const listRef = useRef(null);
@@ -266,9 +278,11 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     return messages.filter(messageIsVisible);
   }, [messages, filter, searchQuery]);
 
-  // 判断消息是否是 AI 助手消息（需要自动折叠的类型）
-  const isAssistantMessage = (msg) => {
-    return msg.type === 'agent' || msg.type === 'assistant' || msg.type === 'assistant_stream' || msg.type === 'result' || msg.type === 'success';
+  // 判断消息是否是需要自动折叠的消息
+  // 只对 AI 助手的长回复做折叠，工具/事件消息交给组折叠管理
+  const isAutoCollapsible = (msg) => {
+    return msg.type === 'agent' || msg.type === 'assistant' || msg.type === 'assistant_stream'
+      || msg.type === 'result' || msg.type === 'success';
   };
 
   // 跟踪用户手动展开的消息，避免自动折叠覆盖用户操作
@@ -285,32 +299,30 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     }
     prevFilteredMessagesLengthRef.current = filteredMessages.length;
 
-    const assistantIndices = [];
+    const collapsibleIndices = [];
     filteredMessages.forEach((msg, index) => {
-      if (isAssistantMessage(msg)) {
-        assistantIndices.push(index);
+      if (isAutoCollapsible(msg)) {
+        collapsibleIndices.push(index);
       }
     });
 
-    // 使用函数式更新，避免依赖 collapsedMessages
     setCollapsedMessages(prev => {
       const newCollapsed = new Set(prev);
-      const lastAssistantIndex = assistantIndices.length > 0 ? assistantIndices[assistantIndices.length - 1] : -1;
+      const lastCollapsibleIndex = collapsibleIndices.length > 0 ? collapsibleIndices[collapsibleIndices.length - 1] : -1;
 
-      assistantIndices.forEach((index) => {
+      collapsibleIndices.forEach((index) => {
         const msg = filteredMessages[index];
         const msgId = getStableMessageId(msg, `${index}`);
 
-        if (index !== lastAssistantIndex) {
-          // 不是最后一条 assistant 消息，应该折叠
+        if (index !== lastCollapsibleIndex) {
+          // 不是最后一条可折叠消息，应该折叠
           // 如果用户手动展开了这条消息，则不自动折叠
           if (!userUncollapsedRef.current.has(msgId)) {
             newCollapsed.add(msgId);
           }
         } else {
-          // 最后一条 assistant 消息（总结）保持展开
+          // 最后一条可折叠消息保持展开
           newCollapsed.delete(msgId);
-          // 同时记录用户手动展开（避免后续被自动折叠）
           userUncollapsedRef.current.add(msgId);
         }
       });
@@ -474,10 +486,32 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     a.href = url;
     a.download = `runtime-details-${Date.now()}.json`;
     document.body.appendChild(a);
+
+
+
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }, []);
+
+  // 自动折叠旧的消息组，只保留最后一组展开
+  useEffect(() => {
+    if (conversationGroups.length <= 1) return;
+    const lastId = conversationGroups[conversationGroups.length - 1]?.id;
+    if (!lastId) return;
+    setGroupCollapsed(prev => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const group of conversationGroups) {
+        if (group.id !== lastId && !next.has(group.id)) {
+          next.add(group.id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [conversationGroups]);
+
 
   const handleRuntimeDetailsRefChange = useCallback((groupId, node) => {
     if (node) {
@@ -515,10 +549,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     setSelectedMessage(null);
     setExpandedRuntimePanels(new Set());
     setLargeRuntimePanels(new Set());
-    setExpandedRuntimeDetails(new Set());
-    setExpandedThinkingPanels(new Set());
+    setGroupCollapsed(new Set());
   }, [onClear]);
-  
+
   // 处理消息折叠/展开
   const handleToggleCollapse = useCallback((msgId) => {
     setCollapsedMessages(prev => {
@@ -541,6 +574,19 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       return newSet;
     });
   }, []);
+  // 处理消息组折叠/展开
+  const handleGroupCollapseToggle = useCallback((groupId) => {
+    setGroupCollapsed(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(groupId)) {
+        newSet.delete(groupId);
+      } else {
+        newSet.add(groupId);
+      }
+      return newSet;
+    });
+  }, []);
+
   
   // 处理消息详情显示/隐藏
   const handleToggleDetails = useCallback((msgId) => {
@@ -718,6 +764,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
 
     const renderAssistantBubble = ({ streaming = false } = {}) => {
       const content = getMessageDisplayText(msg);
+      const visibleContent = isCollapsed
+        ? createCollapsedContentPreview(content)
+        : content;
 
       if (!content && streaming) {
         return renderStreamingCard();
@@ -731,7 +780,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         }}>
           {content ? (
             <MarkdownMessageContent
-              text={content}
+              text={visibleContent}
               isCollapsed={isCollapsed}
               isStreaming={streaming}
               workingDirectory={workingDirectory}
@@ -1311,11 +1360,12 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           .toString().slice(0, 60);
         return (
           <div style={{
-            ...styles.messageBubble,
-            ...(isUser ? styles.messageBubbleUser : {}),
-            ...(isAgent ? styles.messageBubbleAgent : {})
+            padding: '2px 8px',
+            borderRadius: 'var(--radius-sm)',
+            backgroundColor: 'var(--ds-bg-overlay-l1)',
+            maxWidth: '88%',
           }}>
-            <span style={{ color: 'var(--ds-text-secondary)', fontSize: '12px' }}>
+            <span style={{ color: 'var(--ds-text-tertiary)', fontSize: '11px', lineHeight: '18px' }}>
               {preview}{preview.length >= 60 ? '…' : ''}
             </span>
           </div>
@@ -1642,13 +1692,112 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   const renderConversationGroup = (group, groupIndex) => {
     const isActiveGroup = groupIndex === conversationGroups.length - 1;
     const [firstMessage, ...restMessages] = group.messages;
+    const isCollapsed = groupCollapsed.has(group.id) && !isActiveGroup;
+    const detailCount = group.runtimeDetails.length;
+    const primaryText = getMessageDisplayText(firstMessage || {});
+    const preview = String(primaryText || '').replace(/\s+/g, ' ').slice(0, 80) || t('msg.no_content');
+    const typeDisplay = firstMessage ? getTypeDisplay(firstMessage.type) : { iconName: 'event', text: t('msg.group') };
+    const summaryLabel = group.primary?.phaseLabel || typeDisplay.text;
 
     return (
-      <React.Fragment key={group.id}>
-        {firstMessage && renderMessage(firstMessage, `${group.id}_0`)}
-        {renderRuntimeDetailsPanel(group, isActiveGroup)}
-        {restMessages.map((msg, index) => renderMessage(msg, `${group.id}_${index + 1}`))}
-      </React.Fragment>
+      <div key={group.id} style={{
+        marginBottom: '6px',
+      }}>
+        {/* 组折叠/展开头部 */}
+        <button
+          type="button"
+          onClick={() => handleGroupCollapseToggle(group.id)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            width: '100%',
+            padding: '8px 10px',
+            border: 'none',
+            borderRadius: isCollapsed ? 'var(--radius-md)' : 'var(--radius-md) var(--radius-md) 0 0',
+            backgroundColor: isCollapsed ? 'transparent' : 'var(--surface-card)',
+            color: 'var(--text-color)',
+            cursor: 'pointer',
+            fontSize: '12px',
+            textAlign: 'left',
+            transition: 'background-color 0.12s ease',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--surface-hover)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = isCollapsed ? 'transparent' : 'var(--surface-card)'; }}
+        >
+          <span style={{
+            width: '16px',
+            height: '16px',
+            flexShrink: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--text-muted)',
+            transition: 'transform 0.15s ease',
+            transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+          }}>
+            {MsgIcons.chevronDown}
+          </span>
+          <span style={{
+            width: '16px',
+            height: '16px',
+            flexShrink: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--text-muted)',
+          }}>
+            {MsgIcons.folder}
+          </span>
+          <span style={{
+            fontWeight: 600,
+            fontSize: '11px',
+            color: 'var(--text-muted)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.03em',
+            flexShrink: 0,
+          }}>
+            {summaryLabel}
+          </span>
+          {isCollapsed && (
+            <span style={{
+              flex: 1,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              color: 'var(--text-secondary)',
+              fontSize: '12px',
+              opacity: 0.8,
+            }}>
+              {preview}
+            </span>
+          )}
+          {detailCount > 0 && (
+            <span style={{
+              flexShrink: 0,
+              padding: '1px 6px',
+              borderRadius: '999px',
+              backgroundColor: 'var(--primary-faint)',
+              color: 'var(--primary-color)',
+              fontSize: '10px',
+              fontWeight: 600,
+            }}>
+              {detailCount} 步
+            </span>
+          )}
+        </button>
+
+        {/* 展开后的内容 */}
+        {!isCollapsed && (
+          <div style={{
+            borderTop: '1px solid var(--border-subtle)',
+          }}>
+            {firstMessage && renderMessage(firstMessage, `${group.id}_0`)}
+            {detailCount > 0 && renderRuntimeDetailsPanel(group, isActiveGroup)}
+            {restMessages.map((msg, index) => renderMessage(msg, `${group.id}_${index + 1}`))}
+          </div>
+        )}
+      </div>
     );
   };
   
@@ -1693,167 +1842,6 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
   
   return (
     <div style={styles.container}>
-      {/* 消息容器内部链接样式：确保 ReactMarkdown 生成的 <a> 标签有明确的链接外观 */}
-      <style>{`
-        .markdown a {
-          color: var(--primary-color);
-          text-decoration: underline;
-          cursor: pointer;
-          word-break: break-all;
-          padding: 0 2px;
-          border-radius: 2px;
-          transition: background-color 0.15s;
-        }
-        .markdown a:hover {
-          background-color: var(--primary-faint);
-          text-decoration: underline;
-        }
-        .markdown code {
-          background-color: var(--surface-color);
-          border-radius: 3px;
-          padding: 1px 5px;
-          font-size: 11px;
-          color: var(--text-color);
-        }
-        .markdown pre {
-          background-color: var(--surface-color);
-          border: 1px solid var(--border-subtle);
-          border-radius: 6px;
-          padding: 8px 10px;
-          overflow-x: auto;
-          font-size: 11px;
-          margin: 6px 0;
-        }
-        .markdown pre code {
-          background: transparent;
-          padding: 0;
-        }
-        .markdown .markup-block {
-          position: relative;
-          margin: 0;
-          padding: 22px 10px 8px;
-          overflow-x: auto;
-          white-space: pre;
-          word-break: normal;
-          border: 1px solid var(--border-subtle);
-          border-radius: 6px;
-          background-color: var(--surface-color);
-          color: var(--text-color);
-          font-family: var(--font-mono);
-          font-size: 11px;
-          line-height: 1.3;
-        }
-        .markdown .markup-block::before {
-          content: attr(data-language);
-          position: absolute;
-          top: 5px;
-          right: 8px;
-          color: var(--text-muted);
-          font-family: var(--font-family);
-          font-size: 9px;
-          font-weight: 700;
-          text-transform: uppercase;
-        }
-        .markdown .markup-block code {
-          background: transparent;
-          padding: 0;
-          white-space: inherit;
-        }
-        .markdown p {
-          margin: 1px 0;
-          line-height: 1.45;
-          font-size: 13px;
-          color: var(--text-color);
-          padding: 0;
-        }
-        .markdown p:first-child,
-        .markdown ul:first-child,
-        .markdown ol:first-child,
-        .markdown pre:first-child,
-        .markdown blockquote:first-child {
-          margin-top: 0;
-        }
-        .markdown p:last-child,
-        .markdown ul:last-child,
-        .markdown ol:last-child,
-        .markdown pre:last-child,
-        .markdown blockquote:last-child {
-          margin-bottom: 0;
-        }
-        .markdown blockquote {
-          margin: 4px 0;
-          padding: 3px 6px;
-          border-left: 2px solid var(--primary-color);
-          background-color: var(--surface-subtle);
-          border-radius: 0 4px 4px 0;
-          color: var(--text-muted);
-          font-size: 12px;
-          line-height: 1.4;
-        }
-        .markdown h1, .markdown h2, .markdown h3, .markdown h4 {
-          margin: 8px 0 4px;
-          padding-bottom: 4px;
-          border-bottom: 1px solid var(--border-subtle);
-          font-weight: 600;
-          color: var(--text-color);
-          line-height: 1.3;
-        }
-        .markdown h1 { font-size: 15px; }
-        .markdown h2 { font-size: 13px; }
-        .markdown h3 { font-size: 12px; }
-        .markdown h4 { font-size: 11px; border-bottom: none; }
-        .markdown ul, .markdown ol {
-          margin: 2px 0;
-          padding-left: 18px;
-          font-size: 13px;
-          line-height: 1.45;
-        }
-        .markdown li {
-          margin: 1px 0;
-          line-height: 1.4;
-        }
-        .markdown hr {
-          border: none;
-          border-top: 1px dashed var(--border-subtle);
-          margin: 6px 0;
-        }
-        .markdown table {
-          border-collapse: collapse;
-          margin: 6px 0;
-          font-size: 12px;
-          width: 100%;
-        }
-        .markdown th, .markdown td {
-          border: 1px solid var(--border-subtle);
-          padding: 4px 8px;
-          text-align: left;
-        }
-        .markdown th {
-          background-color: var(--surface-subtle);
-          font-weight: 600;
-        }
-        @keyframes thinkingPulse {
-          0%, 100% { opacity: 0.58; }
-          50% { opacity: 1; }
-        }
-        @keyframes streamingCursor {
-          0%, 45% { opacity: 1; }
-          50%, 100% { opacity: 0; }
-        }
-        @keyframes streamingDot {
-          0%, 80%, 100% { transform: translateY(0); opacity: 0.45; }
-          40% { transform: translateY(-3px); opacity: 1; }
-        }
-        @keyframes streamingSkeleton {
-          0% { opacity: 0.45; }
-          50% { opacity: 0.95; }
-          100% { opacity: 0.45; }
-        }
-        @keyframes streamingEdge {
-          0%, 100% { border-color: var(--primary-border); }
-          50% { border-color: var(--primary-strong); }
-        }
-      `}</style>
       {/* 头部 */}
       <div style={styles.header}>
         <div style={styles.title}>
@@ -2021,30 +2009,6 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         </div>
       )}
       
-      {/* CSS 动画 */}
-      <style>
-        {`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-          
-          @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.8; }
-          }
-          
-          @keyframes progressPulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.6; }
-          }
-          
-          @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-        `}
-      </style>
     </div>
   );
 }

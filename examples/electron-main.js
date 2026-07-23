@@ -6,7 +6,7 @@
  * 注意：这是一个示例文件，实际使用需要安装 Electron
  */
 
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Notification } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -69,7 +69,7 @@ class ElectronMainApp {
     await this.#initializeDesktopCore();
 
     // 初始化 IPC 适配器
-    this.#initializeIPCAdapter();
+    await this.#initializeIPCAdapter();
 
     // 设置应用事件处理
     this.#setupAppEvents();
@@ -141,11 +141,12 @@ class ElectronMainApp {
   /**
    * 初始化 IPC 适配器
    */
-  #initializeIPCAdapter() {
+  async #initializeIPCAdapter() {
     console.log('🔗 初始化 IPC 适配器...');
 
     // 附加 IPC 适配器到 Desktop Core
     this.#ipcAdapter = this.#desktopCore.attachIPCAdapter(ipcMain);
+    await this.#ipcAdapter.initialize();
 
     // 注册自定义 IPC 处理器
     this.#registerCustomHandlers();
@@ -188,20 +189,17 @@ class ElectronMainApp {
 
     // 注册文件对话框处理器
     this.#ipcAdapter.registerHandler('dialog:openFile', async (options) => {
-      const { dialog } = require('electron');
       const result = await dialog.showOpenDialog(this.#mainWindow, options);
       return result;
     });
 
     this.#ipcAdapter.registerHandler('dialog:saveFile', async (options) => {
-      const { dialog } = require('electron');
       const result = await dialog.showSaveDialog(this.#mainWindow, options);
       return result;
     });
 
     // 注册通知处理器
     this.#ipcAdapter.registerHandler('notification:show', async (options) => {
-      const { Notification } = require('electron');
       const notification = new Notification(options);
       notification.show();
       return { success: true };

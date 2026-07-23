@@ -12,6 +12,7 @@ export function listWorkspaceDirectory(root, options = {}) {
     .map((entry) => ({
       name: entry.name,
       path: path.relative(root, path.join(target, entry.name)),
+      type: entry.isDirectory() ? 'directory' : 'file',
       isDirectory: entry.isDirectory(),
       isFile: entry.isFile(),
     }));

@@ -280,6 +280,14 @@ export function useIPC() {
     return invoke('system:getStats');
   }, [invoke]);
 
+  const getCapabilities = useCallback(async () => {
+    return invoke('capabilities:list');
+  }, [invoke]);
+
+  const getCommandContracts = useCallback(async () => {
+    return invoke('contracts:list');
+  }, [invoke]);
+
   const minimizeWindow = useCallback(async () => {
     return invoke('window:minimize');
   }, [invoke]);
@@ -530,6 +538,8 @@ export function useIPC() {
     getState,
     getTools,
     getStats,
+    getCapabilities,
+    getCommandContracts,
 
     minimizeWindow,
     maximizeWindow,

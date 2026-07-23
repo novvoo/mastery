@@ -24,6 +24,75 @@ describe('DesktopCore — config merge', () => {
     const state = core.getState();
     expect(state.workingDirectory).toBe('/custom/path');
   });
+
+  test('deep-merges partial IPC config without dropping defaults', () => {
+    const core = createDesktopCore({
+      workingDirectory: '/tmp',
+      ipc: { requestTimeout: 1234 },
+    });
+    const adapter = core.attachIPCAdapter({});
+    expect(adapter.config.requestTimeout).toBe(1234);
+    expect(adapter.config.enableQueue).toBe(true);
+    expect(adapter.config.validateMessages).toBe(true);
+  });
+});
+
+describe('DesktopCore — initialization lifecycle', () => {
+  test('coalesces concurrent initialize calls into one engine initialization', async () => {
+    let initializeCalls = 0;
+    let releaseInitialization;
+    const gate = new Promise((resolve) => {
+      releaseInitialization = resolve;
+    });
+    const engine = {
+      async initialize() {
+        initializeCalls += 1;
+        await gate;
+      },
+      async dispose() {},
+    };
+    const core = createDesktopCore({ workingDirectory: '/tmp', engine });
+
+    const first = core.initialize();
+    const second = core.initialize();
+    expect(initializeCalls).toBe(1);
+
+    releaseInitialization();
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+    expect(firstResult).toBe(core);
+    expect(secondResult).toBe(core);
+    expect(initializeCalls).toBe(1);
+    expect(core.getState().status).toBe(DesktopState.READY);
+    await core.dispose();
+  });
+
+  test('cleans up a failed engine initialization and exposes ERROR state', async () => {
+    let disposeCalls = 0;
+    const core = createDesktopCore({
+      workingDirectory: '/tmp',
+      engine: {
+        async initialize() {
+          throw new Error('engine unavailable');
+        },
+        async dispose() {
+          disposeCalls += 1;
+        },
+      },
+    });
+
+    await expect(core.initialize()).rejects.toThrow('engine unavailable');
+    await core.initialize().catch(() => {});
+    expect(disposeCalls).toBe(2);
+    expect(core.getEngine()).toBeNull();
+    expect(core.getState().status).toBe(DesktopState.ERROR);
+    await core.dispose();
+  });
+
+  test('rejects initialize after disposal', async () => {
+    const core = createDesktopCore({ workingDirectory: '/tmp' });
+    await core.dispose();
+    await expect(core.initialize()).rejects.toThrow('disposed');
+  });
 });
 
 describe('DesktopCore — pre-init state', () => {
@@ -192,10 +261,10 @@ describe('DesktopCore — no-ops before init', () => {
     // no throw = pass
   });
 
-  test('stop transitions state to READY even before init', () => {
+  test('stop is a no-op before initialization', () => {
     const core = createDesktopCore({ workingDirectory: '/tmp' });
     core.stop();
-    expect(core.getState().status).toBe(DesktopState.READY);
+    expect(core.getState().status).toBe(DesktopState.IDLE);
   });
 
   test('setSessionId is safe no-op', () => {
@@ -229,13 +298,12 @@ describe('DesktopCore — security policy', () => {
   });
 });
 describe('DesktopCore — attachIPCAdapter', () => {
-  test('creates adapter without throwing (errors caught internally)', () => {
+  test('attaches without starting asynchronous initialization implicitly', () => {
     const core = createDesktopCore({ workingDirectory: '/tmp' });
-    // attachIPCAdapter creates MainProcessIPCAdapter internally;
-    // constructor stores ipcMain ref, initialize errors are caught
     expect(() => core.attachIPCAdapter({})).not.toThrow();
     const adapter = core.getIPCAdapter();
     expect(adapter).toBeDefined();
+    expect(adapter.isConnected).toBe(false);
   });
 });
 

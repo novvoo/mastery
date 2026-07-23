@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import CommandSuggestions from '../CommandSuggestions.jsx';
 import MessageLog from '../MessageLog.jsx';
 import { InteractionConsole } from './InteractionConsole.jsx';
@@ -9,6 +9,7 @@ import { styles } from '../../app/styles.js';
 import { t } from '../../i18n.js';
 import { RuntimeSelector } from './RuntimeSelector.jsx';
 import { Icon } from '../ui/index.js';
+import { downloadConversationMarkdown } from '../../app/export-conversation.js';
 
 export function ChatWorkspace({
   runtime,
@@ -30,8 +31,14 @@ export function ChatWorkspace({
   onContinue,
   workingDirectory,
   fileServerUrl,
+  capability,
 }) {
   const [continuationInput, setContinuationInput] = useState('');
+  const [showTaskMenu, setShowTaskMenu] = useState(false);
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const taskMenuRef = useRef(null);
+  const contextMenuRef = useRef(null);
+
   const needsUserInput = runtime.status === 'needs_user_input';
   const askInfo = runtime.askUserInfo;
   const queuePreview = queueCount > 0 ? getQueuePreview(3, 80) : [];
@@ -50,6 +57,38 @@ export function ChatWorkspace({
     ? `${firstUserText.trim().slice(0, 46)}${firstUserText.trim().length > 46 ? '…' : ''}`
     : workspaceName || '新任务';
 
+  useEffect(() => {
+    if (!showTaskMenu) return;
+    const handleClick = (e) => {
+      if (taskMenuRef.current && !taskMenuRef.current.contains(e.target)) {
+        setShowTaskMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showTaskMenu]);
+
+  useEffect(() => {
+    if (!showContextMenu) return;
+    const handleClick = (e) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target)) {
+        setShowContextMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showContextMenu]);
+
+  const handleExportChat = () => {
+    downloadConversationMarkdown(runtime.messages, workingDirectory);
+    setShowTaskMenu(false);
+  };
+
+  const handleClearChat = () => {
+    runtime.clearMessages();
+    setShowTaskMenu(false);
+  };
+
   const handleContinue = async (submittedValue, extra = {}) => {
     const value = String(submittedValue || continuationInput).trim();
     if (!value) {
@@ -64,6 +103,38 @@ export function ChatWorkspace({
       return false;
     }
   };
+
+  const menuDropdownStyle = {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    minWidth: '180px',
+    backgroundColor: 'var(--surface-color)',
+    border: '1px solid var(--glass-border)',
+    borderRadius: '10px',
+    boxShadow: 'var(--glass-shadow-lg)',
+    padding: '6px 0',
+    zIndex: 1000,
+  };
+
+  const menuItemStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    width: '100%',
+    padding: '8px 14px',
+    border: 'none',
+    backgroundColor: 'transparent',
+    color: 'var(--text-color)',
+    cursor: 'pointer',
+    fontSize: '13px',
+    textAlign: 'left',
+  };
+
+  const menuItemHoverStyle = {
+    backgroundColor: 'var(--glass-bg-light)',
+  };
+
   return (
     <div className="mastery-chat" style={styles.chatArea}>
       <AskUserFloatingCapsule
@@ -79,7 +150,40 @@ export function ChatWorkspace({
           <span className="codex-message-count" style={styles.chatMessageCount}>
             {t('chat.message_count', { count: runtime.messages.length })}
           </span>
-          <button type="button" className="codex-title-menu" aria-label="任务菜单"><Icon name="list" size={15} /></button>
+          <div style={{ position: 'relative', display: 'inline-flex' }}>
+            <button
+              type="button"
+              className="codex-title-menu"
+              aria-label="任务菜单"
+              onClick={() => setShowTaskMenu((prev) => !prev)}
+            >
+              <Icon name="list" size={15} />
+            </button>
+            {showTaskMenu && (
+              <div ref={taskMenuRef} style={menuDropdownStyle}>
+                <button
+                  type="button"
+                  style={menuItemStyle}
+                  onClick={handleExportChat}
+                  onMouseEnter={(e) => Object.assign(e.currentTarget.style, menuItemHoverStyle)}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                >
+                  <Icon name="download" size={14} />
+                  导出对话
+                </button>
+                <button
+                  type="button"
+                  style={menuItemStyle}
+                  onClick={handleClearChat}
+                  onMouseEnter={(e) => Object.assign(e.currentTarget.style, menuItemHoverStyle)}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                >
+                  <Icon name="close" size={14} />
+                  清除对话
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -102,6 +206,12 @@ export function ChatWorkspace({
       </div>
 
       <div className="mastery-composer-area" style={styles.inputArea}>
+        {!inputEditable && capability?.status && (
+          <div className="capability-inline-notice" role="status">
+            Agent Runtime {capability.status === 'degraded' ? '正在恢复' : '当前不可用'}
+            {capability.reason ? ` · ${capability.reason}` : ''}
+          </div>
+        )}
         {queueCount > 0 && (
           <div
             style={{
@@ -186,10 +296,63 @@ export function ChatWorkspace({
             onFocus={onFocus}
             onBlur={onBlur}
             placeholder={needsUserInput ? '请在上方浮动胶囊中回答问题...' : t('chat.placeholder')}
-            disabled={needsUserInput}
+            disabled={needsUserInput || !inputEditable}
           />
           <div className="codex-composer-tools">
-            <button type="button" className="codex-composer-plus" title="添加上下文" aria-label="添加上下文"><Icon name="plus" size={17} /></button>
+            <div style={{ position: 'relative', display: 'inline-flex' }}>
+              <button
+                type="button"
+                className="codex-composer-plus"
+                title="添加上下文"
+                aria-label="添加上下文"
+                onClick={() => setShowContextMenu((prev) => !prev)}
+              >
+                <Icon name="plus" size={17} />
+              </button>
+              {showContextMenu && (
+                <div ref={contextMenuRef} style={{ ...menuDropdownStyle, left: 'auto', right: 0, minWidth: '160px' }}>
+                  <button
+                    type="button"
+                    style={menuItemStyle}
+                    onClick={() => {
+                      onChatInputChange('/doc add ');
+                      setShowContextMenu(false);
+                      chatInputRef.current?.focus();
+                    }}
+                    onMouseEnter={(e) => Object.assign(e.currentTarget.style, menuItemHoverStyle)}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    添加文档
+                  </button>
+                  <button
+                    type="button"
+                    style={menuItemStyle}
+                    onClick={() => {
+                      onChatInputChange('/doc search ');
+                      setShowContextMenu(false);
+                      chatInputRef.current?.focus();
+                    }}
+                    onMouseEnter={(e) => Object.assign(e.currentTarget.style, menuItemHoverStyle)}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    搜索文档
+                  </button>
+                  <button
+                    type="button"
+                    style={menuItemStyle}
+                    onClick={() => {
+                      onChatInputChange('/debug on');
+                      setShowContextMenu(false);
+                      chatInputRef.current?.focus();
+                    }}
+                    onMouseEnter={(e) => Object.assign(e.currentTarget.style, menuItemHoverStyle)}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    调试模式
+                  </button>
+                </div>
+              )}
+            </div>
             <span className="codex-access-mode"><Icon name="lock" size={13} />完全访问</span>
             <RuntimeSelector runtime={runtime} />
           </div>
@@ -227,7 +390,7 @@ export function ChatWorkspace({
                     : {}),
               }}
               onClick={runtime.status === 'running' ? () => runtime.stop() : onSendMessage}
-              disabled={runtime.status !== 'running' && !chatInput.trim()}
+              disabled={!inputEditable || (runtime.status !== 'running' && !chatInput.trim())}
               title={runtime.status === 'running' ? t('chat.stop_running') : t('chat.send_message')}
               aria-label={runtime.status === 'running' ? t('ui.stop') : t('ui.send_message')}
             >

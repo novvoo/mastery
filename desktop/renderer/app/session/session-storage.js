@@ -1,5 +1,4 @@
 import { normalizePreviewUrlInput } from '../../runtime/preview-url.js';
-import { LAYOUT } from '../config/index.js';
 import { hasElectronAPI, invokeElectronAPI } from '../../hooks/useIPC.js';
 
 export const REPOSITORY_URL = 'https://github.com/novvoo/mastery';
@@ -8,7 +7,6 @@ export const AGENT_HISTORY_STORAGE_KEY = 'agentHistory';
 export const AGENT_HISTORY_UPDATED_EVENT = 'agent-history-updated';
 export const AGENT_SESSIONS_STORAGE_KEY = 'agentConversationSessions';
 export const ACTIVE_AGENT_SESSION_STORAGE_KEY = 'activeAgentConversationSessionId';
-export const DESKTOP_LAYOUT_STORAGE_KEY = 'desktopWorkbenchLayout';
 export const AGENT_SESSIONS_UPDATED_EVENT = 'agent-sessions-updated';
 export const PREVIEW_URL_STORAGE_KEY = 'desktopPreviewUrl';
 export const MAX_AGENT_HISTORY_ITEMS = 100;
@@ -38,38 +36,12 @@ export const getDocumentDisplayName = (document) => String(document?.name || doc
 export const createAgentErrorPrompt = (error) => `请分析并修复这个错误：\n${error?.message || error}`;
 
 
-export function readDesktopLayout() {
-  try {
-    const raw = localStorage.getItem(DESKTOP_LAYOUT_STORAGE_KEY);
-    if (!raw) {return {};}
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
 export function readStoredPreviewUrl() {
   try {
     return normalizePreviewUrlInput(localStorage.getItem(PREVIEW_URL_STORAGE_KEY));
   } catch {
     return null;
   }
-}
-
-export function readStoredInspectorTab() {
-  const tab = readDesktopLayout().activeInspectorTab;
-  if (tab === 'plan') return 'activity';
-  if (tab === 'rag') return 'history';
-  return ['activity', 'history', 'preview'].includes(tab) ? tab : 'activity';
-}
-
-export function clampInspectorWidth(width) {
-  const viewportLimit = typeof window === 'undefined'
-    ? LAYOUT.inspectorMaxWidth
-    : Math.max(LAYOUT.inspectorMinWidth, Math.min(LAYOUT.inspectorMaxWidth, Math.floor(window.innerWidth * 0.72)));
-  const numericWidth = Number(width) || LAYOUT.inspectorPanelWidth;
-  return Math.max(LAYOUT.inspectorMinWidth, Math.min(viewportLimit, numericWidth));
 }
 
 export function createAgentSessionId() {

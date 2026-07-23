@@ -4,6 +4,7 @@ import { createMainProcessIPCAdapter } from './ipc-adapter.js';
 import { DesktopPlugin } from './desktop-core/desktop-plugin.js';
 import { UIBridge } from './desktop-core/ui-bridge.js';
 import { createOmpAdapter } from './omp-adapter.js';
+import { RuntimeSupervisor } from './runtime-supervisor.js';
 
 export { DesktopPlugin } from './desktop-core/desktop-plugin.js';
 export { UIBridge } from './desktop-core/ui-bridge.js';
@@ -16,6 +17,14 @@ export const DesktopState = {
   ERROR: 'error',
   DISPOSED: 'disposed',
 };
+
+/**
+ * System-level limits that are part of the Desktop architecture contract.
+ * Keep these values aligned with docs/architecture.md and architecture tests.
+ */
+export const DESKTOP_ARCHITECTURE_LIMITS = Object.freeze({
+  eventBufferSize: 1000,
+});
 
 const DEFAULT_DESKTOP_CONFIG = {
   workingDirectory: process.cwd(),
@@ -39,6 +48,21 @@ const DEFAULT_DESKTOP_CONFIG = {
   useOmp: true,
 };
 
+function createDesktopConfig(config = {}) {
+  return {
+    ...DEFAULT_DESKTOP_CONFIG,
+    ...config,
+    ipc: {
+      ...DEFAULT_DESKTOP_CONFIG.ipc,
+      ...config.ipc,
+    },
+    ui: {
+      ...DEFAULT_DESKTOP_CONFIG.ui,
+      ...config.ui,
+    },
+  };
+}
+
 export class DesktopCore {
   #config;
   #state;
@@ -52,9 +76,11 @@ export class DesktopCore {
   #stateListeners;
   #eventBuffer;
   #subscriptions;
+  #initializationPromise;
+  #runtimeSupervisor;
 
   constructor(config = {}) {
-    this.#config = { ...DEFAULT_DESKTOP_CONFIG, ...config };
+    this.#config = createDesktopConfig(config);
     this.#state = DesktopState.IDLE;
     this.#isInitialized = false;
     this.#isDisposed = false;
@@ -66,18 +92,47 @@ export class DesktopCore {
     this.#stateListeners = new Set();
     this.#eventBuffer = [];
     this.#subscriptions = [];
+    this.#initializationPromise = null;
+    this.#runtimeSupervisor = null;
   }
 
   async initialize() {
-    if (this.#isInitialized) return;
+    if (this.#isDisposed) {
+      throw new Error('DesktopCore has been disposed');
+    }
+    if (this.#isInitialized) return this;
+    if (this.#initializationPromise) return this.#initializationPromise;
+
+    this.#initializationPromise = this.#initialize();
+    try {
+      return await this.#initializationPromise;
+    } finally {
+      this.#initializationPromise = null;
+    }
+  }
+
+  async #initialize() {
     this.#setState(DesktopState.INITIALIZING);
 
     try {
-      this.#engine = this.#config.engine || createOmpAdapter({
-        workingDirectory: this.#config.workingDirectory,
-        debug: !!this.#config.debug,
+      this.#runtimeSupervisor = new RuntimeSupervisor({
+        maxRestarts: this.#config.maxRuntimeRestarts ?? 2,
+        restartDelayMs: this.#config.runtimeRestartDelayMs ?? 250,
+        onRuntimeChanged: (runtime) => {
+          this.#engine = runtime;
+          if (runtime && this.#ipcAdapter) {
+            this.#ipcAdapter.attachEngine?.(runtime);
+          }
+          this.#config.onRuntimeHealthChange?.(
+            this.#runtimeSupervisor?.getHealth?.() || null,
+          );
+        },
+        createRuntime: () => this.#config.engine || createOmpAdapter({
+          workingDirectory: this.#config.workingDirectory,
+          debug: !!this.#config.debug,
+        }),
       });
-      await this.#engine.initialize();
+      this.#engine = await this.#runtimeSupervisor.start();
 
       this.#runtime = {
         engine: this.#engine,
@@ -95,6 +150,10 @@ export class DesktopCore {
       this.#setState(DesktopState.READY);
       return this;
     } catch (error) {
+      this.#runtime = null;
+      try { await this.#runtimeSupervisor?.dispose?.(); } catch {}
+      this.#runtimeSupervisor = null;
+      this.#engine = null;
       this.#setState(DesktopState.ERROR);
       throw error;
     }
@@ -105,7 +164,7 @@ export class DesktopCore {
     for (const event of events) {
       const unsub = this.#eventBus.subscribe(event, (data) => {
         this.#eventBuffer.push({ event, data, timestamp: Date.now() });
-        if (this.#eventBuffer.length > 1000) {
+        if (this.#eventBuffer.length > DESKTOP_ARCHITECTURE_LIMITS.eventBufferSize) {
           this.#eventBuffer.shift();
         }
         if (this.#ipcAdapter) {
@@ -154,7 +213,6 @@ export class DesktopCore {
         throw new TypeError('IPC adapter does not support engine attachment');
       }
     }
-    this.#ipcAdapter.initialize().catch(() => {});
     return this.#ipcAdapter;
   }
 
@@ -164,13 +222,15 @@ export class DesktopCore {
   }
 
   async processInput(input, options = {}) {
-    if (!this.#isInitialized) await this.initialize();
+    await this.initialize();
     return this.#engine.processInput(input, options);
   }
 
   stop() {
     if (this.#engine) this.#engine.stop();
-    this.#setState(DesktopState.READY);
+    if (this.#isInitialized && this.#state !== DesktopState.DISPOSED) {
+      this.#setState(DesktopState.READY);
+    }
   }
 
   getState() {
@@ -199,6 +259,15 @@ export class DesktopCore {
   getIPCAdapter() { return this.#ipcAdapter; }
   getUIBridge() { return this.#uiBridge; }
   getEventBus() { return this.#eventBus; }
+  getRuntimeSupervisor() { return this.#runtimeSupervisor; }
+  getRuntimeHealth() {
+    return this.#runtimeSupervisor?.getHealth?.() || {
+      state: this.#isDisposed ? 'stopped' : 'idle',
+      restartCount: 0,
+      maxRestarts: this.#config.maxRuntimeRestarts ?? 2,
+      lastError: null,
+    };
+  }
 
   getTools() {
     return this.#engine?.getTools?.() || [];
@@ -280,11 +349,16 @@ export class DesktopCore {
   async dispose() {
     if (this.#isDisposed) return;
     this.#isDisposed = true;
+    if (this.#initializationPromise) {
+      try { await this.#initializationPromise; } catch {}
+    }
     for (const unsub of this.#subscriptions) {
       try { unsub(); } catch {}
     }
     this.#subscriptions = [];
-    if (this.#engine?.dispose) {
+    if (this.#runtimeSupervisor) {
+      try { await this.#runtimeSupervisor.dispose(); } catch {}
+    } else if (this.#engine?.dispose) {
       try { await this.#engine.dispose(); } catch {}
     }
     if (this.#ipcAdapter?.dispose) {

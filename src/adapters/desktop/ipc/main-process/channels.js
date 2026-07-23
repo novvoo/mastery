@@ -9,6 +9,8 @@ export const DIRECT_INVOKE_CHANNELS = [
   'agent:getTools',
   'agent:getStats',
   'system:getStats',
+  'contracts:list',
+  'capabilities:list',
   'window:minimize',
   'window:maximize',
   'window:close',

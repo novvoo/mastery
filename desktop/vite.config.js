@@ -7,6 +7,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rendererRoot = path.resolve(__dirname, './renderer');
 
+function rendererChunk(id) {
+  if (!id.includes('node_modules')) return undefined;
+  if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/')) {
+    return 'react';
+  }
+  return 'vendor';
+}
+
 export default defineConfig(({ command }) => ({
   root: rendererRoot,
   base: './',
@@ -24,6 +32,11 @@ export default defineConfig(({ command }) => ({
     rollupOptions: {
       input: {
         main: path.resolve(rendererRoot, './index.html'),
+      },
+      output: {
+        // Keep framework and feature-heavy dependencies independently cacheable.
+        // This also makes bundle growth visible per subsystem in build output.
+        manualChunks: rendererChunk,
       },
     },
   },

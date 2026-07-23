@@ -1,10 +1,10 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 /**
  * 文件操作 Hook
  * 封装文件打开、保存、关闭等操作的状态和逻辑
  */
-export function useFileOperations({ ipc }) {
+export function useFileOperations({ ipc, onAfterSave }) {
   const [openFile, setOpenFile] = useState(null);
   const [fileDraft, setFileDraft] = useState('');
   const [fileMode, setFileMode] = useState('preview');
@@ -14,9 +14,9 @@ export function useFileOperations({ ipc }) {
   // 使用 ref 存储回调，避免依赖问题
   const onAfterSaveRef = useRef(null);
 
-  const setAfterSaveCallback = useCallback((fn) => {
-    onAfterSaveRef.current = fn;
-  }, []);
+  useEffect(() => {
+    onAfterSaveRef.current = onAfterSave;
+  }, [onAfterSave]);
 
   // 读取文件的辅助函数
   const readWorkspaceFile = useCallback(
@@ -189,15 +189,5 @@ export function useFileOperations({ ipc }) {
     renameItem,
     // Utilities
     handleFileModeToggle,
-    // Callback setter
-    setAfterSaveCallback,
   };
-}
-
-/**
- * 检查是否有未保存的文件草稿
- */
-export function hasUnsavedFileDraft(openFile, fileDraft) {
-  if (!openFile?.content) {return false;}
-  return openFile.content !== fileDraft;
 }

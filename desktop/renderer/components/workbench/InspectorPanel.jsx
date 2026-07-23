@@ -1173,10 +1173,12 @@ export function InspectorPanel({
   onRemoveDocument,
   onResetRag,
   onResizeStart,
+  onResizeKeyDown,
   onSearchSessions,
   onStartPreview,
   onStopPreview,
   onSwitchSession,
+  onClose,
   onTabChange,
 }) {
   return (
@@ -1193,27 +1195,43 @@ export function InspectorPanel({
       <div
         style={styles.inspectorResizeHandle}
         onPointerDown={onResizeStart}
+        onKeyDown={onResizeKeyDown}
         title={t('inspector.drag_resize')}
         role="separator"
         aria-orientation="vertical"
+        aria-label={t('inspector.drag_resize')}
+        aria-valuemin={LAYOUT.inspectorMinWidth}
+        aria-valuemax={LAYOUT.inspectorMaxWidth}
+        aria-valuenow={inspectorPanelWidth}
+        tabIndex={0}
       />
-      <div style={styles.inspectorHeader}>
-        <div className="codex-inspector-heading">环境信息</div>
-        <TabGroup activeTab={activeInspectorTab} onChange={onTabChange}>
-          <TabItem id="activity">环境</TabItem>
-          <TabItem id="history">会话</TabItem>
-          <TabItem id="preview">预览</TabItem>
-        </TabGroup>
-        <Button
-          variant="icon"
-          size="sm"
-          onClick={onExpandToggle}
-          title={inspectorExpanded ? t('inspector.restore') : t('inspector.expand')}
-          ariaLabel={inspectorExpanded ? t('inspector.restore') : t('inspector.expand')}
-        >
-          <Icon name={inspectorExpanded ? 'restore' : 'expand'} size={15} />
-        </Button>
-      </div>
+        <div style={styles.inspectorHeader}>
+          <div className="codex-inspector-heading">环境信息</div>
+          <TabGroup activeTab={activeInspectorTab} onChange={onTabChange}>
+            <TabItem id="activity">环境</TabItem>
+            <TabItem id="history">会话</TabItem>
+            <TabItem id="preview">预览</TabItem>
+          </TabGroup>
+          <Button
+            variant="icon"
+            size="sm"
+            onClick={onExpandToggle}
+            title={inspectorExpanded ? t('inspector.restore') : t('inspector.expand')}
+            ariaLabel={inspectorExpanded ? t('inspector.restore') : t('inspector.expand')}
+          >
+            <Icon name={inspectorExpanded ? 'restore' : 'expand'} size={15} />
+          </Button>
+          <Button
+            variant="icon"
+            size="sm"
+            onClick={onClose}
+            title={t('inspector.close_panel')}
+            ariaLabel={t('inspector.close_panel')}
+            style={{ marginLeft: '2px' }}
+          >
+            <Icon name="close" size={14} />
+          </Button>
+        </div>
 
       <div style={styles.inspectorTabContent}>
       {activeInspectorTab === 'activity' && (

@@ -78,6 +78,7 @@ export class RuntimeEventBus extends EventEmitter {
       filteredEvents: 0,
       cachedHits: 0,
     };
+    this.eventSequence = 0;
 
     // 错误处理器，防止未捕获的错误导致进程崩溃
     this._setupErrorHandler();
@@ -230,12 +231,21 @@ export class RuntimeEventBus extends EventEmitter {
    * @returns {boolean} 事件是否被发射
    */
   emit(event, data = {}, options = {}) {
-    const { source = 'unknown', cache = false, batch = false } = options;
+    const {
+      source = 'unknown',
+      cache = false,
+      batch = false,
+      correlationId = null,
+      causationId = null,
+    } = options;
 
     // 构建事件数据
     const eventData = createEventRecord(event, data, {
       source,
       idFactory: () => this._generateId(),
+      sequence: ++this.eventSequence,
+      correlationId,
+      causationId,
     });
 
     // 检查过滤器
@@ -295,12 +305,20 @@ export class RuntimeEventBus extends EventEmitter {
    * @returns {Promise<void>}
    */
   async emitAsync(event, data = {}, options = {}) {
-    const { source = 'unknown', cache = false } = options;
+    const {
+      source = 'unknown',
+      cache = false,
+      correlationId = null,
+      causationId = null,
+    } = options;
 
     const eventData = createEventRecord(event, data, {
       source,
       async: true,
       idFactory: () => this._generateId(),
+      sequence: ++this.eventSequence,
+      correlationId,
+      causationId,
     });
 
     // 检查过滤器

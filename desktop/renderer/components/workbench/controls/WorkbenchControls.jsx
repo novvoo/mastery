@@ -3,8 +3,6 @@ import { Button, Icon } from '../../ui/index.js';
 import { styles } from '../../../app/styles.js';
 import { t as i18nT } from '../../../i18n.js';
 
-export const TERMINAL_PANEL_STORAGE_KEY = 'ai-agent-terminal-panel';
-
 export function WorkbenchControls({
   sidebarCollapsed,
   isTerminalVisible,
@@ -15,7 +13,10 @@ export function WorkbenchControls({
   onToggleTerminal,
   onToggleInspector,
   onClearMessages,
+  capabilityGraph,
 }) {
+  const previewEnabled = capabilityGraph?.ui?.preview?.enabled !== false;
+  const terminalEnabled = capabilityGraph?.ui?.terminal?.enabled !== false;
   const iconButton = {
     width: '28px',
     height: '28px',
@@ -37,7 +38,7 @@ export function WorkbenchControls({
 
   return (
     <div className="mastery-top-controls" style={styles.workspaceControls}>
-      <Button variant="ghost" size="sm" style={textButton} onClick={onOpenPreview} title={i18nT('chat.preview')} ariaLabel={i18nT('chat.preview')}>
+      <Button variant="ghost" size="sm" style={textButton} onClick={onOpenPreview} disabled={!previewEnabled} title={previewEnabled ? i18nT('chat.preview') : '预览能力不可用'} ariaLabel={i18nT('chat.preview')}>
         <Icon name="preview" size={14} />
         <span>打开预览</span>
       </Button>
@@ -60,7 +61,8 @@ export function WorkbenchControls({
         size="sm"
         style={{ ...iconButton, ...(isTerminalVisible ? activeButton : {}) }}
         onClick={onToggleTerminal}
-        title={isTerminalVisible ? '收起终端' : '打开终端'}
+        disabled={!terminalEnabled}
+        title={!terminalEnabled ? '终端能力不可用' : isTerminalVisible ? '收起终端' : '打开终端'}
         ariaLabel={isTerminalVisible ? '收起终端' : '打开终端'}
       >
         <Icon name="terminal" size={15} />
@@ -78,23 +80,4 @@ export function WorkbenchControls({
       <Button variant="ghost" size="sm" style={iconButton} onClick={onClearMessages} title={i18nT('chat.clear_messages')} ariaLabel={i18nT('chat.clear_messages')}><Icon name="close" size={14} /></Button>
     </div>
   );
-}
-
-export function readTerminalPanelLayout() {
-  if (typeof localStorage === 'undefined') {
-    return {};
-  }
-  try {
-    return JSON.parse(localStorage.getItem(TERMINAL_PANEL_STORAGE_KEY) || '{}');
-  } catch (_) {
-    return {};
-  }
-}
-
-export function clampTerminalHeight(height) {
-  const numeric = Number(height);
-  if (!Number.isFinite(numeric)) {
-    return 280;
-  }
-  return Math.min(520, Math.max(180, numeric));
 }

@@ -172,7 +172,7 @@ export const styles = {
     justifyContent: 'space-between',
     minHeight: '36px',
     padding: '0 10px',
-    borderBottom: '1px solid #ececee',
+    borderBottom: '1px solid var(--ds-border-l2)',
     borderRadius: '14px 14px 0 0',
     color: 'var(--ds-text-secondary)',
     fontSize: '11px',
@@ -1192,9 +1192,9 @@ export const styles = {
   },
   
   messageContent: {
-    fontSize: '13px',
+    fontSize: 'var(--content-font-size)',
     color: 'var(--ds-text-primary)',
-    lineHeight: '1.55',
+    lineHeight: 'var(--content-line-height)',
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
     maxHeight: '400px',
@@ -1250,7 +1250,6 @@ export const styles = {
   emptyChip: {
     padding: '4px 10px',
     backgroundColor: 'var(--ds-bg-overlay-l1)',
-    border: '1px solid var(--ds-border-l1)',
     borderRadius: 'var(--radius-full)',
     fontSize: '11px',
     color: 'var(--ds-text-secondary)',
@@ -1303,7 +1302,6 @@ export const styles = {
     textAlign: 'center',
     padding: '40px 24px',
     gap: '10px',
-    background: 'var(--surface-card)'
   },
   
   emptyIcon: {
@@ -1628,7 +1626,7 @@ export const styles = {
   },
 
   assistantMarkdownBubble: {
-    width: 'min(780px, 88%)',
+    width: 'min(var(--content-measure), 88%)',
     maxWidth: '88%',
     backgroundColor: 'var(--message-agent-bg)',
     borderColor: 'var(--message-agent-border)',

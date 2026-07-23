@@ -1,15 +1,14 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   DESKTOP_LAYOUT_STORAGE_KEY,
-  clampInspectorWidth,
-  readDesktopLayout,
-  readStoredInspectorTab,
-} from '../app/session/session-storage.js';
-import {
+  INSPECTOR_WIDTH,
   TERMINAL_PANEL_STORAGE_KEY,
+  clampInspectorWidth,
   readTerminalPanelLayout,
+  readDesktopLayout,
   clampTerminalHeight,
-} from '../components/workbench/controls/WorkbenchControls.jsx';
+  isTerminalToggleShortcut,
+} from '../app/layout/layout-state.js';
 import { LAYOUT } from '../app/config/index.js';
 
 /**
@@ -18,36 +17,34 @@ import { LAYOUT } from '../app/config/index.js';
  * 包含: 状态声明、localStorage 持久化、resize 全局监听、terminal 快捷键
  */
 export function useLayout() {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    const stored = readDesktopLayout().sidebarCollapsed;
-    return stored === undefined ? true : Boolean(stored);
-  });
+  const initialDesktopLayoutRef = useRef(null);
+  if (initialDesktopLayoutRef.current === null) {
+    initialDesktopLayoutRef.current = readDesktopLayout();
+  }
+  const initialDesktopLayout = initialDesktopLayoutRef.current;
+
+  const initialTerminalLayoutRef = useRef(null);
+  if (initialTerminalLayoutRef.current === null) {
+    initialTerminalLayoutRef.current = readTerminalPanelLayout();
+  }
+  const initialTerminalLayout = initialTerminalLayoutRef.current;
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(initialDesktopLayout.sidebarCollapsed);
   const [summaryPanelVisible, setSummaryPanelVisible] = useState(() => {
     // The inspector is an on-demand drawer in the conversation-first layout.
     // Do not restore the legacy permanent-panel state across app launches.
     return false;
   });
-  const [activeInspectorTab, setActiveInspectorTab] = useState(readStoredInspectorTab);
-  const [inspectorPanelWidth, setInspectorPanelWidth] = useState(() =>
-    clampInspectorWidth(readDesktopLayout().inspectorPanelWidth),
-  );
-  const [inspectorExpanded, setInspectorExpanded] = useState(() =>
-    Boolean(readDesktopLayout().inspectorExpanded),
-  );
+  const [activeInspectorTab, setActiveInspectorTab] = useState(initialDesktopLayout.activeInspectorTab);
+  const [inspectorPanelWidth, setInspectorPanelWidth] = useState(initialDesktopLayout.inspectorPanelWidth);
+  const [inspectorExpanded, setInspectorExpanded] = useState(initialDesktopLayout.inspectorExpanded);
 
-  const [terminalClosed, setTerminalClosed] = useState(() =>
-    readTerminalPanelLayout().closed === undefined ? false : readTerminalPanelLayout().closed === true,
-  );
-  const [terminalOpen, setTerminalOpen] = useState(() => {
-    const stored = readTerminalPanelLayout().open;
-    return stored === undefined ? true : stored === true;
-  });
+  const [terminalClosed, setTerminalClosed] = useState(initialTerminalLayout.closed);
+  const [terminalOpen, setTerminalOpen] = useState(initialTerminalLayout.open);
   const [terminalPanelHeight, setTerminalPanelHeight] = useState(() =>
-    clampTerminalHeight(readTerminalPanelLayout().height),
+    clampTerminalHeight(initialTerminalLayout.height),
   );
-  const [activeTerminalTab, setActiveTerminalTab] = useState(
-    () => readTerminalPanelLayout().activeTab || 'terminal',
-  );
+  const [activeTerminalTab, setActiveTerminalTab] = useState(initialTerminalLayout.activeTab);
 
   const inspectorResizeRef = useRef(null);
 
@@ -107,11 +104,18 @@ export function useLayout() {
     };
   }, []);
 
-  // ── Terminal 快捷键 (Ctrl/Cmd/Shift + `) ───────────────
+  useEffect(() => {
+    const handleWindowResize = () => {
+      setInspectorPanelWidth((width) => clampInspectorWidth(width));
+    };
+    window.addEventListener('resize', handleWindowResize);
+    return () => window.removeEventListener('resize', handleWindowResize);
+  }, []);
+
+  // ── Terminal 快捷键 (Ctrl/Cmd + `) ─────────────────────
   useEffect(() => {
     const handleTerminalShortcut = (event) => {
-      const isBacktick = event.key === '`' || event.code === 'Backquote';
-      if (!isBacktick || !(event.ctrlKey || event.metaKey || event.shiftKey)) return;
+      if (!isTerminalToggleShortcut(event)) return;
       event.preventDefault();
       setTerminalClosed(false);
       setTerminalOpen((prev) => !prev);
@@ -153,6 +157,17 @@ export function useLayout() {
     [inspectorPanelWidth],
   );
 
+  const handleInspectorResizeKeyDown = useCallback((event) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const direction = event.key === 'ArrowLeft' ? 1 : -1;
+    const step = event.shiftKey
+      ? INSPECTOR_WIDTH.keyboardLargeStep
+      : INSPECTOR_WIDTH.keyboardStep;
+    setInspectorPanelWidth((width) => clampInspectorWidth(width + direction * step));
+    setInspectorExpanded(false);
+  }, []);
+
   const handleInspectorExpandToggle = useCallback(() => {
     setInspectorPanelWidth((prev) => {
       if (inspectorExpanded) {
@@ -174,6 +189,7 @@ export function useLayout() {
     inspectorPanelWidth,
     inspectorExpanded,
     handleInspectorResizeStart,
+    handleInspectorResizeKeyDown,
     handleInspectorExpandToggle,
     terminalClosed,
     terminalOpen,

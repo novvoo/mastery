@@ -27,6 +27,24 @@ describe('EventBus', () => {
     expect(received.type).toBe(RuntimeEvent.MESSAGE_RECEIVED);
     expect(typeof received.timestamp).toBe('number');
     expect(typeof received.id).toBe('string');
+    expect(received.schemaVersion).toBe(1);
+    expect(Number.isSafeInteger(received.sequence)).toBe(true);
+    unsub();
+  });
+
+  test('propagates correlation and causation metadata in the event envelope', () => {
+    const bus = getEventBus();
+    let received = null;
+    const unsub = bus.subscribe(RuntimeEvent.STATUS_UPDATE, (data) => {
+      received = data;
+    });
+    bus.emit(
+      RuntimeEvent.STATUS_UPDATE,
+      { status: 'running' },
+      { correlationId: 'run-1', causationId: 'request-1' },
+    );
+    expect(received.correlationId).toBe('run-1');
+    expect(received.causationId).toBe('request-1');
     unsub();
   });
 

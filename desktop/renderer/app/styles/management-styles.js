@@ -136,7 +136,7 @@ managementOverlay: {
   position: 'fixed',
   inset: 0,
   zIndex: 2000,
-  backgroundColor: 'rgba(20, 20, 22, 0.45)',
+  backgroundColor: 'var(--overlay-soft)',
   backdropFilter: 'blur(8px) saturate(150%)',
   WebkitBackdropFilter: 'blur(8px) saturate(150%)',
   display: 'flex',
@@ -153,7 +153,7 @@ managementContainer: {
   backgroundColor: 'var(--ds-bg-raised)',
   border: '1px solid var(--ds-border-l2)',
   borderRadius: '14px',
-  boxShadow: 'var(--ds-border-l3)',
+  boxShadow: 'var(--shadow-lg)',
   overflow: 'hidden',
 },
 
@@ -301,10 +301,24 @@ mgmtCheckboxRow: {
   display: 'flex',
   alignItems: 'center',
   gap: '8px',
-  padding: '6px 12px',
-  borderRadius: '4px',
+  minHeight: '48px',
+  padding: '8px 10px',
+  borderRadius: 'var(--radius-md)',
   cursor: 'pointer',
   fontSize: '12px',
+},
+
+mgmtOptionCopy: {
+  minWidth: 0,
+  display: 'grid',
+  gap: '2px',
+  color: 'var(--ds-text-primary)',
+},
+
+mgmtOptionHint: {
+  color: 'var(--ds-text-tertiary)',
+  fontSize: '11px',
+  lineHeight: 1.4,
 },
 
 mgmtCheckbox: {
