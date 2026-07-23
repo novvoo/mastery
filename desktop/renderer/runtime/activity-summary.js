@@ -1,3 +1,5 @@
+import { buildToolRuntimeCollections } from './runtime-details.js';
+
 export function formatDuration(ms) {
   const value = Number(ms || 0);
   return value < 1000 ? `${value}ms` : `${(value / 1000).toFixed(value < 10000 ? 1 : 0)}s`;
@@ -76,10 +78,41 @@ function extractFilesFromMessage(message) {
 
 export function buildActivitySummary(messages = []) {
   const list = Array.isArray(messages) ? messages : [];
-  const activities = [];
+  const toolCollections = buildToolRuntimeCollections(list);
+  const toolMessageIds = new Set(
+    toolCollections.flatMap((collection) => collection.messages.map((message) => message.id).filter(Boolean)),
+  );
+  const activities = toolCollections.map((collection) => ({
+    id: collection.id,
+    toolName: collection.toolName,
+    title: collection.toolName,
+    detail: collection.resultPreview || collection.statusText || '',
+    statusText: collection.statusText || '',
+    phase: collection.phase,
+    intent: collection.request?.intent || collection.request?.category || (
+      collection.toolName.includes('read') || collection.toolName.includes('search') ? 'explore' :
+      collection.toolName.includes('write') || collection.toolName.includes('edit') ? 'modify' :
+      'execute'
+    ),
+    error: collection.error?.error || null,
+    target: collection.args?.path || collection.args?.file || collection.args?.query || collection.request?.target || '',
+    durationMs: collection.durationMs || 0,
+    timestamp: collection.startedAt || collection.timestamp,
+    toolCollection: collection,
+  }));
   const filesMap = new Map();
 
   for (const msg of list) {
+    if (msg?.id && toolMessageIds.has(msg.id)) {
+      const files = extractFilesFromMessage(msg);
+      for (const f of files) {
+        const key = f.path || String(f);
+        if (!filesMap.has(key)) {
+          filesMap.set(key, { path: key, ...f });
+        }
+      }
+      continue;
+    }
     const activity = extractActivityFromMessage(msg);
     if (activity) {
       activities.push(activity);

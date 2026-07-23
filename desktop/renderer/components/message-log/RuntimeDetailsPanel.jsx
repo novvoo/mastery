@@ -5,6 +5,7 @@ import { useIPC } from '../../hooks/useIPC.js';
 import { t } from '../../i18n.js';
 import {
   buildThinkingSummary,
+  buildToolRuntimeCollections,
   createRuntimeDetailId,
   getRuntimeDetailContent,
   getRuntimeDetailPreviewText,
@@ -132,9 +133,27 @@ export function RuntimeDetailsPanel({
 }) {
   const ipc = useIPC();
   const runtimeDetails = group?.runtimeDetails || [];
+  const toolCollections = group?.toolCollections || buildToolRuntimeCollections(runtimeDetails);
   const visibleRuntimeDetails = runtimeDetails.filter(
     (msg) => !isStatusUpdateMessage(msg) && !isThinkingMessage(msg),
   );
+  const visibleRawCollections = toolCollections.length > 0
+    ? toolCollections
+    : visibleRuntimeDetails.map((msg, index) => ({
+        id: createRuntimeDetailId(msg, index),
+        type: msg.type,
+        toolName: msg.toolName || msg.event || msg.type,
+        request: msg,
+        result: msg.type === 'tool_result' ? msg : null,
+        error: msg.isError ? msg : null,
+        updates: [],
+        messages: [msg],
+        phase: msg.isError ? 'failed' : msg.type === 'tool_result' ? 'completed' : 'running',
+        startedAt: msg.timestamp,
+        timestamp: msg.timestamp,
+        resultPreview: getRuntimeDetailPreviewText(msg),
+        resultValue: getRuntimeDetailContent(msg),
+      }));
   // ── 从 group.messages 中找最新 plan 帧作为单一数据源 ──
   // 不再从 activitySummary.plan 重建（消除双管道不一致）
   const planMessages = (group?.messages || []).filter((msg) => msg.type === 'plan');
@@ -843,23 +862,20 @@ export function RuntimeDetailsPanel({
                 : styles.runtimeDetailsListCollapsed),
           }}
         >
-          {visibleRuntimeDetails.map((msg, index) => {
-            const runtimeDetailId = createRuntimeDetailId(group.id, msg, index);
+          {visibleRawCollections.map((collection, index) => {
+            const runtimeDetailId = collection.id || `tool-collection-${index}`;
             const detailExpanded = expandedRuntimeDetails.has(runtimeDetailId);
-            const typeDisplay = getTypeDisplay(msg.type);
-            const isDebug = msg.type === 'debug';
-            const content = detailExpanded ? getRuntimeDetailContent(msg) : '';
-            const firstLine = detailExpanded
-              ? content
-                ? content.split('\n')[0].trim()
-                : t('status.not_set')
-              : getRuntimeDetailPreviewText(msg);
-            const scoreInfo =
-              msg.type === 'tool_result' && typeof msg.result === 'string'
-                ? ((m) => (m ? { file: m[1], score: parseInt(m[2]) } : null))(
-                    msg.result.match(/^\[(.+?)\] → (\d+)% match/),
-                  )
-                : null;
+            const resultContent = getRuntimeDetailContent(collection.error || collection.result || {});
+            const requestContent = getRuntimeDetailContent(collection.request || {});
+            const content = [
+              collection.args ? `请求参数\n${JSON.stringify(collection.args, null, 2)}` : requestContent ? `请求\n${requestContent}` : '',
+              resultContent ? `${collection.error ? '错误响应' : '响应'}\n${resultContent}` : '',
+            ].filter(Boolean).join('\n\n');
+            const phaseText = phaseLabel(collection.phase);
+            const preview = collection.resultPreview || collection.statusText || collection.toolName;
+            const toneStyle = collection.phase === 'failed'
+              ? styles.runtimeDetailItemDebug
+              : styles.runtimeDetailItemStatus;
 
             return (
               <div
@@ -867,74 +883,66 @@ export function RuntimeDetailsPanel({
                 style={{
                   ...styles.runtimeDetailItem,
                   ...styles.runtimeDetailItemInteractive,
-                  ...(isDebug ? styles.runtimeDetailItemDebug : styles.runtimeDetailItemStatus),
-                  ...(detailExpanded ? {} : { padding: '3px 8px' }),
+                  ...toneStyle,
+                  ...(detailExpanded ? {} : { padding: '5px 8px' }),
                 }}
                 onClick={() => onRuntimeDetailToggle(runtimeDetailId)}
                 title={detailExpanded ? t('msg.collapse') : t('msg.expand')}
               >
                 <div
                   style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(0, 1fr) auto',
                     alignItems: 'center',
                     gap: '8px',
                     color: 'var(--text-dark)',
                     fontSize: '11px',
-                    ...(detailExpanded ? { marginBottom: '4px' } : {}),
+                    ...(detailExpanded ? { marginBottom: '6px' } : {}),
                   }}
                 >
                   <span
                     style={{
-                      flex: detailExpanded ? '0 0 auto' : 1,
+                      minWidth: 0,
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '4px',
+                      gap: '6px',
                     }}
                   >
-                    <span style={{ flexShrink: 0 }}>{typeDisplay.text}</span>
-                    {scoreInfo && (
-                      <span
-                        style={{
-                          padding: '1px 6px',
-                          borderRadius: '3px',
-                          backgroundColor: 'var(--primary-soft)',
-                          color: 'var(--primary-color)',
-                          fontSize: '10px',
-                          fontWeight: '700',
-                          flexShrink: 0,
-                          marginRight: '2px',
-                        }}
-                      >
-                        {scoreInfo.score}%
-                      </span>
-                    )}
+                    <span style={{ flexShrink: 0, fontWeight: 700 }}>{collection.toolName}</span>
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        padding: '1px 6px',
+                        borderRadius: '999px',
+                        border: '1px solid var(--border-subtle)',
+                        color: collection.phase === 'failed' ? 'var(--error-color)' : 'var(--text-muted)',
+                        fontSize: '10px',
+                      }}
+                    >
+                      {phaseText}
+                    </span>
                     {!detailExpanded && (
                       <span
                         style={{
-                          marginLeft: '4px',
-                          color: 'var(--text-muted)',
-                          fontWeight: 400,
-                          fontSize: '11px',
+                          minWidth: 0,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
+                          color: 'var(--text-muted)',
+                          fontWeight: 400,
                         }}
                       >
-                        {firstLine.substring(0, 120)}
+                        {preview}
                       </span>
                     )}
                   </span>
-                  <span style={{ flexShrink: 0 }}>
-                    {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
-                    <span
-                      style={{ marginLeft: '6px', cursor: 'pointer', color: 'var(--text-muted)' }}
-                    >
-                      {detailExpanded ? '▾' : '▸'}
-                    </span>
+                  <span style={{ flexShrink: 0, color: 'var(--text-muted)' }}>
+                    {collection.messageCount > 1 ? `${collection.messageCount} 条合并` : ''}
+                    {collection.durationMs ? ` · ${formatDuration(collection.durationMs)}` : ''}
+                    <span style={{ marginLeft: '6px' }}>{detailExpanded ? '▾' : '▸'}</span>
                   </span>
                 </div>
                 {detailExpanded && (
@@ -950,10 +958,10 @@ export function RuntimeDetailsPanel({
               </div>
             );
           })}
-          {visibleRuntimeDetails.length === 0 && runtimeDetails.length > 0 && (
+          {visibleRawCollections.length === 0 && runtimeDetails.length > 0 && (
             <div style={localStyles.emptyTab}>{t('ui.root')}</div>
           )}
-          {visibleRuntimeDetails.length === 0 && runtimeDetails.length === 0 && (
+          {visibleRawCollections.length === 0 && runtimeDetails.length === 0 && (
             <div style={localStyles.emptyTab}>{t('status.not_set')}</div>
           )}
         </div>

@@ -7,6 +7,8 @@
 
 本文同时描述 Current Architecture（已实现）与 Target Architecture（演进目标）。带 `Target` 标记的组件不得被描述为现有能力；每个目标都必须有迁移阶段和退出条件。运行代码是行为真相来源，本文是设计意图和允许依赖的真相来源。
 
+界面按钮到能力、命令和反馈的完整映射见 [UI Action Graph](./ui-action-graph.md)。它是本文的交互层配套设计，必须与可执行 Action Registry 保持同步。
+
 ## 1. 目标、约束与非目标
 
 ### 1.1 设计目标

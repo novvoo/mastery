@@ -73,16 +73,25 @@ export function SidebarPanel({
       </div>
 
       <nav className="codex-primary-nav" aria-label="工作区">
-        <button type="button" className="codex-nav-item" onClick={onNewTask}>
+        <button type="button" className="codex-nav-item" data-action-id="navigation.new-task" onClick={onNewTask}>
           <Icon name="plus" size={17} /><span>新建任务</span>
         </button>
-        <button type="button" className={`codex-nav-item${section === 'project' ? ' is-active' : ''}`} aria-current={section === 'project' ? 'page' : undefined} onClick={() => setSection('project')}>
-          <Icon name="folder" size={17} /><span>项目</span><span className="codex-nav-trailing"><Icon name="plus" size={15} /></span>
+        <button
+          type="button"
+          className={`codex-nav-item${section === 'project' ? ' is-active' : ''}`}
+          data-action-id="navigation.open-project"
+          aria-current={section === 'project' ? 'page' : undefined}
+          onClick={() => {
+            setSection('project');
+            if (!workingDirectory) onWorkingDirectoryChange?.();
+          }}
+        >
+          <Icon name="folder" size={17} /><span>{workingDirectory ? '项目' : '打开项目'}</span>
         </button>
         <button type="button" className={`codex-nav-item${section === 'tasks' ? ' is-active' : ''}`} aria-current={section === 'tasks' ? 'page' : undefined} onClick={() => setSection('tasks')}>
           <Icon name="timeline" size={17} /><span>已安排</span>
         </button>
-        <button type="button" className={`codex-nav-item${section === 'tools' ? ' is-active' : ''}`} aria-current={section === 'tools' ? 'page' : undefined} onClick={() => { setSection('tools'); onShowTools?.(); }}>
+        <button type="button" data-action-id="navigation.show-tools" className={`codex-nav-item${section === 'tools' ? ' is-active' : ''}`} aria-current={section === 'tools' ? 'page' : undefined} onClick={() => { setSection('tools'); onShowTools?.(); }}>
           <Icon name="tools" size={17} /><span>工具</span>
         </button>
       </nav>
@@ -145,7 +154,7 @@ export function SidebarPanel({
       )}
 
       <div className="codex-sidebar-footer">
-        <button type="button" onClick={onSettings}><span className="codex-avatar">L</span><span><strong>本地账户</strong><small>{workspaceName}</small></span><Icon name="settings" size={16} /></button>
+        <button type="button" data-action-id="navigation.open-settings" onClick={onSettings}><span className="codex-avatar">L</span><span><strong>本地账户</strong><small>{workspaceName}</small></span><Icon name="settings" size={16} /></button>
       </div>
     </aside>
   );

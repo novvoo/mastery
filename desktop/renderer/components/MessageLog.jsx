@@ -99,7 +99,7 @@ import { buildMessageTree, flattenTree } from '../hooks/useRuntime.js';
  * @param {Function} props.onClear - 清空消息回调
  * @param {Function} props.onAskAgent - 将错误消息交给 Agent 处理
  */
-function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear, onAskAgent }) {
+function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear, onAskAgent, onStarterPrompt, starterPromptsEnabled = true }) {
   const ipc = useIPC();
 
   // Tree utilities available but rendering integration deferred
@@ -1693,7 +1693,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     const isActiveGroup = groupIndex === conversationGroups.length - 1;
     const [firstMessage, ...restMessages] = group.messages;
     const isCollapsed = groupCollapsed.has(group.id) && !isActiveGroup;
-    const detailCount = group.runtimeDetails.length;
+    const detailCount = group.toolCollections?.length || group.runtimeDetails.length;
     const primaryText = getMessageDisplayText(firstMessage || {});
     const preview = String(primaryText || '').replace(/\s+/g, ' ').slice(0, 80) || t('msg.no_content');
     const typeDisplay = firstMessage ? getTypeDisplay(firstMessage.type) : { iconName: 'event', text: t('msg.group') };
@@ -1831,9 +1831,24 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             flexWrap: 'wrap',
             justifyContent: 'center'
           }}>
-            <span style={styles.emptyChip}>解释这个项目</span>
-            <span style={styles.emptyChip}>修复一个问题</span>
-            <span style={styles.emptyChip}>运行并检查测试</span>
+            {[
+              ['explain', '解释这个项目', '解释这个项目的架构、关键模块和运行流程'],
+              ['fix', '修复一个问题', '检查当前项目，定位一个影响最大的实际问题并修复'],
+              ['test', '运行并检查测试', '运行项目测试，分析失败原因并修复所有相关问题'],
+            ].map(([id, label, prompt]) => (
+              <button
+                key={id}
+                type="button"
+                className="mastery-starter-action"
+                style={styles.emptyChip}
+                data-action-id={`composer.starter.${id}`}
+                disabled={!starterPromptsEnabled}
+                title={starterPromptsEnabled ? `填入“${label}”` : 'Agent Runtime 当前不可用'}
+                onClick={() => onStarterPrompt?.(prompt)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
       </div>

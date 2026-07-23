@@ -2516,6 +2516,61 @@ button:focus-visible,
   padding: 0;
   font-size: 18px;
 }
+
+.mastery-starter-action {
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  transition: color 140ms ease, background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.mastery-starter-action:hover:not(:disabled) {
+  color: var(--primary-color) !important;
+  border-color: var(--primary-border) !important;
+  background: var(--primary-faint) !important;
+  transform: translateY(-1px);
+}
+
+.mastery-starter-action:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.mastery-starter-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.mastery-action-feedback {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2200;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  max-width: min(420px, calc(100vw - 36px));
+  padding: 8px 10px 8px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text-color);
+  box-shadow: var(--glass-shadow-lg);
+  font-size: 12px;
+}
+
+.mastery-action-feedback > button {
+  width: 24px;
+  height: 24px;
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
 /* Renderer-level recovery surface. Kept outside workbench layout so a render
    failure cannot inherit broken panel geometry. */
 .mastery-ui-failure {

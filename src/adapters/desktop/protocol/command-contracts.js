@@ -35,6 +35,18 @@ const requireString = (value, field, channel, { allowEmpty = false } = {}) => {
 
 const contracts = new Map();
 
+const normalizeModelBatchPayload = (payload, channel) => {
+  const models = Array.isArray(payload) ? payload : payload?.models;
+  if (!Array.isArray(models)) {
+    throw new CommandContractError(
+      'INVALID_COMMAND_PAYLOAD',
+      `${channel}.models 必须是数组`,
+      { channel, field: 'models', expected: 'array' },
+    );
+  }
+  return { models };
+};
+
 const requireSerializable = (value, channel) => {
   try {
     serialize(value);
@@ -135,6 +147,15 @@ const NO_PAYLOAD_SUFFIXES = [
   ':hide',
   ':stop',
 ];
+
+registerCommandContract(
+  'llm:save-all-models',
+  (payload) => normalizeModelBatchPayload(payload, 'llm:save-all-models'),
+  {
+    risk: 'critical',
+    payloadType: 'object',
+  },
+);
 
 const inferRisk = (channel) => {
   if (/^(terminal:|llm:save|llm:delete|workspace:(write|create|delete|rename))/.test(channel)) {

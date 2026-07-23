@@ -23,6 +23,10 @@ export default function Button({
   title,
   ariaLabel,
   onClick,
+  actionId,
+  pressed,
+  busy = false,
+  type = 'button',
   ...rest
 }) {
   const classes = ['btn', `btn-${variant}`, `btn-${size}`, className]
@@ -31,11 +35,15 @@ export default function Button({
 
   return (
     <button
+      type={type}
       className={classes}
       style={style}
-      disabled={disabled}
+      disabled={disabled || busy}
       title={title}
       aria-label={ariaLabel || title}
+      aria-pressed={pressed}
+      aria-busy={busy || undefined}
+      data-action-id={actionId}
       onClick={onClick}
       {...rest}
     >

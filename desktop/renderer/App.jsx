@@ -15,6 +15,7 @@ import { ManagementPage } from './components/management/ManagementPage.jsx';
 import { ChromeCapsules } from './components/chrome/ChromeCapsules.jsx';
 import { IpcDiagnosticBanner } from './components/chrome/IpcDiagnosticBanner.jsx';
 import { CapabilityStatusBar } from './components/chrome/CapabilityStatusBar.jsx';
+import { ActionFeedback } from './components/chrome/ActionFeedback.jsx';
 import { ActivityRail } from './components/workbench/ActivityRail.jsx';
 import { BottomTerminalPanel } from './components/workbench/BottomTerminalPanel.jsx';
 import { FileWorkbench } from './components/workbench/FileWorkbench.jsx';
@@ -137,6 +138,7 @@ function App() {
   const [windowState, setWindowState] = useState({ isFullScreen: false, isMaximized: false });
   const [ipcDiagnostic, setIpcDiagnostic] = useState(null);
   const [agentOptions, setAgentOptions] = useState({ debug: false, maxIterations: 60, autoSave: true });
+  const [actionFeedback, setActionFeedback] = useState(null);
 
   const chatInputRef = useRef(null);
 
@@ -377,7 +379,7 @@ function App() {
   // ── 模型配置持久化 ───────────────────────────────────────
   useEffect(() => {
     if (modelConfigs.length > 0 && ipc.isConnected) {
-      ipc.invoke('llm:save-all-models', modelConfigs).catch(() => {});
+      ipc.invoke('llm:save-all-models', { models: modelConfigs }).catch(() => {});
     }
   }, [modelConfigs, ipc.isConnected]);
 
@@ -416,8 +418,29 @@ function App() {
 
   // ── 导出对话 ─────────────────────────────────────────────
   const handleExport = useCallback(() => {
+    if (runtime.messages.length === 0) {
+      setActionFeedback({ tone: 'info', message: '当前没有可导出的对话' });
+      return false;
+    }
     downloadConversationMarkdown(runtime.messages, workingDirectory);
+    setActionFeedback({ tone: 'success', message: '对话已导出为 Markdown 文件' });
+    return true;
   }, [runtime.messages, workingDirectory]);
+
+  const handleClearMessages = useCallback(() => {
+    if (runtime.messages.length === 0) {
+      setActionFeedback({ tone: 'info', message: '当前对话已经是空的' });
+      return false;
+    }
+    runtime.clearMessages();
+    setActionFeedback({ tone: 'success', message: '当前对话已清空' });
+    return true;
+  }, [runtime]);
+
+  const handleStarterPrompt = useCallback((prompt) => {
+    handleInsertText(prompt);
+    requestAnimationFrame(() => chatInputRef.current?.focus());
+  }, [handleInsertText]);
 
   // ── Ask agent from message ────────────────────────────────
   const handleAskAgentFromMessage = useCallback(
@@ -462,8 +485,9 @@ function App() {
         onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
         onToggleTerminal={toggleTerminalPanel}
         onToggleInspector={() => setSummaryPanelVisible((prev) => !prev)}
-        onClearMessages={runtime.clearMessages}
+        onClearMessages={handleClearMessages}
         capabilityGraph={capabilities.graph}
+        messageCount={runtime.messages.length}
       />
 
       <div className="mastery-workbench" style={styles.mainContentWrapper}>
@@ -551,6 +575,9 @@ function App() {
             onBlur={() => setInputFocused(false)}
             onSendMessage={handleSendMessage}
             onContinue={handleContinueAgentInput}
+            onStarterPrompt={handleStarterPrompt}
+            onExport={handleExport}
+            onClear={handleClearMessages}
             workingDirectory={workingDirectory}
             fileServerUrl={fileServerUrl}
           />
@@ -691,6 +718,10 @@ function App() {
           onClose={() => setGlobalContextMenu(null)}
         />
       )}
+      <ActionFeedback
+        feedback={actionFeedback}
+        onDismiss={() => setActionFeedback(null)}
+      />
     </div>
   );
 }

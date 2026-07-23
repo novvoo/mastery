@@ -412,8 +412,8 @@ export function registerCustomHandlers(ctx) {
     return typeof ctx.saveSingleModelConfig ? await ctx.saveSingleModelConfig(config) : { success: false };
   });
 
-  ipc.registerHandler('llm:save-all-models', async (configs) => {
-    return typeof ctx.saveAllModelConfigs ? await ctx.saveAllModelConfigs(configs) : { success: false };
+  ipc.registerHandler('llm:save-all-models', async ({ models }) => {
+    return typeof ctx.saveAllModelConfigs ? await ctx.saveAllModelConfigs(models) : { success: false };
   });
 
   ipc.registerHandler('llm:delete-model', async (id) => {

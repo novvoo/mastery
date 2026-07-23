@@ -873,7 +873,7 @@ try {
 
     saveAllModels: async (models) => {
       try {
-        return await ipcRenderer.invoke('llm:save-all-models', models);
+        return await ipcRenderer.invoke('llm:save-all-models', { models });
       } catch (error) {
         console.error('[Preload] saveAllModels 失败:', error);
         throw error;

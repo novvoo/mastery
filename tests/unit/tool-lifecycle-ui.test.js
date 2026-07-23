@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import { mergeToolLifecycleMessage, normalizeRuntimeEventMessage } from '../../desktop/renderer/hooks/useRuntime.js';
+import {
+  buildToolRuntimeCollections,
+  createConversationGroups,
+} from '../../desktop/renderer/runtime/runtime-details.js';
+import { buildActivitySummary } from '../../desktop/renderer/runtime/activity-summary.js';
 
 describe('OMP tool lifecycle UI aggregation', () => {
   test('preserves toolCallId across call and result events', () => {
@@ -53,5 +58,60 @@ describe('OMP tool lifecycle UI aggregation', () => {
     expect(merged.toolResult).toBeUndefined();
     expect(merged.progress).toBe(45);
     expect(merged.progressText).toBe('安装依赖');
+  });
+
+  test('collects request, progress, and response into one visible tool unit', () => {
+    const call = normalizeRuntimeEventMessage('tool:call', {
+      name: 'shell',
+      toolCallId: 'call-4',
+      arguments: { cmd: 'bun test' },
+      timestamp: 100,
+    }).message;
+    const progress = normalizeRuntimeEventMessage('tool:progress', {
+      name: 'shell',
+      toolCallId: 'call-4',
+      progress: 50,
+      statusText: '测试中',
+      timestamp: 125,
+    }).message;
+    const result = normalizeRuntimeEventMessage('tool:result', {
+      name: 'shell',
+      toolCallId: 'call-4',
+      result: '445 pass',
+      timestamp: 180,
+    }).message;
+
+    const collections = buildToolRuntimeCollections([call, progress, result]);
+
+    expect(collections).toHaveLength(1);
+    expect(collections[0].toolName).toBe('shell');
+    expect(collections[0].request).toBe(call);
+    expect(collections[0].result).toBe(result);
+    expect(collections[0].updates).toEqual([progress]);
+    expect(collections[0].messageCount).toBe(3);
+    expect(collections[0].phase).toBe('completed');
+  });
+
+  test('conversation groups expose tool collections instead of raw lifecycle count', () => {
+    const user = { id: 'u1', type: 'user', content: 'run tests' };
+    const call = { id: 't1', type: 'tool', toolName: 'shell', toolCallId: 'call-5', args: { cmd: 'bun test' } };
+    const result = { id: 'r1', type: 'tool_result', toolName: 'shell', toolCallId: 'call-5', result: 'ok' };
+
+    const [group] = createConversationGroups([user, call, result]);
+
+    expect(group.runtimeDetails).toHaveLength(2);
+    expect(group.toolCollections).toHaveLength(1);
+    expect(group.toolCollections[0].messages).toEqual([call, result]);
+  });
+
+  test('activity summary counts one tool call once even when result arrives later', () => {
+    const summary = buildActivitySummary([
+      { id: 't1', type: 'tool', toolName: 'read', toolCallId: 'call-6', args: { path: 'a.js' } },
+      { id: 'r1', type: 'tool_result', toolName: 'read', toolCallId: 'call-6', result: 'content' },
+    ]);
+
+    expect(summary.activities).toHaveLength(1);
+    expect(summary.activities[0].toolName).toBe('read');
+    expect(summary.total).toBe(1);
   });
 });
