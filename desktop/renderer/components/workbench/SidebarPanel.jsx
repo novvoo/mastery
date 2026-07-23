@@ -24,6 +24,8 @@ export function SidebarPanel({
   sessions = [],
   activeSessionId,
   onSelectSession,
+  onDeleteSession,
+  onClearSessions,
   onShowTools,
   onSettings,
 }) {
@@ -73,16 +75,25 @@ export function SidebarPanel({
       </div>
 
       <nav className="codex-primary-nav" aria-label="工作区">
-        <button type="button" className="codex-nav-item" onClick={onNewTask}>
+        <button type="button" className="codex-nav-item" data-action-id="navigation.new-task" onClick={onNewTask}>
           <Icon name="plus" size={17} /><span>新建任务</span>
         </button>
-        <button type="button" className={`codex-nav-item${section === 'project' ? ' is-active' : ''}`} aria-current={section === 'project' ? 'page' : undefined} onClick={() => setSection('project')}>
-          <Icon name="folder" size={17} /><span>项目</span><span className="codex-nav-trailing"><Icon name="plus" size={15} /></span>
+        <button
+          type="button"
+          className={`codex-nav-item${section === 'project' ? ' is-active' : ''}`}
+          data-action-id="navigation.open-project"
+          aria-current={section === 'project' ? 'page' : undefined}
+          onClick={() => {
+            setSection('project');
+            if (!workingDirectory) onWorkingDirectoryChange?.();
+          }}
+        >
+          <Icon name="folder" size={17} /><span>{workingDirectory ? '项目' : '打开项目'}</span>
         </button>
         <button type="button" className={`codex-nav-item${section === 'tasks' ? ' is-active' : ''}`} aria-current={section === 'tasks' ? 'page' : undefined} onClick={() => setSection('tasks')}>
           <Icon name="timeline" size={17} /><span>已安排</span>
         </button>
-        <button type="button" className={`codex-nav-item${section === 'tools' ? ' is-active' : ''}`} aria-current={section === 'tools' ? 'page' : undefined} onClick={() => { setSection('tools'); onShowTools?.(); }}>
+        <button type="button" data-action-id="navigation.show-tools" className={`codex-nav-item${section === 'tools' ? ' is-active' : ''}`} aria-current={section === 'tools' ? 'page' : undefined} onClick={() => { setSection('tools'); onShowTools?.(); }}>
           <Icon name="tools" size={17} /><span>工具</span>
         </button>
       </nav>
@@ -126,7 +137,19 @@ export function SidebarPanel({
         <div className="codex-sidebar-body"><ToolPanel tools={runtime.tools} loading={runtime.loading} messages={runtime.messages} /></div>
       ) : (
         <div className="codex-session-region">
-          <div className="codex-section-label">任务</div>
+          <div className="codex-session-header">
+            <div className="codex-section-label">任务</div>
+            {recentSessions.length > 0 && (
+              <button
+                type="button"
+                className="codex-session-clear-all"
+                onClick={onClearSessions}
+                title="清空所有任务"
+              >
+                清空
+              </button>
+            )}
+          </div>
           <div className="codex-session-list">
             {recentSessions.length === 0 ? (
               <div className="codex-session-empty">
@@ -135,9 +158,30 @@ export function SidebarPanel({
             ) : recentSessions.map((session) => {
               const id = session?.id || session?.sessionId;
               return (
-                <button key={id} type="button" className={id === activeSessionId ? 'is-active' : ''} onClick={() => onSelectSession?.(id)} title={sessionTitle(session)}>
-                  {sessionTitle(session)}
-                </button>
+                <div key={id} className={`codex-session-item${id === activeSessionId ? ' is-active' : ''}`}>
+                  <button
+                    type="button"
+                    className="codex-session-select"
+                    onClick={() => onSelectSession?.(id)}
+                    title={sessionTitle(session)}
+                  >
+                    {sessionTitle(session)}
+                  </button>
+                  {onDeleteSession && (
+                    <button
+                      type="button"
+                      className="codex-session-delete"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDeleteSession(id);
+                      }}
+                      title="清理任务"
+                      aria-label={`清理任务: ${sessionTitle(session)}`}
+                    >
+                      <Icon name="trash" size={13} />
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -145,7 +189,7 @@ export function SidebarPanel({
       )}
 
       <div className="codex-sidebar-footer">
-        <button type="button" onClick={onSettings}><span className="codex-avatar">L</span><span><strong>本地账户</strong><small>{workspaceName}</small></span><Icon name="settings" size={16} /></button>
+        <button type="button" data-action-id="navigation.open-settings" onClick={onSettings}><span className="codex-avatar">L</span><span><strong>本地账户</strong><small>{workspaceName}</small></span><Icon name="settings" size={16} /></button>
       </div>
     </aside>
   );

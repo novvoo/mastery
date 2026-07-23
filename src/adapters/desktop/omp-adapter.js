@@ -119,28 +119,56 @@ export class OmpAdapter {
     this.#child.on('exit', (code) => this.#onExit(code));
     this.#child.on('error', (err) => this.#onError(err));
 
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Timeout waiting for omp ready signal'));
-      }, 30000);
-
-      const checkReady = () => {
-        if (this.#isReady) {
-          clearTimeout(timeout);
-          resolve();
-        }
-      };
-
-      const interval = setInterval(() => {
-        if (this.#isReady) {
+    try {
+      await new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (callback, value) => {
+          if (settled) return;
+          settled = true;
           clearInterval(interval);
           clearTimeout(timeout);
-          resolve();
-        }
-      }, 100);
+          this.#child?.off('error', handleStartupError);
+          this.#child?.off('exit', handleStartupExit);
+          callback(value);
+        };
+        const handleStartupError = (error) => {
+          finish(
+            reject,
+            new Error(`Failed to start omp runtime: ${error.message}`, { cause: error }),
+          );
+        };
+        const handleStartupExit = (code, signal) => {
+          if (!this.#isReady) {
+            finish(
+              reject,
+              new Error(`omp runtime exited before ready (code=${code}, signal=${signal || 'none'})`),
+            );
+          }
+        };
+        const interval = setInterval(() => {
+          if (this.#isReady) {
+            finish(resolve);
+          }
+        }, 25);
+        const timeout = setTimeout(() => {
+          finish(reject, new Error('Timeout waiting for omp ready signal'));
+        }, 30000);
 
-      setTimeout(() => clearInterval(interval), 30000);
-    });
+        this.#child.once('error', handleStartupError);
+        this.#child.once('exit', handleStartupExit);
+        if (this.#isReady) {
+          finish(resolve);
+        }
+      });
+    } catch (error) {
+      const child = this.#child;
+      this.#child = null;
+      this.#isReady = false;
+      if (child && !child.killed) {
+        child.kill();
+      }
+      throw error;
+    }
 
     await this.#refreshState();
     await this.#sendCommand({ type: 'set_subagent_subscription', level: 'events' }).catch(() => {});
@@ -797,11 +825,24 @@ export class OmpAdapter {
   }
 
   async setWorkingDirectory(dir) {
-    if (path.resolve(dir) === path.resolve(this.#config.workingDirectory)) return;
+    const previousDirectory = this.#config.workingDirectory;
+    if (path.resolve(dir) === path.resolve(previousDirectory)) return;
     await this.dispose();
     this.#disposed = false;
     this.#config.workingDirectory = dir;
-    await this.initialize();
+    try {
+      await this.initialize();
+    } catch (switchError) {
+      try { await this.dispose(); } catch {}
+      this.#disposed = false;
+      this.#config.workingDirectory = previousDirectory;
+      try {
+        await this.initialize();
+      } catch (rollbackError) {
+        switchError.rollbackError = rollbackError?.message || String(rollbackError);
+      }
+      throw switchError;
+    }
   }
 
   async getAvailableModels() {

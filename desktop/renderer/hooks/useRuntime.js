@@ -19,6 +19,37 @@ import { stripToolProtocolText } from '../app/content/content-pipeline.js';
  */
 export const stripActionBlocks = stripToolProtocolText;
 
+export function createAssistantStreamMessage({ id, text, timestamp, turnId } = {}) {
+  if (!id || typeof text !== 'string' || text.length === 0) {
+    return null;
+  }
+  return {
+    id,
+    type: 'assistant_stream',
+    content: text,
+    timestamp: timestamp || Date.now(),
+    isStreaming: true,
+    ...(turnId ? { turnId } : {}),
+  };
+}
+
+export function getAssistantStreamBoundaryPolicy(eventName) {
+  if (eventName === 'tool:call' || eventName === 'agent:stream_reset') {
+    return 'rollback';
+  }
+  if (
+    eventName === 'tool:result' ||
+    eventName === 'tool:error' ||
+    eventName === 'agent:complete' ||
+    eventName === 'agent:stop' ||
+    eventName === 'agent:error' ||
+    eventName === 'agent:thinking'
+  ) {
+    return 'commit';
+  }
+  return 'continue';
+}
+
 /**
  * 判断一段累积的流式文本是否看起来像是工具协议的开头。
  * 用于流式 buffer 判断是否应该延迟显示。
@@ -164,6 +195,7 @@ export function useRuntime() {
   const statsRef = useRef(stats);
   const lastAnswerRef = useRef('');
   const completedByEventRef = useRef(false);
+  const activeTurnIdRef = useRef(null);
   const streamingMessageIdRef = useRef(null); // 追踪当前流式文本消息
   const streamingTextRef = useRef(''); // 同步记录当前 assistant 文本，避免最终结果重复入列
   const streamingReasoningIdRef = useRef(null); // 追踪当前 reasoning 消息
@@ -322,6 +354,7 @@ export function useRuntime() {
       pendingMessageDeltaTimerRef.current = null;
     }
     recentRuntimeEventSignaturesRef.current = new Map();
+    activeTurnIdRef.current = null;
     messageBufferRef.current = [];
     setMessages([]);
     setStats((prev) => ({
@@ -463,6 +496,13 @@ export function useRuntime() {
         };
       }
 
+      const turnId =
+        options.turnId ||
+        options.runId ||
+        options.correlationId ||
+        `turn_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      activeTurnIdRef.current = turnId;
+
       // 设置运行状态
       setStatus('running');
       setStats((prev) => ({
@@ -483,25 +523,10 @@ export function useRuntime() {
       addMessage({
         type: 'user',
         content: input,
+        turnId,
       });
 
       try {
-        // 创建一个"占位"流式消息（收到第一个增量时会显示）
-        const now = Date.now();
-        const placeholderId = `msg_stream_${now}_${Math.random().toString(36).substr(2, 9)}`;
-        streamingMessageIdRef.current = placeholderId;
-        streamingTextRef.current = '';
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: placeholderId,
-            type: 'assistant_stream',
-            content: '',
-            timestamp: now,
-            isStreaming: true,
-          },
-        ]);
-
         // 通过 IPC 发送输入
         if (typeof window !== 'undefined' && window != null && window.electronAPI) {
           const result = await window.electronAPI.processInput(input, options);
@@ -557,12 +582,14 @@ export function useRuntime() {
               type: needsUserInput ? 'warning' : 'result',
               content: answer,
               ...result,
+              turnId: result?.turnId || result?.runId || result?.correlationId || turnId,
             });
           } else if (!answer && !streamMsgId && !eventAlreadyHandled) {
             addMessage({
               type: needsUserInput ? 'warning' : 'success',
               content: needsUserInput ? '需要你补充信息后继续' : '执行完成',
               ...result,
+              turnId: result?.turnId || result?.runId || result?.correlationId || turnId,
             });
           }
 
@@ -608,6 +635,7 @@ export function useRuntime() {
         addMessage({
           type: 'error',
           content: `执行失败: ${error.message}`,
+          turnId,
         });
 
         setStatus('error');
@@ -718,37 +746,54 @@ export function useRuntime() {
       return { id: msgId, text: '', hasContent: false };
     };
 
+    // 工具调用之前收到的 assistant text 仍属于当前运行中的临时消息，
+    // 不是一次可提交的助手回复。工具边界到达时回滚整条临时流，
+    // 最终回复只由工具执行后的文本或 agent:complete 提交。
+    const rollbackProvisionalTextStream = () => {
+      const msgId = streamingMessageIdRef.current;
+      if (!msgId) {
+        return null;
+      }
+
+      pendingMessageDeltasRef.current.delete(msgId);
+      setMessages((prev) => prev.filter((msg) => msg.id !== msgId));
+      streamingMessageIdRef.current = null;
+      streamingTextRef.current = '';
+      lastDeltaTextRef.current = '';
+      return msgId;
+    };
+
     // 订阅通用 IPC 事件
     const unsubIpcEvent = window.electronAPI.on('ipc:event', (data) => {
       // IPCMessage shape: { id, type, payload, timestamp, status, correlationId, metadata }
       const eventName =
         data?.metadata?.eventName || data?.payload?.event || data?.payload?.name || 'ipc:event';
       const payload = data?.payload ?? data;
+      const eventTurnId =
+        data?.turnId ||
+        data?.runId ||
+        data?.correlationId ||
+        data?.metadata?.correlationId ||
+        payload?.turnId ||
+        payload?.runId ||
+        payload?.correlationId ||
+        activeTurnIdRef.current;
 
       // ===== 1) 切断事件：在处理这些事件前先关闭当前流 =====
-      const isCutoffEvent =
-        eventName === 'tool:call' ||
-        eventName === 'tool:result' ||
-        eventName === 'tool:error' ||
-        eventName === 'agent:complete' ||
-        eventName === 'agent:stop' ||
-        eventName === 'agent:error' ||
-        eventName === 'agent:thinking' ||
-        eventName === 'agent:stream_reset';
+      const streamBoundaryPolicy = getAssistantStreamBoundaryPolicy(eventName);
 
       let closedTextStream = null;
-      if (isCutoffEvent) {
+      if (streamBoundaryPolicy === 'rollback') {
+        rollbackProvisionalTextStream();
+        cutoffStream(streamingReasoningIdRef, 'thinking');
+      }
+      if (streamBoundaryPolicy === 'commit') {
         closedTextStream = cutoffStream(streamingMessageIdRef, 'agent');
         cutoffStream(streamingReasoningIdRef, 'thinking');
       }
 
-      // ===== stream_reset：工具调用确认后，删除已被误显示的协议文本气泡 =====
-      if (eventName === 'agent:stream_reset' && streamingMessageIdRef.current) {
-        const msgId = streamingMessageIdRef.current;
-        flushMessageDeltas();
-        setMessages((prev) => prev.filter((msg) => msg.id !== msgId));
-        streamingMessageIdRef.current = null;
-        streamingTextRef.current = '';
+      // stream_reset 已在工具边界按消息事务回滚，不再对字符内容做过滤。
+      if (eventName === 'agent:stream_reset') {
         return;
       }
 
@@ -775,18 +820,15 @@ export function useRuntime() {
             // 当前没有活跃的流消息 → 创建新的消息气泡
             const now = Date.now();
             const newId = `msg_stream_${now}_${Math.random().toString(36).substr(2, 9)}`;
+            const streamMessage = createAssistantStreamMessage({
+              id: newId,
+              text: filteredText,
+              timestamp: now,
+              turnId: eventTurnId,
+            });
             streamingMessageIdRef.current = newId;
             streamingTextRef.current = filteredText;
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: newId,
-                type: 'assistant_stream',
-                content: filteredText,
-                timestamp: now,
-                isStreaming: true,
-              },
-            ]);
+            setMessages((prev) => streamMessage ? [...prev, streamMessage] : prev);
           } else {
             queueMessageDelta(msgId, filteredText, { type: 'assistant_stream' });
           }
@@ -814,6 +856,7 @@ export function useRuntime() {
                 content: filteredText,
                 timestamp: now,
                 isStreaming: true,
+                ...(eventTurnId ? { turnId: eventTurnId } : {}),
               },
             ]);
           } else {
@@ -849,6 +892,12 @@ export function useRuntime() {
       }
 
       const normalized = normalizeRuntimeEventMessage(eventName, payload);
+      if (normalized.message && eventTurnId && !normalized.message.turnId) {
+        normalized.message = {
+          ...normalized.message,
+          turnId: eventTurnId,
+        };
+      }
       if (isDuplicateRuntimeEvent(eventName, payload)) {
         return;
       }
@@ -904,6 +953,7 @@ export function useRuntime() {
               type: needsUserInput ? 'warning' : 'result',
               content: answer,
               resultMeta: payload,
+              ...(eventTurnId ? { turnId: eventTurnId } : {}),
             });
           };
           // 场景A：有流式消息 + 有答案 → 原地收口为 agent 消息（不额外添加 result 消息）
@@ -954,6 +1004,7 @@ export function useRuntime() {
               type: needsUserInput ? 'warning' : 'result',
               content: answer,
               resultMeta: payload,
+              ...(eventTurnId ? { turnId: eventTurnId } : {}),
             });
           }
           markComplete();
@@ -969,6 +1020,7 @@ export function useRuntime() {
                 type: normalized.message.type || 'result',
                 content: answer,
                 resultMeta: payload,
+                ...(eventTurnId ? { turnId: eventTurnId } : {}),
               });
               completedByEventRef.current = true;
               setStats((prev) => ({
@@ -1122,7 +1174,8 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
       return {
         message: {
           ...base,
-          type: 'agent',
+          type: 'lifecycle',
+          lifecyclePhase: 'started',
           content: `任务开始${payload?.task ? `: ${payload.task}` : ''}`,
         },
       };
@@ -1133,8 +1186,9 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
       return {
         message: {
           ...base,
-          type: needsUserInput ? 'warning' : answer ? 'result' : 'success',
-          runtimeDetail: true,
+          type: needsUserInput ? 'warning' : answer ? 'result' : 'lifecycle',
+          runtimeDetail: !answer,
+          lifecyclePhase: needsUserInput ? 'waiting' : answer ? undefined : 'completed',
           content: answer || (needsUserInput ? '需要你补充信息后继续' : '任务执行完成'),
         },
       };
@@ -1152,7 +1206,8 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
       return {
         message: {
           ...base,
-          type: 'warning',
+          type: 'lifecycle',
+          lifecyclePhase: 'stopped',
           runtimeDetail: true,
           content: '任务已停止',
         },

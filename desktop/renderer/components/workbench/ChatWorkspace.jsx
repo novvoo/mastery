@@ -32,6 +32,9 @@ export function ChatWorkspace({
   workingDirectory,
   fileServerUrl,
   capability,
+  onStarterPrompt,
+  onExport,
+  onClear,
 }) {
   const [continuationInput, setContinuationInput] = useState('');
   const [showTaskMenu, setShowTaskMenu] = useState(false);
@@ -80,12 +83,14 @@ export function ChatWorkspace({
   }, [showContextMenu]);
 
   const handleExportChat = () => {
-    downloadConversationMarkdown(runtime.messages, workingDirectory);
+    if (onExport) onExport();
+    else downloadConversationMarkdown(runtime.messages, workingDirectory);
     setShowTaskMenu(false);
   };
 
   const handleClearChat = () => {
-    runtime.clearMessages();
+    if (onClear) onClear();
+    else runtime.clearMessages();
     setShowTaskMenu(false);
   };
 
@@ -202,6 +207,8 @@ export function ChatWorkspace({
           fileServerUrl={fileServerUrl}
           onClear={runtime.clearMessages}
           onAskAgent={onAskAgentFromMessage}
+          onStarterPrompt={onStarterPrompt}
+          starterPromptsEnabled={inputEditable}
         />
       </div>
 

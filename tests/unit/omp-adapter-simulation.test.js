@@ -1,5 +1,6 @@
 import { describe, expect, test, afterEach } from 'bun:test';
 import { resolve, dirname } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createOmpAdapter } from '../../src/adapters/desktop/omp-adapter.js';
 import { getEventBus, resetEventBus } from '../../src/runtime/event-bus.js';
@@ -7,6 +8,7 @@ import { RuntimeEvent } from '../../src/runtime/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MOCK_OMP_PATH = resolve(__dirname, 'helpers', 'mock-omp.js');
+const TEST_WORKING_DIRECTORY = tmpdir();
 
 // Reset singleton and env between test groups so one test doesn't leak
 afterEach(() => {
@@ -18,13 +20,26 @@ afterEach(() => {
  */
 function mockAdapter() {
   return createOmpAdapter({
-    workingDirectory: '/tmp',
+    workingDirectory: TEST_WORKING_DIRECTORY,
     ompCliPath: MOCK_OMP_PATH,
     // don't set debug: true to keep noise down, but can toggle for debugging
   });
 }
 
 describe('OmpAdapter Simulation — initialization', () => {
+  test('initialize() fails fast when the child process cannot start', async () => {
+    const adapter = createOmpAdapter({
+      workingDirectory: resolve(TEST_WORKING_DIRECTORY, 'mastery-directory-that-does-not-exist'),
+      ompCliPath: MOCK_OMP_PATH,
+    });
+
+    try {
+      await expect(adapter.initialize()).rejects.toThrow('Failed to start omp runtime');
+    } finally {
+      await adapter.dispose();
+    }
+  }, 5000);
+
   test('initialize() succeeds with mock omp', async () => {
     const adapter = mockAdapter();
     try {
@@ -339,7 +354,7 @@ describe('OmpAdapter Simulation — getConfig/getDebug/setDebug', () => {
       await adapter.initialize();
       const cfg = adapter.getConfig();
       expect(cfg.ompCliPath).toBe(MOCK_OMP_PATH);
-      expect(cfg.workingDirectory).toBe('/tmp');
+      expect(cfg.workingDirectory).toBe(TEST_WORKING_DIRECTORY);
     } finally {
       await adapter.dispose();
     }

@@ -366,6 +366,24 @@ describe('DesktopCore — setWorkingDirectory', () => {
     await core.setWorkingDirectory('/new/path');
     expect(core.getState().workingDirectory).toBe('/new/path');
   });
+
+  test('keeps the previous config when the runtime rejects a directory switch', async () => {
+    const engine = {
+      async initialize() {},
+      async dispose() {},
+      async setWorkingDirectory() {
+        throw new Error('runtime switch failed');
+      },
+    };
+    const core = createDesktopCore({ workingDirectory: '/tmp', engine });
+    try {
+      await core.initialize();
+      await expect(core.setWorkingDirectory('/new/path')).rejects.toThrow('runtime switch failed');
+      expect(core.getState().workingDirectory).toBe('/tmp');
+    } finally {
+      await core.dispose();
+    }
+  });
 });
 
 describe('DesktopCore — DesktopState constants', () => {

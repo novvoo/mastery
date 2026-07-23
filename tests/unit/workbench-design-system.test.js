@@ -29,6 +29,9 @@ describe('workbench design system', () => {
     expect(sidebar).not.toMatch(/#[0-9a-f]{3,8}\b/i);
     expect(sidebar).toContain('aria-current=');
     expect(sidebar).toContain('aria-label="搜索任务"');
+    expect(sidebar).toContain('onDeleteSession');
+    expect(sidebar).toContain('codex-session-delete');
+    expect(sidebar).toContain('codex-session-clear-all');
   });
 
   test('settings behaves as an accessible modal tab surface', () => {

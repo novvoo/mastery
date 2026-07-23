@@ -4,7 +4,9 @@ import { localStyles } from './styles/RuntimeDetailsPanel.styles.js';
 import { useIPC } from '../../hooks/useIPC.js';
 import { t } from '../../i18n.js';
 import {
+  buildLifecycleGraph,
   buildThinkingSummary,
+  buildToolRuntimeCollections,
   createRuntimeDetailId,
   getRuntimeDetailContent,
   getRuntimeDetailPreviewText,
@@ -102,6 +104,13 @@ function activitySubject(activity) {
   return activity?.target || activity?.toolName || activity?.title || '活动';
 }
 
+function toolSectionValue(value) {
+  if (value === undefined || value === null || value === '') {
+    return '';
+  }
+  return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+}
+
 function diffLineStyle(line) {
   if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('@@')) {
     return localStyles.diffLineMeta;
@@ -132,9 +141,28 @@ export function RuntimeDetailsPanel({
 }) {
   const ipc = useIPC();
   const runtimeDetails = group?.runtimeDetails || [];
+  const toolCollections = group?.toolCollections || buildToolRuntimeCollections(runtimeDetails);
+  const lifecycleGraph = buildLifecycleGraph(runtimeDetails);
   const visibleRuntimeDetails = runtimeDetails.filter(
     (msg) => !isStatusUpdateMessage(msg) && !isThinkingMessage(msg),
   );
+  const visibleRawCollections = toolCollections.length > 0
+    ? toolCollections
+    : visibleRuntimeDetails.map((msg, index) => ({
+        id: createRuntimeDetailId(msg, index),
+        type: msg.type,
+        toolName: msg.toolName || msg.event || msg.type,
+        request: msg,
+        result: msg.type === 'tool_result' ? msg : null,
+        error: msg.isError ? msg : null,
+        updates: [],
+        messages: [msg],
+        phase: msg.isError ? 'failed' : msg.type === 'tool_result' ? 'completed' : 'running',
+        startedAt: msg.timestamp,
+        timestamp: msg.timestamp,
+        resultPreview: getRuntimeDetailPreviewText(msg),
+        resultValue: getRuntimeDetailContent(msg),
+      }));
   // ── 从 group.messages 中找最新 plan 帧作为单一数据源 ──
   // 不再从 activitySummary.plan 重建（消除双管道不一致）
   const planMessages = (group?.messages || []).filter((msg) => msg.type === 'plan');
@@ -843,23 +871,46 @@ export function RuntimeDetailsPanel({
                 : styles.runtimeDetailsListCollapsed),
           }}
         >
-          {visibleRuntimeDetails.map((msg, index) => {
-            const runtimeDetailId = createRuntimeDetailId(group.id, msg, index);
+          {visibleRawCollections.map((collection, index) => {
+            const runtimeDetailId = collection.id || `tool-collection-${index}`;
             const detailExpanded = expandedRuntimeDetails.has(runtimeDetailId);
-            const typeDisplay = getTypeDisplay(msg.type);
-            const isDebug = msg.type === 'debug';
-            const content = detailExpanded ? getRuntimeDetailContent(msg) : '';
-            const firstLine = detailExpanded
-              ? content
-                ? content.split('\n')[0].trim()
-                : t('status.not_set')
-              : getRuntimeDetailPreviewText(msg);
-            const scoreInfo =
-              msg.type === 'tool_result' && typeof msg.result === 'string'
-                ? ((m) => (m ? { file: m[1], score: parseInt(m[2]) } : null))(
-                    msg.result.match(/^\[(.+?)\] → (\d+)% match/),
-                  )
-                : null;
+            const phaseText = phaseLabel(collection.phase);
+            const preview = collection.resultPreview || collection.displaySubtitle || collection.toolName;
+            const toneStyle = collection.phase === 'failed'
+              ? styles.runtimeDetailItemDebug
+              : styles.runtimeDetailItemStatus;
+            const progressValue = [
+              collection.latestProgressText,
+              collection.progress != null ? `${collection.progress}%` : '',
+            ].filter(Boolean).join(' · ');
+            const requestValue = toolSectionValue(collection.requestValue);
+            const responseValue = toolSectionValue(collection.responseText || collection.responseValue);
+            const renderToolSection = (label, value, tone = 'default') => {
+              if (!value) {
+                return null;
+              }
+              return (
+                <section style={localStyles.toolCollectionSection}>
+                  <div style={localStyles.toolCollectionSectionHeader}>
+                    <span>{label}</span>
+                    {tone !== 'default' && (
+                      <span style={{
+                        ...localStyles.toolCollectionTone,
+                        ...(tone === 'error' ? localStyles.toolCollectionToneError : {}),
+                      }}>
+                        {tone === 'error' ? 'failed' : tone}
+                      </span>
+                    )}
+                  </div>
+                  <pre style={{
+                    ...localStyles.toolCollectionPre,
+                    ...(tone === 'error' ? localStyles.toolCollectionPreError : {}),
+                  }}>
+                    {String(value).length > 6000 ? `${String(value).slice(0, 6000)}\n…` : value}
+                  </pre>
+                </section>
+              );
+            };
 
             return (
               <div
@@ -867,99 +918,125 @@ export function RuntimeDetailsPanel({
                 style={{
                   ...styles.runtimeDetailItem,
                   ...styles.runtimeDetailItemInteractive,
-                  ...(isDebug ? styles.runtimeDetailItemDebug : styles.runtimeDetailItemStatus),
-                  ...(detailExpanded ? {} : { padding: '3px 8px' }),
+                  ...toneStyle,
+                  ...(detailExpanded ? {} : { padding: '5px 8px' }),
                 }}
                 onClick={() => onRuntimeDetailToggle(runtimeDetailId)}
                 title={detailExpanded ? t('msg.collapse') : t('msg.expand')}
               >
                 <div
                   style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(0, 1fr) auto',
                     alignItems: 'center',
                     gap: '8px',
                     color: 'var(--text-dark)',
                     fontSize: '11px',
-                    ...(detailExpanded ? { marginBottom: '4px' } : {}),
+                    ...(detailExpanded ? { marginBottom: '6px' } : {}),
                   }}
                 >
                   <span
                     style={{
-                      flex: detailExpanded ? '0 0 auto' : 1,
+                      minWidth: 0,
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '4px',
+                      gap: '6px',
                     }}
                   >
-                    <span style={{ flexShrink: 0 }}>{typeDisplay.text}</span>
-                    {scoreInfo && (
-                      <span
-                        style={{
-                          padding: '1px 6px',
-                          borderRadius: '3px',
-                          backgroundColor: 'var(--primary-soft)',
-                          color: 'var(--primary-color)',
-                          fontSize: '10px',
-                          fontWeight: '700',
-                          flexShrink: 0,
-                          marginRight: '2px',
-                        }}
-                      >
-                        {scoreInfo.score}%
-                      </span>
-                    )}
+                    <span style={{ flexShrink: 0, fontWeight: 700 }}>{collection.toolName}</span>
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        padding: '1px 6px',
+                        borderRadius: '999px',
+                        border: '1px solid var(--border-subtle)',
+                        color: collection.phase === 'failed' ? 'var(--error-color)' : 'var(--text-muted)',
+                        fontSize: '10px',
+                      }}
+                    >
+                      {phaseText}
+                    </span>
                     {!detailExpanded && (
                       <span
                         style={{
-                          marginLeft: '4px',
-                          color: 'var(--text-muted)',
-                          fontWeight: 400,
-                          fontSize: '11px',
+                          minWidth: 0,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
+                          color: 'var(--text-muted)',
+                          fontWeight: 400,
                         }}
                       >
-                        {firstLine.substring(0, 120)}
+                        {preview}
                       </span>
                     )}
                   </span>
-                  <span style={{ flexShrink: 0 }}>
-                    {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
-                    <span
-                      style={{ marginLeft: '6px', cursor: 'pointer', color: 'var(--text-muted)' }}
-                    >
-                      {detailExpanded ? '▾' : '▸'}
-                    </span>
+                  <span style={{ flexShrink: 0, color: 'var(--text-muted)' }}>
+                    {collection.messageCount > 1 ? `${collection.messageCount} 条合并` : ''}
+                    {collection.durationMs ? ` · ${formatDuration(collection.durationMs)}` : ''}
+                    <span style={{ marginLeft: '6px' }}>{detailExpanded ? '▾' : '▸'}</span>
                   </span>
                 </div>
                 {detailExpanded && (
-                  <div
-                    style={{
-                      ...styles.runtimeDetailContent,
-                      ...styles.runtimeDetailContentExpanded,
-                    }}
-                  >
-                    {content || '(无内容)'}
+                  <div style={localStyles.toolCollectionBody}>
+                    {renderToolSection('Request', requestValue || collection.target)}
+                    {renderToolSection('Progress', progressValue)}
+                    {renderToolSection(
+                      collection.error ? 'Error' : 'Response',
+                      responseValue,
+                      collection.error ? 'error' : 'default',
+                    )}
+                    {!requestValue && !progressValue && !responseValue && (
+                      <div style={localStyles.emptyTab}>(无内容)</div>
+                    )}
                   </div>
                 )}
               </div>
             );
           })}
-          {visibleRuntimeDetails.length === 0 && runtimeDetails.length > 0 && (
+          {visibleRawCollections.length === 0 && runtimeDetails.length > 0 && (
             <div style={localStyles.emptyTab}>{t('ui.root')}</div>
           )}
-          {visibleRuntimeDetails.length === 0 && runtimeDetails.length === 0 && (
+          {visibleRawCollections.length === 0 && runtimeDetails.length === 0 && (
             <div style={localStyles.emptyTab}>{t('status.not_set')}</div>
           )}
         </div>
       )}
     </>
   );
+
+  const renderLifecycleGraph = () => {
+    if (lifecycleGraph.length === 0) {
+      return null;
+    }
+    const toneFor = (phase) => {
+      if (phase === 'failed') {return localStyles.lifecycleNodeFailed;}
+      if (phase === 'running') {return localStyles.lifecycleNodeRunning;}
+      return localStyles.lifecycleNodeCompleted;
+    };
+    return (
+      <div style={localStyles.lifecycleGraph} aria-label="任务生命周期">
+        {lifecycleGraph.map((node, index) => (
+          <React.Fragment key={node.id}>
+            {index > 0 && <span style={localStyles.lifecycleEdge} />}
+            <span
+              style={{
+                ...localStyles.lifecycleNode,
+                ...toneFor(node.phase),
+              }}
+              title={node.timestamp ? new Date(node.timestamp).toLocaleTimeString() : node.label}
+            >
+              <span style={localStyles.lifecycleDot} />
+              <span>{node.label}</span>
+            </span>
+          </React.Fragment>
+        ))}
+      </div>
+    );
+  };
 
   // ===== 渲染 Tab 内容 =====
   const renderTabContent = () => {
@@ -1197,6 +1274,8 @@ export function RuntimeDetailsPanel({
           </button>
         </span>
       </div>
+
+      {renderLifecycleGraph()}
 
       {/* 单一活动流直接呈现；完成后仍可在详情内切换高级视图。 */}
       <div style={localStyles.tabContent}>{renderTabContent()}</div>

@@ -172,6 +172,7 @@ const TRANSLATIONS = {
     // ===== 窗口控制 =====
     'window.expand_sidebar': 'Expand Sidebar',
     'window.collapse_sidebar': 'Collapse Sidebar',
+    'window.toggle_sidebar': 'Toggle Sidebar',
     'window.minimize': 'Minimize',
     'window.maximize': 'Maximize',
     'window.restore': 'Restore',
@@ -496,6 +497,7 @@ const TRANSLATIONS = {
     // ===== 窗口控制 =====
     'window.expand_sidebar': '展开侧边栏',
     'window.collapse_sidebar': '收起侧边栏',
+    'window.toggle_sidebar': '切换侧边栏',
     'window.minimize': '最小化',
     'window.maximize': '最大化',
     'window.restore': '还原',
@@ -800,6 +802,7 @@ const TRANSLATIONS = {
     // ===== 窗口控制 =====
     'window.expand_sidebar': '展開側邊欄',
     'window.collapse_sidebar': '收起側邊欄',
+    'window.toggle_sidebar': '切換側邊欄',
     'window.minimize': '最小化',
     'window.maximize': '最大化',
     'window.restore': '還原',

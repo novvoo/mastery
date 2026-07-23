@@ -51,6 +51,13 @@ describe('versioned command contracts', () => {
       .toBe('critical');
   });
 
+  test('normalizes batch model saves without rejecting legacy array payloads', () => {
+    const models = [{ id: 'openai/gpt-5', provider: 'openai', model: 'gpt-5' }];
+    expect(validateCommand('llm:save-all-models', { models })).toEqual({ models });
+    expect(validateCommand('llm:save-all-models', models)).toEqual({ models });
+    expect(() => validateCommand('llm:save-all-models', null)).toThrow(CommandContractError);
+  });
+
   test('covers every directly invokable channel and rejects uncontracted commands', () => {
     expect(ensureCommandContractCoverage(DIRECT_INVOKE_CHANNELS)).toEqual({
       total: DIRECT_INVOKE_CHANNELS.length,

@@ -285,8 +285,14 @@ export class DesktopCore {
   attachModelProvider() {}
 
   async setWorkingDirectory(directory) {
-    this.#config.workingDirectory = directory;
-    await this.#engine?.setWorkingDirectory?.(directory);
+    const previousDirectory = this.#config.workingDirectory;
+    try {
+      await this.#engine?.setWorkingDirectory?.(directory);
+      this.#config.workingDirectory = directory;
+    } catch (error) {
+      this.#config.workingDirectory = previousDirectory;
+      throw error;
+    }
   }
 
   getRuntime() { return this.#runtime; }
