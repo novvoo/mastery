@@ -7,6 +7,8 @@
 
 本文同时描述 Current Architecture（已实现）与 Target Architecture（演进目标）。带 `Target` 标记的组件不得被描述为现有能力；每个目标都必须有迁移阶段和退出条件。运行代码是行为真相来源，本文是设计意图和允许依赖的真相来源。
 
+实现状态统一使用三种口径：`完成` 表示退出条件已有自动化证据；`进行中` 表示基础能力存在但仍有明确缺口；`Target` 表示尚未进入当前行为契约。图中的逻辑组件不代表独立进程或可部署单元，除非图上明确画出进程边界。
+
 界面按钮到能力、命令和反馈的完整映射见 [UI Action Graph](./ui-action-graph.md)。它是本文的交互层配套设计，必须与可执行 Action Registry 保持同步。
 
 ## 1. 目标、约束与非目标
@@ -87,8 +89,8 @@ flowchart LR
 | 平面 | 职责 | 当前实现 | Target |
 | --- | --- | --- | --- |
 | Experience | 输入、展示、交互恢复 | React Workbench、CLI | capability-driven UI，不感知进程位置 |
-| Control | 生命周期、策略、能力健康度 | `DesktopCore` + 分散配置 | Runtime Supervisor、Capability Registry、Policy Engine |
-| Data | 命令、事件、读模型 | IPC + RuntimeEvent + Hooks | 版本化 contract、背压、可重建 projection |
+| Control | 生命周期、策略、能力健康度 | `DesktopCore`、Runtime Supervisor、Capability Registry、基础 Policy Engine | 交互式授权、策略 profile、统一健康度编排 |
+| Data | 命令、事件、读模型 | fail-closed IPC contract、RuntimeEvent、ConversationTurn 投影 | 细粒度 schema、背压、可重建 projection |
 | Execution | Agent、工具、终端、预览执行 | OMP 子进程、一次性 Terminal command；内置 Preview runner 已移除 | 统一 Worker lifecycle 与隔离等级 |
 | Foundation | 工作区、会话、安全存储、遥测 | 文件系统、safeStorage、局部指标 | correlation-aware telemetry、schema migration |
 
@@ -117,15 +119,15 @@ flowchart LR
   C0 --> C1 --> C2 --> C3 --> C4 --> C5
 ```
 
-| 阶段 | 交付物 | 退出条件 |
-| --- | --- | --- |
-| Phase 1 | Event Envelope v1：`schemaVersion`、`sequence`、`correlationId`、`causationId` | EventBus 同步/异步路径契约通过；旧消费者保持兼容 |
-| Phase 2（完成） | IPC command schema registry、标准错误码、协议兼容测试 | 所有可调用 channel 都有 v1 输入/输出 contract；缺失契约 fail closed |
-| Phase 3（完成） | OMP Runtime Supervisor、重启预算、健康状态 | OMP 异常退出按预算自动恢复；并发信号合并；新 Engine 重绑 IPC |
-| Phase 4（完成） | capability manifest、Policy Engine、Renderer capability discovery | 所有 command 经过策略决策；UI 可读取能力和 contract |
-| Phase 5 | 明确 stream QoS、projection rebuild、消息虚拟化 | 压力测试下交互延迟和内存满足预算 |
+| 阶段 | 状态 | 已有能力 | 尚未满足的退出条件 |
+| --- | --- | --- | --- |
+| Phase 1 | 完成 | Event Envelope v1：`schemaVersion`、`sequence`、`correlationId`、`causationId` | 无；兼容性与顺序契约已有测试 |
+| Phase 2 | 进行中 | 直接与动态 IPC command 均 fail closed；具备版本、风险和结构化可传输结果校验 | 部分 channel 仍使用通用 object validator，尚未完成逐字段输入/输出 schema |
+| Phase 3 | 完成 | OMP Runtime Supervisor、并发启动合并、异常退出恢复、重启预算、Engine 重绑 | 无；恢复闭环已有可执行测试 |
+| Phase 4 | 进行中 | Capability Registry、基础 Policy Engine、`capabilities:list` / `contracts:list`、Renderer discovery | Policy 尚未消费 capability 实时状态，也没有逐次 consent 和团队策略 profile |
+| Phase 5 | 进行中 | ConversationTurn / ToolRun 展示投影、增量文本批处理、确定性折叠策略 | projection rebuild、明确 stream QoS、压力预算和消息虚拟化尚未完成 |
 
-当前代码已完成 Phase 1–4。Phase 2 对直接和动态注册的 IPC command 强制建立 contract，并验证返回值可跨 IPC 传输；Phase 3 对 OMP 的启动、意外退出、退避恢复、重启预算和 IPC 重绑形成闭环；Phase 4 将 Policy Engine 接入所有 command，并通过 `capabilities:list`、`contracts:list` 和 `useIPC` 暴露发现端口。Phase 5 的 projection 重建、QoS 压测和消息虚拟化仍未开始。
+Phase 状态描述实现成熟度，而不是文件是否存在。Phase 2 和 Phase 4 已形成安全基础，但不得被解释为统一 schema 或完整策略治理已经完成；Phase 5 只完成 Renderer 消息投影的第一段，不具备持久重建和容量保证。
 
 ## 3. 系统上下文
 
@@ -163,29 +165,38 @@ flowchart LR
   User["开发者"]
 
   subgraph Desktop["Electron Application"]
-    Main["Main Process<br/>生命周期与特权能力"]
-    Preload["Preload<br/>能力白名单"]
     Renderer["Renderer<br/>React 工作台"]
-    Core["DesktopCore<br/>运行编排"]
-    Bus["RuntimeEventBus<br/>进程内事件"]
+    Preload["Preload<br/>能力白名单"]
+
+    subgraph Main["Main Process · Trusted"]
+      Gateway["Command Gateway<br/>contract / policy / dispatch"]
+      Core["DesktopCore<br/>运行状态投影"]
+      Supervisor["RuntimeSupervisor<br/>生命周期与恢复"]
+      Adapter["OmpAdapter<br/>RPC 防腐层"]
+      Bus["RuntimeEventBus<br/>进程内事件"]
+      Capabilities["Local Capabilities<br/>workspace / session / terminal"]
+    end
   end
 
   OMP["OMP RPC Process"]
   FS["Workspace / Session / Config"]
-  Preview["Local Preview Server"]
+  Preview["External Local Preview URL"]
 
   User --> Renderer
   Renderer -->|"invoke / subscribe"| Preload
-  Preload -->|"校验频道"| Main
-  Main --> Core
-  Core --> OMP
-  OMP --> Core
-  Core --> Bus
-  Bus --> Main
-  Main -->|"事件广播"| Preload
-  Preload --> Renderer
-  Main --> FS
-  Main --> Preview
+  Preload --> Gateway
+  Gateway -->|"command"| Adapter
+  Core ==>|"lifecycle"| Supervisor
+  Supervisor ==>|"create / recover"| Adapter
+  Adapter -->|"JSON-RPC"| OMP
+  OMP -.->|"response / notification"| Adapter
+  Adapter -.->|"RuntimeEvent"| Bus
+  Bus -.-> Core
+  Bus -.-> Gateway
+  Gateway -.->|"event broadcast"| Preload
+  Preload -.-> Renderer
+  Gateway --> Capabilities --> FS
+  Renderer -->|"sandboxed viewer"| Preview
 ```
 
 ### 4.1 容器职责
@@ -204,34 +215,79 @@ flowchart LR
 ### 5.1 Main / Runtime 组件
 
 ```mermaid
-flowchart TB
-  Bootstrap["desktop/main-app.js<br/>Composition Root"]
-  Router["ipc-router.js<br/>Use-case Router"]
-  Core["desktop-core.js<br/>Agent Lifecycle"]
-  Adapter["omp-adapter.js<br/>Anti-corruption Layer"]
-  IPC["MainProcessIPCAdapter<br/>Transport"]
-  Bus["RuntimeEventBus<br/>Domain Events"]
-  Capabilities["Workspace / Session / Preview / LLM Config"]
-  OMP["OMP RPC"]
+flowchart LR
+  Renderer["Renderer Process"]
+  Preload["Preload<br/>允许列表与上下文隔离"]
 
-  Bootstrap --> Router
-  Bootstrap --> Core
-  Core --> Adapter
-  Core --> Bus
-  Core --> IPC
-  Router --> IPC
-  Router --> Capabilities
-  Adapter --> OMP
-  Adapter --> Bus
-  Bus --> Core
+  subgraph Main["Electron Main Process · Trusted Boundary"]
+    direction LR
+    Bootstrap["Composition Root<br/>desktop/main-app.js"]
+
+    subgraph Ingress["Command Ingress"]
+      direction TB
+      IPC["MainProcessIPCAdapter<br/>invoke / subscribe / broadcast"]
+      Contract["Command Contract Registry<br/>输入、输出与版本校验"]
+      Policy["Policy Engine<br/>能力、风险与审计决策"]
+      Router["Command Dispatcher<br/>built-in + registered handlers"]
+    end
+
+    subgraph Application["Application Capabilities"]
+      direction TB
+      AgentUC["Agent Command Handlers<br/>process / stop / state"]
+      LocalUC["Local Capabilities<br/>workspace / session / terminal"]
+      ServiceUC["Managed Services<br/>preview / models / config"]
+      Registry["Capability Registry<br/>available / degraded / unavailable"]
+    end
+
+    subgraph Runtime["Agent Runtime"]
+      direction TB
+      Core["DesktopCore<br/>生命周期与状态投影"]
+      Supervisor["RuntimeSupervisor<br/>健康、退避、重启预算"]
+      Adapter["Active OmpAdapter<br/>RPC 防腐层"]
+      Bus["RuntimeEventBus<br/>有界进程内事件流"]
+    end
+  end
+
+  Resources["Local Resources<br/>workspace / session / config"]
+  Services["Local Processes<br/>terminal / preview"]
+  OMP["OMP RPC Child Process"]
+
+  Renderer -->|"command"| Preload -->|"允许的 channel"| IPC
+  IPC --> Contract
+  Contract -->|"risk / capability metadata"| Policy
+  Policy --> Router
+  Router --> AgentUC --> Adapter
+  Router --> LocalUC --> Resources
+  Router --> ServiceUC --> Services
+  Registry -.->|"发现投影"| IPC
+
+  Core ==>|"lifecycle ownership"| Supervisor
+  Supervisor ==>|"create / recover / dispose"| Adapter
+  Supervisor -.->|"runtime changed · rebind engine"| IPC
+  Adapter -->|"JSON-RPC"| OMP
+  OMP -->|"JSON-RPC response"| Adapter
+  OMP -.->|"notification"| Adapter
+  Adapter -.->|"RuntimeEvent"| Bus
+  Bus -.->|"状态归约"| Core
+  Bus -.->|"事件广播"| IPC
+  IPC -.-> Preload -.-> Renderer
+
+  Bootstrap -.->|"装配与启动顺序"| IPC
+  Bootstrap -.->|"装配"| Core
+  Bootstrap -.->|"注册"| Registry
 ```
 
 设计规则：
 
 - `desktop/main-app.js` 是唯一应用组合根；只决定装配和启动顺序。
-- IPC Router 将频道映射为用例，不承载 Runtime 状态机。
+- 细实线表示同步命令路径，粗实线表示 Runtime 生命周期控制，虚线表示事件、状态发现或重新绑定；三者不得复用同一语义通道。
+- 每个 Renderer command 必须依次通过 contract 校验和 policy 决策，再进入用例路由；未知 channel 默认拒绝。
+- Command Dispatcher 统一承接内置 channel 与注册 handler；两类入口共享同一 contract/policy guard，但不承载 Runtime 状态机，也不解释 OMP 帧。
+- Agent command 由 IPC Adapter 当前绑定的 Active Runtime 直接执行，不把 `DesktopCore` 或 `RuntimeSupervisor` 放进每次请求的热路径。
+- `RuntimeSupervisor` 是 OMP Runtime 的唯一生命周期所有者；并发启动、异常退出、退避恢复和重启预算在此收敛，并在 Runtime 更换后重新绑定 IPC Engine。
 - `OmpAdapter` 是第三方协议防腐层。OMP 原始帧不得越过该层。
-- `DesktopCore` 只消费 RuntimeEvent，不解释 Renderer 展示格式。
+- `DesktopCore` 只消费 RuntimeEvent、维护运行状态投影，不解释 Renderer 展示格式。
+- RuntimeEvent 经 EventBus 单向广播到 IPC；Renderer 不通过反向查询拼装正在进行的事件序列。
 - 工作区、会话、预览和配置是独立能力域；失败应限制在对应用例。
 
 ### 5.2 Renderer 组件
@@ -263,7 +319,100 @@ flowchart TB
 
 依赖只允许从稳定策略流向具体展示组合。Hooks 不得反向导入 Views；领域逻辑不得通过组件文件复用。
 
-### 5.3 Capability-driven UI Graph
+### 5.3 Message Presentation Graph
+
+消息展示采用按用户意图归约的派生投影，而不是把 RuntimeEvent 逐条映射成气泡。一个 `ConversationTurn` 同时拥有 request、responses、tool runs 和 lifecycle；可见性由独立的纯决策函数计算，不参与消息语义归约。
+
+```mermaid
+flowchart LR
+  Event["RuntimeEvent<br/>IPC broadcast"]
+
+  subgraph Ingest["1 · Ingest"]
+    Normalize["normalizeRuntimeEventMessage<br/>统一类型与生命周期语义"]
+    Identity["Canonical Identity<br/>turnId · correlationId · toolCallId"]
+    Ordered["Ordered Message Projection<br/>stable ID · order · stream state"]
+  end
+
+  subgraph Derive["2 · Derive · Pure Domain"]
+    TurnRoute{"Turn Resolver"}
+    Correlated["Explicit Correlation<br/>turn / run / correlation ID"]
+    Legacy["Legacy Boundary<br/>下一条 user 开启新 turn"]
+    Conversation["ConversationTurn Reducer<br/>request + responses + runtime details"]
+    Tool["ToolRun Reducer<br/>按 toolCallId 归约调用生命周期"]
+    Lifecycle["Lifecycle Reducer<br/>started → running → terminal"]
+  end
+
+  subgraph ReadModel["3 · Read Model"]
+    Turn["ConversationTurn<br/>requestMessage · responseMessages · status"]
+    ToolCollection["ToolCollection[]<br/>一个调用，一个展示单元"]
+    LifeNodes["LifecycleNode[]<br/>紧凑执行轨迹"]
+    Graph["Message Display Graph"]
+  end
+
+  subgraph Presentation["4 · Presentation"]
+    Log["MessageLog<br/>会话与主消息"]
+    Panel["RuntimeDetailsPanel<br/>执行详情"]
+    ToolCard["Tool Card<br/>Request / Progress / Response"]
+  end
+
+  Event --> Normalize --> Identity --> Ordered --> TurnRoute
+  TurnRoute -->|"ID available"| Correlated --> Conversation
+  TurnRoute -->|"legacy message"| Legacy --> Conversation
+  Conversation --> Tool
+  Conversation --> Lifecycle
+  Conversation --> Turn --> Graph
+  Tool --> ToolCollection --> Graph
+  Lifecycle --> LifeNodes --> Graph
+  Graph --> Log
+  Graph --> Panel --> ToolCard
+```
+
+Turn 折叠不是生命周期状态机，而是一个无副作用的可见性决策。输入由 Turn 状态、用户偏好和上下文位置组成，并按固定优先级求值：
+
+```mermaid
+flowchart TD
+  Input["TurnVisibilityInput<br/>turnId · status · position · preference"]
+  Pinned{"status 是<br/>running / waiting?"}
+  Preference{"显式用户偏好"}
+  Current{"是否当前 Turn?"}
+
+  ForcedOpen["EXPANDED<br/>强制保持可见"]
+  UserOpen["EXPANDED<br/>用户所有权"]
+  UserClosed["COLLAPSED<br/>用户所有权"]
+  CurrentOpen["EXPANDED<br/>当前 terminal turn"]
+  HistoricalClosed["COLLAPSED<br/>历史 terminal turn"]
+
+  Input --> Pinned
+  Pinned -->|"是"| ForcedOpen
+  Pinned -->|"否"| Preference
+  Preference -->|"expanded"| UserOpen
+  Preference -->|"collapsed"| UserClosed
+  Preference -->|"unset"| Current
+  Current -->|"是"| CurrentOpen
+  Current -->|"否"| HistoricalClosed
+```
+
+决策优先级从高到低为：需要交互的状态、显式用户偏好、当前上下文、历史默认值。`delta`、progress、搜索过滤和普通重渲染都不改变用户偏好；只有用户操作、Turn terminal 化或当前 Turn 发生切换时才可能改变可见结果。
+
+| 投影对象 | 稳定关联键 | 归约规则 |
+| --- | --- | --- |
+| Message | message stable ID | 流式 delta 更新同一消息；最终结果不新增重复气泡 |
+| Conversation Turn | `turnId`，兼容 `runId` / `correlationId` | 同一用户意图的 request、responses、tools 和 lifecycle 归并到同一 turn |
+| Legacy Conversation Turn | user message ID | 无关联字段时，下一条 user message 才开启新 turn；中间响应和详情属于当前 turn |
+| Tool Collection | `toolCallId`，兼容 `callId` / activity ID | request、progress、result/error 归并为同一展示单元；无 ID 的同名调用使用独立 fallback instance |
+| Turn Collapse State | turn ID | running/waiting 强制展开；其余状态先服从用户偏好，再按 current/historical 决定默认值 |
+| Content Expansion State | message ID | 只控制长回答的内容截断，不改变 turn 的可见状态 |
+
+投影与折叠不变量：
+
+- `agent:start`、无答案的 `agent:complete`、`agent:stop`、事件、思考、状态和工具生命周期属于 Runtime Detail Lane，不生成独立主消息气泡。
+- 带最终答案的 `agent:complete` 保持为 response；生命周期详情附着到同一 Conversation Turn。
+- 同一次工具调用的 request、progress、result/error 必须通过稳定调用 ID 聚合成一个 Tool Collection；响应不得脱离请求单独排列。
+- streaming 消息以及 running/waiting Conversation Turn 永不折叠。只有 terminal turn 集合或当前 Turn 发生变化时才重新求值，普通进度刷新不能改变历史 turn 的用户偏好。
+- Turn collapse 与长内容 expansion 是两种正交状态；用户手动展开的 turn/message ID 在当前视图生命周期内具有最高优先级。
+- 归约与折叠策略位于 `runtime/runtime-details.js` 和 `runtime/message-graph.js` 的纯函数中。组件不得另建基于消息数量或渲染次数的隐式规则。
+
+### 5.4 Capability-driven UI Graph
 
 Renderer 不再通过“方法是否存在”推断功能。连接完成后，`useCapabilities` 并行读取 `capabilities:list` 与 `contracts:list`，生成唯一 UI Read Model；所有特权入口从该投影派生。
 
@@ -314,7 +463,7 @@ sequenceDiagram
   participant Core as DesktopCore
   participant OMP as OmpAdapter
   participant Config as Model Config
-  participant IPC as IPC Router
+  participant IPC as Command Dispatcher
   participant Window as BrowserWindow
 
   App->>App: whenReady
@@ -342,20 +491,21 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   participant UI as Renderer
-  participant Main as IPC / DesktopCore
+  participant Gateway as Command Gateway
   participant Adapter as OmpAdapter
   participant OMP as OMP RPC
   participant Bus as RuntimeEventBus
 
-  UI->>Main: agent:processInput(request)
-  Main->>Adapter: processInput
+  UI->>Gateway: agent:processInput(request)
+  Gateway->>Gateway: validate contract + authorize policy
+  Gateway->>Adapter: processInput
   Adapter->>OMP: RPC command(id)
   OMP-->>Adapter: response(id)
   OMP-->>Adapter: message_update / tool / lifecycle
   Adapter->>Bus: normalized RuntimeEvent
-  Bus->>Main: event
-  Main-->>UI: IPC broadcast
-  UI->>UI: normalize, merge, render
+  Bus-->>Gateway: event
+  Gateway-->>UI: IPC broadcast
+  UI->>UI: normalize → ConversationTurn → render
 ```
 
 请求/事件语义：
@@ -374,19 +524,26 @@ sequenceDiagram
   participant Main as Main Process
   participant Core as DesktopCore
   participant OMP as OmpAdapter
-  participant Watcher as Workspace Watcher
+  participant Local as Config / File Server / Watcher
 
   UI->>Main: workspace:setWorkingDirectory(path)
   Main->>Main: validate and canonicalize
   Main->>Core: setWorkingDirectory(path)
-  Core->>OMP: setWorkingDirectory(path)
-  OMP-->>Core: acknowledged
-  Main->>Watcher: replace watched root
-  Main-->>UI: success + canonical path
-  Main-->>UI: workspace:changed
+  Core->>OMP: restart against candidate path
+  alt Runtime ready
+    OMP-->>Core: ready
+    Core-->>Main: acknowledged
+    Main->>Local: commit config + replace roots
+    Main-->>UI: success + canonical path
+    Main-->>UI: workspace:changed
+  else Runtime switch failed
+    OMP-->>Core: error + rollback previous path
+    Core-->>Main: failure
+    Main-->>UI: failure + previous path
+  end
 ```
 
-切换操作是一个有序用例，而不是多个组件各自修改路径。失败时保留旧工作目录；成功响应前不得向 UI 暴露新目录状态。
+切换操作是一个有序用例，而不是多个组件各自修改路径。Runtime 必须先在候选目录恢复 ready，Main Process 才提交配置、文件服务和 watcher；Runtime 失败时 OmpAdapter 尝试恢复旧目录，且不得广播候选目录。配置文件或环境变量持久化失败不会回滚已成功切换的 Runtime，但必须通过 `persistenceError` 明确报告降级状态。
 
 ## 7. 状态、数据与一致性
 
@@ -436,23 +593,27 @@ RuntimeEventEnvelope {
 ### 7.3 内容显示管线
 
 ```mermaid
-flowchart LR
+flowchart TB
   Frame["RuntimeEvent"]
   Normalize["事件归一化"]
-  Merge["按稳定 ID 合并生命周期"]
+  Projection["ConversationTurn / ToolRun Projection"]
+  Select["选择可见消息内容"]
   Sanitize["协议文本过滤"]
-  Store["Renderer Message Projection"]
-  Prepare["Markdown 纯转换"]
+  Prepare["Markdown 安全准备"]
   Render["语义化渲染"]
+  Diagnostic["RuntimeDetailsPanel<br/>受限原始诊断"]
 
-  Frame --> Normalize --> Merge --> Sanitize --> Store --> Prepare --> Render
+  Frame --> Normalize --> Projection --> Select --> Sanitize --> Prepare --> Render
+  Normalize -.->|"raw payload"| Diagnostic
+  Projection --> Diagnostic
 ```
 
-- Runtime 层决定事件含义；组件只决定如何展示。
+- Runtime 归一化层决定事件含义，纯领域投影决定消息归属，组件只决定如何展示。
 - `stripToolProtocolText` 是协议文本过滤的唯一实现。
 - `prepareMarkdownDisplay` 负责链接、工作区图片、流式 fence 和安全文本准备。
 - fenced code 不参与普通正文自动转换；原始 payload 只进入诊断详情。
-- 长历史消息先裁剪展示投影，再进入 Markdown 解析。当前没有列表虚拟化，这是已知容量限制。
+- 折叠内容在进入 Markdown parser 前裁剪；完整历史仍保留在 Renderer messages 中。当前没有列表虚拟化和硬上限，这是已知容量限制。
+- 消息的主从分流、工具请求/响应配对和折叠决策遵循 [Message Presentation Graph](#53-message-presentation-graph)，不在 Markdown 层重复实现。
 
 ## 8. 安全架构
 
@@ -504,7 +665,7 @@ flowchart LR
 | 故障 | 隔离范围 | 系统响应 | 恢复路径 |
 | --- | --- | --- | --- |
 | OMP 启动失败 | Agent Runtime | Core 进入 `error`，不创建窗口 | 显式重试初始化 |
-| OMP 运行中退出 | 当前运行 | 拒绝 pending requests，发出 stop | 重启 Runtime / 应用 |
+| OMP 运行中退出 | 当前运行 | Supervisor 进入 degraded、释放旧 Runtime 并拒绝失效请求 | 在重启预算内自动恢复并重绑 IPC；预算耗尽后显式重启 |
 | IPC 初始化失败 | Desktop 启动 | fail-fast，不创建半可用窗口 | 修复后重启 |
 | Preload 不可用 | 当前 Renderer | 显示能力不可用诊断 | 重载窗口 |
 | React 渲染异常 | Renderer 树 | `UIErrorBoundary` 隔离 | 重试或重载 |
@@ -529,7 +690,7 @@ flowchart LR
 - 诊断接口：`ipc:diagnose` 仅返回版本、路径存在性、连接状态、窗口身份和 handler 统计。
 - Runtime 指标：事件、请求、错误和连接统计通过显式 snapshot 查询。
 - 日志必须带边界上下文，但不得记录 secret 或完整敏感 payload。
-- Event Envelope 已提供 correlation/causation 承载位，但尚未贯通 IPC command、OMP RPC 和工具调用；当前也没有持久日志管线和崩溃遥测。
+- Event Envelope 已提供 correlation/causation 承载位，Renderer 也为本地请求分配稳定 `turnId`；但上下文尚未端到端贯通 IPC command、OMP RPC 和所有工具调用，当前也没有持久日志管线和崩溃遥测。
 
 ## 10. 部署与发布视图
 
@@ -580,7 +741,7 @@ flowchart TB
 | P1 | 默认策略 profile 是 `local-full`，尚无逐次用户授权界面 | 本地高风险 command 默认允许 | 增加交互式 consent rule 和团队策略 profile |
 | P2 | `App.jsx` 仍是较大的组合根 | 跨域编排继续增长 | 按 Workbench capability 拆分 feature controller |
 | P2 | 消息列表未虚拟化 | 超长会话渲染成本增长 | 引入测量型虚拟列表并保持锚点 |
-| P2 | correlation/causation 尚未端到端贯通 | 跨 OMP、IPC、UI 排障仍需人工关联 | Command、RPC 和 Tool run 继承同一上下文 |
+| P2 | correlation/causation 仅部分贯通 | Renderer Turn 可以稳定聚合，但跨 IPC、OMP 和日志排障仍需人工关联 | Command、RPC、RuntimeEvent 和 Tool run 继承同一上下文 |
 | P3 | localStorage 不支持多窗口和跨设备一致性 | 未来扩展受限 | 引入版本化本地状态仓库；需求明确后再同步 |
 
 演进优先修复安全与恢复边界，不以增加抽象层数量作为“架构升级”。只有当当前约束被真实需求突破时，才引入新进程、队列或状态框架。
@@ -631,13 +792,19 @@ bun run verify
 | Runtime Supervisor | `src/adapters/desktop/runtime-supervisor.js` |
 | Capability Registry | `src/adapters/desktop/capability-registry.js` |
 | Policy Engine | `src/adapters/desktop/policy-engine.js` |
-| IPC 传输 | `src/adapters/desktop/ipc-adapter.js` |
-| IPC 用例路由 | `desktop/main-app/ipc-router.js` |
+| IPC 公共适配器入口 | `src/adapters/desktop/ipc-adapter.js` |
+| Main Command Gateway | `src/adapters/desktop/ipc/main-process-adapter.js` |
+| Main handler 注册与能力路由 | `desktop/main-app/ipc-router.js` |
+| 工作目录切换事务 | `desktop/main-app/workspace-file-server.js` |
 | 安全 Preload | `desktop/preload.cjs` |
 | Renderer 组合根 | `desktop/renderer/App.jsx` |
 | Renderer 特权端口 | `desktop/renderer/hooks/useIPC.js` |
 | UI Capability Read Model | `desktop/renderer/hooks/useCapabilities.js` |
 | UI Capability Graph | `desktop/renderer/app/capabilities/capability-graph.js` |
+| Message Display Graph / 折叠策略 | `desktop/renderer/runtime/message-graph.js` |
+| 消息分组 / 工具与生命周期投影 | `desktop/renderer/runtime/runtime-details.js` |
+| 消息展示组合 | `desktop/renderer/components/MessageLog.jsx` |
+| Runtime 详情展示 | `desktop/renderer/components/message-log/RuntimeDetailsPanel.jsx` |
 | 布局领域 | `desktop/renderer/app/layout/layout-state.js` |
 | 内容管线 | `desktop/renderer/app/content/content-pipeline.js` |
 | 架构契约 | `tests/unit/architecture-contract.test.js` |

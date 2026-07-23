@@ -73,10 +73,15 @@ const MsgIcons = {
 import {
   buildThinkingSummary,
   buildRuntimeDetailsExportData,
-  createConversationGroups,
   isPrimaryMessage,
   isRuntimeDetailMessage,
 } from '../runtime/runtime-details.js';
+import {
+  buildMessageDisplayGraph,
+  computeNextCollapsedGroups,
+  computeNextCollapsedMessages,
+  createCompletedCollapseSignature,
+} from '../runtime/message-graph.js';
 import { getMessageDisplayText, getMessageSerializableText, getStableMessageId, safeStringify } from './message-log/utils/message-utils.js';
 import { createCollapsedContentPreview } from '../app/content/content-pipeline.js';
 import {
@@ -278,57 +283,29 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     return messages.filter(messageIsVisible);
   }, [messages, filter, searchQuery]);
 
-  // 判断消息是否是需要自动折叠的消息
-  // 只对 AI 助手的长回复做折叠，工具/事件消息交给组折叠管理
-  const isAutoCollapsible = (msg) => {
-    return msg.type === 'agent' || msg.type === 'assistant' || msg.type === 'assistant_stream'
-      || msg.type === 'result' || msg.type === 'success';
-  };
-
   // 跟踪用户手动展开的消息，避免自动折叠覆盖用户操作
   const userUncollapsedRef = useRef(new Set());
+  const userExpandedGroupsRef = useRef(new Set());
+  const userCollapsedGroupsRef = useRef(new Set());
 
-  // 跟踪上一次的 filteredMessages 长度，避免不必要的更新
-  const prevFilteredMessagesLengthRef = useRef(0);
+  // 跟踪上一次的可折叠完成消息集合，避免运行中消息刷新触发旧消息折叠
+  const prevCompletedCollapseSignatureRef = useRef('');
 
   // 自动折叠逻辑：所有 assistant 消息默认折叠，最后一条总结消息展开
   useEffect(() => {
-    // 只有当 filteredMessages 数量变化时才重新计算（避免每次都触发）
-    if (filteredMessages.length === prevFilteredMessagesLengthRef.current) {
+    const getCollapseMessageId = (message, index) => getStableMessageId(message, `${index}`);
+    const completedSignature = createCompletedCollapseSignature(filteredMessages, getCollapseMessageId);
+    if (completedSignature === prevCompletedCollapseSignatureRef.current) {
       return;
     }
-    prevFilteredMessagesLengthRef.current = filteredMessages.length;
+    prevCompletedCollapseSignatureRef.current = completedSignature;
 
-    const collapsibleIndices = [];
-    filteredMessages.forEach((msg, index) => {
-      if (isAutoCollapsible(msg)) {
-        collapsibleIndices.push(index);
-      }
-    });
-
-    setCollapsedMessages(prev => {
-      const newCollapsed = new Set(prev);
-      const lastCollapsibleIndex = collapsibleIndices.length > 0 ? collapsibleIndices[collapsibleIndices.length - 1] : -1;
-
-      collapsibleIndices.forEach((index) => {
-        const msg = filteredMessages[index];
-        const msgId = getStableMessageId(msg, `${index}`);
-
-        if (index !== lastCollapsibleIndex) {
-          // 不是最后一条可折叠消息，应该折叠
-          // 如果用户手动展开了这条消息，则不自动折叠
-          if (!userUncollapsedRef.current.has(msgId)) {
-            newCollapsed.add(msgId);
-          }
-        } else {
-          // 最后一条可折叠消息保持展开
-          newCollapsed.delete(msgId);
-          userUncollapsedRef.current.add(msgId);
-        }
-      });
-
-      return newCollapsed;
-    });
+    setCollapsedMessages(previousCollapsed => computeNextCollapsedMessages({
+      messages: filteredMessages,
+      previousCollapsed,
+      userExpandedMessageIds: userUncollapsedRef.current,
+      getMessageId: getCollapseMessageId,
+    }));
   }, [filteredMessages]);
 
   const runtimeDetailMessages = useMemo(() => (
@@ -338,10 +315,13 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     filteredMessages.filter(isPrimaryMessage)
   ), [filteredMessages]);
 
-  const conversationGroups = useMemo(() => createConversationGroups(messages, {
-    messageIsVisible,
-    messageMatchesSearch,
-  }), [messages, filter, searchQuery]);
+  const conversationGroups = useMemo(() => (
+    buildMessageDisplayGraph(messages).filter((group) => (
+      group.messages.some((message) => (
+        messageMatchesFilter(message) && messageMatchesSearch(message)
+      ))
+    ))
+  ), [messages, filter, searchQuery]);
 
   useEffect(() => {
     for (const group of conversationGroups) {
@@ -494,22 +474,14 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     URL.revokeObjectURL(url);
   }, []);
 
-  // 自动折叠旧的消息组，只保留最后一组展开
+  // 自动折叠旧的已完成消息组，只保留当前上下文展开；用户手动展开过的组不再自动折回
   useEffect(() => {
-    if (conversationGroups.length <= 1) return;
-    const lastId = conversationGroups[conversationGroups.length - 1]?.id;
-    if (!lastId) return;
-    setGroupCollapsed(prev => {
-      const next = new Set(prev);
-      let changed = false;
-      for (const group of conversationGroups) {
-        if (group.id !== lastId && !next.has(group.id)) {
-          next.add(group.id);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
+    setGroupCollapsed(previousCollapsed => computeNextCollapsedGroups({
+      groups: conversationGroups,
+      previousCollapsed,
+      userExpandedGroupIds: userExpandedGroupsRef.current,
+      userCollapsedGroupIds: userCollapsedGroupsRef.current,
+    }));
   }, [conversationGroups]);
 
 
@@ -550,6 +522,10 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     setExpandedRuntimePanels(new Set());
     setLargeRuntimePanels(new Set());
     setGroupCollapsed(new Set());
+    userUncollapsedRef.current = new Set();
+    userExpandedGroupsRef.current = new Set();
+    userCollapsedGroupsRef.current = new Set();
+    prevCompletedCollapseSignatureRef.current = '';
   }, [onClear]);
 
   // 处理消息折叠/展开
@@ -580,8 +556,12 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       const newSet = new Set(prev);
       if (newSet.has(groupId)) {
         newSet.delete(groupId);
+        userExpandedGroupsRef.current.add(groupId);
+        userCollapsedGroupsRef.current.delete(groupId);
       } else {
         newSet.add(groupId);
+        userExpandedGroupsRef.current.delete(groupId);
+        userCollapsedGroupsRef.current.add(groupId);
       }
       return newSet;
     });
@@ -1691,13 +1671,26 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
 
   const renderConversationGroup = (group, groupIndex) => {
     const isActiveGroup = groupIndex === conversationGroups.length - 1;
-    const [firstMessage, ...restMessages] = group.messages;
-    const isCollapsed = groupCollapsed.has(group.id) && !isActiveGroup;
+    const requestMessage = group.requestMessage || null;
+    const responseMessages = group.responseMessages?.length
+      ? group.responseMessages
+      : group.primaryMessages?.filter((message) => message !== requestMessage) || [];
+    const summaryMessage = group.responseMessage || requestMessage || group.primaryMessage;
+    const isPinnedOpenTurn = group.status === 'running' || group.status === 'waiting';
+    const isCollapsed = groupCollapsed.has(group.id) && !isPinnedOpenTurn;
     const detailCount = group.toolCollections?.length || group.runtimeDetails.length;
-    const primaryText = getMessageDisplayText(firstMessage || {});
-    const preview = String(primaryText || '').replace(/\s+/g, ' ').slice(0, 80) || t('msg.no_content');
-    const typeDisplay = firstMessage ? getTypeDisplay(firstMessage.type) : { iconName: 'event', text: t('msg.group') };
-    const summaryLabel = group.primary?.phaseLabel || typeDisplay.text;
+    const detailLabel = group.toolCollections?.length ? `${detailCount} 调用` : `${detailCount} 步`;
+    const primaryText = getMessageDisplayText(summaryMessage || {});
+    const preview = String(primaryText || '').replace(/\s+/g, ' ').slice(0, 80) || (detailCount > 0 ? '运行详情' : t('msg.no_content'));
+    const statusLabel = {
+      running: '运行中',
+      completed: '已完成',
+      failed: '失败',
+      stopped: '已停止',
+      waiting: '等待输入',
+    }[group.status];
+    const typeDisplay = summaryMessage ? getTypeDisplay(summaryMessage.type) : { iconName: 'event', text: '运行' };
+    const summaryLabel = statusLabel || group.primary?.phaseLabel || typeDisplay.text;
 
     return (
       <div key={group.id} style={{
@@ -1706,7 +1699,13 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         {/* 组折叠/展开头部 */}
         <button
           type="button"
-          onClick={() => handleGroupCollapseToggle(group.id)}
+          onClick={() => {
+            if (!isPinnedOpenTurn) {
+              handleGroupCollapseToggle(group.id);
+            }
+          }}
+          aria-expanded={!isCollapsed}
+          aria-disabled={isPinnedOpenTurn}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -1717,7 +1716,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             borderRadius: isCollapsed ? 'var(--radius-md)' : 'var(--radius-md) var(--radius-md) 0 0',
             backgroundColor: isCollapsed ? 'transparent' : 'var(--surface-card)',
             color: 'var(--text-color)',
-            cursor: 'pointer',
+            cursor: isPinnedOpenTurn ? 'default' : 'pointer',
             fontSize: '12px',
             textAlign: 'left',
             transition: 'background-color 0.12s ease',
@@ -1735,6 +1734,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             color: 'var(--text-muted)',
             transition: 'transform 0.15s ease',
             transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+            opacity: isPinnedOpenTurn ? 0.45 : 1,
           }}>
             {MsgIcons.chevronDown}
           </span>
@@ -1782,7 +1782,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
               fontSize: '10px',
               fontWeight: 600,
             }}>
-              {detailCount} 步
+              {detailLabel}
             </span>
           )}
         </button>
@@ -1792,9 +1792,14 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
           <div style={{
             borderTop: '1px solid var(--border-subtle)',
           }}>
-            {firstMessage && renderMessage(firstMessage, `${group.id}_0`)}
+            {requestMessage && renderMessage(requestMessage, `${group.id}_request`)}
             {detailCount > 0 && renderRuntimeDetailsPanel(group, isActiveGroup)}
-            {restMessages.map((msg, index) => renderMessage(msg, `${group.id}_${index + 1}`))}
+            {responseMessages.map((message, index) => (
+              renderMessage(message, `${group.id}_response_${index}`)
+            ))}
+            {!requestMessage && responseMessages.length === 0 && group.primaryMessage && (
+              renderMessage(group.primaryMessage, `${group.id}_primary`)
+            )}
           </div>
         )}
       </div>

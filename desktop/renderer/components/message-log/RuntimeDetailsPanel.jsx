@@ -4,6 +4,7 @@ import { localStyles } from './styles/RuntimeDetailsPanel.styles.js';
 import { useIPC } from '../../hooks/useIPC.js';
 import { t } from '../../i18n.js';
 import {
+  buildLifecycleGraph,
   buildThinkingSummary,
   buildToolRuntimeCollections,
   createRuntimeDetailId,
@@ -103,6 +104,13 @@ function activitySubject(activity) {
   return activity?.target || activity?.toolName || activity?.title || '活动';
 }
 
+function toolSectionValue(value) {
+  if (value === undefined || value === null || value === '') {
+    return '';
+  }
+  return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+}
+
 function diffLineStyle(line) {
   if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('@@')) {
     return localStyles.diffLineMeta;
@@ -134,6 +142,7 @@ export function RuntimeDetailsPanel({
   const ipc = useIPC();
   const runtimeDetails = group?.runtimeDetails || [];
   const toolCollections = group?.toolCollections || buildToolRuntimeCollections(runtimeDetails);
+  const lifecycleGraph = buildLifecycleGraph(runtimeDetails);
   const visibleRuntimeDetails = runtimeDetails.filter(
     (msg) => !isStatusUpdateMessage(msg) && !isThinkingMessage(msg),
   );
@@ -865,17 +874,43 @@ export function RuntimeDetailsPanel({
           {visibleRawCollections.map((collection, index) => {
             const runtimeDetailId = collection.id || `tool-collection-${index}`;
             const detailExpanded = expandedRuntimeDetails.has(runtimeDetailId);
-            const resultContent = getRuntimeDetailContent(collection.error || collection.result || {});
-            const requestContent = getRuntimeDetailContent(collection.request || {});
-            const content = [
-              collection.args ? `请求参数\n${JSON.stringify(collection.args, null, 2)}` : requestContent ? `请求\n${requestContent}` : '',
-              resultContent ? `${collection.error ? '错误响应' : '响应'}\n${resultContent}` : '',
-            ].filter(Boolean).join('\n\n');
             const phaseText = phaseLabel(collection.phase);
-            const preview = collection.resultPreview || collection.statusText || collection.toolName;
+            const preview = collection.resultPreview || collection.displaySubtitle || collection.toolName;
             const toneStyle = collection.phase === 'failed'
               ? styles.runtimeDetailItemDebug
               : styles.runtimeDetailItemStatus;
+            const progressValue = [
+              collection.latestProgressText,
+              collection.progress != null ? `${collection.progress}%` : '',
+            ].filter(Boolean).join(' · ');
+            const requestValue = toolSectionValue(collection.requestValue);
+            const responseValue = toolSectionValue(collection.responseText || collection.responseValue);
+            const renderToolSection = (label, value, tone = 'default') => {
+              if (!value) {
+                return null;
+              }
+              return (
+                <section style={localStyles.toolCollectionSection}>
+                  <div style={localStyles.toolCollectionSectionHeader}>
+                    <span>{label}</span>
+                    {tone !== 'default' && (
+                      <span style={{
+                        ...localStyles.toolCollectionTone,
+                        ...(tone === 'error' ? localStyles.toolCollectionToneError : {}),
+                      }}>
+                        {tone === 'error' ? 'failed' : tone}
+                      </span>
+                    )}
+                  </div>
+                  <pre style={{
+                    ...localStyles.toolCollectionPre,
+                    ...(tone === 'error' ? localStyles.toolCollectionPreError : {}),
+                  }}>
+                    {String(value).length > 6000 ? `${String(value).slice(0, 6000)}\n…` : value}
+                  </pre>
+                </section>
+              );
+            };
 
             return (
               <div
@@ -946,13 +981,17 @@ export function RuntimeDetailsPanel({
                   </span>
                 </div>
                 {detailExpanded && (
-                  <div
-                    style={{
-                      ...styles.runtimeDetailContent,
-                      ...styles.runtimeDetailContentExpanded,
-                    }}
-                  >
-                    {content || '(无内容)'}
+                  <div style={localStyles.toolCollectionBody}>
+                    {renderToolSection('Request', requestValue || collection.target)}
+                    {renderToolSection('Progress', progressValue)}
+                    {renderToolSection(
+                      collection.error ? 'Error' : 'Response',
+                      responseValue,
+                      collection.error ? 'error' : 'default',
+                    )}
+                    {!requestValue && !progressValue && !responseValue && (
+                      <div style={localStyles.emptyTab}>(无内容)</div>
+                    )}
                   </div>
                 )}
               </div>
@@ -968,6 +1007,36 @@ export function RuntimeDetailsPanel({
       )}
     </>
   );
+
+  const renderLifecycleGraph = () => {
+    if (lifecycleGraph.length === 0) {
+      return null;
+    }
+    const toneFor = (phase) => {
+      if (phase === 'failed') {return localStyles.lifecycleNodeFailed;}
+      if (phase === 'running') {return localStyles.lifecycleNodeRunning;}
+      return localStyles.lifecycleNodeCompleted;
+    };
+    return (
+      <div style={localStyles.lifecycleGraph} aria-label="任务生命周期">
+        {lifecycleGraph.map((node, index) => (
+          <React.Fragment key={node.id}>
+            {index > 0 && <span style={localStyles.lifecycleEdge} />}
+            <span
+              style={{
+                ...localStyles.lifecycleNode,
+                ...toneFor(node.phase),
+              }}
+              title={node.timestamp ? new Date(node.timestamp).toLocaleTimeString() : node.label}
+            >
+              <span style={localStyles.lifecycleDot} />
+              <span>{node.label}</span>
+            </span>
+          </React.Fragment>
+        ))}
+      </div>
+    );
+  };
 
   // ===== 渲染 Tab 内容 =====
   const renderTabContent = () => {
@@ -1205,6 +1274,8 @@ export function RuntimeDetailsPanel({
           </button>
         </span>
       </div>
+
+      {renderLifecycleGraph()}
 
       {/* 单一活动流直接呈现；完成后仍可在详情内切换高级视图。 */}
       <div style={localStyles.tabContent}>{renderTabContent()}</div>

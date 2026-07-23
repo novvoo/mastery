@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { mergeToolLifecycleMessage, normalizeRuntimeEventMessage } from '../../desktop/renderer/hooks/useRuntime.js';
 import {
+  buildLifecycleGraph,
   buildToolRuntimeCollections,
   createConversationGroups,
+  isPrimaryMessage,
+  isRuntimeDetailMessage,
 } from '../../desktop/renderer/runtime/runtime-details.js';
 import { buildActivitySummary } from '../../desktop/renderer/runtime/activity-summary.js';
 
@@ -90,6 +93,10 @@ describe('OMP tool lifecycle UI aggregation', () => {
     expect(collections[0].updates).toEqual([progress]);
     expect(collections[0].messageCount).toBe(3);
     expect(collections[0].phase).toBe('completed');
+    expect(collections[0].requestValue).toContain('bun test');
+    expect(collections[0].responseText).toBe('445 pass');
+    expect(collections[0].latestProgressText).toBe('测试中');
+    expect(collections[0].displaySubtitle).toBe('测试中');
   });
 
   test('conversation groups expose tool collections instead of raw lifecycle count', () => {
@@ -113,5 +120,45 @@ describe('OMP tool lifecycle UI aggregation', () => {
     expect(summary.activities).toHaveLength(1);
     expect(summary.activities[0].toolName).toBe('read');
     expect(summary.total).toBe(1);
+  });
+
+  test('event messages are runtime details instead of primary chat messages', () => {
+    const eventMessage = { id: 'evt-1', type: 'event', content: 'status changed' };
+
+    expect(isRuntimeDetailMessage(eventMessage)).toBe(true);
+    expect(isPrimaryMessage(eventMessage)).toBe(false);
+  });
+
+  test('task start and empty completion become lifecycle graph nodes', () => {
+    const start = normalizeRuntimeEventMessage('agent:start', { task: '修复 UI' }).message;
+    const complete = normalizeRuntimeEventMessage('agent:complete', {}).message;
+    const graph = buildLifecycleGraph([start, complete]);
+
+    expect(start.type).toBe('lifecycle');
+    expect(complete.type).toBe('lifecycle');
+    expect(isRuntimeDetailMessage(start)).toBe(true);
+    expect(isRuntimeDetailMessage(complete)).toBe(true);
+    expect(graph.map((node) => node.id)).toEqual(['started', 'completed']);
+  });
+
+  test('agent completion with an answer remains a primary result message', () => {
+    const complete = normalizeRuntimeEventMessage('agent:complete', {
+      result: { answer: '真实回答' },
+    }).message;
+
+    expect(complete.type).toBe('result');
+    expect(isPrimaryMessage(complete)).toBe(true);
+    expect(isRuntimeDetailMessage(complete)).toBe(false);
+  });
+
+  test('runtime lifecycle events attach to the next primary conversation group', () => {
+    const start = normalizeRuntimeEventMessage('agent:start', { task: 'run' }).message;
+    const user = { id: 'u1', type: 'user', content: 'run tests' };
+
+    const [group] = createConversationGroups([start, user]);
+
+    expect(group.primaryMessage).toBe(user);
+    expect(group.runtimeDetails).toEqual([start]);
+    expect(group.messages).toEqual([user, start]);
   });
 });

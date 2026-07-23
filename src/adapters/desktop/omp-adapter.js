@@ -797,11 +797,24 @@ export class OmpAdapter {
   }
 
   async setWorkingDirectory(dir) {
-    if (path.resolve(dir) === path.resolve(this.#config.workingDirectory)) return;
+    const previousDirectory = this.#config.workingDirectory;
+    if (path.resolve(dir) === path.resolve(previousDirectory)) return;
     await this.dispose();
     this.#disposed = false;
     this.#config.workingDirectory = dir;
-    await this.initialize();
+    try {
+      await this.initialize();
+    } catch (switchError) {
+      try { await this.dispose(); } catch {}
+      this.#disposed = false;
+      this.#config.workingDirectory = previousDirectory;
+      try {
+        await this.initialize();
+      } catch (rollbackError) {
+        switchError.rollbackError = rollbackError?.message || String(rollbackError);
+      }
+      throw switchError;
+    }
   }
 
   async getAvailableModels() {

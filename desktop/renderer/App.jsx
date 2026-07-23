@@ -536,6 +536,8 @@ function App() {
             sessions={sessions}
             activeSessionId={activeAgentSessionId}
             onSelectSession={(id) => handleSelectSession(id, clearInput)}
+            onDeleteSession={handleDeleteSession}
+            onClearSessions={handleClearHistory(window.confirm, clearInput)}
             onShowTools={() => setActiveTab('tools')}
             onSettings={() => setShowManagement(true)}
           />

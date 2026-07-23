@@ -431,11 +431,19 @@
 .codex-sidebar-search { margin: 8px 12px 0; min-height: 34px; padding: 0 10px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--sidebar-border); border-radius: 8px; background: var(--sidebar-footer-bg); color: var(--sidebar-muted); }
 .codex-sidebar-search input { min-width: 0; width: 100%; border: 0 !important; outline: 0; background: transparent !important; color: var(--sidebar-text); font: inherit; font-size: 12px; }
 .codex-session-region { flex: 1; min-height: 0; padding: 18px 12px 12px; display: flex; flex-direction: column; }
-.codex-section-label { padding: 0 10px 10px; color: var(--sidebar-muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.codex-session-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px 10px 10px; }
+.codex-section-label { color: var(--sidebar-muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.codex-session-clear-all { height: 22px; padding: 0 7px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--sidebar-muted); font-size: 11px; font-weight: 700; cursor: pointer; }
+.codex-session-clear-all:hover, .codex-session-clear-all:focus-visible { border-color: var(--sidebar-border); background: var(--sidebar-hover); color: var(--sidebar-text); outline: none; }
 .codex-session-list { overflow-y: auto; display: grid; gap: 2px; }
-.codex-session-list button { min-height: 40px; padding: 7px 12px; border: 0; border-radius: 9px; background: transparent; color: var(--sidebar-text); text-align: left; font: inherit; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-.codex-session-list button:hover { background: var(--sidebar-hover); }
-.codex-session-list button.is-active { background: var(--sidebar-active); color: var(--sidebar-text); font-weight: 600; }
+.codex-session-item { min-height: 40px; display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: center; border-radius: 9px; background: transparent; color: var(--sidebar-text); }
+.codex-session-item:hover, .codex-session-item:focus-within { background: var(--sidebar-hover); }
+.codex-session-item.is-active { background: var(--sidebar-active); color: var(--sidebar-text); font-weight: 600; }
+.codex-session-select { min-width: 0; min-height: 40px; padding: 7px 8px 7px 12px; border: 0; border-radius: 9px 0 0 9px; background: transparent; color: inherit; text-align: left; font: inherit; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.codex-session-select:focus-visible { outline: 1px solid var(--sidebar-border); outline-offset: -2px; }
+.codex-session-delete { width: 24px; height: 24px; margin-right: 4px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--sidebar-muted); opacity: .45; cursor: pointer; }
+.codex-session-delete:hover, .codex-session-delete:focus-visible { border-color: var(--ds-status-error-s2); background: var(--ds-status-error-s1); color: var(--ds-status-error); opacity: 1; outline: none; }
+.codex-session-item:hover .codex-session-delete, .codex-session-item:focus-within .codex-session-delete, .codex-session-item.is-active .codex-session-delete { opacity: 1; }
 .codex-session-empty { padding: 10px 12px; color: var(--sidebar-muted); font-size: 12px; }
 .codex-sidebar-body { flex: 1; min-height: 0; display: flex; overflow: hidden; border-top: 1px solid var(--sidebar-border); }
 .codex-sidebar-footer { padding: 10px 12px 12px; }

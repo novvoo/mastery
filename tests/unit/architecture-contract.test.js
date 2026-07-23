@@ -54,7 +54,11 @@ describe('architecture contract', () => {
       'src/adapters/desktop/capability-registry.js',
       'src/adapters/desktop/policy-engine.js',
       'src/adapters/desktop/protocol/command-contracts.js',
+      'src/adapters/desktop/ipc/main-process-adapter.js',
       'desktop/main-app/ipc-router.js',
+      'desktop/main-app/workspace-file-server.js',
+      'desktop/renderer/runtime/message-graph.js',
+      'desktop/renderer/runtime/runtime-details.js',
     ]) {
       expect(architecture).toContain(relativePath);
       expect(existsSync(path.join(ROOT, relativePath))).toBe(true);
@@ -135,16 +139,53 @@ describe('architecture contract', () => {
     expect(architecture).toContain('不等于持久事件溯源');
   });
 
-  test('keeps completed target phases backed by executable foundations', () => {
+  test('keeps phase maturity aligned with executable foundations and explicit gaps', () => {
     const commandContracts = read('src/adapters/desktop/protocol/command-contracts.js');
     const supervisor = read('src/adapters/desktop/runtime-supervisor.js');
     const policy = read('src/adapters/desktop/policy-engine.js');
-    expect(architecture).toContain('Phase 2（完成）');
-    expect(architecture).toContain('Phase 3（完成）');
-    expect(architecture).toContain('Phase 4（完成）');
+    expect(architecture).toMatch(/\| Phase 1 \| 完成 \|/);
+    expect(architecture).toMatch(/\| Phase 2 \| 进行中 \|/);
+    expect(architecture).toMatch(/\| Phase 3 \| 完成 \|/);
+    expect(architecture).toMatch(/\| Phase 4 \| 进行中 \|/);
+    expect(architecture).toMatch(/\| Phase 5 \| 进行中 \|/);
+    expect(architecture).toContain('通用 object validator');
+    expect(architecture).toContain('Policy 尚未消费 capability 实时状态');
     expect(commandContracts).toContain('ensureCommandContractCoverage');
     expect(supervisor).toContain('handleUnexpectedExit');
     expect(policy).toContain('authorize(');
+  });
+
+  test('keeps the documented command hot path and runtime rebind behavior accurate', () => {
+    const desktopCore = read('src/adapters/desktop/desktop-core.js');
+    const mainIPC = read('src/adapters/desktop/ipc/main-process-adapter.js');
+    expect(architecture).toContain('不把 `DesktopCore` 或 `RuntimeSupervisor` 放进每次请求的热路径');
+    expect(mainIPC).toContain('this.#engine.processInput');
+    expect(desktopCore).toContain('this.#ipcAdapter.attachEngine?.(runtime)');
+  });
+
+  test('keeps workspace switching ordered before persistence and broadcast', () => {
+    const workspace = read('desktop/main-app/workspace-file-server.js');
+    const desktopCore = read('src/adapters/desktop/desktop-core.js');
+    const ompAdapter = read('src/adapters/desktop/omp-adapter.js');
+    const runtimeSwitch = workspace.indexOf('await ctx.desktopCore.setWorkingDirectory(nextDirectory)');
+    const configCommit = workspace.indexOf('ctx.config.workingDirectory = nextDirectory');
+    const broadcast = workspace.indexOf('broadcastWorkspaceChange(ctx, { workingDirectory: nextDirectory');
+    expect(runtimeSwitch).toBeGreaterThan(-1);
+    expect(configCommit).toBeGreaterThan(runtimeSwitch);
+    expect(broadcast).toBeGreaterThan(configCommit);
+    expect(desktopCore).toContain('this.#config.workingDirectory = previousDirectory');
+    expect(ompAdapter).toContain('this.#config.workingDirectory = previousDirectory');
+    expect(ompAdapter).toContain('switchError.rollbackError');
+    expect(architecture).toContain('Runtime 必须先在候选目录恢复 ready');
+  });
+
+  test('backs the documented turn visibility decision with one pure policy function', () => {
+    const messageGraph = read('desktop/renderer/runtime/message-graph.js');
+    expect(architecture).toContain('TurnVisibilityInput');
+    expect(architecture).toContain('running/waiting 强制展开');
+    expect(messageGraph).toContain('export function resolveTurnVisibility');
+    expect(messageGraph).toContain("reason: 'attention-required'");
+    expect(messageGraph).toContain("reason: 'historical-terminal'");
   });
 
   test('keeps the documented event buffer budget executable', () => {

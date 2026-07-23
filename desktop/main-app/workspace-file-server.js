@@ -180,6 +180,23 @@ export async function setWorkingDirectory(ctx, directory) {
     return { success: false, error: '路径不是目录' };
   }
 
+  const previousDirectory = ctx.config.workingDirectory;
+  if (ctx.desktopCore && typeof ctx.desktopCore.setWorkingDirectory === 'function') {
+    try {
+      await ctx.desktopCore.setWorkingDirectory(nextDirectory);
+    } catch (error) {
+      return {
+        success: false,
+        error: `Runtime 无法切换工作目录: ${error.message}`,
+        workingDirectory: previousDirectory,
+      };
+    }
+  }
+
+  if (ctx.ipcAdapter && typeof ctx.ipcAdapter.attachEngine === 'function' && ctx.desktopCore?.getEngine) {
+    ctx.ipcAdapter.attachEngine(ctx.desktopCore.getEngine());
+  }
+
   ctx.config.workingDirectory = nextDirectory;
   let persistence = { success: true };
   let envPersistence = { success: true };
@@ -203,14 +220,6 @@ export async function setWorkingDirectory(ctx, directory) {
   }
 
   startFileServer(ctx);
-
-  if (ctx.desktopCore && typeof ctx.desktopCore.setWorkingDirectory === 'function') {
-    ctx.desktopCore.setWorkingDirectory(nextDirectory);
-  }
-
-  if (ctx.ipcAdapter && typeof ctx.ipcAdapter.attachEngine === 'function' && ctx.desktopCore?.getEngine) {
-    ctx.ipcAdapter.attachEngine(ctx.desktopCore.getEngine());
-  }
 
   startWorkspaceWatcher(ctx);
 

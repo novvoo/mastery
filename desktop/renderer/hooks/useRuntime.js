@@ -164,6 +164,7 @@ export function useRuntime() {
   const statsRef = useRef(stats);
   const lastAnswerRef = useRef('');
   const completedByEventRef = useRef(false);
+  const activeTurnIdRef = useRef(null);
   const streamingMessageIdRef = useRef(null); // 追踪当前流式文本消息
   const streamingTextRef = useRef(''); // 同步记录当前 assistant 文本，避免最终结果重复入列
   const streamingReasoningIdRef = useRef(null); // 追踪当前 reasoning 消息
@@ -322,6 +323,7 @@ export function useRuntime() {
       pendingMessageDeltaTimerRef.current = null;
     }
     recentRuntimeEventSignaturesRef.current = new Map();
+    activeTurnIdRef.current = null;
     messageBufferRef.current = [];
     setMessages([]);
     setStats((prev) => ({
@@ -463,6 +465,13 @@ export function useRuntime() {
         };
       }
 
+      const turnId =
+        options.turnId ||
+        options.runId ||
+        options.correlationId ||
+        `turn_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      activeTurnIdRef.current = turnId;
+
       // 设置运行状态
       setStatus('running');
       setStats((prev) => ({
@@ -483,6 +492,7 @@ export function useRuntime() {
       addMessage({
         type: 'user',
         content: input,
+        turnId,
       });
 
       try {
@@ -499,6 +509,7 @@ export function useRuntime() {
             content: '',
             timestamp: now,
             isStreaming: true,
+            turnId,
           },
         ]);
 
@@ -557,12 +568,14 @@ export function useRuntime() {
               type: needsUserInput ? 'warning' : 'result',
               content: answer,
               ...result,
+              turnId: result?.turnId || result?.runId || result?.correlationId || turnId,
             });
           } else if (!answer && !streamMsgId && !eventAlreadyHandled) {
             addMessage({
               type: needsUserInput ? 'warning' : 'success',
               content: needsUserInput ? '需要你补充信息后继续' : '执行完成',
               ...result,
+              turnId: result?.turnId || result?.runId || result?.correlationId || turnId,
             });
           }
 
@@ -608,6 +621,7 @@ export function useRuntime() {
         addMessage({
           type: 'error',
           content: `执行失败: ${error.message}`,
+          turnId,
         });
 
         setStatus('error');
@@ -724,6 +738,15 @@ export function useRuntime() {
       const eventName =
         data?.metadata?.eventName || data?.payload?.event || data?.payload?.name || 'ipc:event';
       const payload = data?.payload ?? data;
+      const eventTurnId =
+        data?.turnId ||
+        data?.runId ||
+        data?.correlationId ||
+        data?.metadata?.correlationId ||
+        payload?.turnId ||
+        payload?.runId ||
+        payload?.correlationId ||
+        activeTurnIdRef.current;
 
       // ===== 1) 切断事件：在处理这些事件前先关闭当前流 =====
       const isCutoffEvent =
@@ -785,6 +808,7 @@ export function useRuntime() {
                 content: filteredText,
                 timestamp: now,
                 isStreaming: true,
+                ...(eventTurnId ? { turnId: eventTurnId } : {}),
               },
             ]);
           } else {
@@ -814,6 +838,7 @@ export function useRuntime() {
                 content: filteredText,
                 timestamp: now,
                 isStreaming: true,
+                ...(eventTurnId ? { turnId: eventTurnId } : {}),
               },
             ]);
           } else {
@@ -849,6 +874,12 @@ export function useRuntime() {
       }
 
       const normalized = normalizeRuntimeEventMessage(eventName, payload);
+      if (normalized.message && eventTurnId && !normalized.message.turnId) {
+        normalized.message = {
+          ...normalized.message,
+          turnId: eventTurnId,
+        };
+      }
       if (isDuplicateRuntimeEvent(eventName, payload)) {
         return;
       }
@@ -904,6 +935,7 @@ export function useRuntime() {
               type: needsUserInput ? 'warning' : 'result',
               content: answer,
               resultMeta: payload,
+              ...(eventTurnId ? { turnId: eventTurnId } : {}),
             });
           };
           // 场景A：有流式消息 + 有答案 → 原地收口为 agent 消息（不额外添加 result 消息）
@@ -954,6 +986,7 @@ export function useRuntime() {
               type: needsUserInput ? 'warning' : 'result',
               content: answer,
               resultMeta: payload,
+              ...(eventTurnId ? { turnId: eventTurnId } : {}),
             });
           }
           markComplete();
@@ -969,6 +1002,7 @@ export function useRuntime() {
                 type: normalized.message.type || 'result',
                 content: answer,
                 resultMeta: payload,
+                ...(eventTurnId ? { turnId: eventTurnId } : {}),
               });
               completedByEventRef.current = true;
               setStats((prev) => ({
@@ -1122,7 +1156,8 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
       return {
         message: {
           ...base,
-          type: 'agent',
+          type: 'lifecycle',
+          lifecyclePhase: 'started',
           content: `任务开始${payload?.task ? `: ${payload.task}` : ''}`,
         },
       };
@@ -1133,8 +1168,9 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
       return {
         message: {
           ...base,
-          type: needsUserInput ? 'warning' : answer ? 'result' : 'success',
-          runtimeDetail: true,
+          type: needsUserInput ? 'warning' : answer ? 'result' : 'lifecycle',
+          runtimeDetail: !answer,
+          lifecyclePhase: needsUserInput ? 'waiting' : answer ? undefined : 'completed',
           content: answer || (needsUserInput ? '需要你补充信息后继续' : '任务执行完成'),
         },
       };
@@ -1152,7 +1188,8 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
       return {
         message: {
           ...base,
-          type: 'warning',
+          type: 'lifecycle',
+          lifecyclePhase: 'stopped',
           runtimeDetail: true,
           content: '任务已停止',
         },

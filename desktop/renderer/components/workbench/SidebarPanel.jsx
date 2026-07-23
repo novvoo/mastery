@@ -24,6 +24,8 @@ export function SidebarPanel({
   sessions = [],
   activeSessionId,
   onSelectSession,
+  onDeleteSession,
+  onClearSessions,
   onShowTools,
   onSettings,
 }) {
@@ -135,7 +137,19 @@ export function SidebarPanel({
         <div className="codex-sidebar-body"><ToolPanel tools={runtime.tools} loading={runtime.loading} messages={runtime.messages} /></div>
       ) : (
         <div className="codex-session-region">
-          <div className="codex-section-label">任务</div>
+          <div className="codex-session-header">
+            <div className="codex-section-label">任务</div>
+            {recentSessions.length > 0 && (
+              <button
+                type="button"
+                className="codex-session-clear-all"
+                onClick={onClearSessions}
+                title="清空所有任务"
+              >
+                清空
+              </button>
+            )}
+          </div>
           <div className="codex-session-list">
             {recentSessions.length === 0 ? (
               <div className="codex-session-empty">
@@ -144,9 +158,30 @@ export function SidebarPanel({
             ) : recentSessions.map((session) => {
               const id = session?.id || session?.sessionId;
               return (
-                <button key={id} type="button" className={id === activeSessionId ? 'is-active' : ''} onClick={() => onSelectSession?.(id)} title={sessionTitle(session)}>
-                  {sessionTitle(session)}
-                </button>
+                <div key={id} className={`codex-session-item${id === activeSessionId ? ' is-active' : ''}`}>
+                  <button
+                    type="button"
+                    className="codex-session-select"
+                    onClick={() => onSelectSession?.(id)}
+                    title={sessionTitle(session)}
+                  >
+                    {sessionTitle(session)}
+                  </button>
+                  {onDeleteSession && (
+                    <button
+                      type="button"
+                      className="codex-session-delete"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDeleteSession(id);
+                      }}
+                      title="清理任务"
+                      aria-label={`清理任务: ${sessionTitle(session)}`}
+                    >
+                      <Icon name="trash" size={13} />
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
