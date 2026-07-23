@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import {
   buildMessageDisplayGraph,
+  buildMessageViewProjection,
   computeNextCollapsedGroups,
-  computeNextCollapsedMessages,
-  createCompletedCollapseSignature,
+  messageMatchesViewQuery,
   resolveTurnVisibility,
 } from '../../desktop/renderer/runtime/message-graph.js';
 import { buildToolRuntimeCollections } from '../../desktop/renderer/runtime/runtime-details.js';
@@ -155,46 +155,64 @@ describe('message display graph', () => {
     expect(turn.status).toBe('completed');
   });
 
-  test('completed signature ignores running stream updates', () => {
-    const getId = (message) => message.id;
-    const messages = [
-      { id: 'old', type: 'result', content: '旧答案' },
-      { id: 'active', type: 'assistant_stream', isStreaming: true, content: '生成中' },
-    ];
+  test('query projection keeps the complete matching turn as display context', () => {
+    const projection = buildMessageViewProjection([
+      { id: 'user-1', type: 'user', turnId: 'run-1', content: '检查项目', timestamp: 60_000 },
+      {
+        id: 'tool-1',
+        type: 'tool',
+        turnId: 'run-1',
+        toolCallId: 'call-1',
+        toolName: 'read_file',
+        args: { path: 'architecture.md' },
+        timestamp: 61_000,
+      },
+      { id: 'answer-1', type: 'result', turnId: 'run-1', content: '检查完成', timestamp: 62_000 },
+      { id: 'user-2', type: 'user', turnId: 'run-2', content: '运行测试', timestamp: 120_000 },
+    ], {
+      filter: 'tool',
+      searchQuery: 'architecture.md',
+      formatTimelineLabel: (timestamp) => `minute:${timestamp}`,
+    });
 
-    expect(createCompletedCollapseSignature(messages, getId)).toBe('old');
-    expect(createCompletedCollapseSignature([
-      ...messages.slice(0, 1),
-      { ...messages[1], content: '新的增量' },
-    ], getId)).toBe('old');
-    expect(createCompletedCollapseSignature([
-      messages[0],
-      { ...messages[1], streamComplete: true },
-    ], getId)).toBe('old|active');
+    expect(projection.groups).toHaveLength(1);
+    expect(projection.groups[0].id).toBe('turn:run-1');
+    expect(projection.groups[0].primaryMessages.map((message) => message.id)).toEqual([
+      'user-1',
+      'answer-1',
+    ]);
+    expect(projection.groups[0].queryMatchCount).toBe(1);
+    expect(projection.matchingMessageCount).toBe(1);
+    expect(projection.timelineBuckets).toHaveLength(1);
+    expect(projection.timelineBuckets[0].label).toBe('minute:60000');
+    expect(projection.timelineBuckets[0].groups[0].id).toBe('turn:run-1');
   });
 
-  test('message collapse preserves manual expansion and keeps latest completion open', () => {
-    const messages = [
-      { id: 'first', type: 'result' },
-      { id: 'second', type: 'result' },
-      { id: 'running', type: 'assistant_stream', isStreaming: true },
-    ];
-    const getId = (message) => message.id;
-
-    const automatic = computeNextCollapsedMessages({
-      messages,
-      getMessageId: getId,
+  test('query and view mode do not redefine the canonical active turn', () => {
+    const projection = buildMessageViewProjection([
+      { id: 'old-user', type: 'user', turnId: 'old', content: '旧任务' },
+      { id: 'old-answer', type: 'result', turnId: 'old', content: '旧答案' },
+      { id: 'active-user', type: 'user', turnId: 'active', content: '当前任务' },
+    ], {
+      searchQuery: '旧答案',
     });
-    expect(automatic.has('first')).toBe(true);
-    expect(automatic.has('second')).toBe(false);
-    expect(automatic.has('running')).toBe(false);
 
-    const userControlled = computeNextCollapsedMessages({
-      messages,
-      userExpandedMessageIds: new Set(['first']),
-      getMessageId: getId,
-    });
-    expect(userControlled.has('first')).toBe(false);
+    expect(projection.groups.map((group) => group.id)).toEqual(['turn:old']);
+    expect(projection.activeGroupId).toBe('turn:active');
+    expect(computeNextCollapsedGroups({
+      groups: projection.groups,
+      activeGroupId: projection.activeGroupId,
+    }).has('turn:old')).toBe(true);
+  });
+
+  test('view query safely searches structured tool payloads', () => {
+    expect(messageMatchesViewQuery({
+      type: 'tool',
+      args: { path: 'docs/architecture.md' },
+    }, {
+      filter: 'tool',
+      searchQuery: 'architecture',
+    })).toBe(true);
   });
 
   test('group collapse does not override a user-expanded completed group', () => {
@@ -216,6 +234,42 @@ describe('message display graph', () => {
       groups,
       userExpandedGroupIds: new Set(['old']),
     }).has('old')).toBe(false);
+  });
+
+  test('runtime detail updates cannot override explicit turn visibility', () => {
+    const completedTurn = {
+      id: 'old',
+      status: 'completed',
+      primaryMessage: { id: 'answer', type: 'result' },
+      runtimeDetails: [],
+    };
+    const activeTurn = {
+      id: 'active',
+      status: 'running',
+      primaryMessage: { id: 'stream', type: 'assistant_stream', isStreaming: true },
+    };
+    const preference = new Set(['old']);
+
+    const beforeToolResult = computeNextCollapsedGroups({
+      groups: [completedTurn, activeTurn],
+      userExpandedGroupIds: preference,
+    });
+    const afterToolResult = computeNextCollapsedGroups({
+      groups: [
+        {
+          ...completedTurn,
+          runtimeDetails: [
+            { id: 'tool-result', type: 'tool_result', event: 'tool:result' },
+          ],
+        },
+        activeTurn,
+      ],
+      previousCollapsed: beforeToolResult,
+      userExpandedGroupIds: preference,
+    });
+
+    expect(beforeToolResult.has('old')).toBe(false);
+    expect(afterToolResult.has('old')).toBe(false);
   });
 
   test('turn visibility keeps waiting turns open and preserves explicit collapse', () => {

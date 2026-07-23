@@ -321,54 +321,177 @@ flowchart TB
 
 ### 5.3 Message Presentation Graph
 
-消息展示采用按用户意图归约的派生投影，而不是把 RuntimeEvent 逐条映射成气泡。一个 `ConversationTurn` 同时拥有 request、responses、tool runs 和 lifecycle；可见性由独立的纯决策函数计算，不参与消息语义归约。
+消息展示采用按用户意图归约的单向派生投影，而不是把 RuntimeEvent 逐条映射成气泡。一个 `ConversationTurn` 同时拥有 request、responses、tool runs 和 lifecycle；Assistant stream commit、查询、视图模式、可见性和滚动都必须从同一份 Message Display Graph 派生，不能形成平行消息管线。
+
+```mermaid
+flowchart TB
+  subgraph Inputs["A · Input Ports"]
+    Runtime["RuntimeEvent<br/>delta · tool · lifecycle"]
+    Restore["Session Restore<br/>persisted messages"]
+    Request["User Request<br/>local turnId"]
+    Intent["Explicit UI Intent<br/>turn / content / details"]
+    Query["View Query<br/>filter · search"]
+    ViewMode["View Mode<br/>list / timeline"]
+  end
+
+  subgraph Canonical["B · Canonical Message State · useRuntime"]
+    Normalize["Normalize + Validate<br/>typed event semantics"]
+    Identity["Canonical Identity<br/>messageId · turnId · toolCallId"]
+    Route{"Message Classifier"}
+    Ordered["Ordered Message Store<br/>stable ID · immutable updates"]
+
+    subgraph StreamTx["Assistant Stream Transaction"]
+      Await["AWAITING_DELTA<br/>无助手消息实体"]
+      Open["PROVISIONAL<br/>stable ID + accumulated visible text"]
+      Snapshot["Stream Snapshot<br/>flush pending delta"]
+      Authority["Authoritative Final Answer<br/>answer / finalAnswer only"]
+      Reconcile{"Monotonic Commit Reconciler"}
+      Commit["COMMITTED<br/>同一 stable ID 原地收口"]
+      Rollback["ROLLED_BACK<br/>仅 explicit stream_reset"]
+    end
+  end
+
+  subgraph Projection["C · Pure Read Model · runtime"]
+    TurnReducer["ConversationTurn Reducer<br/>request + responses + details"]
+    ToolReducer["ToolRun Reducer<br/>request + progress + result"]
+    LifecycleReducer["Lifecycle Reducer<br/>running · waiting · terminal"]
+    DisplayGraph["Message Display Graph"]
+    PrimaryLane["Primary Message Lane<br/>request + assistant responses"]
+    DetailLane["Runtime Detail Lane<br/>thinking + lifecycle + diagnostics"]
+    ToolLane["Tool Collection Lane<br/>一个调用，一个展示单元"]
+  end
+
+  subgraph Visibility["D · Visibility and Local UI State"]
+    TurnPreference["Turn Preference<br/>turnId → explicit intent"]
+    TurnPolicy["resolveTurnVisibility<br/>derived every projection"]
+    TurnVisibility["TurnVisibilityState"]
+    Expansion["MessageExpansionState<br/>messageId → content intent"]
+    DetailExpansion["RuntimePanelState<br/>panelId / detailId"]
+    QueryProjection["Context-preserving Query Projection<br/>matched turns + match count"]
+    ListProjection["List Projection<br/>ordered turns"]
+    TimelineProjection["Timeline Projection<br/>minute buckets of turns"]
+  end
+
+  subgraph Presentation["E · React Presentation · MessageLog"]
+    TurnSurface["Turn Surface<br/>filtered data + visibility"]
+    TurnHeader["Turn Header<br/>status · preview · detail count"]
+    RequestBubble["Request Bubble"]
+    ResponseBubble["Response Bubble<br/>Markdown content pipeline"]
+    RuntimePanel["RuntimeDetailsPanel"]
+    ToolCard["Tool Card<br/>request / progress / response"]
+    EmptyState["Result State<br/>empty / no matches"]
+    Viewport["Viewport Controller<br/>scroll anchor · near-bottom follow"]
+  end
+
+  Runtime --> Normalize
+  Restore --> Normalize
+  Request --> Identity
+  Normalize --> Identity --> Route
+  Route -->|"request / restored / tool / lifecycle"| Ordered
+
+  Route -->|"首个 text delta"| Await --> Open
+  Route -->|"后续 text delta"| Open
+  Open -->|"tool lifecycle · identity unchanged"| Open
+  Route -->|"complete / stop / error"| Snapshot
+  Route -->|"typed final answer"| Authority
+  Open --> Snapshot --> Reconcile
+  Authority --> Reconcile
+  Reconcile -->|"preserve / extend / append"| Commit --> Ordered
+  Route -->|"explicit stream_reset"| Rollback
+
+  Ordered --> TurnReducer
+  TurnReducer --> ToolReducer
+  TurnReducer --> LifecycleReducer
+  TurnReducer --> PrimaryLane
+  ToolReducer --> ToolLane
+  LifecycleReducer --> DetailLane
+  PrimaryLane --> DisplayGraph
+  DetailLane --> DisplayGraph
+  ToolLane --> DisplayGraph
+
+  Intent -->|"turn action"| TurnPreference --> TurnPolicy
+  DisplayGraph --> TurnPolicy --> TurnVisibility
+  Intent -->|"content action"| Expansion
+  Intent -->|"details action"| DetailExpansion
+  Query --> QueryProjection
+  DisplayGraph --> QueryProjection
+  QueryProjection --> ListProjection
+  QueryProjection --> TimelineProjection
+  ViewMode --> ListProjection
+  ViewMode --> TimelineProjection
+
+  ListProjection --> TurnSurface
+  TimelineProjection --> TurnSurface
+  QueryProjection --> EmptyState
+  TurnVisibility --> TurnSurface
+  TurnSurface --> TurnHeader
+  TurnSurface -->|"expanded"| RequestBubble
+  TurnSurface -->|"expanded"| ResponseBubble
+  TurnSurface -->|"expanded"| RuntimePanel
+  Expansion --> ResponseBubble
+  DetailExpansion --> RuntimePanel
+  RuntimePanel --> ToolCard
+  TurnHeader --> Viewport
+  RequestBubble --> Viewport
+  ResponseBubble --> Viewport
+  RuntimePanel --> Viewport
+
+  Runtime -.->|"FORBIDDEN · raw event 不直接渲染"| Presentation
+  Query -.->|"FORBIDDEN · 不修改 canonical state"| Ordered
+  LifecycleReducer -.->|"FORBIDDEN · 不写内容展开状态"| Expansion
+  ViewMode -.->|"FORBIDDEN · 不建立第二套消息归约"| DisplayGraph
+```
+
+这张图定义五个工程边界：
+
+| 边界 | 状态权威 | 允许写入者 | 展示职责 |
+| --- | --- | --- | --- |
+| Canonical Message State | `useRuntime.messages` | Runtime 归一化、Session Restore、用户请求 | 保存有序语义消息，不保存 JSX 或折叠状态 |
+| Assistant Stream Transaction | stable message ID + accumulated text | text delta、terminal reconciler、explicit reset | 管理 provisional → committed，不创建重复 response |
+| Message Display Graph | `runtime-details.js` / `message-graph.js` 纯投影 | 无持久写入者，每次从 canonical state 派生 | 聚合 Conversation Turn、Tool Collection、Lifecycle 和查询投影 |
+| Visibility / Local UI State | Turn preference、message/panel expansion | 仅显式用户操作；Turn 默认值由纯策略派生 | 决定展示密度，不改变消息语义 |
+| React Presentation | `MessageLog` / `RuntimeDetailsPanel` | 不拥有领域消息 | 渲染、键盘语义、预览、Markdown 和滚动锚点 |
+
+其中 stream transaction 有两个关键不变量：
+
+1. `CONTINUE`：工具事件可以改变 Tool Collection 和 Lifecycle Read Model，但不能清空 stream identity、删除消息或把 provisional response 提前晋升为另一个 response。
+2. `MONOTONIC COMMIT`：terminal boundary 是完成确认，不是无条件替换快照。Reconciler 必须先 flush pending delta，以已经呈现的累计文本为基线；terminal answer 相同、为空或只是累计文本的子集时保留原文，只有提供新增信息时才扩展。输出不得比已呈现文本少，且必须复用原 stable ID。
+
+权威最终答案只来自协议明确声明的 `answer` / `finalAnswer` 及其 result 等价字段；生命周期 payload 的通用 `content`、`text`、`message` 不能在 terminal 路径冒充最终答案。删除只属于显式 `stream_reset` 对协议已判定无效的 provisional 帧的回滚；`agent:complete`、`agent:stop`、`agent:error` 以及 ref/state 暂时不同步均没有删除已呈现消息的权限。因此该模型不依赖对 `·`、空格或其他字符做黑名单过滤。
+
+前端显示还必须满足：
+
+- `Context-preserving Query Projection` 是只读视图：查询命中 Turn 内任一 message/detail/tool 时保留完整 Turn 上下文，同时单独统计实际命中数。搜索、类型过滤和时间线切换不得删除消息、改变 Turn 状态或改写用户折叠偏好。
+- List 和 Timeline 只能改变同一组匹配 Turn 的空间组织；Timeline 按 Turn 的稳定时间锚点分桶，禁止退回逐条 primary message 的第二套展示管线。
+- Primary Message Lane 只展示用户请求和有语义内容的 assistant response；任务开始/结束、工具事件、思考和诊断统一进入 Runtime Detail Lane。
+- Tool Card 从 Tool Collection Lane 接收聚合后的调用，不直接消费离散 request/result 事件。
+- Viewport Controller 只管理滚动位置。near-bottom 自动跟随不能修改任何消息、Turn 或 expansion 状态；用户离开底部后必须保持阅读锚点。
+- React key、折叠键、内容展开键分别使用稳定 message ID、turn ID 和 panel/detail ID；不得使用可因插入或过滤变化的数组位置作为长期身份。
+
+折叠被拆成两个互不写入的状态域：`TurnVisibilityState` 决定整个 Conversation Turn 是否可见，`MessageExpansionState` 只决定单条长内容是否截断。前者允许生命周期派生默认值，后者完全属于显式用户意图。运行时事件只能成为 Turn Read Model 的输入，不能直接写任何 UI 折叠集合：
 
 ```mermaid
 flowchart LR
-  Event["RuntimeEvent<br/>IPC broadcast"]
+  Runtime["RuntimeEvent<br/>delta · tool · lifecycle"]
+  TurnModel["ConversationTurn Read Model<br/>turnId · status · position"]
+  Preference["Explicit Turn Preference<br/>turnId → expanded / collapsed / unset"]
+  Policy["resolveTurnVisibility<br/>纯决策函数"]
+  TurnState["TurnVisibilityState<br/>derived per render"]
 
-  subgraph Ingest["1 · Ingest"]
-    Normalize["normalizeRuntimeEventMessage<br/>统一类型与生命周期语义"]
-    Identity["Canonical Identity<br/>turnId · correlationId · toolCallId"]
-    Ordered["Ordered Message Projection<br/>stable ID · order · stream state"]
-    StreamTx["Assistant Stream Transaction<br/>delta 创建 provisional · boundary commit / rollback"]
-  end
+  User["Explicit User Intent"]
+  MessageState["MessageExpansionState<br/>messageId → collapsed / expanded"]
+  Render["MessageLog Projection"]
 
-  subgraph Derive["2 · Derive · Pure Domain"]
-    TurnRoute{"Turn Resolver"}
-    Correlated["Explicit Correlation<br/>turn / run / correlation ID"]
-    Legacy["Legacy Boundary<br/>下一条 user 开启新 turn"]
-    Conversation["ConversationTurn Reducer<br/>request + responses + runtime details"]
-    Tool["ToolRun Reducer<br/>按 toolCallId 归约调用生命周期"]
-    Lifecycle["Lifecycle Reducer<br/>started → running → terminal"]
-  end
-
-  subgraph ReadModel["3 · Read Model"]
-    Turn["ConversationTurn<br/>requestMessage · responseMessages · status"]
-    ToolCollection["ToolCollection[]<br/>一个调用，一个展示单元"]
-    LifeNodes["LifecycleNode[]<br/>紧凑执行轨迹"]
-    Graph["Message Display Graph"]
-  end
-
-  subgraph Presentation["4 · Presentation"]
-    Log["MessageLog<br/>会话与主消息"]
-    Panel["RuntimeDetailsPanel<br/>执行详情"]
-    ToolCard["Tool Card<br/>Request / Progress / Response"]
-  end
-
-  Event --> Normalize --> Identity --> Ordered --> StreamTx --> TurnRoute
-  TurnRoute -->|"ID available"| Correlated --> Conversation
-  TurnRoute -->|"legacy message"| Legacy --> Conversation
-  Conversation --> Tool
-  Conversation --> Lifecycle
-  Conversation --> Turn --> Graph
-  Tool --> ToolCollection --> Graph
-  Lifecycle --> LifeNodes --> Graph
-  Graph --> Log
-  Graph --> Panel --> ToolCard
+  Runtime -->|"只归约语义状态"| TurnModel
+  TurnModel --> Policy
+  User -->|"展开 / 折叠 Turn"| Preference --> Policy
+  Policy --> TurnState --> Render
+  User -->|"展开 / 折叠长内容"| MessageState --> Render
+  Runtime -.->|"FORBIDDEN · 不得写入"| MessageState
+  Policy -.->|"FORBIDDEN · 不得写入"| MessageState
 ```
 
-Turn 折叠不是生命周期状态机，而是一个无副作用的可见性决策。输入由 Turn 状态、用户偏好和上下文位置组成，并按固定优先级求值：
+`TurnVisibilityState` 不是持久生命周期状态，而是一个无副作用的可见性决策。输入由 Turn 状态、用户偏好和上下文位置组成，并按固定优先级求值：
 
 ```mermaid
 flowchart TD
@@ -393,26 +516,27 @@ flowchart TD
   Current -->|"否"| HistoricalClosed
 ```
 
-决策优先级从高到低为：需要交互的状态、显式用户偏好、当前上下文、历史默认值。`delta`、progress、搜索过滤和普通重渲染都不改变用户偏好；只有用户操作、Turn terminal 化或当前 Turn 发生切换时才可能改变可见结果。
+决策优先级从高到低为：需要交互的状态、显式用户偏好、当前上下文、历史默认值。`delta`、progress、搜索过滤和普通重渲染都不改变用户偏好；只有用户操作、Turn terminal 化或当前 Turn 发生切换时才可能改变 Turn 的派生可见结果。Turn terminal 化只触发 Turn 级求值，绝不能顺带折叠任意 Message。
 
 | 投影对象 | 稳定关联键 | 归约规则 |
 | --- | --- | --- |
-| Message | message stable ID | 首个真实文本 delta 才创建 provisional 消息；普通边界提交同一消息，工具调用/stream reset 回滚未提交流；最终结果不新增重复气泡 |
+| Message | message stable ID | 首个真实文本 delta 才创建 provisional 消息；tool call/result 不切断响应事务；terminal 通过单调归并提交同一消息，不能缩短或删除已呈现内容；只有显式 stream reset 回滚未呈现协议帧 |
 | Conversation Turn | `turnId`，兼容 `runId` / `correlationId` | 同一用户意图的 request、responses、tools 和 lifecycle 归并到同一 turn |
 | Legacy Conversation Turn | user message ID | 无关联字段时，下一条 user message 才开启新 turn；中间响应和详情属于当前 turn |
 | Tool Collection | `toolCallId`，兼容 `callId` / activity ID | request、progress、result/error 归并为同一展示单元；无 ID 的同名调用使用独立 fallback instance |
 | Turn Collapse State | turn ID | running/waiting 强制展开；其余状态先服从用户偏好，再按 current/historical 决定默认值 |
-| Content Expansion State | message ID | 只控制长回答的内容截断，不改变 turn 的可见状态 |
+| Content Expansion State | message ID | 只接受显式用户操作，只控制长回答的内容截断；生命周期、响应完成和 Turn 策略都没有写权限 |
 
 投影与折叠不变量：
 
 - `agent:start`、无答案的 `agent:complete`、`agent:stop`、事件、思考、状态和工具生命周期属于 Runtime Detail Lane，不生成独立主消息气泡。
-- 请求发出时不得推测性创建空助手消息。工具调用前的 assistant stream 尚未构成 response，必须按消息事务整体回滚；此规则基于事件边界，不基于 `·`、空格或其他字符黑名单。
+- 请求发出时不得推测性创建空助手消息。同一 Turn 的 assistant stream 跨越 tool call/progress/result 持续存在；`agent:complete` / `agent:stop` / `agent:error` 只能单调收口，不能以最后一个 assistant 片段覆盖累计 stream，也不能依据易失 ref 删除已呈现消息。只有协议层显式 `stream_reset` 才能回滚尚未形成可见内容的协议帧。
 - 带最终答案的 `agent:complete` 保持为 response；生命周期详情附着到同一 Conversation Turn。
 - 同一次工具调用的 request、progress、result/error 必须通过稳定调用 ID 聚合成一个 Tool Collection；响应不得脱离请求单独排列。
-- streaming 消息以及 running/waiting Conversation Turn 永不折叠。只有 terminal turn 集合或当前 Turn 发生变化时才重新求值，普通进度刷新不能改变历史 turn 的用户偏好。
-- Turn collapse 与长内容 expansion 是两种正交状态；用户手动展开的 turn/message ID 在当前视图生命周期内具有最高优先级。
-- 归约与折叠策略位于 `runtime/runtime-details.js` 和 `runtime/message-graph.js` 的纯函数中。组件不得另建基于消息数量或渲染次数的隐式规则。
+- running/waiting Conversation Turn 永不折叠。只有 terminal turn 集合或当前 Turn 发生变化时才重新求值，普通进度刷新不能改变历史 turn 的用户偏好。
+- 自动历史折叠只允许发生在 Turn 层。`MessageExpansionState` 只能由用户点击写入；streaming → terminal、工具结果到达、新消息插入、搜索和重渲染均不得修改它。
+- Turn collapse 与长内容 expansion 是两种正交状态；展开 Turn 不隐式展开或折叠内容，展开内容也不改变 Turn 偏好。两者都以稳定 ID 为键，禁止使用数组位置作为长期状态身份。
+- Turn 归约与可见性策略位于 `runtime/runtime-details.js` 和 `runtime/message-graph.js` 的纯函数中；消息内容展开由 `MessageLog` 的显式交互状态持有。组件不得另建基于消息完成数量、签名变化或渲染次数的自动消息折叠规则。
 
 ### 5.4 Capability-driven UI Graph
 
@@ -681,7 +805,7 @@ flowchart LR
 | Desktop 诊断事件缓冲 | 1000 条 | 丢弃最旧事件 | 非持久恢复机制 |
 | IPC request | 默认 30 秒 | reject timeout | 长任务依赖事件流，不延长同步请求 |
 | IPC 重连 | 默认 5 次、1 秒退避 | 进入断开状态 | 当前不是指数退避 |
-| Renderer 消息列表 | 未设硬上限 | 折叠旧消息降低成本 | 尚未虚拟化 |
+| Renderer 消息列表 | 未设硬上限 | 默认折叠历史 terminal turn 降低展示密度 | 尚未虚拟化；单条消息内容折叠不是容量回收机制 |
 | 单主窗口 | 1 个主要工作台 | 不定义跨窗口同步 | 多窗口是未来架构议题 |
 
 容量值必须来自实现常量或配置，不允许只存在于文档。调整预算时要同时更新代码、测试和本表。

@@ -20,7 +20,7 @@ import { stripToolProtocolText } from '../app/content/content-pipeline.js';
 export const stripActionBlocks = stripToolProtocolText;
 
 export function createAssistantStreamMessage({ id, text, timestamp, turnId } = {}) {
-  if (!id || typeof text !== 'string' || text.length === 0) {
+  if (!id || typeof text !== 'string' || text.trim().length === 0) {
     return null;
   }
   return {
@@ -34,20 +34,72 @@ export function createAssistantStreamMessage({ id, text, timestamp, turnId } = {
 }
 
 export function getAssistantStreamBoundaryPolicy(eventName) {
-  if (eventName === 'tool:call' || eventName === 'agent:stream_reset') {
+  if (eventName === 'agent:stream_reset') {
     return 'rollback';
   }
   if (
-    eventName === 'tool:result' ||
-    eventName === 'tool:error' ||
     eventName === 'agent:complete' ||
     eventName === 'agent:stop' ||
-    eventName === 'agent:error' ||
-    eventName === 'agent:thinking'
+    eventName === 'agent:error'
   ) {
     return 'commit';
   }
   return 'continue';
+}
+
+/**
+ * Terminal boundaries acknowledge an accumulated stream; they do not replace it
+ * with a shorter final frame. The merge is monotonic: previously visible text is
+ * retained, while a genuine extension is deduplicated and appended.
+ */
+export function reconcileAssistantStreamCommit(streamText = '', terminalAnswer = '') {
+  const stream = typeof streamText === 'string' ? streamText : '';
+  const terminal = typeof terminalAnswer === 'string' ? terminalAnswer : '';
+
+  if (!stream.trim()) {
+    return terminal;
+  }
+  if (!terminal.trim() || stream === terminal || stream.includes(terminal)) {
+    return stream;
+  }
+  if (terminal.includes(stream)) {
+    return terminal;
+  }
+
+  const maxOverlap = Math.min(stream.length, terminal.length);
+  for (let overlap = maxOverlap; overlap > 0; overlap -= 1) {
+    if (stream.endsWith(terminal.slice(0, overlap))) {
+      return stream + terminal.slice(overlap);
+    }
+  }
+
+  return `${stream.trimEnd()}\n\n${terminal.trimStart()}`;
+}
+
+/**
+ * agent:complete is a lifecycle protocol boundary. Only fields explicitly
+ * defined as final answers may participate in stream reconciliation.
+ */
+export function extractAuthoritativeTerminalAnswer(data) {
+  if (!data || typeof data !== 'object') {
+    return typeof data === 'string' ? stripActionBlocks(data) : '';
+  }
+
+  const candidates = [
+    data.answer,
+    data.finalAnswer,
+    data.result,
+    data.result?.answer,
+    data.result?.finalAnswer,
+    data.result?.response,
+    data.result?.text,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return stripActionBlocks(candidate);
+    }
+  }
+  return '';
 }
 
 /**
@@ -551,7 +603,7 @@ export function useRuntime() {
           if (streamMsgId) {
             flushMessageDeltas();
             const streamedText = streamingTextRef.current.trim();
-            const finalText = answer || streamedText;
+            const finalText = reconcileAssistantStreamCommit(streamedText, answer);
             setMessages((prev) => {
               if (!finalText) {
                 return prev.filter((msg) => msg.id !== streamMsgId);
@@ -713,7 +765,22 @@ export function useRuntime() {
       const streamText = isTextStream ? streamingTextRef.current : '';
       const hasContent = streamText?.trim()?.length > 0;
 
-      if (hasContent) {
+      if (isTextStream && newType === 'agent') {
+        // A text stream is only created after a real visible delta. A terminal
+        // boundary commits that same entity and never removes it based on a ref.
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === msgId
+              ? {
+                  ...msg,
+                  type: 'agent',
+                  isStreaming: false,
+                  streamComplete: true,
+                }
+              : msg,
+          ),
+        );
+      } else if (hasContent) {
         // 有内容：关闭 isStreaming 标记，并更新类型（如从 assistant_stream -> agent）
         setMessages((prev) =>
           prev.map((msg) => {
@@ -746,9 +813,8 @@ export function useRuntime() {
       return { id: msgId, text: '', hasContent: false };
     };
 
-    // 工具调用之前收到的 assistant text 仍属于当前运行中的临时消息，
-    // 不是一次可提交的助手回复。工具边界到达时回滚整条临时流，
-    // 最终回复只由工具执行后的文本或 agent:complete 提交。
+    // 只有协议层明确发出的 stream_reset 才回滚临时流。
+    // tool call/result 属于同一个 Turn 的运行详情，不能切断或删除助手响应。
     const rollbackProvisionalTextStream = () => {
       const msgId = streamingMessageIdRef.current;
       if (!msgId) {
@@ -930,7 +996,7 @@ export function useRuntime() {
         }
 
         if (eventName === 'agent:complete') {
-          const answer = extractAgentAnswer(payload);
+          const answer = extractAuthoritativeTerminalAnswer(payload);
           const needsUserInput =
             payload?.result?.status === 'needs_user_input' ||
             payload?.status === 'needs_user_input';
@@ -959,13 +1025,17 @@ export function useRuntime() {
           // 场景A：有流式消息 + 有答案 → 原地收口为 agent 消息（不额外添加 result 消息）
           if (answer && closedTextStream?.id) {
             lastAnswerRef.current = answer;
+            const committedContent = reconcileAssistantStreamCommit(
+              closedTextStream.text,
+              answer,
+            );
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === closedTextStream.id
                   ? {
                       ...msg,
                       type: 'agent',
-                      content: answer,
+                      content: committedContent,
                       isStreaming: false,
                       streamComplete: true,
                     }
@@ -977,9 +1047,9 @@ export function useRuntime() {
             }
             return;
           }
-          // 场景B：有流式消息 + 无答案 + 无内容 → 删除空的流式消息
+          // 场景B：理论上的空流只做生命周期收口。text stream 只在真实
+          // delta 后创建，因此 terminal boundary 不再承担删除消息的职责。
           if (!answer && closedTextStream?.id && !closedTextStream.text?.trim()) {
-            setMessages((prev) => prev.filter((msg) => msg.id !== closedTextStream.id));
             if (isTerminalCompletion) {
               markComplete();
             }
@@ -1180,7 +1250,7 @@ export function normalizeRuntimeEventMessage(eventName, payload = {}) {
         },
       };
     case 'agent:complete': {
-      const answer = extractAgentAnswer(payload);
+      const answer = extractAuthoritativeTerminalAnswer(payload);
       const needsUserInput =
         payload?.result?.status === 'needs_user_input' || payload?.status === 'needs_user_input';
       return {

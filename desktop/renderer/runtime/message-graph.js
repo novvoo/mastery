@@ -4,27 +4,6 @@ import {
   createConversationGroups,
 } from './runtime-details.js';
 
-const AUTO_COLLAPSIBLE_TYPES = new Set([
-  'agent',
-  'assistant',
-  'assistant_stream',
-  'result',
-  'success',
-]);
-
-export function isCompletedCollapsibleMessage(message = {}) {
-  if (!AUTO_COLLAPSIBLE_TYPES.has(message.type)) {
-    return false;
-  }
-  if (message.isStreaming || message.type === 'assistant_stream') {
-    return message.streamComplete === true;
-  }
-  if (message.type === 'agent') {
-    return message.event === 'agent:complete' || message.streamComplete === true;
-  }
-  return true;
-}
-
 export function isCompletedConversationGroup(group = {}) {
   if (group.status) {
     return ['completed', 'failed', 'stopped'].includes(group.status);
@@ -65,60 +44,13 @@ export function resolveTurnVisibility({
   return { state: 'expanded', reason: 'non-terminal' };
 }
 
-export function createCompletedCollapseSignature(
-  messages = [],
-  getMessageId = (message, index) => message?.id || String(index),
-) {
-  return messages
-    .map((message, index) => ({ message, index }))
-    .filter(({ message }) => isCompletedCollapsibleMessage(message))
-    .map(({ message, index }) => getMessageId(message, index))
-    .join('|');
-}
-
-export function computeNextCollapsedMessages({
-  messages = [],
-  previousCollapsed = new Set(),
-  userExpandedMessageIds = new Set(),
-  getMessageId = (message, index) => message?.id || String(index),
-} = {}) {
-  const completed = messages
-    .map((message, index) => ({ message, index }))
-    .filter(({ message }) => isCompletedCollapsibleMessage(message))
-    .map(({ message, index }) => ({
-      id: getMessageId(message, index),
-      index,
-    }));
-
-  if (completed.length === 0) {
-    return previousCollapsed;
-  }
-
-  const next = new Set(previousCollapsed);
-  const latestCompletedId = completed.at(-1)?.id;
-  let changed = false;
-
-  for (const item of completed) {
-    if (item.id === latestCompletedId) {
-      changed = next.delete(item.id) || changed;
-      continue;
-    }
-    if (!userExpandedMessageIds.has(item.id) && !next.has(item.id)) {
-      next.add(item.id);
-      changed = true;
-    }
-  }
-
-  return changed ? next : previousCollapsed;
-}
-
 export function computeNextCollapsedGroups({
   groups = [],
   previousCollapsed = new Set(),
   userExpandedGroupIds = new Set(),
   userCollapsedGroupIds = new Set(),
+  activeGroupId = groups.at(-1)?.id,
 } = {}) {
-  const activeGroupId = groups.at(-1)?.id;
   const next = new Set(previousCollapsed);
   let changed = false;
 
@@ -156,4 +88,116 @@ export function buildMessageDisplayGraph(messages = []) {
       isCompleted: isCompletedConversationGroup(group),
     };
   });
+}
+
+function toSearchText(value) {
+  if (value == null) {
+    return '';
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+export function messageMatchesViewQuery(
+  message = {},
+  { filter = 'all', searchQuery = '' } = {},
+) {
+  if (filter !== 'all' && message.type !== filter) {
+    return false;
+  }
+
+  const query = String(searchQuery || '').trim().toLocaleLowerCase();
+  if (!query) {
+    return true;
+  }
+
+  return [
+    message.content,
+    message.message,
+    message.toolName,
+    message.event,
+    message.payloadSummary,
+    message.args,
+    message.result,
+    message.error,
+  ].some((value) => toSearchText(value).toLocaleLowerCase().includes(query));
+}
+
+function getTurnTimestamp(group = {}) {
+  const candidates = [
+    group.requestMessage,
+    ...(group.primaryMessages || []),
+    ...(group.messages || []),
+  ];
+  for (const message of candidates) {
+    const timestamp = Number(message?.timestamp || message?.createdAt);
+    if (Number.isFinite(timestamp) && timestamp > 0) {
+      return timestamp;
+    }
+  }
+  return null;
+}
+
+export function buildMessageViewProjection(
+  messages = [],
+  {
+    filter = 'all',
+    searchQuery = '',
+    formatTimelineLabel = (timestamp) => new Date(timestamp).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+  } = {},
+) {
+  const query = { filter, searchQuery };
+  const allGroups = buildMessageDisplayGraph(messages);
+  const groups = [];
+  let matchingMessageCount = 0;
+
+  for (const group of allGroups) {
+    const matches = (group.messages || []).filter((message) => (
+      messageMatchesViewQuery(message, query)
+    ));
+    if (matches.length === 0) {
+      continue;
+    }
+    matchingMessageCount += matches.length;
+    groups.push({
+      ...group,
+      queryMatchCount: matches.length,
+    });
+  }
+
+  const bucketsByKey = new Map();
+  for (const group of groups) {
+    const timestamp = getTurnTimestamp(group);
+    const minute = timestamp == null ? null : Math.floor(timestamp / 60000) * 60000;
+    const key = minute == null ? 'undated' : String(minute);
+    let bucket = bucketsByKey.get(key);
+    if (!bucket) {
+      bucket = {
+        key,
+        label: minute == null ? '未标记时间' : formatTimelineLabel(minute),
+        groups: [],
+      };
+      bucketsByKey.set(key, bucket);
+    }
+    bucket.groups.push(group);
+  }
+
+  return {
+    allGroups,
+    groups,
+    timelineBuckets: [...bucketsByKey.values()],
+    activeGroupId: allGroups.at(-1)?.id || null,
+    matchingMessageCount,
+    totalMessageCount: Array.isArray(messages) ? messages.length : 0,
+    hasMatches: groups.length > 0,
+  };
 }

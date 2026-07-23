@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import {
+  extractAuthoritativeTerminalAnswer,
+  getAssistantStreamBoundaryPolicy,
+  reconcileAssistantStreamCommit,
+} from '../../desktop/renderer/hooks/useRuntime.js';
 
 const ROOT = path.resolve(import.meta.dir, '../..');
 const read = (relativePath) => readFileSync(path.join(ROOT, relativePath), 'utf8');
@@ -186,6 +191,49 @@ describe('architecture contract', () => {
     expect(messageGraph).toContain('export function resolveTurnVisibility');
     expect(messageGraph).toContain("reason: 'attention-required'");
     expect(messageGraph).toContain("reason: 'historical-terminal'");
+  });
+
+  test('keeps message expansion user-owned and separate from turn visibility', () => {
+    const messageGraph = read('desktop/renderer/runtime/message-graph.js');
+    const messageLog = read('desktop/renderer/components/MessageLog.jsx');
+    expect(architecture).toContain('MessageExpansionState');
+    expect(architecture).toContain('生命周期、响应完成和 Turn 策略都没有写权限');
+    expect(architecture).toContain('自动历史折叠只允许发生在 Turn 层');
+    expect(messageGraph).not.toContain('computeNextCollapsedMessages');
+    expect(messageGraph).not.toContain('createCompletedCollapseSignature');
+    expect(messageLog).not.toContain('computeNextCollapsedMessages');
+    expect(messageLog).not.toContain('createCompletedCollapseSignature');
+    expect(messageLog).toContain('const handleToggleCollapse = useCallback');
+  });
+
+  test('keeps the assistant stream transaction graph aligned with runtime boundaries', () => {
+    expect(architecture).toContain('AWAITING_DELTA');
+    expect(architecture).toContain('PROVISIONAL');
+    expect(architecture).toContain('COMMITTED');
+    expect(architecture).toContain('ROLLED_BACK');
+    expect(architecture).toContain('工具事件可以改变 Tool Collection');
+    expect(getAssistantStreamBoundaryPolicy('tool:call')).toBe('continue');
+    expect(getAssistantStreamBoundaryPolicy('tool:progress')).toBe('continue');
+    expect(getAssistantStreamBoundaryPolicy('tool:result')).toBe('continue');
+    expect(getAssistantStreamBoundaryPolicy('tool:error')).toBe('continue');
+    expect(getAssistantStreamBoundaryPolicy('agent:complete')).toBe('commit');
+    expect(getAssistantStreamBoundaryPolicy('agent:stream_reset')).toBe('rollback');
+    expect(architecture).toContain('Monotonic Commit Reconciler');
+    expect(architecture).toContain('输出不得比已呈现文本少');
+    expect(architecture).toContain('Canonical Message State');
+    expect(architecture).toContain('Context-preserving Query Projection');
+    expect(architecture).toContain('List Projection');
+    expect(architecture).toContain('Timeline Projection');
+    expect(architecture).toContain('Viewport Controller');
+    expect(architecture).toContain('raw event 不直接渲染');
+    const messageGraph = read('desktop/renderer/runtime/message-graph.js');
+    const messageLog = read('desktop/renderer/components/MessageLog.jsx');
+    expect(messageGraph).toContain('export function buildMessageViewProjection');
+    expect(messageLog).toContain('buildMessageViewProjection(messages');
+    expect(messageLog).toContain('group.id === messageView.activeGroupId');
+    expect(messageLog).not.toContain('groupedMessages');
+    expect(reconcileAssistantStreamCommit('完整 stream', 'stream')).toBe('完整 stream');
+    expect(extractAuthoritativeTerminalAnswer({ content: '任务结束' })).toBe('');
   });
 
   test('keeps the documented event buffer budget executable', () => {

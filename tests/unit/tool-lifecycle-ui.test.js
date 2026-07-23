@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import {
   createAssistantStreamMessage,
+  extractAuthoritativeTerminalAnswer,
   getAssistantStreamBoundaryPolicy,
   mergeToolLifecycleMessage,
   normalizeRuntimeEventMessage,
+  reconcileAssistantStreamCommit,
 } from '../../desktop/renderer/hooks/useRuntime.js';
 import {
   buildLifecycleGraph,
@@ -37,12 +39,40 @@ describe('OMP tool lifecycle UI aggregation', () => {
     });
   });
 
-  test('rolls back provisional assistant text at a tool boundary instead of promoting it', () => {
-    expect(getAssistantStreamBoundaryPolicy('tool:call')).toBe('rollback');
+  test('keeps one assistant response transaction open across tool lifecycle events', () => {
     expect(getAssistantStreamBoundaryPolicy('agent:stream_reset')).toBe('rollback');
-    expect(getAssistantStreamBoundaryPolicy('tool:result')).toBe('commit');
+    expect(getAssistantStreamBoundaryPolicy('tool:call')).toBe('continue');
+    expect(getAssistantStreamBoundaryPolicy('tool:result')).toBe('continue');
+    expect(getAssistantStreamBoundaryPolicy('tool:error')).toBe('continue');
     expect(getAssistantStreamBoundaryPolicy('agent:complete')).toBe('commit');
+    expect(getAssistantStreamBoundaryPolicy('agent:stop')).toBe('commit');
     expect(getAssistantStreamBoundaryPolicy('agent:text_delta')).toBe('continue');
+  });
+
+  test('commits a stream monotonically instead of replacing it with the final fragment', () => {
+    const streamed = '我先检查了项目。\n\n最终修复已经完成。';
+
+    expect(reconcileAssistantStreamCommit(streamed, '最终修复已经完成。')).toBe(streamed);
+    expect(reconcileAssistantStreamCommit('最终修复', '最终修复已经完成。')).toBe(
+      '最终修复已经完成。',
+    );
+    expect(reconcileAssistantStreamCommit('第一段', '第二段')).toBe('第一段\n\n第二段');
+    expect(reconcileAssistantStreamCommit(streamed, '')).toBe(streamed);
+  });
+
+  test('terminal answer extraction ignores generic lifecycle content', () => {
+    expect(extractAuthoritativeTerminalAnswer({
+      content: '任务结束',
+      text: '·',
+      message: { content: '完成事件' },
+    })).toBe('');
+    expect(extractAuthoritativeTerminalAnswer({
+      answer: '真实最终回答',
+      content: '任务结束',
+    })).toBe('真实最终回答');
+    expect(extractAuthoritativeTerminalAnswer({
+      result: { finalAnswer: '结果中的最终回答' },
+    })).toBe('结果中的最终回答');
   });
 
   test('preserves toolCallId across call and result events', () => {

@@ -73,14 +73,11 @@ const MsgIcons = {
 import {
   buildThinkingSummary,
   buildRuntimeDetailsExportData,
-  isPrimaryMessage,
   isRuntimeDetailMessage,
 } from '../runtime/runtime-details.js';
 import {
-  buildMessageDisplayGraph,
+  buildMessageViewProjection,
   computeNextCollapsedGroups,
-  computeNextCollapsedMessages,
-  createCompletedCollapseSignature,
 } from '../runtime/message-graph.js';
 import { getMessageDisplayText, getMessageSerializableText, getStableMessageId, safeStringify } from './message-log/utils/message-utils.js';
 import { createCollapsedContentPreview } from '../app/content/content-pipeline.js';
@@ -245,32 +242,6 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     // 子面板也遵循：用户离开底部后不强制跟随
   }, []);
 
-  function messageMatchesFilter(msg) {
-    return filter === 'all' || msg?.type === filter;
-  }
-
-  function messageMatchesSearch(msg) {
-    if (!searchQuery) {
-      return true;
-    }
-    const query = searchQuery.toLowerCase();
-    return (
-      (msg.content || msg.message || '').toLowerCase().includes(query) ||
-      (msg.toolName || '').toLowerCase().includes(query) ||
-      (msg.event || '').toLowerCase().includes(query) ||
-      (msg.payloadSummary || '').toLowerCase().includes(query)
-    );
-  }
-
-  function messageIsVisible(msg) {
-    // 运行时详情消息（tool/tool_result/thinking/event/debug）
-    // 只显示在执行概览的原始日志中，不显示在主消息气泡里
-    if (isRuntimeDetailMessage(msg)) {
-      return false;
-    }
-    return messageMatchesFilter(msg) && messageMatchesSearch(msg);
-  }
-
   // 搜索焦点
   useEffect(() => {
     if (searchExpanded && searchRef.current) {
@@ -278,50 +249,15 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     }
   }, [searchExpanded]);
   
-  // 过滤和搜索消息
-  const filteredMessages = useMemo(() => {
-    return messages.filter(messageIsVisible);
-  }, [messages, filter, searchQuery]);
-
-  // 跟踪用户手动展开的消息，避免自动折叠覆盖用户操作
-  const userUncollapsedRef = useRef(new Set());
   const userExpandedGroupsRef = useRef(new Set());
   const userCollapsedGroupsRef = useRef(new Set());
 
-  // 跟踪上一次的可折叠完成消息集合，避免运行中消息刷新触发旧消息折叠
-  const prevCompletedCollapseSignatureRef = useRef('');
-
-  // 自动折叠逻辑：所有 assistant 消息默认折叠，最后一条总结消息展开
-  useEffect(() => {
-    const getCollapseMessageId = (message, index) => getStableMessageId(message, `${index}`);
-    const completedSignature = createCompletedCollapseSignature(filteredMessages, getCollapseMessageId);
-    if (completedSignature === prevCompletedCollapseSignatureRef.current) {
-      return;
-    }
-    prevCompletedCollapseSignatureRef.current = completedSignature;
-
-    setCollapsedMessages(previousCollapsed => computeNextCollapsedMessages({
-      messages: filteredMessages,
-      previousCollapsed,
-      userExpandedMessageIds: userUncollapsedRef.current,
-      getMessageId: getCollapseMessageId,
-    }));
-  }, [filteredMessages]);
-
-  const runtimeDetailMessages = useMemo(() => (
-    messages.filter(msg => isRuntimeDetailMessage(msg) && messageMatchesSearch(msg))
-  ), [messages, searchQuery]);
-  const primaryMessages = useMemo(() => (
-    filteredMessages.filter(isPrimaryMessage)
-  ), [filteredMessages]);
-
-  const conversationGroups = useMemo(() => (
-    buildMessageDisplayGraph(messages).filter((group) => (
-      group.messages.some((message) => (
-        messageMatchesFilter(message) && messageMatchesSearch(message)
-      ))
-    ))
-  ), [messages, filter, searchQuery]);
+  const messageView = useMemo(() => buildMessageViewProjection(messages, {
+    filter,
+    searchQuery,
+  }), [messages, filter, searchQuery]);
+  const conversationGroups = messageView.groups;
+  const timelineBuckets = messageView.timelineBuckets;
 
   useEffect(() => {
     for (const group of conversationGroups) {
@@ -338,25 +274,6 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       }
     }
   }, [conversationGroups, isNearBottom]);
-  
-  // 按时间分组消息（时间线视图）
-  const groupedMessages = useMemo(() => {
-    if (viewMode !== 'timeline') {return null;}
-    
-    const groups = {};
-    primaryMessages.forEach(msg => {
-      const timestamp = msg.timestamp || Date.now();
-      const minute = Math.floor(timestamp / 60000);
-      const groupKey = new Date(minute * 60000).toLocaleTimeString();
-      
-      if (!groups[groupKey]) {
-        groups[groupKey] = [];
-      }
-      groups[groupKey].push(msg);
-    });
-    
-    return groups;
-  }, [primaryMessages, viewMode]);
   
   // 处理过滤变更
   const handleFilterChange = useCallback((newFilter) => {
@@ -481,8 +398,9 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       previousCollapsed,
       userExpandedGroupIds: userExpandedGroupsRef.current,
       userCollapsedGroupIds: userCollapsedGroupsRef.current,
+      activeGroupId: messageView.activeGroupId,
     }));
-  }, [conversationGroups]);
+  }, [conversationGroups, messageView.activeGroupId]);
 
 
   const handleRuntimeDetailsRefChange = useCallback((groupId, node) => {
@@ -522,10 +440,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     setExpandedRuntimePanels(new Set());
     setLargeRuntimePanels(new Set());
     setGroupCollapsed(new Set());
-    userUncollapsedRef.current = new Set();
     userExpandedGroupsRef.current = new Set();
     userCollapsedGroupsRef.current = new Set();
-    prevCompletedCollapseSignatureRef.current = '';
   }, [onClear]);
 
   // 处理消息折叠/展开
@@ -534,12 +450,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
       const newSet = new Set(prev);
       if (newSet.has(msgId)) {
         newSet.delete(msgId);
-        // 用户手动展开了消息，记录到 userUncollapsedRef
-        userUncollapsedRef.current.add(msgId);
       } else {
         newSet.add(msgId);
-        // 用户手动折叠了消息，从 userUncollapsedRef 移除
-        userUncollapsedRef.current.delete(msgId);
         setShowDetails(detailsPrev => {
           if (!detailsPrev.has(msgId)) {return detailsPrev;}
           const nextDetails = new Set(detailsPrev);
@@ -1669,8 +1581,8 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     );
   };
 
-  const renderConversationGroup = (group, groupIndex) => {
-    const isActiveGroup = groupIndex === conversationGroups.length - 1;
+  const renderConversationGroup = (group) => {
+    const isActiveGroup = group.id === messageView.activeGroupId;
     const requestMessage = group.requestMessage || null;
     const responseMessages = group.responseMessages?.length
       ? group.responseMessages
@@ -1811,7 +1723,7 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
     <div style={styles.groupHeader}>
       <span style={{ ...styles.groupIcon, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px' }}>{MsgIcons.folder}</span>
       <span style={styles.groupTitle}>{title}</span>
-      <span style={styles.groupCount}>{count} 条消息</span>
+      <span style={styles.groupCount}>{count} 个会话</span>
     </div>
   );
   
@@ -1871,7 +1783,10 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
             color: 'var(--ds-text-tertiary)',
             fontVariantNumeric: 'tabular-nums'
           }}>
-            {filteredMessages.length}{filteredMessages.length !== messages.length ? `/${messages.length}` : ''}
+            {messageView.matchingMessageCount}
+            {messageView.matchingMessageCount !== messageView.totalMessageCount
+              ? `/${messageView.totalMessageCount}`
+              : ''}
           </span>
         </div>
         
@@ -1987,13 +1902,17 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         onScroll={handleListScroll}
       >
         {/* 时间线视图 */}
-        {viewMode === 'timeline' && groupedMessages && (
+        {viewMode === 'timeline' && (
           <div style={styles.timelineView}>
             <div style={styles.timelineLine} />
-            {Object.entries(groupedMessages).map(([groupTitle, msgs]) => (
-              <React.Fragment key={groupTitle}>
-                {renderGroupHeader(groupTitle, msgs.length)}
-                {msgs.map((msg, index) => renderMessage(msg, `${groupTitle}_${index}`, true))}
+            {timelineBuckets.map((bucket) => (
+              <React.Fragment key={bucket.key}>
+                {renderGroupHeader(bucket.label, bucket.groups.length)}
+                {bucket.groups.map((group) => (
+                  <React.Fragment key={group.id}>
+                    {renderConversationGroup(group)}
+                  </React.Fragment>
+                ))}
               </React.Fragment>
             ))}
           </div>
@@ -2001,11 +1920,11 @@ function MessageLog({ messages, status, workingDirectory, fileServerUrl, onClear
         
         {/* 列表视图 */}
         {viewMode === 'list' && (
-          conversationGroups.map((group, index) => renderConversationGroup(group, index))
+          conversationGroups.map((group) => renderConversationGroup(group))
         )}
         
         {/* 无匹配消息 */}
-        {primaryMessages.length === 0 && runtimeDetailMessages.length === 0 && messages.length > 0 && (
+        {!messageView.hasMatches && messages.length > 0 && (
           <div style={styles.emptyContainer}>
             <div style={{ ...styles.emptyIcon, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{MsgIcons.search}</div>
             <div style={styles.emptyText}>{t('status.not_set')}</div>
