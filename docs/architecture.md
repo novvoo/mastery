@@ -331,6 +331,7 @@ flowchart LR
     Normalize["normalizeRuntimeEventMessage<br/>统一类型与生命周期语义"]
     Identity["Canonical Identity<br/>turnId · correlationId · toolCallId"]
     Ordered["Ordered Message Projection<br/>stable ID · order · stream state"]
+    StreamTx["Assistant Stream Transaction<br/>delta 创建 provisional · boundary commit / rollback"]
   end
 
   subgraph Derive["2 · Derive · Pure Domain"]
@@ -355,7 +356,7 @@ flowchart LR
     ToolCard["Tool Card<br/>Request / Progress / Response"]
   end
 
-  Event --> Normalize --> Identity --> Ordered --> TurnRoute
+  Event --> Normalize --> Identity --> Ordered --> StreamTx --> TurnRoute
   TurnRoute -->|"ID available"| Correlated --> Conversation
   TurnRoute -->|"legacy message"| Legacy --> Conversation
   Conversation --> Tool
@@ -396,7 +397,7 @@ flowchart TD
 
 | 投影对象 | 稳定关联键 | 归约规则 |
 | --- | --- | --- |
-| Message | message stable ID | 流式 delta 更新同一消息；最终结果不新增重复气泡 |
+| Message | message stable ID | 首个真实文本 delta 才创建 provisional 消息；普通边界提交同一消息，工具调用/stream reset 回滚未提交流；最终结果不新增重复气泡 |
 | Conversation Turn | `turnId`，兼容 `runId` / `correlationId` | 同一用户意图的 request、responses、tools 和 lifecycle 归并到同一 turn |
 | Legacy Conversation Turn | user message ID | 无关联字段时，下一条 user message 才开启新 turn；中间响应和详情属于当前 turn |
 | Tool Collection | `toolCallId`，兼容 `callId` / activity ID | request、progress、result/error 归并为同一展示单元；无 ID 的同名调用使用独立 fallback instance |
@@ -406,6 +407,7 @@ flowchart TD
 投影与折叠不变量：
 
 - `agent:start`、无答案的 `agent:complete`、`agent:stop`、事件、思考、状态和工具生命周期属于 Runtime Detail Lane，不生成独立主消息气泡。
+- 请求发出时不得推测性创建空助手消息。工具调用前的 assistant stream 尚未构成 response，必须按消息事务整体回滚；此规则基于事件边界，不基于 `·`、空格或其他字符黑名单。
 - 带最终答案的 `agent:complete` 保持为 response；生命周期详情附着到同一 Conversation Turn。
 - 同一次工具调用的 request、progress、result/error 必须通过稳定调用 ID 聚合成一个 Tool Collection；响应不得脱离请求单独排列。
 - streaming 消息以及 running/waiting Conversation Turn 永不折叠。只有 terminal turn 集合或当前 Turn 发生变化时才重新求值，普通进度刷新不能改变历史 turn 的用户偏好。

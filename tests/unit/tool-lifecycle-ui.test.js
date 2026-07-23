@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { mergeToolLifecycleMessage, normalizeRuntimeEventMessage } from '../../desktop/renderer/hooks/useRuntime.js';
+import {
+  createAssistantStreamMessage,
+  getAssistantStreamBoundaryPolicy,
+  mergeToolLifecycleMessage,
+  normalizeRuntimeEventMessage,
+} from '../../desktop/renderer/hooks/useRuntime.js';
 import {
   buildLifecycleGraph,
   buildToolRuntimeCollections,
@@ -10,6 +15,36 @@ import {
 import { buildActivitySummary } from '../../desktop/renderer/runtime/activity-summary.js';
 
 describe('OMP tool lifecycle UI aggregation', () => {
+  test('does not create a speculative assistant message before real text arrives', () => {
+    expect(createAssistantStreamMessage({
+      id: 'stream-1',
+      text: '',
+      turnId: 'turn-1',
+    })).toBeNull();
+
+    expect(createAssistantStreamMessage({
+      id: 'stream-1',
+      text: '真实文本',
+      timestamp: 100,
+      turnId: 'turn-1',
+    })).toEqual({
+      id: 'stream-1',
+      type: 'assistant_stream',
+      content: '真实文本',
+      timestamp: 100,
+      isStreaming: true,
+      turnId: 'turn-1',
+    });
+  });
+
+  test('rolls back provisional assistant text at a tool boundary instead of promoting it', () => {
+    expect(getAssistantStreamBoundaryPolicy('tool:call')).toBe('rollback');
+    expect(getAssistantStreamBoundaryPolicy('agent:stream_reset')).toBe('rollback');
+    expect(getAssistantStreamBoundaryPolicy('tool:result')).toBe('commit');
+    expect(getAssistantStreamBoundaryPolicy('agent:complete')).toBe('commit');
+    expect(getAssistantStreamBoundaryPolicy('agent:text_delta')).toBe('continue');
+  });
+
   test('preserves toolCallId across call and result events', () => {
     const call = normalizeRuntimeEventMessage('tool:call', {
       name: 'read', toolCallId: 'call-1', arguments: { path: 'a.js' }, timestamp: 100,
