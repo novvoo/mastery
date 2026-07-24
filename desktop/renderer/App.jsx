@@ -58,6 +58,7 @@ import { WorkbenchControls } from './components/workbench/controls/WorkbenchCont
 import { LLMSetupModal } from './components/LLMSetupModal.jsx';
 import { useFileOperations } from './hooks/useFileOperations.js';
 import { downloadConversationMarkdown } from './app/export-conversation.js';
+import { ActionLifecycleProvider } from './contexts/ActionLifecycleContext.jsx';
 import './index.css';
 
 function App() {
@@ -459,7 +460,12 @@ function App() {
 
   // ── 渲染 ─────────────────────────────────────────────────
   return (
-    <div className="mastery-shell" style={styles.container}>
+    <ActionLifecycleProvider
+      capabilityGraph={capabilities.graph}
+      contentCount={runtime.messages.length}
+      onFeedback={setActionFeedback}
+    >
+      <div className="mastery-shell" style={styles.container}>
       <ChromeCapsules
         platformInfo={platformInfo}
         windowState={windowState}
@@ -733,6 +739,7 @@ function App() {
         onDismiss={() => setActionFeedback(null)}
       />
     </div>
+    </ActionLifecycleProvider>
   );
 }
 

@@ -12,6 +12,8 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { ContextMenu } from '../ui/ContextMenu.jsx';
 import { InputDialog } from '../ui/InputDialog.jsx';
 import ConfirmDialog from '../ui/ConfirmDialog.jsx';
+import { useActionLifecycleContext, useActionState } from '../../contexts/ActionLifecycleContext.jsx';
+import { UI_ACTION_STATUS } from '../../app/actions/ui-action-graph.js';
 
 /* ── SVG Icon Components ────────────────────────────────────── */
 
@@ -422,6 +424,13 @@ function TreeNode({
 export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeOpenFile, onCloseFile }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
+  const { executeActionWithFeedback } = useActionLifecycleContext();
+
+  const refreshState = useActionState('project-tree.refresh');
+  const createFileState = useActionState('project-tree.create-file');
+  const createDirState = useActionState('project-tree.create-directory');
+  const renameState = useActionState('project-tree.rename');
+  const deleteState = useActionState('project-tree.delete');
 
   // Right-click menu state
   const [contextMenu, setContextMenu] = useState(null); // { x, y, entry }
@@ -489,13 +498,20 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
       message: `确定要删除 ${entry.type === 'directory' ? '目录' : '文件'} "${entry.name}" 吗？此操作不可撤销。`,
       danger: true,
       onConfirm: async () => {
-        const result = await onDeleteItem?.(entry.path);
-        if (result?.success) {
-          onRefresh?.();
-        }
+        await executeActionWithFeedback(
+          'project-tree.delete',
+          async () => {
+            const result = await onDeleteItem?.(entry.path);
+            if (result?.success) {
+              onRefresh?.();
+            }
+            return result;
+          },
+          { successMessage: '删除成功', failureMessage: '删除失败' },
+        );
       },
     });
-  }, [onDeleteItem, onRefresh]);
+  }, [onDeleteItem, onRefresh, executeActionWithFeedback]);
 
   // ── Dialog confirm ──
 
@@ -504,29 +520,58 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
 
     if (type === 'createFile') {
       const targetPath = parentPath ? `${parentPath}/${value}` : value;
-      const result = await onCreateFile?.(targetPath);
-      if (result?.success) {
-        onRefresh?.();
-        const newEntry = { path: result.path, name: value, type: 'file' };
-        onOpenFile?.(newEntry);
-      }
+      await executeActionWithFeedback(
+        'project-tree.create-file',
+        async () => {
+          const result = await onCreateFile?.(targetPath);
+          if (result?.success) {
+            onRefresh?.();
+            const newEntry = { path: result.path, name: value, type: 'file' };
+            onOpenFile?.(newEntry);
+          }
+          return result;
+        },
+        { successMessage: '文件已创建', failureMessage: '创建文件失败' },
+      );
     } else if (type === 'createDir') {
       const targetPath = parentPath ? `${parentPath}/${value}` : value;
-      const result = await onCreateDirectory?.(targetPath);
-      if (result?.success) {
-        onRefresh?.();
-      }
+      await executeActionWithFeedback(
+        'project-tree.create-directory',
+        async () => {
+          const result = await onCreateDirectory?.(targetPath);
+          if (result?.success) {
+            onRefresh?.();
+          }
+          return result;
+        },
+        { successMessage: '目录已创建', failureMessage: '创建目录失败' },
+      );
     } else if (type === 'rename') {
       const parent = getParentPath(entry.path);
       const newPath = parent ? `${parent}/${value}` : value;
-      const result = await onRenameItem?.(entry.path, newPath);
-      if (result?.success) {
-        onRefresh?.();
-      }
+      await executeActionWithFeedback(
+        'project-tree.rename',
+        async () => {
+          const result = await onRenameItem?.(entry.path, newPath);
+          if (result?.success) {
+            onRefresh?.();
+          }
+          return result;
+        },
+        { successMessage: '重命名成功', failureMessage: '重命名失败' },
+      );
     }
 
     setDialog(null);
-  }, [dialog, onCreateFile, onCreateDirectory, onRenameItem, onRefresh, onOpenFile, getParentPath]);
+  }, [dialog, onCreateFile, onCreateDirectory, onRenameItem, onRefresh, onOpenFile, getParentPath, executeActionWithFeedback]);
+
+  const handleRefresh = useCallback(() => {
+    executeActionWithFeedback(
+      'project-tree.refresh',
+      async () => { onRefresh?.(); },
+      { successMessage: '', failureMessage: '刷新失败' },
+    );
+  }, [onRefresh, executeActionWithFeedback]);
 
   // ── Context menu items ──
 
@@ -791,9 +836,11 @@ export function ProjectTree({ projectTree, workingDirectory, onOpenFile, activeO
         <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
           <button
             type="button"
-            onClick={onRefresh}
-            disabled={!workingDirectory || status === 'loading'}
+            onClick={handleRefresh}
+            disabled={!workingDirectory || status === 'loading' || refreshState.status === UI_ACTION_STATUS.RUNNING}
             title="刷新文件列表"
+            data-action-id="project-tree.refresh"
+            aria-busy={refreshState.status === UI_ACTION_STATUS.RUNNING || undefined}
             style={{
               width: '22px',
               height: '22px',

@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import AgentControl from '../AgentControl.jsx';
 import ToolPanel from '../ToolPanel.jsx';
 import { Icon } from '../ui/index.js';
+import { useActionLifecycleContext, useActionState } from '../../contexts/ActionLifecycleContext.jsx';
+import { UI_ACTION_STATUS } from '../../app/actions/ui-action-graph.js';
 
 function sessionTitle(session) {
   return session?.title || session?.name || '未命名任务';
@@ -33,6 +35,44 @@ export function SidebarPanel({
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const searchRef = useRef(null);
+  const { executeActionWithFeedback } = useActionLifecycleContext();
+
+  const newTaskState = useActionState('session.new');
+  const clearSessionsState = useActionState('session.clear');
+  const selectSessionState = useActionState('session.select');
+  const deleteSessionState = useActionState('session.delete');
+
+  const handleNewTask = useCallback(() => {
+    executeActionWithFeedback(
+      'session.new',
+      async () => { onNewTask?.(); },
+      { successMessage: '', failureMessage: '创建新任务失败' },
+    );
+  }, [onNewTask, executeActionWithFeedback]);
+
+  const handleClearSessions = useCallback(() => {
+    executeActionWithFeedback(
+      'session.clear',
+      async () => { onClearSessions?.(); },
+      { successMessage: '已清空所有任务', failureMessage: '清空任务失败' },
+    );
+  }, [onClearSessions, executeActionWithFeedback]);
+
+  const handleSelectSession = useCallback((id) => {
+    executeActionWithFeedback(
+      'session.select',
+      async () => { onSelectSession?.(id); },
+      { successMessage: '', failureMessage: '切换任务失败' },
+    );
+  }, [onSelectSession, executeActionWithFeedback]);
+
+  const handleDeleteSession = useCallback((id) => {
+    executeActionWithFeedback(
+      'session.delete',
+      async () => { onDeleteSession?.(id); },
+      { successMessage: '任务已删除', failureMessage: '删除任务失败' },
+    );
+  }, [onDeleteSession, executeActionWithFeedback]);
   const recentSessions = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
     return sessions
@@ -75,7 +115,14 @@ export function SidebarPanel({
       </div>
 
       <nav className="codex-primary-nav" aria-label="工作区">
-        <button type="button" className="codex-nav-item" data-action-id="navigation.new-task" onClick={onNewTask}>
+        <button
+          type="button"
+          className="codex-nav-item"
+          data-action-id="navigation.new-task"
+          onClick={handleNewTask}
+          disabled={newTaskState.status === UI_ACTION_STATUS.RUNNING}
+          aria-busy={newTaskState.status === UI_ACTION_STATUS.RUNNING || undefined}
+        >
           <Icon name="plus" size={17} /><span>新建任务</span>
         </button>
         <button
@@ -143,10 +190,13 @@ export function SidebarPanel({
               <button
                 type="button"
                 className="codex-session-clear-all"
-                onClick={onClearSessions}
+                onClick={handleClearSessions}
                 title="清空所有任务"
+                disabled={clearSessionsState.status === UI_ACTION_STATUS.RUNNING}
+                data-action-id="session.clear"
+                aria-busy={clearSessionsState.status === UI_ACTION_STATUS.RUNNING || undefined}
               >
-                清空
+                {clearSessionsState.status === UI_ACTION_STATUS.RUNNING ? '...' : '清空'}
               </button>
             )}
           </div>
@@ -162,8 +212,11 @@ export function SidebarPanel({
                   <button
                     type="button"
                     className="codex-session-select"
-                    onClick={() => onSelectSession?.(id)}
+                    onClick={() => handleSelectSession(id)}
                     title={sessionTitle(session)}
+                    disabled={selectSessionState.status === UI_ACTION_STATUS.RUNNING}
+                    data-action-id="session.select"
+                    aria-busy={selectSessionState.status === UI_ACTION_STATUS.RUNNING && selectSessionState.id === id || undefined}
                   >
                     {sessionTitle(session)}
                   </button>
@@ -173,10 +226,12 @@ export function SidebarPanel({
                       className="codex-session-delete"
                       onClick={(event) => {
                         event.stopPropagation();
-                        onDeleteSession(id);
+                        handleDeleteSession(id);
                       }}
                       title="清理任务"
                       aria-label={`清理任务: ${sessionTitle(session)}`}
+                      disabled={deleteSessionState.status === UI_ACTION_STATUS.RUNNING}
+                      data-action-id="session.delete"
                     >
                       <Icon name="trash" size={13} />
                     </button>

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { t } from '../../i18n.js';
 import { Button, Icon, Panel } from '../ui/index.js';
 import { TabGroup, TabItem } from '../ui/Tab.jsx';
@@ -13,6 +13,9 @@ import {
   groupPlanTasksByPhase,
 } from '../message-log/utils/plan-display.js';
 import { styles as planStyles } from '../message-log/styles/MessageLog.styles.js';
+import { buildExecutionOverviewProjection } from '../../runtime/message-graph.js';
+import { useActionLifecycleContext, useActionState } from '../../contexts/ActionLifecycleContext.jsx';
+import { UI_ACTION_STATUS } from '../../app/actions/ui-action-graph.js';
 
 const SESSION_STATUS_COLORS = {
   running: 'var(--primary-color)',
@@ -266,6 +269,12 @@ function HistoryTab({
   const [hoveredItem, setHoveredItem] = useState(null);
   const [searchFocused, setSearchFocused] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const { executeActionWithFeedback } = useActionLifecycleContext();
+
+  const newSessionState = useActionState('session.new');
+  const clearHistoryState = useActionState('session.clear-history');
+  const bulkDeleteState = useActionState('session.bulk-delete');
+  const loadMoreState = useActionState('session.load-more');
 
   const getSessionStatusColor = (session) => {
     const status = session?.status || 'unknown';
@@ -295,18 +304,72 @@ function HistoryTab({
     }
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = useCallback(async () => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    if (typeof onDeleteSessions === 'function') {
-      await onDeleteSessions(ids);
-    } else {
-      for (const id of ids) {
-        await onDeleteSession?.(id);
-      }
-    }
+    await executeActionWithFeedback(
+      'session.bulk-delete',
+      async () => {
+        if (typeof onDeleteSessions === 'function') {
+          await onDeleteSessions(ids);
+        } else {
+          for (const id of ids) {
+            await onDeleteSession?.(id);
+          }
+        }
+      },
+      { successMessage: `已删除 ${ids.length} 个会话`, failureMessage: '删除会话失败' },
+    );
     setSelectedIds(new Set());
-  };
+  }, [selectedIds, onDeleteSessions, onDeleteSession, executeActionWithFeedback]);
+
+  const handleNewSession = useCallback(() => {
+    executeActionWithFeedback(
+      'session.new',
+      async () => { onNewSession?.(); },
+      { successMessage: '新会话已创建', failureMessage: '创建会话失败' },
+    );
+  }, [onNewSession, executeActionWithFeedback]);
+
+  const handleClearHistory = useCallback(() => {
+    executeActionWithFeedback(
+      'session.clear-history',
+      async () => { onClearHistory?.(); },
+      { successMessage: '会话历史已清空', failureMessage: '清空历史失败' },
+    );
+  }, [onClearHistory, executeActionWithFeedback]);
+
+  const handleLoadMore = useCallback(() => {
+    executeActionWithFeedback(
+      'session.load-more',
+      async () => { onLoadMore?.(); },
+      { successMessage: '', failureMessage: '加载更多失败' },
+    );
+  }, [onLoadMore, executeActionWithFeedback]);
+
+  const handleDeleteSession = useCallback((sessionId) => {
+    executeActionWithFeedback(
+      'session.delete',
+      async () => { onDeleteSession?.(sessionId); },
+      { successMessage: '会话已删除', failureMessage: '删除会话失败' },
+    );
+  }, [onDeleteSession, executeActionWithFeedback]);
+
+  const handleForkSession = useCallback((sessionId) => {
+    executeActionWithFeedback(
+      'session.fork',
+      async () => { onForkSession?.(sessionId); },
+      { successMessage: '会话已分叉', failureMessage: '分叉会话失败' },
+    );
+  }, [onForkSession, executeActionWithFeedback]);
+
+  const handleSwitchSession = useCallback((sessionId) => {
+    executeActionWithFeedback(
+      'session.switch',
+      async () => { onSwitchSession?.(sessionId); },
+      { successMessage: '', failureMessage: '切换会话失败' },
+    );
+  }, [onSwitchSession, executeActionWithFeedback]);
 
   // 切换会话或会话列表变化时清除选择
   useEffect(() => {
@@ -330,21 +393,26 @@ function HistoryTab({
         />
         <button
           style={historyStyles.actionButton}
-          onClick={onNewSession}
-          title="新建会话"
+          onClick={handleNewSession}
+          disabled={newSessionState.status === UI_ACTION_STATUS.RUNNING || newSessionState.status === UI_ACTION_STATUS.BLOCKED}
+          title={newSessionState.reason || '新建会话'}
+          data-action-id="session.new"
+          aria-busy={newSessionState.status === UI_ACTION_STATUS.RUNNING || undefined}
         >
-          + 新建
+          {newSessionState.status === UI_ACTION_STATUS.RUNNING ? '...' : '+ 新建'}
         </button>
         <button
           style={{
             ...historyStyles.actionButton,
             ...(sessions.length === 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
           }}
-          onClick={onClearHistory}
-          disabled={sessions.length === 0}
-          title="清空所有会话"
+          onClick={handleClearHistory}
+          disabled={sessions.length === 0 || clearHistoryState.status === UI_ACTION_STATUS.RUNNING}
+          title={clearHistoryState.reason || '清空所有会话'}
+          data-action-id="session.clear-history"
+          aria-busy={clearHistoryState.status === UI_ACTION_STATUS.RUNNING || undefined}
         >
-          清空
+          {clearHistoryState.status === UI_ACTION_STATUS.RUNNING ? '...' : '清空'}
         </button>
       </div>
 
@@ -364,9 +432,12 @@ function HistoryTab({
             <button
               style={historyStyles.bulkDeleteButton}
               onClick={handleBulkDelete}
+              disabled={bulkDeleteState.status === UI_ACTION_STATUS.RUNNING}
               title="删除选中的会话"
+              data-action-id="session.bulk-delete"
+              aria-busy={bulkDeleteState.status === UI_ACTION_STATUS.RUNNING || undefined}
             >
-              删除所选
+              {bulkDeleteState.status === UI_ACTION_STATUS.RUNNING ? '...' : '删除所选'}
             </button>
           )}
         </div>
@@ -396,13 +467,13 @@ function HistoryTab({
                     ...(isHovered && !isActive ? historyStyles.sessionItemHover : {}),
                     ...(isSelected && !isActive ? { backgroundColor: 'var(--ds-brand-soft)' } : {}),
                   }}
-                  onClick={() => onSwitchSession?.(session.id)}
+                  onClick={() => handleSwitchSession(session.id)}
                   onMouseEnter={() => setHoveredItem(session.id)}
                   onMouseLeave={() => setHoveredItem(null)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
-                      onSwitchSession?.(session.id);
+                      handleSwitchSession(session.id);
                     }
                   }}
                   title={'切换到会话: ' + (session.title || session.id)}
@@ -445,9 +516,10 @@ function HistoryTab({
                       style={historyStyles.iconButton}
                       onClick={(e) => {
                         e.stopPropagation();
-                        onForkSession?.(session.id);
+                        handleForkSession(session.id);
                       }}
                       title="分叉会话"
+                      data-action-id="session.fork"
                     >
                       <Icon name="timeline" size={13} />
                     </button>
@@ -456,9 +528,10 @@ function HistoryTab({
                         style={{ ...historyStyles.iconButton, ...historyStyles.iconButtonDanger }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onDeleteSession?.(session.id);
+                          handleDeleteSession(session.id);
                         }}
                         title="删除会话"
+                        data-action-id="session.delete"
                       >
                         <Icon name="trash" size={13} />
                       </button>
@@ -483,9 +556,12 @@ function HistoryTab({
         {hasMore && !loading && (
           <button
             style={historyStyles.loadMoreButton}
-            onClick={onLoadMore}
+            onClick={handleLoadMore}
+            disabled={loadMoreState.status === UI_ACTION_STATUS.RUNNING}
+            data-action-id="session.load-more"
+            aria-busy={loadMoreState.status === UI_ACTION_STATUS.RUNNING || undefined}
           >
-            加载更多
+            {loadMoreState.status === UI_ACTION_STATUS.RUNNING ? '加载中...' : '加载更多'}
           </button>
         )}
 
@@ -667,46 +743,267 @@ function PlanTab({ messages }) {
   );
 }
 
-function ExecutionTab({ messages }) {
-  const toolMessages = (messages || []).filter((message) => message.type === 'tool');
-  const thinkingCount = (messages || []).filter((message) => message.type === 'thinking').length;
-  const completed = toolMessages.filter((message) => message.toolResult && !message.isError).length;
-  const failed = toolMessages.filter((message) => message.isError).length;
-  const running = toolMessages.filter((message) => !message.toolResult).length;
-  const recentTools = toolMessages.slice(-8).reverse();
+const executionStyles = {
+  root: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto',
+    padding: '12px',
+  },
+  summaryGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: '6px',
+    marginBottom: '14px',
+  },
+  summaryCard: {
+    padding: '9px',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--border-subtle)',
+    background: 'var(--surface-raised)',
+  },
+  summaryLabel: {
+    color: 'var(--text-muted)',
+    fontSize: '10px',
+  },
+  summaryValue: {
+    marginTop: '3px',
+    fontSize: '17px',
+    fontWeight: 700,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  sectionLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '8px',
+    margin: '0 2px 8px',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    fontWeight: 600,
+  },
+  activeCard: {
+    padding: '12px',
+    marginBottom: '14px',
+    border: '1px solid var(--primary-border)',
+    borderRadius: 'var(--radius-lg)',
+    background: 'var(--primary-soft)',
+  },
+  cardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '7px',
+    marginBottom: '8px',
+  },
+  statusDot: {
+    width: '7px',
+    height: '7px',
+    borderRadius: '50%',
+    flexShrink: 0,
+  },
+  statusLabel: {
+    color: 'var(--text-muted)',
+    fontSize: '10px',
+    fontWeight: 700,
+  },
+  request: {
+    color: 'var(--text-color)',
+    fontSize: '12px',
+    fontWeight: 650,
+    lineHeight: 1.5,
+  },
+  meta: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    marginTop: '8px',
+    color: 'var(--text-muted)',
+    fontSize: '10px',
+  },
+  step: {
+    marginTop: '9px',
+    padding: '8px 9px',
+    borderRadius: 'var(--radius-md)',
+    background: 'var(--surface-raised)',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    lineHeight: 1.45,
+  },
+  response: {
+    marginTop: '9px',
+    paddingTop: '9px',
+    borderTop: '1px solid var(--border-divider)',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    lineHeight: 1.5,
+  },
+  list: {
+    display: 'grid',
+    gap: '6px',
+  },
+  turnCard: {
+    padding: '10px',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: 'var(--radius-md)',
+    background: 'var(--surface-card)',
+  },
+  toolRow: {
+    display: 'flex',
+    gap: '5px',
+    marginTop: '8px',
+    overflow: 'hidden',
+  },
+  toolChip: {
+    minWidth: 0,
+    maxWidth: '46%',
+    padding: '3px 6px',
+    borderRadius: 'var(--radius-sm)',
+    background: 'var(--surface-raised)',
+    color: 'var(--text-muted)',
+    fontSize: '9px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  empty: {
+    padding: '36px 14px',
+    textAlign: 'center',
+    color: 'var(--text-muted)',
+    fontSize: '12px',
+    lineHeight: 1.65,
+  },
+};
+
+function executionStatusMeta(status) {
+  if (status === 'completed') {
+    return { label: '已完成', color: 'var(--success-color)' };
+  }
+  if (status === 'failed' || status === 'stopped') {
+    return { label: status === 'stopped' ? '已停止' : '失败', color: 'var(--error-color)' };
+  }
+  if (status === 'waiting') {
+    return { label: '等待输入', color: 'var(--warning-color)' };
+  }
+  return { label: '进行中', color: 'var(--warning-color)' };
+}
+
+function ExecutionTurnCard({ turn, active = false }) {
+  const statusMeta = executionStatusMeta(turn.status);
+  const visibleTools = turn.toolCollections.slice(-3);
 
   return (
-    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '12px' }}>
+    <article style={active ? executionStyles.activeCard : executionStyles.turnCard}>
+      <div style={executionStyles.cardHeader}>
+        <span style={{ ...executionStyles.statusDot, background: statusMeta.color }} />
+        <span style={executionStyles.statusLabel}>{statusMeta.label}</span>
+        {turn.toolProgress.total > 0 && (
+          <span style={{ ...executionStyles.statusLabel, marginLeft: 'auto' }}>
+            工具 {turn.toolProgress.completed}/{turn.toolProgress.total}
+            {turn.toolProgress.failed > 0 ? ` · 失败 ${turn.toolProgress.failed}` : ''}
+          </span>
+        )}
+      </div>
+      <div style={executionStyles.request}>
+        {turn.requestPreview || '未关联用户请求的运行时任务'}
+      </div>
+      {turn.currentStep && (
+        <div style={executionStyles.step}>
+          <strong style={{ color: 'var(--text-color)' }}>当前步骤</strong>
+          <div>{turn.currentStep}</div>
+        </div>
+      )}
+      {visibleTools.length > 0 && (
+        <div style={executionStyles.toolRow} aria-label="工具集合进度">
+          {visibleTools.map((tool) => {
+            const toolMeta = executionStatusMeta(
+              tool.phase === 'failed'
+                ? 'failed'
+                : tool.phase === 'completed' ? 'completed' : 'running',
+            );
+            return (
+              <span
+                key={tool.id}
+                style={{
+                  ...executionStyles.toolChip,
+                  color: toolMeta.color,
+                }}
+                title={`${tool.toolName || '工具'} · ${toolMeta.label}`}
+              >
+                {tool.toolName || '工具'} · {toolMeta.label}
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {turn.responsePreview && (
+        <div style={executionStyles.response}>
+          <strong style={{ color: 'var(--text-color)' }}>回复</strong>
+          <div>{turn.responsePreview}</div>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function ExecutionTab({ messages }) {
+  const overview = useMemo(
+    () => buildExecutionOverviewProjection(messages),
+    [messages],
+  );
+  const activeTurn = overview.turns.find((turn) => turn.id === overview.activeTurnId) || null;
+  const recentTurns = [...overview.turns]
+    .reverse()
+    .filter((turn) => turn.id !== overview.activeTurnId)
+    .slice(0, 6);
+
+  return (
+    <div style={executionStyles.root}>
+      <div style={executionStyles.summaryGrid} aria-label="执行状态统计">
         {[
-          ['运行中', running, 'var(--warning-color)'],
-          ['已完成', completed, 'var(--success-color)'],
-          ['失败', failed, 'var(--error-color)'],
+          ['运行中', overview.totals.running, 'var(--warning-color)'],
+          ['已完成', overview.totals.completed, 'var(--success-color)'],
+          ['失败', overview.totals.failed, 'var(--error-color)'],
         ].map(([label, value, color]) => (
-          <div key={label} style={{ padding: '9px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', background: 'var(--surface-raised)' }}>
-            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>{label}</div>
-            <div style={{ marginTop: '3px', color, fontSize: '17px', fontWeight: 700 }}>{value}</div>
+          <div key={label} style={executionStyles.summaryCard}>
+            <div style={executionStyles.summaryLabel}>{label}</div>
+            <div style={{ ...executionStyles.summaryValue, color }}>{value}</div>
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', color: 'var(--text-muted)', fontSize: '11px' }}>
-        <span>最近工具调用</span>
-        <span>{thinkingCount > 0 ? `${thinkingCount} 条推理记录` : '暂无推理记录'}</span>
-      </div>
-      {recentTools.length === 0 ? (
-        <div style={{ padding: '32px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px', lineHeight: 1.6 }}>
-          开始任务后，这里会汇总 OMP 的工具执行状态。
-        </div>
-      ) : recentTools.map((message) => (
-        <div key={message.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 8px', borderBottom: '1px solid var(--border-divider)' }}>
-          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: message.isError ? 'var(--error-color)' : message.toolResult ? 'var(--success-color)' : 'var(--warning-color)', flexShrink: 0 }} />
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ color: 'var(--text-color)', fontSize: '12px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{message.toolName || '工具调用'}</div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{message.progressText || message.statusText || (message.toolResult ? '执行完成' : '执行中')}</div>
+
+      {activeTurn ? (
+        <>
+          <div style={executionStyles.sectionLabel}>
+            <span>
+              {activeTurn.status === 'running' || activeTurn.status === 'waiting'
+                ? '当前执行'
+                : '最近执行'}
+            </span>
+            <span>消息与工具同步</span>
           </div>
-          {message.duration != null && <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>{message.duration}ms</span>}
+          <ExecutionTurnCard turn={activeTurn} active />
+        </>
+      ) : (
+        <div style={executionStyles.empty}>
+          <Icon name="timeline" size={22} style={{ opacity: 0.35, marginBottom: '8px' }} />
+          <div>尚无执行内容</div>
+          <div>发送请求后，这里会按同一会话展示请求、步骤、工具进度和回复。</div>
         </div>
-      ))}
+      )}
+
+      {recentTurns.length > 0 && (
+        <>
+          <div style={executionStyles.sectionLabel}>
+            <span>最近任务</span>
+            <span>{recentTurns.length} 项</span>
+          </div>
+          <div style={executionStyles.list}>
+            {recentTurns.map((turn) => (
+              <ExecutionTurnCard key={turn.id} turn={turn} />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -725,6 +1022,13 @@ function RagTab({
   onResetRag,
 }) {
   const [selectedKey, setSelectedKey] = useState('');
+  const { executeActionWithFeedback } = useActionLifecycleContext();
+
+  const addDocsState = useActionState('rag.add-documents');
+  const initIndexState = useActionState('rag.initialize-index');
+  const resetRagState = useActionState('rag.reset');
+  const insertSearchState = useActionState('rag.insert-doc-search');
+
   const selectedDoc = useMemo(() => {
     if (ragDocs.length === 0) {return null;}
     return ragDocs.find((doc, index) => getRagDocKey(doc, index) === selectedKey) || ragDocs[0];
@@ -740,6 +1044,46 @@ function RagTab({
     }
   }, [ragDocs, selectedDoc]);
 
+  const handleAddDocuments = useCallback(() => {
+    executeActionWithFeedback(
+      'rag.add-documents',
+      async () => { onAddDocuments?.(); },
+      { successMessage: '文档已添加', failureMessage: '添加文档失败' },
+    );
+  }, [onAddDocuments, executeActionWithFeedback]);
+
+  const handleInitializeIndex = useCallback(() => {
+    executeActionWithFeedback(
+      'rag.initialize-index',
+      async () => { onInitializeIndex?.(); },
+      { successMessage: '索引已初始化', failureMessage: '初始化索引失败' },
+    );
+  }, [onInitializeIndex, executeActionWithFeedback]);
+
+  const handleRemoveDocument = useCallback((doc, index) => {
+    executeActionWithFeedback(
+      'rag.remove-document',
+      async () => { onRemoveDocument?.(doc, index); },
+      { successMessage: '文档已移除', failureMessage: '移除文档失败' },
+    );
+  }, [onRemoveDocument, executeActionWithFeedback]);
+
+  const handleInsertDocSearch = useCallback(() => {
+    executeActionWithFeedback(
+      'rag.insert-doc-search',
+      async () => { onInsertDocSearch?.(); },
+      { successMessage: '', failureMessage: '插入搜索命令失败' },
+    );
+  }, [onInsertDocSearch, executeActionWithFeedback]);
+
+  const handleResetRag = useCallback(() => {
+    executeActionWithFeedback(
+      'rag.reset',
+      async () => { onResetRag?.(); },
+      { successMessage: 'RAG 已重置', failureMessage: '重置 RAG 失败' },
+    );
+  }, [onResetRag, executeActionWithFeedback]);
+
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
       <div style={styles.summarySection}>
@@ -749,8 +1093,24 @@ function RagTab({
         </div>
 
         <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-          <button style={styles.button} onClick={onAddDocuments}>{t('common.upload')}</button>
-          <button style={styles.button} onClick={onInitializeIndex} disabled={ragDocs.length === 0}>{t('common.init')}</button>
+          <button
+            style={styles.button}
+            onClick={handleAddDocuments}
+            disabled={addDocsState.status === UI_ACTION_STATUS.RUNNING}
+            data-action-id="rag.add-documents"
+            aria-busy={addDocsState.status === UI_ACTION_STATUS.RUNNING || undefined}
+          >
+            {addDocsState.status === UI_ACTION_STATUS.RUNNING ? '...' : t('common.upload')}
+          </button>
+          <button
+            style={styles.button}
+            onClick={handleInitializeIndex}
+            disabled={ragDocs.length === 0 || initIndexState.status === UI_ACTION_STATUS.RUNNING}
+            data-action-id="rag.initialize-index"
+            aria-busy={initIndexState.status === UI_ACTION_STATUS.RUNNING || undefined}
+          >
+            {initIndexState.status === UI_ACTION_STATUS.RUNNING ? '...' : t('common.init')}
+          </button>
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -791,7 +1151,8 @@ function RagTab({
               </button>
               <button
                 style={styles.button}
-                onClick={() => onRemoveDocument(doc, index)}
+                onClick={() => handleRemoveDocument(doc, index)}
+                data-action-id="rag.remove-document"
               >
                 ×
               </button>
@@ -811,8 +1172,24 @@ function RagTab({
       <div style={styles.summarySection}>
         <div style={styles.summarySectionTitle}>{t('common.ok')}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <button style={styles.button} onClick={onInsertDocSearch}>{t('inspector.insert_doc_search', {}, 'Insert doc search')}</button>
-          <button style={styles.button} onClick={onResetRag} disabled={!ipc.processInput && ragDocs.length === 0}>{t('common.reset', {}, 'Reset')}</button>
+          <button
+            style={styles.button}
+            onClick={handleInsertDocSearch}
+            disabled={insertSearchState.status === UI_ACTION_STATUS.RUNNING}
+            data-action-id="rag.insert-doc-search"
+            aria-busy={insertSearchState.status === UI_ACTION_STATUS.RUNNING || undefined}
+          >
+            {insertSearchState.status === UI_ACTION_STATUS.RUNNING ? '...' : t('inspector.insert_doc_search', {}, 'Insert doc search')}
+          </button>
+          <button
+            style={styles.button}
+            onClick={handleResetRag}
+            disabled={(!ipc.processInput && ragDocs.length === 0) || resetRagState.status === UI_ACTION_STATUS.RUNNING}
+            data-action-id="rag.reset"
+            aria-busy={resetRagState.status === UI_ACTION_STATUS.RUNNING || undefined}
+          >
+            {resetRagState.status === UI_ACTION_STATUS.RUNNING ? '...' : t('common.reset', {}, 'Reset')}
+          </button>
         </div>
       </div>
     </div>
@@ -1042,6 +1419,46 @@ function PreviewTab({
   onPreviewUrlDraftChange,
   onPreviewUrlSubmit,
 }) {
+  const { executeActionWithFeedback } = useActionLifecycleContext();
+
+  const startPreviewState = useActionState('preview.start');
+  const stopPreviewState = useActionState('preview.stop');
+  const refreshState = useActionState('preview.refresh');
+  const openUrlState = useActionState('preview.open-url');
+
+  const handleStartPreview = useCallback(() => {
+    executeActionWithFeedback(
+      'preview.start',
+      async () => { onStartPreview?.('.'); },
+      { successMessage: '预览服务已启动', failureMessage: '启动预览失败' },
+    );
+  }, [onStartPreview, executeActionWithFeedback]);
+
+  const handleStopPreview = useCallback(() => {
+    executeActionWithFeedback(
+      'preview.stop',
+      async () => { onStopPreview?.(); },
+      { successMessage: '预览服务已停止', failureMessage: '停止预览失败' },
+    );
+  }, [onStopPreview, executeActionWithFeedback]);
+
+  const handleRefreshFrame = useCallback(() => {
+    executeActionWithFeedback(
+      'preview.refresh',
+      async () => { onRefreshFrame?.(); },
+      { successMessage: '', failureMessage: '刷新失败' },
+    );
+  }, [onRefreshFrame, executeActionWithFeedback]);
+
+  const handlePreviewUrlSubmit = useCallback((e) => {
+    e.preventDefault();
+    executeActionWithFeedback(
+      'preview.open-url',
+      async () => { onPreviewUrlSubmit?.(e); },
+      { successMessage: '', failureMessage: '打开 URL 失败' },
+    );
+  }, [onPreviewUrlSubmit, executeActionWithFeedback]);
+
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={styles.previewHeader}>
@@ -1063,12 +1480,28 @@ function PreviewTab({
                 {activePreviewUrl}
               </a>
             ) : (
-              previewStatus === 'starting' ? t('common.loading') : t('status.not_set')
+              previewStatus === 'starting' || startPreviewState.status === UI_ACTION_STATUS.RUNNING
+                ? t('common.loading')
+                : t('status.not_set')
             )}
           </div>
         </div>
-        <button style={styles.button} onClick={onRefreshFrame} disabled={!activePreviewUrl}>{t('common.refresh')}</button>
-        <button style={styles.button} onClick={() => activePreviewUrl && onOpenExternal(activePreviewUrl)} disabled={!activePreviewUrl}>{t('common.browser')}</button>
+        <button
+          style={styles.button}
+          onClick={handleRefreshFrame}
+          disabled={!activePreviewUrl || refreshState.status === UI_ACTION_STATUS.RUNNING}
+          data-action-id="preview.refresh"
+          aria-busy={refreshState.status === UI_ACTION_STATUS.RUNNING || undefined}
+        >
+          {refreshState.status === UI_ACTION_STATUS.RUNNING ? '...' : t('common.refresh')}
+        </button>
+        <button
+          style={styles.button}
+          onClick={() => activePreviewUrl && onOpenExternal(activePreviewUrl)}
+          disabled={!activePreviewUrl}
+        >
+          {t('common.browser')}
+        </button>
         <button
           style={styles.iconButton}
           onClick={onExpandToggle}
@@ -1078,20 +1511,45 @@ function PreviewTab({
           <Icon name={inspectorExpanded ? 'restore' : 'expand'} size={15} />
         </button>
         {previewSession?.session_id ? (
-          <button style={styles.button} onClick={onStopPreview}>{t('ui.stop')}</button>
+          <button
+            style={styles.button}
+            onClick={handleStopPreview}
+            disabled={stopPreviewState.status === UI_ACTION_STATUS.RUNNING}
+            data-action-id="preview.stop"
+            aria-busy={stopPreviewState.status === UI_ACTION_STATUS.RUNNING || undefined}
+          >
+            {stopPreviewState.status === UI_ACTION_STATUS.RUNNING ? '...' : t('ui.stop')}
+          </button>
         ) : (
-          <button style={styles.button} onClick={() => onStartPreview('.')}>{t('common.start')}</button>
+          <button
+            style={styles.button}
+            onClick={handleStartPreview}
+            disabled={startPreviewState.status === UI_ACTION_STATUS.RUNNING || startPreviewState.status === UI_ACTION_STATUS.BLOCKED}
+            data-action-id="preview.start"
+            aria-busy={startPreviewState.status === UI_ACTION_STATUS.RUNNING || undefined}
+            title={startPreviewState.reason}
+          >
+            {startPreviewState.status === UI_ACTION_STATUS.RUNNING ? '...' : t('common.start')}
+          </button>
         )}
       </div>
 
-      <form style={styles.previewUrlForm} onSubmit={onPreviewUrlSubmit}>
+      <form style={styles.previewUrlForm} onSubmit={handlePreviewUrlSubmit}>
         <input
           style={styles.previewUrlInput}
           value={previewUrlDraft}
           onChange={(event) => onPreviewUrlDraftChange(event.target.value)}
           placeholder={t('inspector.preview_url_placeholder')}
         />
-        <button style={styles.button} type="submit">Go</button>
+        <button
+          style={styles.button}
+          type="submit"
+          disabled={openUrlState.status === UI_ACTION_STATUS.RUNNING}
+          data-action-id="preview.open-url"
+          aria-busy={openUrlState.status === UI_ACTION_STATUS.RUNNING || undefined}
+        >
+          {openUrlState.status === UI_ACTION_STATUS.RUNNING ? '...' : 'Go'}
+        </button>
       </form>
 
       {previewSession?.pipeline?.length ? (
@@ -1206,9 +1664,11 @@ export function InspectorPanel({
         tabIndex={0}
       />
         <div style={styles.inspectorHeader}>
-          <div className="codex-inspector-heading">环境信息</div>
+          <div className="codex-inspector-heading">
+            {activeInspectorTab === 'activity' ? '执行概览' : '工作区信息'}
+          </div>
           <TabGroup activeTab={activeInspectorTab} onChange={onTabChange}>
-            <TabItem id="activity">环境</TabItem>
+            <TabItem id="activity">执行</TabItem>
             <TabItem id="history">会话</TabItem>
             <TabItem id="preview">预览</TabItem>
           </TabGroup>

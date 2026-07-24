@@ -34,7 +34,7 @@ export function useCapabilities(ipc) {
   }, [ipc]);
 
   const graph = useMemo(
-    () => (status === 'idle' || status === 'degraded') && manifest.length === 0
+    () => (status === 'idle' || status === 'degraded' || status === 'loading') && manifest.length === 0
       ? createBrowserCapabilityGraph()
       : createCapabilityGraph(manifest, contracts),
     [manifest, contracts, status],
