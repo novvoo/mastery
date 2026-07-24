@@ -64,6 +64,9 @@ describe('architecture contract', () => {
       'desktop/main-app/workspace-file-server.js',
       'desktop/renderer/runtime/message-graph.js',
       'desktop/renderer/runtime/runtime-details.js',
+      'desktop/renderer/app/actions/ui-action-graph.js',
+      'desktop/renderer/contexts/ActionLifecycleContext.jsx',
+      'desktop/renderer/hooks/useActionLifecycle.js',
     ]) {
       expect(architecture).toContain(relativePath);
       expect(existsSync(path.join(ROOT, relativePath))).toBe(true);
@@ -280,6 +283,58 @@ describe('architecture contract', () => {
     expect(layoutHook).toContain('resolveWorkbenchLayoutMode({');
     expect(app).toContain('data-layout-mode={workbenchLayoutMode}');
     expect(app).toContain("'--mastery-inspector-width'");
+  });
+
+  test('keeps the frontend experience graph closed-loop and backed by pure models', () => {
+    for (const concept of [
+      'Experience Composition System',
+      'Executable Experience Read Models',
+      'Progressive Disclosure',
+      'Intent → Outcome Loop',
+      'Single source of truth',
+      'Inclusive motion and focus',
+      'Primary Narrative',
+      'Context Surface',
+      'Evidence Surface',
+      'Interruption Surface',
+    ]) {
+      expect(architecture).toContain(concept);
+    }
+    for (const relativePath of [
+      'desktop/renderer/app/actions/ui-action-graph.js',
+      'desktop/renderer/app/capabilities/capability-graph.js',
+      'desktop/renderer/app/interaction/animation-system.js',
+      'desktop/renderer/app/layout/layout-state.js',
+      'desktop/renderer/runtime/message-graph.js',
+    ]) {
+      expect(existsSync(path.join(ROOT, relativePath))).toBe(true);
+      expect(architecture).toContain(path.basename(relativePath));
+    }
+    const actionGraph = read('desktop/renderer/app/actions/ui-action-graph.js');
+    expect(actionGraph).toContain('export function transitionUiActionState');
+  });
+
+  test('keeps the execution overview inside the canonical message presentation graph', () => {
+    const messageGraph = read('desktop/renderer/runtime/message-graph.js');
+    const inspector = read('desktop/renderer/components/workbench/InspectorPanel.jsx');
+    expect(architecture).toContain('Execution Overview Projection');
+    expect(architecture).toContain('request · current step · tools · response');
+    expect(architecture).toContain('不按离散 tool 消息另建计数');
+    expect(messageGraph).toContain('export function buildExecutionOverviewProjection');
+    expect(inspector).toContain('buildExecutionOverviewProjection(messages)');
+  });
+
+  test('keeps stream format fidelity at the protocol boundary', () => {
+    const runtime = read('desktop/renderer/hooks/useRuntime.js');
+    const pipeline = read('desktop/renderer/app/content/content-pipeline.js');
+    const adapter = read('src/adapters/desktop/omp-adapter.js');
+    expect(architecture).toContain('Format Fidelity Gate');
+    expect(architecture).toContain('delta · snapshot · block');
+    expect(architecture).toContain('不对 delta trimEnd');
+    expect(runtime).toContain('export function mergeAssistantStreamFrame');
+    expect(runtime).toContain('getStreamDeltaIdentity');
+    expect(pipeline).toContain('export function stripToolProtocolDelta');
+    expect(adapter).toContain("frameMode: 'delta'");
   });
 
   test('keeps the quality gate complete and architecture checks discoverable', () => {

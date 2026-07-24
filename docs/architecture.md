@@ -342,6 +342,8 @@ flowchart TB
 
     subgraph StreamTx["Assistant Stream Transaction"]
       Await["AWAITING_DELTA<br/>无助手消息实体"]
+      Frame["Typed Stream Frame<br/>delta · snapshot · block"]
+      Format["Format Fidelity Gate<br/>preserve space · newline · fence"]
       Open["PROVISIONAL<br/>stable ID + accumulated visible text"]
       Snapshot["Stream Snapshot<br/>flush pending delta"]
       Authority["Authoritative Final Answer<br/>answer / finalAnswer only"]
@@ -389,8 +391,9 @@ flowchart TB
   Normalize --> Identity --> Route
   Route -->|"request / restored / tool / lifecycle"| Ordered
 
-  Route -->|"首个 text delta"| Await --> Open
-  Route -->|"后续 text delta"| Open
+  Route -->|"text frame"| Frame --> Format
+  Format -->|"首个可见 frame"| Await --> Open
+  Format -->|"后续 frame"| Open
   Open -->|"tool lifecycle · identity unchanged"| Open
   Route -->|"complete / stop / error"| Snapshot
   Route -->|"typed final answer"| Authority
@@ -417,11 +420,13 @@ flowchart TB
   DisplayGraph --> QueryProjection
   QueryProjection --> ListProjection
   QueryProjection --> TimelineProjection
+  DisplayGraph --> ExecutionOverview["Execution Overview Projection<br/>request · current step · tools · response"]
   ViewMode --> ListProjection
   ViewMode --> TimelineProjection
 
   ListProjection --> TurnSurface
   TimelineProjection --> TurnSurface
+  ExecutionOverview --> InspectorExecution["Inspector · 执行概览"]
   QueryProjection --> EmptyState
   TurnVisibility --> TurnSurface
   TurnSurface --> TurnHeader
@@ -447,8 +452,9 @@ flowchart TB
 | 边界 | 状态权威 | 允许写入者 | 展示职责 |
 | --- | --- | --- | --- |
 | Canonical Message State | `useRuntime.messages` | Runtime 归一化、Session Restore、用户请求 | 保存有序语义消息，不保存 JSX 或折叠状态 |
-| Assistant Stream Transaction | stable message ID + accumulated text | text delta、terminal reconciler、explicit reset | 管理 provisional → committed，不创建重复 response |
+| Assistant Stream Transaction | stable message ID + typed frames + accumulated text | text frame、terminal reconciler、explicit reset | 保留空格、换行、Markdown fence 和 frame 语义，管理 provisional → committed，不创建重复 response |
 | Message Display Graph | `runtime-details.js` / `message-graph.js` 纯投影 | 无持久写入者，每次从 canonical state 派生 | 聚合 Conversation Turn、Tool Collection、Lifecycle 和查询投影 |
+| Execution Overview Projection | Conversation Turn stable ID | 无持久写入者，只能消费 Message Display Graph | 为 Inspector 投影请求摘要、当前步骤、工具集合进度和最终回复，不复制消息归约 |
 | Visibility / Local UI State | Turn preference、message/panel expansion | 仅显式用户操作；Turn 默认值由纯策略派生 | 决定展示密度，不改变消息语义 |
 | React Presentation | `MessageLog` / `RuntimeDetailsPanel` | 不拥有领域消息 | 渲染、键盘语义、预览、Markdown 和滚动锚点 |
 
@@ -456,6 +462,8 @@ flowchart TB
 
 1. `CONTINUE`：工具事件可以改变 Tool Collection 和 Lifecycle Read Model，但不能清空 stream identity、删除消息或把 provisional response 提前晋升为另一个 response。
 2. `MONOTONIC COMMIT`：terminal boundary 是完成确认，不是无条件替换快照。Reconciler 必须先 flush pending delta，以已经呈现的累计文本为基线；terminal answer 相同、为空或只是累计文本的子集时保留原文，只有提供新增信息时才扩展。输出不得比已呈现文本少，且必须复用原 stable ID。
+
+Stream frame 在进入累计器前必须声明语义：`delta` 原样追加，`snapshot` 通过单调归并替换累计前缀，`block` 在缺少显式边界时使用段落边界连接。协议过滤必须保留每一帧首尾的空格和换行；最终消息清理可以 trim 尾部，但不得对单个 delta 调用会 `trimEnd` 的 final-text sanitizer。相邻两个内容相同的 token 或换行可能都是合法文本，只有 `deltaId / sequence / frameId` 等稳定帧身份相同才允许去重，禁止按字符内容去重。
 
 权威最终答案只来自协议明确声明的 `answer` / `finalAnswer` 及其 result 等价字段；生命周期 payload 的通用 `content`、`text`、`message` 不能在 terminal 路径冒充最终答案。删除只属于显式 `stream_reset` 对协议已判定无效的 provisional 帧的回滚；`agent:complete`、`agent:stop`、`agent:error` 以及 ref/state 暂时不同步均没有删除已呈现消息的权限。因此该模型不依赖对 `·`、空格或其他字符做黑名单过滤。
 
@@ -465,6 +473,8 @@ flowchart TB
 - List 和 Timeline 只能改变同一组匹配 Turn 的空间组织；Timeline 按 Turn 的稳定时间锚点分桶，禁止退回逐条 primary message 的第二套展示管线。
 - Primary Message Lane 只展示用户请求和有语义内容的 assistant response；任务开始/结束、工具事件、思考和诊断统一进入 Runtime Detail Lane。
 - Tool Card 从 Tool Collection Lane 接收聚合后的调用，不直接消费离散 request/result 事件。
+- Execution Overview 必须从完整 Conversation Turn 派生，不得重新过滤 `message.type === tool` 计数。每个概览项以 `turnId` 为身份，同时展示 request 摘要、当前 running/waiting step、Tool Collection 进度和 terminal response 摘要；缺少其中一项时保留同一 Turn，而不是生成孤立统计卡。
+- Inspector 与主消息区共享同一 canonical active Turn。stream delta、tool progress 和 terminal commit 只更新对应概览项；历史恢复、查询过滤、Turn 折叠和 Inspector 开合不能改变概览身份或丢失最终回复。
 - Viewport Controller 只管理滚动位置。near-bottom 自动跟随不能修改任何消息、Turn 或 expansion 状态；用户离开底部后必须保持阅读锚点。
 - React key、折叠键、内容展开键分别使用稳定 message ID、turn ID 和 panel/detail ID；不得使用可因插入或过滤变化的数组位置作为长期身份。
 
@@ -524,6 +534,7 @@ flowchart TD
 | Conversation Turn | `turnId`，兼容 `runId` / `correlationId` | 同一用户意图的 request、responses、tools 和 lifecycle 归并到同一 turn |
 | Legacy Conversation Turn | user message ID | 无关联字段时，下一条 user message 才开启新 turn；中间响应和详情属于当前 turn |
 | Tool Collection | `toolCallId`，兼容 `callId` / activity ID | request、progress、result/error 归并为同一展示单元；无 ID 的同名调用使用独立 fallback instance |
+| Execution Overview Turn | `turnId` | 从 Conversation Turn 只读派生 request、current step、tool progress、response；状态与主消息区一致，不允许按工具消息重新分组 |
 | Turn Collapse State | turn ID | running/waiting 强制展开；其余状态先服从用户偏好，再按 current/historical 决定默认值 |
 | Content Expansion State | message ID | 只接受显式用户操作，只控制长回答的内容截断；生命周期、响应完成和 Turn 策略都没有写权限 |
 
@@ -538,59 +549,180 @@ flowchart TD
 - Turn collapse 与长内容 expansion 是两种正交状态；展开 Turn 不隐式展开或折叠内容，展开内容也不改变 Turn 偏好。两者都以稳定 ID 为键，禁止使用数组位置作为长期状态身份。
 - Turn 归约与可见性策略位于 `runtime/runtime-details.js` 和 `runtime/message-graph.js` 的纯函数中；消息内容展开由 `MessageLog` 的显式交互状态持有。组件不得另建基于消息完成数量、签名变化或渲染次数的自动消息折叠规则。
 
+执行概览是完整消息 Graph 的一个内容投影，不是“最近工具调用”列表：
+
+```mermaid
+flowchart LR
+  Canonical["Canonical Messages"]
+  Display["Message Display Graph"]
+  Turn["Conversation Turn<br/>stable turnId · status"]
+  Request["Request Summary"]
+  Step["Current Step<br/>running / waiting"]
+  Tools["Tool Collection Progress<br/>completed / running / failed"]
+  Response["Response Summary<br/>stream or terminal"]
+  Overview["Execution Overview Item<br/>same turnId"]
+  Inspector["Inspector · 执行概览"]
+
+  Canonical --> Display --> Turn
+  Turn --> Request --> Overview
+  Turn --> Step --> Overview
+  Turn --> Tools --> Overview
+  Turn --> Response --> Overview
+  Overview --> Inspector
+
+  Canonical -.->|"FORBIDDEN · 不按离散 tool 消息另建计数"| Inspector
+  Inspector -.->|"FORBIDDEN · 不拥有消息状态"| Display
+```
+
+Stream 格式保真同样属于 Message Graph 的协议边界：
+
+```mermaid
+flowchart LR
+  Frame["Incoming Stream Frame<br/>text · frameMode · stable frame ID?"]
+  Dedupe{"有稳定帧身份<br/>且已经处理?"}
+  Sanitize["Protocol Sanitizer<br/>保留边界 whitespace"]
+  Merge{"mergeAssistantStreamFrame"}
+  Delta["delta<br/>exact append"]
+  Snapshot["snapshot<br/>monotonic reconcile"]
+  Block["block<br/>structural paragraph boundary"]
+  Markdown["Markdown Presentation<br/>paragraph · list · code fence"]
+
+  Frame --> Dedupe
+  Dedupe -->|"是"| Ignore["Ignore duplicate frame"]
+  Dedupe -->|"否 / 无稳定身份"| Sanitize --> Merge
+  Merge --> Delta --> Markdown
+  Merge --> Snapshot --> Markdown
+  Merge --> Block --> Markdown
+
+  Frame -.->|"FORBIDDEN · 不按文本值去重"| Ignore
+  Sanitize -.->|"FORBIDDEN · 不对 delta trimEnd"| Markdown
+```
+
 ### 5.4 Frontend UI Design Graph
 
-前端不是若干可见面板的拼接，而是由 **Capability、持久化用户意图、视口约束和当前任务上下文** 共同派生的 UI Read Model。Renderer 只保存用户意图；`Layout Policy` 计算当前窗口下的有效布局，避免侧边栏与 Inspector 同时挤压 Primary Task Surface。
+前端不是若干可见面板的拼接，而是一个 **Experience Composition System**：权威事实先进入可测试的纯投影，再由体验组合层分配空间、注意力、层级、反馈和动效。Renderer 只保存领域事实与显式用户意图；所有 effective presentation 都是派生结果。
 
 ```mermaid
 flowchart TB
-  subgraph Facts["Authoritative UI Facts"]
-    Registry["Capability Registry<br/>status · risk · reason"]
-    Contracts["Command Contract Registry<br/>schema · channel · result"]
-    Viewport["Viewport Metrics<br/>width · height"]
-    Intent["Persisted User Intent<br/>sidebar · inspector · terminal · theme"]
-    Task["Task Context<br/>conversation · file · preview · runtime"]
+  subgraph Signals["A · Authoritative Signals"]
+    CapabilityFacts["Capability + Contract Facts<br/>status · risk · schema · reason"]
+    TaskFacts["Task + Runtime Facts<br/>conversation · file · preview"]
+    MessageFacts["Canonical Message State<br/>turn · stream · tool collection"]
+    Environment["Environment Signals<br/>viewport · input modality · reduced motion"]
+    Preference["Explicit User Preference<br/>layout · theme · density"]
   end
 
-  subgraph Policy["Pure UI Policy Layer"]
-    Capability["Capability Projection<br/>available · degraded · unavailable"]
-    Layout["Layout Projection<br/>docked · overlay · compact"]
-    Interaction["Interaction Projection<br/>enabled · disabled reason · pending"]
-    Focus["Focus / Layer Policy<br/>base < panel < popover < modal"]
+  subgraph Models["B · Executable Experience Read Models"]
+    CapabilityModel["capability-graph.js<br/>available · degraded · unavailable"]
+    ActionModel["ui-action-graph.js<br/>ready · blocked · running · outcome"]
+    ContentModel["message-graph.js<br/>Turn Surface + Execution Overview"]
+    LayoutModel["layout-state.js<br/>docked · overlay · compact"]
+    MotionModel["animation-system.js<br/>semantic motion + reduced mode"]
   end
 
-  subgraph Shell["Workbench Experience Graph"]
+  subgraph Composition["C · Experience Composition"]
+    Priority["Attention Policy<br/>primary task owns focus"]
+    Disclosure["Progressive Disclosure<br/>narrative → context → raw detail"]
+    Spatial["Adaptive Spatial Policy<br/>protect primary working area"]
+    Layer["Layer + Focus Policy<br/>base < panel < popover < modal"]
+    Experience["Composed UI Read Model"]
+  end
+
+  subgraph Surfaces["D · Semantic Surfaces"]
     Chrome["Window Chrome<br/>global controls · diagnostics"]
     Navigation["Navigation Surface<br/>tasks · workspace · tools"]
     Primary["Primary Task Surface<br/>conversation or file"]
-    Inspector["Contextual Inspector<br/>activity · history · preview"]
-    Terminal["Bottom Utility Surface<br/>terminal · problems · output"]
-    Settings["Settings Modal<br/>models · MCP · appearance · about"]
-    Feedback["Transient Feedback<br/>inline reason · toast · confirm"]
+    Inspector["Context Surface<br/>execution overview · history · preview"]
+    Utility["Utility Dock<br/>terminal · problems · output"]
+    Modal["Modal Surface<br/>settings · confirm"]
+    Feedback["Owned Feedback<br/>inline · status · toast · alert"]
   end
 
-  Registry --> Capability
-  Contracts --> Capability
-  Viewport --> Layout
-  Intent --> Layout
-  Task --> Layout
-  Capability --> Interaction
-  Task --> Interaction
-  Layout --> Focus
+  subgraph Loop["E · Intent → Outcome Loop"]
+    UserIntent["Semantic User Intent"]
+    Dispatch{"Action admitted?"}
+    Command["Command / Local Transition"]
+    Outcome["Outcome<br/>success · failure · recovery"]
+    Blocked["Blocked Reason<br/>visible at action owner"]
+  end
 
-  Capability --> Chrome
-  Layout --> Navigation
-  Layout --> Primary
-  Layout --> Inspector
-  Layout --> Terminal
-  Focus --> Settings
-  Interaction --> Feedback
-  Interaction --> Navigation
-  Interaction --> Primary
-  Interaction --> Inspector
-  Interaction --> Terminal
-  Interaction --> Settings
+  CapabilityFacts --> CapabilityModel
+  CapabilityFacts --> ActionModel
+  TaskFacts --> ActionModel
+  TaskFacts --> ContentModel
+  MessageFacts --> ContentModel
+  Environment --> LayoutModel
+  Environment --> MotionModel
+  Preference --> LayoutModel
+  Preference --> MotionModel
+
+  CapabilityModel --> Experience
+  ActionModel --> Experience
+  ContentModel --> Disclosure
+  LayoutModel --> Spatial
+  MotionModel --> Priority
+  Priority --> Experience
+  Disclosure --> Experience
+  Spatial --> Experience
+  Layer --> Experience
+
+  Experience --> Chrome
+  Experience --> Navigation
+  Experience --> Primary
+  Experience --> Inspector
+  Experience --> Utility
+  Experience --> Modal
+  Experience --> Feedback
+
+  Chrome --> UserIntent
+  Navigation --> UserIntent
+  Primary --> UserIntent
+  Inspector --> UserIntent
+  Utility --> UserIntent
+  Modal --> UserIntent
+  UserIntent --> ActionModel --> Dispatch
+  Dispatch -->|"ready"| Command --> Outcome
+  Dispatch -->|"blocked"| Blocked --> Feedback
+  Outcome --> Feedback
+  Outcome --> TaskFacts
+  Outcome --> MessageFacts
+
+  MessageFacts -.->|"FORBIDDEN · raw state 不直达 view"| Primary
+  CapabilityFacts -.->|"FORBIDDEN · 组件不自行猜测能力"| Utility
 ```
+
+这张图刻意把“前沿”落实为五个可执行特征，而不是视觉风格口号：
+
+| 设计质量 | 系统约束 | 当前实现锚点 |
+| --- | --- | --- |
+| Single source of truth | Surface 不直接读取 raw event 或自行拼状态，只消费纯投影 | `message-graph.js`、`capability-graph.js` |
+| Closed interaction loop | 每个可见动作必须有 admission、outcome 和归属明确的 feedback | `ui-action-graph.js`、`ActionLifecycleContext`、`useActionLifecycle` |
+| Progressive disclosure | Primary 展示任务叙事；Inspector 展示 Turn 上下文；Runtime Detail / Terminal 承载原始证据 | `MessageLog`、`InspectorPanel`、`RuntimeDetailsPanel` |
+| Adaptive composition | 用户意图保持稳定，空间与层级随窗口和面板约束派生 | `layout-state.js`、`useLayout` |
+| Inclusive motion and focus | 状态通过语义、文本和 ARIA 表达；动效可降级；modal 独占 focus owner | `animation-system.js`、Panel / Dialog semantics |
+
+注意力层级固定为：
+
+1. **Primary Narrative**：用户请求、assistant response 和需要用户处理的状态，是默认阅读路径。
+2. **Context Surface**：执行概览复用同一 Turn，提供“请求—当前步骤—工具进度—回复”摘要，不复制主消息。
+3. **Evidence Surface**：Tool request/result、diff、诊断与 Terminal 输出按需展开，默认不与答案争夺视觉权重。
+4. **Interruption Surface**：只有阻塞性输入、确认或错误允许进入 modal / alert 层；普通成功状态留在动作所属 Surface。
+
+Action lifecycle 也是 UI Graph 的一部分，按钮不能只有 enabled / disabled 两态：
+
+```mermaid
+stateDiagram-v2
+  [*] --> READY
+  READY --> BLOCKED: capability / policy / missing content
+  READY --> RUNNING: intent admitted
+  BLOCKED --> READY: authoritative facts changed
+  RUNNING --> SUCCEEDED: outcome committed
+  RUNNING --> FAILED: outcome rejected
+  SUCCEEDED --> READY: feedback acknowledged
+  FAILED --> READY: retry / dismiss / recovery
+```
+
+`BLOCKED` 必须在动作所有者附近显示原因；`RUNNING` 必须防止重复提交并保持当前内容；`SUCCEEDED` 和 `FAILED` 必须返回可感知结果。pressed state 只表达面板开合，不得冒充命令成功。
 
 布局投影是可执行契约，`layout-state.js` 是唯一参数源：
 
@@ -610,6 +742,9 @@ UI 不变量：
 - 能力禁用、命令 pending 和错误反馈属于控件的交互投影，不允许按钮视觉可用但点击无结果；危险操作必须经过 Confirm Layer。
 - 同时只能有一个 modal focus owner；popover、context menu 与 Inspector 位于 modal 之下。Esc 关闭最上层可关闭对象，焦点返回触发控件。
 - Message Presentation Graph（5.3）是 Primary Task Surface 的内容子图；布局重投影、Terminal 开合或 Inspector 出现不得重建消息身份、stream commit 或折叠状态。
+- 同一事实只允许一个视觉主语：任务状态归属 Conversation Turn，能力状态归属触发控件，命令结果归属 action feedback target；禁止用多个常驻 banner、toast 和统计卡重复播报同一状态。
+- 渐进披露不得变成信息隐藏：running / waiting / failed 必须在 Primary 或 Context Surface 至少有一个始终可见的语义状态；原始日志可以折叠，但恢复路径必须明确。
+- Motion 只能强化状态变化，不能承载唯一含义；`prefers-reduced-motion` 下保留状态文本、焦点移动和 live-region 反馈，去掉非必要位移与循环动画。
 
 ## 6. 关键运行时流程
 
@@ -959,6 +1094,9 @@ bun run verify
 | Renderer 特权端口 | `desktop/renderer/hooks/useIPC.js` |
 | UI Capability Read Model | `desktop/renderer/hooks/useCapabilities.js` |
 | UI Capability Graph | `desktop/renderer/app/capabilities/capability-graph.js` |
+| UI Action Graph | `desktop/renderer/app/actions/ui-action-graph.js` |
+| Action Lifecycle Context | `desktop/renderer/contexts/ActionLifecycleContext.jsx` |
+| Action Lifecycle Hook | `desktop/renderer/hooks/useActionLifecycle.js` |
 | Message Display Graph / 折叠策略 | `desktop/renderer/runtime/message-graph.js` |
 | 消息分组 / 工具与生命周期投影 | `desktop/renderer/runtime/runtime-details.js` |
 | 消息展示组合 | `desktop/renderer/components/MessageLog.jsx` |

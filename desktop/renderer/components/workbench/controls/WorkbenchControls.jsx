@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Button, Icon } from '../../ui/index.js';
 import { styles } from '../../../app/styles.js';
 import { t as i18nT } from '../../../i18n.js';
-import { resolveUiActionState } from '../../../app/actions/ui-action-graph.js';
+import { resolveUiActionState, UI_ACTION_STATUS } from '../../../app/actions/ui-action-graph.js';
+import { useActionLifecycleContext, useActionState } from '../../../contexts/ActionLifecycleContext.jsx';
 
 export function WorkbenchControls({
   sidebarCollapsed,
@@ -17,10 +18,40 @@ export function WorkbenchControls({
   capabilityGraph,
   messageCount = 0,
 }) {
+  const { executeActionWithFeedback } = useActionLifecycleContext();
+
   const previewAction = resolveUiActionState('workbench.preview', { capabilityGraph });
   const terminalAction = resolveUiActionState('workbench.toggle-terminal', { capabilityGraph });
   const exportAction = resolveUiActionState('workbench.export', { contentCount: messageCount });
   const clearAction = resolveUiActionState('workbench.clear', { contentCount: messageCount });
+
+  const previewState = useActionState('workbench.preview');
+  const exportState = useActionState('workbench.export');
+  const clearState = useActionState('workbench.clear');
+
+  const handleOpenPreview = useCallback(() => {
+    executeActionWithFeedback(
+      'workbench.preview',
+      async () => { onOpenPreview?.(); },
+      { successMessage: '', failureMessage: '打开预览失败' },
+    );
+  }, [onOpenPreview, executeActionWithFeedback]);
+
+  const handleExport = useCallback(() => {
+    executeActionWithFeedback(
+      'workbench.export',
+      async () => { onExport?.(); },
+      { successMessage: '导出成功', failureMessage: '导出失败' },
+    );
+  }, [onExport, executeActionWithFeedback]);
+
+  const handleClearMessages = useCallback(() => {
+    executeActionWithFeedback(
+      'workbench.clear',
+      async () => { onClearMessages?.(); },
+      { successMessage: '已清空消息', failureMessage: '清空消息失败' },
+    );
+  }, [onClearMessages, executeActionWithFeedback]);
   const iconButton = {
     width: '28px',
     height: '28px',
@@ -42,11 +73,31 @@ export function WorkbenchControls({
 
   return (
     <div className="mastery-top-controls" style={styles.workspaceControls}>
-      <Button actionId="workbench.preview" variant="ghost" size="sm" style={textButton} onClick={onOpenPreview} disabled={previewAction.status === 'blocked'} title={previewAction.reason || i18nT('chat.preview')} ariaLabel={i18nT('chat.preview')}>
+      <Button
+        actionId="workbench.preview"
+        variant="ghost"
+        size="sm"
+        style={textButton}
+        onClick={handleOpenPreview}
+        disabled={previewAction.status === 'blocked' || previewState.status === UI_ACTION_STATUS.RUNNING}
+        title={previewAction.reason || i18nT('chat.preview')}
+        ariaLabel={i18nT('chat.preview')}
+        aria-busy={previewState.status === UI_ACTION_STATUS.RUNNING || undefined}
+      >
         <Icon name="preview" size={14} />
-        <span>打开预览</span>
+        <span>{previewState.status === UI_ACTION_STATUS.RUNNING ? '...' : '打开预览'}</span>
       </Button>
-      <Button actionId="workbench.export" variant="ghost" size="sm" style={iconButton} onClick={onExport} disabled={exportAction.status === 'blocked'} title={exportAction.reason || i18nT('chat.export')} ariaLabel={i18nT('chat.export')}>
+      <Button
+        actionId="workbench.export"
+        variant="ghost"
+        size="sm"
+        style={iconButton}
+        onClick={handleExport}
+        disabled={exportAction.status === 'blocked' || exportState.status === UI_ACTION_STATUS.RUNNING}
+        title={exportAction.reason || i18nT('chat.export')}
+        ariaLabel={i18nT('chat.export')}
+        aria-busy={exportState.status === UI_ACTION_STATUS.RUNNING || undefined}
+      >
         <Icon name="download" size={14} />
       </Button>
       <span style={styles.chatHeaderActionDivider} />
@@ -87,7 +138,19 @@ export function WorkbenchControls({
       >
         <Icon name="inspector" size={15} />
       </Button>
-      <Button actionId="workbench.clear" variant="ghost" size="sm" style={iconButton} onClick={onClearMessages} disabled={clearAction.status === 'blocked'} title={clearAction.reason || i18nT('chat.clear_messages')} ariaLabel={i18nT('chat.clear_messages')}><Icon name="trash" size={14} /></Button>
+      <Button
+        actionId="workbench.clear"
+        variant="ghost"
+        size="sm"
+        style={iconButton}
+        onClick={handleClearMessages}
+        disabled={clearAction.status === 'blocked' || clearState.status === UI_ACTION_STATUS.RUNNING}
+        title={clearAction.reason || i18nT('chat.clear_messages')}
+        ariaLabel={i18nT('chat.clear_messages')}
+        aria-busy={clearState.status === UI_ACTION_STATUS.RUNNING || undefined}
+      >
+        <Icon name="trash" size={14} />
+      </Button>
     </div>
   );
 }
