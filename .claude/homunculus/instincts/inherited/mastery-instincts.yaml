@@ -1,0 +1,278 @@
+# Instincts generated from https://github.com/novvoo/mastery
+# Generated: 2026-07-13T06:22:45.614Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: mastery-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/novvoo/mastery
+---
+
+# Mastery Commit Length
+
+## Action
+
+Keep commit messages concise (~30 characters)
+
+## Evidence
+
+- Average commit message length: 30 chars
+- Based on 1 commits
+
+---
+id: mastery-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/novvoo/mastery
+---
+
+# Mastery Naming Files
+
+## Action
+
+Use kebab-case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: kebab-case
+
+---
+id: mastery-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/novvoo/mastery
+---
+
+# Mastery Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: mastery-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/novvoo/mastery
+---
+
+# Mastery Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: mastery-instinct-file-naming
+trigger: "When creating a new file"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: novvoo/mastery
+---
+
+# Mastery Instinct File Naming
+
+## Action
+
+Name the file using kebab-case (e.g., my-file.js)
+
+## Evidence
+
+- Pattern in namingConventions.files
+
+---
+id: mastery-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: novvoo/mastery
+---
+
+# Mastery Instinct Function Naming
+
+## Action
+
+Name the function using camelCase (e.g., myFunction)
+
+## Evidence
+
+- Pattern in namingConventions.functions
+
+---
+id: mastery-instinct-class-naming
+trigger: "When defining a new class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: novvoo/mastery
+---
+
+# Mastery Instinct Class Naming
+
+## Action
+
+Name the class using PascalCase (e.g., MyClass)
+
+## Evidence
+
+- Pattern in namingConventions.classes
+
+---
+id: mastery-instinct-constant-naming
+trigger: "When defining a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: novvoo/mastery
+---
+
+# Mastery Instinct Constant Naming
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE (e.g., MY_CONSTANT)
+
+## Evidence
+
+- Pattern in namingConventions.constants
+
+---
+id: mastery-instinct-import-style
+trigger: "When importing modules"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: novvoo/mastery
+---
+
+# Mastery Instinct Import Style
+
+## Action
+
+Use relative import paths (e.g., './module')
+
+## Evidence
+
+- Pattern in importStyle
+
+---
+id: mastery-instinct-export-style
+trigger: "When exporting modules or functions"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: novvoo/mastery
+---
+
+# Mastery Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in exportStyle
+
+---
+id: mastery-instinct-commit-format
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: novvoo/mastery
+---
+
+# Mastery Instinct Commit Format
+
+## Action
+
+Write a short, freeform message without a prefix, typically around 30 characters
+
+## Evidence
+
+- Pattern in commits
+- Example: 'migrate desktop runtime to OMP'
+
+---
+id: mastery-instinct-error-handling
+trigger: "When handling errors in code"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: novvoo/mastery
+---
+
+# Mastery Instinct Error Handling
+
+## Action
+
+Use try-catch blocks for error handling
+
+## Evidence
+
+- Pattern in errorHandling.style
+
+---
+id: mastery-instinct-test-location
+trigger: "When adding new tests"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: novvoo/mastery
+---
+
+# Mastery Instinct Test Location
+
+## Action
+
+Place test files in a mixed location (not strictly separated from source files)
+
+## Evidence
+
+- Pattern in architecture.folderStructure.testLocation
+
+---
+id: mastery-instinct-test-structure
+trigger: "When organizing test code"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: novvoo/mastery
+---
+
+# Mastery Instinct Test Structure
+
+## Action
+
+Follow the hybrid module organization and folder structure (e.g., tests may appear alongside code in 'src', 'desktop', or feature folders)
+
+## Evidence
+
+- Pattern in architecture.folderStructure.srcLayout
+- Pattern in architecture.folderStructure.commonFolders
+
