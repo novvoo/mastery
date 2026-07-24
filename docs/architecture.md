@@ -538,46 +538,78 @@ flowchart TD
 - Turn collapse 与长内容 expansion 是两种正交状态；展开 Turn 不隐式展开或折叠内容，展开内容也不改变 Turn 偏好。两者都以稳定 ID 为键，禁止使用数组位置作为长期状态身份。
 - Turn 归约与可见性策略位于 `runtime/runtime-details.js` 和 `runtime/message-graph.js` 的纯函数中；消息内容展开由 `MessageLog` 的显式交互状态持有。组件不得另建基于消息完成数量、签名变化或渲染次数的自动消息折叠规则。
 
-### 5.4 Capability-driven UI Graph
+### 5.4 Frontend UI Design Graph
 
-Renderer 不再通过“方法是否存在”推断功能。连接完成后，`useCapabilities` 并行读取 `capabilities:list` 与 `contracts:list`，生成唯一 UI Read Model；所有特权入口从该投影派生。
+前端不是若干可见面板的拼接，而是由 **Capability、持久化用户意图、视口约束和当前任务上下文** 共同派生的 UI Read Model。Renderer 只保存用户意图；`Layout Policy` 计算当前窗口下的有效布局，避免侧边栏与 Inspector 同时挤压 Primary Task Surface。
 
 ```mermaid
-flowchart LR
-  Registry["Capability Registry"]
-  Contracts["Command Contract Registry"]
-  Port["useIPC Discovery Port"]
-  Graph["useCapabilities<br/>UI Read Model"]
-
-  subgraph Surfaces["Workbench Surfaces"]
-    Composer["Agent Composer"]
-    Files["Workspace / Files"]
-    Terminal["Terminal"]
-    Preview["Preview Viewer"]
-    Models["Model Management"]
-    Status["Capability Status Bar"]
+flowchart TB
+  subgraph Facts["Authoritative UI Facts"]
+    Registry["Capability Registry<br/>status · risk · reason"]
+    Contracts["Command Contract Registry<br/>schema · channel · result"]
+    Viewport["Viewport Metrics<br/>width · height"]
+    Intent["Persisted User Intent<br/>sidebar · inspector · terminal · theme"]
+    Task["Task Context<br/>conversation · file · preview · runtime"]
   end
 
-  Registry -->|"status / risk / reason"| Port
-  Contracts -->|"schema / channel / result"| Port
-  Port --> Graph
-  Graph --> Composer
-  Graph --> Files
-  Graph --> Terminal
-  Graph --> Preview
-  Graph --> Models
-  Graph --> Status
+  subgraph Policy["Pure UI Policy Layer"]
+    Capability["Capability Projection<br/>available · degraded · unavailable"]
+    Layout["Layout Projection<br/>docked · overlay · compact"]
+    Interaction["Interaction Projection<br/>enabled · disabled reason · pending"]
+    Focus["Focus / Layer Policy<br/>base < panel < popover < modal"]
+  end
+
+  subgraph Shell["Workbench Experience Graph"]
+    Chrome["Window Chrome<br/>global controls · diagnostics"]
+    Navigation["Navigation Surface<br/>tasks · workspace · tools"]
+    Primary["Primary Task Surface<br/>conversation or file"]
+    Inspector["Contextual Inspector<br/>activity · history · preview"]
+    Terminal["Bottom Utility Surface<br/>terminal · problems · output"]
+    Settings["Settings Modal<br/>models · MCP · appearance · about"]
+    Feedback["Transient Feedback<br/>inline reason · toast · confirm"]
+  end
+
+  Registry --> Capability
+  Contracts --> Capability
+  Viewport --> Layout
+  Intent --> Layout
+  Task --> Layout
+  Capability --> Interaction
+  Task --> Interaction
+  Layout --> Focus
+
+  Capability --> Chrome
+  Layout --> Navigation
+  Layout --> Primary
+  Layout --> Inspector
+  Layout --> Terminal
+  Focus --> Settings
+  Interaction --> Feedback
+  Interaction --> Navigation
+  Interaction --> Primary
+  Interaction --> Inspector
+  Interaction --> Terminal
+  Interaction --> Settings
 ```
 
-UI 投影规则：
+布局投影是可执行契约，`layout-state.js` 是唯一参数源：
 
-- `available`：入口可操作。
-- `degraded`：入口停止产生新 command，保留当前内容并展示恢复原因。
-- `unavailable`：入口禁用；若能力本身不存在，不渲染伪造的运行状态。
-- 未出现在 manifest 的特权能力默认 `unavailable`，即 UI fail closed。
-- `preview.viewer` 与 `preview.process` 分离：本地 URL 查看器可用不代表应用拥有 Preview 子进程。
-- Runtime 停止后重新读取 manifest，使自动恢复结果进入同一个 UI graph。
-- 浏览器预览只启用 Renderer 本地能力，不模拟 Electron、文件、终端或 Agent 权限。
+| Mode | 进入条件 | Sidebar | Primary Task Surface | Inspector | Terminal / Settings |
+| --- | --- | --- | --- | --- | --- |
+| `docked` | 窗口宽度足以容纳可见 Sidebar、至少 480 px Primary 和 Inspector | 固定导航列 | 获得剩余宽度且不低于最小值 | 保留可调宽度并占用布局空间 | Terminal 只占纵向空间；Settings 独占 modal focus layer |
+| `overlay` | 非紧凑窗口，但 dock 后会破坏 Primary 最小宽度 | 保留导航列 | 不为 Inspector 让出宽度 | 浮层覆盖、可关闭、宽度仍受用户拖拽值控制 | Terminal 与 Primary 共用宽度；Settings 高于 Inspector |
+| `compact` | `viewport <= 760 px` | 按用户意图成为抽屉，不永久消失 | 始终拥有完整基础画布 | 以左右 16 px 安全边距覆盖 | Settings 全屏；Terminal 高度仍受统一 clamp 约束 |
+
+UI 不变量：
+
+- `requested state` 与 `effective state` 分离：持久化用户是否打开面板，不持久化临时的 `docked / overlay / compact` 结果；窗口恢复尺寸后自动重新投影。
+- Primary Task Surface 在多面板桌面布局中的可用宽度不得低于 480 px。Sidebar 和 Inspector 不能同时通过硬编码 margin 挤压主内容；空间不足时 Inspector 必须降级为 overlay。
+- Sidebar、Inspector 和 Terminal 的拖拽值都经过同一布局模块 clamp；容器必须真实消费投影宽度，禁止“状态变化但视觉尺寸不变”的空交互。
+- `available` 时入口可操作；`degraded` 时停止产生新 command、保留已有内容并显示恢复原因；`unavailable` 时禁用入口。未出现在 manifest 的特权能力默认 `unavailable`，即 UI fail closed。
+- `preview.viewer` 与 `preview.process` 分离：本地 URL 查看器可用不代表应用拥有 Preview 子进程。浏览器预览不模拟 Electron、文件、终端或 Agent 权限。
+- 能力禁用、命令 pending 和错误反馈属于控件的交互投影，不允许按钮视觉可用但点击无结果；危险操作必须经过 Confirm Layer。
+- 同时只能有一个 modal focus owner；popover、context menu 与 Inspector 位于 modal 之下。Esc 关闭最上层可关闭对象，焦点返回触发控件。
+- Message Presentation Graph（5.3）是 Primary Task Surface 的内容子图；布局重投影、Terminal 开合或 Inspector 出现不得重建消息身份、stream commit 或折叠状态。
 
 ## 6. 关键运行时流程
 

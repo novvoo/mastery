@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   DESKTOP_LAYOUT_STORAGE_KEY,
   INSPECTOR_WIDTH,
@@ -8,6 +8,7 @@ import {
   readDesktopLayout,
   clampTerminalHeight,
   isTerminalToggleShortcut,
+  resolveWorkbenchLayoutMode,
 } from '../app/layout/layout-state.js';
 import { LAYOUT } from '../app/config/index.js';
 
@@ -38,6 +39,7 @@ export function useLayout() {
   const [activeInspectorTab, setActiveInspectorTab] = useState(initialDesktopLayout.activeInspectorTab);
   const [inspectorPanelWidth, setInspectorPanelWidth] = useState(initialDesktopLayout.inspectorPanelWidth);
   const [inspectorExpanded, setInspectorExpanded] = useState(initialDesktopLayout.inspectorExpanded);
+  const [viewportWidth, setViewportWidth] = useState(() => globalThis.innerWidth);
 
   const [terminalClosed, setTerminalClosed] = useState(initialTerminalLayout.closed);
   const [terminalOpen, setTerminalOpen] = useState(initialTerminalLayout.open);
@@ -106,11 +108,25 @@ export function useLayout() {
 
   useEffect(() => {
     const handleWindowResize = () => {
-      setInspectorPanelWidth((width) => clampInspectorWidth(width));
+      const nextViewportWidth = globalThis.innerWidth;
+      setViewportWidth(nextViewportWidth);
+      setInspectorPanelWidth((width) => clampInspectorWidth(width, nextViewportWidth));
     };
     window.addEventListener('resize', handleWindowResize);
     return () => window.removeEventListener('resize', handleWindowResize);
   }, []);
+
+  const workbenchLayoutMode = useMemo(() => resolveWorkbenchLayoutMode({
+    viewportWidth,
+    sidebarVisible: !sidebarCollapsed,
+    inspectorVisible: summaryPanelVisible,
+    inspectorWidth: inspectorPanelWidth,
+  }), [
+    inspectorPanelWidth,
+    sidebarCollapsed,
+    summaryPanelVisible,
+    viewportWidth,
+  ]);
 
   // ── Terminal 快捷键 (Ctrl/Cmd + `) ─────────────────────
   useEffect(() => {
@@ -187,6 +203,7 @@ export function useLayout() {
     activeInspectorTab,
     setActiveInspectorTab,
     inspectorPanelWidth,
+    workbenchLayoutMode,
     inspectorExpanded,
     handleInspectorResizeStart,
     handleInspectorResizeKeyDown,

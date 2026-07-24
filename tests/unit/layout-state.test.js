@@ -8,6 +8,7 @@ import {
   normalizeTerminalPanelLayout,
   readDesktopLayout,
   readTerminalPanelLayout,
+  resolveWorkbenchLayoutMode,
 } from '../../desktop/renderer/app/layout/layout-state.js';
 
 describe('workbench layout state', () => {
@@ -81,5 +82,31 @@ describe('workbench layout state', () => {
       inspectorPanelWidth: 340,
       sidebarCollapsed: true,
     });
+  });
+
+  test('protects the primary task surface by projecting inspector layout mode', () => {
+    expect(resolveWorkbenchLayoutMode({
+      viewportWidth: 1510,
+      sidebarVisible: true,
+      inspectorVisible: true,
+      inspectorWidth: 388,
+    })).toBe('docked');
+    expect(resolveWorkbenchLayoutMode({
+      viewportWidth: 1280,
+      sidebarVisible: true,
+      inspectorVisible: true,
+      inspectorWidth: 388,
+    })).toBe('docked');
+    expect(resolveWorkbenchLayoutMode({
+      viewportWidth: 1024,
+      sidebarVisible: true,
+      inspectorVisible: true,
+      inspectorWidth: 340,
+    })).toBe('overlay');
+    expect(resolveWorkbenchLayoutMode({
+      viewportWidth: 720,
+      sidebarVisible: false,
+      inspectorVisible: false,
+    })).toBe('compact');
   });
 });

@@ -15,6 +15,38 @@ export const INSPECTOR_WIDTH = Object.freeze({
   keyboardStep: 24,
   keyboardLargeStep: 80,
 });
+export const WORKBENCH_LAYOUT = Object.freeze({
+  compactBreakpoint: 760,
+  primaryMinWidth: 480,
+  sidebarWidth: 320,
+  sidebarConstrainedWidth: 270,
+  inspectorOuterGap: 40,
+});
+
+export function resolveWorkbenchLayoutMode({
+  viewportWidth = globalThis.innerWidth,
+  sidebarVisible = false,
+  inspectorVisible = false,
+  inspectorWidth = LAYOUT.inspectorPanelWidth,
+} = {}) {
+  const width = Number(viewportWidth);
+  if (!Number.isFinite(width) || width <= WORKBENCH_LAYOUT.compactBreakpoint) {
+    return 'compact';
+  }
+  if (!inspectorVisible) {
+    return 'docked';
+  }
+  const sidebarWidth = sidebarVisible
+    ? (width <= 980
+      ? WORKBENCH_LAYOUT.sidebarConstrainedWidth
+      : WORKBENCH_LAYOUT.sidebarWidth)
+    : 0;
+  const requiredWidth = sidebarWidth
+    + WORKBENCH_LAYOUT.primaryMinWidth
+    + clampInspectorWidth(inspectorWidth, width)
+    + WORKBENCH_LAYOUT.inspectorOuterGap;
+  return width >= requiredWidth ? 'docked' : 'overlay';
+}
 
 export function clampInspectorWidth(width, viewportWidth = globalThis.innerWidth) {
   const viewportLimit = Number.isFinite(Number(viewportWidth))

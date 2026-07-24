@@ -78,6 +78,7 @@ function App() {
     activeInspectorTab,
     setActiveInspectorTab,
     inspectorPanelWidth,
+    workbenchLayoutMode,
     inspectorExpanded,
     handleInspectorResizeStart,
     handleInspectorResizeKeyDown,
@@ -490,7 +491,14 @@ function App() {
         messageCount={runtime.messages.length}
       />
 
-      <div className="mastery-workbench" style={styles.mainContentWrapper}>
+      <div
+        className="mastery-workbench"
+        data-layout-mode={workbenchLayoutMode}
+        style={{
+          ...styles.mainContentWrapper,
+          '--mastery-inspector-width': `${inspectorPanelWidth}px`,
+        }}
+      >
         <ActivityRail
           activeTab={activeTab}
           sidebarCollapsed={sidebarCollapsed}

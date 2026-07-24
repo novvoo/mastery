@@ -267,6 +267,21 @@ describe('architecture contract', () => {
     expect(layoutHook).not.toContain('session/session-storage.js');
   });
 
+  test('keeps the frontend UI design graph executable in the layout projection', () => {
+    const layoutState = read('desktop/renderer/app/layout/layout-state.js');
+    const layoutHook = read('desktop/renderer/hooks/useLayout.js');
+    const app = read('desktop/renderer/App.jsx');
+    expect(architecture).toContain('Frontend UI Design Graph');
+    expect(architecture).toContain('docked · overlay · compact');
+    expect(architecture).toContain('requested state');
+    expect(architecture).toContain('effective state');
+    expect(layoutState).toContain('export function resolveWorkbenchLayoutMode');
+    expect(layoutState).toContain('primaryMinWidth: 480');
+    expect(layoutHook).toContain('resolveWorkbenchLayoutMode({');
+    expect(app).toContain('data-layout-mode={workbenchLayoutMode}');
+    expect(app).toContain("'--mastery-inspector-width'");
+  });
+
   test('keeps the quality gate complete and architecture checks discoverable', () => {
     const pkg = JSON.parse(read('package.json'));
     expect(pkg.scripts.verify).toBe(
